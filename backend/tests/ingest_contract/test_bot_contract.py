@@ -1,17 +1,15 @@
 """Bot entry contract: every typology through the bot's per-mention detection.
 
-``bot.detect_tagged_post`` is the whole detection half of a mention: the shared
-one-hop acquisition, then the strict inline mapper and, failing that, the relay
-mapper over the tagged post's same-author parent. It runs here against the same
-typology fixtures the resolve contract uses, offline (a ``MockTransport`` over
-the typology's bodies) and with no DB, so what this file pins is the grammar,
-not the plumbing around it.
+The bot's detection half is the shared one-hop acquisition
+(``bot.acquire_tagged_thread``) followed by the engine (``detect_diagnosed``),
+and nothing else: the bot adds a reply on top, never a grammar. It runs here
+against the same typology fixtures the resolve contract uses, offline (a
+``MockTransport`` over the typology's bodies) and with no DB, so what this file
+pins is that the bot's entry answers what the shared expectation says.
 
-Each typology's expected value for this entry lives in ``expected.json``: the
-shared expectation at the top level, and a ``paths.bot`` block for whatever the
-bot answers differently. Today the bot refuses most typologies the shared
-resolution reads, and every such block names why in a ``diverges`` note. The
-notes are the record of where the two grammars stand apart, not an endorsement.
+Each typology's expected value is ``expected.json``'s top level. A ``paths.bot``
+block holds only the bot's own vocabulary, the failure reason its reply names,
+or a ``skip`` for a shape no live post can carry.
 """
 
 from __future__ import annotations
@@ -20,8 +18,8 @@ from typing import Any
 
 import pytest
 
-from app.services.bot import detect_tagged_post
-from app.services.tweet_ingest import DetectedGeoloc
+from app.services.bot import acquire_tagged_thread
+from app.services.tweet_ingest import DetectedGeoloc, detect_diagnosed
 
 from . import loader
 
@@ -29,13 +27,11 @@ _PATH = "bot"
 
 
 def _detections(typology: str) -> tuple[list[DetectedGeoloc], str | None]:
-    """Run the bot over the typology's post, as if it had been tagged there."""
+    """Run the bot's detection half over the typology's post, as if tagged there."""
     body = loader.load_body(typology)
     with loader.syndication_client(typology) as client:
-        detections, _record, reason = detect_tagged_post(
-            body["id_str"], body["user"]["screen_name"], client=client
-        )
-    return detections, reason
+        acquired = acquire_tagged_thread(body["id_str"], body["user"]["screen_name"], client=client)
+    return detect_diagnosed(acquired.records)
 
 
 def _roles(media: list[Any]) -> list[list[str]]:
@@ -48,19 +44,18 @@ def test_typology_matches_the_bot_contract(typology: str) -> None:
     if "skip" in block:
         pytest.skip(block["skip"])
     expected = loader.expected_for_path(typology, _PATH)
-    # One draft per coordinate is the golden outcome; a typology the bot answers
-    # differently states the count it actually reaches.
-    count = block.get("detections", len(expected["coords"]))
 
     detections, reason = _detections(typology)
 
-    assert len(detections) == count, typology
+    # One draft per coordinate, the same count every entry reaches.
+    assert len(detections) == len(expected["coords"]), typology
     if "reason" in block:
         assert reason == block["reason"], typology
     for detection in detections:
         assert detection.title == expected["title"], typology
         assert detection.source_url == expected["source_url"], typology
         assert detection.secondary_source_urls == expected["secondary_source_urls"], typology
+        assert detection.warnings == expected["warnings"], typology
         assert _roles(detection.source_media) == [
             list(pair) for pair in expected["source_media"]
         ], typology

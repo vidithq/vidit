@@ -29,7 +29,6 @@ function parsed(mediaItems: TweetImportMedia[]): TweetImportResponse {
     parsed_coords: [],
     media: mediaItems,
     quoted_tweet: null,
-    detected: [],
   };
 }
 

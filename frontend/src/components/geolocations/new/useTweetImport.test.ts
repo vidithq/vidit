@@ -34,7 +34,6 @@ function parsed(overrides: Partial<TweetImportResponse> = {}): TweetImportRespon
     parsed_coords: [],
     media: [],
     quoted_tweet: null,
-    detected: [],
     ...overrides,
   };
 }

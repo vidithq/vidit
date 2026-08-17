@@ -1,13 +1,12 @@
 """Paste entry contract: every typology through the pasted-tweet import.
 
 ``parse_tweet`` is what ``POST /events/import-from-tweet`` returns to the submit
-form, and ``preview_detection`` is the machine view of the same paste the route
-returns beside it. Both run here against the typology fixtures, offline (a
-``MockTransport`` over the typology's bodies) and with no DB.
+form. It runs here against the typology fixtures, offline (a ``MockTransport``
+over the typology's bodies) and with no DB.
 
-Each typology's expected value for this entry lives in ``expected.json``: the
-shared expectation at the top level, and a ``paths.paste`` block for whatever
-the paste answers differently, with a ``diverges`` note naming why.
+Each typology's expected value is ``expected.json``'s top level: the paste reads
+the same grammar as the bot and the archive. A ``paths.paste`` block holds only
+a ``skip`` for a shape no live post can carry.
 """
 
 from __future__ import annotations
@@ -16,7 +15,6 @@ from datetime import datetime
 
 import pytest
 
-from app.services.detection import preview_detection
 from app.services.tweet_ingest import parse_tweet
 
 from . import loader
@@ -58,22 +56,3 @@ def test_typology_matches_the_paste_contract(typology: str) -> None:
     # the analyst's own reply.
     head_id = expected.get("head_tweet_id", body["id_str"])
     assert parsed.original_tweet_url.endswith(f"/status/{head_id}")
-
-
-@pytest.mark.parametrize("typology", loader.typology_names())
-def test_paste_preview_matches_what_the_form_is_offered(typology: str) -> None:
-    """The route answers the pre-fill and the machine preview from one paste, so
-    the two halves must agree on the coordinates and the source."""
-    block = loader.load_expected(typology).get("paths", {}).get(_PATH, {})
-    if "skip" in block:
-        pytest.skip(block["skip"])
-    expected = loader.expected_for_path(typology, _PATH)
-    body = loader.load_body(typology)
-
-    with loader.syndication_client(typology) as client:
-        detections = preview_detection(loader.owner_url(body), client=client)
-
-    assert len(detections) == len(expected["coords"])
-    for detection in detections:
-        assert detection.source_url == expected["source_url"]
-        assert detection.title == expected["title"]

@@ -574,7 +574,7 @@ Composite PK: `(event_id, conflict_id)`
 
 ### `bot_mentions`
 
-The bot's idempotency ledger: one row per processed @-mention of the bot, whatever the outcome. This ensures a mention is processed, and billed since the reads and gestures use the paid X API, at most once. Both delivery paths, the webhook and the reconciliation poll, share this ledger: whichever sees a mention first records it, and the other skips it. The poll's `since_id` is the max `mention_tweet_id` minus a one-interval lookback, so a mention the webhook dropped stays reachable even after a newer delivery advanced the max. The ledger absorbs the re-read overlap as already handled. See [`ingestion.md`](ingestion.md#bot-format) for the pipeline.
+The bot's idempotency ledger: one row per processed @-mention of the bot, whatever the outcome. This ensures a mention is processed, and billed since the reads and gestures use the paid X API, at most once. Both delivery paths, the webhook and the reconciliation poll, share this ledger: whichever sees a mention first records it, and the other skips it. The poll's `since_id` is the max `mention_tweet_id` minus a one-interval lookback, so a mention the webhook dropped stays reachable even after a newer delivery advanced the max. The ledger absorbs the re-read overlap as already handled. See [`ingestion.md`](ingestion.md#the-bot) for the pipeline.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -583,14 +583,14 @@ The bot's idempotency ledger: one row per processed @-mention of the bot, whatev
 | `author_handle` | `VARCHAR(50)` | NOT NULL. The tagging analyst's handle, normalized to lowercase with no leading `@`. Stored for forensics, not as a FK. Attribution resolves through the admin-linked `users.x_handle`. |
 | `outcome` | `VARCHAR(20)` | NOT NULL, `'created'`, `'no_detection'`, `'no_account'` (no live account carries the tagged author's admin-linked `x_handle`, so nothing is created and no reply is sent), `'skipped'`, `'self'` (the bot's own post, ledgered so the cursor advances past it), or `'failed'`. A `failed` row retries only when an operator deletes it. |
 | `events_created` | `INTEGER` | NOT NULL, default 0 |
-| `reply_tweet_id` | `VARCHAR(25)` | nullable. The bot's in-thread reply: on success, an event reference plus warnings; on failure, a diagnosis plus the format lesson, sent only to linked authors (see [`ingestion.md`](ingestion.md#bot-format)). NULL when no reply was earned, reply credentials are absent, or the post failed. The detection stays durable either way. |
+| `reply_tweet_id` | `VARCHAR(25)` | nullable. The bot's in-thread reply: on success, an event reference plus warnings; on failure, the refusal the engine named, sent only to linked authors (see [`ingestion.md`](ingestion.md#the-bot)). NULL when no reply was earned, reply credentials are absent, or the post failed. The detection stays durable either way. |
 | `processed_at` | `TIMESTAMPTZ` | NOT NULL |
 
 ---
 
 ### `bot_webhook_events`
 
-The queue between the X Account Activity webhook endpoint ([`POST /webhooks/x`](api.md#post-webhooksx)), which must answer X fast and therefore only inserts, and the import worker, which drains the queue through the shared mention pipeline. Idempotency lives in [`bot_mentions`](#bot_mentions), not here: a redelivered or poll-raced mention processes once. See [`ingestion.md`](ingestion.md#bot-format).
+The queue between the X Account Activity webhook endpoint ([`POST /webhooks/x`](api.md#post-webhooksx)), which must answer X fast and therefore only inserts, and the import worker, which drains the queue through the shared mention pipeline. Idempotency lives in [`bot_mentions`](#bot_mentions), not here: a redelivered or poll-raced mention processes once. See [`ingestion.md`](ingestion.md#the-bot).
 
 | Column | Type | Constraints |
 |--------|------|-------------|

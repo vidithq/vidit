@@ -1,18 +1,26 @@
 {
-  "description": "Coordinate plus a Telegram footage link and two annotation photos, no quote. The link is the source url; its date is unknown (null); the footage itself is off-platform (no source media). Both OP photos are proof.",
-  "coords": [[44.6123, 33.5221]],
+  "description": "Coordinate plus a Telegram link and two annotation photos, no quote. The link is the only candidate, so it is the source url. No fixture serves its embed, so the chase degrades to link-only: date unknown (null), no source media. Both OP photos are proof.",
+  "coords": [
+    [
+      44.6123,
+      33.5221
+    ]
+  ],
   "source_url": "https://t.me/somechannel/12345",
   "secondary_source_urls": [],
   "source_posted_at": null,
   "event_date": "2026-03-04",
-  "title": "Geolocated airfield perimeter",
+  "title": "Geolocated 44.612300, 33.522100 airfield perimeter",
   "source_media": [],
-  "proof_media": [["image", "op"], ["image", "op"]],
-  "paths": {
-    "bot": {
-      "detections": 0,
-      "reason": "coords_missing",
-      "diverges": "The bot's grammar reads a coordinate only from a line that is nothing but the decimal pair; here the pair sits inside the prose, so the mention is refused where the shared resolution reads the coordinate."
-    }
-  }
+  "proof_media": [
+    [
+      "image",
+      "op"
+    ],
+    [
+      "image",
+      "op"
+    ]
+  ],
+  "warnings": []
 }

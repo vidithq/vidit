@@ -33,8 +33,8 @@ logger = logging.getLogger(__name__)
 
 # A public t.me post path: ``/<channel>/<id>``, channel a bare username, id
 # numeric. New shape (no existing regex covers the post path; the *host* match
-# reuses ``_TELEGRAM_HOST_RE``, the single source of truth classify_source_host
-# is built on). Excludes the private ``/c/<n>/<m>`` and ``/joinchat/...`` forms
+# reuses ``_TELEGRAM_HOST_RE``, the one home for "this link is a t.me post",
+# shared with the source rule). Excludes the private ``/c/<n>/<m>`` and ``/joinchat/...`` forms
 # (extra path segments / non-numeric id), which have no public embed anyway.
 _TELEGRAM_POST_PATH_RE = re.compile(r"^/([A-Za-z0-9_]{1,64})/(\d{1,19})$")
 

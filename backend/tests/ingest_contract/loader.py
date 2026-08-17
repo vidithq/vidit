@@ -62,10 +62,10 @@ def load_chased(typology: str, tweet_id: str) -> dict[str, Any]:
 def expected_for_path(typology: str, path: str) -> dict[str, Any]:
     """``expected.json`` as one entry path sees it.
 
-    The shared expectation is the top level; ``paths.<path>`` overrides the keys
-    that entry answers differently, and every override carries a ``diverges``
-    note naming why. ``paths.<path>.skip`` marks a typology that entry cannot be
-    pointed at (an archive-only shape).
+    The three entries answer one grammar, so the shared expectation at the top
+    level is the whole answer. A ``paths.<path>`` block holds only what is that
+    entry's own vocabulary (the bot's failure reason) or a ``skip`` marking a
+    typology that entry cannot be pointed at (an archive-only shape).
     """
     expected = load_expected(typology)
     overrides = expected.get("paths", {}).get(path, {})

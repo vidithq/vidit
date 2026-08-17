@@ -13,7 +13,6 @@ import uuid
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-import httpx
 import pytest
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
@@ -673,19 +672,3 @@ def test_validate_bytes_guards_type_and_size():
         validate_bytes(b"x", "application/pdf")  # disallowed type
     with pytest.raises(ValueError):
         validate_bytes(b"x" * (settings.max_image_size + 1), "image/jpeg")  # oversize
-
-
-def test_preview_detection_returns_dtos_without_db():
-    from app.services.detection import preview_detection
-
-    body = {
-        "user": {"screen_name": "ana"},
-        "text": "Strike at 48.012345, 37.802411",
-        "created_at": "2025-11-12T14:33:00.000Z",
-    }
-    mock = httpx.Client(transport=httpx.MockTransport(lambda _req: httpx.Response(200, json=body)))
-    out = preview_detection("https://x.com/ana/status/987654321", client=mock)
-    assert len(out) == 1
-    assert out[0].coordinate.lat == pytest.approx(48.012345)
-    assert out[0].detected_from_url == "https://x.com/ana/status/987654321"
-    assert out[0].owner_handle == "ana"

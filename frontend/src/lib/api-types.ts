@@ -2235,34 +2235,6 @@ export interface components {
             lng: number;
         };
         /**
-         * DetectedGeolocPreview
-         * @description One machine detection the pipeline would produce from a pasted tweet.
-         *
-         *     The no-persist preview output (``import-from-tweet``): zero DB writes, the
-         *     inspection window into the machine ``detect`` path. ``proof_text`` is the
-         *     plain proof body the assemble step would wrap into the JSONB proof doc;
-         *     ``detected_from_url`` is the originating post. ``event_date`` is None when
-         *     the tweet's timestamp is unusable (required-nullable).
-         */
-        DetectedGeolocPreview: {
-            /** Detected From Url */
-            detected_from_url: string;
-            /** Event Date */
-            event_date: string | null;
-            /** Lat */
-            lat: number;
-            /** Lng */
-            lng: number;
-            /** Media */
-            media: components["schemas"]["TweetImportMedia"][];
-            /** Proof Text */
-            proof_text: string;
-            /** Secondary Source Urls */
-            secondary_source_urls: string[];
-            /** Title */
-            title: string;
-        };
-        /**
          * EventArchiveCreate
          * @description Body of ``POST /events/{event_id}/archives``.
          *
@@ -2806,11 +2778,6 @@ export interface components {
         TweetImportResponse: {
             /** Author Handle */
             author_handle: string;
-            /**
-             * Detected
-             * @default []
-             */
-            detected: components["schemas"]["DetectedGeolocPreview"][];
             /** Media */
             media: components["schemas"]["TweetImportMedia"][];
             /** Original Tweet Url */

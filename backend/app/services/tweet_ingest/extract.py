@@ -1,9 +1,8 @@
-"""Pure text core — coordinates, title, proof body. No I/O.
+"""Pure text core: coordinates, retweet rule, title, proof body. No I/O.
 
-Reused by every path: ``parse`` (human pre-fill from a pasted tweet),
-``detect`` (machine geolocation), and the ``archive`` backfill all run the
-same extractors over the same text, so the recovery rate is identical
-regardless of where the text came from.
+One vocabulary for every entry (the bot, the pasted-tweet import, the archive
+backfill), so the recovery rate is identical regardless of where the text came
+from.
 
 Coordinate parsing
 ------------------
@@ -11,22 +10,22 @@ Coordinate parsing
 Four extractors run over the full text, de-duped:
 
 1. Decimal pairs (``48.012345, 37.802411``; degree-marked ``48.6° 38.0°`` too)
-2. Decimal degrees + hemisphere (``33.1°N 35.5°E``, ``50.4501N, 30.5234E``,
-   ``N48.0123 E37.8024`` — ``°`` optional, letter on either side)
+2. Decimal degrees plus hemisphere (``33.1°N 35.5°E``, ``50.4501N, 30.5234E``,
+   ``N48.0123 E37.8024``, with ``°`` optional and the letter on either side)
 3. DMS (``48°00'45"N 37°48'08"E``)
 4. Google Maps ``@lat,lng,zoom`` links
 
-The first lands in the form by default; extras become "other candidates"
-chips. The decimal-pair extractor requires ≥3 decimal places to avoid
-matching dates / version strings (`1.2.3`, `2025-11-12`); the hemisphere and
-DMS forms use the directional letters as the discriminator (one fractional
-digit suffices); Maps URLs are unambiguous.
+Every coordinate found makes a draft; the 6-decimal dedup is the only guard.
+The decimal-pair extractor requires 3 or more decimal places to avoid matching
+dates / version strings (`1.2.3`, `2025-11-12`); the hemisphere and DMS forms
+use the directional letters as the discriminator (one fractional digit
+suffices); Maps URLs are unambiguous.
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .records import url_only_tokens
 
@@ -39,17 +38,16 @@ class ParsedCoord:
     lng: float
 
 
-# Horizontal whitespace only — a coordinate pair lives on one line. A separator
-# that spanned a newline would pair a latitude on one line with a longitude on
-# the next, and the per-line proof / title strippers (run over ``splitlines()``)
-# wouldn't remove what ``extract_coords`` lifted. Every extractor below uses it.
+# Horizontal whitespace only: a coordinate pair lives on one line. A separator
+# spanning a newline would pair a latitude on one line with a longitude on the
+# next. Every extractor below uses it.
 _HWS = r"[^\S\r\n]"
 
 # Decimal pairs, optionally degree-marked (``48.621451° 38.041689°``). The
 # `.\d{3,}` floor on both sides keeps us off dates (`2025-11-12`), version
-# strings (`1.2.3`), and reply counts — none carry 3+ decimals on both numbers
+# strings (`1.2.3`), and reply counts: none carry 3+ decimals on both numbers
 # at once. The trailing guard rejects only a *longer dotted number* (``…411.5``),
-# not a sentence-ending period (``…802411.``) — the old ``(?![\d.])`` swallowed
+# not a sentence-ending period (``…802411.``); the old ``(?![\d.])`` swallowed
 # that period and silently dropped real coords.
 _DECIMAL_PAIR_RE = re.compile(
     r"(?<![\d.])"
@@ -59,15 +57,14 @@ _DECIMAL_PAIR_RE = re.compile(
     r"(?!\d)(?!\.\d)"
 )
 
-# Decimal degrees + hemisphere letter. The letter (not a decimal floor) is the
-# discriminator — it disambiguates from dates / versions — so one fractional
-# digit is enough; ``°`` is optional. Latitude (N/S) first in both orderings,
-# matching how OSINT posts write them. Two variants: letter-suffix
-# (``33.1°N 35.5°E``, ``50.4501N, 30.5234E``) and letter-prefix
-# (``N48.0123 E37.8024``). Lat-first only — lng-first input (``35.5E 33.1N``)
-# is intentionally not matched. The inter-half separator is a comma / slash /
-# horizontal whitespace (no newline, via ``_HWS``); requiring it is also what
-# rejects prose-embedded letters like ``N12.5 area E34.6``.
+# Decimal degrees plus hemisphere letter. The letter (not a decimal floor) is
+# the discriminator, so one fractional digit is enough; ``°`` is optional.
+# Latitude (N/S) first in both orderings, matching how OSINT posts write them.
+# Two variants: letter-suffix (``33.1°N 35.5°E``, ``50.4501N, 30.5234E``) and
+# letter-prefix (``N48.0123 E37.8024``). Lat-first only: lng-first input
+# (``35.5E 33.1N``) is intentionally not matched. The inter-half separator is a
+# comma / slash / horizontal whitespace (no newline, via ``_HWS``); requiring it
+# is also what rejects prose-embedded letters like ``N12.5 area E34.6``.
 _DECIMAL_HEMI_SUFFIX_RE = re.compile(
     r"(?<![\w.])"
     r"(\d{1,3}\.\d+)\s*°?\s*([NS])"
@@ -85,12 +82,11 @@ _DECIMAL_HEMI_PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 
-# DMS — degrees, minutes, seconds + hemisphere letter. Minutes / seconds accept
-# both ASCII quotes (``'`` ``"``) and the typographic prime / double-prime
-# (``′`` U+2032, ``″`` U+2033) that Google Earth and similar tools emit — a real
-# recall gap real archives surface. The inter-half separator is newline-safe
-# (``_HWS``), like the other extractors, so a lat/lng split across lines doesn't
-# pair.
+# DMS: degrees, minutes, seconds plus hemisphere letter. Minutes / seconds
+# accept both ASCII quotes (``'`` ``"``) and the typographic prime / double
+# prime (``′`` U+2032, ``″`` U+2033) that Google Earth and similar tools emit, a
+# real recall gap real archives surface. The inter-half separator is
+# newline-safe (``_HWS``), like the other extractors.
 _DMS_RE = re.compile(
     r"(\d{1,3})°\s*(\d{1,2})['’′]\s*(\d{1,2}(?:\.\d+)?)?[\"”″]?\s*([NS])"
     rf"(?:{_HWS}|,)*"
@@ -104,8 +100,15 @@ _GMAPS_RE = re.compile(
     re.IGNORECASE,
 )
 
-
-_MAX_CANDIDATES = 3
+# Every coordinate form, for asking whether a line is a coordinate and nothing
+# else (the title rule).
+_COORD_RES = (
+    _DECIMAL_PAIR_RE,
+    _DECIMAL_HEMI_SUFFIX_RE,
+    _DECIMAL_HEMI_PREFIX_RE,
+    _DMS_RE,
+    _GMAPS_RE,
+)
 
 
 def _coord_in_bounds(lat: float, lng: float) -> bool:
@@ -123,54 +126,63 @@ def _dms_to_decimal(deg: str, mnt: str, sec: str | None, hemi: str) -> float:
 
 
 def _hemi_decimal(value: str, hemi: str) -> float:
-    """Signed decimal degree from a bare number + hemisphere letter."""
+    """Signed decimal degree from a bare number plus hemisphere letter."""
     decimal = float(value)
     if hemi.upper() in ("S", "W"):
         decimal = -decimal
     return decimal
 
 
-def extract_coords(text: str) -> list[ParsedCoord]:
-    """Run all extractors over ``text`` and return a de-duped candidate list.
+@dataclass(frozen=True)
+class CoordScan:
+    """What the extractors saw in one text.
 
-    Order: decimal pairs (most common in OSINT posts), decimal degrees +
-    hemisphere, DMS (older intel), then Google Maps URLs. Capped at
-    ``_MAX_CANDIDATES`` so a flood of coordinate-shaped strings can't blow up
-    the payload.
-
-    Dedup by rounded-to-6-decimals key — finer gives float-equality
-    artefacts, coarser conflates candidates the analyst wants distinct.
+    ``coords`` are the usable pairs. ``out_of_bounds`` says a coordinate-shaped
+    string was read and dropped because its latitude or longitude sits outside
+    the world, which is the one refusal a caller can name apart from "no
+    coordinate at all".
     """
-    candidates: list[ParsedCoord] = []
+
+    coords: list[ParsedCoord] = field(default_factory=list)
+    out_of_bounds: bool = False
+
+
+def scan_coords(text: str) -> CoordScan:
+    """Run all extractors over ``text``, in order: decimal pairs (most common in
+    OSINT posts), decimal degrees plus hemisphere, DMS (older intel), then
+    Google Maps URLs.
+
+    No cap: every coordinate the analyst wrote makes a draft, and the text
+    length of a post already bounds how many that is. Dedup by
+    rounded-to-6-decimals key; finer gives float-equality artefacts, coarser
+    conflates candidates the analyst wants distinct.
+    """
+    coords: list[ParsedCoord] = []
     seen: set[tuple[float, float]] = set()
+    out_of_bounds = False
 
     def _push(lat: float, lng: float) -> None:
+        nonlocal out_of_bounds
         if not _coord_in_bounds(lat, lng):
+            out_of_bounds = True
             return
         key = (round(lat, 6), round(lng, 6))
         if key in seen:
             return
         seen.add(key)
-        candidates.append(ParsedCoord(lat=lat, lng=lng))
+        coords.append(ParsedCoord(lat=lat, lng=lng))
 
     for m in _DECIMAL_PAIR_RE.finditer(text):
         try:
-            lat, lng = float(m.group(1)), float(m.group(2))
+            _push(float(m.group(1)), float(m.group(2)))
         except ValueError:
             continue
-        _push(lat, lng)
-        if len(candidates) >= _MAX_CANDIDATES:
-            return candidates
 
     for m in _DECIMAL_HEMI_SUFFIX_RE.finditer(text):
         _push(_hemi_decimal(m.group(1), m.group(2)), _hemi_decimal(m.group(3), m.group(4)))
-        if len(candidates) >= _MAX_CANDIDATES:
-            return candidates
 
     for m in _DECIMAL_HEMI_PREFIX_RE.finditer(text):
         _push(_hemi_decimal(m.group(2), m.group(1)), _hemi_decimal(m.group(4), m.group(3)))
-        if len(candidates) >= _MAX_CANDIDATES:
-            return candidates
 
     for m in _DMS_RE.finditer(text):
         try:
@@ -179,183 +191,105 @@ def extract_coords(text: str) -> list[ParsedCoord]:
         except ValueError:
             continue
         _push(lat, lng)
-        if len(candidates) >= _MAX_CANDIDATES:
-            return candidates
 
     for m in _GMAPS_RE.finditer(text):
         try:
-            lat, lng = float(m.group(1)), float(m.group(2))
+            _push(float(m.group(1)), float(m.group(2)))
         except ValueError:
             continue
-        _push(lat, lng)
-        if len(candidates) >= _MAX_CANDIDATES:
-            return candidates
 
-    return candidates
+    return CoordScan(coords=coords, out_of_bounds=out_of_bounds)
 
 
-# Every coordinate form, for stripping coordinates out of prose (title +
-# proof body). The structured ``coordinate`` field is the home for the value;
-# leaving it in the text duplicates it and reads as noise.
-_COORD_RES = (
-    _DECIMAL_PAIR_RE,
-    _DECIMAL_HEMI_SUFFIX_RE,
-    _DECIMAL_HEMI_PREFIX_RE,
-    _DMS_RE,
-    _GMAPS_RE,
-)
+def extract_coords(text: str) -> list[ParsedCoord]:
+    """The usable coordinates in ``text`` (:func:`scan_coords` without the
+    out-of-bounds signal)."""
+    return scan_coords(text).coords
 
 
-def _strip_coords(text: str) -> str:
-    for rx in _COORD_RES:
-        text = rx.sub(" ", text)
-    return text
+# ── Retweet rule ──────────────────────────────────────────────────────────
 
 
-# ── Structured mention markers ────────────────────────────────────────────
+# The retweet discriminator, and the one home for why the text is the only
+# reliable signal. An export entry carries no flag worth trusting: there is no
+# ``retweeted_status`` object (the exporter drops it) and the ``retweeted``
+# boolean is written ``false`` on every entry, retweets included. What survives
+# is the text X stores for a retweet, ``RT @<handle>: <original text>``, so the
+# prefix is the signal. A handle is 1 to 15 word characters and the colon must
+# follow, which keeps a post that merely opens on the letters "RT" out of the
+# match. The heuristic's deliberate boundary: X writes the canonical form, so
+# variants like a lowercase ``rt`` or a missing colon are out of scope, and a
+# post the owner hand-typed with the canonical prefix is dropped along with real
+# retweets, its content being someone else's either way.
+_RETWEET_PREFIX_RE = re.compile(r"^RT @[A-Za-z0-9_]{1,15}:")
 
 
-# A marker line of the bot's strict mention format: ``T:`` (title), ``C:``
-# (decimal coordinates), or ``S:`` (source link) at the start of a line,
-# case-insensitive. Only the bot's mention path consumes these; the free-text
-# extractors above stay the archive / paste vocabulary.
-_MARKER_LINE_RE = re.compile(r"^\s*([TCS]):\s*(.*)$", re.IGNORECASE)
+def is_retweet(text: str) -> bool:
+    """Whether ``text`` opens on the retweet prefix, so the post carries someone
+    else's words.
 
-
-@dataclass(frozen=True)
-class MarkerFields:
-    """The strict-format split of one tweet's text.
-
-    Each marker value is the first matching line's non-empty payload,
-    stripped; ``None`` when no line carries one. ``proof_text`` is every
-    non-marker line, order kept, raw (the caller cleans it).
-
-    ``title_marked`` separates the two ways ``title`` comes back ``None``:
-    no ``T:`` line at all (the caller may derive the title positionally)
-    from one or more ``T:`` lines that each carry an empty payload (a
-    half-marked field, which the caller rejects). ``False`` whenever no
-    ``T:`` line was seen.
+    Read by the archive reader (which drops the entry before stitching) and by
+    the detection engine (which drops the record before resolving), so a
+    retweet produces nothing on any entry.
     """
-
-    title: str | None
-    coords: str | None
-    source: str | None
-    proof_text: str
-    title_marked: bool = False
+    return _RETWEET_PREFIX_RE.match(text) is not None
 
 
-def has_marker_lines(text: str) -> bool:
-    """Whether ``text`` carries any ``T:`` / ``C:`` / ``S:`` marker line at
-    all, including one with an empty payload.
+# ── Bot tag ───────────────────────────────────────────────────────────────
 
-    The bot's spelling discriminator: any marker line pins the marker form,
-    so a post the marker rules reject fails loudly instead of leaking into
-    the bare shape (where a literal ``T:`` line would become the title).
-    :func:`split_marker_lines` can't answer this, since it records only
-    non-empty payloads.
+
+def strip_bot_tag(text: str, handle: str) -> str:
+    """``text`` with the bot's ``@handle`` removed where it opens a line.
+
+    The one thing the proof drops beyond the wrappers of attached media: the tag
+    is addressing, not content. A tag written inside a sentence stays, because
+    there the analyst is talking about the bot.
     """
-    return any(_MARKER_LINE_RE.match(line) for line in text.splitlines())
-
-
-def split_marker_lines(text: str) -> MarkerFields:
-    """Split ``text`` into its ``T:`` / ``C:`` / ``S:`` marker values and the
-    remaining proof lines.
-
-    Every marker line is removed from the proof, including repeats and empty
-    ones; a marker keeps its first NON-EMPTY value, so an empty ``T:`` line
-    never shadows a real title further down. Validation (bounds, source
-    vocabulary) is the caller's job: this is the pure line split.
-
-    An empty ``S:`` line takes the following line as its value when that line is
-    URL tokens and nothing else (``records.url_only_tokens``), the same two-line
-    habit the OSINT ``Source:`` label carries (``resolve.designated_source``),
-    and that line leaves the proof with it. The continuation is read for ``S:``
-    alone: a title or a coordinate is not a link, so no other marker has the
-    habit. Whether the token binds to an entity stays the caller's check, so a
-    continuation naming an unbound link fails as an unbound source rather than
-    as a missing one.
-    """
-    values: dict[str, str] = {}
-    seen: set[str] = set()
-    proof_lines: list[str] = []
-    lines = text.splitlines()
-    continuations: set[int] = set()
-    for index, line in enumerate(lines):
-        if index in continuations:
-            continue
-        match = _MARKER_LINE_RE.match(line)
-        if match is None:
-            proof_lines.append(line)
-            continue
-        key = match.group(1).upper()
-        seen.add(key)
-        payload = match.group(2).strip()
-        continuation = lines[index + 1] if index + 1 < len(lines) else ""
-        if not payload and key == "S" and url_only_tokens(continuation) is not None:
-            payload = continuation.strip()
-            continuations.add(index + 1)
-        if key not in values and payload:
-            values[key] = payload
-    return MarkerFields(
-        title=values.get("T"),
-        coords=values.get("C"),
-        source=values.get("S"),
-        proof_text="\n".join(proof_lines),
-        title_marked="T" in seen,
+    if not handle:
+        return text
+    return re.sub(
+        rf"^[^\S\r\n]*@{re.escape(handle)}\b[^\S\r\n]*",
+        "",
+        text,
+        flags=re.IGNORECASE | re.MULTILINE,
     )
 
 
-# ── Title heuristic ───────────────────────────────────────────────────────
+# ── Title ─────────────────────────────────────────────────────────────────
 
 
-_HASHTAG_RE = re.compile(r"#\w+")
-_URL_RE = re.compile(r"https?://\S+")
 _WHITESPACE_RE = re.compile(r"\s+")
-# A leading list marker: bullet glyphs or an ordinal (``1.`` / ``1)``) at the
-# start of a line. Anchored + single-shot so it only peels the marker, not
-# digits mid-prose.
-_LEADING_LIST_MARKER_RE = re.compile(r"^\s*(?:[-*•·‣–—]|\d{1,3}[.)])\s+")
-# A bracket pair emptied by coordinate removal — ``(48.0, 37.8)`` becomes
-# ``( )`` after the strip; drop the husk rather than leave it in the title. Only
-# matches pairs with no word char inside, so ``(note)`` is left intact.
-_EMPTY_BRACKETS_RE = re.compile(r"[(\[{][^\w)\]}]*[)\]}]")
-# Edge punctuation left dangling once coords / brackets are gone (a trailing
-# ``:`` from ``Coordinates: <coord>``, a stray separator). Stripped from the
-# ends only — internal punctuation is untouched.
-_TITLE_EDGE_CHARS = " \t:;,.|/-–—()[]{}°"
-_HAS_WORD_RE = re.compile(r"\w")
+# The derived title's readability cap. Well under the ``events.title`` column
+# (255): a headline longer than this is a paragraph, and the analyst rewrites it
+# at review anyway.
 _TITLE_MAX_LEN = 120
 
 
+def _is_coord_only(line: str) -> bool:
+    """Whether ``line`` is one coordinate and nothing else."""
+    return any(rx.fullmatch(line) for rx in _COORD_RES)
+
+
 def derive_title(text: str) -> str:
-    """Best-effort title from the tweet body.
+    """The first line of ``text`` that is neither a coordinate alone nor a URL
+    alone, whitespace-collapsed and cut at ``_TITLE_MAX_LEN`` on a word boundary.
 
-    First usable line — hashtags, URLs, a leading list marker, bare
-    coordinates, and the bracket / punctuation husks they leave behind are
-    stripped; whitespace is collapsed and the result truncated to
-    ``_TITLE_MAX_LEN`` on a word boundary. A line that holds no real word once
-    cleaned (coordinates / links / hashtags / punctuation only) is skipped — the
-    title is never a bare coordinate. If no line is usable, return ``""`` so the
-    analyst types one — a wrong title in the field is worse than none.
+    Taken verbatim otherwise: what the analyst wrote is the headline, and the
+    review pass is where a bad one gets rewritten. ``""`` when no line
+    qualifies, so the analyst types one; a wrong title in the field is worse
+    than none.
 
-    Truncation: prefer the last space inside the limit; with none (one long
-    token, e.g. a no-space cyrillic address) hard-cut so the title never
-    exceeds the form's column.
+    Truncation prefers the last space inside the limit; with none (one long
+    token, for instance a no-space cyrillic address) it hard-cuts.
     """
     for raw_line in text.splitlines():
-        line = _HASHTAG_RE.sub("", raw_line)
-        line = _URL_RE.sub("", line)
-        line = _LEADING_LIST_MARKER_RE.sub("", line)
-        line = _strip_coords(line)
-        line = _EMPTY_BRACKETS_RE.sub(" ", line)
-        line = _WHITESPACE_RE.sub(" ", line).strip().strip(_TITLE_EDGE_CHARS)
-        # Nothing but punctuation / emoji left once the noise is gone — skip it.
-        if not line or not _HAS_WORD_RE.search(line):
+        line = _WHITESPACE_RE.sub(" ", raw_line).strip()
+        if not line or _is_coord_only(line) or url_only_tokens(line) is not None:
             continue
         if len(line) <= _TITLE_MAX_LEN:
             return line
-        # Last space within the truncation window — slice first then look
-        # back (``rsplit`` would find the last space in the whole string).
+        # Last space within the truncation window: slice first then look back
+        # (``rsplit`` would find the last space in the whole string).
         clipped = line[:_TITLE_MAX_LEN]
         cut_at = clipped.rfind(" ")
         if cut_at >= 40:  # don't cut so aggressively the title becomes a stub
@@ -364,32 +298,27 @@ def derive_title(text: str) -> str:
     return ""
 
 
-# ── Proof text cleanup ────────────────────────────────────────────────────
+# ── Proof text ────────────────────────────────────────────────────────────
 
 
-# ``t.co`` shortlinks as they appear inline in raw tweet text — X wraps every
-# link this way. Only t.co is stripped (not arbitrary URLs): a real source link
-# in the body is provenance worth keeping, and the structured source lives
-# elsewhere (``source_url`` / ``detected_from_url``).
+# ``t.co`` shortlinks as they appear inline in raw tweet text. By the time the
+# proof is cleaned, every link the analyst wrote has been expanded back to its
+# real URL (``records.expand_shortlinks``), so what is left under this pattern is
+# the wrapper X appends for the post's own attached media: a permalink to the
+# post itself, not something the analyst typed.
 _T_CO_URL_RE = re.compile(r"https?://t\.co/\S+", re.IGNORECASE)
 
 
 def clean_proof_text(text: str) -> str:
-    """Strip from assembled proof text the artefacts that don't belong in a
-    proof body: bare coordinates (the value is a structured field), ``t.co``
-    shortlinks (provenance lives in ``source_url`` / ``detected_from_url``),
-    and per-line leading list markers. Lines emptied by the removals are
-    dropped; internal whitespace is collapsed; lines join with single
-    newlines.
+    """The thread's text as the proof stores it: the wrappers of attached media
+    dropped, blank lines dropped, internal whitespace collapsed.
 
-    Used by the assemble step when it turns a tweet / thread into a
-    detection's proof document — source-agnostic (archive or syndication).
+    Nothing else is removed. The coordinate line stays, the analyst's reference
+    links stay, and the analyst edits the proof at review.
     """
     out_lines: list[str] = []
     for raw_line in text.splitlines():
-        line = _strip_coords(raw_line)
-        line = _T_CO_URL_RE.sub("", line)
-        line = _LEADING_LIST_MARKER_RE.sub("", line)
+        line = _T_CO_URL_RE.sub("", raw_line)
         line = _WHITESPACE_RE.sub(" ", line).strip()
         if line:
             out_lines.append(line)

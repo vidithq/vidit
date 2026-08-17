@@ -1,9 +1,9 @@
-"""Acquire from an X "Download your data" archive — ``tweets.js`` → TweetRecords.
+"""Acquire from an X "Download your data" archive: ``tweets.js`` to TweetRecords.
 
 The archive is the analyst's own export: full history, no API, and crucially
 the reply edges + media inline that syndication can't expose, so ``stitch`` can
 rebuild real self-threads. We read only the copy-allowlisted entries
-(``tweets.js`` + ``tweets_media/``) — a copy-allowlist fails safe where a
+(``tweets.js`` plus ``tweets_media/``): a copy-allowlist fails safe where a
 delete-denylist would leak the DMs / email / phone that ride in the same zip.
 """
 
@@ -21,46 +21,30 @@ import httpx
 from app.services.storage import image_content_type_for_extension
 
 from .acquire import quoted_from_syndication
+from .extract import is_retweet
 from .records import QuotedTweet, SourceLink, TelegramFootage, TweetRecord
-from .resolve import FootageCandidate, designated_source, footage_candidates
+from .resolve import SourceCandidate, source_candidates
 from .syndication import (
     _X_STATUS_URL_RE,
     MEDIA_FETCH_MAX_BYTES,
     ParsedMedia,
-    extract_media_shortlinks,
     extract_source_links,
     is_trusted_media_url,
 )
 from .telegram import fetch_telegram_embed
 
-# Each ``.js`` payload is wrapped ``window.YTD.tweets.part0 = [ ... ]`` — strip
+# Each ``.js`` payload is wrapped ``window.YTD.tweets.part0 = [ ... ]``: strip
 # the assignment prefix, then it's plain JSON.
 _YTD_PREFIX_RE = re.compile(r"^\s*window\.YTD\.\w[\w-]*\.part\d+\s*=\s*")
 
 # Twitter's ``created_at``: ``Wed Nov 12 14:33:00 +0000 2025``.
 _TWITTER_TIME_FMT = "%a %b %d %H:%M:%S %z %Y"
 
-# The retweet discriminator, and the one home for why the text is the only
-# reliable signal in archive data. An export entry carries no flag worth
-# trusting: there is no ``retweeted_status`` object (the exporter drops it) and
-# the ``retweeted`` boolean is written ``false`` on every entry, retweets
-# included. What does survive is the text X stores for a retweet,
-# ``RT @<handle>: <original text>``, so the prefix is the signal. A handle is
-# 1-15 word characters and the colon must follow, which keeps a tweet that
-# merely opens on the letters "RT" out of the match. Callers match with
-# ``.match()``, which anchors on its own; the ``^`` is redundant there and stays
-# so the intent survives a move to ``.search()``. The heuristic's deliberate
-# boundary: X writes the canonical form, so variants like a lowercase ``rt`` or
-# a missing colon are out of scope, and a post the owner hand-typed with the
-# canonical prefix is dropped along with real retweets, its content being
-# someone else's either way.
-_RETWEET_PREFIX_RE = re.compile(r"^RT @[A-Za-z0-9_]{1,15}:")
-
 
 def _to_iso(created_at: str) -> str:
     """Normalize Twitter's ``created_at`` to ISO 8601 (what ``detect`` expects).
 
-    Falls back to the raw value if it's already ISO or otherwise unparseable —
+    Falls back to the raw value if it's already ISO or otherwise unparseable:
     ``detect`` degrades to the epoch date rather than raising.
     """
     try:
@@ -96,10 +80,11 @@ def _is_retweet(tweet: dict[str, Any]) -> bool:
     An export lists the account's retweets alongside its own tweets, and a
     retweet's content belongs to someone else: importing one would attribute a
     stranger's geolocation to the analyst running the import. Recognised by
-    ``_RETWEET_PREFIX_RE`` (see there for why the text is the only reliable
-    signal in archive data).
+    ``extract.is_retweet``, the same rule the detection engine applies to the
+    live entries; dropping the entry here also keeps a retweet out of the
+    stitching and out of the in-archive quote join.
     """
-    return _RETWEET_PREFIX_RE.match(_tweet_text(tweet)) is not None
+    return is_retweet(_tweet_text(tweet))
 
 
 def _variant_bitrate(variant: dict[str, Any]) -> int:
@@ -193,40 +178,29 @@ def _linked_status_id(url: str) -> str | None:
 
 def _chase_candidate(
     tweet: dict[str, Any], by_id: dict[str, dict[str, Any]], *, owner_handle: str
-) -> FootageCandidate | None:
-    """The footage candidate behind the OP's links, or ``None`` when the tweet
-    designates none.
+) -> SourceCandidate | None:
+    """The tweet's sole source candidate, or ``None`` when it has none or
+    several.
 
-    The same two rules the shared resolution runs, in the same order, so the
-    chase and the resolution can't disagree on which link is the source: an
-    explicit ``Source: <url>`` line (``resolve.designated_source``) first, then
-    the sole footage candidate (``resolve.footage_candidates``). Both are fed the
-    host-classified ``entities.urls``. ``by_id`` is the archive's own tweets: a
-    linked id already in the export is the owner's own post (a cross-reference),
-    never third-party footage, so it is dropped first, even in the handle-less
-    ``i/web/status`` form the shared own-handle skip can't catch.
+    The same rule the shared resolution runs (``resolve.source_candidates``), so
+    the chase and the resolution can't disagree on which link is the source.
+    ``by_id`` is the archive's own tweets: a linked id already in the export is
+    the owner's own post (a cross-reference), never third-party footage, so it is
+    dropped first, even in the handle-less ``i/web/status`` form the shared
+    own-handle skip can't catch.
 
-    A chase runs only when the candidate is an X status or a Telegram post,
-    designated or not: the vocabulary decides what gets fetched, so a designated
-    Instagram / TikTok / article link stays link-only. Without a designation, a
-    mixed pair (an X status plus a Telegram / YouTube link) is ambiguous, so
-    nothing chases and the source stays empty for review.
+    A chase runs only when that candidate is an X status or a Telegram post: the
+    vocabulary decides what gets fetched, so an Instagram / TikTok / article link
+    stays link-only. Several candidates leave the source empty for review, so
+    nothing is chased.
     """
-    links = [
-        SourceLink(url=url, host=host, shortlink=shortlink)
-        for url, host, shortlink in extract_source_links(tweet)
-        if _linked_status_id(url) not in by_id
-    ]
-    designated = designated_source(
-        _tweet_text(tweet),
-        links,
+    candidates = source_candidates(
+        (
+            url
+            for url, _shortlink in extract_source_links(tweet)
+            if _linked_status_id(url) not in by_id
+        ),
         owner_handle=owner_handle,
-        media_shortlinks=extract_media_shortlinks(tweet),
-    )
-    if designated is not None:
-        return designated
-    candidates = footage_candidates(
-        [(link.url, link.host) for link in links], owner_handle=owner_handle
     )
     return candidates[0] if len(candidates) == 1 else None
 
@@ -258,7 +232,7 @@ def _archive_quoted(
         return quoted_from_syndication(quoted_id) if chase else None
     if chase:
         candidate = _chase_candidate(tweet, by_id, owner_handle=handle)
-        if candidate is not None and candidate.host == "x" and candidate.status_id is not None:
+        if candidate is not None and candidate.status_id is not None:
             quoted = quoted_from_syndication(candidate.status_id)
             if quoted is not None and quoted.handle.lower() == handle.lower():
                 # A link to the owner's OWN status absent from the export (deleted
@@ -272,21 +246,20 @@ def _archive_quoted(
 def _archive_telegram(
     tweet: dict[str, Any], by_id: dict[str, dict[str, Any]], *, handle: str, chase: bool
 ) -> TelegramFootage | None:
-    """Chase the tweet's sole Telegram footage link via its public embed.
+    """Chase the tweet's sole Telegram source link via its public embed.
 
-    OSINT posts write ``Source: https://t.me/<channel>/<id>`` for off-platform
-    footage. When ``chase`` is on and the tweet's footage candidate is a Telegram
-    post (:func:`_chase_candidate`, the shared designation + ambiguity rules),
-    fetch its embed for the post date and (when the embed serves it) the footage
-    media. An undesignated tweet that also links another footage source is
-    ambiguous, so nothing is chased.
-    Fail-soft: ``fetch_telegram_embed`` returns ``None`` on any error, and the
-    record then keeps the link with no date, exactly as before the chase existed.
+    OSINT posts link ``https://t.me/<channel>/<id>`` for off-platform footage.
+    When ``chase`` is on and the tweet's sole source candidate is a Telegram post
+    (:func:`_chase_candidate`), fetch its embed for the post date and (when the
+    embed serves it) the footage media. A tweet that also links another candidate
+    is ambiguous, so nothing is chased. Fail-soft: ``fetch_telegram_embed``
+    returns ``None`` on any error, and the record then keeps the link with no
+    date.
     """
     if not chase:
         return None
     candidate = _chase_candidate(tweet, by_id, owner_handle=handle)
-    if candidate is None or candidate.host != "telegram":
+    if candidate is None or not candidate.telegram:
         return None
     embed = fetch_telegram_embed(candidate.url)
     if embed is None:
@@ -299,7 +272,7 @@ def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[
 
     ``handle`` is the verified owner handle; the export is the owner's own
     tweets. Each record carries the inline reply edges (so ``stitch`` rebuilds
-    real self-threads), the OP media, the host-classified source links
+    real self-threads), the OP media, the links it carries
     (``entities.urls``), the resolved quoted tweet (an in-archive join, or a
     syndication chase of a third-party quote when ``chase`` is on), and, when
     ``chase`` is on and the OP links a sole Telegram post, that post's chased
@@ -342,14 +315,12 @@ def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[
                 created_at=_to_iso(created_at) if isinstance(created_at, str) else "",
                 permalink=f"https://x.com/{handle}/status/{tweet_id}",
                 media=_archive_media(tweet, tweet_id),
-                media_shortlinks=extract_media_shortlinks(tweet),
                 in_reply_to_status_id=_str_or_none(tweet.get("in_reply_to_status_id_str")),
                 in_reply_to_user_id=_str_or_none(tweet.get("in_reply_to_user_id_str")),
                 quoted=_archive_quoted(tweet, by_id, handle=handle, chase=chase),
                 telegram=_archive_telegram(tweet, by_id, handle=handle, chase=chase),
                 external_sources=[
-                    SourceLink(url=u, host=h, shortlink=t)
-                    for u, h, t in extract_source_links(tweet)
+                    SourceLink(url=u, shortlink=t) for u, t in extract_source_links(tweet)
                 ],
             )
         )

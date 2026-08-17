@@ -458,93 +458,33 @@ class ParsedQuotedTweet:
 
 _TWITTER_URL_HOST_RE = re.compile(r"^(?:www\.)?(?:x|twitter)\.com$", re.IGNORECASE)
 _T_CO_HOST_RE = re.compile(r"^t\.co$", re.IGNORECASE)
-_YOUTUBE_HOST_RE = re.compile(r"^(?:www\.|m\.)?(?:youtube\.com|youtu\.be)$", re.IGNORECASE)
 _TELEGRAM_HOST_RE = re.compile(r"^(?:www\.)?t\.me$", re.IGNORECASE)
 
 # A tweet status path: ``/<handle>/status/<id>`` or the handle-less
-# ``/i/web/status/<id>``. Single source of truth for "this X link is footage":
-# a profile link (no ``/status/``) is not chaseable footage, only a status is.
-# ``archive._sole_linked_x_status`` reuses this same pattern to extract the id,
-# and ``resolve._status_link_handle`` reuses it to extract the handle.
+# ``/i/web/status/<id>``. Single source of truth for "this X link names a
+# status", which is what the syndication chase needs and what separates a
+# status from a profile or a search page. ``resolve`` reuses it to extract the
+# handle and the id.
 _X_STATUS_URL_RE = re.compile(
     r"(?:x|twitter)\.com/(?:\w+/status|i/web/status)/(\d+)", re.IGNORECASE
 )
 
 
-def classify_source_host(url: str) -> str:
-    """Coarse host class for a source URL: ``x`` / ``telegram`` / ``youtube`` /
-    ``other``. Drives whether the footage is retrievable (X, chaseable) or
-    off-platform (Telegram / YouTube, link only).
+def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str | None]]:
+    """Every URL the post links, from ``entities.urls``, as
+    ``(expanded_url, shortlink)`` pairs.
 
-    An X host only classifies as ``x`` when the path is a status
-    (``_X_STATUS_URL_RE``): a bare profile link is not footage, so it falls
-    through to ``other`` like any unrelated link.
-    """
-    try:
-        host = (urlparse(url).hostname or "").lower()
-    except ValueError:
-        return "other"
-    if _TWITTER_URL_HOST_RE.match(host):
-        return "x" if _X_STATUS_URL_RE.search(url) else "other"
-    if _TELEGRAM_HOST_RE.match(host):
-        return "telegram"
-    if _YOUTUBE_HOST_RE.match(host):
-        return "youtube"
-    return "other"
-
-
-def extract_media_shortlinks(payload: dict[str, Any]) -> list[str]:
-    """Every ``t.co`` wrapper the payload's own attached media occupies in its text.
-
-    X appends one wrapper per attachment to the end of a post's text, expanding
-    to a photo / video permalink of that same status. The designation rules must
-    not count it as a link the analyst wrote (see ``records.written_tokens``),
-    and it is read here from the media entities rather than guessed from the
-    text, so a genuine shortened link is never mistaken for one.
-
-    Shape-agnostic on purpose, since both acquire adapters feed it: an export
-    entry carries the wrappers under ``extended_entities.media`` /
-    ``entities.media``, a syndication body under ``mediaDetails``. Deduplicated,
-    order preserved: a multi-photo post shares one wrapper across its entries.
-    """
-    containers: list[Any] = []
-    for key in ("extended_entities", "entities"):
-        container = payload.get(key)
-        if isinstance(container, dict):
-            containers.append(container.get("media"))
-    containers.append(payload.get("mediaDetails"))
-
-    out: list[str] = []
-    seen: set[str] = set()
-    for entries in containers:
-        if not isinstance(entries, list):
-            continue
-        for entry in entries:
-            if not isinstance(entry, dict):
-                continue
-            wrapper = entry.get("url")
-            if isinstance(wrapper, str) and wrapper and wrapper not in seen:
-                seen.add(wrapper)
-                out.append(wrapper)
-    return out
-
-
-def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str, str | None]]:
-    """Every host-classified source URL from ``entities.urls``, as
-    ``(expanded_url, host, shortlink)`` triples.
-
-    The analyst's ``Source: <url>`` links. Resolves through ``expanded_url``
-    (never a bare ``t.co`` target) and de-dupes, preserving order. Keeps X
-    status links (a status is a chaseable source; a bare profile link is not).
-    ``shortlink`` is the entity's ``url`` field, the ``t.co`` token as it sits
-    in the raw text; it lets a caller bind a token found in the text to its
-    expanded entity (the bot's ``S:`` line), ``None`` when absent.
+    Host-blind: which of these links can be a source is the resolution's rule,
+    not this adapter's. Resolves through ``expanded_url`` (never a bare ``t.co``
+    target) and de-dupes, preserving order. ``shortlink`` is the entity's
+    ``url`` field, the ``t.co`` token as it sits in the raw text, which is what
+    expands the link back to a readable URL in the proof; ``None`` when absent.
     """
     entities = syndication.get("entities")
     urls = entities.get("urls") if isinstance(entities, dict) else None
     if not isinstance(urls, list):
         return []
-    out: list[tuple[str, str, str | None]] = []
+    out: list[tuple[str, str | None]] = []
     seen: set[str] = set()
     for entry in urls:
         if not isinstance(entry, dict):
@@ -560,11 +500,5 @@ def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str, st
             continue
         seen.add(expanded)
         wrapper = entry.get("url")
-        out.append(
-            (
-                expanded,
-                classify_source_host(expanded),
-                wrapper if isinstance(wrapper, str) and wrapper else None,
-            )
-        )
+        out.append((expanded, wrapper if isinstance(wrapper, str) and wrapper else None))
     return out

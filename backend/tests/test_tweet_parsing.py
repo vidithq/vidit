@@ -263,12 +263,13 @@ def test_extract_coords_dedupes_across_extractors():
     assert len(coords) == 1
 
 
-def test_extract_coords_caps_at_three_candidates():
+def test_extract_coords_has_no_candidate_cap():
+    # Every coordinate the analyst wrote makes a draft; the 6-decimal dedup is
+    # the only guard, and the length of a post already bounds the count.
     text = (
         "48.111111, 37.111111\n48.222222, 37.222222\n48.333333, 37.333333\n48.444444, 37.444444\n"
     )
-    coords = extract_coords(text)
-    assert len(coords) == 3
+    assert len(extract_coords(text)) == 4
 
 
 # ── Title heuristic ───────────────────────────────────────────────────────
@@ -280,14 +281,16 @@ def test_title_first_non_empty_line():
     )
 
 
-def test_title_strips_hashtags_and_urls():
+def test_title_keeps_hashtags_and_inline_urls():
+    # Taken verbatim: only a line that is a coordinate alone or a URL alone is
+    # skipped, and the analyst rewrites a bad title at review.
     text = "Strike on depot https://example.com #ukraine #war"
-    assert derive_title(text) == "Strike on depot"
+    assert derive_title(text) == text
 
 
-def test_title_empty_when_only_hashtags_or_urls():
-    assert derive_title("#ukraine #war") == ""
+def test_title_skips_a_url_only_line():
     assert derive_title("https://example.com") == ""
+    assert derive_title("https://example.com\nStrike on depot") == "Strike on depot"
     assert derive_title("") == ""
 
 
@@ -312,20 +315,20 @@ def test_title_hard_cuts_unbroken_token():
 
 
 @pytest.mark.parametrize(
-    "raw,expected",
+    "raw",
     [
-        ("1. Strike near the depot", "Strike near the depot"),
-        ("2) Strike near the depot", "Strike near the depot"),
-        ("- Strike near the depot", "Strike near the depot"),
-        ("• Strike near the depot", "Strike near the depot"),
+        "1. Strike near the depot",
+        "- Strike near the depot",
+        "• Strike near the depot",
     ],
 )
-def test_title_strips_leading_list_marker(raw, expected):
-    assert derive_title(raw) == expected
+def test_title_keeps_a_leading_list_marker(raw):
+    assert derive_title(raw) == raw
 
 
-def test_title_strips_bare_coordinates_from_line():
-    assert derive_title("Strike on depot 48.012345, 37.802411") == "Strike on depot"
+def test_title_keeps_a_coordinate_inside_prose():
+    line = "Strike on depot 48.012345, 37.802411"
+    assert derive_title(line) == line
 
 
 def test_title_skips_coordinate_only_first_line():
@@ -337,36 +340,35 @@ def test_title_empty_when_only_coordinates():
     assert derive_title("48.012345, 37.802411") == ""
 
 
-def test_title_removes_empty_brackets_left_by_coord_strip():
-    assert derive_title("Strike (48.012345, 37.802411) hit") == "Strike hit"
+def test_title_skips_every_coordinate_spelling_alone_on_its_line():
+    for line in ("48.012345, 37.802411", "33.1°N 35.5°E", "48°00'45\"N 37°48'08\"E"):
+        assert derive_title(f"{line}\nDepot strike") == "Depot strike"
 
 
-def test_title_trims_dangling_label_punctuation():
-    # The bare-coord strip leaves "Coordinates:"; the trailing colon is trimmed.
-    assert derive_title("Coordinates: 48.012345, 37.802411") == "Coordinates"
-
-
-def test_title_skips_line_with_no_word_after_cleanup():
-    # Emoji + coordinate only → no real word → fall through to the next line.
-    assert derive_title("📍 48.012345, 37.802411\nDepot strike") == "Depot strike"
+def test_title_collapses_whitespace():
+    assert derive_title("  Strike   on  the depot  ") == "Strike on the depot"
 
 
 # ── Proof text cleanup ────────────────────────────────────────────────────
 
 
-def test_clean_proof_strips_coords_tco_and_markers():
+def test_clean_proof_keeps_the_text_and_drops_the_media_wrapper():
+    # Only the wrappers of attached media go: everything the analyst wrote
+    # stays, coordinate lines and list markers included.
     raw = (
         "1. Strike on the depot 48.012345, 37.802411\n"
         "Footage via https://t.co/abc123\n"
         "- second angle 33.1°N 35.5°E"
     )
-    assert clean_proof_text(raw) == "Strike on the depot\nFootage via\nsecond angle"
+    assert clean_proof_text(raw) == (
+        "1. Strike on the depot 48.012345, 37.802411\nFootage via\n- second angle 33.1°N 35.5°E"
+    )
 
 
 def test_clean_proof_drops_lines_emptied_by_removal():
-    # A line that is only a coordinate / only a shortlink leaves nothing.
+    # A line that is only a media wrapper leaves nothing behind.
     raw = "48.012345, 37.802411\nReal narrative here\nhttps://t.co/xyz"
-    assert clean_proof_text(raw) == "Real narrative here"
+    assert clean_proof_text(raw) == "48.012345, 37.802411\nReal narrative here"
 
 
 def test_clean_proof_collapses_internal_whitespace():
@@ -376,7 +378,7 @@ def test_clean_proof_collapses_internal_whitespace():
 
 def test_clean_proof_empty_input():
     assert clean_proof_text("") == ""
-    assert clean_proof_text("48.012345, 37.802411\n\nhttps://t.co/x") == ""
+    assert clean_proof_text("\n\nhttps://t.co/x") == ""
 
 
 # ── Trusted media host ────────────────────────────────────────────────────
@@ -609,10 +611,10 @@ def test_parse_tweet_merges_op_and_quote_media_with_origin_tags(monkeypatch):
     assert quote_media[0].kind == "video"
 
 
-def test_parse_tweet_coord_extraction_falls_back_to_quoted_text(monkeypatch):
-    """If the OP text has no recognised coordinates, the extractor
-    re-runs over the quoted tweet's text. Real OSINT posts sometimes
-    say "here ↓" and let the quoted source carry the coords."""
+def test_parse_tweet_reads_no_coordinate_from_the_quoted_text(monkeypatch):
+    """A coordinate counts only in the analyst's own text. One that lives solely
+    in a third party's quoted post is that party's geolocation, so the paste
+    offers the form no coordinate at all."""
     _stub_syndication(
         monkeypatch,
         {
@@ -630,9 +632,7 @@ def test_parse_tweet_coord_extraction_falls_back_to_quoted_text(monkeypatch):
         },
     )
     parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    assert len(parsed.parsed_coords) == 1
-    assert parsed.parsed_coords[0].lat == pytest.approx(48.012345)
-    assert parsed.parsed_coords[0].lng == pytest.approx(37.802411)
+    assert parsed.parsed_coords == []
 
 
 def test_parse_tweet_missing_created_at_stays_a_fetch_failure(monkeypatch):

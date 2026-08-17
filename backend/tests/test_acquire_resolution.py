@@ -1,10 +1,10 @@
-"""Acquisition: quoted sub-record, source-link classification, and the one hop.
+"""Acquisition: quoted sub-record, link extraction, the one hop, the chase.
 
 Tests over canned syndication bodies (no network, a ``MockTransport``): the
 inline quoted tweet must resolve to a full sub-record (id, handle, date,
-media), ``entities.urls`` must classify by host so a consumer can tell a
-chaseable X source from off-platform Telegram / YouTube, and ``acquire_thread``
-must read the post plus its same-author parent and nothing further.
+media), ``entities.urls`` must reach the record as expanded URLs bound to their
+wrappers, and ``acquire_thread`` must read the post plus its same-author parent,
+nothing further, then chase the thread's sole source candidate.
 """
 
 import httpx
@@ -14,29 +14,11 @@ from app.services.tweet_ingest import TweetNotAccessible, acquire_thread
 from app.services.tweet_ingest.acquire import _quoted_record
 from app.services.tweet_ingest.syndication import (
     _cache_clear,
-    classify_source_host,
-    extract_media_shortlinks,
     extract_source_links,
 )
 
 
-def test_classify_source_host():
-    assert classify_source_host("https://x.com/a/status/1") == "x"
-    assert classify_source_host("https://twitter.com/a/status/1") == "x"
-    assert classify_source_host("https://x.com/i/web/status/1") == "x"
-    assert classify_source_host("https://t.me/chan/42") == "telegram"
-    assert classify_source_host("https://youtu.be/xyz") == "youtube"
-    assert classify_source_host("https://www.youtube.com/watch?v=x") == "youtube"
-    assert classify_source_host("https://example.org/x") == "other"
-
-
-def test_classify_source_host_profile_link_is_not_footage():
-    # A bare profile link (no /status/) is not footage, unlike a status link.
-    assert classify_source_host("https://x.com/a") == "other"
-    assert classify_source_host("https://twitter.com/a/") == "other"
-
-
-def test_extract_source_links_classifies_dedupes_skips_tco():
+def test_extract_source_links_expands_dedupes_skips_tco():
     body = {
         "entities": {
             "urls": [
@@ -49,58 +31,14 @@ def test_extract_source_links_classifies_dedupes_skips_tco():
         }
     }
     assert extract_source_links(body) == [
-        ("https://t.me/foo/123", "telegram", "https://t.co/aaa"),
-        ("https://x.com/bar/status/456", "x", "https://t.co/bbb"),
-        ("https://youtu.be/xyz", "youtube", None),
-    ]
-
-
-def test_extract_source_links_profile_link_is_not_footage():
-    # Regression: entities.urls carries the profile link before the status
-    # link, the order X returns them in for a tweet linking its own author's
-    # profile page then the actual status. The profile classifies as "other";
-    # the status link still classifies as "x".
-    body = {
-        "entities": {
-            "urls": [
-                {"expanded_url": "https://x.com/Osinttechnical"},
-                {"expanded_url": "https://x.com/Osinttechnical/status/2028478401154084878"},
-            ]
-        }
-    }
-    assert extract_source_links(body) == [
-        ("https://x.com/Osinttechnical", "other", None),
-        ("https://x.com/Osinttechnical/status/2028478401154084878", "x", None),
+        ("https://t.me/foo/123", "https://t.co/aaa"),
+        ("https://x.com/bar/status/456", "https://t.co/bbb"),
+        ("https://youtu.be/xyz", None),
     ]
 
 
 def test_extract_source_links_empty_without_entities():
     assert extract_source_links({}) == []
-
-
-def test_extract_media_shortlinks_reads_both_payload_shapes():
-    # The export names the wrappers under extended_entities / entities.media,
-    # a syndication body under mediaDetails. One wrapper is shared by a
-    # multi-photo post, so the list de-dupes and keeps order.
-    export = {
-        "entities": {"media": [{"type": "photo", "url": "https://t.co/own"}]},
-        "extended_entities": {
-            "media": [
-                {"type": "photo", "url": "https://t.co/own"},
-                {"type": "photo", "url": "https://t.co/own"},
-            ]
-        },
-    }
-    assert extract_media_shortlinks(export) == ["https://t.co/own"]
-
-    body = {"mediaDetails": [{"type": "video", "url": "https://t.co/clip"}, {"type": "photo"}]}
-    assert extract_media_shortlinks(body) == ["https://t.co/clip"]
-
-
-def test_extract_media_shortlinks_empty_without_media():
-    # A link-only post declares no wrapper, so no token is ever dropped from a
-    # designation line by accident.
-    assert extract_media_shortlinks({"entities": {"urls": [{"url": "https://t.co/a"}]}}) == []
 
 
 def test_quoted_record_carries_date_and_media():
@@ -247,3 +185,107 @@ def test_acquire_thread_unreadable_parent_degrades_to_the_post_alone():
 def test_acquire_thread_raises_when_the_post_itself_is_unreadable():
     with _client({}) as client, pytest.raises(TweetNotAccessible):
         acquire_thread(_POST_ID, handle="analyst", client=client)
+
+
+# ── The chase: the thread's sole source candidate, at most one fetch ───────
+
+
+_CHASED_ID = "9400000000000000401"
+_TG_URL = "https://t.me/somechannel/12345"
+
+
+def _linking_body(url: str, *, wrapper: str = "https://t.co/fakeLINK") -> dict:
+    body = _body(_POST_ID, handle="analyst", text=f"Geolocated 48.012345, 37.802411\n{wrapper}")
+    body["entities"] = {"urls": [{"url": wrapper, "expanded_url": url}]}
+    return body
+
+
+def test_the_sole_x_status_candidate_is_chased_into_the_quote_slot():
+    chased = _body(_CHASED_ID, handle="front_cam", text="raw footage")
+    chased["mediaDetails"] = [
+        {
+            "type": "video",
+            "video_info": {
+                "variants": [
+                    {
+                        "bitrate": 2176000,
+                        "content_type": "video/mp4",
+                        "url": "https://video.twimg.com/v.mp4",
+                    }
+                ]
+            },
+        }
+    ]
+    bodies = {
+        _POST_ID: _linking_body(f"https://x.com/front_cam/status/{_CHASED_ID}"),
+        _CHASED_ID: chased,
+    }
+    with _client(bodies) as client:
+        acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
+    [record] = acquired.records
+    assert record.quoted is not None
+    assert record.quoted.tweet_id == _CHASED_ID
+    assert [m.kind for m in record.quoted.media] == ["video"]
+
+
+def test_a_chase_that_404s_degrades_to_link_only():
+    bodies = {_POST_ID: _linking_body(f"https://x.com/front_cam/status/{_CHASED_ID}")}
+    with _client(bodies) as client:
+        acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
+    [record] = acquired.records
+    assert record.quoted is None
+    assert record.telegram is None
+
+
+def test_a_chased_status_that_turns_out_to_be_the_analysts_own_is_dropped():
+    # The handle-less ``i/web`` form slips the URL-level own-handle skip; the
+    # chased screen name reveals the self-reference.
+    bodies = {
+        _POST_ID: _linking_body(f"https://x.com/i/web/status/{_CHASED_ID}"),
+        _CHASED_ID: _body(_CHASED_ID, handle="analyst", text="my earlier post"),
+    }
+    with _client(bodies) as client:
+        acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
+    assert acquired.records[0].quoted is None
+
+
+def test_the_sole_telegram_candidate_is_chased_into_the_telegram_slot(monkeypatch):
+    import app.services.tweet_ingest.acquire as acquire_mod
+    from app.services.tweet_ingest.telegram import TelegramEmbed
+
+    def fake_embed(url: str, *, client=None) -> TelegramEmbed:
+        assert url == _TG_URL
+        return TelegramEmbed(posted_at="2026-03-04T09:00:00+00:00", media=[])
+
+    monkeypatch.setattr(acquire_mod, "fetch_telegram_embed", fake_embed)
+    with _client({_POST_ID: _linking_body(_TG_URL)}) as client:
+        acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
+    [record] = acquired.records
+    assert record.telegram is not None
+    assert record.telegram.posted_at == "2026-03-04T09:00:00+00:00"
+
+
+def test_nothing_is_chased_when_the_candidates_are_ambiguous(monkeypatch):
+    import app.services.tweet_ingest.acquire as acquire_mod
+
+    def fail(*args, **kwargs):
+        raise AssertionError("an ambiguous thread must not chase")
+
+    monkeypatch.setattr(acquire_mod, "fetch_telegram_embed", fail)
+    body = _linking_body(_TG_URL)
+    body["entities"]["urls"].append(
+        {"url": "https://t.co/second", "expanded_url": "https://youtu.be/xyz"}
+    )
+    with _client({_POST_ID: body}) as client:
+        acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
+    assert acquired.records[0].telegram is None
+
+
+def test_an_off_vocabulary_candidate_is_not_chased():
+    # A TikTok / article link is a valid source, stored link-only: no fetch.
+    seen: list[str] = []
+    bodies = {_POST_ID: _linking_body("https://www.tiktok.com/@war/video/7")}
+    with _client(bodies, seen) as client:
+        acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
+    assert acquired.records[0].quoted is None
+    assert seen == [_POST_ID]

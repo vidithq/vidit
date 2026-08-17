@@ -1,9 +1,9 @@
-"""Normalized acquire unit — one tweet, source-agnostic.
+"""Normalized acquire unit: one tweet, source-agnostic.
 
 ``TweetRecord`` is what every acquire adapter produces (syndication for the
 preview, the archive reader for backfill) and what ``stitch`` consumes. The
 unit is a normalized record, not a bare id, so the archive's inline reply
-edges and media survive into the pipeline — syndication cannot expose either.
+edges and media survive into the pipeline, which syndication cannot expose.
 """
 
 from __future__ import annotations
@@ -51,63 +51,20 @@ class TelegramFootage:
 
 @dataclass(frozen=True)
 class SourceLink:
-    """A source URL the OP links (``entities.urls``) plus its host class.
-
-    ``host``: ``x`` (a status, chaseable for its media / date), ``telegram`` /
-    ``youtube`` (off-platform, media not retrievable), or ``other``.
+    """A URL the post links (``entities.urls``).
 
     ``shortlink`` is the wrapper token as it appears in the raw tweet text
     (the ``t.co`` form from the entity's ``url`` field), ``None`` when the
-    adapter had none. It binds a URL token found in the text to this entity:
-    the bot's ``S:`` line designates its source through it.
+    adapter had none. It is what expands the link back to a readable URL in the
+    stored proof.
     """
 
     url: str
-    host: str
     shortlink: str | None = None
 
 
-# Sentence punctuation an analyst may glue after a URL token; stripped before
-# binding the token to its entity.
-TOKEN_TRAILING_PUNCT = ".,;:!?)\"'"
-
-
-def bound_link(token: str, links: Iterable[SourceLink]) -> SourceLink | None:
-    """The entity a URL token found in raw tweet text belongs to, or ``None``.
-
-    The one home for the binding rule every source designation runs: a token
-    matches either the ``t.co`` wrapper X wrote into the text or the expanded
-    URL. A token that binds to nothing is the wrapper X appends for attached
-    media, never a designation.
-    """
-    return next((link for link in links if token in (link.shortlink, link.url)), None)
-
-
-def written_tokens(tokens: Iterable[str], media_shortlinks: Iterable[str]) -> list[str]:
-    """The URL tokens on a designation line the analyst actually wrote:
-    ``tokens`` with the trailing punctuation stripped and the post's own media
-    wrappers dropped.
-
-    The one home for that drop, run by both designation rules (the OSINT
-    ``Source:`` line in ``resolve.designated_source`` and the bot's ``S:`` line
-    in ``detect``), so a designation reads the same on every entry path.
-
-    X appends one ``t.co`` wrapper per attached media to the end of the post's
-    text; it expands to a photo / video permalink of that same status, so it is
-    not something the analyst typed. Left in, it turns a one-token designation
-    line into a two-token one and defeats the whole-line anchor, dropping the
-    designation. The wrappers come from the record's own media entities
-    (``TweetRecord.media_shortlinks``), never from pattern-matching a bare
-    ``t.co``, so a link the analyst shortened themselves still counts.
-    """
-    own = set(media_shortlinks)
-    stripped = (token.rstrip(TOKEN_TRAILING_PUNCT) for token in tokens)
-    return [token for token in stripped if token and token not in own]
-
-
-# A line carrying URL tokens and nothing else. The one home for the shape a
-# source designation accepts as its value, so the OSINT ``Source:`` rule and the
-# bot's ``S:`` marker read the same line the same way.
+# A line carrying URL tokens and nothing else. Read by the title rule, which
+# never picks such a line.
 _URL_TOKENS_LINE_RE = re.compile(r"^\s*https?://\S+(?:\s+https?://\S+)*\s*$", re.IGNORECASE)
 
 
@@ -116,9 +73,8 @@ def url_only_tokens(line: str) -> list[str] | None:
     otherwise (a word, a stray character, an empty line).
 
     Several tokens still match: X appends the wrapper of the post's own attached
-    media behind whatever the analyst wrote, so a one-token line reaches storage
-    as two. :func:`written_tokens` drops those wrappers, and the caller then
-    requires exactly one token, which is what keeps two written links ambiguous.
+    media behind whatever the analyst wrote, so a one-link line reaches storage
+    as two tokens.
     """
     return line.split() if _URL_TOKENS_LINE_RE.match(line) else None
 
@@ -144,18 +100,11 @@ class TweetRecord:
     handle: str
     text: str
     created_at: str  # ISO 8601 UTC
-    # Canonical permalink ``https://x.com/<handle>/status/<id>`` — always
+    # Canonical permalink ``https://x.com/<handle>/status/<id>``, always
     # present, so it anchors the ``(detected_from_url, coordinate)`` idempotency
     # where ``source_url`` (the footage origin) may be absent.
     permalink: str
     media: list[ParsedMedia] = field(default_factory=list)
-    # The ``t.co`` wrappers X wrote into ``text`` for this post's OWN attached
-    # media (``syndication.extract_media_shortlinks``). Not links the analyst
-    # typed, so every designation rule drops them from a line's tokens before
-    # counting (:func:`written_tokens`). Kept beside ``media`` rather than on
-    # ``ParsedMedia``: the wrapper exists whether or not the attachment survived
-    # extraction (an untrusted host, an unreadable variant).
-    media_shortlinks: list[str] = field(default_factory=list)
     # Reply edges — inline from an archive; from syndication the parent pointer
     # maps when the payload carries it (the chain itself still takes one fetch
     # per parent, the bot's walk). ``stitch`` unions on them.
@@ -168,5 +117,5 @@ class TweetRecord:
     # ``quoted``. Populated by the archive chase when the OP's sole footage link
     # is a t.me post; ``None`` on every non-chasing path.
     telegram: TelegramFootage | None = None
-    # Source URLs the OP links in its text (``entities.urls``), host-classified.
+    # The URLs the post links in its text (``entities.urls``).
     external_sources: list[SourceLink] = field(default_factory=list)

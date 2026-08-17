@@ -1,13 +1,12 @@
-"""Tweet-import DTOs — the pre-fill payloads for ``import-from-tweet``.
+"""Tweet-import DTOs: the pre-fill payloads for ``import-from-tweet``.
 
 The shapes the ``GET/POST /geolocations/import-from-tweet`` endpoints return: the
-human pre-fill (``TweetImportResponse`` + its ``Coord`` / ``Media`` /
-``QuotedTweet`` parts) and the no-persist machine ``DetectedGeolocPreview``. Kept
-separate from the core geolocation read/write schemas in ``event.py`` —
-they're a self-contained sub-feature, consumed only by the import router.
+human pre-fill ``TweetImportResponse`` plus its ``Coord`` / ``Media`` /
+``QuotedTweet`` parts. Kept separate from the core geolocation read/write
+schemas in ``event.py``: they are a self-contained sub-feature, consumed only by
+the import router.
 """
 
-from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -50,27 +49,6 @@ class TweetImportQuotedTweet(BaseModel):
     tweet_text: str
 
 
-class DetectedGeolocPreview(BaseModel):
-    """One machine detection the pipeline would produce from a pasted tweet.
-
-    The no-persist preview output (``import-from-tweet``): zero DB writes, the
-    inspection window into the machine ``detect`` path. ``proof_text`` is the
-    plain proof body the assemble step would wrap into the JSONB proof doc;
-    ``detected_from_url`` is the originating post. ``event_date`` is None when
-    the tweet's timestamp is unusable (required-nullable).
-    """
-
-    lat: float
-    lng: float
-    title: str
-    proof_text: str
-    detected_from_url: str
-    event_date: date | None
-    # The mirrors the detection would carry (the post's other declared links).
-    secondary_source_urls: list[str]
-    media: list[TweetImportMedia]
-
-
 class TweetImportResponse(BaseModel):
     """Pre-fill payload for the submit form.
 
@@ -107,7 +85,3 @@ class TweetImportResponse(BaseModel):
     parsed_coords: list[TweetImportCoord]
     media: list[TweetImportMedia]
     quoted_tweet: TweetImportQuotedTweet | None = None
-    # The machine path's view of the same tweet — the detections the pipeline
-    # would produce, surfaced for inspection. Zero DB writes. Empty when no
-    # coordinate parses.
-    detected: list[DetectedGeolocPreview] = []

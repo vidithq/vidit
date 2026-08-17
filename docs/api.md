@@ -511,36 +511,17 @@ Accepts both `x.com` and `twitter.com` (with or without `www.`), tolerates query
     "source_url": "https://x.com/source_handle/status/1234567890123456789",
     "author_handle": "source_handle",
     "tweet_text": "<full quoted tweet text>"
-  },
-  "detected": [
-    {
-      "lat": 48.012345,
-      "lng": 37.802411,
-      "title": "<derived title>",
-      "proof_text": "<cleaned tweet text>",
-      "detected_from_url": "https://x.com/analyst_handle/status/1234567890123456790",
-      "event_date": "2025-11-12",
-      "secondary_source_urls": ["https://t.me/mirror_channel/456"],
-      "media": [
-        { "kind": "image", "remote_url": "https://pbs.twimg.com/...", "content_type": "image/jpeg", "origin": "op" }
-      ]
-    }
-  ]
+  }
 }
 ```
 
-`detected` is the **machine path's** view of the same tweet: the `DetectedGeoloc`s the assemble pipeline would produce, surfaced for inspection with **zero DB writes** (no row, no media fetch). One entry per parsed coordinate; empty when none parse. It's distinct from the human pre-fill above (`parsed_coords` + `media`): `parsed_coords` is candidates for you to pick from, and `detected` is what the machine would persist as a `detected` row if this tweet were tagged or backfilled.
+Every field is best-effort, and every one comes from the shared detection engine, so the pre-fill shows exactly what the bot and the archive backfill would read from the same post. See [`ingestion.md`](ingestion.md#the-contract) for the full contract.
 
-Every field is best-effort. `parsed_coords` runs four coordinate extractors (decimal, decimal + hemisphere, DMS, Google-Maps URL) over the thread's own text then the quoted tweet, capped at 3 candidates. `suggested_title` is the head's first usable line (leading hashtags / URLs / list markers / bare coordinates stripped), truncated to 120 chars on a word boundary; empty when nothing usable remains. `media[].remote_url` is always `pbs.twimg.com` or `video.twimg.com`.
+`parsed_coords` runs four coordinate extractors (decimal, decimal plus hemisphere, DMS, Google Maps URL) over the thread's own text, in the analyst's own posts only, with no cap: every coordinate found is a candidate, deduplicated on six decimal places. `suggested_title` is the head's first line that is neither a coordinate alone nor a URL alone, taken verbatim and truncated to 120 chars on a word boundary; empty when no line qualifies. `media[].remote_url` is always `pbs.twimg.com` or `video.twimg.com`.
 
-`source_url` and `source_posted_at` are both nullable: they fill only on an explicit signal, never as a guess. See [`ingestion.md`](ingestion.md) for the full contract shared with the machine detection path. `source_url` resolution priority:
+`source_url` and `source_posted_at` are both nullable: they fill only on an explicit signal, never as a guess. A quote outranks links; otherwise the thread's one candidate link fills the slot, whatever its host, and several candidates leave it empty. Without either signal both are `null` and the form field starts empty. The OP's own URL is never a fallback.
 
-1. **Quoted tweet's URL**: when the OP quote-retweets, the quoted tweet is the source. `quoted_tweet` carries its metadata so the frontend can render the credit in the proof body. `source_posted_at` is the quote's post date.
-2. **First X / Telegram / YouTube link in the OP's `entities.urls`**: catches the OSINT convention of typing `Source: https://t.me/<channel>/<id>` in the body. `source_posted_at` stays `null`, the link carries no date. A coordinate link (Google Maps) or any other host is not a footage source.
-
-Without either signal, `source_url` and `source_posted_at` are both `null` and the form field starts empty. The OP's own URL is never a fallback.
-
-`secondary_source_urls` carries the footage links the OP declared that the `source_url` slot didn't take (mirrors on other networks, or other posts of the same footage), ordered and already capped at the secondary-link ceiling; empty when the post declared nothing else. It prefills the submit form's secondary-source rows. `detected[].secondary_source_urls` is the same list on the machine path's view. See [`ingestion.md`](ingestion.md) for how the two slots are decided from the same candidate set.
+`secondary_source_urls` carries the candidate links the `source_url` slot didn't take (mirrors on other networks, or other posts of the same footage), ordered and already capped at the secondary-link ceiling; empty when the post linked nothing else. It prefills the submit form's secondary-source rows.
 
 `original_tweet_url` is always the canonical URL of the thread head, kept separately so the proof body can credit the analyst even when `source_url` points at the source. The head is the pasted post itself, or the post it replies to when that parent has the same author (see the one-hop acquisition in [`ingestion.md`](ingestion.md#the-contract)).
 
@@ -1807,7 +1788,7 @@ Email every analyst holding unpublished `detected` drafts: one message per analy
 
 ## Webhooks
 
-The X Account Activity webhook, the bot's nominal mention delivery (see [`ingestion.md`](ingestion.md#bot-format)). **Unauthenticated by design**: X calls it, and the HMAC signature over the raw body (the app's consumer secret, held only by X and the deployment) is the gate.
+The X Account Activity webhook, the bot's nominal mention delivery (see [`ingestion.md`](ingestion.md#the-bot)). **Unauthenticated by design**: X calls it, and the HMAC signature over the raw body (the app's consumer secret, held only by X and the deployment) is the gate.
 
 ### `GET /webhooks/x`
 

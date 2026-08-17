@@ -144,8 +144,8 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     assert thread_row.detected_from_url == _head_url(owner, "self_thread")
     assert thread_row.event_date == _fixture_event_date("self_thread")
 
-    # mention_prefix: the derived title keeps the leading @mentions verbatim (the
-    # derivation strips coords / hashtags / urls / list markers, not mentions).
+    # mention_prefix: the title is the line as the analyst wrote it, leading
+    # @mentions and coordinate included.
     [mention_row] = _rows_for(db, owner, "mention_prefix")
     assert mention_row.title == loader.load_expected("mention_prefix")["title"]
 
@@ -222,8 +222,7 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
     typology = "x_status_link"
     body = loader.load_body(typology)
     expected = loader.load_expected(typology)
-    chase = expected["chase"]
-    chased_body = loader.load_chased(typology, chase["linked_status_id"])
+    chased_body = loader.load_chased(typology, expected["chased_status_id"])
 
     archive = tmp_path / "chase_archive"
     (archive / "tweets_media").mkdir(parents=True)
@@ -257,7 +256,7 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
     assert len(outcome.created) == 1
 
     [row] = db.query(Event).filter(Event.owner_id == owner.id).all()
-    assert row.source_url == chase["source_url"]
+    assert row.source_url == expected["source_url"]
     source_media = db.query(Media).filter(Media.event_id == row.id, Media.role == "source").all()
     assert len(source_media) == 1
     assert source_media[0].media_type == "video"
@@ -351,13 +350,12 @@ async def test_telegram_chase_sensitive_degrades_to_date_only(db, owner, tmp_pat
     assert len(proof) == 2 and all(m.media_type == "image" for m in proof)
 
 
-async def test_reimport_fills_a_draft_the_old_parser_left_bare(db, owner, tmp_path, monkeypatch):
-    """The regression this whole change exists for, end to end.
+async def test_reimport_fills_a_draft_an_earlier_run_left_bare(db, owner, tmp_path, monkeypatch):
+    """A re-import completes a draft in place instead of leaving it bare.
 
-    An import that ran before the parser read a whole-line ``Source:``
-    designation stored a bare draft: no ``source_url``, no mirrors, no source
-    media. Re-importing the same export with today's parser fills all three on
-    the same row instead of computing them and throwing them away.
+    A first pass with the chase off stored the post with no ``source_url``, no
+    source date and no source media. Running the same export with the chase on
+    fills all three on the same row rather than creating a second one beside it.
     """
     import app.services.tweet_ingest.archive as archive_mod
     from app.services.tweet_ingest.telegram import TelegramEmbed
@@ -365,7 +363,7 @@ async def test_reimport_fills_a_draft_the_old_parser_left_bare(db, owner, tmp_pa
     handle = owner.x_handle or owner.username
     tweet_id = "8400000000000000042"
     permalink = f"https://x.com/{handle}/status/{tweet_id}"
-    archive = _bare_designation_archive(tmp_path, tweet_id)
+    archive = _telegram_source_archive(tmp_path, tweet_id)
 
     def fake_embed(url: str, *, client: Any = None) -> Any:
         assert url == "https://t.me/somechannel/12345"
@@ -392,7 +390,7 @@ async def test_reimport_fills_a_draft_the_old_parser_left_bare(db, owner, tmp_pa
     stale = await assemble_detections(
         db,
         owner=owner,
-        detections=[_pre_designation_detection(permalink)],
+        detections=[_bare_detection(permalink)],
         fetch_media=archive_media_fetcher(archive),
     )
     assert len(stale.created) == 1
@@ -402,8 +400,8 @@ async def test_reimport_fills_a_draft_the_old_parser_left_bare(db, owner, tmp_pa
     assert stale_row.source_links == []
     assert db.query(Media).filter(Media.event_id == stale_id, Media.role == "source").all() == []
 
-    # Today's parser over the same export: the designation reads, the mirror
-    # lists, the Telegram embed is chased for the date and the footage.
+    # The same export with the chase on: the Telegram embed answers with the
+    # date and the footage.
     outcome = await backfill_from_archive(db, owner=owner, archive_dir=archive, chase=True)
     assert outcome.created == [] and outcome.updated == 1 and outcome.failed == 0
 
@@ -415,18 +413,15 @@ async def test_reimport_fills_a_draft_the_old_parser_left_bare(db, owner, tmp_pa
     assert row.detected_from_url == permalink
     assert row.source_url == "https://t.me/somechannel/12345"
     assert row.source_posted_at == datetime.fromisoformat("2026-03-04T09:00:00+00:00")
-    assert [link.url for link in row.source_links] == ["https://www.youtube.com/watch?v=FAKEVID1"]
+    assert row.source_links == []
     source = db.query(Media).filter(Media.event_id == row.id, Media.role == "source").all()
     assert len(source) == 1 and source[0].media_type == "video"
 
 
-def _pre_designation_detection(permalink: str) -> DetectedGeoloc:
-    """What the parser produced for this post before it read ``Source:`` lines.
-
-    The coordinate, the text and the annotation photo, and nothing else: the
-    designated link went unread, so the draft carried no source URL, no mirrors
-    and no footage. This is the shape 127 of one analyst's 461 drafts are in.
-    """
+def _bare_detection(permalink: str) -> DetectedGeoloc:
+    """What a chase-less pass produced for this post: the coordinate, the text
+    and the annotation photo, and nothing else, so the draft carried no source
+    URL, no mirrors and no footage."""
     return DetectedGeoloc(
         coordinate=ParsedCoord(lat=44.6123, lng=33.5221),
         title="Geolocated airfield perimeter",
@@ -449,26 +444,19 @@ def _pre_designation_detection(permalink: str) -> DetectedGeoloc:
     )
 
 
-def _bare_designation_archive(tmp_path: Any, tweet_id: str) -> Any:
-    """A one-tweet export: a coordinate, a whole-line Telegram ``Source:``
-    designation, one mirror link, and one annotation photo."""
+def _telegram_source_archive(tmp_path: Any, tweet_id: str) -> Any:
+    """A one-tweet export: a coordinate, one Telegram link, one annotation photo."""
     archive = tmp_path / "reimport_archive"
     (archive / "tweets_media").mkdir(parents=True)
     entry = {
         "id_str": tweet_id,
         "created_at": "Wed Mar 04 13:20:00 +0000 2026",
         "full_text": (
-            "Geolocated 44.612300, 33.522100 airfield perimeter\n"
-            "Source: https://t.co/fakeTELE\n"
-            "Mirror: https://t.co/fakeTUBE"
+            "Geolocated 44.612300, 33.522100 airfield perimeter\nSource: https://t.co/fakeTELE"
         ),
         "entities": {
             "urls": [
                 {"url": "https://t.co/fakeTELE", "expanded_url": "https://t.me/somechannel/12345"},
-                {
-                    "url": "https://t.co/fakeTUBE",
-                    "expanded_url": "https://www.youtube.com/watch?v=FAKEVID1",
-                },
             ],
             "media": [
                 {

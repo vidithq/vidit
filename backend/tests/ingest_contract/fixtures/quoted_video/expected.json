@@ -1,18 +1,27 @@
 {
   "description": "The quoted footage tweet carries a video (highest-bitrate mp4 variant). The source media is that video (kind video); the OP's own photo is proof.",
-  "coords": [[46.482526, 30.723309]],
+  "coords": [
+    [
+      46.482526,
+      30.723309
+    ]
+  ],
   "source_url": "https://x.com/night_lens/status/8300000000000000002",
   "secondary_source_urls": [],
   "source_posted_at": "2026-03-02T22:10:00+00:00",
   "event_date": "2026-03-03",
-  "title": "Impact site geolocated harbour district",
-  "source_media": [["video", "quote"]],
-  "proof_media": [["image", "op"]],
-  "paths": {
-    "bot": {
-      "detections": 0,
-      "reason": "coords_missing",
-      "diverges": "The bot's grammar reads a coordinate only from a line that is nothing but the decimal pair; here the pair sits inside the prose, so the mention is refused where the shared resolution reads the coordinate."
-    }
-  }
+  "title": "Impact site geolocated 46.482526, 30.723309 harbour district",
+  "source_media": [
+    [
+      "video",
+      "quote"
+    ]
+  ],
+  "proof_media": [
+    [
+      "image",
+      "op"
+    ]
+  ],
+  "warnings": []
 }

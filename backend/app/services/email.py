@@ -34,6 +34,11 @@ from typing import Literal
 import httpx
 
 from app.config import settings
+from app.services.tweet_ingest import (
+    SEVERAL_COORDINATES,
+    SOURCE_AMBIGUOUS,
+    SOURCE_MISSING,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +188,16 @@ def detections_link(username: str) -> str:
     return f"{settings.frontend_url.rstrip('/')}/profile/{username}/detections"
 
 
+# What each engine warning reads as in the outcome email, keyed by the
+# ``tweet_ingest`` warning constants. The count is of detections, which is why
+# each line names drafts rather than posts.
+_ARCHIVE_WARNING_LINES: dict[str, str] = {
+    SEVERAL_COORDINATES: "{n} came from a post carrying several coordinates",
+    SOURCE_AMBIGUOUS: "{n} left the source empty: the post linked several candidates",
+    SOURCE_MISSING: "{n} left the source empty: the post linked none",
+}
+
+
 def archive_import_complete_email(
     *,
     to: str,
@@ -190,6 +205,7 @@ def archive_import_complete_email(
     updated: int,
     skipped: int,
     failed: int,
+    warnings: dict[str, int] | None = None,
     detections_link: str,
 ) -> Email:
     # The four counts are disjoint: every detection in the archive lands in
@@ -202,6 +218,16 @@ def archive_import_complete_email(
         lines.append(f"  {skipped} left as {'they are' if skipped != 1 else 'it is'} (skipped)")
     if failed:
         lines.append(f"  {failed} could not be imported")
+    # The warnings cut across those four buckets: they say what review has to
+    # answer on the drafts the engine read, so they sit under their own heading
+    # rather than beside disjoint counts.
+    raised = warnings or {}
+    flagged = [
+        f"  {_ARCHIVE_WARNING_LINES[code].format(n=raised[code])}"
+        for code in _ARCHIVE_WARNING_LINES
+        if raised.get(code)
+    ]
+    review = ("\nWhat to look at first:\n\n" + "\n".join(flagged) + "\n") if flagged else ""
     counts = "\n".join(lines)
     return Email(
         to=to,
@@ -210,6 +236,7 @@ def archive_import_complete_email(
             "Your X archive finished importing:\n"
             "\n"
             f"{counts}\n"
+            f"{review}"
             "\n"
             "Each detection is a draft attributed to you; review them and\n"
             "geolocate the ones you vouch for:\n"

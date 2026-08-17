@@ -1,18 +1,24 @@
 {
-  "description": "An X profile link (no /status/) written as Source:, no quote. A profile is not footage: classify_source_host classifies it as host \"other\", so the thread has declared no source (source_url and source_posted_at both null), same as referenceless_annotation. The OP photo stays proof.",
-  "coords": [[47.1133, 38.9022]],
+  "description": "An X profile link (no /status/), no quote. A profile names no post, so it is excluded from the candidates and the thread has declared no source (source_url and source_posted_at both null, source_missing warning), same as referenceless_annotation. The OP photo stays proof.",
+  "coords": [
+    [
+      47.1133,
+      38.9022
+    ]
+  ],
   "source_url": null,
   "secondary_source_urls": [],
   "source_posted_at": null,
   "event_date": "2026-03-09",
-  "title": "Geolocated rail yard",
+  "title": "Geolocated 47.113300, 38.902200 rail yard",
   "source_media": [],
-  "proof_media": [["image", "op"]],
-  "paths": {
-    "bot": {
-      "detections": 0,
-      "reason": "coords_missing",
-      "diverges": "The bot's grammar reads a coordinate only from a line that is nothing but the decimal pair; here the pair sits inside the prose, so the mention is refused where the shared resolution reads the coordinate."
-    }
-  }
+  "proof_media": [
+    [
+      "image",
+      "op"
+    ]
+  ],
+  "warnings": [
+    "source_missing"
+  ]
 }

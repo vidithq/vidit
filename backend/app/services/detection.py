@@ -1,11 +1,11 @@
-"""Persist machine detections — ``DetectedGeoloc`` DTOs become ``detected`` rows.
+"""Persist machine detections: ``DetectedGeoloc`` DTOs become ``detected`` rows.
 
-The caller (the archive backfill, later the bot) owns acquire → stitch →
-detect; this turns the resulting DTOs into ``Event`` rows owned by the
-backfiller, with media through the evidence pipeline and idempotency on
-``(detected_from_url OR source_url, coordinate)``. The DTO never reaches the ORM — that
-boundary is what keeps ``detect`` pure and reusable across the preview, the
-archive backfill, and the bot.
+:func:`import_thread` is the one write path from a thread to drafts, and every
+entry runs it: the bot over the thread it acquired, the archive backfill over
+each stitched self-thread. It detects, then turns the resulting DTOs into
+``Event`` rows owned by the importer, with media through the evidence pipeline
+and idempotency on ``(detected_from_url OR source_url, coordinate)``. The DTO
+never reaches the ORM, which is what keeps ``detect`` pure.
 
 A detection that matches a row the owner already holds resolves through
 :func:`_row_disposition`: an open ``detected`` draft is overwritten in place
@@ -22,7 +22,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
-import httpx
 from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import Point
 from sqlalchemy import or_
@@ -48,10 +47,10 @@ from app.services.storage import (
 from app.services.tweet_ingest import (
     DetectedGeoloc,
     ParsedMedia,
-    acquire_thread,
+    TweetRecord,
     archive_media_fetcher,
     detect,
-    normalise_tweet_url,
+    detect_diagnosed,
     read_tweets,
     stitch,
 )
@@ -80,6 +79,14 @@ class AssembleOutcome:
     updated: int = 0  # an open ``detected`` draft was overwritten with a newer parse
     skipped: int = 0  # a matched row the import must not touch, or one already up to date
     failed: int = 0  # a detection raised mid-persist and was skipped
+    # How many detections carried each warning the engine raised, keyed by the
+    # ``tweet_ingest`` warning constants. One home for the count, so the bot's
+    # reply and the archive's outcome email read the same numbers.
+    warnings: dict[str, int] = field(default_factory=dict)
+    # Why the thread produced no detection at all (a ``tweet_ingest`` refusal
+    # constant), for the entry that answers the analyst. ``None`` whenever
+    # detections were made, and on a caller that supplied its own detections.
+    reason: str | None = None
 
 
 # What a re-import may do with one detection.
@@ -88,20 +95,6 @@ Verdict = Literal["skip", "create", "upsert"]
 
 def _media_type(content_type: str) -> str:
     return "video" if content_type.startswith("video/") else "image"
-
-
-def preview_detection(url: str, *, client: httpx.Client | None = None) -> list[DetectedGeoloc]:
-    """The detections a pasted tweet WOULD produce — no DB writes, no media fetch.
-
-    Acquire → detect over the tweet at ``url`` and, when that tweet replies to
-    one of its own author's, that parent as well (``acquire_thread``, the hop
-    the bot reads too). The inspection window into the machine path: the
-    ``DetectedGeoloc`` DTOs are returned as-is for the route to serialize.
-    ``client`` is for tests.
-    """
-    normalised = normalise_tweet_url(url)
-    acquired = acquire_thread(normalised.tweet_id, handle=normalised.handle, client=client)
-    return detect(acquired.records)
 
 
 def _row_disposition(row: Event) -> Verdict:
@@ -545,12 +538,19 @@ async def assemble_detections(
     no media — a ``detected`` row can be media-incomplete until its owner
     completes it before validating.
 
+    ``outcome.warnings`` counts what the detections still need from their owner
+    (an empty source, several drafts from one thread), whether or not the row
+    landed: the count is of what the engine read, not of what persisted.
+
     ``on_progress(done, total)`` fires after every handled detection (skips
     and failures included: the analyst-facing meaning is "position in the
     scan"). Called between per-row transactions, so a callback that commits
     on the same session never splits one.
     """
     outcome = AssembleOutcome()
+    for dto in detections:
+        for warning in dto.warnings:
+            outcome.warnings[warning] = outcome.warnings.get(warning, 0) + 1
     # Media cache scoped to the current thread: ``detect`` emits a thread's
     # coordinate DTOs contiguously sharing one ``detected_from_url`` + media, so
     # resetting on a URL change bounds the cached bytes to one thread.
@@ -602,6 +602,31 @@ async def assemble_detections(
                 outcome.created.append(geo)
         if on_progress is not None:
             on_progress(index, total)
+    return outcome
+
+
+async def import_thread(
+    db: Session,
+    *,
+    owner: User,
+    thread: list[TweetRecord],
+    fetch_media: MediaFetcher,
+) -> AssembleOutcome:
+    """The one entry from a thread to drafts: detect, then assemble.
+
+    Every entry runs it, so nothing about detection or persistence is specific
+    to one of them. The bot adds a reply on top of the outcome it gets back; the
+    archive backfill runs the same two steps over every stitched thread at once,
+    for one progress count across the export.
+
+    The outcome carries the created and updated drafts, the warnings the engine
+    raised, and, when the thread yielded nothing, the reason.
+    """
+    detections, reason = detect_diagnosed(thread)
+    outcome = await assemble_detections(
+        db, owner=owner, detections=detections, fetch_media=fetch_media
+    )
+    outcome.reason = reason
     return outcome
 
 

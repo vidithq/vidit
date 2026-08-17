@@ -8,8 +8,6 @@ guards. Shared fixtures live in `conftest.py`; `client` / `_make_geo` in
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
-
 import pytest
 
 from app.models.event import Event
@@ -19,13 +17,9 @@ from tests.events._helpers import client
 # ── POST /geolocations/import-from-tweet ──────────────────────────────────
 
 
-def _stub_parse_tweet(monkeypatch, *, returns=None, raises=None, detections=None):
-    """Replace ``parse_tweet`` + ``preview_detection`` on the router module.
-
-    Routes call both for ``import-from-tweet`` (the human pre-fill and the
-    machine preview over the same cached tweet), so both are patched at the
-    router module's binding to keep the test off the network.
-    """
+def _stub_parse_tweet(monkeypatch, *, returns=None, raises=None):
+    """Replace ``parse_tweet`` on the router module, at its own binding, so the
+    test stays off the network."""
     from app.routers.events import import_tweet as geolocations_router
 
     def fake(url, *, client=None):
@@ -33,13 +27,7 @@ def _stub_parse_tweet(monkeypatch, *, returns=None, raises=None, detections=None
             raise raises
         return returns
 
-    def fake_preview(url, *, client=None):
-        if raises is not None:
-            raise raises
-        return detections or []
-
     monkeypatch.setattr(geolocations_router, "parse_tweet", fake)
-    monkeypatch.setattr(geolocations_router, "preview_detection", fake_preview)
 
 
 def test_import_from_tweet_requires_auth():
@@ -92,8 +80,9 @@ def test_import_from_tweet_returns_parsed_payload(author, monkeypatch):
     assert body["secondary_source_urls"] == ["https://t.me/mirror/1"]
 
 
-def test_import_from_tweet_surfaces_detection_preview_without_persisting(author, monkeypatch, db):
-    from app.services.tweet_ingest import DetectedGeoloc, ParsedCoord, ParsedMedia, ParsedTweet
+def test_import_from_tweet_writes_nothing(author, monkeypatch, db):
+    """The pre-fill is a read: the analyst reviews and submits the form."""
+    from app.services.tweet_ingest import ParsedTweet
 
     before = db.query(Event).count()
     _stub_parse_tweet(
@@ -106,31 +95,11 @@ def test_import_from_tweet_surfaces_detection_preview_without_persisting(author,
             posted_at="2025-11-12T14:33:00.000Z",
             author_handle="handle",
             tweet_text="Strike at 48.012345, 37.802411",
-            suggested_title="Strike",
+            suggested_title="Strike at 48.012345, 37.802411",
             parsed_coords=[],
             media=[],
             quoted_tweet=None,
         ),
-        detections=[
-            DetectedGeoloc(
-                coordinate=ParsedCoord(lat=48.012345, lng=37.802411),
-                title="Strike",
-                proof_text="Strike",
-                source_url="https://x.com/handle/status/1",
-                detected_from_url="https://x.com/handle/status/1",
-                owner_handle="handle",
-                event_date=date(2025, 11, 12),
-                source_posted_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
-                detected_post_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
-                source_media=[
-                    ParsedMedia(
-                        kind="image",
-                        remote_url="https://pbs.twimg.com/media/x.jpg",
-                        content_type="image/jpeg",
-                    )
-                ],
-            )
-        ],
     )
     response = client.post(
         "/api/v1/events/import-from-tweet",
@@ -138,12 +107,7 @@ def test_import_from_tweet_surfaces_detection_preview_without_persisting(author,
         json={"url": "https://x.com/handle/status/1"},
     )
     assert response.status_code == 200, response.text
-    detected = response.json()["detected"]
-    assert len(detected) == 1
-    assert detected[0]["lat"] == 48.012345
-    assert detected[0]["detected_from_url"] == "https://x.com/handle/status/1"
-    assert detected[0]["media"][0]["remote_url"].startswith("https://pbs.twimg.com/")
-    # The preview never persists — the strongest no-write guard.
+    assert "detected" not in response.json()
     assert db.query(Event).count() == before
 
 

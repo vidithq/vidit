@@ -1,19 +1,19 @@
-"""Tweet ingestion — acquire a tweet / thread, extract structured data.
+"""Tweet ingestion: acquire a tweet / thread, extract structured data.
 
 Single-responsibility bricks behind one import surface:
 
-* ``extract`` — pure text core (coordinates, title, proof body), reused by
+* ``extract``: pure text core (coordinates, title, proof body), reused by
   every path.
-* ``syndication`` — X I/O (URL normalisation, fetch + token + cache, schema
+* ``syndication``: X I/O (URL normalisation, fetch + token + cache, schema
   mappers).
 * ``telegram``: off-platform footage chase, a t.me post's public embed to its
   post date (+ media when served). Used by the archive chase.
-* ``records`` — the normalized ``TweetRecord`` acquire unit, source-agnostic.
+* ``records``: the normalized ``TweetRecord`` acquire unit, source-agnostic.
 * ``acquire``: the live acquisition, a tweet id plus the same author's post it
   replies to, which is the thread the bot and the paste both resolve.
-* ``stitch`` — recombine records into threads (union-find on reply edges).
-* ``detect`` — the machine path: a thread → ``DetectedGeoloc`` DTOs.
-* ``parse`` — the human pre-fill orchestration behind ``import-from-tweet``;
+* ``stitch``: recombine records into threads (union-find on reply edges).
+* ``detect``: the machine path, a thread to ``DetectedGeoloc`` DTOs.
+* ``parse``: the human pre-fill orchestration behind ``import-from-tweet``,
   sibling of ``detect``.
 
 Callers import the public surface from this package; the module layout is an
@@ -26,20 +26,15 @@ from __future__ import annotations
 from .acquire import AcquiredThread, acquire_thread
 from .archive import archive_media_fetcher, fetch_cdn_media, read_tweets
 from .detect import (
-    COORDS_AMBIGUOUS,
     COORDS_INVALID,
     COORDS_MISSING,
-    MARKERS_INCOMPLETE,
     POST_UNREADABLE,
+    SEVERAL_COORDINATES,
     SOURCE_AMBIGUOUS,
     SOURCE_MISSING,
-    SOURCE_OWN,
-    SOURCE_UNBOUND,
-    TITLE_MISSING,
     DetectedGeoloc,
     detect,
-    detect_relay_diagnosed,
-    detect_structured_diagnosed,
+    detect_diagnosed,
 )
 from .errors import (
     InvalidTweetUrl,
@@ -65,17 +60,13 @@ from .syndication import (
 )
 
 __all__ = [
-    "COORDS_AMBIGUOUS",
     "COORDS_INVALID",
     "COORDS_MISSING",
-    "MARKERS_INCOMPLETE",
     "MEDIA_FETCH_MAX_BYTES",
     "POST_UNREADABLE",
+    "SEVERAL_COORDINATES",
     "SOURCE_AMBIGUOUS",
     "SOURCE_MISSING",
-    "SOURCE_OWN",
-    "SOURCE_UNBOUND",
-    "TITLE_MISSING",
     "AcquiredThread",
     "DetectedGeoloc",
     "InvalidTweetUrl",
@@ -91,8 +82,7 @@ __all__ = [
     "clean_proof_text",
     "derive_title",
     "detect",
-    "detect_relay_diagnosed",
-    "detect_structured_diagnosed",
+    "detect_diagnosed",
     "extract_coords",
     "fetch_cdn_media",
     "fetch_syndication",

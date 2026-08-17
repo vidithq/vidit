@@ -1,18 +1,29 @@
 {
-  "description": "Two coordinates in one referenceless post. resolve_thread returns both; detect fans them into two DetectedGeoloc sharing the same (null) source and the same proof media. Two detected rows land, one per coordinate.",
-  "coords": [[48.012345, 37.802411], [50.4501, 30.5234]],
+  "description": "Two coordinates in one sourceless post. resolve_thread returns both; detect fans them into two DetectedGeoloc sharing the same (null) source and the same proof media, each carrying the several_coordinates warning. Two detected rows land, one per coordinate.",
+  "coords": [
+    [
+      48.012345,
+      37.802411
+    ],
+    [
+      50.4501,
+      30.5234
+    ]
+  ],
   "source_url": null,
   "secondary_source_urls": [],
   "source_posted_at": null,
   "event_date": "2026-03-10",
-  "title": "Two impacts overnight and across the district",
+  "title": "Two impacts overnight 48.012345, 37.802411 and 50.450100, 30.523400 across the district",
   "source_media": [],
-  "proof_media": [["image", "op"]],
-  "paths": {
-    "bot": {
-      "detections": 0,
-      "reason": "coords_missing",
-      "diverges": "The bot's grammar reads a coordinate only from a line that is nothing but the decimal pair, and accepts exactly one such line; here both pairs sit inside the prose, so the mention is refused where the shared resolution reads two coordinates."
-    }
-  }
+  "proof_media": [
+    [
+      "image",
+      "op"
+    ]
+  ],
+  "warnings": [
+    "several_coordinates",
+    "source_missing"
+  ]
 }

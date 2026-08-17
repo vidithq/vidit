@@ -1,18 +1,24 @@
 {
-  "description": "The analyst's own video plus a coordinate, no quote and no footage link. Nothing else can fill the source slot and the proof document embeds images only, so the video is promoted to source media; source_url stays null (a promotion of media is never a deduction of a source URL).",
-  "coords": [[48.9217, 24.7086]],
+  "description": "The analyst's own video plus a coordinate, no quote and no link. Nothing can fill the source slot and the proof document embeds images only, so the video is promoted to source media; source_url stays null (a promotion of media is never a deduction of a source URL) and the draft warns source_missing.",
+  "coords": [
+    [
+      48.9217,
+      24.7086
+    ]
+  ],
   "source_url": null,
   "secondary_source_urls": [],
   "source_posted_at": null,
   "event_date": "2026-03-08",
-  "title": "Filmed this myself, geolocated near the depot gate",
-  "source_media": [["video", "op"]],
+  "title": "Filmed this myself, geolocated 48.921700, 24.708600 near the depot gate",
+  "source_media": [
+    [
+      "video",
+      "op"
+    ]
+  ],
   "proof_media": [],
-  "paths": {
-    "bot": {
-      "detections": 0,
-      "reason": "coords_missing",
-      "diverges": "The bot's grammar reads a coordinate only from a line that is nothing but the decimal pair; here the pair sits inside the prose, so the mention is refused where the shared resolution reads the coordinate."
-    }
-  }
+  "warnings": [
+    "source_missing"
+  ]
 }

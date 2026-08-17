@@ -312,6 +312,7 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
             updated=job.updated_count,
             skipped=job.skipped_count,
             failed=job.failed_count,
+            warnings=outcome.warnings,
             detections_link=email.detections_link(owner.username),
         )
     )
