@@ -15,12 +15,12 @@ feed the same per-mention pipeline (:func:`process_single_mention`):
 The bot runs the same engine as the pasted import and the archive backfill;
 nothing about the grammar lives here. Acquisition is
 :func:`tweet_ingest.acquire_thread`, shared with the paste: the tagged post plus
-the same author's post it replies to, one hop and no further, with the thread's
-sole source candidate chased. ``tweet_ingest.resolve_threads`` then reads that
-thread and ``detection.persist_drafts`` writes what it read, owned by the
-existing Vidit account whose admin-linked ``x_handle``
-matches the tagged author (the bot never mints users: an unknown handle is
-ledgered ``no_account`` and produces nothing). The mention then lands in the
+the same author's post it replies to, one hop and no further, with the one chase
+step run over the pair. ``tweet_ingest.resolve_threads`` then reads that thread
+and ``detection.persist_drafts`` writes what it read, owned by the account
+``detection.linked_owner`` maps the tagged author's handle to, read once per
+mention (the bot never mints users: an unknown handle is ledgered
+``no_account`` and produces nothing). The mention then lands in the
 ``bot_mentions`` ledger. What is left in this module is orchestration: the X
 API, the reply, the ledger, the budget and the webhook drain.
 
@@ -47,6 +47,7 @@ caps hold across passes, not per drain).
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import logging
 from collections.abc import Iterable
@@ -65,7 +66,7 @@ from app.models.bot_webhook_event import BotWebhookEvent
 from app.models.event import Event
 from app.models.media import Media
 from app.models.user import User
-from app.services.detection import Outcome, persist_drafts
+from app.services.detection import Outcome, linked_owner, persist_drafts
 from app.services.tweet_ingest import (
     COORDS_INVALID,
     COORDS_MISSING,
@@ -239,25 +240,6 @@ def acquire_tagged_thread(
     payload's spelling of the handle and the syndication screen name.
     """
     return acquire_thread(tweet_id, handle=author_handle.lower(), client=client)
-
-
-def _linked_owner(db: Session, handle: str) -> User | None:
-    """The live Vidit account linked to ``handle``, or ``None``.
-
-    The bot never mints users: attribution requires an existing account whose
-    ``x_handle`` was linked (invite-bound at registration, or the admin PATCH).
-    A soft-deleted or deactivated account doesn't count: its work is hidden or
-    suspended, so new drafts and billed replies must not land under it.
-    """
-    return (
-        db.query(User)
-        .filter(
-            User.x_handle == handle.lower(),
-            User.deleted_at.is_(None),
-            User.is_active.is_(True),
-        )
-        .first()
-    )
 
 
 def _has_duplicate_media(db: Session, created: list[Event]) -> bool:
@@ -443,13 +425,19 @@ async def _process_mention(
     db: Session,
     mention: Mention,
     *,
+    owner: User | None,
     syndication_client: httpx.Client | None,
     x_write_client: httpx.Client | None,
     reply_allowed: bool,
 ) -> tuple[BotMentionOutcome, int, str | None, str | None]:
     try:
-        acquired = acquire_tagged_thread(
-            mention.tweet_id, mention.author_handle, client=syndication_client
+        # Blocking network I/O; a thread keeps the event loop serving siblings
+        # while X answers, the same offload the pasted import takes.
+        acquired = await asyncio.to_thread(
+            acquire_tagged_thread,
+            mention.tweet_id,
+            mention.author_handle,
+            client=syndication_client,
         )
     except TweetNotAccessible:
         # X serves the tagged post to no unauthenticated reader: a syndication
@@ -460,7 +448,6 @@ async def _process_mention(
         # rather than raise into the pass's ``failed`` + Sentry capture, where
         # the analyst would get no answer and an operator a false outage.
         return "no_detection", 0, None, POST_UNREADABLE
-    owner = _linked_owner(db, acquired.post.handle)
     if owner is None:
         # The engine runs here too, writing nothing: a mention from an unknown
         # handle whose post carries no coordinate ledgers ``no_detection``, so
@@ -552,13 +539,15 @@ async def process_single_mention(
             outcome.already_handled += 1
             return "already_handled"
         return "self"
-    # Read once for the failure-reply gate: an unlinked author stays fully
-    # silent, whatever the tweet yields.
-    author_linked = _linked_owner(db, mention.author_handle) is not None
+    # The one handle-to-account read of the mention: the account every draft is
+    # attributed to, and the failure-reply gate, since an unlinked author stays
+    # fully silent whatever the tweet yields.
+    owner = linked_owner(db, mention.author_handle)
     try:
         verdict, created, reply_id, failure_reason = await _process_mention(
             db,
             mention,
+            owner=owner,
             syndication_client=syndication_client,
             x_write_client=x_write_client,
             reply_allowed=budget.reply_allowed(mention.author_handle),
@@ -574,7 +563,7 @@ async def process_single_mention(
         return "failed"
     if (
         verdict == "no_detection"
-        and author_linked
+        and owner is not None
         and mention.in_reply_to_user_id != settings.x_bot_user_id
         and budget.reply_allowed(mention.author_handle)
     ):

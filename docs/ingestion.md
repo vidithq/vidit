@@ -165,7 +165,7 @@ Register the webhook **after** you deploy the endpoint: X fires a CRC at registe
 
 An analyst pastes a post URL into the submit form and `POST /events/import-from-tweet` creates the drafts the post carries, one per coordinate, owned by the analyst. The response returns the created, updated and skipped ids plus the [warnings](#warnings) review has to answer, and the browser opens the first draft. The request and response contract is [`api.md`](api.md#post-eventsimport-from-tweet).
 
-**Own posts only.** The post's author must equal the X handle linked to the caller's account (`users.x_handle`), the bot's rule; anything else answers `not_your_post`. A third party's footage goes through the plain submit form with a `source_url`.
+**Own posts only.** The post's author must resolve to the caller's own account through [`detection.linked_owner`](../backend/app/services/detection.py), the one map from an X handle to the account an import may attribute to, which the bot reads on each mention's author; anything else answers `not_your_post`. A third party's footage goes through the plain submit form with a `source_url`.
 
 The entry reads the same acquisition, the same engine and the same write path as the bot, so a coordinate in a post and a source link in its author's own reply resolve together whichever of the two was pasted, and pasting the same post twice overwrites the open draft instead of duplicating it (see [re-import](#re-import)).
 

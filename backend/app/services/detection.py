@@ -649,6 +649,31 @@ async def persist_drafts(
     return outcome
 
 
+def linked_owner(db: Session, handle: str) -> User | None:
+    """The live Vidit account whose ``x_handle`` is ``handle``, or ``None``.
+
+    The one map from an X handle to the account a machine import may attribute
+    to, read by the bot on each mention's author and by :func:`import_pasted_post`
+    on the pasted post's author. Case-insensitive: ``users.x_handle`` is stored
+    lowercase (``schemas/admin.normalize_x_handle``) and X spells a screen name
+    however its owner typed it.
+
+    An import never mints users: attribution requires an existing account whose
+    handle was linked (invite-bound at registration, or the admin PATCH). A
+    soft-deleted or deactivated account does not count, since its work is hidden
+    or suspended, so new drafts and billed replies must not land under it.
+    """
+    return (
+        db.query(User)
+        .filter(
+            User.x_handle == handle.lower(),
+            User.deleted_at.is_(None),
+            User.is_active.is_(True),
+        )
+        .first()
+    )
+
+
 class NotYourPost(RuntimeError):
     """The pasted post is not the caller's own.
 
@@ -669,12 +694,12 @@ async def import_pasted_post(
 ) -> Outcome:
     """The paste entry: acquire the post at ``url``, then resolve and persist.
 
-    Own posts only, the bot's rule: the post's author must be the handle linked
-    to ``owner`` (``users.x_handle``, case-insensitive), else
-    :class:`NotYourPost`. Someone else's footage goes through the plain submit
-    form with a ``source_url``. The handle is checked before the fetch when the
-    account has none, so an unlinked caller never spends the shared syndication
-    budget.
+    Own posts only, the bot's rule: the post's author must resolve to ``owner``
+    through :func:`linked_owner`, the same map the bot reads on a mention's
+    author, else :class:`NotYourPost`. Someone else's footage goes through the
+    plain submit form with a ``source_url``. The handle is checked before the
+    fetch when the account has none, so an unlinked caller never spends the
+    shared syndication budget.
 
     Raises what the acquisition raises (``InvalidTweetUrl`` on a URL that names
     no post, ``TweetNotAccessible`` when X serves nothing, ``TweetFetchFailed``
@@ -691,7 +716,7 @@ async def import_pasted_post(
     # serving siblings while X answers.
     acquired = await asyncio.to_thread(acquire_pasted_thread, url, client=client)
     author = acquired.post.handle
-    if author.lower() != linked.lower():
+    if linked_owner(db, author) is not owner:
         raise NotYourPost(
             f"That post is by @{author}. The import only reads posts from @{linked}, "
             "the X account linked to your Vidit profile."
