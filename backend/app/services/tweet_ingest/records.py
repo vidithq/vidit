@@ -15,6 +15,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Literal
 
+# What a piece of media is. One name for the two the platform serves, read by
+# the payload readers and by the media split.
+MediaKind = Literal["image", "video"]
+
 
 @dataclass(frozen=True)
 class ParsedMedia:
@@ -24,7 +28,7 @@ class ParsedMedia:
     path, an archive-relative ``tweets_media/`` path on the export path.
     """
 
-    kind: Literal["image", "video"]
+    kind: MediaKind
     remote_url: str
     content_type: str
     # Where this media came from in the payload. The frontend's
@@ -135,8 +139,8 @@ class TweetRecord:
     # is the one target ``chase.chase_thread`` reads it for.
     quoted_status_id: str | None = None
     # A chased Telegram footage source (date + maybe media), parallel to
-    # ``quoted``. Populated by the archive chase when the OP's sole footage link
-    # is a t.me post; ``None`` on every non-chasing path.
+    # ``quoted``. Filled by ``chase.chase_thread`` when the thread's sole footage
+    # link is a t.me post; ``None`` on every non-chasing path.
     telegram: TelegramFootage | None = None
     # The URLs the post links in its text (``entities.urls``).
     external_sources: list[SourceLink] = field(default_factory=list)
@@ -146,8 +150,8 @@ class TweetRecord:
 class ChasedPost:
     """The footage post one chase resolved, whichever technology served it.
 
-    The common return of every chaser under ``chase/``, so the acquisition and
-    the archive reader ask for a URL's footage without naming a technology.
+    The common return of every chaser under ``chase/``, so the one chase step
+    asks for a target's footage without naming a technology.
     ``url`` is the target as the post wrote it, which is what matches the
     chase back onto the link the analyst declared. ``author``, ``text`` and
     ``status_id`` are filled only where the technology models them: an X status

@@ -41,7 +41,7 @@ from typing import Any, Literal
 import httpx
 
 from .errors import TweetFetchFailed, TweetNotAccessible, TweetUpstreamBusy
-from .records import ParsedMedia
+from .records import MediaKind, ParsedMedia
 from .urls import T_CO_HOST_RE, hostname, is_trusted_media_url
 
 # ── Syndication fetch ─────────────────────────────────────────────────────
@@ -245,78 +245,96 @@ def fetch_syndication(tweet_id: str, *, client: httpx.Client | None = None) -> d
 # ── Payload mappers ───────────────────────────────────────────────────────
 
 
+def _bitrate(variant: dict[str, Any]) -> int:
+    """A variant's bitrate as an int; an export serialises it as a string."""
+    try:
+        return int(variant.get("bitrate") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _best_mp4_url(entry: dict[str, Any]) -> str | None:
+    """The highest-bitrate mp4 variant a video entry declares, or ``None``.
+
+    The quality the embed widget serves, which is what the analyst expects in
+    the preview, and the same one the export saved to disk.
+    """
+    info = entry.get("video_info")
+    variants = info.get("variants") if isinstance(info, dict) else None
+    if not isinstance(variants, list):
+        return None
+    best: dict[str, Any] | None = None
+    for variant in variants:
+        if not isinstance(variant, dict) or variant.get("content_type") != "video/mp4":
+            continue
+        if not isinstance(variant.get("url"), str) or not variant["url"]:
+            continue
+        if best is None or _bitrate(variant) > _bitrate(best):
+            best = variant
+    return str(best["url"]) if best is not None else None
+
+
+def media_entry(entry: Any) -> tuple[MediaKind, str] | None:
+    """One media entry's kind and the URL it declares, ``None`` when unusable.
+
+    The one reader of a media entry, for the two payload shapes the ingestion
+    sees. Past their container key (``mediaDetails`` in a syndication body,
+    ``extended_entities.media`` in an export entry) the two spell an entry the
+    same: ``type``, plus ``media_url_https`` for a photo and
+    ``video_info.variants`` for a video or an animated gif.
+
+    What the URL is *for* stays the caller's business: a live path fetches it
+    from the CDN, the export reader keeps its basename and reads the file the
+    export saved under that name. An unknown type, a photo with no URL and a
+    video with no usable mp4 variant all read as ``None``.
+    """
+    if not isinstance(entry, dict):
+        return None
+    if entry.get("type") == "photo":
+        url = entry.get("media_url_https")
+        return ("image", url) if isinstance(url, str) and url else None
+    if entry.get("type") not in ("video", "animated_gif"):
+        return None
+    mp4 = _best_mp4_url(entry)
+    return ("video", mp4) if mp4 is not None else None
+
+
+def _cdn_media(kind: MediaKind, url: str, origin: Literal["op", "quote"]) -> ParsedMedia:
+    """One media the live paths fetch straight from the X CDN."""
+    return ParsedMedia(
+        kind=kind,
+        remote_url=url,
+        content_type="image/jpeg" if kind == "image" else "video/mp4",
+        origin=origin,
+    )
+
+
 def _extract_media(
     syndication: dict[str, Any],
     *,
     origin: Literal["op", "quote"] = "op",
 ) -> list[ParsedMedia]:
-    media: list[ParsedMedia] = []
+    """The media a syndication body carries, as CDN URLs on trusted hosts.
 
-    # Images live under ``mediaDetails`` (and the older ``photos`` on some
-    # shapes). ``mediaDetails`` is primary — it carries videos too — with
-    # ``photos`` as the image-only fallback.
+    ``mediaDetails`` is primary, since it carries videos too; the older
+    ``photos`` is the image-only fallback some shapes serve instead.
+    """
     details = syndication.get("mediaDetails")
-    if isinstance(details, list):
-        for entry in details:
-            if not isinstance(entry, dict):
-                continue
-            etype = entry.get("type")
-            if etype == "photo":
-                url = entry.get("media_url_https")
-                if isinstance(url, str) and is_trusted_media_url(url):
-                    media.append(
-                        ParsedMedia(
-                            kind="image",
-                            remote_url=url,
-                            content_type="image/jpeg",
-                            origin=origin,
-                        )
-                    )
-            elif etype in ("video", "animated_gif"):
-                # Highest-bitrate mp4 variant — the quality the embed widget
-                # surfaces, which is what the analyst expects in the preview.
-                variants = entry.get("video_info", {}).get("variants", [])
-                best: dict[str, Any] | None = None
-                if isinstance(variants, list):
-                    for v in variants:
-                        if not isinstance(v, dict):
-                            continue
-                        if v.get("content_type") != "video/mp4":
-                            continue
-                        if best is None or (v.get("bitrate", 0) or 0) > (
-                            best.get("bitrate", 0) or 0
-                        ):
-                            best = v
-                if best is not None and isinstance(best.get("url"), str):
-                    url = best["url"]
-                    if is_trusted_media_url(url):
-                        media.append(
-                            ParsedMedia(
-                                kind="video",
-                                remote_url=url,
-                                content_type="video/mp4",
-                                origin=origin,
-                            )
-                        )
-
-    if not media:
-        photos = syndication.get("photos")
-        if isinstance(photos, list):
-            for entry in photos:
-                if not isinstance(entry, dict):
-                    continue
-                url = entry.get("url")
-                if isinstance(url, str) and is_trusted_media_url(url):
-                    media.append(
-                        ParsedMedia(
-                            kind="image",
-                            remote_url=url,
-                            content_type="image/jpeg",
-                            origin=origin,
-                        )
-                    )
-
-    return media
+    media = [
+        _cdn_media(*read, origin)
+        for entry in (details if isinstance(details, list) else [])
+        if (read := media_entry(entry)) is not None and is_trusted_media_url(read[1])
+    ]
+    if media:
+        return media
+    photos = syndication.get("photos")
+    return [
+        _cdn_media("image", url, origin)
+        for entry in (photos if isinstance(photos, list) else [])
+        if isinstance(entry, dict)
+        and isinstance(url := entry.get("url"), str)
+        and is_trusted_media_url(url)
+    ]
 
 
 def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str | None]]:
