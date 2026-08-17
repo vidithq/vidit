@@ -1,27 +1,28 @@
-"""Acquire a single tweet via syndication → ``TweetRecord``.
+"""Acquire a tweet, and the post it replies to, via syndication → ``TweetRecord``.
 
-The syndication sibling of ``archive.read_tweets``: one fetch, one record.
-A reply's parent *pointer* (``in_reply_to_status_id_str``) is mapped when the
-payload carries it, but the chain itself is not — one call returns one tweet,
-so ``stitch`` over a single record is the identity. The preview uses it that
-way; the bot walks the pointer one ``fetch_syndication`` at a time to rebuild
-a self-thread (see ``services/bot``).
+The syndication sibling of ``archive.read_tweets``. ``acquire_thread`` is the
+one acquisition the live entries share (the bot's tagged mention and the pasted
+tweet): it reads the post named by a tweet id plus, when that post replies to
+one of its own author's, that parent. Exactly one hop, and only within one
+author, so the result is a thread ``resolve_thread`` reads as the analyst's own
+work. The archive keeps its own reader: an export carries every reply edge
+inline, so it stitches whole self-threads without a fetch.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
-from .errors import TweetFetchFailed, TweetNotAccessible
+from .errors import TweetFetchFailed, TweetImportError, TweetNotAccessible
 from .records import QuotedTweet, SourceLink, TweetRecord
 from .syndication import (
     _extract_media,
     extract_media_shortlinks,
     extract_source_links,
     fetch_syndication,
-    normalise_tweet_url,
 )
 
 
@@ -78,33 +79,50 @@ def quoted_from_syndication(
     )
 
 
-def record_from_syndication(url: str, *, client: httpx.Client | None = None) -> TweetRecord:
-    """Fetch ``url`` via syndication and map it to a single ``TweetRecord``.
+def _permalink(tweet_id: str, handle: str) -> str:
+    """The canonical permalink for ``tweet_id`` posted by ``handle``.
 
-    Prefers the response's screen name over the URL's (``/i/web/status/<id>``
-    carries none). The optional ``client`` is for tests (a ``MockTransport``).
-    Raises the same ``TweetImportError`` subclasses as ``fetch_syndication``.
+    ``handle`` is the ``i`` sentinel when the caller has none (a URL in the
+    ``/i/web/status/<id>`` form). That form is kept as X serves it, since
+    ``x.com/i/status/<id>`` 404s.
     """
-    normalised = normalise_tweet_url(url)
-    body = fetch_syndication(normalised.tweet_id, client=client)
+    if handle == "i":
+        return f"https://x.com/i/web/status/{tweet_id}"
+    return f"https://x.com/{handle}/status/{tweet_id}"
 
-    handle = normalised.handle
+
+def record_by_id(tweet_id: str, *, handle: str, client: httpx.Client | None = None) -> TweetRecord:
+    """Fetch the post ``tweet_id`` via syndication and map it to a ``TweetRecord``.
+
+    ``handle`` is the author handle the caller already holds (from a mention
+    payload, a pasted URL, or the post a reply hangs under). It anchors the
+    permalink, which is the ``(detected_from_url, coordinate)`` idempotency key,
+    so callers that know the handle in more than one case pass it case-folded.
+    The record's own ``handle`` field prefers the response's screen name, the
+    authoritative value and the only one a ``/i/web/status/<id>`` URL yields.
+
+    The optional ``client`` is for tests (a ``MockTransport``). Raises the same
+    ``TweetImportError`` subclasses as ``fetch_syndication``.
+    """
+    body = fetch_syndication(tweet_id, client=client)
+
+    author = handle
     user = body.get("user")
     if isinstance(user, dict):
         screen_name = user.get("screen_name")
         if isinstance(screen_name, str) and screen_name:
-            handle = screen_name
+            author = screen_name
 
     text = body.get("text")
     created_at = body.get("created_at")
     in_reply_to_status = body.get("in_reply_to_status_id_str")
     in_reply_to_user = body.get("in_reply_to_user_id_str")
     return TweetRecord(
-        tweet_id=normalised.tweet_id,
-        handle=handle,
+        tweet_id=tweet_id,
+        handle=author,
         text=text if isinstance(text, str) else "",
         created_at=created_at if isinstance(created_at, str) else "",
-        permalink=normalised.canonical,
+        permalink=_permalink(tweet_id, handle),
         media=list(_extract_media(body, origin="op")),
         media_shortlinks=extract_media_shortlinks(body),
         in_reply_to_status_id=(in_reply_to_status if isinstance(in_reply_to_status, str) else None),
@@ -113,4 +131,66 @@ def record_from_syndication(url: str, *, client: httpx.Client | None = None) -> 
         external_sources=[
             SourceLink(url=u, host=h, shortlink=t) for u, h, t in extract_source_links(body)
         ],
+    )
+
+
+@dataclass(frozen=True)
+class AcquiredThread:
+    """What one hop of acquisition yields.
+
+    ``records`` is the thread ``resolve_thread`` reads, parent first then the
+    post, so the head is the earliest post and carries the provenance.
+    ``post`` is the record for the id the caller named, which the bot needs to
+    tell the tagged reply from the parent it relays.
+    """
+
+    records: list[TweetRecord]
+    post: TweetRecord
+    parent: TweetRecord | None
+
+
+def _self_reply_parent(
+    post: TweetRecord, *, client: httpx.Client | None = None
+) -> TweetRecord | None:
+    """The post ``post`` replies to, when its author is ``post``'s own author.
+
+    One hop, one syndication fetch. The same-author guard runs on the fetched
+    parent's handle, the authoritative value, which is what stops an analyst
+    from claiming a geolocation posted under someone else's footage. Fail-soft:
+    a fetch failure reads as "no parent", so the post resolves alone.
+    """
+    if post.in_reply_to_status_id is None:
+        return None
+    try:
+        # Case-folded handle: the parent's permalink anchors the idempotency
+        # key that the parent's own import would land on, so a case drift
+        # between the feed that named the post and the syndication screen name
+        # cannot split one geolocation across two keys.
+        parent = record_by_id(post.in_reply_to_status_id, handle=post.handle.lower(), client=client)
+    except TweetImportError:
+        return None
+    if parent.handle.lower() != post.handle.lower():
+        return None
+    return parent
+
+
+def acquire_thread(
+    tweet_id: str, *, handle: str, client: httpx.Client | None = None
+) -> AcquiredThread:
+    """The post ``tweet_id``, plus the same author's post it replies to.
+
+    The one acquisition the bot and the pasted-tweet import share, so a
+    coordinate in a post and a source link in its author's own reply reach the
+    resolution together whichever entry read them. Exactly one hop: a parent's
+    own parent is never read, and a parent by another author is never joined to
+    the thread, whatever it holds.
+
+    ``handle`` is the author handle the caller already holds; see
+    :func:`record_by_id`. The post itself raises what ``fetch_syndication``
+    raises; only the parent leg is fail-soft.
+    """
+    post = record_by_id(tweet_id, handle=handle, client=client)
+    parent = _self_reply_parent(post, client=client)
+    return AcquiredThread(
+        records=[parent, post] if parent is not None else [post], post=post, parent=parent
     )

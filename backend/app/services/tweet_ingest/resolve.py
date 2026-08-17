@@ -1,10 +1,11 @@
 """The one brick: a thread of ``TweetRecord`` resolves to a ``ResolvedTweet``.
 
-A "thread" is a list of ``TweetRecord`` (``stitch``'s output). ``resolve_thread``
-is the single core both consumers run: the human ``parse`` path (a single-record
-thread) and the machine ``detect`` path (a real self-thread) map its output into
-their own shape, so they can't drift on coordinates, source, dates, or media.
-``resolve_tweet(tweet_id)`` is the single-tweet convenience (fetch, then resolve).
+A "thread" is a list of ``TweetRecord``: ``stitch``'s output for the archive, or
+the one hop ``acquire.acquire_thread`` reads for the bot and the paste.
+``resolve_thread`` is the single core both consumers run: the human ``parse``
+path and the machine ``detect`` path map its output into their own shape, so
+they can't drift on coordinates, source, dates, or media. ``resolve_tweet(url)``
+is the pasted-post convenience (acquire, then resolve).
 
 Every derived field follows one contract: filled only on an explicit signal in
 the tweet (a quote, a footage link, a coordinate), otherwise empty. No
@@ -39,7 +40,12 @@ from .records import (
     url_only_tokens,
     written_tokens,
 )
-from .syndication import _TWITTER_URL_HOST_RE, _X_STATUS_URL_RE, ParsedMedia
+from .syndication import (
+    _TWITTER_URL_HOST_RE,
+    _X_STATUS_URL_RE,
+    ParsedMedia,
+    normalise_tweet_url,
+)
 
 # External links whose target is footage (a tweet, a channel, a video), unlike a
 # coordinate link (Google Maps) or an article. Their presence means the analyst
@@ -575,15 +581,18 @@ def resolve_thread(thread: list[TweetRecord]) -> ResolvedTweet | None:
 
 
 def resolve_tweet(url: str, *, client: httpx.Client | None = None) -> ResolvedTweet | None:
-    """The single-tweet entry: fetch ``url`` via syndication and resolve it.
+    """The pasted-tweet entry: acquire the post at ``url`` and resolve it.
 
-    ``resolve_thread([record_from_syndication(url)])``. Used by the human
-    import; the archive and the bot pass a stitched thread to
-    ``resolve_thread`` (via ``detect``).
+    ``resolve_thread`` over :func:`acquire.acquire_thread`, so the paste reads
+    the same one hop the bot reads: a coordinate in a post and a source link in
+    its author's own reply resolve together, whichever of the two was pasted.
+    The archive passes its own stitched thread to ``resolve_thread`` instead.
     """
-    from .acquire import record_from_syndication
+    from .acquire import acquire_thread
 
-    return resolve_thread([record_from_syndication(url, client=client)])
+    normalised = normalise_tweet_url(url)
+    acquired = acquire_thread(normalised.tweet_id, handle=normalised.handle, client=client)
+    return resolve_thread(acquired.records)
 
 
 def _posted_at(created_at: str) -> datetime | None:

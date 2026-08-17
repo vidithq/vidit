@@ -1,0 +1,17 @@
+{
+  "description": "The two-post field format: the analyst posts the geolocation (a title line and a decimal coordinate pair on its own line, plus an annotation photo), then replies to themselves with the footage link and nothing else. The reply is the post an entry is pointed at, so acquisition brings the same author's parent in and the thread head is the parent: the coordinate comes from the parent's text, the source from the reply's link, and provenance anchors on the parent. The linked status belongs to a third party and is served by no fixture body, so the bot's chase 404s and the source stays link-only (no date, no source media), which is also what the paste stores. Hand-built rather than recorded from a live post: replace it with a recording when one is captured.",
+  "head_tweet_id": "9500000000000000001",
+  "coords": [[47.8341, 35.1399]],
+  "source_url": "https://x.com/front_cam/status/9500000000000000003",
+  "secondary_source_urls": [],
+  "source_posted_at": null,
+  "event_date": "2026-04-05",
+  "title": "Strike on the warehouse yard",
+  "source_media": [],
+  "proof_media": [["image", "op"]],
+  "paths": {
+    "bot": {
+      "reason": null
+    }
+  }
+}

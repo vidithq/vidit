@@ -8,5 +8,13 @@
   "event_date": "2026-03-09",
   "title": "Footage I filmed at the front this morning",
   "source_media": [["video", "op"]],
-  "proof_media": [["image", "op"]]
+  "proof_media": [["image", "op"]],
+  "paths": {
+    "bot": {
+      "skip": "Archive-only shape: the fixture holds raw export entries, not a syndication body, so there is no live post for this entry to be pointed at."
+    },
+    "paste": {
+      "skip": "Archive-only shape: the fixture holds raw export entries, not a syndication body, so there is no live post for this entry to be pointed at."
+    }
+  }
 }

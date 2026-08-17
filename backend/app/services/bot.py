@@ -23,13 +23,15 @@ with explicit ``T:`` / ``C:`` / ``S:`` markers, and delivered in two forms:
 * **Relay**: the tagged tweet is the analyst's direct reply to their own
   marker tweet, carrying the re-uploaded footage as attached media, for an
   ``S:`` link the chase vocabulary cannot fetch (TikTok, Instagram, an
-  article). One fetch resolves the parent, which must be the same author's
-  conforming tweet; the reply's media becomes the source media, and a
-  bare-shape parent missing only its source link borrows the reply's sole
+  article). The parent, which must be the same author's conforming tweet,
+  comes from the acquisition; the reply's media becomes the source media, and
+  a bare-shape parent missing only its source link borrows the reply's sole
   link (the dominant "source in the reply" field habit)
   (:func:`tweet_ingest.detect_relay_diagnosed`).
 
-That one-hop parent fetch is the only ancestor read: there is no free-text
+Acquisition is :func:`tweet_ingest.acquire_thread`, shared with the pasted
+import: the tagged post plus the same author's post it replies to, one hop and
+no further. That parent is the only ancestor read: there is no free-text
 parent rollup (the archive backfill keeps its own self-thread stitching, the
 bot does not share it), and free-text coordinate detection is deliberately
 not a fallback here. The detection persists
@@ -90,13 +92,13 @@ from app.services.tweet_ingest import (
     SOURCE_OWN,
     SOURCE_UNBOUND,
     TITLE_MISSING,
+    DetectedGeoloc,
     TweetNotAccessible,
     TweetRecord,
+    acquire_thread,
     detect_relay_diagnosed,
     detect_structured_diagnosed,
     fetch_cdn_media,
-    fetch_relay_parent,
-    record_from_syndication,
 )
 from app.services.x_api import Mention, XApiError, fetch_mentions, post_reply
 
@@ -240,24 +242,46 @@ class BotRunOutcome:
     failed: int = 0
 
 
-def _tagged_record(mention: Mention, *, client: httpx.Client | None = None) -> TweetRecord:
-    """Exactly the tagged tweet, one syndication fetch.
+def detect_tagged_post(
+    tweet_id: str, author_handle: str, *, client: httpx.Client | None = None
+) -> tuple[list[DetectedGeoloc], TweetRecord, str | None]:
+    """One mention's detection half: acquire, then run the bot's two mappers.
 
-    The markers live either here (inline form) or on the direct parent (relay
-    form, fetched separately by :func:`tweet_ingest.fetch_relay_parent`); a
-    coordinate living anywhere else in the thread does not count. The archive
-    backfill keeps its own self-thread stitching untouched (its threads are
-    same-author by construction, see docs/ingestion.md).
+    :func:`tweet_ingest.acquire_thread` reads the tagged post plus, when it
+    replies to one of its author's own posts, that parent, which is the shared
+    one hop the pasted import reads too. The strict mapper then runs on the
+    tagged post (inline form) and, when it yields nothing, the relay mapper
+    runs over the pair (relay form). A parent by another author never joins the
+    thread, so a tag under someone else's post relays nothing, and neither does
+    the courtesy reply to the bot's own reply: acquisition reads that parent
+    (one unauthenticated fetch) and the same-author guard drops it.
+
+    Returns the detections, the tagged record (the caller attributes the draft
+    through its handle), and, when nothing conformed, the failure reason the
+    reply names (``None`` when a draft was made). When a parent exists, its
+    diagnosis outranks the tagged reply's: the reply is usually a bare tag,
+    whose own diagnosis is just "no coordinate line".
+
+    Raises ``TweetNotAccessible`` when X serves nothing for the tagged post.
+
+    The handle is case-folded: the permalink is the ``(detected_from_url,
+    coordinate)`` idempotency anchor, and it must not drift between the mention
+    payload's spelling of the handle and the syndication screen name.
     """
-    # Lowercased handle: the permalink is the ``(detected_from_url,
-    # coordinate)`` idempotency anchor, and the relay path builds the
-    # parent's permalink from the syndication screen_name while this one
-    # comes from the mention payload. Case-folding both keeps one
-    # geolocation on one key even if the two feeds disagree on case.
-    return record_from_syndication(
-        f"https://x.com/{mention.author_handle.lower()}/status/{mention.tweet_id}",
-        client=client,
+    acquired = acquire_thread(tweet_id, handle=author_handle.lower(), client=client)
+    record = acquired.post
+    detections, failure_reason = detect_structured_diagnosed(
+        record, bot_handle=settings.x_bot_handle, client=client
     )
+    if not detections and acquired.parent is not None:
+        detections, parent_reason = detect_relay_diagnosed(
+            record, acquired.parent, bot_handle=settings.x_bot_handle, client=client
+        )
+        if not detections and parent_reason is not None:
+            failure_reason = parent_reason
+    # A mention that produced a draft carries no diagnosis: the inline mapper's
+    # reason described a form the relay then read.
+    return detections, record, None if detections else failure_reason
 
 
 def _linked_owner(db: Session, handle: str) -> User | None:
@@ -459,7 +483,9 @@ async def _process_mention(
     reply_allowed: bool,
 ) -> tuple[BotMentionOutcome, int, str | None, str | None]:
     try:
-        record = _tagged_record(mention, client=syndication_client)
+        detections, record, failure_reason = detect_tagged_post(
+            mention.tweet_id, mention.author_handle, client=syndication_client
+        )
     except TweetNotAccessible:
         # X serves the tagged post to no unauthenticated reader: a syndication
         # 404 (deleted, protected) or the tombstone body it answers for an
@@ -469,30 +495,6 @@ async def _process_mention(
         # rather than raise into the pass's ``failed`` + Sentry capture, where
         # the analyst would get no answer and an operator a false outage.
         return "no_detection", 0, None, POST_UNREADABLE
-    detections, failure_reason = detect_structured_diagnosed(
-        record, bot_handle=settings.x_bot_handle, client=syndication_client
-    )
-    if not detections:
-        # The relay form: a tag in a direct reply to the author's own
-        # structured tweet, the reply relaying the footage (and, when the
-        # parent lacks one, the source link: see ``detect_relay_diagnosed``).
-        # One parent fetch, same-author guarded; anything short of a
-        # conforming parent keeps the ``no_detection`` verdict. When a parent
-        # exists, its diagnosis outranks the tagged reply's (the reply is
-        # usually a bare tag, whose own diagnosis is just "no coordinate
-        # line"), and the failure reply then carries the parent's diagnosis. A reply
-        # to the bot itself (the courtesy-thanks shape, the most common
-        # non-conforming mention) skips the fetch: its parent is the bot's
-        # own reply, which the same-author guard would only discard.
-        parent = None
-        if record.in_reply_to_user_id != settings.x_bot_user_id:
-            parent = fetch_relay_parent(record, client=syndication_client)
-        if parent is not None:
-            detections, parent_reason = detect_relay_diagnosed(
-                record, parent, bot_handle=settings.x_bot_handle, client=syndication_client
-            )
-            if not detections and parent_reason is not None:
-                failure_reason = parent_reason
     if not detections:
         return "no_detection", 0, None, failure_reason
     # After the detection step on purpose: an unknown handle with a

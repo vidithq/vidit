@@ -1,0 +1,12 @@
+{
+  "id_str": "9500000000000000001",
+  "created_at": "2026-04-05T08:30:00.000Z",
+  "user": { "screen_name": "relay_swift" },
+  "text": "Strike on the warehouse yard\n47.834100, 35.139900",
+  "mediaDetails": [
+    {
+      "type": "photo",
+      "media_url_https": "https://pbs.twimg.com/media/FAKEOP12.jpg"
+    }
+  ]
+}

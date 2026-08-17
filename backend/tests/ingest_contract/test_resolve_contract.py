@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from app.services.tweet_ingest import detect, stitch
+from app.services.tweet_ingest import detect
 from app.services.tweet_ingest.records import (
     QuotedTweet,
     SourceLink,
@@ -30,13 +30,7 @@ _COORD_PLACES = 6
 
 
 def _resolved_for(typology: str, tmp_path: Path) -> ResolvedTweet:
-    body = loader.load_body(typology)
-    if loader.is_self_thread(body):
-        threads = stitch(loader.thread_from_self_thread(typology, tmp_path))
-        assert len(threads) == 1, f"{typology}: expected one stitched thread"
-        resolved = resolve_thread(threads[0])
-    else:
-        resolved = resolve_thread([loader.record_from_body(body)])
+    resolved = resolve_thread(loader.thread_for(typology, tmp_path))
     assert resolved is not None, f"{typology}: resolve_thread returned None"
     return resolved
 
@@ -83,14 +77,8 @@ def test_typology_resolves_to_expected(typology: str, tmp_path: Path) -> None:
 def test_detect_fans_one_dto_per_coordinate(typology: str, tmp_path: Path) -> None:
     """``detect`` emits exactly one DTO per resolved coordinate, each carrying
     the same source and proof the resolution produced."""
-    body = loader.load_body(typology)
     expected = loader.load_expected(typology)
-    if loader.is_self_thread(body):
-        thread = stitch(loader.thread_from_self_thread(typology, tmp_path))[0]
-    else:
-        thread = [loader.record_from_body(body)]
-
-    dtos = detect(thread)
+    dtos = detect(loader.thread_for(typology, tmp_path))
     assert len(dtos) == len(expected["coords"])
     for dto in dtos:
         assert dto.source_url == expected["source_url"]
@@ -336,3 +324,21 @@ def test_every_typology_has_both_fixture_files() -> None:
     for typology in loader.typology_names():
         assert (loader.FIXTURES_DIR / typology / "body.json").is_file()
         assert (loader.FIXTURES_DIR / typology / "expected.json").is_file()
+
+
+_ENTRY_PATHS = ("bot", "paste")
+
+
+def test_every_path_override_names_its_divergence() -> None:
+    """Guard the record: a ``paths.<entry>`` block exists because that entry
+    answers something the shared resolution does not, so it must say what and
+    why. A block that only pins the entry's own vocabulary (a failure reason it
+    agrees on) or skips an unreachable shape is exempt."""
+    for typology in loader.typology_names():
+        paths = loader.load_expected(typology).get("paths", {})
+        assert set(paths) <= set(_ENTRY_PATHS), typology
+        for entry, block in paths.items():
+            overrides = set(block) - {"reason", "diverges", "skip"}
+            if not overrides or "skip" in block:
+                continue
+            assert block.get("diverges"), f"{typology}: {entry} override with no diverges note"

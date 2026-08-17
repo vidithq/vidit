@@ -9,6 +9,8 @@ Single-responsibility bricks behind one import surface:
 * ``telegram``: off-platform footage chase, a t.me post's public embed to its
   post date (+ media when served). Used by the archive chase.
 * ``records`` — the normalized ``TweetRecord`` acquire unit, source-agnostic.
+* ``acquire``: the live acquisition, a tweet id plus the same author's post it
+  replies to, which is the thread the bot and the paste both resolve.
 * ``stitch`` — recombine records into threads (union-find on reply edges).
 * ``detect`` — the machine path: a thread → ``DetectedGeoloc`` DTOs.
 * ``parse`` — the human pre-fill orchestration behind ``import-from-tweet``;
@@ -21,7 +23,7 @@ shared failures without a cycle.
 
 from __future__ import annotations
 
-from .acquire import record_from_syndication
+from .acquire import AcquiredThread, acquire_thread
 from .archive import archive_media_fetcher, fetch_cdn_media, read_tweets
 from .detect import (
     COORDS_AMBIGUOUS,
@@ -38,7 +40,6 @@ from .detect import (
     detect,
     detect_relay_diagnosed,
     detect_structured_diagnosed,
-    fetch_relay_parent,
 )
 from .errors import (
     InvalidTweetUrl,
@@ -75,6 +76,7 @@ __all__ = [
     "SOURCE_OWN",
     "SOURCE_UNBOUND",
     "TITLE_MISSING",
+    "AcquiredThread",
     "DetectedGeoloc",
     "InvalidTweetUrl",
     "ParsedCoord",
@@ -84,6 +86,7 @@ __all__ = [
     "TweetNotAccessible",
     "TweetRecord",
     "TweetUpstreamBusy",
+    "acquire_thread",
     "archive_media_fetcher",
     "clean_proof_text",
     "derive_title",
@@ -92,12 +95,10 @@ __all__ = [
     "detect_structured_diagnosed",
     "extract_coords",
     "fetch_cdn_media",
-    "fetch_relay_parent",
     "fetch_syndication",
     "is_trusted_media_url",
     "normalise_tweet_url",
     "parse_tweet",
     "read_tweets",
-    "record_from_syndication",
     "stitch",
 ]

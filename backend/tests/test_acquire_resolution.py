@@ -1,13 +1,19 @@
-"""The tweet-id resolution brick: quoted sub-record + source-link classification.
+"""Acquisition: quoted sub-record, source-link classification, and the one hop.
 
-Pure-function tests over canned syndication bodies (no network): the inline
-quoted tweet must resolve to a full sub-record (id, handle, date, media), and
-``entities.urls`` must classify by host so a consumer can tell a chaseable X
-source from off-platform Telegram / YouTube.
+Tests over canned syndication bodies (no network, a ``MockTransport``): the
+inline quoted tweet must resolve to a full sub-record (id, handle, date,
+media), ``entities.urls`` must classify by host so a consumer can tell a
+chaseable X source from off-platform Telegram / YouTube, and ``acquire_thread``
+must read the post plus its same-author parent and nothing further.
 """
 
+import httpx
+import pytest
+
+from app.services.tweet_ingest import TweetNotAccessible, acquire_thread
 from app.services.tweet_ingest.acquire import _quoted_record
 from app.services.tweet_ingest.syndication import (
+    _cache_clear,
     classify_source_host,
     extract_media_shortlinks,
     extract_source_links,
@@ -121,3 +127,123 @@ def test_quoted_record_carries_date_and_media():
 
 def test_quoted_record_none_without_quote():
     assert _quoted_record({"text": "no quote here"}) is None
+
+
+# ── acquire_thread: the one hop the bot and the paste share ───────────────
+
+
+_POST_ID = "9400000000000000301"
+_PARENT_ID = "9400000000000000302"
+
+
+def _body(tweet_id: str, *, handle: str, text: str, reply_to: str | None = None) -> dict:
+    body: dict = {
+        "id_str": tweet_id,
+        "created_at": "2026-03-11T12:00:00.000Z",
+        "user": {"screen_name": handle},
+        "text": text,
+    }
+    if reply_to is not None:
+        body["in_reply_to_status_id_str"] = reply_to
+    return body
+
+
+def _client(bodies: dict[str, dict], seen: list[str] | None = None) -> httpx.Client:
+    """A syndication transport serving ``bodies`` by tweet id, 404 elsewhere."""
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        tweet_id = req.url.params.get("id", "")
+        if seen is not None:
+            seen.append(tweet_id)
+        body = bodies.get(tweet_id)
+        return httpx.Response(200, json=body) if body is not None else httpx.Response(404)
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+@pytest.fixture(autouse=True)
+def _clear_syndication_cache():
+    # ``fetch_syndication`` caches by tweet id process-wide, so one test's
+    # body would otherwise answer the next test's fetch of the same id.
+    _cache_clear()
+    yield
+    _cache_clear()
+
+
+def test_acquire_thread_joins_the_same_authors_parent():
+    bodies = {
+        _POST_ID: _body(_POST_ID, handle="analyst", text="Source: here", reply_to=_PARENT_ID),
+        _PARENT_ID: _body(_PARENT_ID, handle="analyst", text="48.123456, 37.654321"),
+    }
+    with _client(bodies) as client:
+        acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
+    # Parent first: the head anchors the provenance and the event date.
+    assert [r.tweet_id for r in acquired.records] == [_PARENT_ID, _POST_ID]
+    assert acquired.post.tweet_id == _POST_ID
+    assert acquired.parent is not None
+    assert acquired.parent.permalink == f"https://x.com/analyst/status/{_PARENT_ID}"
+    assert acquired.post.permalink == f"https://x.com/analyst/status/{_POST_ID}"
+
+
+def test_acquire_thread_case_folds_the_parent_permalink():
+    # The parent's permalink is the key its own import would land on, so it is
+    # folded whatever case the caller spelled the post's author in.
+    bodies = {
+        _POST_ID: _body(_POST_ID, handle="Analyst", text="reply", reply_to=_PARENT_ID),
+        _PARENT_ID: _body(_PARENT_ID, handle="Analyst", text="48.123456, 37.654321"),
+    }
+    with _client(bodies) as client:
+        acquired = acquire_thread(_POST_ID, handle="Analyst", client=client)
+    assert acquired.parent is not None
+    assert acquired.parent.permalink == f"https://x.com/analyst/status/{_PARENT_ID}"
+
+
+def test_acquire_thread_reads_one_hop_only():
+    grandparent = "9400000000000000303"
+    bodies = {
+        _POST_ID: _body(_POST_ID, handle="analyst", text="third", reply_to=_PARENT_ID),
+        _PARENT_ID: _body(_PARENT_ID, handle="analyst", text="second", reply_to=grandparent),
+        grandparent: _body(grandparent, handle="analyst", text="first"),
+    }
+    seen: list[str] = []
+    with _client(bodies, seen) as client:
+        acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
+    assert [r.tweet_id for r in acquired.records] == [_PARENT_ID, _POST_ID]
+    assert seen == [_POST_ID, _PARENT_ID]
+
+
+def test_acquire_thread_fetches_nothing_for_a_non_reply():
+    bodies = {_POST_ID: _body(_POST_ID, handle="analyst", text="standalone")}
+    seen: list[str] = []
+    with _client(bodies, seen) as client:
+        acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
+    assert acquired.parent is None
+    assert acquired.records == [acquired.post]
+    assert seen == [_POST_ID]
+
+
+def test_acquire_thread_drops_another_authors_parent():
+    # The guard runs on the FETCHED handle: the parent's URL is built from the
+    # post's author, but syndication returns whoever really wrote it.
+    bodies = {
+        _POST_ID: _body(_POST_ID, handle="analyst", text="tagging this", reply_to=_PARENT_ID),
+        _PARENT_ID: _body(_PARENT_ID, handle="someone_else", text="48.123456, 37.654321"),
+    }
+    with _client(bodies) as client:
+        acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
+    assert acquired.parent is None
+    assert acquired.records == [acquired.post]
+
+
+def test_acquire_thread_unreadable_parent_degrades_to_the_post_alone():
+    # The parent was deleted or is protected: the post still resolves alone.
+    bodies = {_POST_ID: _body(_POST_ID, handle="analyst", text="reply", reply_to=_PARENT_ID)}
+    with _client(bodies) as client:
+        acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
+    assert acquired.parent is None
+    assert acquired.records == [acquired.post]
+
+
+def test_acquire_thread_raises_when_the_post_itself_is_unreadable():
+    with _client({}) as client, pytest.raises(TweetNotAccessible):
+        acquire_thread(_POST_ID, handle="analyst", client=client)

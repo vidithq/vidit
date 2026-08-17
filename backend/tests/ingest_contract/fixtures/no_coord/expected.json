@@ -7,5 +7,10 @@
   "event_date": "2026-03-09",
   "title": "Just some commentary on the situation, nothing to pin down here",
   "source_media": [],
-  "proof_media": [["image", "op"]]
+  "proof_media": [["image", "op"]],
+  "paths": {
+    "bot": {
+      "reason": "coords_missing"
+    }
+  }
 }

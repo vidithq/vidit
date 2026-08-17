@@ -7,5 +7,12 @@
   "event_date": "2026-03-01",
   "title": "Depot hit confirmed near the rail yard",
   "source_media": [["image", "quote"]],
-  "proof_media": [["image", "op"]]
+  "proof_media": [["image", "op"]],
+  "paths": {
+    "bot": {
+      "detections": 0,
+      "reason": "coords_missing",
+      "diverges": "The bot's grammar reads a coordinate only from a line that is nothing but the decimal pair; here the pair sits inside the prose, so the mention is refused where the shared resolution reads the coordinate."
+    }
+  }
 }

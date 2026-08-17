@@ -18,8 +18,7 @@ from datetime import date, datetime
 
 import httpx
 
-from .acquire import quoted_from_syndication, record_from_syndication
-from .errors import TweetImportError
+from .acquire import quoted_from_syndication
 from .extract import (
     MarkerFields,
     ParsedCoord,
@@ -470,37 +469,6 @@ def detect_structured_diagnosed(
         )
     ]
     return detections, None
-
-
-def fetch_relay_parent(
-    record: TweetRecord, *, client: httpx.Client | None = None
-) -> TweetRecord | None:
-    """The parent behind a relay-form mention: the tweet ``record`` replies to,
-    when it is the same author's post. ``None`` otherwise.
-
-    One hop, one syndication fetch, and only for a self-reply: the same-author
-    guard (checked on the fetched parent's handle, the authoritative value) is
-    what stops a stranger from tagging the bot under someone else's post and
-    relaying media onto it. Fail-soft: a fetch failure reads as "no parent",
-    so the mention degrades to ``no_detection``.
-    """
-    if record.in_reply_to_status_id is None:
-        return None
-    try:
-        # Lowercased handle: the parent's permalink anchors the shared
-        # inline/relay idempotency key, and the inline path lowercases its
-        # own URL the same way (``bot._tagged_record``), so a case drift
-        # between the mention payload and the syndication screen_name can't
-        # split one geolocation across two keys.
-        parent = record_from_syndication(
-            f"https://x.com/{record.handle.lower()}/status/{record.in_reply_to_status_id}",
-            client=client,
-        )
-    except TweetImportError:
-        return None
-    if parent.handle.lower() != record.handle.lower():
-        return None
-    return parent
 
 
 def detect_relay_diagnosed(

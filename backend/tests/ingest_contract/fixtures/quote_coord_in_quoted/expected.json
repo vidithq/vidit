@@ -7,5 +7,12 @@
   "event_date": "2026-03-02",
   "title": "Geolocated the clip below, see the pinned spot",
   "source_media": [["image", "quote"]],
-  "proof_media": [["image", "op"]]
+  "proof_media": [["image", "op"]],
+  "paths": {
+    "bot": {
+      "detections": 0,
+      "reason": "coords_missing",
+      "diverges": "The coordinate lives in the quoted post's text. The bot reads the tagged post's own lines only, and that text carries no decimal pair, so the mention is refused where the shared resolution falls back to the quoted text."
+    }
+  }
 }

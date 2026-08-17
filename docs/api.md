@@ -531,7 +531,7 @@ Accepts both `x.com` and `twitter.com` (with or without `www.`), tolerates query
 
 `detected` is the **machine path's** view of the same tweet: the `DetectedGeoloc`s the assemble pipeline would produce, surfaced for inspection with **zero DB writes** (no row, no media fetch). One entry per parsed coordinate; empty when none parse. It's distinct from the human pre-fill above (`parsed_coords` + `media`): `parsed_coords` is candidates for you to pick from, and `detected` is what the machine would persist as a `detected` row if this tweet were tagged or backfilled.
 
-Every field is best-effort. `parsed_coords` runs four coordinate extractors (decimal, decimal + hemisphere, DMS, Google-Maps URL) over the OP then the quoted tweet, capped at 3 candidates. `suggested_title` is the OP's first usable line (leading hashtags / URLs / list markers / bare coordinates stripped), truncated to 120 chars on a word boundary; empty when nothing usable remains. `media[].remote_url` is always `pbs.twimg.com` or `video.twimg.com`.
+Every field is best-effort. `parsed_coords` runs four coordinate extractors (decimal, decimal + hemisphere, DMS, Google-Maps URL) over the thread's own text then the quoted tweet, capped at 3 candidates. `suggested_title` is the head's first usable line (leading hashtags / URLs / list markers / bare coordinates stripped), truncated to 120 chars on a word boundary; empty when nothing usable remains. `media[].remote_url` is always `pbs.twimg.com` or `video.twimg.com`.
 
 `source_url` and `source_posted_at` are both nullable: they fill only on an explicit signal, never as a guess. See [`ingestion.md`](ingestion.md) for the full contract shared with the machine detection path. `source_url` resolution priority:
 
@@ -542,7 +542,7 @@ Without either signal, `source_url` and `source_posted_at` are both `null` and t
 
 `secondary_source_urls` carries the footage links the OP declared that the `source_url` slot didn't take (mirrors on other networks, or other posts of the same footage), ordered and already capped at the secondary-link ceiling; empty when the post declared nothing else. It prefills the submit form's secondary-source rows. `detected[].secondary_source_urls` is the same list on the machine path's view. See [`ingestion.md`](ingestion.md) for how the two slots are decided from the same candidate set.
 
-`original_tweet_url` is always the OP's canonical URL, kept separately so the proof body can credit the analyst even when `source_url` points at the source.
+`original_tweet_url` is always the canonical URL of the thread head, kept separately so the proof body can credit the analyst even when `source_url` points at the source. The head is the pasted post itself, or the post it replies to when that parent has the same author (see the one-hop acquisition in [`ingestion.md`](ingestion.md#the-contract)).
 
 `media[].origin` (`op` = own attachment, `quote` = quoted tweet) is informational; the frontend routes by media type:
 
@@ -550,7 +550,7 @@ Without either signal, `source_url` and `source_posted_at` are both `null` and t
 - `kind: "image"` → **proof** (loaded into the Tiptap proof body inline; it uploads as one of the create/geolocate multipart's `proof_files[]` at publish, see [`POST /events`](#post-events)).
 - No video in the response → no primary media is loaded; you attach the source media manually.
 
-The syndication endpoint doesn't expose reply-chain media, so a video the original poster added as a self-reply on the same thread is invisible to this route.
+Acquisition reads one hop upward, so the media of the pasted post's same-author parent is included. A reply posted *under* the pasted post is not read, so a video the analyst added there is invisible to this route: paste that reply instead.
 
 **Errors:**
 | Code | Case |

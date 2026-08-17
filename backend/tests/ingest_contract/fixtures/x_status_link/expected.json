@@ -14,5 +14,12 @@
     "source_posted_at": "2026-03-04T21:30:00+00:00",
     "source_media": [["video", "quote"]],
     "proof_media": [["image", "op"]]
+  },
+  "paths": {
+    "bot": {
+      "detections": 0,
+      "reason": "coords_missing",
+      "diverges": "The bot's grammar reads a coordinate only from a line that is nothing but the decimal pair; here the pair sits inside the prose, so the mention is refused where the shared resolution reads the coordinate."
+    }
   }
 }

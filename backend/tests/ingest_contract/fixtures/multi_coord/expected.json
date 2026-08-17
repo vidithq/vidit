@@ -7,5 +7,12 @@
   "event_date": "2026-03-10",
   "title": "Two impacts overnight and across the district",
   "source_media": [],
-  "proof_media": [["image", "op"]]
+  "proof_media": [["image", "op"]],
+  "paths": {
+    "bot": {
+      "detections": 0,
+      "reason": "coords_missing",
+      "diverges": "The bot's grammar reads a coordinate only from a line that is nothing but the decimal pair, and accepts exactly one such line; here both pairs sit inside the prose, so the mention is refused where the shared resolution reads two coordinates."
+    }
+  }
 }

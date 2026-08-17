@@ -23,7 +23,6 @@ from app.services.tweet_ingest import (
     detect,
     detect_relay_diagnosed,
     detect_structured_diagnosed,
-    fetch_relay_parent,
     stitch,
 )
 from app.services.tweet_ingest.records import QuotedTweet, SourceLink
@@ -985,78 +984,6 @@ def test_relay_diagnosed_surfaces_the_parent_reason():
         [],
         None,
     )
-
-
-# ── fetch_relay_parent: the one-hop, fail-soft parent fetch ───────────────
-
-
-# Distinct parent ids per test: the syndication fetch caches by tweet id
-# process-wide, so re-using one id across tests would leak the first body.
-def _reply_to(parent_id: str) -> TweetRecord:
-    return dataclasses.replace(_relay_reply_rec(), in_reply_to_status_id=parent_id)
-
-
-def _parent_body(parent_id: str, handle: str = "analyst") -> dict:
-    return {
-        "id_str": parent_id,
-        "created_at": "2026-03-11T12:00:00.000Z",
-        "user": {"screen_name": handle},
-        "text": _PARENT_TEXT,
-    }
-
-
-def test_fetch_relay_parent_returns_the_self_reply_parent():
-    def handler(req: httpx.Request) -> httpx.Response:
-        assert req.url.params["id"] == "9400000000000000201"
-        return httpx.Response(200, json=_parent_body("9400000000000000201"))
-
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        parent = fetch_relay_parent(_reply_to("9400000000000000201"), client=client)
-    assert parent is not None
-    assert parent.tweet_id == "9400000000000000201"
-    assert parent.handle == "analyst"
-
-
-def test_fetch_relay_parent_is_none_for_a_non_reply():
-    def handler(_req: httpx.Request) -> httpx.Response:
-        raise AssertionError("a non-reply must trigger no fetch")
-
-    record = dataclasses.replace(_relay_reply_rec(), in_reply_to_status_id=None)
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        assert fetch_relay_parent(record, client=client) is None
-
-
-def test_fetch_relay_parent_builds_a_lowercase_permalink():
-    # The parent permalink anchors the shared inline/relay idempotency key,
-    # so it is case-folded whatever case the tagger's handle arrived in.
-    def handler(_req: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=_parent_body("9400000000000000204"))
-
-    reply = dataclasses.replace(
-        _relay_reply_rec(handle="Analyst"), in_reply_to_status_id="9400000000000000204"
-    )
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        parent = fetch_relay_parent(reply, client=client)
-    assert parent is not None
-    assert parent.permalink == "https://x.com/analyst/status/9400000000000000204"
-
-
-def test_fetch_relay_parent_rejects_another_authors_parent():
-    # The authoritative same-author guard runs on the FETCHED handle: the URL
-    # is built from the tagger's handle, but syndication returns the real one.
-    def handler(_req: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=_parent_body("9400000000000000202", "someone_else"))
-
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        assert fetch_relay_parent(_reply_to("9400000000000000202"), client=client) is None
-
-
-def test_fetch_relay_parent_fetch_failure_degrades_to_none():
-    def handler(_req: httpx.Request) -> httpx.Response:
-        return httpx.Response(404)  # parent deleted / protected
-
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        assert fetch_relay_parent(_reply_to("9400000000000000203"), client=client) is None
 
 
 # ── Archive regression: the free-text spine is untouched by the bot format ─

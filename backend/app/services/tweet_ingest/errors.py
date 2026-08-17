@@ -51,7 +51,7 @@ class TweetUpstreamBusy(TweetFetchFailed):
     5xx, so both keep reaching Sentry, as two issues instead of one bucket.
 
     A subclass of ``TweetFetchFailed`` on purpose: every fail-soft caller
-    (``acquire.quoted_from_syndication``, ``detect.fetch_relay_parent``) keeps
+    (``acquire.quoted_from_syndication``, ``acquire._self_reply_parent``) keeps
     degrading exactly as before, and only a caller that wants the distinction
     catches this class first.
     """

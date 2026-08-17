@@ -48,10 +48,11 @@ from app.services.storage import (
 from app.services.tweet_ingest import (
     DetectedGeoloc,
     ParsedMedia,
+    acquire_thread,
     archive_media_fetcher,
     detect,
+    normalise_tweet_url,
     read_tweets,
-    record_from_syndication,
     stitch,
 )
 
@@ -92,12 +93,15 @@ def _media_type(content_type: str) -> str:
 def preview_detection(url: str, *, client: httpx.Client | None = None) -> list[DetectedGeoloc]:
     """The detections a pasted tweet WOULD produce — no DB writes, no media fetch.
 
-    Acquire (syndication) → stitch → detect over the single tweet at ``url``.
-    The inspection window into the machine path: the ``DetectedGeoloc`` DTOs are
-    returned as-is for the route to serialize. ``client`` is for tests.
+    Acquire → detect over the tweet at ``url`` and, when that tweet replies to
+    one of its own author's, that parent as well (``acquire_thread``, the hop
+    the bot reads too). The inspection window into the machine path: the
+    ``DetectedGeoloc`` DTOs are returned as-is for the route to serialize.
+    ``client`` is for tests.
     """
-    record = record_from_syndication(url, client=client)
-    return [d for thread in stitch([record]) for d in detect(thread)]
+    normalised = normalise_tweet_url(url)
+    acquired = acquire_thread(normalised.tweet_id, handle=normalised.handle, client=client)
+    return detect(acquired.records)
 
 
 def _row_disposition(row: Event) -> Verdict:
