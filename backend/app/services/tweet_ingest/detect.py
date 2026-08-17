@@ -91,22 +91,20 @@ def warnings_for(resolved: ResolvedThread) -> list[str]:
     return warnings
 
 
-def detect(thread: list[TweetRecord]) -> list[DetectedGeoloc]:
-    """One ``DetectedGeoloc`` per coordinate ``resolve_thread`` finds across the
-    thread. ``[]`` when the thread is empty, holds only retweets, or carries no
-    parseable coordinate."""
-    detections, _reason = detect_diagnosed(thread)
-    return detections
-
-
 def detect_diagnosed(thread: list[TweetRecord]) -> tuple[list[DetectedGeoloc], str | None]:
-    """:func:`detect`, plus the reason nothing landed when nothing did.
+    """One ``DetectedGeoloc`` per coordinate ``resolve_thread`` finds across the
+    thread, plus the reason nothing landed when nothing did.
 
     Two reasons, which is all the engine can tell apart: a coordinate-shaped
     string sat outside the world (``COORDS_INVALID``), or the analyst's own text
-    carried no coordinate at all (``COORDS_MISSING``). A thread that produced
-    drafts carries no reason; what those drafts still need is on their
-    ``warnings`` instead.
+    carried no coordinate at all (``COORDS_MISSING``), which also covers a
+    thread that is empty or holds only retweets. A thread that produced drafts
+    carries no reason; what those drafts still need is on their ``warnings``
+    instead.
+
+    Every entry reads the reason: the bot names it in its failure reply, the
+    paste returns it to the page, and the archive counts it per export
+    (``AssembleOutcome.refusals``).
     """
     resolved = resolve_thread(thread)
     if resolved is None:

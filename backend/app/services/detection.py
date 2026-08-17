@@ -1,12 +1,13 @@
 """Persist machine detections: ``DetectedGeoloc`` DTOs become ``detected`` rows.
 
-:func:`import_thread` is the one write path from a thread to drafts, and every
+:func:`import_threads` is the one write path from threads to drafts, and every
 entry runs it: the bot over the thread it acquired, :func:`import_pasted_post`
-over the post an analyst pasted, the archive backfill over each stitched
-self-thread. It detects, then turns the resulting DTOs into
-``Event`` rows owned by the importer, with media through the evidence pipeline
-and idempotency on ``(detected_from_tweet_id OR source_url, coordinate)``. The
-DTO never reaches the ORM, which is what keeps ``detect`` pure.
+over the post an analyst pasted, :func:`backfill_from_archive` over every
+stitched self-thread of an export. It detects, then turns the resulting DTOs
+into ``Event`` rows owned by the importer, with media through the evidence
+pipeline and idempotency on ``(detected_from_tweet_id OR source_url,
+coordinate)``. The DTO never reaches the ORM, which is what keeps detection
+pure.
 
 A detection that matches a row the owner already holds resolves through
 :func:`_row_disposition`: an open ``detected`` draft is overwritten in place
@@ -52,7 +53,6 @@ from app.services.tweet_ingest import (
     TweetRecord,
     acquire_pasted_thread,
     archive_media_fetcher,
-    detect,
     detect_diagnosed,
     fetch_cdn_media,
     read_tweets,
@@ -97,10 +97,26 @@ class AssembleOutcome:
     # ``tweet_ingest`` warning constants. One home for the count, so the bot's
     # reply and the archive's outcome email read the same numbers.
     warnings: dict[str, int] = field(default_factory=dict)
-    # Why the thread produced no detection at all (a ``tweet_ingest`` refusal
-    # constant), for the entry that answers the analyst. ``None`` whenever
-    # detections were made, and on a caller that supplied its own detections.
-    reason: str | None = None
+    # How many threads the engine refused, keyed by the ``tweet_ingest``
+    # refusal constants. One entry answers one thread and reads :attr:`reason`;
+    # the archive runs a whole export through the same field and counts. Empty
+    # on a caller that supplied its own detections.
+    refusals: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def reason(self) -> str | None:
+        """The one refusal to name back to the analyst, or ``None``.
+
+        Set exactly when the pass wrote no row and refused for a single
+        reason, which is every refusal a one-thread entry can have (the bot's
+        failure reply, the paste's response). An export refusing several
+        threads reads :attr:`refusals` instead, so the two never disagree.
+        """
+        if self.created or self.updated or self.skipped:
+            return None
+        if len(self.refusals) != 1:
+            return None
+        return next(iter(self.refusals))
 
 
 # What a re-import may do with one detection.
@@ -632,28 +648,43 @@ async def assemble_detections(
     return outcome
 
 
-async def import_thread(
+async def import_threads(
     db: Session,
     *,
     owner: User,
-    thread: list[TweetRecord],
+    threads: list[list[TweetRecord]],
     fetch_media: MediaFetcher,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> AssembleOutcome:
-    """The one entry from a thread to drafts: detect, then assemble.
+    """The one entry from threads to drafts: detect each, then assemble once.
 
     Every entry runs it, so nothing about detection or persistence is specific
-    to one of them. The bot adds a reply on top of the outcome it gets back; the
-    archive backfill runs the same two steps over every stitched thread at once,
-    for one progress count across the export.
+    to one of them: the bot and the paste hand over the single thread they
+    acquired, the archive hands over every stitched self-thread of an export.
+    Detection is pure and in memory, so an export detects in full before the
+    first row is written, which is what gives ``on_progress`` an exact total
+    across the whole scan.
 
-    The outcome carries the created and updated drafts, the warnings the engine
-    raised, and, when the thread yielded nothing, the reason.
+    The outcome carries the created, updated and skipped drafts, the warnings
+    the engine raised, and one count per refusal code across the threads that
+    yielded nothing. A caller that handed over a single thread reads
+    ``outcome.reason`` for the one code to name back.
     """
-    detections, reason = detect_diagnosed(thread)
+    detections: list[DetectedGeoloc] = []
+    refusals: dict[str, int] = {}
+    for thread in threads:
+        found, reason = detect_diagnosed(thread)
+        detections.extend(found)
+        if reason is not None:
+            refusals[reason] = refusals.get(reason, 0) + 1
     outcome = await assemble_detections(
-        db, owner=owner, detections=detections, fetch_media=fetch_media
+        db,
+        owner=owner,
+        detections=detections,
+        fetch_media=fetch_media,
+        on_progress=on_progress,
     )
-    outcome.reason = reason
+    outcome.refusals = refusals
     return outcome
 
 
@@ -704,8 +735,8 @@ async def import_pasted_post(
             f"That post is by @{author}. The import only reads posts from @{linked}, "
             "the X account linked to your Vidit profile."
         )
-    return await import_thread(
-        db, owner=owner, thread=acquired.records, fetch_media=fetch_cdn_media
+    return await import_threads(
+        db, owner=owner, threads=[acquired.records], fetch_media=fetch_cdn_media
     )
 
 
@@ -717,20 +748,21 @@ async def backfill_from_archive(
     chase: bool = False,
     on_progress: Callable[[int, int], None] | None = None,
 ) -> AssembleOutcome:
-    """Run a full archive backfill: acquire → stitch → detect → assemble.
+    """Run a full archive backfill: acquire → stitch → import.
 
     Reads ``owner``'s X export under ``archive_dir`` (``tweets.js`` +
-    ``tweets_media/``), rebuilds self-threads, detects coordinates, and persists
-    the detections as ``detected`` rows owned by ``owner``, the account whose
-    verified handle the archive belongs to.
+    ``tweets_media/``), rebuilds self-threads, then hands every thread to
+    :func:`import_threads`, the same write path the bot and the paste run. Rows
+    are owned by ``owner``, the account whose verified handle the archive
+    belongs to, and a thread the engine refuses is counted in
+    ``outcome.refusals`` under the same code the bot names back.
     """
     handle = owner.x_handle or owner.username
     records = read_tweets(archive_dir, handle=handle, chase=chase)
-    detections = [d for thread in stitch(records) for d in detect(thread)]
-    return await assemble_detections(
+    return await import_threads(
         db,
         owner=owner,
-        on_progress=on_progress,
-        detections=detections,
+        threads=stitch(records),
         fetch_media=archive_media_fetcher(archive_dir),
+        on_progress=on_progress,
     )

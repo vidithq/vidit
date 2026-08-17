@@ -1,8 +1,8 @@
 """Archive integration contract: the disk-only typologies through the backfill.
 
 Assembles the disk-only typology fixtures into one consolidated X export, runs
-the real ``read_tweets`` to ``stitch`` to ``detect`` to ``assemble`` chain over
-it against the test database, and asserts per typology: the ``detected`` status,
+the real ``read_tweets`` to ``stitch`` to ``import_threads`` chain over it
+against the test database, and asserts per typology: the ``detected`` status,
 ``source_url`` NULL exactly where the contract says so, the media roles in the
 ``media`` table, and the proof images injected into the proof JSON.
 
@@ -26,11 +26,12 @@ from app.models.user import User
 from app.services.auth import hash_password
 from app.services.detection import assemble_detections, backfill_from_archive
 from app.services.tweet_ingest import (
+    COORDS_MISSING,
     DetectedGeoloc,
     ParsedCoord,
     ParsedMedia,
     archive_media_fetcher,
-    detect,
+    detect_diagnosed,
     read_tweets,
     stitch,
 )
@@ -124,6 +125,11 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     assert all(r.proof and r.proof["content"] for r in rows)
 
     assert _rows_for(db, owner, "no_coord") == []
+    # The export runs the same write path as the bot and the paste, so a thread
+    # it refuses is counted under the code they name back. ``no_coord`` is the
+    # only refusing thread here; ``reason`` stays unset because rows landed.
+    assert outcome.refusals == {COORDS_MISSING: 1}
+    assert outcome.reason is None
 
     # Source-less typologies: source_url NULL, source_posted_at NULL.
     for typology in [
@@ -244,7 +250,7 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
     monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
 
     records = read_tweets(archive, handle=owner.x_handle or owner.username, chase=True)
-    detections = [d for thread in stitch(records) for d in detect(thread)]
+    detections = [d for thread in stitch(records) for d in detect_diagnosed(thread)[0]]
     assert len(detections) == 1
 
     outcome = await assemble_detections(
@@ -294,7 +300,7 @@ async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: 
     monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
 
     records = read_tweets(archive, handle=owner.x_handle or owner.username, chase=True)
-    detections = [d for thread in stitch(records) for d in detect(thread)]
+    detections = [d for thread in stitch(records) for d in detect_diagnosed(thread)[0]]
     assert len(detections) == 1
 
     outcome = await assemble_detections(

@@ -16,7 +16,7 @@ The bot runs the same engine as the pasted import and the archive backfill;
 nothing about the grammar lives here. Acquisition is
 :func:`tweet_ingest.acquire_thread`, shared with the paste: the tagged post plus
 the same author's post it replies to, one hop and no further, with the thread's
-sole source candidate chased. ``detection.import_thread`` then detects and
+sole source candidate chased. ``detection.import_threads`` then detects and
 persists, owned by the existing Vidit account whose admin-linked ``x_handle``
 matches the tagged author (the bot never mints users: an unknown handle is
 ledgered ``no_account`` and produces nothing). The mention then lands in the
@@ -64,7 +64,7 @@ from app.models.bot_webhook_event import BotWebhookEvent
 from app.models.event import Event
 from app.models.media import Media
 from app.models.user import User
-from app.services.detection import AssembleOutcome, import_thread
+from app.services.detection import AssembleOutcome, import_threads
 from app.services.tweet_ingest import (
     COORDS_INVALID,
     COORDS_MISSING,
@@ -467,8 +467,8 @@ async def _process_mention(
         # produced a draft.
         detections, reason = detect_diagnosed(acquired.records)
         return ("no_account", 0, None, None) if detections else ("no_detection", 0, None, reason)
-    assembled = await import_thread(
-        db, owner=owner, thread=acquired.records, fetch_media=fetch_cdn_media
+    assembled = await import_threads(
+        db, owner=owner, threads=[acquired.records], fetch_media=fetch_cdn_media
     )
     if assembled.reason is not None:
         return "no_detection", 0, None, assembled.reason

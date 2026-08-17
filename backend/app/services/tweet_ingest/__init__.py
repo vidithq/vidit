@@ -10,7 +10,8 @@ Single-responsibility bricks behind one import surface:
   every path.
 * ``stitch``: recombine records into threads (union-find on reply edges).
 * ``resolve``: the engine, a thread to one ``ResolvedThread``.
-* ``detect``: the machine path, a thread to ``DetectedGeoloc`` DTOs.
+* ``detect``: the machine path, a thread to ``DetectedGeoloc`` DTOs plus the
+  reason it produced none.
 * ``syndication``: X I/O (fetch + token + cache, payload mappers).
 * ``chase``: one module per technology behind one dispatcher, for the single
   fetch spent on a post's declared source.
@@ -37,7 +38,6 @@ from .detect import (
     SOURCE_AMBIGUOUS,
     SOURCE_MISSING,
     DetectedGeoloc,
-    detect,
     detect_diagnosed,
 )
 from .errors import (
@@ -78,7 +78,6 @@ __all__ = [
     "archive_media_fetcher",
     "clean_proof_text",
     "derive_title",
-    "detect",
     "detect_diagnosed",
     "extract_coords",
     "fetch_cdn_media",

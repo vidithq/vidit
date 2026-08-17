@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from app.services.tweet_ingest import detect
+from app.services.tweet_ingest import COORDS_MISSING, detect_diagnosed
 from app.services.tweet_ingest.records import (
     ParsedMedia,
     QuotedTweet,
@@ -75,10 +75,10 @@ def test_typology_resolves_to_expected(typology: str, tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("typology", loader.typology_names())
 def test_detect_fans_one_dto_per_coordinate(typology: str, tmp_path: Path) -> None:
-    """``detect`` emits exactly one DTO per resolved coordinate, each carrying
+    """``detect_diagnosed`` emits exactly one DTO per resolved coordinate, each carrying
     the same source and proof the resolution produced."""
     expected = loader.load_expected(typology)
-    dtos = detect(loader.thread_for(typology, tmp_path))
+    dtos, _reason = detect_diagnosed(loader.thread_for(typology, tmp_path))
     assert len(dtos) == len(expected["coords"])
     for dto in dtos:
         assert dto.source_url == expected["source_url"]
@@ -320,7 +320,7 @@ def test_a_retweet_produces_nothing() -> None:
         created_at=record.created_at,
     )
     assert resolve_thread([retweet]) is None
-    assert detect([retweet]) == []
+    assert detect_diagnosed([retweet]) == ([], COORDS_MISSING)
 
 
 def test_every_typology_has_both_fixture_files() -> None:

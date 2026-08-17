@@ -15,7 +15,7 @@ import httpx
 from app.services.tweet_ingest import (
     ParsedMedia,
     archive_media_fetcher,
-    detect,
+    detect_diagnosed,
     read_tweets,
     stitch,
 )
@@ -43,7 +43,7 @@ def test_read_tweets_parses_records():
 
 def test_stitch_and_detect_over_archive():
     records = read_tweets(ARCHIVE, handle="ana")
-    detections = [d for thread in stitch(records) for d in detect(thread)]
+    detections = [d for thread in stitch(records) for d in detect_diagnosed(thread)[0]]
     # 1001(1) + thread 2001/2002(1) + 3001 DMS(1) + 4001 hemi(1) + 5001(0)
     # + 6001 multi-coord(2) + 7001 retweet, dropped(0) + 8001(0) = 6.
     assert len(detections) == 6
@@ -188,7 +188,7 @@ def test_read_tweets_drops_retweets(tmp_path):
     records = read_tweets(archive, handle="ana")
     assert [r.tweet_id for r in records] == ["9002"]
     # Nothing downstream ever sees the retweet's coordinate.
-    detections = [d for thread in stitch(records) for d in detect(thread)]
+    detections = [d for thread in stitch(records) for d in detect_diagnosed(thread)[0]]
     assert [d.detected_from_url for d in detections] == ["https://x.com/ana/status/9002"]
 
 

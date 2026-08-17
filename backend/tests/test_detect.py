@@ -1,4 +1,5 @@
-"""Unit tests for ``detect``: a thread becomes 0..N ``DetectedGeoloc`` DTOs.
+"""Unit tests for ``detect_diagnosed``: a thread becomes 0..N ``DetectedGeoloc``
+DTOs, plus the reason when it becomes none.
 
 Pure, no DB. Mirrors the extractor-level coverage in ``test_tweet_parsing.py``
 but at the thread to DTO boundary. What a draft still needs from its owner
@@ -19,13 +20,19 @@ from app.services.tweet_ingest import (
     SEVERAL_COORDINATES,
     SOURCE_AMBIGUOUS,
     SOURCE_MISSING,
+    DetectedGeoloc,
     ParsedMedia,
     TweetRecord,
-    detect,
     detect_diagnosed,
     stitch,
 )
 from app.services.tweet_ingest.records import QuotedTweet, SourceLink
+
+
+def _detected(thread: list[TweetRecord]) -> list[DetectedGeoloc]:
+    """The DTOs alone, for the cases asserting on fields rather than on the
+    refusal reason ``detect_diagnosed`` returns beside them."""
+    return detect_diagnosed(thread)[0]
 
 
 def _rec(
@@ -50,15 +57,15 @@ def _rec(
 
 
 def test_no_coordinate_yields_empty_list():
-    assert detect([_rec("1", "Just some commentary, no coords")]) == []
+    assert _detected([_rec("1", "Just some commentary, no coords")]) == []
 
 
 def test_empty_thread_yields_empty_list():
-    assert detect([]) == []
+    assert _detected([]) == []
 
 
 def test_single_coordinate_emits_one_detection():
-    out = detect([_rec("1", "Strike at 48.012345, 37.802411 in Donetsk")])
+    out = _detected([_rec("1", "Strike at 48.012345, 37.802411 in Donetsk")])
     assert len(out) == 1
     d = out[0]
     assert d.coordinate.lat == pytest.approx(48.012345)
@@ -76,14 +83,14 @@ def test_single_coordinate_emits_one_detection():
 def test_the_provenance_url_is_built_from_the_id_whatever_case_the_handle_carried():
     # The id is the identity; the URL is written from it at the exit, so a
     # handle spelled two ways in one export cannot split one post in two.
-    lower = detect([_rec("1", "48.012345, 37.802411", handle="analyst")])[0]
-    upper = detect([_rec("1", "48.012345, 37.802411", handle="Analyst")])[0]
+    lower = _detected([_rec("1", "48.012345, 37.802411", handle="analyst")])[0]
+    upper = _detected([_rec("1", "48.012345, 37.802411", handle="Analyst")])[0]
     assert lower.detected_from_tweet_id == upper.detected_from_tweet_id == 1
     assert upper.detected_from_url == "https://x.com/Analyst/status/1"
 
 
 def test_multiple_coordinates_emit_one_detection_each():
-    out = detect([_rec("1", "Two sites 48.012345, 37.802411 and 50.450100, 30.523400")])
+    out = _detected([_rec("1", "Two sites 48.012345, 37.802411 and 50.450100, 30.523400")])
     assert len(out) == 2
 
 
@@ -102,7 +109,7 @@ def test_coordinate_in_reply_keeps_the_head_as_provenance():
         ],
     )
     reply = _rec("2", "Geolocated: 48.592153, 38.002480", created_at="2025-11-12T14:40:00Z")
-    out = detect([head, reply])
+    out = _detected([head, reply])
     assert len(out) == 1
     assert out[0].detected_from_tweet_id == 1
     assert out[0].detected_from_url == "https://x.com/analyst/status/1"
@@ -112,7 +119,7 @@ def test_coordinate_in_reply_keeps_the_head_as_provenance():
 
 
 def test_proof_keeps_the_text_and_drops_the_media_wrapper():
-    out = detect([_rec("1", "Strike here 48.012345, 37.802411 https://t.co/abc123")])
+    out = _detected([_rec("1", "Strike here 48.012345, 37.802411 https://t.co/abc123")])
     assert len(out) == 1
     # The coordinate line stays: the analyst edits the proof at review, and the
     # structured field is not a reason to rewrite what they wrote.
@@ -120,7 +127,7 @@ def test_proof_keeps_the_text_and_drops_the_media_wrapper():
 
 
 def test_title_is_never_a_bare_coordinate():
-    out = detect([_rec("1", "48.012345, 37.802411")])
+    out = _detected([_rec("1", "48.012345, 37.802411")])
     assert len(out) == 1
     # The only line is a coordinate alone, so no line qualifies and the analyst
     # types the title at review.
@@ -128,7 +135,7 @@ def test_title_is_never_a_bare_coordinate():
 
 
 def test_title_keeps_the_line_as_written():
-    out = detect([_rec("1", "#Ukraine strike at 48.012345, 37.802411 https://t.co/x")])
+    out = _detected([_rec("1", "#Ukraine strike at 48.012345, 37.802411 https://t.co/x")])
     assert out[0].title == "#Ukraine strike at 48.012345, 37.802411 https://t.co/x"
 
 
@@ -136,7 +143,7 @@ def test_malformed_time_recovers_date_and_nulls_detected_post_at():
     # A valid date with a garbled time-of-day: event_date is recovered from the
     # date prefix; detected_post_at is NULL, not a false 1970, and the source
     # slots stay empty (no source declared, no fabricated date).
-    out = detect([_rec("1", "Strike 48.012345, 37.802411", created_at="2025-11-12T99:99:99Z")])
+    out = _detected([_rec("1", "Strike 48.012345, 37.802411", created_at="2025-11-12T99:99:99Z")])
     assert len(out) == 1
     d = out[0]
     assert d.event_date == date(2025, 11, 12)
@@ -146,7 +153,7 @@ def test_malformed_time_recovers_date_and_nulls_detected_post_at():
 
 def test_fully_unparseable_timestamp_yields_no_dates():
     # Nothing recoverable: every date stays NULL rather than a fabricated epoch.
-    out = detect([_rec("1", "Strike 48.012345, 37.802411", created_at="not-a-timestamp")])
+    out = _detected([_rec("1", "Strike 48.012345, 37.802411", created_at="not-a-timestamp")])
     assert len(out) == 1
     d = out[0]
     assert d.event_date is None
@@ -158,12 +165,12 @@ def test_fully_unparseable_timestamp_yields_no_dates():
 
 
 def test_a_sourceless_draft_warns_source_missing():
-    [dto] = detect([_rec("1", "Geolocated 48.012345, 37.802411 near the bridge")])
+    [dto] = _detected([_rec("1", "Geolocated 48.012345, 37.802411 near the bridge")])
     assert dto.warnings == [SOURCE_MISSING]
 
 
 def test_several_candidate_links_warn_source_ambiguous():
-    [dto] = detect(
+    [dto] = _detected(
         [
             _rec(
                 "1",
@@ -181,14 +188,14 @@ def test_several_candidate_links_warn_source_ambiguous():
 
 
 def test_several_coordinates_warn_on_every_draft():
-    out = detect([_rec("1", "Two sites 48.012345, 37.802411 and 50.450100, 30.523400")])
+    out = _detected([_rec("1", "Two sites 48.012345, 37.802411 and 50.450100, 30.523400")])
     assert len(out) == 2
     assert all(dto.warnings == [SEVERAL_COORDINATES, SOURCE_MISSING] for dto in out)
 
 
 def test_a_sourced_draft_warns_nothing():
     quoted = QuotedTweet(tweet_id="2", handle="src", text="", created_at="")
-    [dto] = detect([_rec("1", "Geolocated 48.012345, 37.802411", quoted=quoted)])
+    [dto] = _detected([_rec("1", "Geolocated 48.012345, 37.802411", quoted=quoted)])
     assert dto.warnings == []
 
 
@@ -210,7 +217,7 @@ def test_a_draft_carries_no_reason():
 
 def test_a_retweet_produces_nothing():
     # The prefix means the words are someone else's, on every entry.
-    assert detect([_rec("1", "RT @front_cam: Geolocated 48.012345, 37.802411")]) == []
+    assert _detected([_rec("1", "RT @front_cam: Geolocated 48.012345, 37.802411")]) == []
 
 
 # ── Archive regression: the shared spine over a stitched thread ────────────
@@ -223,7 +230,7 @@ def test_archive_free_text_thread_detection_unchanged():
     reply = _rec("2", "More context on the strike", created_at="2025-11-12T14:40:00Z")
     reply = dataclasses.replace(reply, in_reply_to_status_id="1")
     threads = stitch([head, reply])
-    out = [d for thread in threads for d in detect(thread)]
+    out = [d for thread in threads for d in _detected(thread)]
     assert len(out) == 1
     d = out[0]
     assert d.coordinate.lat == pytest.approx(48.012345)
