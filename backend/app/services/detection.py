@@ -53,6 +53,7 @@ from app.services.tweet_ingest import (
     Resolution,
     acquire_pasted_thread,
     archive_media_fetcher,
+    chase_thread,
     fetch_cdn_media,
     read_tweets,
     resolve_threads,
@@ -719,13 +720,19 @@ async def backfill_from_archive(
     paste run. Rows are owned by ``owner``, the account whose verified handle
     the archive belongs to, and a thread the engine refuses is counted in
     ``outcome.refusals`` under the same code the bot names back.
+
+    ``chase`` runs the one chase step over each stitched thread, the same step
+    the live acquisition runs over its one hop. Off, the read is pure disk and a
+    footage link is stored as a link, with no date and no media.
     """
     handle = owner.x_handle or owner.username
-    records = read_tweets(archive_dir, handle=handle, chase=chase)
+    threads = stitch(read_tweets(archive_dir, handle=handle))
+    if chase:
+        threads = [chase_thread(thread) for thread in threads]
     return await persist_drafts(
         db,
         owner=owner,
-        resolution=resolve_threads(stitch(records)),
+        resolution=resolve_threads(threads),
         fetch_media=archive_media_fetcher(archive_dir),
         on_progress=on_progress,
     )

@@ -19,8 +19,10 @@ PACKAGE = Path(__file__).resolve().parents[1] / "app" / "services" / "tweet_inge
 # out. ``urls`` and ``records`` are the vocabulary they read.
 PURE_MODULES = ("records", "extract", "stitch", "resolve")
 
-# The modules allowed to spend the one fetch a chase costs.
-CHASE_CALLERS = ("acquire", "archive")
+# The one module inside the package allowed to spend the fetch a chase costs.
+# The archive backfill runs the same step from ``services/detection``, over the
+# threads ``stitch`` assembled.
+CHASE_CALLER = "acquire"
 
 
 def _imported_siblings(path: Path) -> set[str]:
@@ -56,11 +58,18 @@ def test_a_pure_module_never_imports_the_fetch(module: str) -> None:
     assert "syndication" not in _imported_siblings(PACKAGE / f"{module}.py")
 
 
-def test_only_the_two_acquisitions_import_the_chase() -> None:
-    """``chase`` is imported by ``acquire`` and ``archive`` and by nothing else.
+def test_only_the_acquisition_imports_the_chase() -> None:
+    """``chase`` is imported by ``acquire`` and by nothing else in the package.
 
     A chase is a network fetch, so it belongs to acquisition. A pure module
-    reaching for one would mean the resolution fetches while it resolves.
+    reaching for one would mean the resolution fetches while it resolves, and
+    the export reader reaching for one would mean the disk read fetches too.
     """
-    importers = {path.stem for path in PACKAGE.glob("*.py") if "chase" in _imported_siblings(path)}
-    assert importers == set(CHASE_CALLERS)
+    importers = {
+        path.stem
+        for path in PACKAGE.glob("*.py")
+        # ``__init__`` re-exports the whole public surface, so it imports every
+        # module by design and states no direction.
+        if path.stem != "__init__" and "chase" in _imported_siblings(path)
+    }
+    assert importers == {CHASE_CALLER}

@@ -5,11 +5,11 @@ one acquisition the live entries share (the bot's tagged mention and the pasted
 tweet): it reads the post named by a tweet id plus, when that post replies to
 one of its own author's, that parent. Exactly one hop, and only within one
 author, so the result is a thread ``resolve_threads`` reads as the analyst's own
-work. It then chases the thread's sole source candidate through
-``chase.chase_post``, the way the archive reader chases its own, so the
-resolution downstream is pure and neither knows which technology answered. The
-archive keeps its own reader: an export carries every reply edge inline, so it
-stitches whole self-threads without a fetch.
+work. It then runs ``chase.chase_thread`` over that thread, the same one chase
+step the archive backfill runs over each stitched self-thread, so the resolution
+downstream is pure and neither knows which technology answered. The archive
+keeps its own reader: an export carries every reply edge inline, so it stitches
+whole self-threads without a fetch.
 """
 
 from __future__ import annotations
@@ -19,22 +19,29 @@ from typing import Any
 
 import httpx
 
-from .chase import apply_chase, chase_post
+from .chase import chase_thread
 from .errors import TweetImportError
 from .records import QuotedTweet, SourceLink, TweetRecord
 from .syndication import _extract_media, extract_source_links, fetch_syndication
 from .urls import normalise_tweet_url
 
 
+def _quoted_status_id(body: dict[str, Any]) -> str | None:
+    """The id of the post ``body`` quotes, or ``None`` when it quotes none."""
+    qt = body.get("quoted_tweet")
+    tweet_id = qt.get("id_str") if isinstance(qt, dict) else None
+    return tweet_id if isinstance(tweet_id, str) and tweet_id else None
+
+
 def _quoted_record(body: dict[str, Any]) -> QuotedTweet | None:
     """The inline quoted tweet as a full sub-record (id, handle, text, date,
     media). The syndication body embeds it, so this needs no extra fetch."""
     qt = body.get("quoted_tweet")
-    if not isinstance(qt, dict):
+    tweet_id = _quoted_status_id(body)
+    if not isinstance(qt, dict) or tweet_id is None:
         return None
-    tweet_id = qt.get("id_str")
     user = qt.get("user")
-    if not isinstance(tweet_id, str) or not isinstance(user, dict):
+    if not isinstance(user, dict):
         return None
     handle = user.get("screen_name")
     if not isinstance(handle, str) or not handle:
@@ -84,6 +91,7 @@ def record_by_id(tweet_id: str, *, handle: str, client: httpx.Client | None = No
         in_reply_to_status_id=(in_reply_to_status if isinstance(in_reply_to_status, str) else None),
         in_reply_to_user_id=in_reply_to_user if isinstance(in_reply_to_user, str) else None,
         quoted=_quoted_record(body),
+        quoted_status_id=_quoted_status_id(body),
         external_sources=[SourceLink(url=u, shortlink=t) for u, t in extract_source_links(body)],
     )
 
@@ -124,44 +132,6 @@ def _self_reply_parent(
     return parent
 
 
-def _chase_source(
-    records: list[TweetRecord], *, client: httpx.Client | None = None
-) -> list[TweetRecord]:
-    """Resolve the thread's sole source candidate onto the record that carries
-    it, at most one fetch.
-
-    ``chase.chase_post`` decides what a link's host makes fetchable, so nothing
-    here names a technology: a link the dispatcher serves comes back as a
-    ``ChasedPost`` and lands in whichever record slot fits. A link it does not
-    serve stays link-only, and so does an ambiguous thread (several candidates,
-    no source), the same rule the archive reader applies on the export side.
-    Fail-soft: a failed fetch changes nothing.
-    """
-    from .resolve import thread_candidates
-
-    if any(record.quoted is not None for record in records):
-        return records
-    candidates = thread_candidates(records)
-    if len(candidates) != 1:
-        return records
-    candidate = candidates[0]
-    chased = chase_post(candidate, client=client)
-    if chased is None:
-        return records
-    owner = records[0].handle.lower() if records else ""
-    if chased.author is not None and chased.author.lower() == owner:
-        # A link to the analyst's own post that slipped the URL-level own-handle
-        # skip (the ``i/web`` form) is a self-reference, not footage; the same
-        # re-check the archive chase runs.
-        return records
-    return [
-        apply_chase(record, chased)
-        if any(link.url == candidate for link in record.external_sources)
-        else record
-        for record in records
-    ]
-
-
 def acquire_thread(
     tweet_id: str, *, handle: str, client: httpx.Client | None = None
 ) -> AcquiredThread:
@@ -180,7 +150,7 @@ def acquire_thread(
     """
     post = record_by_id(tweet_id, handle=handle, client=client)
     parent = _self_reply_parent(post, client=client)
-    records = _chase_source([parent, post] if parent is not None else [post], client=client)
+    records = chase_thread([parent, post] if parent is not None else [post], client=client)
     return AcquiredThread(records=records, post=post, parent=parent)
 
 

@@ -20,12 +20,10 @@ import httpx
 
 from app.services.storage import image_content_type_for_extension
 
-from .chase import ChasedPost, apply_chase, chase_post
 from .extract import is_retweet
 from .records import ParsedMedia, QuotedTweet, SourceLink, TweetRecord
-from .resolve import source_candidates
 from .syndication import extract_source_links
-from .urls import X_STATUS_URL_RE, is_trusted_media_url
+from .urls import is_trusted_media_url
 
 # Byte cap on a single remote-media fetch: every chased CDN URL is streamed into
 # memory under it. Sized for the upload ceilings (10 MB image / 95 MiB video)
@@ -171,52 +169,18 @@ def _archive_media(tweet: dict[str, Any], tweet_id: str) -> list[ParsedMedia]:
     return out
 
 
-def _linked_status_id(url: str) -> str | None:
-    """The X status id in ``url`` (``X_STATUS_URL_RE``), or ``None``."""
-    match = X_STATUS_URL_RE.search(url)
-    return match.group(1) if match is not None else None
-
-
-def _chase_candidate(
-    tweet: dict[str, Any], by_id: dict[str, dict[str, Any]], *, owner_handle: str
-) -> str | None:
-    """The tweet's sole source candidate link, or ``None`` when it has none or
-    several.
-
-    The same rule the shared resolution runs (``resolve.source_candidates``), so
-    the chase and the resolution can't disagree on which link is the source.
-    ``by_id`` is the archive's own tweets: a linked id already in the export is
-    the owner's own post (a cross-reference), never third-party footage, so it is
-    dropped first, even in the handle-less ``i/web/status`` form the shared
-    own-handle skip can't catch.
-
-    Several candidates leave the source empty for review, so nothing is chased.
-    """
-    candidates = source_candidates(
-        (
-            url
-            for url, _shortlink in extract_source_links(tweet)
-            if _linked_status_id(url) not in by_id
-        ),
-        owner_handle=owner_handle,
-    )
-    return candidates[0] if len(candidates) == 1 else None
-
-
 def _archive_quoted(
-    tweet: dict[str, Any], by_id: dict[str, dict[str, Any]], *, handle: str
+    quoted_id: str | None, by_id: dict[str, dict[str, Any]], *, handle: str
 ) -> QuotedTweet | None:
-    """The tweet's quoted post, joined inside the export itself.
+    """The quoted post ``quoted_id`` names, joined inside the export itself.
 
     Pure disk: both posts are in the same file, so the owner quoting their own
-    post needs no fetch. A quote the export does not hold is the chase's job
-    (:func:`_archive_chased`).
+    post needs no fetch. A quote the export does not hold stays unresolved on
+    the record (``TweetRecord.quoted_status_id``), which is the one target
+    ``chase.chase_thread`` reads it for.
     """
-    quoted_id = _str_or_none(tweet.get("quoted_status_id_str"))
-    if quoted_id is None:
-        return None
-    src = by_id.get(quoted_id)
-    if src is None:
+    src = by_id.get(quoted_id) if quoted_id is not None else None
+    if quoted_id is None or src is None:
         return None
     created_at = src.get("created_at")
     return QuotedTweet(
@@ -228,43 +192,15 @@ def _archive_quoted(
     )
 
 
-def _archive_chased(
-    tweet: dict[str, Any], by_id: dict[str, dict[str, Any]], *, handle: str
-) -> ChasedPost | None:
-    """The footage post this entry points at, chased through the dispatcher.
-
-    One target at most, and the entry names it two ways. A quote the export does
-    not hold is chased by its post id; otherwise the entry's sole source
-    candidate is chased by its URL, and a chase that comes back authored by the
-    owner is a self-reference (a link to their own post absent from the export
-    slips the ``by_id`` exclusion), never footage. An entry that quotes a post
-    the export does hold needs nothing: the join already filled the slot.
-
-    Which technology answers is ``chase.chase_post``'s business, so a link it
-    does not serve, an Instagram or TikTok URL, stays link-only. Fail-soft: a
-    chase that yields nothing leaves the record with the link alone.
-    """
-    quoted_id = _str_or_none(tweet.get("quoted_status_id_str"))
-    if quoted_id is not None:
-        return None if quoted_id in by_id else chase_post(quoted_id)
-    candidate = _chase_candidate(tweet, by_id, owner_handle=handle)
-    if candidate is None:
-        return None
-    chased = chase_post(candidate)
-    if chased is not None and (chased.author or "").lower() == handle.lower():
-        return None
-    return chased
-
-
-def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[TweetRecord]:
+def read_tweets(archive_dir: Path, *, handle: str) -> list[TweetRecord]:
     """Parse ``tweets.js`` under ``archive_dir`` into enriched ``TweetRecord``s.
 
     ``handle`` is the verified owner handle; the export is the owner's own
     tweets. Each record carries the inline reply edges (so ``stitch`` rebuilds
-    real self-threads), the OP media, the links it carries (``entities.urls``),
-    the quoted post joined inside the export, and, when ``chase`` is on, the
-    footage the entry points at off the export (:func:`_archive_chased`).
-    ``chase`` stays off by default so the read is pure-disk.
+    real self-threads), the OP media, the links it carries (``entities.urls``)
+    and the quoted post joined inside the export. Pure disk: the footage a
+    thread points at off the export is ``chase.chase_thread``'s one fetch, run
+    on the stitched threads.
 
     Retweets (:func:`_is_retweet`) are dropped here, the earliest point that
     can tell them apart, so nothing downstream can attribute another account's
@@ -294,24 +230,23 @@ def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[
         if not isinstance(tweet_id, str) or not tweet_id.isdigit():
             continue
         created_at = tweet.get("created_at")
-        record = TweetRecord(
-            tweet_id=tweet_id,
-            handle=handle,
-            text=_tweet_text(tweet),
-            created_at=_to_iso(created_at) if isinstance(created_at, str) else "",
-            media=_archive_media(tweet, tweet_id),
-            in_reply_to_status_id=_str_or_none(tweet.get("in_reply_to_status_id_str")),
-            in_reply_to_user_id=_str_or_none(tweet.get("in_reply_to_user_id_str")),
-            quoted=_archive_quoted(tweet, by_id, handle=handle),
-            external_sources=[
-                SourceLink(url=u, shortlink=t) for u, t in extract_source_links(tweet)
-            ],
+        quoted_id = _str_or_none(tweet.get("quoted_status_id_str"))
+        records.append(
+            TweetRecord(
+                tweet_id=tweet_id,
+                handle=handle,
+                text=_tweet_text(tweet),
+                created_at=_to_iso(created_at) if isinstance(created_at, str) else "",
+                media=_archive_media(tweet, tweet_id),
+                in_reply_to_status_id=_str_or_none(tweet.get("in_reply_to_status_id_str")),
+                in_reply_to_user_id=_str_or_none(tweet.get("in_reply_to_user_id_str")),
+                quoted=_archive_quoted(quoted_id, by_id, handle=handle),
+                quoted_status_id=quoted_id,
+                external_sources=[
+                    SourceLink(url=u, shortlink=t) for u, t in extract_source_links(tweet)
+                ],
+            )
         )
-        if chase:
-            chased = _archive_chased(tweet, by_id, handle=handle)
-            if chased is not None:
-                record = apply_chase(record, chased)
-        records.append(record)
     return records
 
 

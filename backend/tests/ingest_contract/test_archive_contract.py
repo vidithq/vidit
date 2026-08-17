@@ -33,6 +33,7 @@ from app.services.tweet_ingest import (
     ParsedMedia,
     Resolution,
     archive_media_fetcher,
+    chase_thread,
     read_tweets,
     resolve_threads,
     stitch,
@@ -251,7 +252,7 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
     monkeypatch.setattr(x_chase_mod, "fetch_syndication", fake_fetch)
     monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
 
-    records = read_tweets(archive, handle=owner.x_handle or owner.username, chase=True)
+    records = chase_thread(read_tweets(archive, handle=owner.x_handle or owner.username))
     resolution = resolve_threads(stitch(records))
     assert len(resolution.drafts) == 1
 
@@ -301,7 +302,7 @@ async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: 
     monkeypatch.setattr(telegram_mod, "chase", fake_chase)
     monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
 
-    records = read_tweets(archive, handle=owner.x_handle or owner.username, chase=True)
+    records = chase_thread(read_tweets(archive, handle=owner.x_handle or owner.username))
     resolution = resolve_threads(stitch(records))
     assert len(resolution.drafts) == 1
 

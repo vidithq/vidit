@@ -7,11 +7,11 @@ family, all with the same signature:
 
     chase(target, *, client) -> ChasedPost | None
 
-:func:`chase_post` is the entry every caller uses. Each chaser recognises its
-own host and answers ``None`` for everything else, so the dispatcher is the
-order it asks in, and the two call sites (``acquire`` for the live entries,
-``archive`` for the export) name no technology at all: they hand over a URL and
-place whatever comes back with :func:`apply_chase`.
+:func:`chase_thread` is the one chase step, and every entry runs it once its
+records are built. It reads what the thread declares, picks at most one target
+and hands it to :func:`chase_post`, which asks each chaser in turn. A chaser
+recognises its own host and answers ``None`` for everything else, so no caller
+names a technology: :func:`apply_chase` places whatever comes back.
 
 Every chase is fail-soft: an unreachable post, a refusing upstream or an
 unparseable payload reads as "no footage", never as a failure of the import.
@@ -24,9 +24,10 @@ import dataclasses
 import httpx
 
 from ..records import ChasedPost, QuotedTweet, TelegramFootage, TweetRecord
+from ..resolve import sole_candidate
 from . import telegram, x
 
-__all__ = ["ChasedPost", "apply_chase", "chase_post"]
+__all__ = ["ChasedPost", "apply_chase", "chase_post", "chase_thread"]
 
 
 def chase_post(target: str, *, client: httpx.Client | None = None) -> ChasedPost | None:
@@ -67,3 +68,58 @@ def apply_chase(record: TweetRecord, chased: ChasedPost) -> TweetRecord:
             url=chased.url, posted_at=chased.posted_at, media=list(chased.media)
         ),
     )
+
+
+def _declares(record: TweetRecord, target: str) -> bool:
+    """Whether ``record`` is the one that named ``target``, by quote id or by
+    link, so the chase lands on the record the analyst wrote it in."""
+    return record.quoted_status_id == target or any(
+        link.url == target for link in record.external_sources
+    )
+
+
+def chase_thread(
+    records: list[TweetRecord], *, client: httpx.Client | None = None
+) -> list[TweetRecord]:
+    """``records`` with the thread's one chase target resolved onto it.
+
+    The one chase step, run once a thread's records are built: the live
+    acquisition on its one hop, the archive backfill on each stitched
+    self-thread. At most one fetch per thread, and the thread names its target
+    one of two ways.
+
+    A quote names it by post id, when the records do not already carry the
+    quoted post: an export holds the id alone for a post outside the export,
+    while syndication embeds the post and the export joins its own. Failing a
+    quote, the thread's sole source candidate names it by URL
+    (``resolve.sole_candidate``, so the chase can never fetch a link the
+    resolution will not store), and a chase that comes back authored by the
+    thread's own author is a cross-reference to their own post, not footage.
+
+    A thread that already carries a quote chases nothing, since a quote outranks
+    every link at resolution; nor does an ambiguous thread, whose source slot
+    stays empty for review. Fail-soft: a chase that yields nothing leaves the
+    records as they were.
+    """
+    if any(record.quoted is not None for record in records):
+        return records
+    quoted_id = next(
+        (record.quoted_status_id for record in records if record.quoted_status_id is not None),
+        None,
+    )
+    target = quoted_id if quoted_id is not None else sole_candidate(records)
+    if target is None:
+        return records
+    chased = chase_post(target, client=client)
+    if chased is None:
+        return records
+    own_handle = records[0].handle.lower() if records else ""
+    if quoted_id is None and (chased.author or "").lower() == own_handle:
+        # A link to the analyst's own post that slipped the URL-level own-handle
+        # exclusion (the handle-less ``i/web/status`` form) is a cross-reference,
+        # never footage. A quote is exempt: quoting one's own post declares it as
+        # the source, which is what the export's in-archive join stores too.
+        return records
+    return [
+        apply_chase(record, chased) if _declares(record, target) else record for record in records
+    ]

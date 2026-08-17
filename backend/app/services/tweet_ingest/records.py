@@ -126,9 +126,14 @@ class TweetRecord:
     # per parent, the bot's walk). ``stitch`` unions on them.
     in_reply_to_status_id: str | None = None
     in_reply_to_user_id: str | None = None
-    # The quoted tweet, resolved inline (syndication) or joined / chased
-    # (archive). The footage source in the common OSINT quote pattern.
+    # The quoted tweet, resolved inline (syndication) or joined inside the
+    # export (archive). The footage source in the common OSINT quote pattern.
     quoted: QuotedTweet | None = None
+    # The id of the post this one quotes, whenever the payload declares one.
+    # ``quoted`` is that post resolved; the two differ only where resolving it
+    # takes a fetch (an export quoting a post the export does not hold), which
+    # is the one target ``chase.chase_thread`` reads it for.
+    quoted_status_id: str | None = None
     # A chased Telegram footage source (date + maybe media), parallel to
     # ``quoted``. Populated by the archive chase when the OP's sole footage link
     # is a t.me post; ``None`` on every non-chasing path.

@@ -12,11 +12,11 @@ Single-responsibility bricks behind one import surface:
 * ``resolve``: the engine, threads to one ``Draft`` per coordinate plus the
   reason a thread produced none.
 * ``syndication``: X I/O (fetch + token + cache, payload mappers).
-* ``chase``: one module per technology behind one dispatcher, for the single
-  fetch spent on a post's declared source.
+* ``chase``: the one chase step (``chase_thread``), one module per technology
+  behind one dispatcher, for the single fetch a thread's declared source costs.
 * ``acquire``: the live acquisition, a tweet id plus the same author's post it
   replies to, which is the thread the bot and the paste both resolve.
-* ``archive``: the export reader, plus the CDN media fetchers.
+* ``archive``: the export reader (pure disk), plus the CDN media fetchers.
 
 The four pure modules (``records``, ``extract``, ``stitch``, ``resolve``) read
 no I/O module, which ``tests/test_ingest_boundaries.py`` states. Callers import
@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from .acquire import AcquiredThread, acquire_pasted_thread, acquire_thread
 from .archive import archive_media_fetcher, fetch_cdn_media, read_tweets
+from .chase import chase_thread
 from .errors import (
     InvalidTweetUrl,
     TweetFetchFailed,
@@ -78,6 +79,7 @@ __all__ = [
     "acquire_pasted_thread",
     "acquire_thread",
     "archive_media_fetcher",
+    "chase_thread",
     "clean_proof_text",
     "derive_title",
     "extract_coords",

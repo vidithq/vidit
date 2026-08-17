@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from app.services.tweet_ingest import COORDS_MISSING, Draft, resolve_threads
+from app.services.tweet_ingest import COORDS_MISSING, Draft, chase_thread, resolve_threads
 from app.services.tweet_ingest.records import (
     ParsedMedia,
     QuotedTweet,
@@ -99,7 +99,7 @@ def test_x_status_link_chase_fills_source_from_chased_tweet(
         return chased_body
 
     monkeypatch.setattr(x_chase_mod, "fetch_syndication", fake_fetch)
-    records = archive_mod.read_tweets(archive, handle=body["user"]["screen_name"], chase=True)
+    records = chase_thread(archive_mod.read_tweets(archive, handle=body["user"]["screen_name"]))
 
     draft = _draft(records)
     assert draft.source_url == expected["source_url"]

@@ -17,6 +17,7 @@ from app.services.tweet_ingest import (
     ParsedMedia,
     TweetRecord,
     archive_media_fetcher,
+    chase_thread,
     read_tweets,
     resolve_threads,
     stitch,
@@ -29,6 +30,13 @@ def _draft(records: list[TweetRecord]) -> Draft:
     """The single draft a one-coordinate thread resolves to."""
     [draft] = resolve_threads([records]).drafts
     return draft
+
+
+def _chased(archive: Path, *, handle: str) -> list[TweetRecord]:
+    """The export's records with every stitched thread chased, the chain the
+    backfill runs: a pure-disk read, then the one chase step per thread."""
+    threads = stitch(read_tweets(archive, handle=handle))
+    return [record for thread in threads for record in chase_thread(thread)]
 
 
 def test_read_tweets_parses_records():
@@ -203,9 +211,9 @@ def test_self_reference_link_excluded_last_third_party_status_wins(tmp_path, mon
     """Regression (the "previous geolocation" tower tweets): the geoloc tweet's
     entities.urls carries, in order, the analyst's own earlier status (a
     cross-reference, in the archive itself), a profile link (no ``/status/``),
-    then the third-party status that is the actual quote. The own-status id is
-    excluded via ``by_id`` (the archive's own tweets); among what's left, the
-    single remaining status candidate is chased as the source, not the
+    then the third-party status that is the actual quote. The own-status link
+    and the profile link are both excluded from the candidates; the single
+    remaining status candidate is chased as the source, not the
     self-reference."""
     import app.services.tweet_ingest.chase.x as x_chase_mod
 
@@ -258,7 +266,7 @@ def test_self_reference_link_excluded_last_third_party_status_wins(tmp_path, mon
         }
 
     monkeypatch.setattr(x_chase_mod, "fetch_syndication", fake_fetch)
-    records = read_tweets(archive, handle="analyst", chase=True)
+    records = _chased(archive, handle="analyst")
     geoloc = next(r for r in records if r.tweet_id == "222")
     assert geoloc.quoted is not None
     assert geoloc.quoted.tweet_id == "999"
@@ -331,7 +339,7 @@ def test_several_third_party_status_links_are_ambiguous_no_chase(tmp_path, monke
         }
 
     monkeypatch.setattr(x_chase_mod, "fetch_syndication", fake_fetch)
-    records = read_tweets(archive, handle="ana", chase=True)
+    records = _chased(archive, handle="ana")
     ambiguous = next(r for r in records if r.tweet_id == "1")
     assert ambiguous.quoted is None
     deduped = next(r for r in records if r.tweet_id == "2")
@@ -377,7 +385,7 @@ def test_embedded_x_status_in_foreign_host_is_not_chased(tmp_path, monkeypatch):
         raise AssertionError("a non-X host must never be chased")
 
     monkeypatch.setattr(x_chase_mod, "fetch_syndication", fake_fetch)
-    [record] = read_tweets(archive, handle="ana", chase=True)
+    [record] = _chased(archive, handle="ana")
     assert record.quoted is None
 
 
@@ -418,7 +426,7 @@ def test_x_status_plus_telegram_link_is_ambiguous_no_chase(tmp_path, monkeypatch
 
     monkeypatch.setattr(x_chase_mod, "fetch_syndication", fake_fetch)
     monkeypatch.setattr(telegram_mod, "chase", fake_embed)
-    [record] = read_tweets(archive, handle="ana", chase=True)
+    [record] = _chased(archive, handle="ana")
     assert record.quoted is None
     assert record.telegram is None
 
@@ -446,7 +454,7 @@ def test_two_candidate_links_stay_ambiguous_and_chase_nothing(tmp_path, monkeypa
 
     monkeypatch.setattr(x_chase_mod, "fetch_syndication", no_fetch)
     monkeypatch.setattr(telegram_mod, "chase", no_fetch)
-    [record] = read_tweets(archive, handle="ana", chase=True)
+    [record] = _chased(archive, handle="ana")
     assert record.quoted is None and record.telegram is None
     draft = _draft([record])
     assert draft.source_url is None
@@ -478,7 +486,7 @@ def test_a_sole_off_vocabulary_link_is_the_source_and_is_never_fetched(tmp_path,
     # request: the patches sit on the fetches, not on the chasers' entries.
     monkeypatch.setattr(x_chase_mod, "fetch_syndication", no_fetch)
     monkeypatch.setattr(telegram_mod, "_fetch_embed_html", no_fetch)
-    [record] = read_tweets(archive, handle="ana", chase=True)
+    [record] = _chased(archive, handle="ana")
     assert record.quoted is None and record.telegram is None
     draft = _draft([record])
     assert draft.source_url == "https://www.instagram.com/reel/FAKEREEL01/"
@@ -536,7 +544,7 @@ def test_a_sole_telegram_link_is_chased_beside_the_posts_own_media(tmp_path, mon
         return ChasedPost(url=target, posted_at="2025-11-11T08:00:00+00:00")
 
     monkeypatch.setattr(telegram_mod, "chase", fake_chase)
-    [record] = read_tweets(archive, handle="ana", chase=True)
+    [record] = _chased(archive, handle="ana")
     assert chased == ["https://t.me/chan/42"]
     draft = _draft([record])
     assert draft.source_url == "https://t.me/chan/42"
@@ -559,11 +567,10 @@ def test_a_link_written_inside_prose_is_a_candidate(tmp_path):
 
 
 def test_handleless_own_status_link_chased_then_thrown(tmp_path, monkeypatch):
-    """A link to the owner's OWN status in the handle-less ``i/web/status`` form,
-    absent from the export (deleted / truncated), slips both the ``by_id`` and the
-    URL-handle exclusions. Once chased, the syndication handle reveals it as the
-    owner's own post, so the result is thrown out rather than materialised as
-    third-party footage."""
+    """A link to the owner's OWN status in the handle-less ``i/web/status`` form
+    names no handle, so it slips the URL-level own-handle exclusion. Once
+    chased, the syndication handle reveals it as the owner's own post, so the
+    result is thrown out rather than materialised as third-party footage."""
     import app.services.tweet_ingest.chase.x as x_chase_mod
 
     archive = tmp_path / "arc"
@@ -598,7 +605,7 @@ def test_handleless_own_status_link_chased_then_thrown(tmp_path, monkeypatch):
         }
 
     monkeypatch.setattr(x_chase_mod, "fetch_syndication", fake_fetch)
-    [record] = read_tweets(archive, handle="analyst", chase=True)
+    [record] = _chased(archive, handle="analyst")
     assert record.quoted is None
 
 

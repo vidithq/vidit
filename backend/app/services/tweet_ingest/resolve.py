@@ -201,12 +201,14 @@ def thread_candidates(thread: list[TweetRecord]) -> list[str]:
     )
 
 
-def _sole_candidate(thread: list[TweetRecord]) -> str | None:
+def sole_candidate(thread: list[TweetRecord]) -> str | None:
     """The thread's one source candidate, or ``None`` when it has none or
     several.
 
     Several candidates are ambiguous: the slot stays empty and every candidate
-    lands in the secondary links for the analyst to promote one at review.
+    lands in the secondary links for the analyst to promote one at review. The
+    chase reads the same answer, so it never fetches a link the resolution will
+    not store.
     """
     candidates = thread_candidates(thread)
     return candidates[0] if len(candidates) == 1 else None
@@ -257,7 +259,7 @@ def resolve_source(thread: list[TweetRecord]) -> tuple[str | None, str | None]:
     tweet is the source and its date comes free. That includes a status the
     acquisition chased into the quote slot on the analyst's behalf. Failing a
     quote, the thread's one source candidate is the source
-    (:func:`_sole_candidate`); a link whose post was chased carries its date,
+    (:func:`sole_candidate`); a link whose post was chased carries its date,
     every other link is stored link-only.
 
     No other signal counts. A thread that neither quotes nor links anything has
@@ -272,7 +274,7 @@ def resolve_source(thread: list[TweetRecord]) -> tuple[str | None, str | None]:
                 canonical_tweet_url(quoted.tweet_id, quoted.handle),
                 quoted.created_at or None,
             )
-    link = _sole_candidate(thread)
+    link = sole_candidate(thread)
     if link is not None:
         footage = _chased_footage(thread, link)
         return link, (footage.posted_at if footage is not None else None)
@@ -303,7 +305,7 @@ def split_media(thread: list[TweetRecord]) -> tuple[list[ParsedMedia], list[Pars
             media for record in thread if record.quoted is not None for media in record.quoted.media
         ]
         return quoted_media, own_media
-    link = _sole_candidate(thread)
+    link = sole_candidate(thread)
     if link is not None:
         footage = _chased_footage(thread, link)
         if footage is not None:
