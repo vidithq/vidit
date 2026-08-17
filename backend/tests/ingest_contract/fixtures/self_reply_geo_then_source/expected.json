@@ -19,5 +19,10 @@
       "op"
     ]
   ],
-  "warnings": []
+  "warnings": [],
+  "paths": {
+    "archive": {
+      "skip": "Live two-post shape: the reply parent ships as its own syndication body, which the export assembly does not carry. The archive's own two-post shape is self_thread, and the stitch that rebuilds it is what this entry reads."
+    }
+  }
 }

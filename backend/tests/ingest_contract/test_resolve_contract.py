@@ -302,7 +302,7 @@ def test_every_typology_has_both_fixture_files() -> None:
         assert (loader.FIXTURES_DIR / typology / "expected.json").is_file()
 
 
-_ENTRY_PATHS = ("bot", "paste")
+_ENTRY_PATHS = ("bot", "paste", "archive")
 
 
 def test_no_entry_answers_a_typology_differently() -> None:
@@ -315,3 +315,13 @@ def test_no_entry_answers_a_typology_differently() -> None:
         assert set(paths) <= set(_ENTRY_PATHS), typology
         for entry, block in paths.items():
             assert set(block) <= {"reason", "skip"}, f"{typology}: {entry} overrides the grammar"
+
+
+def test_every_skip_carries_its_reason() -> None:
+    """A declared gap says why in prose, which is what makes the declaration
+    worth more than a name left out of a test module."""
+    for typology in loader.typology_names():
+        for entry, block in loader.load_expected(typology).get("paths", {}).items():
+            skip = block.get("skip")
+            if skip is not None:
+                assert isinstance(skip, str) and len(skip) > 40, f"{typology}: {entry}"

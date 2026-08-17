@@ -18,6 +18,7 @@ import pytest
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
+from app.cache import points_cache
 from app.config import settings
 from app.database import SessionLocal
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
@@ -279,6 +280,25 @@ async def test_unchanged_pair_is_skipped_not_updated(db, owner):
     outcome = await _persist(db, owner=owner, drafts=[_draft()], fetch_media=_missing_fetcher)
     assert outcome.created == [] and len(outcome.skipped) == 1 and len(outcome.updated) == 0
     assert db.query(Event).filter(Event.owner_id == owner.id).count() == 1
+
+
+async def test_a_pass_that_wrote_a_row_drops_the_points_cache(db, owner):
+    """A ``detected`` row is public the moment it lands, so the map must not
+    serve a cached payload without it, the same invalidation every human write
+    performs."""
+    points_cache.set("points:whatever", b"[]")
+    await _persist(db, owner=owner, drafts=[_draft()], fetch_media=_missing_fetcher)
+    assert points_cache.get("points:whatever") is None
+
+
+async def test_a_pass_that_wrote_nothing_leaves_the_points_cache_alone(db, owner):
+    """A second run over the same export writes no row, so it drops nobody's
+    cached map: the invalidation follows the write, not the pass."""
+    await _persist(db, owner=owner, drafts=[_draft()], fetch_media=_missing_fetcher)
+    points_cache.set("points:whatever", b"[]")
+    outcome = await _persist(db, owner=owner, drafts=[_draft()], fetch_media=_missing_fetcher)
+    assert len(outcome.skipped) == 1
+    assert points_cache.get("points:whatever") == b"[]"
 
 
 async def test_soft_deleted_pair_is_skipped(db, owner):
@@ -613,6 +633,20 @@ async def test_backfill_from_archive_end_to_end(db, owner):
     # Re-running the same archive is a no-op (idempotent on post id + coord).
     again = await backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE)
     assert again.created == [] and len(again.skipped) == 6
+
+
+async def test_a_backfill_refuses_an_owner_with_no_linked_handle(db, owner):
+    """The handle is the precondition, never a fallback onto the username: the
+    provenance permalinks and the own-status exclusion are both written from it,
+    so an unlinked owner refuses the run rather than importing under a name that
+    may be someone else's on X. The worker's gate answers the analyst
+    (``archive_jobs.process``); this is the backstop behind it."""
+    owner.x_handle = None
+    db.commit()
+
+    with pytest.raises(ValueError):
+        await backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE)
+    assert db.query(Event).filter(Event.owner_id == owner.id).all() == []
 
 
 async def test_thread_media_fetched_and_prepared_once_across_coordinates(db, owner):

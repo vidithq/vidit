@@ -46,6 +46,18 @@ def _clean_jobs(db):
     db.commit()
 
 
+@pytest.fixture(autouse=True)
+def _linked_handle(db, author):
+    """The caller with their X account linked, which every import assumes.
+
+    The backfill writes each provenance permalink from the owner's handle and
+    compares own-status links against it, so it refuses to run under a Vidit
+    username; a job whose owner has none lands ``failed``, pinned below."""
+    author.x_handle = f"arch{uuid.uuid4().hex[:8]}"
+    db.commit()
+    return author
+
+
 @pytest.fixture
 def sent_emails(monkeypatch):
     sent = []
@@ -330,6 +342,42 @@ def test_worker_fails_job_whose_staged_object_vanished(db, author, sent_emails):
     db.refresh(job)
     assert job.status == "failed"
     assert job.error == "staged object missing"
+    assert [e.subject for e in sent_emails] == ["Your X archive import failed"]
+
+
+def test_worker_fails_a_job_whose_owner_was_deactivated(db, author, sent_emails):
+    """The archive twin of the bot's ``no_account`` rule: a suspended account
+    accrues no drafts. The bot reads ``detection.linked_owner`` (live and
+    active) and the paste goes through ``get_current_user``; the worker gate is
+    the third spelling of the same requirement, and a job queued before the
+    suspension lands ``failed`` rather than importing under it."""
+    accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
+    author.is_active = False
+    db.commit()
+
+    assert _drain(db) == 1
+    job = db.get(ArchiveImportJob, uuid.UUID(accepted.json()["id"]))
+    db.refresh(job)
+    assert job.status == "failed"
+    assert job.error == "owner gone"
+    assert db.query(Event).filter(Event.owner_id == author.id).all() == []
+
+
+def test_worker_fails_a_job_whose_owner_has_no_linked_handle(db, author, sent_emails):
+    """No fallback onto the Vidit username: the handle is what every provenance
+    permalink is written from and what the own-status exclusion reads, so an
+    import under a username would fabricate links to an account that may be
+    someone else's, and would credit a stranger's status as footage."""
+    accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
+    author.x_handle = None
+    db.commit()
+
+    assert _drain(db) == 1
+    job = db.get(ArchiveImportJob, uuid.UUID(accepted.json()["id"]))
+    db.refresh(job)
+    assert job.status == "failed"
+    assert job.error == "owner has no linked X handle"
+    assert db.query(Event).filter(Event.owner_id == author.id).all() == []
     assert [e.subject for e in sent_emails] == ["Your X archive import failed"]
 
 

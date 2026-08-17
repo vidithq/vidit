@@ -18,5 +18,10 @@
       "op"
     ]
   ],
-  "warnings": []
+  "warnings": [],
+  "paths": {
+    "archive": {
+      "skip": "The export is read under the importing owner's handle, not the fixture author's, so the fixture's own-status link reads as a third party's and the source turns ambiguous. The exclusion itself is pinned by the resolve contract and by the two live entries."
+    }
+  }
 }

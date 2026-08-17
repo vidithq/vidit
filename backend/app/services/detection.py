@@ -31,6 +31,7 @@ from shapely.geometry import Point
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.cache import points_cache
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
 from app.models.media import Media, MediaRole
 from app.models.user import User
@@ -734,6 +735,13 @@ async def persist_drafts(
             on_progress(index, total)
     for code, count in _write_warnings(db, persisted).items():
         outcome.warnings[code] = outcome.warnings.get(code, 0) + count
+    if outcome.created or outcome.updated:
+        # A ``detected`` row is public from the moment it lands, so ``/points``
+        # must not keep serving a map without it for the cache's TTL. Once for
+        # the whole pass, not per row: an export writes thousands, and the cache
+        # is process-local and cheap to drop. Every human write invalidates the
+        # same way (``services/events``, ``routers/admin``, ``routers/events``).
+        points_cache.invalidate()
     return outcome
 
 
@@ -837,8 +845,18 @@ async def backfill_from_archive(
     ``chase`` runs the one chase step over each stitched thread, the same step
     the live acquisition runs over its one hop. Off, the read is pure disk and a
     footage link is stored as a link, with no date and no media.
+
+    Precondition: ``owner.x_handle`` is set. The handle is what every provenance
+    permalink is written from and what the own-status exclusion compares a link
+    against, so an import running under a Vidit username would fabricate links
+    to an account that may belong to someone else. Every account carries a
+    linked handle (bound at invite mint, admin-edited after), and the worker's
+    owner gate answers a job whose owner somehow has none
+    (``archive_jobs.process``); this raise is the backstop behind it.
     """
-    handle = owner.x_handle or owner.username
+    handle = owner.x_handle
+    if handle is None:
+        raise ValueError("the archive owner has no linked x_handle")
     threads = stitch(read_tweets(archive_dir, handle=handle))
     if chase:
         threads = [chase_thread(thread) for thread in threads]

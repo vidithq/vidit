@@ -233,9 +233,21 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
     owner, and re-raises for the caller's Sentry capture; the staged object
     is deleted on both outcomes.
     """
+    # The same liveness the two live entries require of an import's owner
+    # (``detection.linked_owner``, which the bot and the paste both read): a
+    # soft-deleted or deactivated account's work is hidden or suspended, so a
+    # job queued before the suspension must not land drafts under it.
     owner = db.get(User, job.owner_id)
-    if owner is None or owner.deleted_at is not None:
+    if owner is None or owner.deleted_at is not None or not owner.is_active:
         _finish(db, job, status="failed", error="owner gone")
+        return
+    # The export is imported under the owner's linked handle: every provenance
+    # permalink is written from it and the own-status exclusion compares links
+    # against it. There is no fallback onto the username, which would fabricate
+    # links to an account that may be someone else's.
+    if owner.x_handle is None:
+        _finish(db, job, status="failed", error="owner has no linked X handle")
+        _notify_failure_best_effort(db, job)
         return
 
     # Claim-time re-check of the enqueue's HEAD gate: the presign window stays

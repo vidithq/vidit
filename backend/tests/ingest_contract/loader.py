@@ -53,6 +53,22 @@ def load_expected(typology: str) -> dict[str, Any]:
     return json.loads((FIXTURES_DIR / typology / "expected.json").read_text(encoding="utf-8"))
 
 
+def typologies_for_path(path: str) -> list[str]:
+    """Every typology one entry path runs, so a gap has to be declared.
+
+    A typology is in unless its ``expected.json`` carries ``paths.<path>.skip``
+    with the reason that entry cannot be pointed at it. Reading the list off the
+    catalogue rather than a hand-kept Python list is what makes a newly added
+    typology enter every entry's run by default: skipping it takes a written
+    reason beside the fixture, not a name quietly left out of a test module.
+    """
+    return [
+        typology
+        for typology in typology_names()
+        if "skip" not in load_expected(typology).get("paths", {}).get(path, {})
+    ]
+
+
 def load_chased(typology: str, tweet_id: str) -> dict[str, Any]:
     return json.loads(
         (FIXTURES_DIR / typology / f"chased_{tweet_id}.json").read_text(encoding="utf-8")

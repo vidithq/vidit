@@ -1,11 +1,16 @@
-"""Archive integration contract: the disk-only typologies through the backfill.
+"""Archive integration contract: the typology catalogue through the backfill.
 
-Assembles the disk-only typology fixtures into one consolidated X export, runs
+Assembles every typology this entry runs into one consolidated X export, runs
 the real ``read_tweets`` to ``stitch`` to ``resolve_threads`` to
 ``persist_drafts`` chain over it against the test database, and asserts per
 typology: the ``detected`` status,
 ``source_url`` NULL exactly where the contract says so, the media roles in the
 ``media`` table, and the proof images injected into the proof JSON.
+
+Which typologies those are is read off the catalogue, not off a list here: a
+shape this entry cannot be pointed at declares ``paths.archive.skip`` with its
+reason beside the fixture, exactly as the bot and the paste do, so a typology
+added without a declaration enters the run rather than going unnoticed.
 
 Strictly offline: every media byte is written to disk from ``TINY_JPEG`` /
 ``TINY_MP4``, and the one chased-source case stubs ``acquire.fetch_syndication``
@@ -41,22 +46,6 @@ from app.services.tweet_ingest import (
 from tests._fixtures import TINY_JPEG
 
 from . import loader
-
-# The typologies whose media live on disk and whose source (if any) is a link,
-# not a chased tweet: the whole consolidated-archive backfill runs on these with
-# ``chase`` off. Quote typologies (an archive quote needs an in-archive join or a
-# syndication chase) and the chase branch are covered separately below.
-_DISK_TYPOLOGIES = [
-    "referenceless_annotation",
-    "self_video_no_signal",
-    "self_thread",
-    "no_coord",
-    "multi_coord",
-    "mention_prefix",
-    "telegram_link",
-    "youtube_link",
-    "x_status_link",
-]
 
 
 @pytest.fixture
@@ -98,8 +87,7 @@ def _head_url(owner: User, typology: str) -> str:
         head_id = loader.load_expected(typology)["head_tweet_id"]
     else:
         head_id = body["id_str"]
-    handle = owner.x_handle or owner.username
-    return f"https://x.com/{handle}/status/{head_id}"
+    return f"https://x.com/{owner.x_handle}/status/{head_id}"
 
 
 def _rows_for(db, owner: User, typology: str) -> list[Event]:
@@ -112,18 +100,21 @@ def _proof_image_count(event: Event) -> int:
 
 
 async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
+    # Every typology the catalogue does not declare out of this entry's reach:
+    # a new one enters the run by default, and skipping it takes a reason in
+    # ``paths.archive.skip`` beside the fixture (``loader.typologies_for_path``).
     archive = tmp_path / "consolidated"
-    loader.build_consolidated_archive(_DISK_TYPOLOGIES, archive)
+    loader.build_consolidated_archive(loader.typologies_for_path("archive"), archive)
 
     outcome = await backfill_from_archive(db, owner=owner, archive_dir=archive)
 
     # One row per coordinate-bearing typology, two for multi_coord, none for
-    # no_coord: 7 single + 2 (multi) + 0 = 9.
-    assert len(outcome.created) == 9
+    # no_coord: 8 single + 2 (multi) + 0 = 10.
+    assert len(outcome.created) == 10
     assert len(outcome.skipped) == 0 and outcome.failed == 0
 
     rows = db.query(Event).filter(Event.owner_id == owner.id).all()
-    assert len(rows) == 9
+    assert len(rows) == 10
     assert all(r.status == STATUS_DETECTED for r in rows)
     assert all(r.proof and r.proof["content"] for r in rows)
 
@@ -141,6 +132,7 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
         "self_thread",
         "multi_coord",
         "mention_prefix",
+        "x_profile_link",
     ]:
         for row in _rows_for(db, owner, typology):
             assert row.source_url is None, typology
@@ -196,6 +188,12 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     assert _media_roles(db, mp) == {"proof": 1}
     assert _proof_image_count(mp) == 1
 
+    # x_profile_link: a profile names no post, so the thread declares no source
+    # and its only photo stays proof.
+    [xp] = _rows_for(db, owner, "x_profile_link")
+    assert _media_roles(db, xp) == {"proof": 1}
+    assert _proof_image_count(xp) == 1
+
     # telegram_link: 2 proof images (the annotation photos).
     [tg] = _rows_for(db, owner, "telegram_link")
     assert _media_roles(db, tg) == {"proof": 2}
@@ -217,7 +215,7 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
 
     # Re-running the same archive is a no-op (idempotent on permalink + coord).
     again = await backfill_from_archive(db, owner=owner, archive_dir=archive)
-    assert again.created == [] and len(again.skipped) == 9
+    assert again.created == [] and len(again.skipped) == 10
 
 
 async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, monkeypatch):
@@ -252,7 +250,7 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
     monkeypatch.setattr(x_chase_mod, "fetch_syndication", fake_fetch)
     monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
 
-    records = chase_thread(read_tweets(archive, handle=owner.x_handle or owner.username))
+    records = chase_thread(read_tweets(archive, handle=owner.x_handle))
     resolution = resolve_threads(stitch(records))
     assert len(resolution.drafts) == 1
 
@@ -302,7 +300,7 @@ async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: 
     monkeypatch.setattr(telegram_mod, "chase", fake_chase)
     monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
 
-    records = chase_thread(read_tweets(archive, handle=owner.x_handle or owner.username))
+    records = chase_thread(read_tweets(archive, handle=owner.x_handle))
     resolution = resolve_threads(stitch(records))
     assert len(resolution.drafts) == 1
 
@@ -371,7 +369,7 @@ async def test_reimport_fills_a_draft_an_earlier_run_left_bare(db, owner, tmp_pa
     import app.services.tweet_ingest.chase.telegram as telegram_mod
     from app.services.tweet_ingest.records import ChasedPost
 
-    handle = owner.x_handle or owner.username
+    handle = owner.x_handle
     tweet_id = "8400000000000000042"
     permalink = f"https://x.com/{handle}/status/{tweet_id}"
     archive = _telegram_source_archive(tmp_path, tweet_id)

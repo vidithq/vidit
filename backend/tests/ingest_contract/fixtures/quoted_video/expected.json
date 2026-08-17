@@ -23,5 +23,10 @@
       "op"
     ]
   ],
-  "warnings": []
+  "warnings": [],
+  "paths": {
+    "archive": {
+      "skip": "Quote shape: an archive resolves a quote by an in-archive join or by the chase, and the consolidated export the backfill test builds carries neither the quoted post nor a stubbed fetch. The archive's quote paths have their own tests in test_archive_contract."
+    }
+  }
 }
