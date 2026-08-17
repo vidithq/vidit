@@ -23,10 +23,10 @@ export const ACCENT_SURFACE = "bg-orange-500/15 text-orange-400";
 // The ramp is the site's one sanctioned inert accent (elsewhere accent means
 // clickable): a mark whose step encodes a magnitude carries the ramp whether
 // or not a reader can act on it, and so does its legend, drawn with the same
-// cells as the data it explains. <SourceHostBar>'s ranked segments are inert
-// and <ActivityHeatmap>'s lit months are controls that name their month on
-// hover, tap or focus; both are ranked marks, so both take the ramp. What
-// stands outside the ranking takes CHART_TAIL or CHART_NEUTRAL instead.
+// cells as the data it explains. <SourceHostBar>'s ranked segments and
+// <ActivityHeatmap>'s lit months are both inert ranked marks (a month names
+// itself on hover or tap, but is paint, not a control), so both take the
+// ramp. What stands outside the ranking takes CHART_TAIL or CHART_NEUTRAL.
 export const ACCENT_RAMP = [
   "bg-orange-500",
   "bg-orange-500/75",

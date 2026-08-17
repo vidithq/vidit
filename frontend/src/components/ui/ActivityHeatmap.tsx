@@ -37,12 +37,11 @@ const LEVELS = ACCENT_RAMP.slice(0, 4);
  * rather than as missing, and the year labels say exactly which years are on
  * screen.
  *
- * Hover, tap or keyboard-focus a month and the line under the grid names it
- * and its count; with nothing picked that line states the span. The readout is
- * one line rather than a tooltip per cell because at 375 px there is no hover
- * to summon a tooltip with. Only months carrying events are focusable, so a
- * five-year grid costs a keyboard reader the tens of stops that mean
- * something, not 120.
+ * Hover or tap a month and the line under the grid names it and its count;
+ * with nothing picked that line states the span. The readout is one line
+ * rather than a tooltip per cell because at 375 px there is no hover to summon
+ * a tooltip with. The cells are plain paint, not controls: the grid is a
+ * reading, and a lit month answers to a pointer without taking a focus stop.
  *
  * One span has no grid to draw and gets a sentence: no dated event at all. A
  * span of a single month keeps the grid, because the eleven empty cells beside
@@ -113,22 +112,13 @@ export function ActivityHeatmap({ buckets }: { buckets: ActivityBucket[] }) {
               // takes index 0 and the quietest the last step held.
               const paint = LEVELS[LEVELS.length - Math.ceil((count / max) * LEVELS.length)];
               return (
-                <button
+                <div
                   key={period}
-                  type="button"
                   title={label}
-                  aria-label={label}
                   onMouseEnter={() => setReadout(label)}
                   onMouseLeave={() => setReadout(null)}
-                  onFocus={() => setReadout(label)}
-                  onBlur={() => setReadout(null)}
                   onClick={() => setReadout(label)}
-                  // The focus ring is the accent at full strength: the light
-                  // theme repoints the neutral scale but leaves the accent
-                  // alone, so a 300-stop ring on the near-white card is the
-                  // same pale tint as the card and disappears. The 500 stop is
-                  // the one step that holds on the dark card and the light one.
-                  className={`aspect-square rounded-[2px] outline-hidden focus-visible:ring-1 focus-visible:ring-orange-500 ${paint}`}
+                  className={`aspect-square rounded-[2px] ${paint}`}
                 />
               );
             })}

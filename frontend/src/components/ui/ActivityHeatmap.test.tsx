@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { ActivityHeatmap } from "./ActivityHeatmap";
@@ -38,11 +38,8 @@ describe("<ActivityHeatmap>", () => {
       />
     );
 
-    // An empty month is a cell that says zero, not an absent one. It carries
-    // no focus stop, so a keyboard reader walks the months that mean
-    // something.
+    // An empty month is a cell that says zero, not an absent one.
     expect(screen.getByTitle("Feb 2025 · 0 events")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Feb 2025 · 0 events" })).toBeNull();
   });
 
   it("paints the accent on the months that answer and on nothing else", () => {
@@ -55,24 +52,20 @@ describe("<ActivityHeatmap>", () => {
       />
     );
 
-    // The site's rule is that the accent marks what a reader can act on. Here
-    // it holds literally: a lit cell is a control that names its month, and an
-    // empty month is inert, so it keeps the absence paint. The legend under
-    // the grid is the one accent-carrying inert thing, and it is a copy of the
-    // cells it explains rather than an ornament.
+    // A chart is the one inert accent on the site: a lit month takes the ramp
+    // step its count earns, and an empty month encodes nothing, so it keeps
+    // the absence paint. The legend under the grid is a copy of the cells it
+    // explains rather than an ornament.
     const painted = container.querySelectorAll("[class*='bg-orange']");
     const inGrid = [...painted].filter((el) => el.closest("[title]") === el);
     expect(inGrid.length).toBeGreaterThan(0);
-    expect(inGrid.every((el) => el.tagName === "BUTTON")).toBe(true);
     expect(screen.getByTitle("Feb 2025 · 0 events").className).not.toMatch(/bg-orange/);
   });
 
-  it("makes every month carrying events reachable and named", () => {
+  it("names every month carrying events, singular count included", () => {
     render(<ActivityHeatmap buckets={[{ period: "2025-06", count: 1 }]} />);
 
-    // Singular count, and a control rather than a hover-only tooltip: at
-    // 375 px there is no pointer to hover with.
-    expect(screen.getByRole("button", { name: "Jun 2025 · 1 event" })).toBeInTheDocument();
+    expect(screen.getByTitle("Jun 2025 · 1 event")).toBeInTheDocument();
   });
 
   it("states the span until a month is picked, then names that month", async () => {
@@ -87,7 +80,8 @@ describe("<ActivityHeatmap>", () => {
 
     expect(screen.getByText("Covering 2024 to 2025")).toBeInTheDocument();
 
-    screen.getByRole("button", { name: "Nov 2024 · 3 events" }).focus();
+    // A tap, not only a hover: at 375 px there is no pointer to hover with.
+    fireEvent.click(screen.getByTitle("Nov 2024 · 3 events"));
     expect(await screen.findByText("Nov 2024 · 3 events")).toBeInTheDocument();
   });
 
@@ -101,7 +95,7 @@ describe("<ActivityHeatmap>", () => {
     expect(screen.getByText("2024")).toBeInTheDocument();
     expect(screen.getByText("Covering 2024")).toBeInTheDocument();
     expect(container.querySelectorAll("[title]")).toHaveLength(12);
-    expect(screen.getByRole("button", { name: "May 2024 · 12 events" })).toBeInTheDocument();
+    expect(screen.getByTitle("May 2024 · 12 events")).toBeInTheDocument();
   });
 
   it("says the grid is empty rather than drawing an empty frame", () => {
