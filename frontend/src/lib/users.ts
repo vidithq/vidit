@@ -41,7 +41,10 @@ export type PublicProfile = Omit<
  * Shape returned by `GET /users/{username}/stats` — the aggregated
  * shape-of-work payload behind the profile insights section, aliased from
  * the generated OpenAPI types (never hand-written, per the single-source
- * rule). `monthly_activity` is always 12 zero-filled buckets, oldest first.
+ * rule). Every field describes one population, the analyst's live events in
+ * the three worked statuses: `activity` is one zero-filled bucket per month,
+ * oldest first, over the span their own event dates cover, and `source_hosts`
+ * plus `other_hosts_count` plus `no_source_count` add up to `total_events`.
  */
 export type UserStats = components["schemas"]["UserStatsRead"];
 
