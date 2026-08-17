@@ -60,13 +60,18 @@ const PRIVATE_HOST_SUFFIXES = [".local", ".internal", ".localhost", ".home.arpa"
 /**
  * True when `value` is safe for the card renderer to fetch server-side.
  *
- * `users.avatar_url` is a free-form URL its owner types, and the card renderer
- * runs on our infrastructure rather than in the reader's browser, so fetching
- * one unfiltered would turn a profile field into a server-side request forgery
- * primitive whose response is published as a public image. The guard keeps the
- * fetch to plausible public image hosts: TLS only (the cloud metadata services
- * answer over plain http), no address literals, no private-network name, and a
- * dotted hostname. Anything rejected falls back to the monogram avatar.
+ * The card renderer runs on our infrastructure rather than in the reader's
+ * browser, so an unfiltered fetch of a stored URL is a server-side request
+ * forgery primitive whose response is published as a public image. The guard
+ * keeps the fetch to plausible public image hosts: TLS only (the cloud
+ * metadata services answer over plain http), no address literals, no
+ * private-network name, and a dotted hostname. Anything rejected falls back to
+ * the monogram avatar.
+ *
+ * `users.avatar_url` is server-minted and names the media host, so nothing an
+ * owner controls reaches here. This is the renderer's own floor on where it
+ * opens a socket, kept as defense in depth rather than as the fix for a
+ * live hole.
  *
  * This is the name half of the guard, and it is not sufficient on its own: a
  * name that passes here is free to resolve anywhere, which is what

@@ -8,19 +8,17 @@ import FollowButton from "./FollowButton";
 import { CopyProfileLink } from "./CopyProfileLink";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
-import {
-  FORM_ERROR_BANNER,
-  FORM_LABEL,
-} from "@/components/ui/form-styles";
-import { Input } from "@/components/ui/Input";
+import { FileManager } from "@/components/ui/FileManager";
+import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
+import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
 import type { ProfileEditState } from "./useProfileEdit";
 
 /** The page title: avatar + handle. The analyst is what the page is about, so
  *  the handle is the H1 (the event detail page titles itself with the event
  *  the same way), and `<PageShell>` owns the heading markup.
  *
- *  Avatar shown is the draft preview in edit mode, the persisted URL
- *  otherwise; it falls back to the icon if neither resolves. It is decorative
+ *  Avatar shown is `edit.avatarPreview`, the one derivation the picker reads
+ *  too; it falls back to the icon if it resolves to nothing. It is decorative
  *  here (the handle next to it is the accessible name), hence `aria-hidden`:
  *  without it the heading reads the avatar's alt text before the handle. */
 export function ProfileTitle({
@@ -30,7 +28,11 @@ export function ProfileTitle({
   profile: PublicProfile;
   edit: ProfileEditState;
 }) {
-  const displayedAvatar = edit.editing ? edit.draftAvatarUrl : profile.avatar_url;
+  // `avatarPreview` is the hook's single derivation of what to show, shared
+  // with the picker below. A staged pick whose bytes are still being read has
+  // no url yet, which renders the icon rather than the picture it replaces.
+  const displayedAvatar =
+    edit.avatarPreview.kind === "none" ? null : edit.avatarPreview.url;
   return (
     <span className="flex items-center gap-3 min-w-0">
       <span aria-hidden="true" className="contents">
@@ -175,32 +177,92 @@ export function ProfileActions({
 }
 
 /** Edit-mode fields that belong to the header rather than to a section card:
- *  the avatar URL (it edits the picture in the title) and the save-error
- *  banner. Nothing in view mode. */
-export function ProfileHeaderEditFields({ edit }: { edit: ProfileEditState }) {
+ *  the avatar picker (it edits the picture in the title) and the save-error
+ *  banner. Nothing in view mode.
+ *
+ *  The picker is the shared `FileManager` in single-file image mode: its own
+ *  remove control drops the picture, and its drop zone comes back once none is
+ *  staged, so add and remove are the one primitive rather than two. */
+export function ProfileHeaderEditFields({
+  profile,
+  edit,
+}: {
+  profile: PublicProfile;
+  edit: ProfileEditState;
+}) {
   if (!edit.editing && !edit.saveError) return null;
+
+  // The same derivation the title reads. A staged file always renders as a
+  // tile, url or not: what Save uploads has to be what the picker shows, so a
+  // pick whose bytes are still being read names the file instead of falling
+  // back to the picture it would replace.
+  const shown = edit.avatarPreview;
+  const item =
+    shown.kind === "staged"
+      ? {
+          // Identity of the pick, not of its bytes: a data URL is a whole
+          // encoded image and re-keys the tile the moment the read lands.
+          key: `${shown.file.name}-${shown.file.size}-${shown.file.lastModified}`,
+          content: shown.url ? (
+            <Avatar
+              src={shown.url}
+              username={profile.username}
+              size="w-20 h-20"
+              fallback="icon"
+              decorative
+            />
+          ) : (
+            <span className="flex h-20 w-20 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900 px-2 text-center text-[10px] break-all text-neutral-400">
+              {shown.file.name}
+            </span>
+          ),
+        }
+      : shown.kind === "stored"
+        ? {
+            key: "stored",
+            content: (
+              <Avatar
+                src={shown.url}
+                username={profile.username}
+                size="w-20 h-20"
+                fallback="icon"
+                decorative
+              />
+            ),
+          }
+        : null;
 
   return (
     <>
       {edit.editing && (
         <div className="max-w-sm">
-          <label className={FORM_LABEL} htmlFor="avatar-url">
-            Avatar URL
-          </label>
-          <Input
-            variant="compact"
-            id="avatar-url"
-            type="url"
-            inputMode="url"
-            placeholder="https://example.com/me.jpg"
-            value={edit.draftAvatarUrl}
-            onChange={(e) => edit.setDraftAvatarUrl(e.target.value)}
-            className="mt-1"
-          />
+          <span className={FORM_LABEL}>Profile picture</span>
+          <div className="mt-1">
+            <FileManager
+              items={
+                item
+                  ? [
+                      {
+                        ...item,
+                        onRemove: edit.removeShownAvatar,
+                        removeLabel: "Remove profile picture",
+                      },
+                    ]
+                  : []
+              }
+              onAddFiles={(files) => edit.setDraftAvatarFile(files[0] ?? null)}
+              accept={ACCEPTED_IMAGE_MIME}
+              addLabel="Add a picture"
+              addHint="JPEG, PNG or WebP. Stored on Vidit and resized."
+              layout="stack"
+            />
+          </div>
         </div>
       )}
 
-      {edit.saveError && <div className={FORM_ERROR_BANNER}>{edit.saveError}</div>}
+      {edit.saveError && (
+        <div className={FORM_ERROR_BANNER}>{edit.saveError}</div>
+      )}
     </>
   );
 }

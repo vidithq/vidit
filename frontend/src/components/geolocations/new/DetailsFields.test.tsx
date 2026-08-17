@@ -27,7 +27,7 @@ const baseProps = {
 // The locked box's muted text colour, the one token the link overrides.
 const MUTED = "text-neutral-400";
 const SOURCE_PLACEHOLDER = "https://t.me/channel/12345";
-const SNAPSHOT_PLACEHOLDER = "https://archive.ph/…";
+const SNAPSHOT_PLACEHOLDER = "https://web.archive.org/web/…";
 
 describe("DetailsFields", () => {
   it("renders the Details heading, the date + source fields, and their ? help", () => {
@@ -219,26 +219,47 @@ describe("DetailsFields", () => {
     expect(
       screen.getByText("Fill in the source URL above to archive it.")
     ).toBeInTheDocument();
+    // The three accepted hosts do not wait on a source URL: with no link to
+    // open, this sentence is the only thing saying an archive.today snapshot is
+    // welcome in the field below.
+    expect(
+      screen.getByText(/paste a snapshot from archive\.ph or archive\.today/)
+    ).toBeInTheDocument();
   });
 
-  it("prefills both provider pages with the source URL as typed", () => {
+  it("prefills one provider page with the source URL as typed", () => {
     render(
       <DetailsFields {...baseProps} sourceUrl="https://t.me/c/1?x=2 " />
     );
-    // Wayback carries the link as a path (the scheme separator stays readable),
-    // archive.today as a query parameter (every reserved character escaped).
+    // Wayback carries the link as a path, where the scheme separator stays
+    // readable.
     expect(
       screen.getByRole("link", { name: "Open Wayback Machine" })
     ).toHaveAttribute(
       "href",
       "https://web.archive.org/save/https://t.me/c/1?x=2"
     );
+    // The second link is gone: the field offers exactly one provider page. The
+    // other hosts are still accepted, and the sentence beside the link says so
+    // rather than opening a page for each.
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.queryByRole("link", { name: "Open archive.today" })).toBeNull();
     expect(
-      screen.getByRole("link", { name: "Open archive.today" })
-    ).toHaveAttribute(
-      "href",
-      `https://archive.ph/?url=${encodeURIComponent("https://t.me/c/1?x=2")}`
-    );
+      screen.getByText(/paste a snapshot from archive\.ph or archive\.today/)
+    ).toBeInTheDocument();
+  });
+
+  it("prefills a fragment-bearing source URL, fragment and all", () => {
+    render(<DetailsFields {...baseProps} sourceUrl="https://t.me/c/1#note" />);
+    // `encodeURI` leaves `#` alone, so the fragment rides along and the browser
+    // reads it as the fragment of the web.archive.org URL: what Save Page Now
+    // captures is the link without it. That is by design. The server compares a
+    // snapshot against the link on host, path and query
+    // (`source_archive._normalised_target`) and ignores the fragment on both
+    // sides, so the copy still files against the source it was taken for.
+    expect(
+      screen.getByRole("link", { name: "Open Wayback Machine" })
+    ).toHaveAttribute("href", "https://web.archive.org/save/https://t.me/c/1#note");
   });
 
   it("flags a paste that cannot be a snapshot, and only once one is typed", () => {

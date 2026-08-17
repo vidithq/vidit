@@ -9,10 +9,12 @@ import type { ExternalLinks, User } from "@/types";
  * string means "clear it" — the backend distinguishes via
  * `model_dump(exclude_unset=True)`. `external_links` is wholesale-replaced:
  * send the full object, omitted platforms are dropped.
+ *
+ * No `avatar_url`: the column is server-minted and only the avatar endpoints
+ * below write it. The backend body is `extra=forbid`, so sending one 422s.
  */
 export interface UserProfileUpdate {
   bio?: string | null;
-  avatar_url?: string | null;
   external_links?: ExternalLinks | null;
 }
 
@@ -21,6 +23,25 @@ export function updateMyProfile(body: UserProfileUpdate): Promise<User> {
     method: "PATCH",
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * Upload a profile picture. The backend strips its metadata, resizes it, and
+ * stores one JPEG on our own media host, so the avatar every viewer's browser
+ * loads is never an address the profile owner chose.
+ *
+ * `FormData` rather than JSON: `apiFetch` leaves the boundary header to the
+ * browser and still attaches the CSRF token.
+ */
+export function uploadMyAvatar(file: File): Promise<User> {
+  const body = new FormData();
+  body.append("file", file);
+  return apiFetch<User>("/users/me/avatar", { method: "PUT", body });
+}
+
+/** Drop the profile picture; surfaces fall back to the monogram icon. */
+export function deleteMyAvatar(): Promise<User> {
+  return apiFetch<User>("/users/me/avatar", { method: "DELETE" });
 }
 
 /**

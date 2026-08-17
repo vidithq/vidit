@@ -425,7 +425,9 @@ def test_read_quota_key_rejects_a_forged_token(user):
 #
 # * every case logs in through `_auth`, and `/auth/login` writes an
 #   `auth_events` row per attempt, success or failure;
-# * `PATCH /users/me` writes a bio onto the throwaway `user` row;
+# * `PATCH /users/me` writes a bio onto the throwaway `user` row, and
+#   `DELETE /users/me/avatar` commits a null avatar onto it once per request
+#   (the row carries no picture, so each pass sweeps nothing);
 # * every admin action writes an `admin_events` row, and
 #   `POST /admin/invite-codes` mints 30 codes;
 # * the `reap-*` maintenance cases delete expired `auth_tokens` /
@@ -604,6 +606,17 @@ _DOCUMENTED_LIMITS = [
         {"json": {"name": "rate-limit-probe", "category": "capture_source"}},
     ),
     _Case("patch", ME, 30, "user", {"json": {"bio": "probe"}}),
+    # The avatar pair, 20/min each. The PUT probe is a `text/plain` part: the
+    # handler rejects the type before any storage write, so the bucket fills
+    # without twenty uploads landing.
+    _Case(
+        "put",
+        f"{ME}/avatar",
+        20,
+        "user",
+        {"files": {"file": ("probe.txt", b"probe", "text/plain")}},
+    ),
+    _Case("delete", f"{ME}/avatar", 20),
     _Case("post", "/api/v1/users/no-such-user/follow", 60),
     _Case("delete", "/api/v1/users/no-such-user/follow", 60),
     # Admin.
