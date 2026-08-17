@@ -34,6 +34,62 @@ The source slot and the mirror list differ in when two links count as one, becau
 
 **Coverage is text-only.** Coordinates are read from tweet text and nothing else. Measured on a 48.5k-tweet external OSINT corpus (853 analysts), this recovers about 86% of the geolocations at about 0% false positives. Decimal pairs dominate; DMS and hemisphere spellings make up the handled long tail. The remaining about 14% carry the coordinate only inside the image. Reading those would require running vision over every backfilled media item, which is out of scope. The analyst sees this limit stated where it bites: the import panel's zero-result message says a post needs a coordinate in its text to become a detection.
 
+The [grammar table](#grammar-table) states what each entry path makes of each input shape, and what the one grammar makes of it.
+
+## Grammar table
+
+Each row is one input shape, and the three middle columns are what the bot, the pasted-tweet import and the archive backfill make of it today. The target column is the one grammar all three converge on, so it holds a single value per row: the grammar is the same grammar whichever entry read the post. The three paths speak one grammar when every row reads `golden`.
+
+Agreement:
+
+- `golden`: the three paths answer alike today, and they answer what the target answers.
+- `permissive`: a path accepts more than the target.
+- `rejected`: a path refuses what the target accepts.
+
+Reading the cells:
+
+- A shape in backticks names the fixture that pins the row, under [`tests/ingest_contract/fixtures/`](../backend/tests/ingest_contract/).
+- The bot's refusals carry the code its failure reply names.
+- The paste column counts the detections the paste's grammar reaches. The paste hands them to the submit form as a pre-fill rather than writing rows.
+- The archive column reads with the chase on, which is how the import worker runs it.
+- A row that isolates a source rule puts the coordinate on a line of its own, the only spelling the bot's coordinate rule takes. On any other spelling the bot refuses the post before its source rule runs, which hides the rule under test.
+- `n/a` marks a shape that cannot reach that path.
+- Three target behaviours apply to every row and stay out of the cells: the proof keeps the analyst's text as written, coordinate lines and label lines included; the title is the first line that is neither a coordinate alone nor a URL alone, taken verbatim and cut at 120 characters on a word boundary; a draft whose source slot stays empty, and each draft of a post carrying several coordinates, carries a warning.
+
+| Input shape | Bot today | Paste today | Archive today | Target | Agreement |
+|---|---|---|---|---|---|
+| No coordinate anywhere (`no_coord`) | `0, coords_missing` | `0` | `0` | `0, no coordinate` | golden |
+| Coordinate inside prose, no link and no quote (`referenceless_annotation`) | `0, coords_missing` | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty | rejected |
+| Coordinate inside prose behind an `@mention` prefix (`mention_prefix`) | `0, coords_missing` | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty | rejected |
+| Two coordinates inside prose (`multi_coord`) | `0, coords_missing` | 2 drafts | 2 drafts | 2 drafts | rejected |
+| Four or more coordinates in the text | `0, coords_missing` | 3 drafts, the rest dropped | 3 drafts, the rest dropped | one draft per coordinate | rejected |
+| Hemisphere or DMS coordinate | `0, coords_missing` | 1 draft | 1 draft | 1 draft | rejected |
+| Google Maps `@lat,lng` link carrying the only coordinate | `0, coords_missing` | 1 draft | 1 draft | 1 draft | rejected |
+| Coordinate only in the quoted post (`quote_coord_in_quoted`) | `0, coords_missing` | 1 draft, source is the quote | 1 draft, source is the quote | `0, no coordinate` | permissive |
+| Coordinate on its own line, no link and no quote | `0, source_missing` | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty | rejected |
+| `T:` / `C:` / `S:` marker lines | 1 draft, the markers consumed | 1 draft, the markers kept as text | 1 draft, the markers kept as text | 1 draft, the markers kept as text | permissive |
+| `Source:` line naming one of two links | `0, source_ambiguous` | 1 draft, source is the designated link, one mirror | 1 draft, source is the designated link, one mirror | 1 draft, source empty, two mirrors | rejected, permissive |
+| Two footage links, no designation | `0, source_ambiguous` | 1 draft, source empty, two mirrors | 1 draft, source empty, two mirrors | 1 draft, source empty, two mirrors | rejected |
+| Sole link off the footage vocabulary (TikTok, Instagram, an article) | 1 draft, source is the link | 1 draft, source empty | 1 draft, source empty | 1 draft, source is the link | rejected |
+| Sole X profile link | 1 draft, source is the profile | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty | permissive |
+| Sole Google Maps link | 1 draft, source is the maps link | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty | permissive |
+| Sole link back to the analyst's own status | `0, source_own` | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty | rejected |
+| Quote plus one other footage link | 1 draft, source is the link | 1 draft, source is the quote, one mirror | 1 draft, source is the quote, one mirror | 1 draft, source is the quote, one mirror | permissive |
+| `Source:` naming an X status (`x_status_link`) | `0, coords_missing` | 1 draft, source is the link | 1 draft, source is the chased status, with its date and video | 1 draft, source is the chased status | rejected |
+| `Source:` naming a Telegram post (`telegram_link`) | `0, coords_missing` | 1 draft, source is the link | 1 draft, source is the link, with the chased date and media | 1 draft, source is the link, with the chased date and media | rejected |
+| `Source:` naming a YouTube video (`youtube_link`) | `0, coords_missing` | 1 draft, source is the link | 1 draft, source is the link | 1 draft, source is the link | rejected |
+| `Source:` naming an X profile (`x_profile_link`) | `0, coords_missing` | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty | rejected |
+| Own-status link, profile link and one third-party status (`self_reference_link`) | `0, coords_missing` | 1 draft, source is the third-party status | 1 draft, source is the third-party status | 1 draft, source is the third-party status | rejected |
+| Coordinate in the post, quoted post carries a photo (`quote_coord_in_op`) | `0, coords_missing` | 1 draft, source is the quote, its photo as source media | 1 draft, source is the quote, its photo as source media | 1 draft, source is the quote, its photo as source media | rejected |
+| Coordinate in the post, quoted post carries a video (`quoted_video`) | `0, coords_missing` | 1 draft, source is the quote, its video as source media | 1 draft, source is the quote, its video as source media | 1 draft, source is the quote, its video as source media | rejected |
+| Own video, coordinate, no link and no quote (`self_video_no_signal`) | `0, coords_missing` | 1 draft, source empty, the video as source media | 1 draft, source empty, the video as source media | 1 draft, source empty, the video as source media | rejected |
+| Coordinate in the post, source link in the analyst's own reply (`self_reply_geo_then_source`) | 1 draft, source is the reply's link | 1 draft, source is the reply's link | 1 draft, source is the reply's link | 1 draft, source is the reply's link | golden |
+| Self-thread, video in the head, coordinate in the reply (`self_thread`) | `n/a` | `n/a` | 1 draft, source empty, the head video as source media | 1 draft, source empty, the head video as source media | golden |
+| Parent by another author carries the coordinate | `0, coords_missing` | `0` | `n/a` | `0, no coordinate` | golden |
+| Retweet, text opening `RT @<handle>:` | no retweet rule, the prefix reads as the analyst's own text | no retweet rule, the prefix reads as the analyst's own text | `0`, dropped before detection | `0`, dropped | permissive |
+
+The `self_thread` fixture ships export entries rather than syndication bodies, so the two live entries cannot be pointed at it. The same two-post shape does reach them through the one-hop acquisition, which the `self_reply_geo_then_source` row covers.
+
 ## `detected`: a partial draft by definition
 
 A machine-produced event starts in the `detected` status. A `detected` row may lack a `source_url`, a source media item, or a location. This partial state is normal, not an error condition.
