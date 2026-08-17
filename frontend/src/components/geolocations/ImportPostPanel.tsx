@@ -8,7 +8,7 @@ import { Button, buttonClasses } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { FORM_ERROR_BANNER, FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
-import { WARNING_CALLOUT } from "@/components/ui/styles";
+import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useMutation } from "@/hooks/useMutation";
 import { draftEditPath, importFromPost } from "@/lib/events";
@@ -111,7 +111,10 @@ export function ImportPostPanel() {
       <div className="space-y-1.5">
         <p className="text-sm text-neutral-200">
           Paste one of your own X posts. Its coordinates, source and media become a draft
-          you review. <FieldHelp concept="section_import" />
+          you review. <FieldHelp concept="section_import" />{" "}
+          <Link href="/import#paste" className={TEXT_LINK}>
+            Import guide
+          </Link>
         </p>
         <div className="flex gap-2">
           <Input

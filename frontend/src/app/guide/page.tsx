@@ -126,18 +126,18 @@ const STEPS: NumberedStep[] = [
             Your X archive: upload the official export and every geolocation you
             already published is backfilled as drafts you review and vouch for,
             no manual re-entry (the{" "}
-            <Link href="/archive" className={TEXT_LINK}>
-              archive guide
+            <Link href="/import#archive" className={TEXT_LINK}>
+              import guide
             </Link>{" "}
             covers what is read and what is never touched).
           </li>
           <li>
             The bot: tag @ViditBot under a geolocation post on X and it lands
             here as a structured draft waiting in your queue (the{" "}
-            <Link href="/bot" className={TEXT_LINK}>
-              bot guide
+            <Link href="/import#bot" className={TEXT_LINK}>
+              import guide
             </Link>{" "}
-            has the format). You never leave your feed.
+            covers it). You never leave your feed.
           </li>
         </ul>
       </>

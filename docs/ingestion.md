@@ -5,6 +5,7 @@ One detection engine, three entries. The bot, the pasted-tweet import and the ar
 - **What the engine reads** is [the contract](#the-contract) below, and the [grammar table](#grammar-table) pins it shape by shape.
 - **The engine** is [`resolve.py`](../backend/app/services/tweet_ingest/resolve.py) (a thread resolves to a `ResolvedThread`), [`detect.py`](../backend/app/services/tweet_ingest/detect.py) (one `DetectedGeoloc` per coordinate, plus the warnings), and [`detection.import_thread`](../backend/app/services/detection.py) (the one write path from a thread to `detected` rows).
 - **The entries** are [the bot](#the-bot), [the pasted-tweet import](#the-pasted-tweet-import) and [the archive backfill](#archive-formats).
+- **The analyst-facing projection** is the single guide at [`/import`](../frontend/src/app/import/page.tsx), which states the same rules once and then one section per entry (`#bot`, `#paste`, `#archive`). `/bot` and `/archive` redirect into it.
 
 **Module layout.** [`tweet_ingest/`](../backend/app/services/tweet_ingest) splits along one line, whether the module fetches. `records`, `extract`, `stitch` and `resolve` derive everything and fetch nothing; `urls` is the URL vocabulary they read (what a link names, and the one place a post URL is written back from an id). On the other side, `syndication` is the X read, `chase/` holds one chaser per technology behind one dispatcher, `acquire` is the live one-hop acquisition and `archive` the export reader. A test states the direction: no pure module imports `syndication`, and `chase/` is imported by `acquire` and `archive` alone ([`test_ingest_boundaries.py`](../backend/tests/test_ingest_boundaries.py)).
 
@@ -121,7 +122,7 @@ The source requirement applies at promotion to `geolocated`. `services/events.ge
 
 ## The bot
 
-The bot adds a delivery and a reply on top of the engine. It reads no grammar of its own: what it makes of a post is [the contract](#the-contract) above, and the public guide at [`/bot`](../frontend/src/app/bot/page.tsx) states the same rules for analysts.
+The bot adds a delivery and a reply on top of the engine. It reads no grammar of its own: what it makes of a post is [the contract](#the-contract) above, and the public guide at [`/import#bot`](../frontend/src/app/import/page.tsx) states the same rules for analysts.
 
 **Delivery: webhook nominal, poll reconciliation.** Two paths feed one per-mention pipeline ([`bot.py`](../backend/app/services/bot.py) `process_single_mention`). The nominal path is the **X Account Activity webhook**. X POSTs each mention to [`/webhooks/x`](api.md#webhooks) (signature-verified, see the API contract). The endpoint reduces the mention to the internal mention shape and queues it in [`bot_webhook_events`](data-model.md#bot_webhook_events). The always-on **import worker** drains the queue between archive passes, using the same `FOR UPDATE SKIP LOCKED` claim pattern, so a tag gets answered in seconds. The **hourly poll** ([`run_bot.py`](../backend/scripts/run_bot.py)) stays as the reconciliation net. It pulls the mentions timeline newer than the last processed ID (the paid read, see [`x_api.py`](../backend/app/services/x_api.py)) and catches anything the webhook dropped.
 

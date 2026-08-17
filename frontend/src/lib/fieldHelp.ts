@@ -87,7 +87,7 @@ export const FIELD_HELP = {
     label: "What goes in Location?",
   },
   section_import: {
-    text: "Paste one of your own X posts and we read it into a draft: the coordinates, the source, the media and the title. Own posts only, matched against the X account linked to your profile. You review the draft before publishing.",
+    text: "Vidit reads one of your own X posts into a draft you review before publishing; the import guide states what it reads.",
     label: "What does importing do?",
   },
   section_details: {

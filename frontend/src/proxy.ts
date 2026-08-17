@@ -13,7 +13,7 @@ const CSRF_COOKIE = "vidit_csrf";
 // Paths reachable WITHOUT a session; everything else is default-deny below.
 // Anonymous read is open: the content routes (map, events, requests,
 // profiles, search) are public. Write and account surfaces (`/submit`,
-// `/import`, `/settings`, `/admin`, `/timeline`) stay behind the wall;
+// `/settings`, `/admin`, `/timeline`) stay behind the wall;
 // write sub-routes living under a public prefix (`/events/[id]/edit`,
 // `/profile/[username]/detections`) are bounced client-side by
 // `useRequireAuth`. The invite code gates registration only (at
@@ -21,12 +21,15 @@ const CSRF_COOKIE = "vidit_csrf";
 const PUBLIC_EXACT = new Set<string>(["/"]);
 const PUBLIC_PREFIXES = [
   "/about",
-  // The archive-import guide: what the importer reads out of an X export and
-  // what it never touches, read by analysts weighing the upload before they
-  // have a session.
+  // The import guide: what the detection engine reads and how the three
+  // entries differ, read by analysts weighing the upload or the tag before
+  // they have a session.
+  "/import",
+  // The two routes the import guide absorbed, kept as redirects into it:
+  // `/archive` for the links already published against it, `/bot` because the
+  // bot's X bio and pinned post point there. Both stay public so a signed-out
+  // reader is forwarded rather than bounced to the login page.
   "/archive",
-  // The bot format guide: the destination behind the bot's bio and pinned
-  // post, read by analysts with no Vidit session yet.
   "/bot",
   // The getting-started guide: the platform's overall loop, linked from the
   // about page and the landing, and read by analysts sizing up the platform

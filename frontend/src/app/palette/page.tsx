@@ -956,7 +956,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<NumberedSteps>" usage="Static &quot;1, 2, 3…&quot; instruction list: numbered disc + title + body. `plain` on the public guides (/guide, /methodology), `boxed` with a per-step icon for the archive export walkthrough on /submit. Not <ProgressSteps>: this is reference copy the reader works through, every step identical; ProgressSteps renders one running operation's live state (done / active / pending / failed).">
+          <Item name="<NumberedSteps>" usage="Static &quot;1, 2, 3…&quot; instruction list: numbered disc + title + body. `plain` on the public guides (/guide, /methodology, /import), `boxed` with a per-step icon for the archive export walkthrough on /submit. Not <ProgressSteps>: this is reference copy the reader works through, every step identical; ProgressSteps renders one running operation's live state (done / active / pending / failed).">
             <div className="w-full max-w-md space-y-4">
               <Variant label="plain (the guides)">
                 <NumberedSteps
@@ -992,7 +992,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<MockPost>" usage="A fake X post in X's own dark card, so a guide can show the shape of a real post instead of describing it (/bot teaches what to write, /archive maps an exported post to the draft it becomes). Illustration only: the &quot;links&quot; are <MockPostLink> spans, never anchors, and the body breaks anywhere so a long one cannot widen its column. MOCK_ANALYST and MOCK_BOT are the shared identities, so the guides read as one person's posts. `media` attaches one placeholder, `quoted` renders the quote card X draws around a quoted post (with its own optional media), `replyingTo` puts a handle in the byline.">
+          <Item name="<MockPost>" usage="A fake X post in X's own dark card, so a guide can show the shape of a real post instead of describing it (/import teaches what to write and what the bot answers). Illustration only: the &quot;links&quot; are <MockPostLink> spans, never anchors, and the body breaks anywhere so a long one cannot widen its column. MOCK_ANALYST and MOCK_BOT are the shared identities, so the guides read as one person's posts. `media` attaches one placeholder, `quoted` renders the quote card X draws around a quoted post (with its own optional media), `replyingTo` puts a handle in the byline.">
             <div className="w-full max-w-sm space-y-3">
               <Variant label="a post with an attachment">
                 <MockPost

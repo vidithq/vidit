@@ -96,8 +96,12 @@ export default function DetectionsPage() {
           </>
         }
       >
-        New detections land here after you import your archive or tag the bot
-        on a geolocation tweet.
+        New detections land here after you import your archive, paste a post
+        URL, or tag the bot on a geolocation tweet. The{" "}
+        <Link href="/import" className={TEXT_LINK}>
+          import guide
+        </Link>{" "}
+        covers the three.
       </EmptyState>
     );
   } else {

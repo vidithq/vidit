@@ -245,8 +245,8 @@ export function ImportArchivePanel({ username }: { username: string }) {
             <ShieldCheck size={14} strokeWidth={1.8} className="text-neutral-500" />
             Even if you skip the trim, your browser keeps only your posts and their media before uploading; DMs, email, and phone never leave your device.
           </span>
-          <Link href="/archive" className={TEXT_LINK}>
-            Archive guide
+          <Link href="/import#archive" className={TEXT_LINK}>
+            Import guide
           </Link>
           <a
             href={X_ARCHIVE_HELP}
