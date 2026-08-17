@@ -53,18 +53,25 @@ describe("ImportPostPanel", () => {
   });
 
   it("stays put and names the warnings, with the review one click away", async () => {
+    // The API hands each code its sentence, out of the one backend table the
+    // bot's reply and the archive's email also read, so the panel renders what
+    // it is given and keeps no wording of its own.
     vi.mocked(importFromPost).mockResolvedValue(
-      outcome({ created: ["d1", "d2"], warnings: ["several_coordinates", "source_missing"] })
+      outcome({
+        created: ["d1", "d2"],
+        warnings: [
+          { code: "several_coordinates", message: "Several coordinates, one draft each" },
+          { code: "source_missing", message: "No source found. Add one at review" },
+        ],
+      })
     );
     render(<ImportPostPanel />);
 
     paste();
 
     expect(await screen.findByText("2 drafts created")).toBeInTheDocument();
-    expect(
-      screen.getByText("Several coordinates in that post, so one draft each.")
-    ).toBeInTheDocument();
-    expect(screen.getByText("No source found. Add one at review.")).toBeInTheDocument();
+    expect(screen.getByText("Several coordinates, one draft each")).toBeInTheDocument();
+    expect(screen.getByText("No source found. Add one at review")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Review the draft" })).toHaveAttribute(
       "href",
       "/events/d1/edit?queue=1"
@@ -73,15 +80,24 @@ describe("ImportPostPanel", () => {
   });
 
   it("names the refusal when the post produced nothing", async () => {
-    vi.mocked(importFromPost).mockResolvedValue(outcome({ reason: "coords_missing" }));
+    vi.mocked(importFromPost).mockResolvedValue(
+      outcome({ reason: { code: "coords_missing", message: "No coordinate in the post" } })
+    );
     render(<ImportPostPanel />);
 
     paste();
 
-    expect(
-      await screen.findByText("No coordinate in that post, so there is nothing to place.")
-    ).toBeInTheDocument();
+    expect(await screen.findByText("No coordinate in the post")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Review the draft" })).toBeNull();
+  });
+
+  it("falls back to its own line when the run named no refusal at all", async () => {
+    vi.mocked(importFromPost).mockResolvedValue(outcome());
+    render(<ImportPostPanel />);
+
+    paste();
+
+    expect(await screen.findByText(/produced no draft/)).toBeInTheDocument();
   });
 
   it("renders a refused post's message as the API worded it", async () => {

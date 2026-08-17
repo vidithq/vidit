@@ -72,6 +72,35 @@ SOURCE_FOOTAGE_MISSING = "source_footage_missing"  # a declared source, no foota
 SOURCE_DATE_UNKNOWN = "source_date_unknown"  # the source's post date came back unknown
 DUPLICATE_MEDIA = "duplicate_media"  # the row's media is already on another event
 
+# The one sentence each code reads as, in the order the surfaces read them.
+# Every surface that shows a code shows this sentence: the bot's in-thread reply
+# behind its ⚠, the archive's outcome email behind a count of drafts, and the
+# paste's response, which the import panel renders as it arrives. One home, so
+# the three entries cannot tell an analyst three different things about one
+# code, and adding a code to the vocabulary above without wording it here fails
+# ``test_engine_copy``.
+#
+# Two constraints the table holds for its tightest surface, the reply: each
+# sentence is short (a composed reply must stay under
+# ``bot.REPLY_MAX_WEIGHTED_LEN``) and linkless (X bills a link-carrying post
+# about 13 times a plain one).
+WARNING_MESSAGES: dict[str, str] = {
+    SEVERAL_COORDINATES: "Several coordinates, one draft each",
+    SOURCE_AMBIGUOUS: "Several possible sources. Pick one at review",
+    SOURCE_MISSING: "No source found. Add one at review",
+    SOURCE_FOOTAGE_MISSING: "No footage from the source. Add it at review",
+    SOURCE_DATE_UNKNOWN: "The source's post date is unknown. Check it at review",
+    DUPLICATE_MEDIA: "Media already on Vidit. Possible duplicate",
+}
+
+# The same, for the refusals. A surface that names no refusal (the archive email
+# reports counts) simply never reads this table.
+REFUSAL_MESSAGES: dict[str, str] = {
+    COORDS_MISSING: "No coordinate in the post",
+    COORDS_INVALID: "The post's coordinate sits outside the world",
+    POST_UNREADABLE: "Post not readable on X (age-restricted, withheld or gone)",
+}
+
 
 def _status_link_handle(url: str) -> str | None:
     """The handle segment of an X status link, or ``None`` when ``url`` names no

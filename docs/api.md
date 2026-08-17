@@ -496,7 +496,7 @@ Accepts both `x.com` and `twitter.com` (with or without `www.`), tolerates query
   "created": ["9a2b…"],
   "updated": [],
   "skipped": [],
-  "warnings": ["several_coordinates"],
+  "warnings": [{ "code": "several_coordinates", "message": "Several coordinates, one draft each" }],
   "reason": null,
   "failed": 0
 }
@@ -504,9 +504,11 @@ Accepts both `x.com` and `twitter.com` (with or without `www.`), tolerates query
 
 `created`, `updated` and `skipped` carry event ids in the order the engine produced them: new drafts, open drafts a re-import overwrote, and rows the import left alone. Open the first id you get. Re-importing is safe and idempotent: the match key is `(detected_from_url OR source_url, coordinate)` scoped to you, and what happens to a matched row follows the [re-import matrix](ingestion.md#re-import), so a published or closed row is skipped rather than overwritten.
 
-`warnings` carries the codes for what review still has to answer on these drafts. Three say what the engine could not settle from the post: `several_coordinates` (one thread, one draft per coordinate), `source_ambiguous` (several candidate links, so the source is left empty) and `source_missing` (no candidate link and no quote). Three say what the drafts ended up with: `source_footage_missing` (no footage stored from the source), `source_date_unknown` (the source's post date came back unknown) and `duplicate_media` (the media already exists on another event). See [`ingestion.md`](ingestion.md#warnings). They are warnings, not refusals: the drafts landed.
+`warnings` carries what review still has to answer on these drafts, each entry a `{code, message}` pair. Three codes say what the engine could not settle from the post: `several_coordinates` (one thread, one draft per coordinate), `source_ambiguous` (several candidate links, so the source is left empty) and `source_missing` (no candidate link and no quote). Three say what the drafts ended up with: `source_footage_missing` (no footage stored from the source), `source_date_unknown` (the source's post date came back unknown) and `duplicate_media` (the media already exists on another event). See [`ingestion.md`](ingestion.md#warnings). They are warnings, not refusals: the drafts landed.
 
-`reason` names the refusal when the post produced no draft at all, and is null whenever drafts were produced: `coords_missing` (no coordinate in the author's own text, which also covers a retweet, since a retweet produces nothing) or `coords_invalid` (a coordinate-shaped string outside the world). `failed` counts detections that raised mid-persist; the drafts that did land are unaffected.
+`reason` names the refusal when the post produced no draft at all, in the same `{code, message}` shape, and is null whenever drafts were produced: `coords_missing` (no coordinate in the author's own text, which also covers a retweet, since a retweet produces nothing) or `coords_invalid` (a coordinate-shaped string outside the world). `failed` counts detections that raised mid-persist; the drafts that did land are unaffected.
+
+Branch on `code`, which is the stable half. `message` is the one sentence the platform says for that code everywhere it is surfaced, so the page can render it as it arrives; it is prose and may be reworded.
 
 Media travels with the drafts: the engine fetches the post's own attachments from the X CDN, stores the footage in the source slot and the analyst's images as proof, and inlines the proof images into the draft's proof document. A draft whose media could not be fetched lands media-incomplete and is completed at review.
 

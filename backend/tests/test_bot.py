@@ -33,11 +33,14 @@ from app.services.bot import (
     run_bot_once,
 )
 from app.services.tweet_ingest import (
+    COORDS_INVALID,
     DUPLICATE_MEDIA,
+    REFUSAL_MESSAGES,
     SEVERAL_COORDINATES,
     SOURCE_AMBIGUOUS,
     SOURCE_DATE_UNKNOWN,
     SOURCE_FOOTAGE_MISSING,
+    WARNING_MESSAGES,
 )
 from app.services.tweet_ingest.syndication import _cache_clear
 
@@ -510,7 +513,7 @@ async def test_an_out_of_bounds_coordinate_is_named_as_such(db, linked_owner):
     assert outcome.no_detection == 1
     assert outcome.events_created == 0
     (payload,) = posted
-    assert payload["text"].startswith("❌ Nothing saved\n⚠ Coordinate out of bounds\n")
+    assert payload["text"].startswith(f"❌ Nothing saved\n⚠ {REFUSAL_MESSAGES[COORDS_INVALID]}\n")
 
 
 async def test_tombstoned_tagged_post_earns_a_reply_not_a_page(db, linked_owner, monkeypatch):
@@ -628,6 +631,35 @@ async def test_deactivated_linked_owner_records_no_account(db, linked_owner):
     assert outcome.events_created == 0
     assert posted == []
     assert liked == []
+
+
+async def test_a_persist_that_raised_on_every_draft_answers_the_analyst(
+    db, linked_owner, monkeypatch
+):
+    """The verdict a linked analyst used to get in silence.
+
+    A post the engine read fine, whose every draft raised mid-persist, ledgers
+    ``failed`` so an operator can retry it by deleting the row. The paste
+    returns that verdict and the archive counts it, so the bot answers too:
+    there is no code to name, which is exactly the reply's unexpected case, and
+    it points at the maintainers rather than reciting a format lesson."""
+    import app.services.detection as detection_mod
+
+    async def _boom(*args, **kwargs):
+        raise RuntimeError("storage is down")
+
+    monkeypatch.setattr(detection_mod, "_persist_one", _boom)
+    outcome, _, posted, _ = await _run(db, [TAGGED_ID])
+
+    assert outcome.failed == 1
+    assert outcome.events_created == 0
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == TAGGED_ID).one()
+    assert ledger.outcome == "failed"
+
+    (payload,) = posted
+    assert payload["text"].startswith("❌ Nothing saved\n⚠ Unexpected case. Reach out to @vidithq")
+    assert ledger.reply_tweet_id is not None
+    assert db.query(Event).filter(Event.owner_id == linked_owner.id).all() == []
 
 
 async def test_non_conforming_mention_from_unlinked_author_records_silently(db):
@@ -839,8 +871,6 @@ def test_compose_reply_carries_one_line_per_warning_and_stays_in_the_cap():
     warnings on a draft that already carries the empty-source pair, and the two
     halves of that pair never co-occur, so no pass raises all six codes.
     """
-    from app.services.bot import _WARNING_LINES
-
     event_id = str(uuid.uuid4())
     heaviest = [
         SEVERAL_COORDINATES,
@@ -851,7 +881,7 @@ def test_compose_reply_carries_one_line_per_warning_and_stays_in_the_cap():
     text = compose_reply(event_id, drafts=3, warnings=heaviest)
     assert text.startswith("✅ 3 geolocation drafts saved")
     assert [line for line in text.splitlines() if line.startswith("⚠")] == [
-        _WARNING_LINES[code] for code in heaviest
+        f"⚠ {WARNING_MESSAGES[code]}" for code in heaviest
     ]
     assert text.endswith("Review from your profile")
     assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
@@ -876,9 +906,7 @@ def test_compose_failure_reply_without_diagnosis_routes_to_the_maintainers():
 def test_compose_failure_reply_carries_one_diagnosis_line_per_reason():
     # Each reason yields the header, its one ⚠ diagnosis line, and the
     # footer; every variant stays linkless, unique per mention, inside the cap.
-    from app.services.bot import _FAILURE_DIAGNOSES
-
-    for reason, diag in _FAILURE_DIAGNOSES.items():
+    for reason, diag in REFUSAL_MESSAGES.items():
         text = compose_failure_reply(reason, mention_id="123456789")
         first, warning, footer = text.splitlines()
         assert first == "❌ Nothing saved"

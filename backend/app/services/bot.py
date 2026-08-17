@@ -66,15 +66,9 @@ from app.models.bot_webhook_event import BotWebhookEvent
 from app.models.user import User
 from app.services.detection import Outcome, linked_owner, persist_drafts
 from app.services.tweet_ingest import (
-    COORDS_INVALID,
-    COORDS_MISSING,
-    DUPLICATE_MEDIA,
     POST_UNREADABLE,
-    SEVERAL_COORDINATES,
-    SOURCE_AMBIGUOUS,
-    SOURCE_DATE_UNKNOWN,
-    SOURCE_FOOTAGE_MISSING,
-    SOURCE_MISSING,
+    REFUSAL_MESSAGES,
+    WARNING_MESSAGES,
     AcquiredThread,
     TweetNotAccessible,
     acquire_thread,
@@ -249,22 +243,6 @@ def acquire_tagged_thread(
 _REPLY_REF_CHARS = 8
 
 
-# Per warning code: the ⚠ line the success reply carries. Terse noun phrases in
-# one uniform voice, each naming what review has to answer, in the order they
-# read. Keyed by the ``tweet_ingest`` warning constants, which is the whole
-# vocabulary: what the engine could not settle from the post, then what the
-# write path found on the row it wrote. Keep each short, since the composed
-# reply must stay under ``REPLY_MAX_WEIGHTED_LEN``, and linkless.
-_WARNING_LINES: dict[str, str] = {
-    SEVERAL_COORDINATES: "⚠ Several coordinates, one draft each",
-    SOURCE_AMBIGUOUS: "⚠ Several possible sources. Pick one at review",
-    SOURCE_MISSING: "⚠ No source found. Add one at review",
-    SOURCE_FOOTAGE_MISSING: "⚠ No footage from the source. Add it at review",
-    SOURCE_DATE_UNKNOWN: "⚠ Couldn't read the source's post date. Check it at review",
-    DUPLICATE_MEDIA: "⚠ Media already on Vidit. Possible duplicate",
-}
-
-
 def compose_reply(created_id: str, *, drafts: int, warnings: Iterable[str]) -> str:
     """The in-thread reply for a mention that created its drafts.
 
@@ -275,31 +253,24 @@ def compose_reply(created_id: str, *, drafts: int, warnings: Iterable[str]) -> s
     The ref also makes each reply unique, so X's duplicate-content 403 cannot eat
     it.
 
-    One ⚠ line per warning the pass raised, in ``_WARNING_LINES`` order. The
-    reply composes what it is given and decides nothing: which warnings a draft
-    carries is the engine's and the write path's answer
+    One ⚠ line per warning the pass raised, worded by ``WARNING_MESSAGES`` and
+    read in its order. The reply owns the glyph and the length discipline, never
+    the sentence: the same sentence reaches the archive's outcome email and the
+    import panel, so the three surfaces cannot describe one code differently.
+    Which warnings a draft carries is the engine's and the write path's answer
     (``detection.persist_drafts``), not the reply's.
     """
     plural = "s" if drafts > 1 else ""
     lines = [f"✅ {drafts} geolocation draft{plural} saved · ref {created_id[:_REPLY_REF_CHARS]}"]
     raised = set(warnings)
-    lines.extend(line for code, line in _WARNING_LINES.items() if code in raised)
+    lines.extend(f"⚠ {message}" for code, message in WARNING_MESSAGES.items() if code in raised)
     lines.append("Review from your profile")
     return _within_reply_cap("\n".join(lines))
 
 
-# Per failure-reason code: the diagnosis, as a terse noun phrase so every
-# ⚠ line reads in one uniform voice (no first person, no fix recipe: the
-# fix lives behind the bio guide). Keyed by the ``tweet_ingest`` reason
-# constants; keep each short (the composed reply must stay under
-# ``REPLY_MAX_WEIGHTED_LEN``, see :func:`compose_failure_reply`) and linkless.
-# Three reasons is all the engine can tell apart: everything else it used to
-# refuse is now a draft carrying a warning.
-_FAILURE_DIAGNOSES: dict[str, str] = {
-    COORDS_MISSING: "No coordinate in the post",
-    COORDS_INVALID: "Coordinate out of bounds",
-    POST_UNREADABLE: "Post not readable on X (age-restricted, withheld or gone)",
-}
+# Where an analyst goes when the bot has nothing to diagnose. A handle mention
+# is not a link, so it keeps the reply's linkless contract.
+_ADMIN_CONTACT = "@vidithq"
 
 
 def compose_failure_reply(reason: str | None = None, *, mention_id: str) -> str:
@@ -308,7 +279,8 @@ def compose_failure_reply(reason: str | None = None, *, mention_id: str) -> str:
     Mirrors :func:`compose_reply`'s shape so the two verdicts read as one
     voice: the ❌ header, one ⚠ line naming what the engine saw, and the
     footer. No recited lesson and no fix recipe: the rules live behind the bio
-    link.
+    link. The diagnosis is ``REFUSAL_MESSAGES``, the same sentence the paste
+    answers with for the same code.
 
     Same linkless contract as :func:`compose_reply`: no URL, no auto-linkable
     domain (the "source link" phrase is a placeholder, not a link). Only
@@ -320,12 +292,11 @@ def compose_failure_reply(reason: str | None = None, *, mention_id: str) -> str:
     """
     head = "❌ Nothing saved"
     ref = f" (m{mention_id[-5:]})"
-    diagnosis = _FAILURE_DIAGNOSES.get(reason or "")
-    # An undiagnosed failure is a case the mapper does not name: not the
-    # analyst's format to fix, so route them to the maintainers instead of
-    # reciting a lesson. A handle mention is not a link (the linkless
-    # contract concerns URLs).
-    warning = f"⚠ {diagnosis}" if diagnosis else "⚠ Unexpected case. Reach out to @vidithq"
+    diagnosis = REFUSAL_MESSAGES.get(reason or "")
+    # No code to name: the engine refused nothing, the write path raised on
+    # every draft. Not the analyst's format to fix, so route them to the
+    # maintainers instead of reciting a lesson.
+    warning = f"⚠ {diagnosis}" if diagnosis else f"⚠ Unexpected case. Reach out to {_ADMIN_CONTACT}"
     return _within_reply_cap("\n".join([head, warning, f"Guide in bio{ref}"]))
 
 
@@ -458,6 +429,16 @@ def _success_reply(assembled: Outcome) -> str:
     )
 
 
+# The verdicts a linked author gets an answer for when their tag produced no
+# draft. ``no_detection`` is the engine's refusal, named back by code;
+# ``failed`` is the write path raising on every draft, which names no code and
+# reads as the reply's unexpected case. A tag that answers neither either
+# created (the ✅ reply) or deduplicated onto a row the analyst already holds
+# (``skipped``, which is not a failure to report), and an unlinked author stays
+# fully silent whatever the tweet yielded.
+_ANSWERED_VERDICTS = ("no_detection", "failed")
+
+
 async def process_single_mention(
     db: Session,
     mention: Mention,
@@ -514,7 +495,7 @@ async def process_single_mention(
         outcome.failed += 1
         return "failed"
     if (
-        verdict == "no_detection"
+        verdict in _ANSWERED_VERDICTS
         and owner is not None
         and mention.in_reply_to_user_id != settings.x_bot_user_id
         and budget.reply_allowed(mention.author_handle)

@@ -14,27 +14,6 @@ import { useMutation } from "@/hooks/useMutation";
 import { draftEditPath, importFromPost } from "@/lib/events";
 import type { TweetImportOutcome } from "@/types";
 
-/** What review still has to answer on the drafts this post produced, keyed by
- *  the backend's warning codes: what the engine could not settle from the post,
- *  then what the drafts ended up with. A code with no line here renders nothing:
- *  the draft is already open in the queue, so an unmapped warning costs a
- *  sentence, never the import. */
-const WARNING_LINES: Record<string, string> = {
-  several_coordinates: "Several coordinates in that post, so one draft each.",
-  source_ambiguous: "Several possible sources. Pick one at review.",
-  source_missing: "No source found. Add one at review.",
-  source_footage_missing: "No footage stored from the source. Add it at review.",
-  source_date_unknown: "The source's post date came back unknown. Check it at review.",
-  duplicate_media: "That media is already on Vidit. Possible duplicate.",
-};
-
-/** Why a post produced no draft, keyed by the engine's refusal codes. The
- *  fallback below covers anything unmapped. */
-const REFUSAL_LINES: Record<string, string> = {
-  coords_missing: "No coordinate in that post, so there is nothing to place.",
-  coords_invalid: "The coordinate in that post sits outside the world.",
-};
-
 /** The finished run in one line: what landed, what moved, what was left alone. */
 function outcomeSummary(outcome: TweetImportOutcome): string {
   const parts: string[] = [];
@@ -63,10 +42,7 @@ function outcomeLine(outcome: TweetImportOutcome): string {
   if (outcome.failed > 0) {
     return "That post couldn't be stored. Try again in a minute.";
   }
-  return (
-    REFUSAL_LINES[outcome.reason ?? ""] ??
-    "That post produced no draft. Fill the form yourself instead."
-  );
+  return outcome.reason?.message ?? "That post produced no draft. Fill the form yourself instead.";
 }
 
 /**
@@ -79,6 +55,11 @@ function outcomeLine(outcome: TweetImportOutcome): string {
  * A clean run goes straight to the draft's review. A run with something to say
  * (warnings, a refusal, an already-imported post) stays here and says it, with
  * the review one click away, so nothing the engine raised is lost in a redirect.
+ *
+ * The sentence for a warning or a refusal arrives with its code: the bot's
+ * in-thread reply and the archive's outcome email read the same backend table,
+ * so this page holds no copy of its own and cannot describe one code
+ * differently from the other two entries.
  */
 export function ImportPostPanel() {
   const router = useRouter();
@@ -99,8 +80,7 @@ export function ImportPostPanel() {
   });
 
   const draftId = outcome === null ? undefined : firstDraftId(outcome);
-  const warnings =
-    outcome?.warnings.map((code) => WARNING_LINES[code]).filter((line) => line !== undefined) ?? [];
+  const warnings = outcome?.warnings ?? [];
 
   return (
     <form
@@ -146,8 +126,8 @@ export function ImportPostPanel() {
           <div className={FORM_SUCCESS_BANNER}>{outcomeLine(outcome)}</div>
           {warnings.length > 0 && (
             <ul className={`space-y-1 rounded-md p-3 text-xs ${WARNING_CALLOUT}`}>
-              {warnings.map((line) => (
-                <li key={line}>{line}</li>
+              {warnings.map((warning) => (
+                <li key={warning.code}>{warning.message}</li>
               ))}
             </ul>
           )}

@@ -17,6 +17,20 @@ class TweetImportRequest(BaseModel):
     url: str = Field(..., min_length=1, max_length=2048)
 
 
+class ImportNote(BaseModel):
+    """One thing the import has to say, as a stable code plus its sentence.
+
+    The sentence travels with the code so the page renders what it is given
+    rather than keeping its own table: the same wording reaches the bot's
+    in-thread reply and the archive's outcome email, out of one backend table
+    (``tweet_ingest.WARNING_MESSAGES`` / ``REFUSAL_MESSAGES``). Branch on
+    ``code``, which is the stable half; ``message`` is prose and may be reworded.
+    """
+
+    code: str
+    message: str
+
+
 class TweetImportRead(BaseModel):
     """What one pasted post did, in the order the engine produced it.
 
@@ -26,20 +40,19 @@ class TweetImportRead(BaseModel):
     (published, closed, withheld) or found already up to date. The caller opens
     the first id it gets.
 
-    ``warnings`` carries the warning codes for the drafts of this post: what
-    review still has to answer, never a refusal. Three say what the engine could
-    not settle from the post (``several_coordinates``, ``source_ambiguous``,
-    ``source_missing``) and three what the drafts ended up with
-    (``source_footage_missing``, ``source_date_unknown``, ``duplicate_media``).
-    ``reason`` is the refusal code
-    when the post produced no draft at all (``coords_missing``,
-    ``coords_invalid``), and null whenever drafts were produced. ``failed``
-    counts the detections that raised mid-persist.
+    ``warnings`` carries what review still has to answer on the drafts of this
+    post, never a refusal. Three codes say what the engine could not settle from
+    the post (``several_coordinates``, ``source_ambiguous``, ``source_missing``)
+    and three what the drafts ended up with (``source_footage_missing``,
+    ``source_date_unknown``, ``duplicate_media``). ``reason`` is the refusal when
+    the post produced no draft at all (``coords_missing``, ``coords_invalid``),
+    and null whenever drafts were produced. ``failed`` counts the detections that
+    raised mid-persist.
     """
 
     created: list[uuid.UUID]
     updated: list[uuid.UUID]
     skipped: list[uuid.UUID]
-    warnings: list[str]
-    reason: str | None
+    warnings: list[ImportNote]
+    reason: ImportNote | None
     failed: int

@@ -14,10 +14,12 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
-from app.schemas.tweet_import import TweetImportRead, TweetImportRequest
+from app.schemas.tweet_import import ImportNote, TweetImportRead, TweetImportRequest
 from app.services.detection import NotYourPost, import_pasted_post
 from app.services.storage import scrub_log
 from app.services.tweet_ingest import (
+    REFUSAL_MESSAGES,
+    WARNING_MESSAGES,
     InvalidTweetUrl,
     TweetFetchFailed,
     TweetNotAccessible,
@@ -26,6 +28,11 @@ from app.services.tweet_ingest import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# The sentence for a refusal the copy table does not word, which the code test
+# makes unreachable while it passes. The page renders what it is given, so the
+# fallback belongs here rather than as a second table on the page.
+_UNNAMED_REFUSAL = "That post produced no draft."
 
 
 def _refuse(status_code: int, code: str, message: str) -> NoReturn:
@@ -76,11 +83,26 @@ async def import_from_tweet(
         # operator can spot a syndication-endpoint outage.
         logger.warning("Tweet syndication fetch failed for %s: %s", scrub_log(body.url), exc)
         _refuse(502, "upstream_unreadable", "Couldn't read that post, try again later.")
+    # Each code travels with its sentence, read off the one backend table the
+    # bot's reply and the archive's outcome email also read, so the page renders
+    # what it is handed instead of keeping a fourth copy of the wording. The
+    # warnings keep the table's order, which is the order every surface reads.
     return TweetImportRead(
         created=[event.id for event in outcome.created],
         updated=[event.id for event in outcome.updated],
         skipped=[event.id for event in outcome.skipped],
-        warnings=list(outcome.warnings),
-        reason=outcome.reason,
+        warnings=[
+            ImportNote(code=code, message=message)
+            for code, message in WARNING_MESSAGES.items()
+            if code in outcome.warnings
+        ],
+        reason=(
+            None
+            if outcome.reason is None
+            else ImportNote(
+                code=outcome.reason,
+                message=REFUSAL_MESSAGES.get(outcome.reason, _UNNAMED_REFUSAL),
+            )
+        ),
         failed=outcome.failed,
     )

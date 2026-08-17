@@ -16,6 +16,7 @@ import httpx
 import pytest
 
 from app.models.event import STATUS_DETECTED, Event
+from app.services.tweet_ingest import REFUSAL_MESSAGES, WARNING_MESSAGES
 from app.services.tweet_ingest.syndication import _cache_clear
 from tests.conftest import login_as
 from tests.events._helpers import client
@@ -144,9 +145,13 @@ def test_several_coordinates_land_several_drafts_and_a_warning(db, linked_author
     assert response.status_code == 200, response.text
     body = response.json()
     assert len(body["created"]) == 2
-    # The engine's own vocabulary, surfaced verbatim so the page can name what
-    # review has to answer: two drafts, and no source on either.
-    assert body["warnings"] == ["several_coordinates", "source_missing"]
+    # The stable codes, each with the one sentence the bot's reply and the
+    # archive's outcome email also say for it, so the page renders what it is
+    # handed rather than keeping its own wording.
+    assert body["warnings"] == [
+        {"code": "several_coordinates", "message": WARNING_MESSAGES["several_coordinates"]},
+        {"code": "source_missing", "message": WARNING_MESSAGES["source_missing"]},
+    ]
     assert len(_drafts(db, linked_author)) == 2
 
 
@@ -155,7 +160,11 @@ def test_a_post_with_no_coordinate_creates_nothing_and_names_why(db, linked_auth
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["created"] == [] and body["reason"] == "coords_missing"
+    assert body["created"] == []
+    assert body["reason"] == {
+        "code": "coords_missing",
+        "message": REFUSAL_MESSAGES["coords_missing"],
+    }
     assert _drafts(db, linked_author) == []
 
 

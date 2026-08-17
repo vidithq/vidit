@@ -34,14 +34,7 @@ from typing import Literal
 import httpx
 
 from app.config import settings
-from app.services.tweet_ingest import (
-    DUPLICATE_MEDIA,
-    SEVERAL_COORDINATES,
-    SOURCE_AMBIGUOUS,
-    SOURCE_DATE_UNKNOWN,
-    SOURCE_FOOTAGE_MISSING,
-    SOURCE_MISSING,
-)
+from app.services.tweet_ingest import WARNING_MESSAGES
 
 logger = logging.getLogger(__name__)
 
@@ -191,19 +184,6 @@ def detections_link(username: str) -> str:
     return f"{settings.frontend_url.rstrip('/')}/profile/{username}/detections"
 
 
-# What each warning reads as in the outcome email, keyed by the
-# ``tweet_ingest`` warning constants and read in this order. The count is of
-# detections, which is why each line names drafts rather than posts.
-_ARCHIVE_WARNING_LINES: dict[str, str] = {
-    SEVERAL_COORDINATES: "{n} came from a post carrying several coordinates",
-    SOURCE_AMBIGUOUS: "{n} left the source empty: the post linked several candidates",
-    SOURCE_MISSING: "{n} left the source empty: the post linked none",
-    SOURCE_FOOTAGE_MISSING: "{n} stored no footage from the source",
-    SOURCE_DATE_UNKNOWN: "{n} could not read the source's post date",
-    DUPLICATE_MEDIA: "{n} carry media already on Vidit",
-}
-
-
 def archive_import_complete_email(
     *,
     to: str,
@@ -228,9 +208,13 @@ def archive_import_complete_email(
     # answer on the drafts the engine read, so they sit under their own heading
     # rather than beside disjoint counts.
     raised = warnings or {}
+    # One line per warning the import raised, in the shared table's order and
+    # in its words: the bot's reply and the import panel say the same sentence
+    # for the same code (``tweet_ingest.WARNING_MESSAGES``). What the email adds
+    # is the count, of drafts rather than of posts.
     flagged = [
-        f"  {_ARCHIVE_WARNING_LINES[code].format(n=raised[code])}"
-        for code in _ARCHIVE_WARNING_LINES
+        f"  {raised[code]} draft{'s' if raised[code] != 1 else ''}: {message}"
+        for code, message in WARNING_MESSAGES.items()
         if raised.get(code)
     ]
     review = ("\nWhat to look at first:\n\n" + "\n".join(flagged) + "\n") if flagged else ""
