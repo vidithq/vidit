@@ -327,7 +327,7 @@ describe("public profile edit mode", () => {
     screen.getByRole("button", { name: "Edit profile" }).click();
 
     await waitFor(() =>
-      expect(screen.getByLabelText("Avatar URL")).toBeInTheDocument()
+      expect(screen.getByText("Profile picture")).toBeInTheDocument()
     );
     // The read-only portfolio drops out, so every field sits between the
     // header and Save.

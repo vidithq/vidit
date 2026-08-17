@@ -162,6 +162,11 @@ def strip_metadata(data: bytes, content_type: str) -> bytes:
     * **PNG** — ``optimize=True``; lossless, so the strip is pixel-free.
     * **WebP** — ``quality=95, method=6`` (best compression/quality).
 
+    An EXIF Orientation tag is applied to the pixels first, so the stripped
+    copy renders the way the camera meant it to. Dropping the tag without
+    applying it is what leaves a portrait photo sideways everywhere it is
+    served.
+
     Rejects (raises ``EvidenceProcessingError`` → router 400):
 
     * **Corrupt / truncated** images (Pillow can't decode the header).
@@ -182,6 +187,14 @@ def strip_metadata(data: bytes, content_type: str) -> bytes:
         ),
         _guarded_open(data) as source,
     ):
+        # Bake the EXIF Orientation tag into the raster BEFORE the rebuild
+        # below drops it. ``frombytes`` copies pixels exactly as stored, so
+        # without this a phone photo shot in portrait keeps its landscape
+        # raster and loses the one tag that told a viewer to rotate it: the
+        # stripped copy renders sideways, and every derivative cut from it
+        # inherits the rotation. Returns the source unchanged when there is
+        # no orientation to apply.
+        source = ImageOps.exif_transpose(source) or source
         # Rebuild from raw pixel bytes only, which drops the whole
         # ``img.info`` dict (EXIF, IPTC, XMP, ICC, JFIF, comments,
         # thumbnails). Mode + size preserved so PNG / WebP alpha survives.
@@ -242,10 +255,12 @@ def make_jpeg_derivative(data: bytes, content_type: str, max_dim: int) -> bytes:
     is dwarfed by the JPEG encode.
 
     ``ImageOps.exif_transpose`` runs before resize so an EXIF Orientation
-    tag (5–8) is baked into pixel orientation. The seed-pool prep pass skips
-    the strip and calls this on raw pool bytes — without exif_transpose the
-    derivative would render rotated relative to the original served at the
-    public URL (browsers honour Orientation on the raw JPEG).
+    tag (5–8) is baked into pixel orientation. It matters on the paths that
+    reach here without a strip: the seed-pool prep pass calls this on raw
+    pool bytes, and without exif_transpose the derivative would render
+    rotated relative to the original served at the public URL (browsers
+    honour Orientation on the raw JPEG). On stripped bytes it finds nothing
+    to do, since ``strip_metadata`` already applied the tag.
 
     Same hardening as ``strip_metadata`` (kept here so the helper is safe
     standalone): decompression-bomb check before ``img.load()``; animated

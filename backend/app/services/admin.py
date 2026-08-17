@@ -22,7 +22,7 @@ from app.schemas.admin import (
 from app.services.auth import bump_token_version, generate_invite_code, invite_code_status
 from app.services.evidence_intake import collect_media_keys
 from app.services.pagination import keyset_before, take_page
-from app.services.storage import sweep_keys
+from app.services.storage import avatar_key_of, sweep_keys
 
 
 class AdminError(Exception):
@@ -469,8 +469,9 @@ def hard_delete_user(
     Order matters:
 
     1. Capture S3 keys upfront: the media URLs (all roles: source footage +
-       proof images) across their events, located and requested alike. The
-       cascade about to fire would drop those rows before we could read them.
+       proof images) across their events, located and requested alike, plus
+       the account's own avatar object. The cascade about to fire would drop
+       those rows before we could read them.
     2. Manually delete each event: ``owner_id`` carries no ``ON DELETE
        CASCADE`` (would mean retroactive constraint changes). Each ``db.delete``
        cascades to that row's media / contributor rows / tags. Because the
@@ -487,11 +488,14 @@ def hard_delete_user(
         raise UserNotFoundError("User not found")
 
     # 1. Capture every S3 key this user's events reference (media all roles,
-    # derivatives included).
+    # derivatives included), plus their profile picture: the avatar is
+    # personal data on the same erasure request, and nothing else references
+    # it once the row is gone.
     geolocations = db.query(Event).filter(Event.owner_id == user.id).all()
     geo_media_keys: list[str] = []
     for geo in geolocations:
         geo_media_keys.extend(collect_media_keys(list(geo.media)))
+    avatar_key = avatar_key_of(user.avatar_url)
 
     target = {
         "user_id": str(user.id),
@@ -514,7 +518,7 @@ def hard_delete_user(
 
     # 4. Best-effort S3 sweep, after the DB transaction is durable.
     sweep_keys(
-        geo_media_keys,
+        geo_media_keys + ([avatar_key] if avatar_key else []),
         context=f"user {user_id} hard-delete",
     )
 

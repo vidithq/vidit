@@ -36,9 +36,10 @@ export function Avatar({
    *  Sizing stays with `size`. */
   iconClassName?: string;
 }) {
-  // An `avatar_url` is a URL its owner types, so it can 404, or be `http://`
-  // on an HTTPS deploy where the browser blocks it. Track the src that failed
-  // rather than a flag, so typing a new URL in the profile form retries.
+  // An `avatar_url` addresses an object on our own media host, so it can still
+  // 404: the object is deleted the moment the picture is replaced or removed,
+  // and a CDN edge can answer before a freshly stored one propagates. Track
+  // the src that failed rather than a flag, so a new picture retries.
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const showImage = !!src && src !== failedSrc;
 

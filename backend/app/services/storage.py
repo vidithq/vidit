@@ -712,6 +712,85 @@ async def upload_proof_image(file: UploadFile, user_id: UUID) -> UploadResult:
     return await _upload_with_optional_strip(file, key, produce_derivatives=False)
 
 
+# Every object under this prefix is one this codebase minted for a profile
+# picture. The column that points at it is server-set, so the prefix is what
+# tells a sweep "this key is ours to delete".
+AVATAR_KEY_PREFIX = "avatars/"
+
+
+def avatar_key_of(url: str | None) -> str | None:
+    """The avatar object ``url`` addresses, or ``None`` when it addresses none.
+
+    Every caller that deletes a picture asks this first. A URL resolves to a
+    key only when it names our own bucket, and only a key under
+    ``avatars/`` is one this pipeline minted, so anything else is another
+    prefix's object and is left where it is.
+    """
+    if not url:
+        return None
+    key = get_storage().key_from_url(url)
+    if key is None or not key.startswith(AVATAR_KEY_PREFIX):
+        return None
+    return key
+
+
+def avatar_key(user_id: UUID) -> str:
+    """Mint the storage key for one analyst's next profile picture.
+
+    Always ``.jpg``: :func:`render_avatar_jpeg` re-encodes every accepted
+    source format, so the key never has to describe what was uploaded.
+    """
+    return f"{AVATAR_KEY_PREFIX}{user_id}/{uuid4()}.jpg"
+
+
+def render_avatar_jpeg(data: bytes, content_type: str) -> bytes:
+    """Turn accepted image bytes into the single JPEG an avatar is stored as.
+
+    EXIF/IPTC/XMP/ICC stripped, then resized so the longer edge fits
+    ``THUMBNAIL_MAX_DIM`` and re-encoded as JPEG. One object per avatar: the
+    picture renders at 44 px on the profile header and smaller everywhere
+    else, so hero / thumbnail siblings would be unfetched objects retained
+    365 days under Object Lock.
+
+    ``content_type`` must already be in :data:`ALLOWED_IMAGE_TYPES`; the
+    caller owns that check (:func:`upload_avatar_image` for the endpoint).
+    Anything else falls through the transforms unchanged, which is not what a
+    caller here wants.
+
+    Sync and CPU-bound; the async caller runs it in a thread. Raises
+    ``EvidenceProcessingError`` for an image that cannot be decoded.
+    """
+    # Local import keeps the storage module free of an eager Pillow load, the
+    # same reason ``prepare_media`` defers it.
+    from app.services.evidence_processing import (
+        THUMBNAIL_MAX_DIM,
+        make_jpeg_derivative,
+        strip_metadata,
+    )
+
+    return make_jpeg_derivative(strip_metadata(data, content_type), content_type, THUMBNAIL_MAX_DIM)
+
+
+async def upload_avatar_image(file: UploadFile, user_id: UUID) -> UploadResult:
+    """Store one analyst's profile picture and return where it landed.
+
+    Images only. A video content type is rejected on the MIME rather than
+    validated against the video size ceiling, because nothing downstream would
+    resize or strip it. Raises ``ValueError``; the router maps it to a 422.
+    """
+    content_type = file.content_type or ""
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        raise ValueError(f"File type {content_type or 'unknown'} not allowed for an avatar")
+    validate_file(file)
+
+    def _render() -> bytes:
+        file.file.seek(0)
+        return render_avatar_jpeg(file.file.read(), content_type)
+
+    data = await asyncio.to_thread(_render)
+    return await get_storage().upload_bytes(data, avatar_key(user_id), "image/jpeg")
+
+
 # 255 chars is the common filesystem-name max (NTFS / ext4), above any
 # realistic phone-camera filename. A constant so routers and tests share
 # one source of truth.
