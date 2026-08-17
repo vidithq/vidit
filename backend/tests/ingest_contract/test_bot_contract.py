@@ -1,7 +1,7 @@
 """Bot entry contract: every typology through the bot's per-mention detection.
 
 The bot's detection half is the shared one-hop acquisition
-(``bot.acquire_tagged_thread``) followed by the engine (``detect_diagnosed``),
+(``bot.acquire_tagged_thread``) followed by the engine (``resolve_threads``),
 and nothing else: the bot adds a reply on top, never a grammar. It runs here
 against the same typology fixtures the resolve contract uses, offline (a
 ``MockTransport`` over the typology's bodies) and with no DB, so what this file
@@ -17,19 +17,19 @@ from __future__ import annotations
 import pytest
 
 from app.services.bot import acquire_tagged_thread
-from app.services.tweet_ingest import DetectedGeoloc, detect_diagnosed
+from app.services.tweet_ingest import Resolution, resolve_threads
 
 from . import loader
 
 _PATH = "bot"
 
 
-def _detections(typology: str) -> tuple[list[DetectedGeoloc], str | None]:
+def _resolution(typology: str) -> Resolution:
     """Run the bot's detection half over the typology's post, as if tagged there."""
     body = loader.load_body(typology)
     with loader.syndication_client(typology) as client:
         acquired = acquire_tagged_thread(body["id_str"], body["user"]["screen_name"], client=client)
-    return detect_diagnosed(acquired.records)
+    return resolve_threads([acquired.records])
 
 
 @pytest.mark.parametrize("typology", loader.typology_names())
@@ -37,9 +37,7 @@ def test_typology_matches_the_bot_contract(typology: str) -> None:
     block = loader.load_expected(typology).get("paths", {}).get(_PATH, {})
     if "skip" in block:
         pytest.skip(block["skip"])
-    detections, reason = _detections(typology)
-
-    loader.assert_detections_match(typology, _PATH, detections, reason)
+    loader.assert_resolution_matches(typology, _PATH, _resolution(typology))
 
 
 def test_the_bot_reads_the_same_authors_parent() -> None:
@@ -49,11 +47,11 @@ def test_the_bot_reads_the_same_authors_parent() -> None:
     coordinate the reply itself does not carry still lands."""
     typology = "self_reply_geo_then_source"
     expected = loader.load_expected(typology)
-    detections, reason = _detections(typology)
+    resolution = _resolution(typology)
 
-    assert reason is None
-    [detection] = detections
-    assert detection.coordinate.lat == pytest.approx(expected["coords"][0][0])
-    assert detection.coordinate.lng == pytest.approx(expected["coords"][0][1])
-    assert detection.detected_from_url.endswith(f"/status/{expected['head_tweet_id']}")
-    assert detection.source_url == expected["source_url"]
+    assert resolution.reason is None
+    [draft] = resolution.drafts
+    assert draft.coordinate.lat == pytest.approx(expected["coords"][0][0])
+    assert draft.coordinate.lng == pytest.approx(expected["coords"][0][1])
+    assert draft.detected_from_url.endswith(f"/status/{expected['head_tweet_id']}")
+    assert draft.source_url == expected["source_url"]

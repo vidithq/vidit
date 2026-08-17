@@ -1,10 +1,12 @@
-"""The one brick: a thread of ``TweetRecord`` resolves to a ``ResolvedThread``.
+"""The engine: threads of ``TweetRecord`` resolve to a ``Resolution``.
 
 A "thread" is a list of ``TweetRecord``: ``stitch``'s output for the archive, or
 the one hop ``acquire.acquire_thread`` reads for the bot and the paste.
-``resolve_thread`` is the single core every entry runs, so the bot, the pasted
-import and the archive backfill cannot drift on coordinates, source, dates, or
-media.
+:func:`resolve_threads` is the single core every entry runs, so the bot, the
+pasted import and the archive backfill cannot drift on coordinates, source,
+dates, or media. It is pure: no network, no database. Each thread yields one
+:class:`Draft` per coordinate it carries, or one refusal code when it yields
+none; ``services/detection.persist_drafts`` is what turns a draft into a row.
 
 Every derived field follows one contract: filled only on an explicit signal in
 the analyst's own text (a quote, a link, a coordinate), otherwise empty. No
@@ -14,8 +16,8 @@ video, and only into the source media slot: ``source_url`` is untouched, so a
 promotion never reads as a declared source (see :func:`split_media`).
 
 The small ``resolve_source`` / ``split_media`` helpers are the pieces;
-``resolve_thread`` composes them plus the coordinate / title / proof / date
-derivations into the bundled ``ResolvedThread``.
+:func:`resolve_threads` composes them plus the coordinate / title / proof / date
+derivations into the drafts.
 """
 
 from __future__ import annotations
@@ -47,6 +49,22 @@ from .urls import (
     hostname,
     x_status_id,
 )
+
+# ── The engine's vocabulary ───────────────────────────────────────────────
+
+# Why a thread produced nothing. The entry that cares names it back to the
+# analyst (the bot's failure reply); the other entries ignore it.
+# ``POST_UNREADABLE`` is raised by the acquisition rather than here: X served no
+# body at all, so no thread ever reached the engine.
+COORDS_MISSING = "coords_missing"
+COORDS_INVALID = "coords_invalid"
+POST_UNREADABLE = "post_unreadable"
+
+# What a created draft still needs from its owner. Warnings, not refusals: the
+# draft lands either way and review is where they are answered.
+SOURCE_AMBIGUOUS = "source_ambiguous"  # several candidate links, source left empty
+SOURCE_MISSING = "source_missing"  # no candidate link and no quote
+SEVERAL_COORDINATES = "several_coordinates"  # one thread, several drafts
 
 
 def _status_link_handle(url: str) -> str | None:
@@ -297,42 +315,96 @@ def split_media(thread: list[TweetRecord]) -> tuple[list[ParsedMedia], list[Pars
 
 
 @dataclass(frozen=True)
-class ResolvedThread:
-    """Everything a thread resolves to: the "thread to all info" object.
+class Draft:
+    """One coordinate's worth of a thread: the fields a ``detected`` row needs.
 
-    ``detect`` is a thin mapper over this: nothing derived lives in it.
+    Plain data, never an ORM row: ``services/detection.persist_drafts`` turns
+    each into an ``Event`` and owns persistence, evidence and the
+    ``(detected_from_tweet_id, coordinate)`` idempotency. A thread carrying
+    several coordinates yields one draft each, all sharing the same source,
+    proof, dates and provenance.
     """
 
-    # Identity / provenance (from the thread head, the geoloc post).
-    # The head's post id is the identity every surface keys on; the URL is the
-    # display value built from it (:func:`urls.canonical_tweet_url`). ``None``
-    # only when an adapter handed over a non-numeric id, which no upstream
-    # writes.
+    coordinate: ParsedCoord
+    title: str
+    # Plain-text proof body (the thread's text, media wrappers dropped). The
+    # caller wraps it into the model's JSONB proof document.
+    proof_text: str
+    # The declared source (the quoted tweet or a linked post), distinct from
+    # ``detected_from_url``. None when the thread neither quoted nor carried
+    # exactly one candidate link: a ``detected`` draft may have no source.
+    source_url: str | None
+    # The post this draft was detected from (the geoloc post): its id is the
+    # identity every surface keys on, the URL the provenance link built from it
+    # (:func:`urls.canonical_tweet_url`). The id is ``None`` only when an
+    # adapter handed over a non-numeric one, which no upstream writes.
     detected_from_tweet_id: int | None
     detected_from_url: str
-    owner_handle: str
-    # Derived.
-    coords: list[ParsedCoord]
-    # A coordinate-shaped string was read and dropped for sitting outside the
-    # world; the only coordinate refusal an entry can name apart from "none".
-    coords_out_of_bounds: bool
-    title: str
-    proof_text: str
-    # The source; None when the thread neither quotes nor carries exactly one
-    # candidate link (no self-source deduction).
-    source_url: str | None
-    # The source's post instant, only when actually known (a dated quote or a
-    # chased post); never a fallback onto the geoloc tweet's own date.
-    source_posted_at: datetime | None
-    detected_post_at: datetime | None  # the geoloc tweet's date
-    # Provisional proxy from the geoloc tweet's post date; None when the
-    # timestamp is unusable (no epoch fabrication).
+    # Provisional event date = the geoloc tweet's post date; the owner corrects
+    # it at submit (the true event usually predates the post). None when the
+    # tweet's timestamp is unusable.
     event_date: date | None
-    # The mirrors: the candidates the source slot didn't take, normalized and
-    # capped (:func:`resolve_secondary_sources`).
+    # The source's post instant (UTC), only when actually known (a dated quote
+    # or a chased post); never a fallback onto the geoloc tweet's own date.
+    source_posted_at: datetime | None
+    # When the analyst posted THIS geolocation (the geoloc tweet) → the nullable
+    # ``detected_post_at``.
+    detected_post_at: datetime | None
+    # The mirrors: the candidates the source slot did not take, ordered,
+    # normalized and capped (:func:`resolve_secondary_sources`). Prefills the
+    # row's secondary source links, which the owner edits at submit.
     secondary_source_urls: list[str] = field(default_factory=list)
+    # Footage (role=source, capped at one) vs the analyst's annotation (role=proof).
     source_media: list[ParsedMedia] = field(default_factory=list)
     proof_media: list[ParsedMedia] = field(default_factory=list)
+    # What this draft still needs from its owner (the ``*_MISSING`` /
+    # ``*_AMBIGUOUS`` / ``SEVERAL_COORDINATES`` constants above). Every draft of
+    # one thread carries the same list; the entry surfaces it its own way (the
+    # bot's reply, the archive's outcome email).
+    warnings: list[str] = field(default_factory=list)
+
+
+def sole_refusal(refusals: dict[str, int]) -> str | None:
+    """The one refusal code to name back to the analyst, or ``None``.
+
+    ``None`` when nothing refused, and when several threads refused for
+    different reasons: an export naming one of its refusals would be picking a
+    winner, so it reads the counts instead.
+    """
+    return next(iter(refusals)) if len(refusals) == 1 else None
+
+
+@dataclass(frozen=True)
+class Resolution:
+    """What a batch of threads resolves to, the engine's whole answer.
+
+    ``drafts`` are in thread order, and one thread's drafts are contiguous:
+    the write path caches a thread's media on that.
+    """
+
+    drafts: list[Draft] = field(default_factory=list)
+    # How many threads the engine refused, keyed by the refusal constants above.
+    # A one-thread entry (the bot, the paste) reads :attr:`reason`; an export
+    # refusing several threads reads the counts.
+    refusals: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def warnings(self) -> dict[str, int]:
+        """How many drafts carry each warning, keyed by the warning constants.
+
+        The count is of what the engine read, not of what persisted, so the
+        bot's reply and the archive's outcome email read the same numbers.
+        """
+        counts: dict[str, int] = {}
+        for draft in self.drafts:
+            for warning in draft.warnings:
+                counts[warning] = counts.get(warning, 0) + 1
+        return counts
+
+    @property
+    def reason(self) -> str | None:
+        """The one refusal to name when the batch resolved no draft at all."""
+        return None if self.drafts else sole_refusal(self.refusals)
 
 
 def own_posts(thread: list[TweetRecord]) -> list[TweetRecord]:
@@ -346,13 +418,54 @@ def own_posts(thread: list[TweetRecord]) -> list[TweetRecord]:
     return [record for record in thread if not is_retweet(record.text)]
 
 
-def resolve_thread(thread: list[TweetRecord]) -> ResolvedThread | None:
-    """Resolve a stitched thread into a ``ResolvedThread``. ``None`` for an empty
-    thread or one carrying only retweets; a coordinate-less thread still
-    resolves (``coords == []``)."""
+def _warnings_for(
+    coords: list[ParsedCoord], source_url: str | None, mirrors: list[str]
+) -> list[str]:
+    """What the resolution could not settle, in reply order.
+
+    The source is empty in exactly two cases, and the mirrors tell them apart:
+    several candidates all landed there (ambiguous), or there was no candidate
+    and no quote at all (missing).
+    """
+    warnings: list[str] = []
+    if len(coords) > 1:
+        warnings.append(SEVERAL_COORDINATES)
+    if source_url is None:
+        warnings.append(SOURCE_AMBIGUOUS if mirrors else SOURCE_MISSING)
+    return warnings
+
+
+def resolve_threads(threads: list[list[TweetRecord]]) -> Resolution:
+    """The engine: every thread's drafts, plus one count per refusal code.
+
+    Pure and in memory, so an export resolves in full before the write path
+    touches a row, which is what gives its progress callback an exact total.
+    Every entry runs it: the bot and the paste over the single thread they
+    acquired, the archive backfill over every stitched self-thread of an export.
+    """
+    drafts: list[Draft] = []
+    refusals: dict[str, int] = {}
+    for thread in threads:
+        found, refusal = _thread_drafts(thread)
+        drafts.extend(found)
+        if refusal is not None:
+            refusals[refusal] = refusals.get(refusal, 0) + 1
+    return Resolution(drafts=drafts, refusals=refusals)
+
+
+def _thread_drafts(thread: list[TweetRecord]) -> tuple[list[Draft], str | None]:
+    """One ``Draft`` per coordinate the thread carries, or the reason it carries
+    none.
+
+    Two reasons, which is all the engine can tell apart: a coordinate-shaped
+    string sat outside the world (``COORDS_INVALID``), or the analyst's own text
+    carried no coordinate at all (``COORDS_MISSING``), which also covers a
+    thread that is empty or holds only retweets. A thread that produced drafts
+    carries no reason; what those drafts still need is on their ``warnings``.
+    """
     posts = own_posts(thread)
     if not posts:
-        return None
+        return [], COORDS_MISSING
     head = posts[0]
     # Expanded per record before the join: raw tweet text carries only opaque
     # ``t.co`` wrappers, so an analyst's reference link would otherwise reach the
@@ -369,26 +482,35 @@ def resolve_thread(thread: list[TweetRecord]) -> ResolvedThread | None:
     # A coordinate counts only in the analyst's own text: one that lives solely
     # in a third party's quoted post is that party's geolocation.
     scan = scan_coords(own_text)
+    if not scan.coords:
+        return [], COORDS_INVALID if scan.out_of_bounds else COORDS_MISSING
     source_url, source_iso = resolve_source(posts)
     source_media, proof_media = split_media(posts)
     detected_post_at = _posted_at(head.created_at)
-    source_posted_at = _posted_at(source_iso) if source_iso else None
-    return ResolvedThread(
-        detected_from_tweet_id=_tweet_id(head.tweet_id),
-        detected_from_url=canonical_tweet_url(head.tweet_id, head.handle),
-        owner_handle=head.handle,
-        coords=scan.coords,
-        coords_out_of_bounds=scan.out_of_bounds,
-        title=derive_title(own_text),
-        proof_text=clean_proof_text(own_text),
-        source_url=source_url,
-        source_posted_at=source_posted_at,
-        detected_post_at=detected_post_at,
-        event_date=_event_date(head.created_at, detected_post_at),
-        secondary_source_urls=resolve_secondary_sources(posts, source_url),
-        source_media=source_media,
-        proof_media=proof_media,
-    )
+    secondary_source_urls = resolve_secondary_sources(posts, source_url)
+    # Everything but the coordinate is derived once and shared: the drafts of
+    # one thread differ on the coordinate alone.
+    title = derive_title(own_text)
+    proof_text = clean_proof_text(own_text)
+    warnings = _warnings_for(scan.coords, source_url, secondary_source_urls)
+    return [
+        Draft(
+            coordinate=coord,
+            title=title,
+            proof_text=proof_text,
+            source_url=source_url,
+            detected_from_tweet_id=_tweet_id(head.tweet_id),
+            detected_from_url=canonical_tweet_url(head.tweet_id, head.handle),
+            event_date=_event_date(head.created_at, detected_post_at),
+            source_posted_at=_posted_at(source_iso) if source_iso else None,
+            detected_post_at=detected_post_at,
+            secondary_source_urls=secondary_source_urls,
+            source_media=source_media,
+            proof_media=proof_media,
+            warnings=warnings,
+        )
+        for coord in scan.coords
+    ], None
 
 
 # A post id is a snowflake, so it fits a signed 64-bit integer by construction

@@ -9,9 +9,8 @@ Single-responsibility bricks behind one import surface:
 * ``extract``: pure text core (coordinates, title, proof body), reused by
   every path.
 * ``stitch``: recombine records into threads (union-find on reply edges).
-* ``resolve``: the engine, a thread to one ``ResolvedThread``.
-* ``detect``: the machine path, a thread to ``DetectedGeoloc`` DTOs plus the
-  reason it produced none.
+* ``resolve``: the engine, threads to one ``Draft`` per coordinate plus the
+  reason a thread produced none.
 * ``syndication``: X I/O (fetch + token + cache, payload mappers).
 * ``chase``: one module per technology behind one dispatcher, for the single
   fetch spent on a post's declared source.
@@ -30,16 +29,6 @@ from __future__ import annotations
 
 from .acquire import AcquiredThread, acquire_pasted_thread, acquire_thread
 from .archive import archive_media_fetcher, fetch_cdn_media, read_tweets
-from .detect import (
-    COORDS_INVALID,
-    COORDS_MISSING,
-    POST_UNREADABLE,
-    SEVERAL_COORDINATES,
-    SOURCE_AMBIGUOUS,
-    SOURCE_MISSING,
-    DetectedGeoloc,
-    detect_diagnosed,
-)
 from .errors import (
     InvalidTweetUrl,
     TweetFetchFailed,
@@ -53,6 +42,18 @@ from .extract import (
     extract_coords,
 )
 from .records import ParsedMedia, TweetRecord
+from .resolve import (
+    COORDS_INVALID,
+    COORDS_MISSING,
+    POST_UNREADABLE,
+    SEVERAL_COORDINATES,
+    SOURCE_AMBIGUOUS,
+    SOURCE_MISSING,
+    Draft,
+    Resolution,
+    resolve_threads,
+    sole_refusal,
+)
 from .stitch import stitch
 from .syndication import fetch_syndication
 from .urls import is_trusted_media_url, normalise_tweet_url
@@ -65,10 +66,11 @@ __all__ = [
     "SOURCE_AMBIGUOUS",
     "SOURCE_MISSING",
     "AcquiredThread",
-    "DetectedGeoloc",
+    "Draft",
     "InvalidTweetUrl",
     "ParsedCoord",
     "ParsedMedia",
+    "Resolution",
     "TweetFetchFailed",
     "TweetNotAccessible",
     "TweetRecord",
@@ -78,12 +80,13 @@ __all__ = [
     "archive_media_fetcher",
     "clean_proof_text",
     "derive_title",
-    "detect_diagnosed",
     "extract_coords",
     "fetch_cdn_media",
     "fetch_syndication",
     "is_trusted_media_url",
     "normalise_tweet_url",
     "read_tweets",
+    "resolve_threads",
+    "sole_refusal",
     "stitch",
 ]

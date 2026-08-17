@@ -1,8 +1,8 @@
-"""Integration tests for the machine-detection assemble step.
+"""Integration tests for the machine-detection write path.
 
-Exercises ``assemble_detections`` against the DB + local storage: a DTO
-becomes a ``detected`` row owned by the backfiller, media lands as ``Media``
-with a sha256, and a detection matching a row the owner already holds resolves
+Exercises ``persist_drafts`` against the DB + local storage: a ``Draft``
+becomes a ``detected`` row owned by the importer, media lands as ``Media``
+with a sha256, and a draft matching a row the owner already holds resolves
 through the disposition matrix (skip / upsert / create).
 """
 
@@ -23,10 +23,10 @@ from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
 from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
-from app.services.detection import assemble_detections, backfill_from_archive
+from app.services.detection import Outcome, backfill_from_archive, persist_drafts
 from app.services.source_archive import stage_source_snapshot
 from app.services.storage import get_storage
-from app.services.tweet_ingest import DetectedGeoloc, ParsedCoord, ParsedMedia
+from app.services.tweet_ingest import Draft, ParsedCoord, ParsedMedia, Resolution
 from tests._fixtures import TINY_JPEG
 
 ARCHIVE = Path(__file__).parent / "data" / "synthetic_archive"
@@ -94,7 +94,14 @@ async def _missing_fetcher(_parsed: ParsedMedia) -> tuple[bytes, str] | None:
     return None
 
 
-def _dto(
+async def _persist(db, *, owner: User, drafts: list[Draft], fetch_media) -> Outcome:
+    """Persist ``drafts`` as one resolution, which is what an entry hands over."""
+    return await persist_drafts(
+        db, owner=owner, resolution=Resolution(drafts=drafts), fetch_media=fetch_media
+    )
+
+
+def _draft(
     *,
     lat: float = 48.5,
     lng: float = 34.5,
@@ -106,11 +113,11 @@ def _dto(
     secondary_source_urls: list[str] | None = None,
     title: str = "Strike at Bakhmut",
     proof_text: str = "Strike at Bakhmut\nGeolocated by analyst",
-) -> DetectedGeoloc:
-    """A detection DTO. Source-less by default, matching the resolve contract:
-    a tweet that neither quotes nor links footage declares no source. Sourced
-    tests pass ``source_url`` / ``source_posted_at`` explicitly."""
-    return DetectedGeoloc(
+) -> Draft:
+    """A draft. Source-less by default, matching the resolve contract: a tweet
+    that neither quotes nor links footage declares no source. Sourced tests pass
+    ``source_url`` / ``source_posted_at`` explicitly."""
+    return Draft(
         coordinate=ParsedCoord(lat=lat, lng=lng),
         title=title,
         proof_text=proof_text,
@@ -119,7 +126,6 @@ def _dto(
         # so a test varying one varies both, as the engine does.
         detected_from_tweet_id=int(url.rsplit("/", 1)[-1]),
         detected_from_url=url,
-        owner_handle="own",
         event_date=date(2025, 11, 12),
         source_posted_at=source_posted_at,
         detected_post_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
@@ -140,10 +146,8 @@ async def test_assemble_injects_proof_images_into_proof_doc(db, owner):
     # JSON; that is how the read surfaces proof images (source travels in ``media``).
     from app.models.media import Media as MediaRow
 
-    dto = _dto(proof_media=[_img(), _img()])
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[dto], fetch_media=_image_fetcher
-    )
+    draft = _draft(proof_media=[_img(), _img()])
+    outcome = await _persist(db, owner=owner, drafts=[draft], fetch_media=_image_fetcher)
     geo = outcome.created[0]
     image_nodes = [n for n in geo.proof["content"] if n.get("type") == "image"]
     assert len(image_nodes) == 2
@@ -159,8 +163,8 @@ async def test_proof_video_is_skipped_not_orphaned(db, owner):
     video = ParsedMedia(
         kind="video", remote_url="https://video.twimg.com/v.mp4", content_type="video/mp4"
     )
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[_dto(proof_media=[video])], fetch_media=_image_fetcher
+    outcome = await _persist(
+        db, owner=owner, drafts=[_draft(proof_media=[video])], fetch_media=_image_fetcher
     )
     geo = outcome.created[0]
     assert db.query(Media).filter(Media.event_id == geo.id).count() == 0
@@ -173,8 +177,8 @@ async def test_proof_image_kept_when_mixed_with_video(db, owner):
     video = ParsedMedia(
         kind="video", remote_url="https://video.twimg.com/v.mp4", content_type="video/mp4"
     )
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[_dto(proof_media=[_img(), video])], fetch_media=_image_fetcher
+    outcome = await _persist(
+        db, owner=owner, drafts=[_draft(proof_media=[_img(), video])], fetch_media=_image_fetcher
     )
     geo = outcome.created[0]
     proof_rows = db.query(Media).filter(Media.event_id == geo.id, Media.role == "proof").all()
@@ -185,14 +189,12 @@ async def test_proof_image_kept_when_mixed_with_video(db, owner):
 async def test_assemble_persists_detected_row(db, owner):
     # A sourced detection (the quote typology): the declared source URL + date
     # and the quote's media land on the row, the media in the source slot.
-    sourced = _dto(
+    sourced = _draft(
         media=[_img()],
         source_url="https://x.com/src/status/9",
         source_posted_at=datetime(2025, 11, 11, 9, 0, tzinfo=UTC),
     )
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[sourced], fetch_media=_image_fetcher
-    )
+    outcome = await _persist(db, owner=owner, drafts=[sourced], fetch_media=_image_fetcher)
     assert len(outcome.created) == 1
     assert len(outcome.skipped) == 0 and len(outcome.updated) == 0
 
@@ -215,13 +217,11 @@ async def test_assemble_persists_detected_row(db, owner):
 async def test_assemble_prefills_secondary_source_links(db, owner):
     # The mirrors the resolution found land as ordered child rows, so the owner
     # reviews them at submit instead of re-finding the links by hand.
-    sourced = _dto(
+    sourced = _draft(
         source_url="https://x.com/src/status/9",
         secondary_source_urls=["https://t.me/channel/11", "https://www.youtube.com/watch?v=M1"],
     )
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[sourced], fetch_media=_image_fetcher
-    )
+    outcome = await _persist(db, owner=owner, drafts=[sourced], fetch_media=_image_fetcher)
     geo = outcome.created[0]
     assert [(link.position, link.url) for link in geo.source_links] == [
         (0, "https://t.me/channel/11"),
@@ -242,10 +242,8 @@ async def test_two_fetchable_source_media_caps_at_one_role_source_row(db, owner)
     video = ParsedMedia(
         kind="video", remote_url="https://video.twimg.com/v.mp4", content_type="video/mp4"
     )
-    sourced = _dto(media=[_img(), video], source_url="https://x.com/src/status/9")
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[sourced], fetch_media=_both_fetcher
-    )
+    sourced = _draft(media=[_img(), video], source_url="https://x.com/src/status/9")
+    outcome = await _persist(db, owner=owner, drafts=[sourced], fetch_media=_both_fetcher)
     assert len(outcome.created) == 1 and outcome.failed == 0
 
     geo = outcome.created[0]
@@ -258,9 +256,7 @@ async def test_media_less_detection_persists(db, owner):
     # A detected row may be media-incomplete and source-less; the owner
     # completes it before submitting. Unlike a human submit, no media, no
     # source URL, no source date required, and none is fabricated.
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
-    )
+    outcome = await _persist(db, owner=owner, drafts=[_draft()], fetch_media=_missing_fetcher)
     assert len(outcome.created) == 1
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert geo.source_url is None
@@ -269,10 +265,8 @@ async def test_media_less_detection_persists(db, owner):
 
 
 async def test_unchanged_pair_is_skipped_not_updated(db, owner):
-    await assemble_detections(db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher)
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
-    )
+    await _persist(db, owner=owner, drafts=[_draft()], fetch_media=_missing_fetcher)
+    outcome = await _persist(db, owner=owner, drafts=[_draft()], fetch_media=_missing_fetcher)
     assert outcome.created == [] and len(outcome.skipped) == 1 and len(outcome.updated) == 0
     assert db.query(Event).filter(Event.owner_id == owner.id).count() == 1
 
@@ -280,14 +274,12 @@ async def test_unchanged_pair_is_skipped_not_updated(db, owner):
 async def test_soft_deleted_pair_is_skipped(db, owner):
     # An admin took the event down. A re-import must not put it back: the row
     # stays removed and no live twin appears beside it.
-    await assemble_detections(db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher)
+    await _persist(db, owner=owner, drafts=[_draft()], fetch_media=_missing_fetcher)
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     geo.deleted_at = datetime.now(UTC)
     db.commit()
 
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
-    )
+    outcome = await _persist(db, owner=owner, drafts=[_draft()], fetch_media=_missing_fetcher)
     assert outcome.created == [] and len(outcome.skipped) == 1 and len(outcome.updated) == 0
     live = db.query(Event).filter(Event.owner_id == owner.id, Event.deleted_at.is_(None)).all()
     assert live == []
@@ -296,16 +288,16 @@ async def test_soft_deleted_pair_is_skipped(db, owner):
 async def test_withheld_pair_is_skipped(db, owner):
     # A takedown freezes the row for its owner too, so a re-import neither
     # overwrites it nor creates a second copy beside it.
-    await assemble_detections(db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher)
+    await _persist(db, owner=owner, drafts=[_draft()], fetch_media=_missing_fetcher)
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     geo.hidden_at = datetime.now(UTC)
     db.commit()
     geo_id, stored_title = geo.id, geo.title
 
-    outcome = await assemble_detections(
+    outcome = await _persist(
         db,
         owner=owner,
-        detections=[_dto(title="Rewritten by the newer parser")],
+        drafts=[_draft(title="Rewritten by the newer parser")],
         fetch_media=_missing_fetcher,
     )
     assert outcome.created == [] and len(outcome.skipped) == 1 and len(outcome.updated) == 0
@@ -319,16 +311,14 @@ async def test_closed_detection_is_skipped(db, owner):
     # The owner-reject shape: the row stays visible as ``closed``
     # (before_closed_status='detected'). The rejection is analyst work, so the
     # re-import respects it instead of queueing the same post again.
-    await assemble_detections(db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher)
+    await _persist(db, owner=owner, drafts=[_draft()], fetch_media=_missing_fetcher)
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     geo.before_closed_status = STATUS_DETECTED
     geo.status = "closed"
     geo.closed_at = datetime.now(UTC)
     db.commit()
 
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
-    )
+    outcome = await _persist(db, owner=owner, drafts=[_draft()], fetch_media=_missing_fetcher)
     assert outcome.created == [] and len(outcome.skipped) == 1 and len(outcome.updated) == 0
     assert db.query(Event).filter(Event.owner_id == owner.id).count() == 1
     assert (
@@ -340,12 +330,10 @@ async def test_same_source_and_coordinate_skips_across_provenance_urls(db, owner
     # The delete-and-repost duplicate: two different tweets (distinct
     # detected_from_url) declaring the same footage source at the same
     # coordinate are one event — the second detection skips.
-    first = _dto(url="https://x.com/own/status/1", source_url="https://t.me/chan/1")
-    second = _dto(url="https://x.com/own/status/2", source_url="https://t.me/chan/1")
-    await assemble_detections(db, owner=owner, detections=[first], fetch_media=_missing_fetcher)
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[second], fetch_media=_missing_fetcher
-    )
+    first = _draft(url="https://x.com/own/status/1", source_url="https://t.me/chan/1")
+    second = _draft(url="https://x.com/own/status/2", source_url="https://t.me/chan/1")
+    await _persist(db, owner=owner, drafts=[first], fetch_media=_missing_fetcher)
+    outcome = await _persist(db, owner=owner, drafts=[second], fetch_media=_missing_fetcher)
     assert outcome.created == [] and len(outcome.skipped) == 1
     assert db.query(Event).filter(Event.owner_id == owner.id).count() == 1
 
@@ -353,14 +341,12 @@ async def test_same_source_and_coordinate_skips_across_provenance_urls(db, owner
 async def test_same_source_different_coordinate_still_creates(db, owner):
     # Same footage can legitimately yield two events at different places (one
     # video, two strikes) — the source_url leg must not collapse them.
-    first = _dto(url="https://x.com/own/status/1", source_url="https://t.me/chan/1")
-    second = _dto(
+    first = _draft(url="https://x.com/own/status/1", source_url="https://t.me/chan/1")
+    second = _draft(
         url="https://x.com/own/status/2", source_url="https://t.me/chan/1", lat=48.6, lng=34.6
     )
-    await assemble_detections(db, owner=owner, detections=[first], fetch_media=_missing_fetcher)
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[second], fetch_media=_missing_fetcher
-    )
+    await _persist(db, owner=owner, drafts=[first], fetch_media=_missing_fetcher)
+    outcome = await _persist(db, owner=owner, drafts=[second], fetch_media=_missing_fetcher)
     assert len(outcome.created) == 1 and len(outcome.skipped) == 0
     assert db.query(Event).filter(Event.owner_id == owner.id).count() == 2
 
@@ -368,12 +354,10 @@ async def test_same_source_different_coordinate_still_creates(db, owner):
 async def test_sourceless_dtos_do_not_dedup_on_null_source(db, owner):
     # Two source-less detections from different posts at the same coordinate
     # stay distinct: NULL source_url declares nothing, so it can't collide.
-    first = _dto(url="https://x.com/own/status/1")
-    second = _dto(url="https://x.com/own/status/2")
-    await assemble_detections(db, owner=owner, detections=[first], fetch_media=_missing_fetcher)
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[second], fetch_media=_missing_fetcher
-    )
+    first = _draft(url="https://x.com/own/status/1")
+    second = _draft(url="https://x.com/own/status/2")
+    await _persist(db, owner=owner, drafts=[first], fetch_media=_missing_fetcher)
+    outcome = await _persist(db, owner=owner, drafts=[second], fetch_media=_missing_fetcher)
     assert len(outcome.created) == 1 and len(outcome.skipped) == 0
 
 
@@ -381,16 +365,16 @@ async def test_two_spellings_of_one_post_land_on_one_draft(db, owner):
     # The match anchor is the post id, not the URL: the same post reached
     # through ``twitter.com`` and through ``x.com`` is one geolocation, and the
     # second pass overwrites the draft the first left.
-    await assemble_detections(
+    await _persist(
         db,
         owner=owner,
-        detections=[_dto(url="https://x.com/own/status/7", title="First read")],
+        drafts=[_draft(url="https://x.com/own/status/7", title="First read")],
         fetch_media=_missing_fetcher,
     )
-    outcome = await assemble_detections(
+    outcome = await _persist(
         db,
         owner=owner,
-        detections=[_dto(url="https://twitter.com/Own/status/7", title="Second read")],
+        drafts=[_draft(url="https://twitter.com/Own/status/7", title="Second read")],
         fetch_media=_missing_fetcher,
     )
     assert len(outcome.updated) == 1 and outcome.created == []
@@ -418,9 +402,7 @@ async def test_geolocated_pair_is_skipped(db, owner):
     db.add(existing)
     db.commit()
 
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher
-    )
+    outcome = await _persist(db, owner=owner, drafts=[_draft()], fetch_media=_missing_fetcher)
     assert len(outcome.skipped) == 1 and outcome.created == []
 
 
@@ -432,7 +414,7 @@ async def test_detected_draft_is_upserted_in_place(db, owner):
     # mirror-less, media-less draft; today's parser reads the designation. The
     # newer parse lands on the SAME row, and everything the row is (id, owner,
     # created_at, detected_at, status, provenance) survives it.
-    await assemble_detections(db, owner=owner, detections=[_dto()], fetch_media=_missing_fetcher)
+    await _persist(db, owner=owner, drafts=[_draft()], fetch_media=_missing_fetcher)
     stored = db.query(Event).filter(Event.owner_id == owner.id).one()
     before = {
         "id": stored.id,
@@ -443,7 +425,7 @@ async def test_detected_draft_is_upserted_in_place(db, owner):
     }
     assert stored.source_url is None and stored.source_links == []
 
-    richer = _dto(
+    richer = _draft(
         title="Depot hit, Shebekino",
         proof_text="Depot hit, Shebekino\nGeolocated by analyst",
         source_url="https://t.me/channel/42",
@@ -451,9 +433,7 @@ async def test_detected_draft_is_upserted_in_place(db, owner):
         secondary_source_urls=["https://www.youtube.com/watch?v=M1"],
         media=[_img()],
     )
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[richer], fetch_media=_image_fetcher
-    )
+    outcome = await _persist(db, owner=owner, drafts=[richer], fetch_media=_image_fetcher)
     assert outcome.created == [] and len(outcome.updated) == 1 and len(outcome.skipped) == 0
 
     db.expire_all()
@@ -474,9 +454,7 @@ async def test_detected_draft_is_upserted_in_place(db, owner):
 async def test_upsert_replaces_source_media_and_sweeps_the_old_objects(db, owner):
     # Replacing the footage drops the old row AND its objects, but only once the
     # transaction that dropped the row has landed (commit-then-sweep).
-    await assemble_detections(
-        db, owner=owner, detections=[_dto(media=[_img()])], fetch_media=_image_fetcher
-    )
+    await _persist(db, owner=owner, drafts=[_draft(media=[_img()])], fetch_media=_image_fetcher)
     stored = db.query(Event).filter(Event.owner_id == owner.id).one()
     old = db.query(Media).filter(Media.event_id == stored.id, Media.role == "source").one()
     old_key = get_storage().key_from_url(old.storage_url)
@@ -485,8 +463,8 @@ async def test_upsert_replaces_source_media_and_sweeps_the_old_objects(db, owner
     async def other_image(_parsed: ParsedMedia) -> tuple[bytes, str]:
         return OTHER_JPEG, "image/jpeg"
 
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[_dto(media=[_img()])], fetch_media=other_image
+    outcome = await _persist(
+        db, owner=owner, drafts=[_draft(media=[_img()])], fetch_media=other_image
     )
     assert len(outcome.updated) == 1
 
@@ -500,8 +478,8 @@ async def test_upsert_replaces_source_media_and_sweeps_the_old_objects(db, owner
 async def test_upsert_rewrites_proof_media_and_the_nodes_that_carry_it(db, owner):
     # Proof images live in the proof document, so a media replacement has to
     # move both halves or the document points at a swept object.
-    await assemble_detections(
-        db, owner=owner, detections=[_dto(proof_media=[_img()])], fetch_media=_image_fetcher
+    await _persist(
+        db, owner=owner, drafts=[_draft(proof_media=[_img()])], fetch_media=_image_fetcher
     )
     stored = db.query(Event).filter(Event.owner_id == owner.id).one()
     old_src = stored.proof["content"][-1]["attrs"]["src"]
@@ -509,8 +487,8 @@ async def test_upsert_rewrites_proof_media_and_the_nodes_that_carry_it(db, owner
     async def other_image(_parsed: ParsedMedia) -> tuple[bytes, str]:
         return OTHER_JPEG, "image/jpeg"
 
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[_dto(proof_media=[_img()])], fetch_media=other_image
+    outcome = await _persist(
+        db, owner=owner, drafts=[_draft(proof_media=[_img()])], fetch_media=other_image
     )
     assert len(outcome.updated) == 1
 
@@ -526,18 +504,16 @@ async def test_upsert_matched_through_the_source_url_leg(db, owner):
     # The delete-and-repost duplicate: a second post declaring the same footage
     # at the same coordinate updates the draft the first one created, under the
     # provenance URL the draft was filed with.
-    first = _dto(url="https://x.com/own/status/1", source_url="https://t.me/chan/1")
-    await assemble_detections(db, owner=owner, detections=[first], fetch_media=_missing_fetcher)
+    first = _draft(url="https://x.com/own/status/1", source_url="https://t.me/chan/1")
+    await _persist(db, owner=owner, drafts=[first], fetch_media=_missing_fetcher)
     stored_id = db.query(Event).filter(Event.owner_id == owner.id).one().id
 
-    second = _dto(
+    second = _draft(
         url="https://x.com/own/status/2",
         source_url="https://t.me/chan/1",
         title="Corrected wording",
     )
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[second], fetch_media=_missing_fetcher
-    )
+    outcome = await _persist(db, owner=owner, drafts=[second], fetch_media=_missing_fetcher)
     assert outcome.created == [] and len(outcome.updated) == 1
 
     db.expire_all()
@@ -552,8 +528,8 @@ async def test_upsert_drops_a_snapshot_of_a_source_url_the_row_no_longer_declare
     # The one analyst artifact a draft can carry: an archived copy. A copy filed
     # as the source of a URL the event stops declaring must not survive as the
     # archived source of a link that is gone.
-    first = _dto(source_url="https://t.me/chan/1")
-    await assemble_detections(db, owner=owner, detections=[first], fetch_media=_missing_fetcher)
+    first = _draft(source_url="https://t.me/chan/1")
+    await _persist(db, owner=owner, drafts=[first], fetch_media=_missing_fetcher)
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     stage_source_snapshot(
         db,
@@ -563,10 +539,8 @@ async def test_upsert_drops_a_snapshot_of_a_source_url_the_row_no_longer_declare
     db.commit()
     assert len(row.archives) == 1
 
-    moved = _dto(source_url="https://t.me/chan/2")
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[moved], fetch_media=_missing_fetcher
-    )
+    moved = _draft(source_url="https://t.me/chan/2")
+    outcome = await _persist(db, owner=owner, drafts=[moved], fetch_media=_missing_fetcher)
     assert len(outcome.updated) == 1
 
     db.expire_all()
@@ -578,21 +552,19 @@ async def test_upsert_drops_a_snapshot_of_a_source_url_the_row_no_longer_declare
 async def test_reimporting_the_same_detection_twice_writes_nothing(db, owner):
     # Idempotence, the whole promise: no field churn, no proof rewrite, no media
     # re-upload, no new objects in the bucket, and ``updated_at`` does not move.
-    dto = _dto(
+    draft = _draft(
         source_url="https://t.me/chan/1",
         secondary_source_urls=["https://www.youtube.com/watch?v=M1"],
         media=[_img()],
         proof_media=[_img()],
     )
-    await assemble_detections(db, owner=owner, detections=[dto], fetch_media=_image_fetcher)
+    await _persist(db, owner=owner, drafts=[draft], fetch_media=_image_fetcher)
     stored = db.query(Event).filter(Event.owner_id == owner.id).one()
     before_updated_at = stored.updated_at
     before_media = {(m.id, m.storage_url, m.sha256) for m in stored.media}
     before_objects = _stored_objects(stored.id)
 
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[dto], fetch_media=_image_fetcher
-    )
+    outcome = await _persist(db, owner=owner, drafts=[draft], fetch_media=_image_fetcher)
     assert outcome.created == [] and len(outcome.updated) == 0 and len(outcome.skipped) == 1
 
     db.expire_all()
@@ -644,12 +616,10 @@ async def test_thread_media_fetched_and_prepared_once_across_coordinates(db, own
 
     img = _img()
     detections = [
-        _dto(lat=48.5, lng=34.5, url="https://x.com/own/status/9", media=[img]),
-        _dto(lat=50.0, lng=30.0, url="https://x.com/own/status/9", media=[img]),
+        _draft(lat=48.5, lng=34.5, url="https://x.com/own/status/9", media=[img]),
+        _draft(lat=50.0, lng=30.0, url="https://x.com/own/status/9", media=[img]),
     ]
-    outcome = await assemble_detections(
-        db, owner=owner, detections=detections, fetch_media=counting_fetcher
-    )
+    outcome = await _persist(db, owner=owner, drafts=detections, fetch_media=counting_fetcher)
     assert len(outcome.created) == 2
     assert calls["n"] == 1  # fetched once, shared across both coordinate rows
     geo_ids = [g.id for g in outcome.created]
@@ -662,8 +632,8 @@ async def test_unusable_media_is_skipped_and_detection_still_persists(db, owner)
     async def bad_image_fetcher(_parsed: ParsedMedia) -> tuple[bytes, str]:
         return b"this is not a real image", "image/jpeg"
 
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[_dto(media=[_img()])], fetch_media=bad_image_fetcher
+    outcome = await _persist(
+        db, owner=owner, drafts=[_draft(media=[_img()])], fetch_media=bad_image_fetcher
     )
     assert len(outcome.created) == 1 and outcome.failed == 0
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
@@ -678,11 +648,9 @@ async def test_failed_detection_is_isolated_not_lost(db, owner, monkeypatch):
 
     monkeypatch.setattr("app.services.detection.upload_prepared_media", boom)
 
-    bad = _dto(lat=48.5, lng=34.5, url="https://x.com/own/status/11", media=[_img()])
-    good = _dto(lat=50.0, lng=30.0, url="https://x.com/own/status/12")  # no media
-    outcome = await assemble_detections(
-        db, owner=owner, detections=[bad, good], fetch_media=_image_fetcher
-    )
+    bad = _draft(lat=48.5, lng=34.5, url="https://x.com/own/status/11", media=[_img()])
+    good = _draft(lat=50.0, lng=30.0, url="https://x.com/own/status/12")  # no media
+    outcome = await _persist(db, owner=owner, drafts=[bad, good], fetch_media=_image_fetcher)
     assert outcome.failed == 1
     assert len(outcome.created) == 1
     # The failed detection's partial row was rolled back, not orphaned.

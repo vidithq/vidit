@@ -23,7 +23,7 @@ from typing import Any
 
 import httpx
 
-from app.services.tweet_ingest import acquire_thread, read_tweets, stitch
+from app.services.tweet_ingest import Resolution, acquire_thread, read_tweets, stitch
 from app.services.tweet_ingest.records import TweetRecord
 from app.services.tweet_ingest.syndication import _cache_clear
 
@@ -72,31 +72,29 @@ def expected_for_path(typology: str, path: str) -> dict[str, Any]:
     return {**expected, **overrides}
 
 
-def assert_detections_match(
-    typology: str, path: str, detections: list[Any], reason: str | None
-) -> None:
-    """Assert one entry's detections answer the typology's expectation.
+def assert_resolution_matches(typology: str, path: str, resolution: Resolution) -> None:
+    """Assert one entry's resolution answers the typology's expectation.
 
-    The shared assertion the live entries run (the bot's tag, the analyst's
-    paste): one draft per coordinate, and every draft carrying the title,
-    source, mirrors, warnings and media split the expectation names. A
-    ``paths.<path>.reason`` override pins the refusal that entry reports.
+    The shared assertion every consumer runs: one draft per coordinate, and
+    every draft carrying the title, source, mirrors, warnings and media split
+    the expectation names. A ``paths.<path>.reason`` override pins the refusal
+    that entry reports.
     """
     block = load_expected(typology).get("paths", {}).get(path, {})
     expected = expected_for_path(typology, path)
 
-    assert len(detections) == len(expected["coords"]), typology
+    assert len(resolution.drafts) == len(expected["coords"]), typology
     if "reason" in block:
-        assert reason == block["reason"], typology
-    for detection in detections:
-        assert detection.title == expected["title"], typology
-        assert detection.source_url == expected["source_url"], typology
-        assert detection.secondary_source_urls == expected["secondary_source_urls"], typology
-        assert detection.warnings == expected["warnings"], typology
-        assert [[m.kind, m.origin] for m in detection.source_media] == [
+        assert resolution.reason == block["reason"], typology
+    for draft in resolution.drafts:
+        assert draft.title == expected["title"], typology
+        assert draft.source_url == expected["source_url"], typology
+        assert draft.secondary_source_urls == expected["secondary_source_urls"], typology
+        assert draft.warnings == expected["warnings"], typology
+        assert [[m.kind, m.origin] for m in draft.source_media] == [
             list(pair) for pair in expected["source_media"]
         ], typology
-        assert [[m.kind, m.origin] for m in detection.proof_media] == [
+        assert [[m.kind, m.origin] for m in draft.proof_media] == [
             list(pair) for pair in expected["proof_media"]
         ], typology
 

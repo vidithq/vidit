@@ -13,15 +13,22 @@ from pathlib import Path
 import httpx
 
 from app.services.tweet_ingest import (
+    Draft,
     ParsedMedia,
+    TweetRecord,
     archive_media_fetcher,
-    detect_diagnosed,
     read_tweets,
+    resolve_threads,
     stitch,
 )
-from app.services.tweet_ingest.resolve import resolve_thread
 
 ARCHIVE = Path(__file__).parent / "data" / "synthetic_archive"
+
+
+def _draft(records: list[TweetRecord]) -> Draft:
+    """The single draft a one-coordinate thread resolves to."""
+    [draft] = resolve_threads([records]).drafts
+    return draft
 
 
 def test_read_tweets_parses_records():
@@ -41,19 +48,19 @@ def test_read_tweets_parses_records():
     assert by_id["3001"].media == []
 
 
-def test_stitch_and_detect_over_archive():
+def test_stitch_and_resolve_over_archive():
     records = read_tweets(ARCHIVE, handle="ana")
-    detections = [d for thread in stitch(records) for d in detect_diagnosed(thread)[0]]
+    drafts = resolve_threads(stitch(records)).drafts
     # 1001(1) + thread 2001/2002(1) + 3001 DMS(1) + 4001 hemi(1) + 5001(0)
     # + 6001 multi-coord(2) + 7001 retweet, dropped(0) + 8001(0) = 6.
-    assert len(detections) == 6
-    # The self-thread detection carries the head's media (as proof: the thread
+    assert len(drafts) == 6
+    # The self-thread draft carries the head's media (as proof: the thread
     # declares no source) + the head permalink, even though the coordinate
     # lived in the reply.
-    thread_det = next(d for d in detections if d.detected_from_url.endswith("/2001"))
-    assert thread_det.source_url is None
-    assert thread_det.source_media == []
-    assert [m.remote_url for m in thread_det.proof_media] == ["tweets_media/2001-BBB2.jpg"]
+    thread_draft = next(d for d in drafts if d.detected_from_url.endswith("/2001"))
+    assert thread_draft.source_url is None
+    assert thread_draft.source_media == []
+    assert [m.remote_url for m in thread_draft.proof_media] == ["tweets_media/2001-BBB2.jpg"]
 
 
 async def test_archive_media_fetcher_reads_present_and_misses_absent():
@@ -188,8 +195,8 @@ def test_read_tweets_drops_retweets(tmp_path):
     records = read_tweets(archive, handle="ana")
     assert [r.tweet_id for r in records] == ["9002"]
     # Nothing downstream ever sees the retweet's coordinate.
-    detections = [d for thread in stitch(records) for d in detect_diagnosed(thread)[0]]
-    assert [d.detected_from_url for d in detections] == ["https://x.com/ana/status/9002"]
+    drafts = resolve_threads(stitch(records)).drafts
+    assert [d.detected_from_url for d in drafts] == ["https://x.com/ana/status/9002"]
 
 
 def test_self_reference_link_excluded_last_third_party_status_wins(tmp_path, monkeypatch):
@@ -441,10 +448,9 @@ def test_two_candidate_links_stay_ambiguous_and_chase_nothing(tmp_path, monkeypa
     monkeypatch.setattr(telegram_mod, "chase", no_fetch)
     [record] = read_tweets(archive, handle="ana", chase=True)
     assert record.quoted is None and record.telegram is None
-    resolved = resolve_thread([record])
-    assert resolved is not None
-    assert resolved.source_url is None
-    assert resolved.secondary_source_urls == [
+    draft = _draft([record])
+    assert draft.source_url is None
+    assert draft.secondary_source_urls == [
         "https://t.me/chan/42",
         "https://x.com/src/status/999",
     ]
@@ -474,10 +480,9 @@ def test_a_sole_off_vocabulary_link_is_the_source_and_is_never_fetched(tmp_path,
     monkeypatch.setattr(telegram_mod, "_fetch_embed_html", no_fetch)
     [record] = read_tweets(archive, handle="ana", chase=True)
     assert record.quoted is None and record.telegram is None
-    resolved = resolve_thread([record])
-    assert resolved is not None
-    assert resolved.source_url == "https://www.instagram.com/reel/FAKEREEL01/"
-    assert resolved.source_posted_at is None
+    draft = _draft([record])
+    assert draft.source_url == "https://www.instagram.com/reel/FAKEREEL01/"
+    assert draft.source_posted_at is None
 
 
 def _one_tweet_archive(dest: Path, text: str, urls: list[dict], media_url: str) -> None:
@@ -533,10 +538,9 @@ def test_a_sole_telegram_link_is_chased_beside_the_posts_own_media(tmp_path, mon
     monkeypatch.setattr(telegram_mod, "chase", fake_chase)
     [record] = read_tweets(archive, handle="ana", chase=True)
     assert chased == ["https://t.me/chan/42"]
-    resolved = resolve_thread([record])
-    assert resolved is not None
-    assert resolved.source_url == "https://t.me/chan/42"
-    assert "t.co" not in resolved.proof_text
+    draft = _draft([record])
+    assert draft.source_url == "https://t.me/chan/42"
+    assert "t.co" not in draft.proof_text
 
 
 def test_a_link_written_inside_prose_is_a_candidate(tmp_path):
@@ -551,9 +555,7 @@ def test_a_link_written_inside_prose_is_a_candidate(tmp_path):
         "https://t.co/ownPhoto",
     )
     [record] = read_tweets(archive, handle="ana")
-    resolved = resolve_thread([record])
-    assert resolved is not None
-    assert resolved.source_url == "https://www.instagram.com/reel/FAKEREEL01/"
+    assert _draft([record]).source_url == "https://www.instagram.com/reel/FAKEREEL01/"
 
 
 def test_handleless_own_status_link_chased_then_thrown(tmp_path, monkeypatch):

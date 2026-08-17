@@ -2,7 +2,7 @@
 
 The paste's detection half is its own acquisition
 (``tweet_ingest.acquire_pasted_thread``, the URL parsed once then the shared one
-hop) followed by the engine (``detect_diagnosed``), which is what
+hop) followed by the engine (``resolve_threads``), which is what
 ``detection.import_pasted_post`` runs before it writes. It runs here against the
 same typology fixtures the other consumers use, offline (a ``MockTransport``
 over the typology's bodies) and with no DB, so what this file pins is that the
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.tweet_ingest import acquire_pasted_thread, detect_diagnosed
+from app.services.tweet_ingest import acquire_pasted_thread, resolve_threads
 
 from . import loader
 
@@ -32,9 +32,8 @@ def test_typology_matches_the_paste_contract(typology: str) -> None:
 
     with loader.syndication_client(typology) as client:
         acquired = acquire_pasted_thread(loader.owner_url(body), client=client)
-    detections, reason = detect_diagnosed(acquired.records)
 
-    loader.assert_detections_match(typology, _PATH, detections, reason)
+    loader.assert_resolution_matches(typology, _PATH, resolve_threads([acquired.records]))
 
 
 def test_the_paste_reads_the_same_authors_parent() -> None:
@@ -47,9 +46,9 @@ def test_the_paste_reads_the_same_authors_parent() -> None:
 
     with loader.syndication_client(typology) as client:
         acquired = acquire_pasted_thread(loader.owner_url(body), client=client)
-    detections, reason = detect_diagnosed(acquired.records)
+    resolution = resolve_threads([acquired.records])
 
-    assert reason is None
-    [detection] = detections
-    assert detection.detected_from_url.endswith(f"/status/{expected['head_tweet_id']}")
-    assert detection.source_url == expected["source_url"]
+    assert resolution.reason is None
+    [draft] = resolution.drafts
+    assert draft.detected_from_url.endswith(f"/status/{expected['head_tweet_id']}")
+    assert draft.source_url == expected["source_url"]

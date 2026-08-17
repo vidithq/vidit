@@ -1,14 +1,32 @@
-"""Shared resolution over a thread: coordinates, source, media split.
+"""The engine: a thread becomes 0..N drafts, plus what they still need.
 
-These are the derivations every entry runs (the bot, the pasted import, the
-archive backfill), so the three agree on which coordinate, which source URL and
-date, and which media is footage vs annotation.
+Pure, no DB. The first sections cover the derivations every entry runs (the
+bot, the pasted import, the archive backfill), so the three agree on which
+coordinate, which source URL and date, and which media is footage vs
+annotation. The last sections cover the whole thread-to-draft boundary: the
+warnings a draft carries and the reason a thread produced none, which is the
+engine's answer and what every entry surfaces.
 """
 
+import dataclasses
+from datetime import date
+
+import pytest
+
+from app.services.tweet_ingest import (
+    COORDS_INVALID,
+    COORDS_MISSING,
+    SEVERAL_COORDINATES,
+    SOURCE_AMBIGUOUS,
+    SOURCE_MISSING,
+    Draft,
+    stitch,
+)
 from app.services.tweet_ingest.records import QuotedTweet, SourceLink, TweetRecord
 from app.services.tweet_ingest.resolve import (
+    Resolution,
     resolve_source,
-    resolve_thread,
+    resolve_threads,
     split_media,
 )
 from app.services.tweet_ingest.syndication import ParsedMedia
@@ -30,18 +48,30 @@ def _media(kind: str, origin: str) -> ParsedMedia:
 def _rec(**kw: object) -> TweetRecord:
     base: dict = dict(
         tweet_id="1",
-        handle="op",
+        handle="analyst",
         text="",
-        created_at="2025-01-01T00:00:00Z",
+        created_at="2025-11-12T14:33:00Z",
     )
     base.update(kw)
     return TweetRecord(**base)
 
 
+def _resolve(thread: list[TweetRecord]) -> Resolution:
+    return resolve_threads([thread])
+
+
+def _drafts(thread: list[TweetRecord]) -> list[Draft]:
+    return _resolve(thread).drafts
+
+
+def _draft(thread: list[TweetRecord]) -> Draft:
+    """The single draft a one-coordinate thread resolves to."""
+    [draft] = _drafts(thread)
+    return draft
+
+
 def _coords(thread: list[TweetRecord]):
-    resolved = resolve_thread(thread)
-    assert resolved is not None
-    return resolved.coords
+    return [draft.coordinate for draft in _drafts(thread)]
 
 
 # ── Coordinates ───────────────────────────────────────────────────────────
@@ -61,12 +91,6 @@ def test_coords_come_from_the_analysts_own_text():
     assert round(coords[0].lat, 3) == 48.012
 
 
-def test_coords_across_thread_head_media_reply_coord():
-    head = _rec(tweet_id="1", text="footage of a strike", media=[_media("video", "op")])
-    reply = _rec(tweet_id="2", text="location: 48.012345, 37.802411")
-    assert round(_coords([head, reply])[0].lat, 3) == 48.012
-
-
 def test_every_coordinate_makes_a_candidate():
     # No cap: the 6-decimal dedup is the only guard.
     text = "\n".join(f"4{i}.111111, 3{i}.222222" for i in range(5))
@@ -74,10 +98,11 @@ def test_every_coordinate_makes_a_candidate():
 
 
 def test_an_out_of_bounds_pair_is_named_as_such():
-    resolved = resolve_thread([_rec(text="somewhere at 991.123456, 37.802411")])
-    assert resolved is not None
-    assert resolved.coords == []
-    assert resolved.coords_out_of_bounds is True
+    # The one coordinate refusal an entry can tell apart from "none at all".
+    resolution = _resolve([_rec(text="somewhere at 991.123456, 37.802411")])
+    assert resolution.drafts == []
+    assert resolution.refusals == {COORDS_INVALID: 1}
+    assert resolution.reason == COORDS_INVALID
 
 
 # ── Source ────────────────────────────────────────────────────────────────
@@ -211,10 +236,9 @@ def test_the_displaced_candidates_land_as_mirrors():
         text="Strike at 48.012345, 37.802411",
         external_sources=[_INSTAGRAM, SourceLink(url="https://x.com/a/status/9")],
     )
-    resolved = resolve_thread([record])
-    assert resolved is not None
-    assert resolved.source_url is None
-    assert resolved.secondary_source_urls == [_INSTAGRAM.url, "https://x.com/a/status/9"]
+    draft = _draft([record])
+    assert draft.source_url is None
+    assert draft.secondary_source_urls == [_INSTAGRAM.url, "https://x.com/a/status/9"]
 
 
 # ── Proof ─────────────────────────────────────────────────────────────────
@@ -227,23 +251,12 @@ def test_proof_keeps_a_reference_link_readable():
         text="Strike at 48.012345, 37.802411\nSource: https://t.co/fakeIG",
         external_sources=[_INSTAGRAM],
     )
-    resolved = resolve_thread([record])
-    assert resolved is not None
-    assert resolved.proof_text.splitlines()[-1] == f"Source: {_INSTAGRAM.url}"
+    assert _draft([record]).proof_text.splitlines()[-1] == f"Source: {_INSTAGRAM.url}"
 
 
 def test_proof_keeps_the_coordinate_line():
-    resolved = resolve_thread([_rec(text="Strike on the depot\n48.012345, 37.802411")])
-    assert resolved is not None
-    assert resolved.proof_text == "Strike on the depot\n48.012345, 37.802411"
-
-
-def test_proof_drops_a_shortlink_bound_to_no_entity():
-    # The wrapper X appends for the post's own attached media.
-    record = _rec(text="Footage below 48.012345, 37.802411 https://t.co/mediaWrapper")
-    resolved = resolve_thread([record])
-    assert resolved is not None
-    assert "t.co" not in resolved.proof_text
+    draft = _draft([_rec(text="Strike on the depot\n48.012345, 37.802411")])
+    assert draft.proof_text == "Strike on the depot\n48.012345, 37.802411"
 
 
 # ── Media split ───────────────────────────────────────────────────────────
@@ -301,3 +314,177 @@ def test_split_media_own_photo_is_proof_without_quote():
     source, proof = split_media([_rec(media=[_media("image", "op")])])
     assert source == []
     assert [m.kind for m in proof] == ["image"]
+
+
+# ── The draft a thread resolves to ────────────────────────────────────────
+
+
+def test_a_single_coordinate_resolves_to_one_draft():
+    draft = _draft([_rec(text="Strike at 48.012345, 37.802411 in Donetsk")])
+    assert draft.coordinate.lat == pytest.approx(48.012345)
+    assert draft.coordinate.lng == pytest.approx(37.802411)
+    assert draft.detected_from_tweet_id == 1
+    assert draft.detected_from_url == "https://x.com/analyst/status/1"
+    assert draft.event_date == date(2025, 11, 12)
+    # A referenceless annotation declares no source: both slots stay empty
+    # rather than deducing the tweet's own URL / date.
+    assert draft.source_url is None
+    assert draft.source_posted_at is None
+
+
+def test_the_provenance_url_is_built_from_the_id_whatever_case_the_handle_carried():
+    # The id is the identity; the URL is written from it at the exit, so a
+    # handle spelled two ways in one export cannot split one post in two.
+    lower = _draft([_rec(text="48.012345, 37.802411", handle="analyst")])
+    upper = _draft([_rec(text="48.012345, 37.802411", handle="Analyst")])
+    assert lower.detected_from_tweet_id == upper.detected_from_tweet_id == 1
+    assert upper.detected_from_url == "https://x.com/Analyst/status/1"
+
+
+def test_a_coordinate_in_the_reply_keeps_the_head_as_provenance():
+    # Head carries the video, the reply carries the coordinate: one draft with
+    # the head's own post as provenance. The thread declares no source, so
+    # source_url stays empty; the video fills the otherwise empty source media
+    # slot, where the proof document (images only) would have dropped it.
+    head = _rec(tweet_id="1", text="Footage from Bakhmut", media=[_media("video", "op")])
+    reply = _rec(tweet_id="2", text="Geolocated: 48.592153, 38.002480")
+    draft = _draft([head, reply])
+    assert draft.detected_from_tweet_id == 1
+    assert draft.detected_from_url == "https://x.com/analyst/status/1"
+    assert draft.source_url is None
+    assert [m.kind for m in draft.source_media] == ["video"]
+    assert draft.proof_media == []
+
+
+def test_proof_keeps_the_text_and_drops_the_media_wrapper():
+    # The coordinate line stays: the analyst edits the proof at review, and the
+    # structured field is not a reason to rewrite what they wrote.
+    draft = _draft([_rec(text="Strike here 48.012345, 37.802411 https://t.co/abc123")])
+    assert draft.proof_text == "Strike here 48.012345, 37.802411"
+
+
+def test_title_is_never_a_bare_coordinate():
+    # The only line is a coordinate alone, so no line qualifies and the analyst
+    # types the title at review.
+    assert _draft([_rec(text="48.012345, 37.802411")]).title == ""
+
+
+def test_title_keeps_the_line_as_written():
+    draft = _draft([_rec(text="#Ukraine strike at 48.012345, 37.802411 https://t.co/x")])
+    assert draft.title == "#Ukraine strike at 48.012345, 37.802411 https://t.co/x"
+
+
+def test_malformed_time_recovers_date_and_nulls_detected_post_at():
+    # A valid date with a garbled time-of-day: event_date is recovered from the
+    # date prefix; detected_post_at is NULL, not a false 1970, and the source
+    # slots stay empty (no source declared, no fabricated date).
+    draft = _draft([_rec(text="Strike 48.012345, 37.802411", created_at="2025-11-12T99:99:99Z")])
+    assert draft.event_date == date(2025, 11, 12)
+    assert draft.source_posted_at is None
+    assert draft.detected_post_at is None
+
+
+def test_fully_unparseable_timestamp_yields_no_dates():
+    # Nothing recoverable: every date stays NULL rather than a fabricated epoch.
+    draft = _draft([_rec(text="Strike 48.012345, 37.802411", created_at="not-a-timestamp")])
+    assert draft.event_date is None
+    assert draft.source_posted_at is None
+    assert draft.detected_post_at is None
+
+
+# ── Warnings and refusals: what every entry surfaces ──────────────────────
+
+
+def test_a_sourceless_draft_warns_source_missing():
+    draft = _draft([_rec(text="Geolocated 48.012345, 37.802411 near the bridge")])
+    assert draft.warnings == [SOURCE_MISSING]
+
+
+def test_several_candidate_links_warn_source_ambiguous():
+    draft = _draft(
+        [
+            _rec(
+                text="Geolocated 48.012345, 37.802411",
+                external_sources=[
+                    SourceLink(url="https://t.me/chan/1"),
+                    SourceLink(url="https://youtu.be/xyz"),
+                ],
+            )
+        ]
+    )
+    assert draft.warnings == [SOURCE_AMBIGUOUS]
+    assert draft.source_url is None
+    assert draft.secondary_source_urls == ["https://t.me/chan/1", "https://youtu.be/xyz"]
+
+
+def test_several_coordinates_warn_on_every_draft():
+    drafts = _drafts([_rec(text="Two sites 48.012345, 37.802411 and 50.450100, 30.523400")])
+    assert len(drafts) == 2
+    assert all(draft.warnings == [SEVERAL_COORDINATES, SOURCE_MISSING] for draft in drafts)
+
+
+def test_a_sourced_draft_warns_nothing():
+    quoted = QuotedTweet(tweet_id="2", handle="src", text="", created_at="")
+    assert _draft([_rec(text="Geolocated 48.012345, 37.802411", quoted=quoted)]).warnings == []
+
+
+def test_the_resolution_counts_what_its_drafts_carry():
+    # The count the bot's reply and the archive's outcome email both read: one
+    # per draft carrying the warning, not one per thread that raised it.
+    resolution = _resolve([_rec(text="Two sites 48.012345, 37.802411 and 50.450100, 30.523400")])
+    assert resolution.warnings == {SEVERAL_COORDINATES: 2, SOURCE_MISSING: 2}
+
+
+def test_no_coordinate_is_refused_as_missing():
+    resolution = _resolve([_rec(text="Just some commentary, no coords")])
+    assert resolution.drafts == []
+    assert resolution.reason == COORDS_MISSING
+
+
+def test_an_empty_thread_is_refused_as_missing():
+    assert _resolve([]).reason == COORDS_MISSING
+
+
+def test_a_draft_carries_no_reason():
+    resolution = _resolve([_rec(text="Geolocated 48.012345, 37.802411")])
+    assert len(resolution.drafts) == 1
+    assert resolution.reason is None
+
+
+def test_a_retweet_produces_nothing():
+    # The prefix means the words are someone else's, on every entry.
+    resolution = _resolve([_rec(text="RT @front_cam: Geolocated 48.012345, 37.802411")])
+    assert resolution.drafts == []
+    assert resolution.reason == COORDS_MISSING
+
+
+def test_several_threads_resolve_into_one_batch():
+    # The export shape: the drafts of every thread in one list, thread by
+    # thread, and one count per refusal code across the threads that gave none.
+    resolution = resolve_threads(
+        [
+            [_rec(tweet_id="1", text="Geolocated 48.012345, 37.802411")],
+            [_rec(tweet_id="2", text="Nothing to pin down here")],
+            [_rec(tweet_id="3", text="Out at 991.123456, 37.802411")],
+            [_rec(tweet_id="4", text="Also nothing")],
+        ]
+    )
+    assert [d.detected_from_tweet_id for d in resolution.drafts] == [1]
+    assert resolution.refusals == {COORDS_MISSING: 2, COORDS_INVALID: 1}
+    # Several reasons, so no single one to name back even though nothing landed
+    # for three of the four threads.
+    assert resolution.reason is None
+
+
+def test_an_archive_thread_resolves_over_its_stitched_records():
+    # The archive spine (stitch then resolve): a coordinate in the head and
+    # commentary in the reply land as one draft with combined proof.
+    head = _rec(tweet_id="1", text="Geolocated 48.012345, 37.802411 near the bridge")
+    reply = _rec(tweet_id="2", text="More context on the strike")
+    reply = dataclasses.replace(reply, in_reply_to_status_id="1")
+    [thread] = stitch([head, reply])
+    draft = _draft(thread)
+    assert draft.coordinate.lat == pytest.approx(48.012345)
+    assert draft.detected_from_url == "https://x.com/analyst/status/1"
+    assert "near the bridge" in draft.proof_text
+    assert "More context on the strike" in draft.proof_text

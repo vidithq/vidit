@@ -1,15 +1,15 @@
-"""Persist machine detections: ``DetectedGeoloc`` DTOs become ``detected`` rows.
+"""Persist machine detections: a ``Resolution``'s drafts become ``detected`` rows.
 
-:func:`import_threads` is the one write path from threads to drafts, and every
-entry runs it: the bot over the thread it acquired, :func:`import_pasted_post`
-over the post an analyst pasted, :func:`backfill_from_archive` over every
-stitched self-thread of an export. It detects, then turns the resulting DTOs
-into ``Event`` rows owned by the importer, with media through the evidence
-pipeline and idempotency on ``(detected_from_tweet_id OR source_url,
-coordinate)``. The DTO never reaches the ORM, which is what keeps detection
-pure.
+:func:`persist_drafts` is the one write path, and every entry runs it over what
+``tweet_ingest.resolve_threads`` handed back: the bot over the thread it
+acquired, :func:`import_pasted_post` over the post an analyst pasted,
+:func:`backfill_from_archive` over every stitched self-thread of an export. It
+turns each ``Draft`` into an ``Event`` row owned by the importer, with media
+through the evidence pipeline and idempotency on ``(detected_from_tweet_id OR
+source_url, coordinate)``. The draft never reaches the ORM, which is what keeps
+the engine pure.
 
-A detection that matches a row the owner already holds resolves through
+A draft that matches a row the owner already holds resolves through
 :func:`_row_disposition`: an open ``detected`` draft is overwritten in place
 with the newer parse, and every other shape is left alone.
 """
@@ -48,20 +48,21 @@ from app.services.storage import (
     validate_bytes,
 )
 from app.services.tweet_ingest import (
-    DetectedGeoloc,
+    Draft,
     ParsedMedia,
-    TweetRecord,
+    Resolution,
     acquire_pasted_thread,
     archive_media_fetcher,
-    detect_diagnosed,
     fetch_cdn_media,
     read_tweets,
+    resolve_threads,
+    sole_refusal,
     stitch,
 )
 
 logger = logging.getLogger(__name__)
 
-# How a caller hands the assemble step the bytes for one piece of media: maps a
+# How a caller hands the write path the bytes for one piece of media: maps a
 # ``ParsedMedia`` to ``(bytes, content_type)``, or ``None`` to skip it (missing
 # archive file, untrusted host, fetch failure). The archive backfill reads
 # ``tweets_media/`` from disk; the bot fetches the X CDN.
@@ -78,7 +79,7 @@ _COORD_PLACES = 6
 
 
 @dataclass
-class AssembleOutcome:
+class Outcome:
     """What one import pass did, row by row.
 
     The three verdicts carry the rows themselves, in the order the engine
@@ -92,15 +93,12 @@ class AssembleOutcome:
     updated: list[Event] = field(default_factory=list)
     # A matched row the import must not touch, or one already up to date.
     skipped: list[Event] = field(default_factory=list)
-    failed: int = 0  # a detection raised mid-persist and was skipped
-    # How many detections carried each warning the engine raised, keyed by the
-    # ``tweet_ingest`` warning constants. One home for the count, so the bot's
-    # reply and the archive's outcome email read the same numbers.
+    failed: int = 0  # a draft raised mid-persist and was skipped
+    # The resolution's counts, carried through: how many drafts carried each
+    # warning, and how many threads the engine refused under each code. One
+    # home for both, so the bot's reply and the archive's outcome email read the
+    # same numbers.
     warnings: dict[str, int] = field(default_factory=dict)
-    # How many threads the engine refused, keyed by the ``tweet_ingest``
-    # refusal constants. One entry answers one thread and reads :attr:`reason`;
-    # the archive runs a whole export through the same field and counts. Empty
-    # on a caller that supplied its own detections.
     refusals: dict[str, int] = field(default_factory=dict)
 
     @property
@@ -114,9 +112,7 @@ class AssembleOutcome:
         """
         if self.created or self.updated or self.skipped:
             return None
-        if len(self.refusals) != 1:
-            return None
-        return next(iter(self.refusals))
+        return sole_refusal(self.refusals)
 
 
 # What a re-import may do with one detection.
@@ -159,12 +155,12 @@ def _row_disposition(row: Event) -> Verdict:
     return "skip"
 
 
-def _disposition(db: Session, owner: User, dto: DetectedGeoloc) -> tuple[Verdict, Event | None]:
+def _disposition(db: Session, owner: User, draft: Draft) -> tuple[Verdict, Event | None]:
     """Verdict for one detection, with the row it applies to when there is one.
 
     Scoped to ``owner``: a detection only dedups against the backfiller's own
     rows. Among those, looks at every row sharing ``detected_from_tweet_id`` (or,
-    when the DTO declares one, ``source_url``) whatever state that row is in, and
+    when the draft declares one, ``source_url``) whatever state that row is in, and
     matches the coordinate to ``_COORD_PLACES``. Each match is read by
     :func:`_row_disposition`; a single ``skip`` among them wins, since a row the
     import must not touch already holds the pair. No match at all creates.
@@ -177,17 +173,17 @@ def _disposition(db: Session, owner: User, dto: DetectedGeoloc) -> tuple[Verdict
     The ``source_url`` leg catches the delete-and-repost duplicate: the analyst
     posts the same geolocation twice (a typo fix, an X repost), the bot is
     tagged on both, and the two provenance posts differ while the footage source
-    and coordinate are identical. Source-less DTOs keep the provenance-only
+    and coordinate are identical. A source-less draft keeps the provenance-only
     match: NULL declares nothing, so it can't collide.
 
     A ``skip`` carries the row that earned it, so a caller answering one post
     can still name the draft its detection landed on. Only ``create`` has no row.
     """
     legs = []
-    if dto.detected_from_tweet_id is not None:
-        legs.append(Event.detected_from_tweet_id == dto.detected_from_tweet_id)
-    if dto.source_url is not None:
-        legs.append(Event.source_url == dto.source_url)
+    if draft.detected_from_tweet_id is not None:
+        legs.append(Event.detected_from_tweet_id == draft.detected_from_tweet_id)
+    if draft.source_url is not None:
+        legs.append(Event.source_url == draft.source_url)
     if not legs:
         # No post id and no source: the detection declares nothing an existing
         # row could be recognised by, so it can only be new.
@@ -202,7 +198,7 @@ def _disposition(db: Session, owner: User, dto: DetectedGeoloc) -> tuple[Verdict
         .order_by(Event.created_at, Event.id)
         .all()
     )
-    draft: Event | None = None
+    open_row: Event | None = None
     for row in rows:
         # A ``detected`` row may legitimately carry no coordinate (the model
         # permits it), and can't match a coordinate-bearing detection anyway, so
@@ -210,23 +206,23 @@ def _disposition(db: Session, owner: User, dto: DetectedGeoloc) -> tuple[Verdict
         # re-import for this owner.
         if row.event_coords is None:
             continue
-        if not _same_coordinate(row, dto):
+        if not _same_coordinate(row, draft):
             continue
         if _row_disposition(row) == "skip":
             return "skip", row
-        if draft is None:
-            draft = row
-    if draft is None:
+        if open_row is None:
+            open_row = row
+    if open_row is None:
         return "create", None
-    return "upsert", draft
+    return "upsert", open_row
 
 
-def _same_coordinate(row: Event, dto: DetectedGeoloc) -> bool:
+def _same_coordinate(row: Event, draft: Draft) -> bool:
     """Whether ``row`` sits on the detection's coordinate, to ``_COORD_PLACES``."""
     lat, lng = _projected(row)
-    return round(lat, _COORD_PLACES) == round(dto.coordinate.lat, _COORD_PLACES) and round(
+    return round(lat, _COORD_PLACES) == round(draft.coordinate.lat, _COORD_PLACES) and round(
         lng, _COORD_PLACES
-    ) == round(dto.coordinate.lng, _COORD_PLACES)
+    ) == round(draft.coordinate.lng, _COORD_PLACES)
 
 
 async def _prepared_media(
@@ -275,7 +271,7 @@ class _ResolvedMedia:
 
 
 async def _resolve_media(
-    dto: DetectedGeoloc, fetch_media: MediaFetcher, media_cache: _MediaCache
+    draft: Draft, fetch_media: MediaFetcher, media_cache: _MediaCache
 ) -> list[_ResolvedMedia]:
     """The media a detection wants stored, in the order the row should hold it.
 
@@ -286,13 +282,13 @@ async def _resolve_media(
     detection persists media-incomplete rather than failing.
     """
     resolved: list[_ResolvedMedia] = []
-    for parsed in dto.source_media:
+    for parsed in draft.source_media:
         prepared = await _prepared_media(parsed, fetch_media, media_cache)
         if prepared is None:
             continue
         resolved.append(_ResolvedMedia("source", prepared, content_sha256(prepared.cleaned)))
         break
-    for parsed in dto.proof_media:
+    for parsed in draft.proof_media:
         # Invariant: every proof row is referenced by the proof doc, and only
         # image nodes go into it, so a non-image proof media would be an
         # orphaned, unreadable blob. Skip it rather than persist bytes the read
@@ -342,14 +338,14 @@ async def _store_media(
     return proof_image_urls
 
 
-def _proof_doc(dto: DetectedGeoloc, proof_image_urls: list[str]) -> dict[str, Any]:
+def _proof_doc(draft: Draft, proof_image_urls: list[str]) -> dict[str, Any]:
     """The row's proof document: the post's cleaned text, then its proof images.
 
     Proof images travel inside the proof JSON as image nodes (that is how the
     read surfaces them, unlike source media in ``media``), so the document and
     the ``role=proof`` rows are written from one place and cannot drift.
     """
-    doc = tiptap_doc_from_text(dto.proof_text)
+    doc = tiptap_doc_from_text(draft.proof_text)
     if proof_image_urls:
         content = list(doc.get("content", []))
         content.extend({"type": "image", "attrs": {"src": url}} for url in proof_image_urls)
@@ -370,46 +366,46 @@ async def _persist_one(
     db: Session,
     *,
     owner: User,
-    dto: DetectedGeoloc,
+    draft: Draft,
     fetch_media: MediaFetcher,
     media_cache: _MediaCache,
 ) -> Event:
-    resolved = await _resolve_media(dto, fetch_media, media_cache)
+    resolved = await _resolve_media(draft, fetch_media, media_cache)
     uploaded_keys: list[str] = []
     try:
         geo = Event(
             owner_id=owner.id,
-            title=dto.title,
-            event_coords=from_shape(Point(dto.coordinate.lng, dto.coordinate.lat), srid=4326),
+            title=draft.title,
+            event_coords=from_shape(Point(draft.coordinate.lng, draft.coordinate.lat), srid=4326),
             # The declared footage source (the quoted tweet or an off-platform
             # link), distinct from the ``detected_from_url`` provenance link.
             # NULL when the tweet declared none: a ``detected`` draft is partial
             # by definition; the geolocate promotion requires the source.
-            source_url=dto.source_url,
-            proof=_proof_doc(dto, []),
-            event_date=dto.event_date,
-            source_posted_at=dto.source_posted_at,
-            detected_post_at=dto.detected_post_at,
+            source_url=draft.source_url,
+            proof=_proof_doc(draft, []),
+            event_date=draft.event_date,
+            source_posted_at=draft.source_posted_at,
+            detected_post_at=draft.detected_post_at,
             status=STATUS_DETECTED,
             detected_at=datetime.now(UTC),
-            detected_from_tweet_id=dto.detected_from_tweet_id,
-            detected_from_url=dto.detected_from_url,
+            detected_from_tweet_id=draft.detected_from_tweet_id,
+            detected_from_url=draft.detected_from_url,
         )
         # The mirrors the post also linked. Already normalized + capped by the
         # resolution, so no second pass here.
-        geo.source_links = build_source_link_rows(dto.secondary_source_urls)
+        geo.source_links = build_source_link_rows(draft.secondary_source_urls)
         db.add(geo)
         db.flush()  # populate geo.id for media keys + the Media FK
 
         proof_image_urls = await _store_media(db, geo, resolved, uploaded_keys)
         if proof_image_urls:
-            geo.proof = _proof_doc(dto, proof_image_urls)  # reassign flags the JSONB dirty
+            geo.proof = _proof_doc(draft, proof_image_urls)  # reassign flags the JSONB dirty
         db.commit()
     except Exception:
         # Explicit rollback before the sweep so an autoflush in a downstream
         # handler can't resurrect the half-added Media rows.
         db.rollback()
-        sweep_keys(uploaded_keys, context=f"detection assemble {dto.detected_from_url}")
+        sweep_keys(uploaded_keys, context=f"detection persist {draft.detected_from_url}")
         raise
     # No post-commit refresh: a refresh failure here would misclassify an
     # already-durable row as failed. The geo's attributes lazy-load from the
@@ -436,7 +432,7 @@ def _media_unchanged(stored: list[Media], resolved: list[_ResolvedMedia]) -> boo
     )
 
 
-def _apply_import_fields(db: Session, row: Event, dto: DetectedGeoloc) -> tuple[bool, bool]:
+def _apply_import_fields(db: Session, row: Event, draft: Draft) -> tuple[bool, bool]:
     """Write the scalar state the import owns onto ``row``.
 
     Returns ``(changed, source_url_changed)``. Every field is compared before it
@@ -447,24 +443,24 @@ def _apply_import_fields(db: Session, row: Event, dto: DetectedGeoloc) -> tuple[
     its identity, its place in the queue and the provenance it was filed under.
     """
     changed = False
-    if _projected(row) != (dto.coordinate.lat, dto.coordinate.lng):
-        row.event_coords = from_shape(Point(dto.coordinate.lng, dto.coordinate.lat), srid=4326)
+    if _projected(row) != (draft.coordinate.lat, draft.coordinate.lng):
+        row.event_coords = from_shape(Point(draft.coordinate.lng, draft.coordinate.lat), srid=4326)
         changed = True
     for name, value in (
-        ("title", dto.title),
-        ("event_date", dto.event_date),
-        ("source_posted_at", dto.source_posted_at),
-        ("detected_post_at", dto.detected_post_at),
+        ("title", draft.title),
+        ("event_date", draft.event_date),
+        ("source_posted_at", draft.source_posted_at),
+        ("detected_post_at", draft.detected_post_at),
     ):
         if getattr(row, name) != value:
             setattr(row, name, value)
             changed = True
-    source_url_changed = row.source_url != dto.source_url
+    source_url_changed = row.source_url != draft.source_url
     if source_url_changed:
-        row.source_url = dto.source_url
+        row.source_url = draft.source_url
         changed = True
-    if [link.url for link in row.source_links] != dto.secondary_source_urls:
-        replace_source_links(db, row, dto.secondary_source_urls)
+    if [link.url for link in row.source_links] != draft.secondary_source_urls:
+        replace_source_links(db, row, draft.secondary_source_urls)
         changed = True
     return changed, source_url_changed
 
@@ -479,7 +475,7 @@ async def _upsert_one(
     db: Session,
     *,
     row: Event,
-    dto: DetectedGeoloc,
+    draft: Draft,
     fetch_media: MediaFetcher,
     media_cache: _MediaCache,
 ) -> bool:
@@ -498,7 +494,7 @@ async def _upsert_one(
     only once the transaction that dropped its rows has landed, and media the
     upsert uploaded is swept when that transaction fails instead.
     """
-    resolved = await _resolve_media(dto, fetch_media, media_cache)
+    resolved = await _resolve_media(draft, fetch_media, media_cache)
     # Re-read the row under a lock and re-run the matrix on it, the same guard
     # ``events.geolocate`` takes: the disposition was decided on an unlocked
     # read, and the owner may have published, rejected or been taken down
@@ -518,7 +514,7 @@ async def _upsert_one(
     uploaded_keys: list[str] = []
     replaced_keys: list[str] = []
     try:
-        changed, source_url_changed = _apply_import_fields(db, row, dto)
+        changed, source_url_changed = _apply_import_fields(db, row, draft)
         if source_url_changed:
             # Before the new proof lands, matching ``events.geolocate``: the
             # reconcile reads the links the row carries at that moment.
@@ -535,7 +531,7 @@ async def _upsert_one(
             db.flush()
             proof_image_urls = await _store_media(db, row, resolved, uploaded_keys)
             changed = True
-        doc = _proof_doc(dto, proof_image_urls)
+        doc = _proof_doc(draft, proof_image_urls)
         if row.proof != doc:
             row.proof = doc
             changed = True
@@ -549,64 +545,68 @@ async def _upsert_one(
         db.commit()
     except Exception:
         db.rollback()
-        sweep_keys(uploaded_keys, context=f"detection upsert {dto.detected_from_url}")
+        sweep_keys(uploaded_keys, context=f"detection upsert {draft.detected_from_url}")
         raise
     sweep_keys(replaced_keys, context=f"detection upsert {row.id} replaced media")
     return True
 
 
-async def assemble_detections(
+async def persist_drafts(
     db: Session,
     *,
     owner: User,
-    detections: list[DetectedGeoloc],
+    resolution: Resolution,
     fetch_media: MediaFetcher,
     on_progress: Callable[[int, int], None] | None = None,
-) -> AssembleOutcome:
-    """Persist each detection as a ``detected`` ``Event`` owned by ``owner``.
+) -> Outcome:
+    """Persist each of the resolution's drafts as a ``detected`` ``Event``
+    owned by ``owner``.
 
-    ``owner`` is the backfiller, the account whose verified handle the archive
-    belongs to; every row is attributed to it. Matched on
-    ``(detected_from_tweet_id OR source_url, coordinate)`` across states, then
-    dispatched by the disposition matrix (see :func:`_row_disposition`): an
-    open ``detected`` draft takes the newer parse in place, every other match
-    is left untouched, and only an unmatched detection creates a row. A second
-    pass over the same export therefore writes nothing at all and counts as
-    ``skipped``, not ``updated``.
+    The one write path, and every entry runs it over what
+    ``tweet_ingest.resolve_threads`` handed back: the bot and the paste over the
+    single thread they acquired, the archive over every stitched self-thread of
+    an export. ``owner`` is the importer, the account whose verified handle the
+    posts belong to; every row is attributed to it.
 
-    Each detection commits in its own transaction so one failure neither loses
-    the others nor strands S3 objects — a raise is caught, counted in
-    ``outcome.failed``, rolled back, and the loop moves on. A detection may carry
-    no media — a ``detected`` row can be media-incomplete until its owner
+    A draft is matched on ``(detected_from_tweet_id OR source_url, coordinate)``
+    across states, then dispatched by the disposition matrix (see
+    :func:`_row_disposition`): an open ``detected`` draft takes the newer parse
+    in place, every other match is left untouched, and only an unmatched draft
+    creates a row. A second pass over the same export therefore writes nothing
+    at all and counts as ``skipped``, not ``updated``.
+
+    Each draft commits in its own transaction so one failure neither loses the
+    others nor strands S3 objects: a raise is caught, counted in
+    ``outcome.failed``, rolled back, and the loop moves on. A draft may carry no
+    media, since a ``detected`` row can be media-incomplete until its owner
     completes it before validating.
 
-    ``outcome.warnings`` counts what the detections still need from their owner
-    (an empty source, several drafts from one thread), whether or not the row
-    landed: the count is of what the engine read, not of what persisted.
+    The outcome carries the created, updated and skipped rows, the resolution's
+    warning counts and its one count per refusal code. A caller that resolved a
+    single thread reads ``outcome.reason`` for the one code to name back.
 
-    ``on_progress(done, total)`` fires after every handled detection (skips
-    and failures included: the analyst-facing meaning is "position in the
-    scan"). Called between per-row transactions, so a callback that commits
-    on the same session never splits one.
+    ``on_progress(done, total)`` fires after every handled draft (skips and
+    failures included: the analyst-facing meaning is "position in the scan").
+    The resolution is already complete, so the total is exact from the first
+    call. Called between per-row transactions, so a callback that commits on the
+    same session never splits one.
     """
-    outcome = AssembleOutcome()
-    for dto in detections:
-        for warning in dto.warnings:
-            outcome.warnings[warning] = outcome.warnings.get(warning, 0) + 1
-    # Media cache scoped to the current thread: ``detect`` emits a thread's
-    # coordinate DTOs contiguously sharing one ``detected_from_url`` + media, so
-    # resetting on a URL change bounds the cached bytes to one thread.
+    drafts = resolution.drafts
+    outcome = Outcome(warnings=resolution.warnings, refusals=resolution.refusals)
+    # Media cache scoped to the current thread: the engine emits a thread's
+    # coordinate drafts contiguously sharing one ``detected_from_url`` + media,
+    # so resetting on a URL change bounds the cached bytes to one thread.
     cache_url: str | None = None
     media_cache: _MediaCache = {}
-    total = len(detections)
+    total = len(drafts)
     if on_progress is not None:
-        # Announce the exact total up front (0 / N), so even a zero-detection
+        # Announce the exact total up front (0 / N), so even a draft-less
         # archive stamps it and the caller's display leaves the estimate.
         on_progress(0, total)
-    for index, dto in enumerate(detections, start=1):
-        if dto.detected_from_url != cache_url:
-            cache_url, media_cache = dto.detected_from_url, {}
-        verdict, matched = _disposition(db, owner, dto)
+    for index, draft in enumerate(drafts, start=1):
+        if draft.detected_from_url != cache_url:
+            cache_url, media_cache = draft.detected_from_url, {}
+        verdict, matched = _disposition(db, owner, draft)
         if verdict == "skip":
             if matched is not None:  # always: a skip names the row it protects
                 outcome.skipped.append(matched)
@@ -615,12 +615,12 @@ async def assemble_detections(
                 changed = await _upsert_one(
                     db,
                     row=matched,
-                    dto=dto,
+                    draft=draft,
                     fetch_media=fetch_media,
                     media_cache=media_cache,
                 )
             except Exception:
-                logger.exception("Detection upsert failed for %s", dto.detected_from_url)
+                logger.exception("Detection upsert failed for %s", draft.detected_from_url)
                 db.rollback()
                 outcome.failed += 1
             else:
@@ -633,58 +633,18 @@ async def assemble_detections(
                 geo = await _persist_one(
                     db,
                     owner=owner,
-                    dto=dto,
+                    draft=draft,
                     fetch_media=fetch_media,
                     media_cache=media_cache,
                 )
             except Exception:
-                logger.exception("Detection assemble failed for %s", dto.detected_from_url)
+                logger.exception("Detection persist failed for %s", draft.detected_from_url)
                 db.rollback()
                 outcome.failed += 1
             else:
                 outcome.created.append(geo)
         if on_progress is not None:
             on_progress(index, total)
-    return outcome
-
-
-async def import_threads(
-    db: Session,
-    *,
-    owner: User,
-    threads: list[list[TweetRecord]],
-    fetch_media: MediaFetcher,
-    on_progress: Callable[[int, int], None] | None = None,
-) -> AssembleOutcome:
-    """The one entry from threads to drafts: detect each, then assemble once.
-
-    Every entry runs it, so nothing about detection or persistence is specific
-    to one of them: the bot and the paste hand over the single thread they
-    acquired, the archive hands over every stitched self-thread of an export.
-    Detection is pure and in memory, so an export detects in full before the
-    first row is written, which is what gives ``on_progress`` an exact total
-    across the whole scan.
-
-    The outcome carries the created, updated and skipped drafts, the warnings
-    the engine raised, and one count per refusal code across the threads that
-    yielded nothing. A caller that handed over a single thread reads
-    ``outcome.reason`` for the one code to name back.
-    """
-    detections: list[DetectedGeoloc] = []
-    refusals: dict[str, int] = {}
-    for thread in threads:
-        found, reason = detect_diagnosed(thread)
-        detections.extend(found)
-        if reason is not None:
-            refusals[reason] = refusals.get(reason, 0) + 1
-    outcome = await assemble_detections(
-        db,
-        owner=owner,
-        detections=detections,
-        fetch_media=fetch_media,
-        on_progress=on_progress,
-    )
-    outcome.refusals = refusals
     return outcome
 
 
@@ -705,8 +665,8 @@ async def import_pasted_post(
     owner: User,
     url: str,
     client: httpx.Client | None = None,
-) -> AssembleOutcome:
-    """The paste entry: acquire the post at ``url``, then run the shared import.
+) -> Outcome:
+    """The paste entry: acquire the post at ``url``, then resolve and persist.
 
     Own posts only, the bot's rule: the post's author must be the handle linked
     to ``owner`` (``users.x_handle``, case-insensitive), else
@@ -735,8 +695,11 @@ async def import_pasted_post(
             f"That post is by @{author}. The import only reads posts from @{linked}, "
             "the X account linked to your Vidit profile."
         )
-    return await import_threads(
-        db, owner=owner, threads=[acquired.records], fetch_media=fetch_cdn_media
+    return await persist_drafts(
+        db,
+        owner=owner,
+        resolution=resolve_threads([acquired.records]),
+        fetch_media=fetch_cdn_media,
     )
 
 
@@ -747,22 +710,22 @@ async def backfill_from_archive(
     archive_dir: Path,
     chase: bool = False,
     on_progress: Callable[[int, int], None] | None = None,
-) -> AssembleOutcome:
-    """Run a full archive backfill: acquire → stitch → import.
+) -> Outcome:
+    """Run a full archive backfill: read → stitch → resolve → persist.
 
     Reads ``owner``'s X export under ``archive_dir`` (``tweets.js`` +
-    ``tweets_media/``), rebuilds self-threads, then hands every thread to
-    :func:`import_threads`, the same write path the bot and the paste run. Rows
-    are owned by ``owner``, the account whose verified handle the archive
-    belongs to, and a thread the engine refuses is counted in
+    ``tweets_media/``), rebuilds self-threads, resolves them all, then hands the
+    resolution to :func:`persist_drafts`, the same write path the bot and the
+    paste run. Rows are owned by ``owner``, the account whose verified handle
+    the archive belongs to, and a thread the engine refuses is counted in
     ``outcome.refusals`` under the same code the bot names back.
     """
     handle = owner.x_handle or owner.username
     records = read_tweets(archive_dir, handle=handle, chase=chase)
-    return await import_threads(
+    return await persist_drafts(
         db,
         owner=owner,
-        threads=stitch(records),
+        resolution=resolve_threads(stitch(records)),
         fetch_media=archive_media_fetcher(archive_dir),
         on_progress=on_progress,
     )

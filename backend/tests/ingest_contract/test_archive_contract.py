@@ -1,8 +1,9 @@
 """Archive integration contract: the disk-only typologies through the backfill.
 
 Assembles the disk-only typology fixtures into one consolidated X export, runs
-the real ``read_tweets`` to ``stitch`` to ``import_threads`` chain over it
-against the test database, and asserts per typology: the ``detected`` status,
+the real ``read_tweets`` to ``stitch`` to ``resolve_threads`` to
+``persist_drafts`` chain over it against the test database, and asserts per
+typology: the ``detected`` status,
 ``source_url`` NULL exactly where the contract says so, the media roles in the
 ``media`` table, and the proof images injected into the proof JSON.
 
@@ -24,15 +25,16 @@ from app.models.event import STATUS_DETECTED, Event
 from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
-from app.services.detection import assemble_detections, backfill_from_archive
+from app.services.detection import backfill_from_archive, persist_drafts
 from app.services.tweet_ingest import (
     COORDS_MISSING,
-    DetectedGeoloc,
+    Draft,
     ParsedCoord,
     ParsedMedia,
+    Resolution,
     archive_media_fetcher,
-    detect_diagnosed,
     read_tweets,
+    resolve_threads,
     stitch,
 )
 from tests._fixtures import TINY_JPEG
@@ -250,13 +252,13 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
     monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
 
     records = read_tweets(archive, handle=owner.x_handle or owner.username, chase=True)
-    detections = [d for thread in stitch(records) for d in detect_diagnosed(thread)[0]]
-    assert len(detections) == 1
+    resolution = resolve_threads(stitch(records))
+    assert len(resolution.drafts) == 1
 
-    outcome = await assemble_detections(
+    outcome = await persist_drafts(
         db,
         owner=owner,
-        detections=detections,
+        resolution=resolution,
         fetch_media=archive_media_fetcher(archive),
     )
     assert len(outcome.created) == 1
@@ -300,13 +302,13 @@ async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: 
     monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
 
     records = read_tweets(archive, handle=owner.x_handle or owner.username, chase=True)
-    detections = [d for thread in stitch(records) for d in detect_diagnosed(thread)[0]]
-    assert len(detections) == 1
+    resolution = resolve_threads(stitch(records))
+    assert len(resolution.drafts) == 1
 
-    outcome = await assemble_detections(
+    outcome = await persist_drafts(
         db,
         owner=owner,
-        detections=detections,
+        resolution=resolution,
         fetch_media=archive_media_fetcher(archive),
     )
     assert len(outcome.created) == 1 and outcome.failed == 0
@@ -396,10 +398,10 @@ async def test_reimport_fills_a_draft_an_earlier_run_left_bare(db, owner, tmp_pa
 
     # The row the old import left behind: the right post at the right place,
     # and nothing the whole-line designation would have given it.
-    stale = await assemble_detections(
+    stale = await persist_drafts(
         db,
         owner=owner,
-        detections=[_bare_detection(tweet_id, permalink)],
+        resolution=Resolution(drafts=[_bare_draft(tweet_id, permalink)]),
         fetch_media=archive_media_fetcher(archive),
     )
     assert len(stale.created) == 1
@@ -427,18 +429,17 @@ async def test_reimport_fills_a_draft_an_earlier_run_left_bare(db, owner, tmp_pa
     assert len(source) == 1 and source[0].media_type == "video"
 
 
-def _bare_detection(tweet_id: str, permalink: str) -> DetectedGeoloc:
+def _bare_draft(tweet_id: str, permalink: str) -> Draft:
     """What a chase-less pass produced for this post: the coordinate, the text
     and the annotation photo, and nothing else, so the draft carried no source
     URL, no mirrors and no footage."""
-    return DetectedGeoloc(
+    return Draft(
         coordinate=ParsedCoord(lat=44.6123, lng=33.5221),
         title="Geolocated airfield perimeter",
         proof_text="Geolocated airfield perimeter",
         source_url=None,
         detected_from_tweet_id=int(tweet_id),
         detected_from_url=permalink,
-        owner_handle="own",
         event_date=date(2026, 3, 4),
         source_posted_at=None,
         detected_post_at=datetime.fromisoformat("2026-03-04T13:20:00+00:00"),

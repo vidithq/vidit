@@ -4,7 +4,7 @@ The syndication sibling of ``archive.read_tweets``. ``acquire_thread`` is the
 one acquisition the live entries share (the bot's tagged mention and the pasted
 tweet): it reads the post named by a tweet id plus, when that post replies to
 one of its own author's, that parent. Exactly one hop, and only within one
-author, so the result is a thread ``resolve_thread`` reads as the analyst's own
+author, so the result is a thread ``resolve_threads`` reads as the analyst's own
 work. It then chases the thread's sole source candidate through
 ``chase.chase_post``, the way the archive reader chases its own, so the
 resolution downstream is pure and neither knows which technology answered. The
@@ -92,7 +92,7 @@ def record_by_id(tweet_id: str, *, handle: str, client: httpx.Client | None = No
 class AcquiredThread:
     """What one hop of acquisition yields.
 
-    ``records`` is the thread ``resolve_thread`` reads, parent first then the
+    ``records`` is the thread ``resolve_threads`` reads, parent first then the
     post, so the head is the earliest post and carries the provenance.
     ``post`` is the record for the id the caller named, which the bot needs to
     tell the tagged reply from the parent it relays.

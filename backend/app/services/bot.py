@@ -16,8 +16,9 @@ The bot runs the same engine as the pasted import and the archive backfill;
 nothing about the grammar lives here. Acquisition is
 :func:`tweet_ingest.acquire_thread`, shared with the paste: the tagged post plus
 the same author's post it replies to, one hop and no further, with the thread's
-sole source candidate chased. ``detection.import_threads`` then detects and
-persists, owned by the existing Vidit account whose admin-linked ``x_handle``
+sole source candidate chased. ``tweet_ingest.resolve_threads`` then reads that
+thread and ``detection.persist_drafts`` writes what it read, owned by the
+existing Vidit account whose admin-linked ``x_handle``
 matches the tagged author (the bot never mints users: an unknown handle is
 ledgered ``no_account`` and produces nothing). The mention then lands in the
 ``bot_mentions`` ledger. What is left in this module is orchestration: the X
@@ -64,7 +65,7 @@ from app.models.bot_webhook_event import BotWebhookEvent
 from app.models.event import Event
 from app.models.media import Media
 from app.models.user import User
-from app.services.detection import AssembleOutcome, import_threads
+from app.services.detection import Outcome, persist_drafts
 from app.services.tweet_ingest import (
     COORDS_INVALID,
     COORDS_MISSING,
@@ -75,8 +76,8 @@ from app.services.tweet_ingest import (
     AcquiredThread,
     TweetNotAccessible,
     acquire_thread,
-    detect_diagnosed,
     fetch_cdn_media,
+    resolve_threads,
 )
 from app.services.x_api import Mention, XApiError, fetch_mentions, post_reply
 
@@ -465,10 +466,15 @@ async def _process_mention(
         # handle whose post carries no coordinate ledgers ``no_detection``, so
         # ``no_account`` isolates the mentions where a link would actually have
         # produced a draft.
-        detections, reason = detect_diagnosed(acquired.records)
-        return ("no_account", 0, None, None) if detections else ("no_detection", 0, None, reason)
-    assembled = await import_threads(
-        db, owner=owner, threads=[acquired.records], fetch_media=fetch_cdn_media
+        resolution = resolve_threads([acquired.records])
+        if resolution.drafts:
+            return "no_account", 0, None, None
+        return "no_detection", 0, None, resolution.reason
+    assembled = await persist_drafts(
+        db,
+        owner=owner,
+        resolution=resolve_threads([acquired.records]),
+        fetch_media=fetch_cdn_media,
     )
     if assembled.reason is not None:
         return "no_detection", 0, None, assembled.reason
@@ -491,7 +497,7 @@ async def _process_mention(
     return "created", len(assembled.created), reply_id, None
 
 
-def _success_reply(db: Session, assembled: AssembleOutcome) -> str:
+def _success_reply(db: Session, assembled: Outcome) -> str:
     """The composed ✅ reply for one mention's outcome.
 
     The ref and the media checks read the first created draft; a thread carrying

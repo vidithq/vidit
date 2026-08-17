@@ -267,7 +267,7 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
             archive_zip.extract_allowlisted(zip_path, archive_dir)
 
             def stamp_progress(done: int, total: int) -> None:
-                # Fires between per-row transactions (see assemble_detections),
+                # Fires between per-row transactions (see persist_drafts),
                 # so the commit here never splits one. Batched: an UPDATE per
                 # PROGRESS_EVERY rows plus the boundaries.
                 if done == total or done == 1 or done % PROGRESS_EVERY == 0:

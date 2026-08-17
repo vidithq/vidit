@@ -83,7 +83,6 @@ progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped
 progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 
 # ── Dataclass fields set at construction, read via attribute access ───────────
-owner_handle  # services/tweet_ingest/detect.py DetectedGeoloc
 in_reply_to_user_id  # services/tweet_ingest/records.py TweetRecord
 
 # ── Test-only helper ──────────────────────────────────────────────────────────
