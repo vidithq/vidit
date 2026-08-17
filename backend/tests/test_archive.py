@@ -74,17 +74,13 @@ def test_stitch_and_resolve_over_archive():
 async def test_archive_media_fetcher_reads_present_and_misses_absent():
     fetch = archive_media_fetcher(ARCHIVE)
 
-    present = ParsedMedia(
-        kind="image", remote_url="tweets_media/1001-AAA1.jpg", content_type="image/jpeg"
-    )
+    present = ParsedMedia(kind="image", remote_url="tweets_media/1001-AAA1.jpg")
     got = await fetch(present)
     assert got is not None
     data, content_type = got
     assert content_type == "image/jpeg" and len(data) > 0
 
-    absent = ParsedMedia(
-        kind="image", remote_url="tweets_media/nope.jpg", content_type="image/jpeg"
-    )
+    absent = ParsedMedia(kind="image", remote_url="tweets_media/nope.jpg")
     assert await fetch(absent) is None
 
 
@@ -632,9 +628,7 @@ async def test_fetch_cdn_media_caps_oversized_stream(monkeypatch):
         "AsyncClient",
         _cdn_client_factory(lambda _req: httpx.Response(200, content=b"x" * 64)),
     )
-    parsed = ParsedMedia(
-        kind="video", remote_url="https://video.twimg.com/big.mp4", content_type="video/mp4"
-    )
+    parsed = ParsedMedia(kind="video", remote_url="https://video.twimg.com/big.mp4")
     assert await archive_mod.fetch_cdn_media(parsed) is None
 
 
@@ -646,9 +640,7 @@ async def test_fetch_cdn_media_returns_within_cap(monkeypatch):
         "AsyncClient",
         _cdn_client_factory(lambda _req: httpx.Response(200, content=b"tiny-mp4-bytes")),
     )
-    parsed = ParsedMedia(
-        kind="video", remote_url="https://video.twimg.com/ok.mp4", content_type="video/mp4"
-    )
+    parsed = ParsedMedia(kind="video", remote_url="https://video.twimg.com/ok.mp4")
     assert await archive_mod.fetch_cdn_media(parsed) == (b"tiny-mp4-bytes", "video/mp4")
 
 
@@ -660,9 +652,5 @@ async def test_archive_media_fetcher_rejects_path_traversal(tmp_path):
     # A real file just outside the archive dir, reachable only by escaping it.
     (tmp_path / "secret.png").write_bytes(b"\x89PNG not yours")
     fetch = archive_media_fetcher(archive)
-    escaping = ParsedMedia(
-        kind="image",
-        remote_url="tweets_media/../../secret.png",
-        content_type="image/png",
-    )
+    escaping = ParsedMedia(kind="image", remote_url="tweets_media/../../secret.png")
     assert await fetch(escaping) is None

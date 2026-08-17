@@ -18,8 +18,6 @@ from typing import Any
 
 import httpx
 
-from app.services.storage import image_content_type_for_extension
-
 from .extract import is_retweet
 from .records import ParsedMedia, QuotedTweet, SourceLink, TweetRecord
 from .syndication import extract_source_links, media_entry
@@ -94,10 +92,11 @@ def _archive_media(tweet: dict[str, Any], tweet_id: str) -> list[ParsedMedia]:
     ``tweets_media/<tweet_id>-<basename>``, where the basename is the last path
     segment of the URL the entry declares (``syndication.media_entry``, the one
     reader of a media entry, which picks a video's highest-bitrate mp4 variant,
-    the one the export saved). A photo's content type comes from that basename's
-    extension, so a PNG the export saved is stored as one; an extension the
-    storage allowlist does not name drops the photo, and a wrong pick degrades
-    to a file the fetcher misses, never a failure.
+    the one the export saved). The basename names the file and nothing else: an
+    imported photo's stored type is a constant
+    (``records.PHOTO_CONTENT_TYPE``), so a file the entry's extension describes
+    badly costs nothing, and a basename that names no saved file degrades to a
+    fetch that comes back empty, never a failure.
     """
     container = tweet.get("extended_entities") or tweet.get("entities") or {}
     entries = container.get("media") if isinstance(container, dict) else None
@@ -110,20 +109,9 @@ def _archive_media(tweet: dict[str, Any], tweet_id: str) -> list[ParsedMedia]:
             continue
         kind, url = read
         basename = url.rsplit("/", 1)[-1].split("?", 1)[0]
-        content_type = (
-            image_content_type_for_extension(Path(basename).suffix)
-            if kind == "image"
-            else "video/mp4"
-        )
-        if not basename or content_type is None:
+        if not basename:
             continue
-        out.append(
-            ParsedMedia(
-                kind=kind,
-                remote_url=f"tweets_media/{tweet_id}-{basename}",
-                content_type=content_type,
-            )
-        )
+        out.append(ParsedMedia(kind=kind, remote_url=f"tweets_media/{tweet_id}-{basename}"))
     return out
 
 

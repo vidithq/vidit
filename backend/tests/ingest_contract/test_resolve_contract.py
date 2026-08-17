@@ -127,7 +127,7 @@ def _telegram_record(
         handle="osint_stork",
         text=f"Geolocated 44.612300, 33.522100 airfield perimeter\nSource: {_TG_URL}",
         created_at="2026-03-04T13:20:00+00:00",
-        media=[ParsedMedia("image", "https://pbs.twimg.com/media/op.jpg", "image/jpeg", "op")],
+        media=[ParsedMedia("image", "https://pbs.twimg.com/media/op.jpg", "op")],
         external_sources=[SourceLink(_TG_URL), *(extra_links or [])],
         telegram=telegram,
     )
@@ -137,9 +137,7 @@ def test_chased_telegram_fills_source_date_and_media() -> None:
     footage = TelegramFootage(
         url=_TG_URL,
         posted_at="2026-03-04T09:00:00+00:00",
-        media=[
-            ParsedMedia("video", "https://cdn4.cdn-telegram.org/file/v.mp4", "video/mp4", "quote")
-        ],
+        media=[ParsedMedia("video", "https://cdn4.cdn-telegram.org/file/v.mp4", "quote")],
     )
     draft = _draft([_telegram_record(footage)])
     assert draft.source_url == _TG_URL

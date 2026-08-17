@@ -105,27 +105,6 @@ def _safe_storage_extension(content_type: str | None) -> str:
     return _EXTENSION_FOR_CONTENT_TYPE.get(content_type, "")
 
 
-# The other direction, derived from the same table so the two can't drift.
-# ``.jpeg`` is aliased in: keys we mint always carry ``.jpg``, but names that
-# arrive from outside (an X archive's ``tweets_media/`` files, a pool
-# object) spell it either way.
-_CONTENT_TYPE_FOR_EXTENSION = {
-    extension: content_type for content_type, extension in _EXTENSION_FOR_CONTENT_TYPE.items()
-} | {".jpeg": "image/jpeg"}
-
-
-def image_content_type_for_extension(extension: str) -> str | None:
-    """Return the accepted image MIME a filename suffix implies, else ``None``.
-
-    Takes the suffix with its dot (``".JPG"`` reads as ``".jpg"``). Video
-    suffixes answer ``None``: the caller (the X archive parser's photo branch)
-    is asking specifically whether a name is an image this codebase accepts,
-    and an unknown suffix is a skip rather than a guess.
-    """
-    content_type = _CONTENT_TYPE_FOR_EXTENSION.get(extension.lower())
-    return content_type if content_type in ALLOWED_IMAGE_TYPES else None
-
-
 LOCAL_STORAGE_MOUNT_PATH = "/local-storage"
 # One home for the dev API origin: the static mount URL and the dev staging
 # upload URL both derive from it, so a port change has one spot to touch.
@@ -566,7 +545,15 @@ def prepare_media(
     data: bytes, content_type: str, *, produce_derivatives: bool = True
 ) -> PreparedMedia:
     """Strip metadata + (optionally) build hero/thumb JPEGs. Sync, CPU-bound —
-    callers run it in a thread. Non-image types pass through unstripped."""
+    callers run it in a thread. Non-image types pass through unstripped.
+
+    ``content_type`` is the type the result is stored under, and for an image it
+    is also the encoding it comes back in: Pillow reads whatever the bytes
+    actually are, and ``strip_metadata`` re-encodes to the declared type. That
+    is how the ingest path normalises a machine-fetched photo, which declares
+    the one imported-photo type rather than reading a payload field
+    (``tweet_ingest.records.PHOTO_CONTENT_TYPE``).
+    """
     # Local import keeps the storage module free of an eager Pillow load
     # (libjpeg / libpng C extensions at process start).
     from app.services.evidence_processing import (
@@ -597,6 +584,8 @@ async def upload_prepared_media(prepared: PreparedMedia, key: str) -> UploadResu
     mid-flight derivative-upload failure best-effort sweeps whatever landed
     before re-raising, so the bucket never holds an original with no derivatives.
     """
+    from app.services.evidence_processing import DERIVATIVE_CONTENT_TYPE
+
     storage = get_storage()
     if prepared.hero is None or prepared.thumb is None:
         return await storage.upload_bytes(prepared.cleaned, key, prepared.content_type)
@@ -607,9 +596,9 @@ async def upload_prepared_media(prepared: PreparedMedia, key: str) -> UploadResu
     try:
         result = await storage.upload_bytes(prepared.cleaned, key, prepared.content_type)
         uploaded.append(key)
-        await storage.upload_bytes(prepared.hero, hero_key, "image/jpeg")
+        await storage.upload_bytes(prepared.hero, hero_key, DERIVATIVE_CONTENT_TYPE)
         uploaded.append(hero_key)
-        await storage.upload_bytes(prepared.thumb, thumb_key, "image/jpeg")
+        await storage.upload_bytes(prepared.thumb, thumb_key, DERIVATIVE_CONTENT_TYPE)
         uploaded.append(thumb_key)
     except Exception:
         if uploaded:

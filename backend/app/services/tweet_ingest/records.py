@@ -19,6 +19,19 @@ from typing import Literal
 # the payload readers and by the media split.
 MediaKind = Literal["image", "video"]
 
+# The one type an imported photo is stored under, whatever the post served.
+# Machine-fetched bytes go through a re-encode at ingest
+# (``storage.prepare_media``, whose output format follows the declared type), so
+# a PNG on X and a WebP in an export land as the one format the display
+# derivatives already use: ``evidence_processing.DERIVATIVE_CONTENT_TYPE``, which
+# ``test_ingest_media_types`` pins this against. No entry derives a photo's type
+# from a payload field or a filename, so no entry can disagree about it.
+PHOTO_CONTENT_TYPE = "image/jpeg"
+
+# Videos are stored as fetched: no re-encode, and every payload reader picks an
+# mp4 variant (``syndication.media_entry``), which is also what an export saved.
+VIDEO_CONTENT_TYPE = "video/mp4"
+
 
 @dataclass(frozen=True)
 class ParsedMedia:
@@ -30,13 +43,23 @@ class ParsedMedia:
 
     kind: MediaKind
     remote_url: str
-    content_type: str
     # Where this media came from in the payload. The frontend's
     # primary-vs-proof split is by ``kind`` (videos = source footage,
     # images = annotated screenshots), so ``origin`` is informational only
     # (proof-body attribution, debugging, a future smarter split). Don't add
     # consumers that assume one origin maps to one bucket.
     origin: Literal["op", "quote"] = "op"
+
+    @property
+    def content_type(self) -> str:
+        """The type this media is stored under, decided by ``kind`` alone.
+
+        Derived, never carried: a photo is re-encoded to
+        :data:`PHOTO_CONTENT_TYPE` at ingest and a video is stored as the mp4 it
+        was fetched as, so there is nothing per-item left for a payload to
+        declare and nothing for two entries to read differently.
+        """
+        return PHOTO_CONTENT_TYPE if self.kind == "image" else VIDEO_CONTENT_TYPE
 
 
 @dataclass(frozen=True)

@@ -235,6 +235,12 @@ HERO_MAX_DIM = 1280
 THUMBNAIL_MAX_DIM = 400
 DERIVATIVE_JPEG_QUALITY = 80
 
+# What :func:`make_jpeg_derivative` emits, whatever the source was, and what the
+# PUT that stores a derivative declares. Machine-imported photos are re-encoded
+# to this same type at ingest (``tweet_ingest.records.PHOTO_CONTENT_TYPE``), so
+# a draft's original and its derivatives read as one format everywhere.
+DERIVATIVE_CONTENT_TYPE = "image/jpeg"
+
 
 def make_jpeg_derivative(data: bytes, content_type: str, max_dim: int) -> bytes:
     """Resize ``data`` so the longer edge fits ``max_dim`` and encode as JPEG.

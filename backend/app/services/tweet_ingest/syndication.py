@@ -301,12 +301,7 @@ def media_entry(entry: Any) -> tuple[MediaKind, str] | None:
 
 def _cdn_media(kind: MediaKind, url: str, origin: Literal["op", "quote"]) -> ParsedMedia:
     """One media the live paths fetch straight from the X CDN."""
-    return ParsedMedia(
-        kind=kind,
-        remote_url=url,
-        content_type="image/jpeg" if kind == "image" else "video/mp4",
-        origin=origin,
-    )
+    return ParsedMedia(kind=kind, remote_url=url, origin=origin)
 
 
 def _extract_media(

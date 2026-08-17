@@ -41,8 +41,7 @@ def _media(kind: str, origin: str) -> ParsedMedia:
     url = (
         "https://pbs.twimg.com/media/x.jpg" if kind == "image" else "https://video.twimg.com/v.mp4"
     )
-    ctype = "image/jpeg" if kind == "image" else "video/mp4"
-    return ParsedMedia(kind=kind, remote_url=url, content_type=ctype, origin=origin)  # type: ignore[arg-type]
+    return ParsedMedia(kind=kind, remote_url=url, origin=origin)  # type: ignore[arg-type]
 
 
 def _rec(**kw: object) -> TweetRecord:

@@ -327,7 +327,6 @@ async def test_telegram_chase_fills_date_and_source_media(db, owner, tmp_path, m
             ParsedMedia(
                 kind="video",
                 remote_url="https://cdn4.cdn-telegram.org/file/v.mp4",
-                content_type="video/mp4",
                 origin="quote",
             )
         ],
@@ -383,7 +382,6 @@ async def test_reimport_fills_a_draft_an_earlier_run_left_bare(db, owner, tmp_pa
                 ParsedMedia(
                     kind="video",
                     remote_url="https://cdn4.cdn-telegram.org/file/v.mp4",
-                    content_type="video/mp4",
                     origin="quote",
                 )
             ],
@@ -448,7 +446,6 @@ def _bare_draft(tweet_id: str, permalink: str) -> Draft:
             ParsedMedia(
                 kind="image",
                 remote_url=f"tweets_media/{permalink.rsplit('/', 1)[-1]}-FAKEOP9A.jpg",
-                content_type="image/jpeg",
             )
         ],
     )

@@ -147,9 +147,7 @@ def _draft(
 
 
 def _img() -> ParsedMedia:
-    return ParsedMedia(
-        kind="image", remote_url="https://pbs.twimg.com/media/x.jpg", content_type="image/jpeg"
-    )
+    return ParsedMedia(kind="image", remote_url="https://pbs.twimg.com/media/x.jpg")
 
 
 async def test_assemble_injects_proof_images_into_proof_doc(db, owner):
@@ -171,9 +169,7 @@ async def test_proof_video_is_skipped_not_orphaned(db, owner):
     # A proof video is never referenced by the proof doc (only images are
     # injected) and the read serialises only source media, so persisting it would
     # orphan the bytes. It is skipped: no media row, no proof image node.
-    video = ParsedMedia(
-        kind="video", remote_url="https://video.twimg.com/v.mp4", content_type="video/mp4"
-    )
+    video = ParsedMedia(kind="video", remote_url="https://video.twimg.com/v.mp4")
     outcome = await _persist(
         db, owner=owner, drafts=[_draft(proof_media=[video])], fetch_media=_image_fetcher
     )
@@ -185,9 +181,7 @@ async def test_proof_video_is_skipped_not_orphaned(db, owner):
 async def test_proof_image_kept_when_mixed_with_video(db, owner):
     # A mix of proof image + proof video: only the image persists and is injected
     # into the proof doc; the video is skipped.
-    video = ParsedMedia(
-        kind="video", remote_url="https://video.twimg.com/v.mp4", content_type="video/mp4"
-    )
+    video = ParsedMedia(kind="video", remote_url="https://video.twimg.com/v.mp4")
     outcome = await _persist(
         db, owner=owner, drafts=[_draft(proof_media=[_img(), video])], fetch_media=_image_fetcher
     )
@@ -250,9 +244,7 @@ async def test_two_fetchable_source_media_caps_at_one_role_source_row(db, owner)
             return b"\x00\x00\x00\x18ftypmp42fake", "video/mp4"
         return TINY_JPEG, "image/jpeg"
 
-    video = ParsedMedia(
-        kind="video", remote_url="https://video.twimg.com/v.mp4", content_type="video/mp4"
-    )
+    video = ParsedMedia(kind="video", remote_url="https://video.twimg.com/v.mp4")
     sourced = _draft(media=[_img(), video], source_url="https://x.com/src/status/9")
     outcome = await _persist(db, owner=owner, drafts=[sourced], fetch_media=_both_fetcher)
     assert len(outcome.created) == 1 and outcome.failed == 0

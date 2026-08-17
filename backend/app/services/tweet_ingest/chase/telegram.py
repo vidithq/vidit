@@ -133,7 +133,7 @@ def _extract_media(embed_html: str) -> list[ParsedMedia]:
     can't point the downstream fetch at an arbitrary host.
     """
     videos = [
-        ParsedMedia(kind="video", remote_url=src, content_type="video/mp4", origin="quote")
+        ParsedMedia(kind="video", remote_url=src, origin="quote")
         for src in (html.unescape(m.group(1)) for m in _VIDEO_RE.finditer(embed_html))
         if is_trusted_media_url(src)
     ]
@@ -142,7 +142,7 @@ def _extract_media(embed_html: str) -> list[ParsedMedia]:
     if _MEDIA_WITHHELD_RE.search(embed_html) is not None:
         return []
     return [
-        ParsedMedia(kind="image", remote_url=src, content_type="image/jpeg", origin="quote")
+        ParsedMedia(kind="image", remote_url=src, origin="quote")
         for src in (html.unescape(m.group(1)) for m in _PHOTO_RE.finditer(embed_html))
         if is_trusted_media_url(src)
     ]

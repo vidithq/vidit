@@ -494,7 +494,7 @@ Every uploaded file for an event, source footage and proof-body images alike, sp
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL. Always set. Files upload at publish, so there is no unattached staging row; see Upload timing below. |
 | `role` | `VARCHAR` | NOT NULL. `'source'` for the footage, at most one per event, enforced by a partial unique index, or `'proof'` for inline images referenced from the proof body, with no per-event limit. |
 | `storage_url` | `TEXT` | NOT NULL. An S3 or CloudFront URL. |
-| `media_type` | `VARCHAR(10)` | NOT NULL, `'image'` or `'video'` |
+| `media_type` | `VARCHAR(10)` | NOT NULL, `'image'` or `'video'`. The stored MIME type is not a column: an analyst's upload keeps the accepted type it arrived as, and a machine-imported photo is re-encoded to one format at ingest whichever entry read the post; see [`ingestion.md`](ingestion.md#the-contract). |
 | `sha256` | `VARCHAR(64)` | nullable. Hex-encoded SHA-256 of the uploaded bytes, captured at upload time. A stable content fingerprint that survives storage-class changes and copies, unlike the S3 ETag, which is an MD5 for non-multipart uploads and is not stable across copies. NULL on rows that predate this column. **The hash is computed on the bytes that land on S3, for images after the EXIF strip, so an auditor downloading the public URL can independently verify it.** |
 | `original_filename` | `TEXT` | nullable. The client-supplied filename, for example `IMG_1234.jpg`. Surfaced on the public read API so investigators can trace evidence back to a source post by filename. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
