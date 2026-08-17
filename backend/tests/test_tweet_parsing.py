@@ -22,6 +22,7 @@ from app.services.tweet_ingest import (
     normalise_tweet_url,
     syndication,
 )
+from app.services.tweet_ingest.urls import canonical_tweet_url
 
 # ── URL normalisation ─────────────────────────────────────────────────────
 
@@ -63,9 +64,11 @@ from app.services.tweet_ingest import (
 )
 def test_normalise_accepts_valid_tweet_urls(raw, canonical, handle, tweet_id):
     n = normalise_tweet_url(raw)
-    assert n.canonical == canonical
     assert n.handle == handle
     assert n.tweet_id == tweet_id
+    # Parsed once here, built back once there: every spelling of one post round
+    # trips to the same canonical URL.
+    assert canonical_tweet_url(n.tweet_id, n.handle) == canonical
 
 
 @pytest.mark.parametrize(

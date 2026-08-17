@@ -1,11 +1,13 @@
-"""Telegram footage chase: a t.me post's public embed to its date (+ maybe media).
+"""Chase a Telegram post: its public embed, for the date and any served media.
 
-Off-platform OSINT sources are frequently Telegram posts (``Source:
-https://t.me/<channel>/<id>``). Telegram serves a public, auth-less embed for a
-post at ``https://t.me/<channel>/<id>?embed=1&mode=tme``; the HTML carries the
+Off-platform OSINT sources are frequently Telegram posts
+(``https://t.me/<channel>/<id>``). Telegram serves a public, auth-less embed for
+a post at ``https://t.me/<channel>/<id>?embed=1&mode=tme``; the HTML carries the
 post date almost always and the footage only sometimes (a sensitive post serves
-neither the video nor the photo, only the date). This brick chases that embed
-for the date, taking the media as a bonus when the embed ships it.
+neither the video nor the photo, only the date). This chaser reads that embed
+for the date, taking the media as a bonus when the embed ships it. A t.me post
+has no author or text this model holds, so what comes back is a link with a
+date, which the resolution stores as off-platform footage.
 
 Everything is fail-soft: an HTTP error, an unavailable embed, or unexpected HTML
 yields ``None`` / an empty media list, never a raised exception. A sensitive
@@ -22,18 +24,18 @@ from __future__ import annotations
 import html
 import logging
 import re
-from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 import httpx
 
-from .syndication import _TELEGRAM_HOST_RE, ParsedMedia, is_trusted_media_url
+from ..records import ChasedPost, ParsedMedia
+from ..urls import TELEGRAM_HOST_RE, is_trusted_media_url
 
 logger = logging.getLogger(__name__)
 
 # A public t.me post path: ``/<channel>/<id>``, channel a bare username, id
 # numeric. New shape (no existing regex covers the post path; the *host* match
-# reuses ``_TELEGRAM_HOST_RE``, the one home for "this link is a t.me post",
+# reuses ``TELEGRAM_HOST_RE``, the one home for "this link is a t.me post",
 # shared with the source rule). Excludes the private ``/c/<n>/<m>`` and ``/joinchat/...`` forms
 # (extra path segments / non-numeric id), which have no public embed anyway.
 _TELEGRAM_POST_PATH_RE = re.compile(r"^/([A-Za-z0-9_]{1,64})/(\d{1,19})$")
@@ -70,24 +72,11 @@ _MEDIA_WITHHELD_RE = re.compile(
 )
 
 
-@dataclass(frozen=True)
-class TelegramEmbed:
-    """What a t.me post's public embed resolves to.
-
-    ``posted_at`` is the post's ISO 8601 instant (``None`` when the embed omits
-    it); ``media`` is the footage the embed served, empty for a sensitive post
-    or one whose media the embed withheld.
-    """
-
-    posted_at: str | None
-    media: list[ParsedMedia] = field(default_factory=list)
-
-
 def _telegram_post_url(url: str) -> str | None:
     """The canonical ``https://t.me/<channel>/<id>`` post URL, or ``None``.
 
     The SSRF gate: returns a URL only for a public Telegram post (a ``t.me``
-    host per :data:`_TELEGRAM_HOST_RE`, a bare channel, a numeric id). A private
+    host per :data:`TELEGRAM_HOST_RE`, a bare channel, a numeric id). A private
     ``t.me/c/...`` link, a ``joinchat`` invite, a channel-only link, embedded
     credentials, a non-standard port, or any non-Telegram host all yield
     ``None`` and are never fetched.
@@ -100,7 +89,7 @@ def _telegram_post_url(url: str) -> str | None:
         return None
     if parsed.username or parsed.password or parsed.port:
         return None
-    if _TELEGRAM_HOST_RE.match((parsed.hostname or "").lower()) is None:
+    if TELEGRAM_HOST_RE.match((parsed.hostname or "").lower()) is None:
         return None
     match = _TELEGRAM_POST_PATH_RE.match(parsed.path)
     if match is None:
@@ -159,26 +148,28 @@ def _extract_media(embed_html: str) -> list[ParsedMedia]:
     ]
 
 
-def fetch_telegram_embed(url: str, *, client: httpx.Client | None = None) -> TelegramEmbed | None:
-    """Chase a Telegram post's public embed for its date and any served footage.
+def chase(target: str, *, client: httpx.Client | None = None) -> ChasedPost | None:
+    """The Telegram post ``target`` names, read through its public embed.
 
-    Returns a :class:`TelegramEmbed` when the embed yields at least a date or a
-    media, else ``None``. Never raises: a bad URL, an HTTP error, an unavailable
-    embed, or unexpected HTML all degrade to ``None``. ``client`` is for tests.
+    Returns a :class:`ChasedPost` when the embed yields at least a date or a
+    media, else ``None``, which is also the answer for a target that is not a
+    public t.me post at all. Never raises: a bad URL, an HTTP error, an
+    unavailable embed, or unexpected HTML all degrade to ``None``. ``client`` is
+    for tests.
     """
     try:
-        return _fetch_telegram_embed(url, client=client)
+        return _chase(target, client=client)
     except Exception:
         # Last-resort net over an external-network + untrusted-HTML boundary:
         # this brick's contract is that a chase can never fail the ingestion, so
         # anything unforeseen degrades to "no date, no media", logged for
         # visibility.
-        logger.debug("Telegram embed chase failed for %s", url, exc_info=True)
+        logger.debug("Telegram embed chase failed for %s", target, exc_info=True)
         return None
 
 
-def _fetch_telegram_embed(url: str, *, client: httpx.Client | None) -> TelegramEmbed | None:
-    post_url = _telegram_post_url(url)
+def _chase(target: str, *, client: httpx.Client | None) -> ChasedPost | None:
+    post_url = _telegram_post_url(target)
     if post_url is None:
         return None
     embed_html = _fetch_embed_html(post_url, client=client)
@@ -189,4 +180,6 @@ def _fetch_telegram_embed(url: str, *, client: httpx.Client | None) -> TelegramE
     media = _extract_media(embed_html)
     if posted_at is None and not media:
         return None
-    return TelegramEmbed(posted_at=posted_at, media=media)
+    # ``url`` is the target as the post wrote it, not the canonical form: the
+    # resolution matches this footage back onto the link the analyst declared.
+    return ChasedPost(url=target, posted_at=posted_at, media=media)

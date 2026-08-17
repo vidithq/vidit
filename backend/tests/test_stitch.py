@@ -18,7 +18,6 @@ def _rec(
         handle=handle,
         text=f"tweet {tweet_id}",
         created_at=created_at,
-        permalink=f"https://x.com/{handle}/status/{tweet_id}",
         in_reply_to_status_id=reply_to,
     )
 

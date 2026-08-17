@@ -5,8 +5,8 @@ entry runs it: the bot over the thread it acquired, :func:`import_pasted_post`
 over the post an analyst pasted, the archive backfill over each stitched
 self-thread. It detects, then turns the resulting DTOs into
 ``Event`` rows owned by the importer, with media through the evidence pipeline
-and idempotency on ``(detected_from_url OR source_url, coordinate)``. The DTO
-never reaches the ORM, which is what keeps ``detect`` pure.
+and idempotency on ``(detected_from_tweet_id OR source_url, coordinate)``. The
+DTO never reaches the ORM, which is what keeps ``detect`` pure.
 
 A detection that matches a row the owner already holds resolves through
 :func:`_row_disposition`: an open ``detected`` draft is overwritten in place
@@ -147,32 +147,40 @@ def _disposition(db: Session, owner: User, dto: DetectedGeoloc) -> tuple[Verdict
     """Verdict for one detection, with the row it applies to when there is one.
 
     Scoped to ``owner``: a detection only dedups against the backfiller's own
-    rows. (``detected_from_url`` embeds the handle, so it's already owner-unique
-    in practice, but the explicit ``owner_id`` filter makes the invariant hold
-    even under the ``x_handle``-vs-``username`` fallback.) Among those, looks at
-    every row sharing ``detected_from_url`` (or, when the DTO declares one,
-    ``source_url``) whatever state that row is in, and matches the coordinate to
-    ``_COORD_PLACES``. Each match is read by :func:`_row_disposition`; a single
-    ``skip`` among them wins, since a row the import must not touch already
-    holds the pair. No match at all → ``create``.
+    rows. Among those, looks at every row sharing ``detected_from_tweet_id`` (or,
+    when the DTO declares one, ``source_url``) whatever state that row is in, and
+    matches the coordinate to ``_COORD_PLACES``. Each match is read by
+    :func:`_row_disposition`; a single ``skip`` among them wins, since a row the
+    import must not touch already holds the pair. No match at all creates.
+
+    The provenance leg is the post's id, not its URL: one post spells the same
+    URL several ways (``x.com`` or ``twitter.com``, the handle in any case, the
+    handle-less ``/i/web/status/`` form), and two spellings must not split one
+    geolocation across two drafts.
 
     The ``source_url`` leg catches the delete-and-repost duplicate: the analyst
     posts the same geolocation twice (a typo fix, an X repost), the bot is
-    tagged on both, and the two provenance URLs differ while the footage source
+    tagged on both, and the two provenance posts differ while the footage source
     and coordinate are identical. Source-less DTOs keep the provenance-only
-    match — NULL declares nothing, so it can't collide.
+    match: NULL declares nothing, so it can't collide.
 
     A ``skip`` carries the row that earned it, so a caller answering one post
     can still name the draft its detection landed on. Only ``create`` has no row.
     """
-    match = Event.detected_from_url == dto.detected_from_url
+    legs = []
+    if dto.detected_from_tweet_id is not None:
+        legs.append(Event.detected_from_tweet_id == dto.detected_from_tweet_id)
     if dto.source_url is not None:
-        match = or_(match, Event.source_url == dto.source_url)
+        legs.append(Event.source_url == dto.source_url)
+    if not legs:
+        # No post id and no source: the detection declares nothing an existing
+        # row could be recognised by, so it can only be new.
+        return "create", None
     rows = (
         db.query(Event)
         .filter(
             Event.owner_id == owner.id,
-            match,
+            or_(*legs),
         )
         # Deterministic pick when several drafts hold the pair: the oldest one.
         .order_by(Event.created_at, Event.id)
@@ -368,6 +376,7 @@ async def _persist_one(
             detected_post_at=dto.detected_post_at,
             status=STATUS_DETECTED,
             detected_at=datetime.now(UTC),
+            detected_from_tweet_id=dto.detected_from_tweet_id,
             detected_from_url=dto.detected_from_url,
         )
         # The mirrors the post also linked. Already normalized + capped by the
@@ -417,9 +426,9 @@ def _apply_import_fields(db: Session, row: Event, dto: DetectedGeoloc) -> tuple[
     Returns ``(changed, source_url_changed)``. Every field is compared before it
     is assigned, so a re-import of an unchanged post dirties no attribute and
     SQLAlchemy emits no UPDATE, which is what keeps ``updated_at`` still.
-    ``id``, ``owner_id``, ``created_at``, ``detected_at``, ``status`` and
-    ``detected_from_url`` are not the import's to move: the row keeps its
-    identity, its place in the queue and the provenance it was filed under.
+    ``id``, ``owner_id``, ``created_at``, ``detected_at``, ``status`` and the
+    two ``detected_from_*`` columns are not the import's to move: the row keeps
+    its identity, its place in the queue and the provenance it was filed under.
     """
     changed = False
     if _projected(row) != (dto.coordinate.lat, dto.coordinate.lng):
@@ -540,9 +549,9 @@ async def assemble_detections(
 ) -> AssembleOutcome:
     """Persist each detection as a ``detected`` ``Event`` owned by ``owner``.
 
-    ``owner`` is the backfiller — the account whose verified handle the archive
+    ``owner`` is the backfiller, the account whose verified handle the archive
     belongs to; every row is attributed to it. Matched on
-    ``(detected_from_url OR source_url, coordinate)`` across states, then
+    ``(detected_from_tweet_id OR source_url, coordinate)`` across states, then
     dispatched by the disposition matrix (see :func:`_row_disposition`): an
     open ``detected`` draft takes the newer parse in place, every other match
     is left untouched, and only an unmatched detection creates a row. A second

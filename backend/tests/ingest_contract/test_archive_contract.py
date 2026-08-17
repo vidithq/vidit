@@ -214,10 +214,10 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
 async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, monkeypatch):
     """The chase branch end to end: an X status link (no inline quote) is chased,
     and the chased tweet's video lands as the source media row while the OP photo
-    stays proof. Offline: ``acquire.fetch_syndication`` is stubbed and the CDN
+    stays proof. Offline: the X chaser's fetch is stubbed and the CDN
     media bytes are supplied by a synthetic fetcher."""
-    import app.services.tweet_ingest.acquire as acquire_mod
     import app.services.tweet_ingest.archive as archive_mod
+    import app.services.tweet_ingest.chase.x as x_chase_mod
 
     typology = "x_status_link"
     body = loader.load_body(typology)
@@ -240,7 +240,7 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
         # nothing leaves the box.
         return loader.TINY_MP4, parsed.content_type
 
-    monkeypatch.setattr(acquire_mod, "fetch_syndication", fake_fetch)
+    monkeypatch.setattr(x_chase_mod, "fetch_syndication", fake_fetch)
     monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
 
     records = read_tweets(archive, handle=owner.x_handle or owner.username, chase=True)
@@ -267,13 +267,13 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
 
 async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: Any) -> Event:
     """Backfill the ``telegram_link`` fixture as a one-tweet archive with the
-    Telegram chase stubbed to ``embed``, and return the single created row.
+    Telegram chaser stubbed to ``embed``, and return the single created row.
 
-    Offline: ``archive.fetch_telegram_embed`` is replaced with a constant, and
-    any source-media CDN GET is served synthetic bytes, so nothing leaves the
-    box.
+    Offline: the chaser answers a constant and any source-media CDN GET is
+    served synthetic bytes, so nothing leaves the box.
     """
     import app.services.tweet_ingest.archive as archive_mod
+    import app.services.tweet_ingest.chase.telegram as telegram_mod
 
     body = loader.load_body("telegram_link")
     archive = tmp_path / "tg_archive"
@@ -283,14 +283,14 @@ async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: 
     for media_file in files:
         (archive / media_file.relative_path).write_bytes(media_file.data)
 
-    def fake_embed(url: str, *, client: Any = None) -> Any:
-        assert url == "https://t.me/somechannel/12345"
+    def fake_chase(target: str, *, client: Any = None) -> Any:
+        assert target == "https://t.me/somechannel/12345"
         return embed
 
     async def fake_cdn(parsed: ParsedMedia) -> tuple[bytes, str]:
         return loader.TINY_MP4, parsed.content_type
 
-    monkeypatch.setattr(archive_mod, "fetch_telegram_embed", fake_embed)
+    monkeypatch.setattr(telegram_mod, "chase", fake_chase)
     monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
 
     records = read_tweets(archive, handle=owner.x_handle or owner.username, chase=True)
@@ -311,9 +311,10 @@ async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: 
 async def test_telegram_chase_fills_date_and_source_media(db, owner, tmp_path, monkeypatch):
     """A t.me footage link, chased: the embed's date fills ``source_posted_at``
     and its video lands as the source media, while the OP photos stay proof."""
-    from app.services.tweet_ingest.telegram import TelegramEmbed
+    from app.services.tweet_ingest.records import ChasedPost
 
-    embed = TelegramEmbed(
+    embed = ChasedPost(
+        url="https://t.me/somechannel/12345",
         posted_at="2026-03-04T09:00:00+00:00",
         media=[
             ParsedMedia(
@@ -337,9 +338,9 @@ async def test_telegram_chase_fills_date_and_source_media(db, owner, tmp_path, m
 async def test_telegram_chase_sensitive_degrades_to_date_only(db, owner, tmp_path, monkeypatch):
     """A sensitive t.me post: the embed serves the date but no media. The date
     fills, no source media is stored, and the backfill does not fail."""
-    from app.services.tweet_ingest.telegram import TelegramEmbed
+    from app.services.tweet_ingest.records import ChasedPost
 
-    embed = TelegramEmbed(posted_at="2026-03-04T09:00:00+00:00", media=[])
+    embed = ChasedPost(url="https://t.me/somechannel/12345", posted_at="2026-03-04T09:00:00+00:00")
     row = await _run_telegram_chase(db, owner, tmp_path, monkeypatch, embed=embed)
 
     assert row.source_url == "https://t.me/somechannel/12345"
@@ -358,16 +359,18 @@ async def test_reimport_fills_a_draft_an_earlier_run_left_bare(db, owner, tmp_pa
     fills all three on the same row rather than creating a second one beside it.
     """
     import app.services.tweet_ingest.archive as archive_mod
-    from app.services.tweet_ingest.telegram import TelegramEmbed
+    import app.services.tweet_ingest.chase.telegram as telegram_mod
+    from app.services.tweet_ingest.records import ChasedPost
 
     handle = owner.x_handle or owner.username
     tweet_id = "8400000000000000042"
     permalink = f"https://x.com/{handle}/status/{tweet_id}"
     archive = _telegram_source_archive(tmp_path, tweet_id)
 
-    def fake_embed(url: str, *, client: Any = None) -> Any:
-        assert url == "https://t.me/somechannel/12345"
-        return TelegramEmbed(
+    def fake_chase(target: str, *, client: Any = None) -> Any:
+        assert target == "https://t.me/somechannel/12345"
+        return ChasedPost(
+            url=target,
             posted_at="2026-03-04T09:00:00+00:00",
             media=[
                 ParsedMedia(
@@ -382,7 +385,7 @@ async def test_reimport_fills_a_draft_an_earlier_run_left_bare(db, owner, tmp_pa
     async def fake_cdn(parsed: ParsedMedia) -> tuple[bytes, str]:
         return loader.TINY_MP4, parsed.content_type
 
-    monkeypatch.setattr(archive_mod, "fetch_telegram_embed", fake_embed)
+    monkeypatch.setattr(telegram_mod, "chase", fake_chase)
     monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
 
     # The row the old import left behind: the right post at the right place,
@@ -390,7 +393,7 @@ async def test_reimport_fills_a_draft_an_earlier_run_left_bare(db, owner, tmp_pa
     stale = await assemble_detections(
         db,
         owner=owner,
-        detections=[_bare_detection(permalink)],
+        detections=[_bare_detection(tweet_id, permalink)],
         fetch_media=archive_media_fetcher(archive),
     )
     assert len(stale.created) == 1
@@ -418,7 +421,7 @@ async def test_reimport_fills_a_draft_an_earlier_run_left_bare(db, owner, tmp_pa
     assert len(source) == 1 and source[0].media_type == "video"
 
 
-def _bare_detection(permalink: str) -> DetectedGeoloc:
+def _bare_detection(tweet_id: str, permalink: str) -> DetectedGeoloc:
     """What a chase-less pass produced for this post: the coordinate, the text
     and the annotation photo, and nothing else, so the draft carried no source
     URL, no mirrors and no footage."""
@@ -427,6 +430,7 @@ def _bare_detection(permalink: str) -> DetectedGeoloc:
         title="Geolocated airfield perimeter",
         proof_text="Geolocated airfield perimeter",
         source_url=None,
+        detected_from_tweet_id=int(tweet_id),
         detected_from_url=permalink,
         owner_handle="own",
         event_date=date(2026, 3, 4),

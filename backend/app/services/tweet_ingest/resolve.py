@@ -1,4 +1,4 @@
-"""The one brick: a thread of ``TweetRecord`` resolves to a ``ResolvedTweet``.
+"""The one brick: a thread of ``TweetRecord`` resolves to a ``ResolvedThread``.
 
 A "thread" is a list of ``TweetRecord``: ``stitch``'s output for the archive, or
 the one hop ``acquire.acquire_thread`` reads for the bot and the paste.
@@ -15,7 +15,7 @@ promotion never reads as a declared source (see :func:`split_media`).
 
 The small ``resolve_source`` / ``split_media`` helpers are the pieces;
 ``resolve_thread`` composes them plus the coordinate / title / proof / date
-derivations into the bundled ``ResolvedTweet``.
+derivations into the bundled ``ResolvedThread``.
 """
 
 from __future__ import annotations
@@ -35,44 +35,24 @@ from .extract import (
     strip_bot_tag,
 )
 from .records import (
+    ParsedMedia,
     TelegramFootage,
     TweetRecord,
     expand_shortlinks,
 )
-from .syndication import (
-    _TELEGRAM_HOST_RE,
-    _TWITTER_URL_HOST_RE,
-    _X_STATUS_URL_RE,
-    ParsedMedia,
+from .urls import (
+    TWITTER_URL_HOST_RE,
+    X_STATUS_URL_RE,
+    canonical_tweet_url,
+    hostname,
+    x_status_id,
 )
-
-
-def _hostname(url: str) -> str:
-    try:
-        return (urlparse(url).hostname or "").lower()
-    except ValueError:
-        return ""
-
-
-def _x_status_id(url: str) -> str | None:
-    """The X status id ``url`` names, or ``None`` when it names none.
-
-    Host-gated on purpose: a non-X URL that merely carries
-    ``x.com/<handle>/status/<id>`` inside its path, an archive.org capture being
-    the common OSINT case, names no status of its own and must never be chased
-    as one. ``_X_STATUS_URL_RE`` stays the single source of truth for the path
-    shape.
-    """
-    if _TWITTER_URL_HOST_RE.match(_hostname(url)) is None:
-        return None
-    match = _X_STATUS_URL_RE.search(url)
-    return match.group(1) if match is not None else None
 
 
 def _status_link_handle(url: str) -> str | None:
     """The handle segment of an X status link, or ``None`` when ``url`` names no
     status or is the handle-less ``i/web/status`` form."""
-    if _x_status_id(url) is None:
+    if x_status_id(url) is None:
         return None
     try:
         parts = [p for p in urlparse(url).path.split("/") if p]
@@ -101,8 +81,8 @@ def _is_non_status_x_link(url: str) -> bool:
     On X, footage lives at a status and nowhere else, so a link to a profile
     credits an author without pointing at anything a source slot can hold.
     """
-    return _TWITTER_URL_HOST_RE.match(_hostname(url)) is not None and (
-        _X_STATUS_URL_RE.search(url) is None
+    return TWITTER_URL_HOST_RE.match(hostname(url)) is not None and (
+        X_STATUS_URL_RE.search(url) is None
     )
 
 
@@ -117,27 +97,12 @@ def _is_coordinate_link(url: str) -> bool:
     the ``maps.`` subdomain and a ``/maps`` path on a Google host count, plus the
     ``maps.app.goo.gl`` share form.
     """
-    host = _hostname(url)
+    host = hostname(url)
     if host == "maps.app.goo.gl":
         return True
     if _GOOGLE_HOST_RE.match(host) is None:
         return False
     return host.startswith("maps.") or urlparse(url).path.lower().startswith("/maps")
-
-
-@dataclass(frozen=True)
-class SourceCandidate:
-    """A link the thread carries that a source slot may hold.
-
-    ``status_id`` is the X status id when the link names one (the syndication
-    chase key), ``None`` otherwise. ``telegram`` marks a ``t.me`` post (the
-    embed chase key). Both name what may be *fetched*; neither decides what is
-    stored.
-    """
-
-    url: str
-    status_id: str | None = None
-    telegram: bool = False
 
 
 # Query parameters that carry share / campaign provenance rather than the
@@ -167,17 +132,17 @@ def link_identity(url: str) -> str:
     video id usually lives in the query, so ``watch?v=AAA`` and ``watch?v=BBB``
     are two links, while ``watch?v=AAA&si=…`` is one link shared twice.
     """
-    status_id = _x_status_id(url)
+    status_id = x_status_id(url)
     if status_id is not None:
         return f"x:{status_id}"
     parsed = urlparse(url)
-    base = f"{_hostname(url)}{parsed.path.rstrip('/')}"
+    base = f"{hostname(url)}{parsed.path.rstrip('/')}"
     query = _identifying_query(parsed.query)
     return f"{base}?{query}" if query else base
 
 
-def source_candidates(urls: Iterable[str], *, owner_handle: str) -> list[SourceCandidate]:
-    """The deduplicated source candidates among ``urls``, in order.
+def source_candidates(urls: Iterable[str], *, owner_handle: str) -> list[str]:
+    """The deduplicated source candidate URLs among ``urls``, in order.
 
     Host-blind: every link the thread carries is a candidate unless it is one of
     the three exclusions, which are exclusions because they point at no footage
@@ -189,8 +154,12 @@ def source_candidates(urls: Iterable[str], *, owner_handle: str) -> list[SourceC
 
     So a TikTok, an Instagram post or a news article is a candidate exactly like
     an X status is. Duplicates collapse on :func:`link_identity`.
+
+    A candidate is the link as the post wrote it and nothing more: what may be
+    *fetched* from it is the chase's business (``chase.chase_post`` reads the
+    host), and what is *stored* is this resolution's.
     """
-    candidates: list[SourceCandidate] = []
+    candidates: list[str] = []
     seen: set[str] = set()
     for url in urls:
         if _is_own_status_link(url, owner_handle) or _is_non_status_x_link(url):
@@ -201,17 +170,11 @@ def source_candidates(urls: Iterable[str], *, owner_handle: str) -> list[SourceC
         if key in seen:
             continue
         seen.add(key)
-        candidates.append(
-            SourceCandidate(
-                url=url,
-                status_id=_x_status_id(url),
-                telegram=_TELEGRAM_HOST_RE.match(_hostname(url)) is not None,
-            )
-        )
+        candidates.append(url)
     return candidates
 
 
-def thread_candidates(thread: list[TweetRecord]) -> list[SourceCandidate]:
+def thread_candidates(thread: list[TweetRecord]) -> list[str]:
     """The thread's source candidates (:func:`source_candidates` over every
     record's links, under the thread head's handle)."""
     return source_candidates(
@@ -220,7 +183,7 @@ def thread_candidates(thread: list[TweetRecord]) -> list[SourceCandidate]:
     )
 
 
-def _sole_candidate(thread: list[TweetRecord]) -> SourceCandidate | None:
+def _sole_candidate(thread: list[TweetRecord]) -> str | None:
     """The thread's one source candidate, or ``None`` when it has none or
     several.
 
@@ -241,9 +204,7 @@ def resolve_secondary_sources(thread: list[TweetRecord], source_url: str | None)
     """
     primary = link_identity(source_url) if source_url else None
     urls = [
-        candidate.url
-        for candidate in thread_candidates(thread)
-        if link_identity(candidate.url) != primary
+        candidate for candidate in thread_candidates(thread) if link_identity(candidate) != primary
     ]
     # Imported locally so the rest of ``tweet_ingest`` stays importable without
     # the app's service layer.
@@ -252,22 +213,20 @@ def resolve_secondary_sources(thread: list[TweetRecord], source_url: str | None)
     return truncate_secondary_source_urls(urls, source_url)
 
 
-def _telegram_footage(thread: list[TweetRecord], link: SourceCandidate) -> TelegramFootage | None:
-    """The chased Telegram embed backing the resolved source ``link``, or ``None``.
+def _chased_footage(thread: list[TweetRecord], link: str) -> TelegramFootage | None:
+    """The off-platform footage chased for the resolved source ``link``.
 
-    Only when the resolved link is a Telegram post whose embed was chased onto
-    some record (matched by URL). ``None`` for any other link or when the chase
-    found nothing, so the source degrades to link-only (url, no date, no media).
-    Callers reach this only after the quote branch has been ruled out, so a
-    quote always takes precedence over a link.
+    Only when some record carries a chase filed under that exact URL, which is
+    why a chaser returns the target as the post wrote it. ``None`` for any other
+    link or when the chase found nothing, so the source degrades to link-only
+    (url, no date, no media). Callers reach this only after the quote branch has
+    been ruled out, so a quote always takes precedence over a link.
     """
-    if not link.telegram:
-        return None
     return next(
         (
             record.telegram
             for record in thread
-            if record.telegram is not None and record.telegram.url == link.url
+            if record.telegram is not None and record.telegram.url == link
         ),
         None,
     )
@@ -280,24 +239,25 @@ def resolve_source(thread: list[TweetRecord]) -> tuple[str | None, str | None]:
     tweet is the source and its date comes free. That includes a status the
     acquisition chased into the quote slot on the analyst's behalf. Failing a
     quote, the thread's one source candidate is the source
-    (:func:`_sole_candidate`); a Telegram post whose embed was chased carries
-    its date, every other link is stored link-only.
+    (:func:`_sole_candidate`); a link whose post was chased carries its date,
+    every other link is stored link-only.
 
     No other signal counts. A thread that neither quotes nor links anything has
-    declared no source, so both halves are ``None``; the thread head's permalink
-    is provenance (``detected_from_url``), never the source.
+    declared no source, so both halves are ``None``; the thread head's own post is
+    provenance (``detected_from_tweet_id`` and the URL built from it), never the
+    source.
     """
     for record in thread:
         if record.quoted is not None:
             quoted = record.quoted
             return (
-                f"https://x.com/{quoted.handle}/status/{quoted.tweet_id}",
+                canonical_tweet_url(quoted.tweet_id, quoted.handle),
                 quoted.created_at or None,
             )
     link = _sole_candidate(thread)
     if link is not None:
-        footage = _telegram_footage(thread, link)
-        return link.url, (footage.posted_at if footage is not None else None)
+        footage = _chased_footage(thread, link)
+        return link, (footage.posted_at if footage is not None else None)
     return None, None
 
 
@@ -306,9 +266,9 @@ def split_media(thread: list[TweetRecord]) -> tuple[list[ParsedMedia], list[Pars
 
     Footage (``source``) vs the analyst's annotation (``proof``): a quoted
     tweet's media is the footage, so it is the only media that lands in the
-    source slot. When there is no quote but the resolved source is a chased
-    Telegram post whose embed served footage, that footage is the source media
-    instead (a sensitive post serves none, leaving the slot empty).
+    source slot. When there is no quote but the resolved source is a link whose
+    post was chased and served footage, that footage is the source media
+    instead (a chase that served none leaves the slot empty).
 
     With the source slot still empty after both, the thread's first own video
     fills it and leaves the proof: a video an analyst attaches is the footage
@@ -327,7 +287,7 @@ def split_media(thread: list[TweetRecord]) -> tuple[list[ParsedMedia], list[Pars
         return quoted_media, own_media
     link = _sole_candidate(thread)
     if link is not None:
-        footage = _telegram_footage(thread, link)
+        footage = _chased_footage(thread, link)
         if footage is not None:
             return list(footage.media), own_media
     video = next((i for i, media in enumerate(own_media) if media.kind == "video"), None)
@@ -337,13 +297,18 @@ def split_media(thread: list[TweetRecord]) -> tuple[list[ParsedMedia], list[Pars
 
 
 @dataclass(frozen=True)
-class ResolvedTweet:
-    """Everything a tweet / thread resolves to: the "tweet id → all info" object.
+class ResolvedThread:
+    """Everything a thread resolves to: the "thread to all info" object.
 
     ``detect`` is a thin mapper over this: nothing derived lives in it.
     """
 
-    # Identity / provenance (from the thread head, the geoloc tweet).
+    # Identity / provenance (from the thread head, the geoloc post).
+    # The head's post id is the identity every surface keys on; the URL is the
+    # display value built from it (:func:`urls.canonical_tweet_url`). ``None``
+    # only when an adapter handed over a non-numeric id, which no upstream
+    # writes.
+    detected_from_tweet_id: int | None
     detected_from_url: str
     owner_handle: str
     # Derived.
@@ -357,7 +322,7 @@ class ResolvedTweet:
     # candidate link (no self-source deduction).
     source_url: str | None
     # The source's post instant, only when actually known (a dated quote or a
-    # chased Telegram embed); never a fallback onto the geoloc tweet's own date.
+    # chased post); never a fallback onto the geoloc tweet's own date.
     source_posted_at: datetime | None
     detected_post_at: datetime | None  # the geoloc tweet's date
     # Provisional proxy from the geoloc tweet's post date; None when the
@@ -381,8 +346,8 @@ def own_posts(thread: list[TweetRecord]) -> list[TweetRecord]:
     return [record for record in thread if not is_retweet(record.text)]
 
 
-def resolve_thread(thread: list[TweetRecord]) -> ResolvedTweet | None:
-    """Resolve a stitched thread into a ``ResolvedTweet``. ``None`` for an empty
+def resolve_thread(thread: list[TweetRecord]) -> ResolvedThread | None:
+    """Resolve a stitched thread into a ``ResolvedThread``. ``None`` for an empty
     thread or one carrying only retweets; a coordinate-less thread still
     resolves (``coords == []``)."""
     posts = own_posts(thread)
@@ -408,8 +373,9 @@ def resolve_thread(thread: list[TweetRecord]) -> ResolvedTweet | None:
     source_media, proof_media = split_media(posts)
     detected_post_at = _posted_at(head.created_at)
     source_posted_at = _posted_at(source_iso) if source_iso else None
-    return ResolvedTweet(
-        detected_from_url=head.permalink,
+    return ResolvedThread(
+        detected_from_tweet_id=_tweet_id(head.tweet_id),
+        detected_from_url=canonical_tweet_url(head.tweet_id, head.handle),
         owner_handle=head.handle,
         coords=scan.coords,
         coords_out_of_bounds=scan.out_of_bounds,
@@ -423,6 +389,29 @@ def resolve_thread(thread: list[TweetRecord]) -> ResolvedTweet | None:
         source_media=source_media,
         proof_media=proof_media,
     )
+
+
+# A post id is a snowflake, so it fits a signed 64-bit integer by construction
+# and the column is a bigint. The bound is still checked: an export is
+# attacker-controlled and its reader admits any digit string, and a value past
+# this would fail the insert rather than the parse.
+_MAX_TWEET_ID = 2**63 - 1
+
+
+def _tweet_id(raw: str) -> int | None:
+    """The head post's id as the ``events`` column holds it, ``None`` when the
+    adapter handed over something that is not a post id.
+
+    Both adapters produce digits (the archive rejects anything else outright,
+    syndication is fetched by an id that matched ``urls``), so ``None`` is the
+    shape no upstream writes rather than a case with behaviour of its own: a
+    draft carrying it dedups on its source URL alone.
+    """
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if 0 <= value <= _MAX_TWEET_ID else None
 
 
 def _posted_at(created_at: str) -> datetime | None:

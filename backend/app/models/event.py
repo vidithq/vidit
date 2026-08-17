@@ -4,6 +4,7 @@ from typing import Literal
 
 from geoalchemy2 import Geometry
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -203,9 +204,12 @@ class Event(Base):
     status: Mapped[EventStatus] = mapped_column(
         String(20), nullable=False, default=STATUS_GEOLOCATED, server_default=text("'geolocated'")
     )
-    # The post a machine detection was imported from — the assemble idempotency
-    # anchor and a provenance link, distinct from ``source_url`` (footage origin).
-    # NULL for human submits.
+    # The post a machine detection was imported from, distinct from
+    # ``source_url`` (footage origin). NULL for human submits. The id is the
+    # identity every ingest surface keys on, so it is the re-import match
+    # anchor; the URL is the display value built from it
+    # (``tweet_ingest.urls.canonical_tweet_url``) and what an analyst opens.
+    detected_from_tweet_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     detected_from_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -321,8 +325,17 @@ class Event(Base):
         # "Open requests / detections / geolocations, newest first" — the list,
         # map and requested-view reads all filter on status.
         Index("ix_events_status_created_at", "status", "created_at"),
-        # Backs the assemble idempotency look-up (one per detection during a
-        # backfill). Partial on the populated cohort — human rows are always NULL.
+        # Backs the re-import match (one look-up per detection during a
+        # backfill), which reads an owner's own rows by the post they came from.
+        # Partial on the populated cohort: human rows are always NULL.
+        Index(
+            "ix_events_owner_detected_from_tweet_id",
+            "owner_id",
+            "detected_from_tweet_id",
+            postgresql_where="detected_from_tweet_id IS NOT NULL",
+        ),
+        # Backs the admin machine-detection cohort scans, which count the rows
+        # carrying a provenance link at all.
         Index(
             "ix_events_detected_from_url",
             "detected_from_url",

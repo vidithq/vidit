@@ -78,7 +78,8 @@ erDiagram
         GEOMETRY event_coords "nullable, the subject; required at geolocated"
         GEOMETRY capture_source_coords "nullable, the camera position"
         TEXT source_url "nullable, required at requested/geolocated"
-        TEXT detected_from_url "nullable, detection provenance"
+        BIGINT detected_from_tweet_id "nullable, detection provenance id"
+        TEXT detected_from_url "nullable, detection provenance link"
         JSONB proof
         DATE event_date "nullable"
         TIME event_time "nullable, optional UTC hour"
@@ -339,7 +340,8 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 | `event_coords` | `GEOMETRY(Point, 4326)` | nullable. The subject: what the footage shows. Tied to `status` by `ck_events_coords_status`: required for `geolocated`, optional otherwise. A `requested` request may carry an approximate guess. This column was renamed from `location`. Each event has one subject point. Multi-point support is a deferred `event_points` child table. |
 | `capture_source_coords` | `GEOMETRY(Point, 4326)` | nullable. The camera position: where the footage was shot from. Always optional, one per event. |
 | `source_url` | `TEXT` | nullable. Where the footage was first published. Tied to `status` by `ck_events_source_url_status`: required for `requested` and `geolocated`, optional for `detected`. A machine draft may declare no source; see [`ingestion.md`](ingestion.md). |
-| `detected_from_url` | `TEXT` | nullable. The post a machine detection was imported from. Serves as the `(detected_from_url, coordinate)` [re-import](ingestion.md#re-import) matching anchor and a provenance link, distinct from `source_url`. NULL for human submits. |
+| `detected_from_tweet_id` | `BIGINT` | nullable. The ID of the post a machine detection was imported from, and the `(detected_from_tweet_id, coordinate)` [re-import](ingestion.md#re-import) matching anchor: one post spells its URL several ways, so the ID is what keeps two spellings on one draft. NULL for human submits. Indexed with `owner_id`, partial on the populated cohort. |
+| `detected_from_url` | `TEXT` | nullable. The post a machine detection was imported from, as a link an analyst can open: the display value, written from `detected_from_tweet_id` at the engine's exit. A provenance link, distinct from `source_url`. NULL for human submits. |
 | `proof` | `JSONB` | NOT NULL. A Tiptap document stored as ProseMirror JSON. Every row carries a proof document: a human submit carries the analyst's write-up, and a machine detection carries the tweet or thread text. A submission with no proof body stores an empty document, not NULL. |
 | `event_date` | `DATE` | nullable in every status. When the depicted event happened. NULL when unknown: the footage doesn't always establish the date, and it renders as *Unknown*. For a machine detection, this is provisionally the originating tweet's post date; the owner corrects it at submit. |
 | `event_time` | `TIME` | nullable. An optional time of day for `event_date`, in UTC. NULL when the hour is unknown. |

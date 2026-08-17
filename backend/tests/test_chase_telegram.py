@@ -1,9 +1,9 @@
-"""Unit tests for the Telegram footage chase (offline).
+"""Unit tests for the Telegram chaser (offline).
 
 Two surfaces: the SSRF URL guard (``_telegram_post_url`` admits nothing but a
-public t.me post) and the embed parser (``fetch_telegram_embed`` over synthetic
-HTML carrying the real ``tgme_*`` classes). Every fetch runs through an
-``httpx.MockTransport`` client, so no request leaves the box.
+public t.me post) and the embed parser (``chase`` over synthetic HTML carrying
+the real ``tgme_*`` classes). Every fetch runs through an ``httpx.MockTransport``
+client, so no request leaves the box.
 """
 
 from __future__ import annotations
@@ -11,11 +11,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.services.tweet_ingest.telegram import (
-    TelegramEmbed,
-    _telegram_post_url,
-    fetch_telegram_embed,
-)
+from app.services.tweet_ingest.chase.telegram import _telegram_post_url, chase
+from app.services.tweet_ingest.records import ChasedPost
 
 # ── SSRF URL guard ────────────────────────────────────────────────────────
 
@@ -66,8 +63,8 @@ def test_disallowed_url_never_fetches() -> None:
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
     try:
-        assert fetch_telegram_embed("https://evil.com/chan/12", client=client) is None
-        assert fetch_telegram_embed("https://t.me/joinchat/AAA", client=client) is None
+        assert chase("https://evil.com/chan/12", client=client) is None
+        assert chase("https://t.me/joinchat/AAA", client=client) is None
     finally:
         client.close()
 
@@ -92,10 +89,10 @@ def _raising_client(exc: httpx.HTTPError) -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
-def _fetch(html_text: str, *, status: int = 200) -> TelegramEmbed | None:
+def _fetch(html_text: str, *, status: int = 200) -> ChasedPost | None:
     client = _client(html_text, status=status)
     try:
-        return fetch_telegram_embed("https://t.me/somechannel/12345", client=client)
+        return chase("https://t.me/somechannel/12345", client=client)
     finally:
         client.close()
 
@@ -275,6 +272,6 @@ def test_non_200_yields_none() -> None:
 def test_transport_error_yields_none() -> None:
     client = _raising_client(httpx.ConnectError("boom"))
     try:
-        assert fetch_telegram_embed("https://t.me/somechannel/12345", client=client) is None
+        assert chase("https://t.me/somechannel/12345", client=client) is None
     finally:
         client.close()

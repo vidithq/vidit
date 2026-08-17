@@ -20,18 +20,19 @@ import httpx
 
 from app.services.storage import image_content_type_for_extension
 
-from .acquire import quoted_from_syndication
+from .chase import ChasedPost, apply_chase, chase_post
 from .extract import is_retweet
-from .records import QuotedTweet, SourceLink, TelegramFootage, TweetRecord
-from .resolve import SourceCandidate, source_candidates
-from .syndication import (
-    _X_STATUS_URL_RE,
-    MEDIA_FETCH_MAX_BYTES,
-    ParsedMedia,
-    extract_source_links,
-    is_trusted_media_url,
-)
-from .telegram import fetch_telegram_embed
+from .records import ParsedMedia, QuotedTweet, SourceLink, TweetRecord
+from .resolve import source_candidates
+from .syndication import extract_source_links
+from .urls import X_STATUS_URL_RE, is_trusted_media_url
+
+# Byte cap on a single remote-media fetch: every chased CDN URL is streamed into
+# memory under it. Sized for the upload ceilings (10 MB image / 95 MiB video)
+# plus HTTP-framing overhead. Anything bigger is an unexpected upstream response
+# or a hostile content-length lie; cap and bail so a fetch cannot buffer an
+# unbounded stream in memory.
+MEDIA_FETCH_MAX_BYTES = 110 * 1024 * 1024
 
 # Each ``.js`` payload is wrapped ``window.YTD.tweets.part0 = [ ... ]``: strip
 # the assignment prefix, then it's plain JSON.
@@ -171,15 +172,15 @@ def _archive_media(tweet: dict[str, Any], tweet_id: str) -> list[ParsedMedia]:
 
 
 def _linked_status_id(url: str) -> str | None:
-    """The X status id in ``url`` (``_X_STATUS_URL_RE``), or ``None``."""
-    match = _X_STATUS_URL_RE.search(url)
+    """The X status id in ``url`` (``X_STATUS_URL_RE``), or ``None``."""
+    match = X_STATUS_URL_RE.search(url)
     return match.group(1) if match is not None else None
 
 
 def _chase_candidate(
     tweet: dict[str, Any], by_id: dict[str, dict[str, Any]], *, owner_handle: str
-) -> SourceCandidate | None:
-    """The tweet's sole source candidate, or ``None`` when it has none or
+) -> str | None:
+    """The tweet's sole source candidate link, or ``None`` when it has none or
     several.
 
     The same rule the shared resolution runs (``resolve.source_candidates``), so
@@ -189,10 +190,7 @@ def _chase_candidate(
     dropped first, even in the handle-less ``i/web/status`` form the shared
     own-handle skip can't catch.
 
-    A chase runs only when that candidate is an X status or a Telegram post: the
-    vocabulary decides what gets fetched, so an Instagram / TikTok / article link
-    stays link-only. Several candidates leave the source empty for review, so
-    nothing is chased.
+    Several candidates leave the source empty for review, so nothing is chased.
     """
     candidates = source_candidates(
         (
@@ -206,65 +204,56 @@ def _chase_candidate(
 
 
 def _archive_quoted(
-    tweet: dict[str, Any], by_id: dict[str, dict[str, Any]], *, handle: str, chase: bool
+    tweet: dict[str, Any], by_id: dict[str, dict[str, Any]], *, handle: str
 ) -> QuotedTweet | None:
-    """Resolve a tweet's footage source tweet.
+    """The tweet's quoted post, joined inside the export itself.
 
-    A literal quote first (in-archive join, or a syndication chase of a
-    third-party quote); else, when ``chase`` is on and the tweet's footage
-    candidate (:func:`_chase_candidate`) is a third-party X status, that status
-    chased via syndication. ``None`` when nothing resolves. Held in the
-    record's ``quoted`` field, but it is "the source tweet" whether it came from a
-    quote or a link.
+    Pure disk: both posts are in the same file, so the owner quoting their own
+    post needs no fetch. A quote the export does not hold is the chase's job
+    (:func:`_archive_chased`).
+    """
+    quoted_id = _str_or_none(tweet.get("quoted_status_id_str"))
+    if quoted_id is None:
+        return None
+    src = by_id.get(quoted_id)
+    if src is None:
+        return None
+    created_at = src.get("created_at")
+    return QuotedTweet(
+        tweet_id=quoted_id,
+        handle=handle,  # an in-archive quote is the owner's own tweet
+        text=_tweet_text(src),
+        created_at=_to_iso(created_at) if isinstance(created_at, str) else "",
+        media=_archive_media(src, quoted_id),
+    )
+
+
+def _archive_chased(
+    tweet: dict[str, Any], by_id: dict[str, dict[str, Any]], *, handle: str
+) -> ChasedPost | None:
+    """The footage post this entry points at, chased through the dispatcher.
+
+    One target at most, and the entry names it two ways. A quote the export does
+    not hold is chased by its post id; otherwise the entry's sole source
+    candidate is chased by its URL, and a chase that comes back authored by the
+    owner is a self-reference (a link to their own post absent from the export
+    slips the ``by_id`` exclusion), never footage. An entry that quotes a post
+    the export does hold needs nothing: the join already filled the slot.
+
+    Which technology answers is ``chase.chase_post``'s business, so a link it
+    does not serve, an Instagram or TikTok URL, stays link-only. Fail-soft: a
+    chase that yields nothing leaves the record with the link alone.
     """
     quoted_id = _str_or_none(tweet.get("quoted_status_id_str"))
     if quoted_id is not None:
-        src = by_id.get(quoted_id)
-        if src is not None:
-            created_at = src.get("created_at")
-            return QuotedTweet(
-                tweet_id=quoted_id,
-                handle=handle,  # an in-archive quote is the owner's own tweet
-                text=_tweet_text(src),
-                created_at=_to_iso(created_at) if isinstance(created_at, str) else "",
-                media=_archive_media(src, quoted_id),
-            )
-        return quoted_from_syndication(quoted_id) if chase else None
-    if chase:
-        candidate = _chase_candidate(tweet, by_id, owner_handle=handle)
-        if candidate is not None and candidate.status_id is not None:
-            quoted = quoted_from_syndication(candidate.status_id)
-            if quoted is not None and quoted.handle.lower() == handle.lower():
-                # A link to the owner's OWN status absent from the export (deleted
-                # tweet, truncated archive) slips the ``by_id`` exclusion; the
-                # chased handle reveals it as a self-reference, never footage.
-                return None
-            return quoted
-    return None
-
-
-def _archive_telegram(
-    tweet: dict[str, Any], by_id: dict[str, dict[str, Any]], *, handle: str, chase: bool
-) -> TelegramFootage | None:
-    """Chase the tweet's sole Telegram source link via its public embed.
-
-    OSINT posts link ``https://t.me/<channel>/<id>`` for off-platform footage.
-    When ``chase`` is on and the tweet's sole source candidate is a Telegram post
-    (:func:`_chase_candidate`), fetch its embed for the post date and (when the
-    embed serves it) the footage media. A tweet that also links another candidate
-    is ambiguous, so nothing is chased. Fail-soft: ``fetch_telegram_embed``
-    returns ``None`` on any error, and the record then keeps the link with no
-    date.
-    """
-    if not chase:
-        return None
+        return None if quoted_id in by_id else chase_post(quoted_id)
     candidate = _chase_candidate(tweet, by_id, owner_handle=handle)
-    if candidate is None or not candidate.telegram:
+    if candidate is None:
         return None
-    embed = fetch_telegram_embed(candidate.url)
-    if embed is None:
+    chased = chase_post(candidate)
+    if chased is not None and (chased.author or "").lower() == handle.lower():
         return None
-    return TelegramFootage(url=candidate.url, posted_at=embed.posted_at, media=list(embed.media))
+    return chased
 
 
 def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[TweetRecord]:
@@ -272,12 +261,10 @@ def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[
 
     ``handle`` is the verified owner handle; the export is the owner's own
     tweets. Each record carries the inline reply edges (so ``stitch`` rebuilds
-    real self-threads), the OP media, the links it carries
-    (``entities.urls``), the resolved quoted tweet (an in-archive join, or a
-    syndication chase of a third-party quote when ``chase`` is on), and, when
-    ``chase`` is on and the OP links a sole Telegram post, that post's chased
-    footage (date + maybe media). ``chase`` stays off by default so the read is
-    pure-disk.
+    real self-threads), the OP media, the links it carries (``entities.urls``),
+    the quoted post joined inside the export, and, when ``chase`` is on, the
+    footage the entry points at off the export (:func:`_archive_chased`).
+    ``chase`` stays off by default so the read is pure-disk.
 
     Retweets (:func:`_is_retweet`) are dropped here, the earliest point that
     can tell them apart, so nothing downstream can attribute another account's
@@ -307,36 +294,36 @@ def read_tweets(archive_dir: Path, *, handle: str, chase: bool = False) -> list[
         if not isinstance(tweet_id, str) or not tweet_id.isdigit():
             continue
         created_at = tweet.get("created_at")
-        records.append(
-            TweetRecord(
-                tweet_id=tweet_id,
-                handle=handle,
-                text=_tweet_text(tweet),
-                created_at=_to_iso(created_at) if isinstance(created_at, str) else "",
-                permalink=f"https://x.com/{handle}/status/{tweet_id}",
-                media=_archive_media(tweet, tweet_id),
-                in_reply_to_status_id=_str_or_none(tweet.get("in_reply_to_status_id_str")),
-                in_reply_to_user_id=_str_or_none(tweet.get("in_reply_to_user_id_str")),
-                quoted=_archive_quoted(tweet, by_id, handle=handle, chase=chase),
-                telegram=_archive_telegram(tweet, by_id, handle=handle, chase=chase),
-                external_sources=[
-                    SourceLink(url=u, shortlink=t) for u, t in extract_source_links(tweet)
-                ],
-            )
+        record = TweetRecord(
+            tweet_id=tweet_id,
+            handle=handle,
+            text=_tweet_text(tweet),
+            created_at=_to_iso(created_at) if isinstance(created_at, str) else "",
+            media=_archive_media(tweet, tweet_id),
+            in_reply_to_status_id=_str_or_none(tweet.get("in_reply_to_status_id_str")),
+            in_reply_to_user_id=_str_or_none(tweet.get("in_reply_to_user_id_str")),
+            quoted=_archive_quoted(tweet, by_id, handle=handle),
+            external_sources=[
+                SourceLink(url=u, shortlink=t) for u, t in extract_source_links(tweet)
+            ],
         )
+        if chase:
+            chased = _archive_chased(tweet, by_id, handle=handle)
+            if chased is not None:
+                record = apply_chase(record, chased)
+        records.append(record)
     return records
 
 
 async def fetch_cdn_media(parsed: ParsedMedia) -> tuple[bytes, str] | None:
-    """Fetch a chased source media from the X or Telegram CDN.
+    """Fetch a chased source media from a CDN.
 
-    Chased source tweets (X status) and chased Telegram embeds carry absolute CDN
-    URLs in ``remote_url`` (unlike the archive's own media, which are
-    ``tweets_media/`` disk paths). SSRF-guarded by ``is_trusted_media_url``, the
-    same host allowlist the media proxy uses. Streamed with a byte cap
-    (``MEDIA_FETCH_MAX_BYTES``, shared with the proxy) so a hostile / buggy CDN
-    file that lies about its size can't OOM the worker; over the cap degrades to
-    ``None`` (media-incomplete), fail-soft like a fetch error.
+    A chase carries absolute CDN URLs in ``remote_url``, unlike the archive's own
+    media, which are ``tweets_media/`` disk paths. SSRF-guarded by
+    ``is_trusted_media_url``, the one host allowlist. Streamed with a byte cap
+    (``MEDIA_FETCH_MAX_BYTES``) so a hostile or buggy CDN file that lies about
+    its size can't OOM the worker; over the cap degrades to ``None``
+    (media-incomplete), fail-soft like a fetch error.
     """
     if not is_trusted_media_url(parsed.remote_url):
         return None
@@ -363,7 +350,7 @@ def archive_media_fetcher(
     archive_dir: Path,
 ) -> Callable[[ParsedMedia], Awaitable[tuple[bytes, str] | None]]:
     """A media fetcher for a backfill: the archive's own media from
-    ``tweets_media/`` on disk, chased source media from the X CDN.
+    ``tweets_media/`` on disk, chased source media from the CDN it lives on.
 
     Matches the assemble step's ``MediaFetcher`` signature and dispatches on
     ``remote_url``: an absolute URL is a chased source media (CDN); anything else

@@ -115,6 +115,9 @@ def _dto(
         title=title,
         proof_text=proof_text,
         source_url=source_url,
+        # The post id the engine keys on, read back off the URL the caller named
+        # so a test varying one varies both, as the engine does.
+        detected_from_tweet_id=int(url.rsplit("/", 1)[-1]),
         detected_from_url=url,
         owner_handle="own",
         event_date=date(2025, 11, 12),
@@ -374,8 +377,31 @@ async def test_sourceless_dtos_do_not_dedup_on_null_source(db, owner):
     assert len(outcome.created) == 1 and len(outcome.skipped) == 0
 
 
+async def test_two_spellings_of_one_post_land_on_one_draft(db, owner):
+    # The match anchor is the post id, not the URL: the same post reached
+    # through ``twitter.com`` and through ``x.com`` is one geolocation, and the
+    # second pass overwrites the draft the first left.
+    await assemble_detections(
+        db,
+        owner=owner,
+        detections=[_dto(url="https://x.com/own/status/7", title="First read")],
+        fetch_media=_missing_fetcher,
+    )
+    outcome = await assemble_detections(
+        db,
+        owner=owner,
+        detections=[_dto(url="https://twitter.com/Own/status/7", title="Second read")],
+        fetch_media=_missing_fetcher,
+    )
+    assert len(outcome.updated) == 1 and outcome.created == []
+    row = db.query(Event).filter(Event.owner_id == owner.id).one()
+    assert row.title == "Second read"
+    # The provenance the row was filed under is not the import's to move.
+    assert row.detected_from_url == "https://x.com/own/status/7"
+
+
 async def test_geolocated_pair_is_skipped(db, owner):
-    # A geolocated row already at this (detected_from_url, coordinate)
+    # A geolocated row already at this (detected_from_tweet_id, coordinate)
     # blocks a machine re-detection.
     existing = Event(
         owner_id=owner.id,
@@ -386,6 +412,7 @@ async def test_geolocated_pair_is_skipped(db, owner):
         event_date=date(2025, 11, 12),
         status=STATUS_GEOLOCATED,
         geolocated_at=datetime.now(UTC),
+        detected_from_tweet_id=1,
         detected_from_url="https://x.com/own/status/1",
     )
     db.add(existing)
@@ -585,7 +612,7 @@ async def test_backfill_from_archive_end_to_end(db, owner):
     assert all(g.status == STATUS_DETECTED for g in geos)
     assert all(g.proof and g.proof["content"] for g in geos)
     # No tweet in the synthetic archive quotes or links footage: every row is
-    # honestly source-less, nothing deduced from the tweets' own permalinks.
+    # honestly source-less, nothing deduced from the posts' own URLs.
     assert all(g.source_url is None for g in geos)
     assert all(g.source_posted_at is None for g in geos)
 
@@ -601,7 +628,7 @@ async def test_backfill_from_archive_end_to_end(db, owner):
     assert len(media_rows) == 2
     assert all(m.role == "proof" for m in media_rows)
 
-    # Re-running the same archive is a no-op (idempotent on the permalink+coord).
+    # Re-running the same archive is a no-op (idempotent on post id + coord).
     again = await backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE)
     assert again.created == [] and len(again.skipped) == 6
 
@@ -651,8 +678,8 @@ async def test_failed_detection_is_isolated_not_lost(db, owner, monkeypatch):
 
     monkeypatch.setattr("app.services.detection.upload_prepared_media", boom)
 
-    bad = _dto(lat=48.5, lng=34.5, url="https://x.com/own/status/A", media=[_img()])
-    good = _dto(lat=50.0, lng=30.0, url="https://x.com/own/status/B")  # no media
+    bad = _dto(lat=48.5, lng=34.5, url="https://x.com/own/status/11", media=[_img()])
+    good = _dto(lat=50.0, lng=30.0, url="https://x.com/own/status/12")  # no media
     outcome = await assemble_detections(
         db, owner=owner, detections=[bad, good], fetch_media=_image_fetcher
     )

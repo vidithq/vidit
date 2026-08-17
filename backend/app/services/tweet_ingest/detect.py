@@ -1,13 +1,12 @@
 """Machine detection: a thread becomes 0..N ``DetectedGeoloc`` DTOs.
 
 A thin mapper over the shared ``resolve_thread`` core: it fans one
-``ResolvedTweet`` out into one DTO per coordinate, and names what the resolution
-could not settle. Nothing is derived here; the same resolution feeds the human
-``parse`` path.
+``ResolvedThread`` out into one DTO per coordinate, and names what the
+resolution could not settle. Nothing is derived here.
 
 The DTO is plain data, never an ORM row; the assemble step turns each into an
 ``Event`` row and owns persistence, evidence, and the
-``(detected_from_url, coordinate)`` idempotency.
+``(detected_from_tweet_id, coordinate)`` idempotency.
 """
 
 from __future__ import annotations
@@ -16,9 +15,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from .extract import ParsedCoord
-from .records import TweetRecord
-from .resolve import ResolvedTweet, resolve_thread
-from .syndication import ParsedMedia
+from .records import ParsedMedia, TweetRecord
+from .resolve import ResolvedThread, resolve_thread
 
 # ── The engine's vocabulary ───────────────────────────────────────────────
 
@@ -48,8 +46,9 @@ class DetectedGeoloc:
     # ``detected_from_url``. None when the thread neither quoted nor carried
     # exactly one candidate link: a ``detected`` draft may have no source.
     source_url: str | None
-    # The post this detection was imported from (the geoloc tweet), the
-    # idempotency anchor and the provenance link.
+    # The post this detection was imported from (the geoloc post): its id is
+    # the idempotency anchor, the URL the provenance link built from it.
+    detected_from_tweet_id: int | None
     detected_from_url: str
     # Author handle (normalized). The assemble caller attributes the row to the
     # backfiller it was given, not to this field.
@@ -77,7 +76,7 @@ class DetectedGeoloc:
     warnings: list[str] = field(default_factory=list)
 
 
-def warnings_for(resolved: ResolvedTweet) -> list[str]:
+def warnings_for(resolved: ResolvedThread) -> list[str]:
     """What the resolution could not settle, in reply order.
 
     The source is empty in exactly two cases, and the mirrors tell them apart:
@@ -121,6 +120,7 @@ def detect_diagnosed(thread: list[TweetRecord]) -> tuple[list[DetectedGeoloc], s
             title=resolved.title,
             proof_text=resolved.proof_text,
             source_url=resolved.source_url,
+            detected_from_tweet_id=resolved.detected_from_tweet_id,
             detected_from_url=resolved.detected_from_url,
             owner_handle=resolved.owner_handle,
             event_date=resolved.event_date,

@@ -5,29 +5,25 @@ one acquisition the live entries share (the bot's tagged mention and the pasted
 tweet): it reads the post named by a tweet id plus, when that post replies to
 one of its own author's, that parent. Exactly one hop, and only within one
 author, so the result is a thread ``resolve_thread`` reads as the analyst's own
-work. It then chases the thread's sole source candidate, the way the archive
-reader chases its own, so the resolution downstream is pure. The archive keeps
-its own reader: an export carries every reply edge inline, so it stitches whole
-self-threads without a fetch.
+work. It then chases the thread's sole source candidate through
+``chase.chase_post``, the way the archive reader chases its own, so the
+resolution downstream is pure and neither knows which technology answered. The
+archive keeps its own reader: an export carries every reply edge inline, so it
+stitches whole self-threads without a fetch.
 """
 
 from __future__ import annotations
 
-import dataclasses
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
-from .errors import TweetFetchFailed, TweetImportError, TweetNotAccessible
-from .records import QuotedTweet, SourceLink, TelegramFootage, TweetRecord
-from .syndication import (
-    _extract_media,
-    extract_source_links,
-    fetch_syndication,
-    normalise_tweet_url,
-)
-from .telegram import fetch_telegram_embed
+from .chase import apply_chase, chase_post
+from .errors import TweetImportError
+from .records import QuotedTweet, SourceLink, TweetRecord
+from .syndication import _extract_media, extract_source_links, fetch_syndication
+from .urls import normalise_tweet_url
 
 
 def _quoted_record(body: dict[str, Any]) -> QuotedTweet | None:
@@ -54,55 +50,14 @@ def _quoted_record(body: dict[str, Any]) -> QuotedTweet | None:
     )
 
 
-def quoted_from_syndication(
-    quoted_id: str, *, client: httpx.Client | None = None
-) -> QuotedTweet | None:
-    """Chase a source tweet by id via syndication into a ``QuotedTweet``.
-
-    The one chase every linked-source path runs: the live acquisition below and
-    the archive backfill with ``chase`` on. Fail-soft: a fetch error degrades to
-    "no source tweet" and never fails the caller's pass.
-    """
-    try:
-        body = fetch_syndication(quoted_id, client=client)
-    except (TweetFetchFailed, TweetNotAccessible):
-        return None
-    user = body.get("user")
-    handle = user.get("screen_name") if isinstance(user, dict) else None
-    if not isinstance(handle, str) or not handle:
-        return None
-    text = body.get("text")
-    created_at = body.get("created_at")
-    return QuotedTweet(
-        tweet_id=quoted_id,
-        handle=handle,
-        text=text if isinstance(text, str) else "",
-        created_at=created_at if isinstance(created_at, str) else "",
-        media=list(_extract_media(body, origin="quote")),
-    )
-
-
-def _permalink(tweet_id: str, handle: str) -> str:
-    """The canonical permalink for ``tweet_id`` posted by ``handle``.
-
-    ``handle`` is the ``i`` sentinel when the caller has none (a URL in the
-    ``/i/web/status/<id>`` form). That form is kept as X serves it, since
-    ``x.com/i/status/<id>`` 404s.
-    """
-    if handle == "i":
-        return f"https://x.com/i/web/status/{tweet_id}"
-    return f"https://x.com/{handle}/status/{tweet_id}"
-
-
 def record_by_id(tweet_id: str, *, handle: str, client: httpx.Client | None = None) -> TweetRecord:
     """Fetch the post ``tweet_id`` via syndication and map it to a ``TweetRecord``.
 
     ``handle`` is the author handle the caller already holds (from a mention
-    payload, a pasted URL, or the post a reply hangs under). It anchors the
-    permalink, which is the ``(detected_from_url, coordinate)`` idempotency key,
-    so callers that know the handle in more than one case pass it case-folded.
-    The record's own ``handle`` field prefers the response's screen name, the
-    authoritative value and the only one a ``/i/web/status/<id>`` URL yields.
+    payload, a pasted URL, or the post a reply hangs under), and it is the
+    fallback: the record's own ``handle`` prefers the response's screen name,
+    the authoritative value and the only one a ``/i/web/status/<id>`` URL
+    yields.
 
     The optional ``client`` is for tests (a ``MockTransport``). Raises the same
     ``TweetImportError`` subclasses as ``fetch_syndication``.
@@ -125,7 +80,6 @@ def record_by_id(tweet_id: str, *, handle: str, client: httpx.Client | None = No
         handle=author,
         text=text if isinstance(text, str) else "",
         created_at=created_at if isinstance(created_at, str) else "",
-        permalink=_permalink(tweet_id, handle),
         media=list(_extract_media(body, origin="op")),
         in_reply_to_status_id=(in_reply_to_status if isinstance(in_reply_to_status, str) else None),
         in_reply_to_user_id=in_reply_to_user if isinstance(in_reply_to_user, str) else None,
@@ -162,11 +116,7 @@ def _self_reply_parent(
     if post.in_reply_to_status_id is None:
         return None
     try:
-        # Case-folded handle: the parent's permalink anchors the idempotency
-        # key that the parent's own import would land on, so a case drift
-        # between the feed that named the post and the syndication screen name
-        # cannot split one geolocation across two keys.
-        parent = record_by_id(post.in_reply_to_status_id, handle=post.handle.lower(), client=client)
+        parent = record_by_id(post.in_reply_to_status_id, handle=post.handle, client=client)
     except TweetImportError:
         return None
     if parent.handle.lower() != post.handle.lower():
@@ -180,13 +130,12 @@ def _chase_source(
     """Resolve the thread's sole source candidate onto the record that carries
     it, at most one fetch.
 
-    The chase vocabulary, and the only thing the X / Telegram names decide: an X
-    status chases via syndication into the ``quoted`` slot (media plus post
-    date), a ``t.me`` post chases its public embed into the ``telegram`` slot
-    (post date, media when the embed serves it). Every other link stays
-    link-only, and so does an ambiguous thread (several candidates, no source),
-    which is the same rule ``archive._chase_candidate`` applies on the export
-    side. Fail-soft: a failed fetch changes nothing.
+    ``chase.chase_post`` decides what a link's host makes fetchable, so nothing
+    here names a technology: a link the dispatcher serves comes back as a
+    ``ChasedPost`` and lands in whichever record slot fits. A link it does not
+    serve stays link-only, and so does an ambiguous thread (several candidates,
+    no source), the same rule the archive reader applies on the export side.
+    Fail-soft: a failed fetch changes nothing.
     """
     from .resolve import thread_candidates
 
@@ -196,44 +145,19 @@ def _chase_source(
     if len(candidates) != 1:
         return records
     candidate = candidates[0]
+    chased = chase_post(candidate, client=client)
+    if chased is None:
+        return records
     owner = records[0].handle.lower() if records else ""
-    if candidate.status_id is not None:
-        quoted = quoted_from_syndication(candidate.status_id, client=client)
-        if quoted is None or quoted.handle.lower() == owner:
-            # A link to the analyst's own status that slipped the URL-level
-            # own-handle skip (the ``i/web`` form) is a self-reference, not
-            # footage; the same re-check the archive chase runs.
-            return records
-        return _with_chase(records, candidate.url, quoted=quoted)
-    if candidate.telegram:
-        embed = fetch_telegram_embed(candidate.url, client=client)
-        if embed is None:
-            return records
-        return _with_chase(
-            records,
-            candidate.url,
-            telegram=TelegramFootage(
-                url=candidate.url, posted_at=embed.posted_at, media=list(embed.media)
-            ),
-        )
-    return records
-
-
-def _with_chase(
-    records: list[TweetRecord],
-    url: str,
-    *,
-    quoted: QuotedTweet | None = None,
-    telegram: TelegramFootage | None = None,
-) -> list[TweetRecord]:
-    """``records`` with the chased footage attached to the record that links
-    ``url``, so the resolution reads the source off the post that declared it."""
+    if chased.author is not None and chased.author.lower() == owner:
+        # A link to the analyst's own post that slipped the URL-level own-handle
+        # skip (the ``i/web`` form) is a self-reference, not footage; the same
+        # re-check the archive chase runs.
+        return records
     return [
-        (
-            dataclasses.replace(record, quoted=quoted or record.quoted, telegram=telegram)
-            if any(link.url == url for link in record.external_sources)
-            else record
-        )
+        apply_chase(record, chased)
+        if any(link.url == candidate for link in record.external_sources)
+        else record
         for record in records
     ]
 
@@ -264,7 +188,7 @@ def acquire_pasted_thread(url: str, *, client: httpx.Client | None = None) -> Ac
     """The thread behind a pasted post URL.
 
     The paste's twin of the bot's ``acquire_tagged_thread``: the URL is parsed
-    once here (:func:`syndication.normalise_tweet_url`, which raises
+    once here (:func:`urls.normalise_tweet_url`, which raises
     ``InvalidTweetUrl``), then the shared one hop reads the post and, when it
     replies to one of its own author's posts, that parent.
     """

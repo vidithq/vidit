@@ -70,8 +70,8 @@ def test_quoted_record_none_without_quote():
 # ── acquire_thread: the one hop the bot and the paste share ───────────────
 
 
-_POST_ID = "9400000000000000301"
-_PARENT_ID = "9400000000000000302"
+_POST_ID = "1940000000000000301"
+_PARENT_ID = "1940000000000000302"
 
 
 def _body(tweet_id: str, *, handle: str, text: str, reply_to: str | None = None) -> dict:
@@ -119,25 +119,24 @@ def test_acquire_thread_joins_the_same_authors_parent():
     assert [r.tweet_id for r in acquired.records] == [_PARENT_ID, _POST_ID]
     assert acquired.post.tweet_id == _POST_ID
     assert acquired.parent is not None
-    assert acquired.parent.permalink == f"https://x.com/analyst/status/{_PARENT_ID}"
-    assert acquired.post.permalink == f"https://x.com/analyst/status/{_POST_ID}"
+    assert acquired.parent.tweet_id == _PARENT_ID
 
 
-def test_acquire_thread_case_folds_the_parent_permalink():
-    # The parent's permalink is the key its own import would land on, so it is
-    # folded whatever case the caller spelled the post's author in.
+def test_acquire_thread_joins_the_parent_whatever_case_the_caller_spelled():
+    # The caller's spelling of the handle is a fallback, never the identity: the
+    # same-author guard runs on the screen names X answered with.
     bodies = {
         _POST_ID: _body(_POST_ID, handle="Analyst", text="reply", reply_to=_PARENT_ID),
         _PARENT_ID: _body(_PARENT_ID, handle="Analyst", text="48.123456, 37.654321"),
     }
     with _client(bodies) as client:
-        acquired = acquire_thread(_POST_ID, handle="Analyst", client=client)
+        acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
     assert acquired.parent is not None
-    assert acquired.parent.permalink == f"https://x.com/analyst/status/{_PARENT_ID}"
+    assert acquired.parent.tweet_id == _PARENT_ID
 
 
 def test_acquire_thread_reads_one_hop_only():
-    grandparent = "9400000000000000303"
+    grandparent = "1940000000000000303"
     bodies = {
         _POST_ID: _body(_POST_ID, handle="analyst", text="third", reply_to=_PARENT_ID),
         _PARENT_ID: _body(_PARENT_ID, handle="analyst", text="second", reply_to=grandparent),
@@ -190,7 +189,7 @@ def test_acquire_thread_raises_when_the_post_itself_is_unreadable():
 # ── The chase: the thread's sole source candidate, at most one fetch ───────
 
 
-_CHASED_ID = "9400000000000000401"
+_CHASED_ID = "1940000000000000401"
 _TG_URL = "https://t.me/somechannel/12345"
 
 
@@ -250,14 +249,14 @@ def test_a_chased_status_that_turns_out_to_be_the_analysts_own_is_dropped():
 
 
 def test_the_sole_telegram_candidate_is_chased_into_the_telegram_slot(monkeypatch):
-    import app.services.tweet_ingest.acquire as acquire_mod
-    from app.services.tweet_ingest.telegram import TelegramEmbed
+    import app.services.tweet_ingest.chase.telegram as telegram_mod
+    from app.services.tweet_ingest.records import ChasedPost
 
-    def fake_embed(url: str, *, client=None) -> TelegramEmbed:
-        assert url == _TG_URL
-        return TelegramEmbed(posted_at="2026-03-04T09:00:00+00:00", media=[])
+    def fake_chase(target: str, *, client=None) -> ChasedPost:
+        assert target == _TG_URL
+        return ChasedPost(url=target, posted_at="2026-03-04T09:00:00+00:00")
 
-    monkeypatch.setattr(acquire_mod, "fetch_telegram_embed", fake_embed)
+    monkeypatch.setattr(telegram_mod, "chase", fake_chase)
     with _client({_POST_ID: _linking_body(_TG_URL)}) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
     [record] = acquired.records
@@ -266,12 +265,12 @@ def test_the_sole_telegram_candidate_is_chased_into_the_telegram_slot(monkeypatc
 
 
 def test_nothing_is_chased_when_the_candidates_are_ambiguous(monkeypatch):
-    import app.services.tweet_ingest.acquire as acquire_mod
+    import app.services.tweet_ingest.chase.telegram as telegram_mod
 
     def fail(*args, **kwargs):
         raise AssertionError("an ambiguous thread must not chase")
 
-    monkeypatch.setattr(acquire_mod, "fetch_telegram_embed", fail)
+    monkeypatch.setattr(telegram_mod, "chase", fail)
     body = _linking_body(_TG_URL)
     body["entities"]["urls"].append(
         {"url": "https://t.co/second", "expanded_url": "https://youtu.be/xyz"}

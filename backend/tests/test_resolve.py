@@ -33,7 +33,6 @@ def _rec(**kw: object) -> TweetRecord:
         handle="op",
         text="",
         created_at="2025-01-01T00:00:00Z",
-        permalink="https://x.com/op/status/1",
     )
     base.update(kw)
     return TweetRecord(**base)
@@ -64,9 +63,7 @@ def test_coords_come_from_the_analysts_own_text():
 
 def test_coords_across_thread_head_media_reply_coord():
     head = _rec(tweet_id="1", text="footage of a strike", media=[_media("video", "op")])
-    reply = _rec(
-        tweet_id="2", text="location: 48.012345, 37.802411", permalink="https://x.com/op/status/2"
-    )
+    reply = _rec(tweet_id="2", text="location: 48.012345, 37.802411")
     assert round(_coords([head, reply])[0].lat, 3) == 48.012
 
 
@@ -204,7 +201,7 @@ def test_a_quote_outranks_a_candidate_link():
 
 
 def test_source_none_when_no_quote_and_no_link():
-    # The head's permalink is provenance (detected_from_url), never a deduced
+    # The head's own post is provenance (detected_from_url), never a deduced
     # self-source.
     assert resolve_source([_rec()]) == (None, None)
 
@@ -263,7 +260,7 @@ def test_split_media_promotes_the_first_own_video_to_source():
 
 def test_split_media_promotes_the_first_video_in_thread_order():
     head = _rec(tweet_id="1", media=[_media("video", "op")])
-    reply = _rec(tweet_id="2", permalink="https://x.com/op/status/2", media=[_media("video", "op")])
+    reply = _rec(tweet_id="2", media=[_media("video", "op")])
     source, proof = split_media([head, reply])
     assert source == [head.media[0]]
     assert proof == [reply.media[0]]

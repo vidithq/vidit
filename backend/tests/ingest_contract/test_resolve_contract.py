@@ -16,20 +16,20 @@ import pytest
 
 from app.services.tweet_ingest import detect
 from app.services.tweet_ingest.records import (
+    ParsedMedia,
     QuotedTweet,
     SourceLink,
     TelegramFootage,
     TweetRecord,
 )
-from app.services.tweet_ingest.resolve import ResolvedTweet, resolve_thread
-from app.services.tweet_ingest.syndication import ParsedMedia
+from app.services.tweet_ingest.resolve import ResolvedThread, resolve_thread
 
 from . import loader
 
 _COORD_PLACES = 6
 
 
-def _resolved_for(typology: str, tmp_path: Path) -> ResolvedTweet:
+def _resolved_for(typology: str, tmp_path: Path) -> ResolvedThread:
     resolved = resolve_thread(loader.thread_for(typology, tmp_path))
     assert resolved is not None, f"{typology}: resolve_thread returned None"
     return resolved
@@ -43,7 +43,7 @@ def _roles(media: list[Any]) -> list[list[str]]:
     return [[m.kind, m.origin] for m in media]
 
 
-def _assert_matches(resolved: ResolvedTweet, expected: dict[str, Any]) -> None:
+def _assert_matches(resolved: ResolvedThread, expected: dict[str, Any]) -> None:
     assert _rounded(resolved.coords) == [
         [round(lat, _COORD_PLACES), round(lng, _COORD_PLACES)] for lat, lng in expected["coords"]
     ]
@@ -96,10 +96,9 @@ def test_x_status_link_chase_fills_source_from_chased_tweet(
     its source from the chased tweet (its canonical url, date, and media), while
     the OP's own photo stays proof. The archive reader chases at read time; the
     live entries chase inside ``acquire_thread``, and both land on the shared
-    expectation. Exercises the ``from``-imported ``acquire.fetch_syndication``
-    seam the plan flags."""
-    import app.services.tweet_ingest.acquire as acquire_mod
+    expectation."""
     import app.services.tweet_ingest.archive as archive_mod
+    import app.services.tweet_ingest.chase.x as x_chase_mod
 
     typology = "x_status_link"
     body = loader.load_body(typology)
@@ -118,7 +117,7 @@ def test_x_status_link_chase_fills_source_from_chased_tweet(
         assert tweet_id == expected["chased_status_id"]
         return chased_body
 
-    monkeypatch.setattr(acquire_mod, "fetch_syndication", fake_fetch)
+    monkeypatch.setattr(x_chase_mod, "fetch_syndication", fake_fetch)
     records = archive_mod.read_tweets(archive, handle=body["user"]["screen_name"], chase=True)
 
     resolved = resolve_thread(records)
@@ -148,7 +147,6 @@ def _telegram_record(
         handle="osint_stork",
         text=f"Geolocated 44.612300, 33.522100 airfield perimeter\nSource: {_TG_URL}",
         created_at="2026-03-04T13:20:00+00:00",
-        permalink="https://x.com/osint_stork/status/8400000000000000001",
         media=[ParsedMedia("image", "https://pbs.twimg.com/media/op.jpg", "image/jpeg", "op")],
         external_sources=[SourceLink(_TG_URL), *(extra_links or [])],
         telegram=telegram,
@@ -220,7 +218,6 @@ def test_second_link_becomes_a_secondary_source() -> None:
         handle="osint_stork",
         text=f"Geolocated 44.612300, 33.522100 airfield perimeter\nMirror: {_TG_URL}",
         created_at="2026-03-04T13:20:00+00:00",
-        permalink="https://x.com/osint_stork/status/8400000000000000009",
         external_sources=[SourceLink(_TG_URL)],
         quoted=QuotedTweet(
             tweet_id="8400000000000000002",
@@ -242,7 +239,6 @@ def _links_record(links: list[SourceLink]) -> TweetRecord:
         handle="osint_stork",
         text="Geolocated 44.612300, 33.522100 airfield perimeter",
         created_at="2026-03-04T13:20:00+00:00",
-        permalink="https://x.com/osint_stork/status/8400000000000000010",
         external_sources=links,
     )
 
@@ -322,7 +318,6 @@ def test_a_retweet_produces_nothing() -> None:
         handle=record.handle,
         text=f"RT @front_cam: {record.text}",
         created_at=record.created_at,
-        permalink=record.permalink,
     )
     assert resolve_thread([retweet]) is None
     assert detect([retweet]) == []

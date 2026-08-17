@@ -43,7 +43,6 @@ def _rec(
         handle=handle,
         text=text,
         created_at=created_at,
-        permalink=f"https://x.com/{handle}/status/{tweet_id}",
         media=media or [],
         external_sources=links or [],
         quoted=quoted,
@@ -65,12 +64,22 @@ def test_single_coordinate_emits_one_detection():
     assert d.coordinate.lat == pytest.approx(48.012345)
     assert d.coordinate.lng == pytest.approx(37.802411)
     assert d.owner_handle == "analyst"
+    assert d.detected_from_tweet_id == 1
     assert d.detected_from_url == "https://x.com/analyst/status/1"
     assert d.event_date == date(2025, 11, 12)
     # A referenceless annotation declares no source: both slots stay empty
-    # rather than deducing the tweet's own permalink / date.
+    # rather than deducing the tweet's own URL / date.
     assert d.source_url is None
     assert d.source_posted_at is None
+
+
+def test_the_provenance_url_is_built_from_the_id_whatever_case_the_handle_carried():
+    # The id is the identity; the URL is written from it at the exit, so a
+    # handle spelled two ways in one export cannot split one post in two.
+    lower = detect([_rec("1", "48.012345, 37.802411", handle="analyst")])[0]
+    upper = detect([_rec("1", "48.012345, 37.802411", handle="Analyst")])[0]
+    assert lower.detected_from_tweet_id == upper.detected_from_tweet_id == 1
+    assert upper.detected_from_url == "https://x.com/Analyst/status/1"
 
 
 def test_multiple_coordinates_emit_one_detection_each():
@@ -80,7 +89,7 @@ def test_multiple_coordinates_emit_one_detection_each():
 
 def test_coordinate_in_reply_keeps_the_head_as_provenance():
     # Head carries the video, the reply carries the coordinate: one detection
-    # with the head's permalink as provenance. The thread declares no source, so
+    # with the head's own post as provenance. The thread declares no source, so
     # source_url stays empty; the video fills the otherwise empty source media
     # slot, where the proof document (images only) would have dropped it.
     head = _rec(
@@ -95,6 +104,7 @@ def test_coordinate_in_reply_keeps_the_head_as_provenance():
     reply = _rec("2", "Geolocated: 48.592153, 38.002480", created_at="2025-11-12T14:40:00Z")
     out = detect([head, reply])
     assert len(out) == 1
+    assert out[0].detected_from_tweet_id == 1
     assert out[0].detected_from_url == "https://x.com/analyst/status/1"
     assert out[0].source_url is None
     assert [m.remote_url for m in out[0].source_media] == ["https://video.twimg.com/x.mp4"]

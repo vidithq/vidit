@@ -2,21 +2,27 @@
 
 Single-responsibility bricks behind one import surface:
 
+* ``urls``: the URL vocabulary (read a post URL to its id, write one back,
+  the host predicates), pure string work.
+* ``records``: the normalized acquire units (``TweetRecord``, ``ChasedPost``,
+  ``ParsedMedia``), source-agnostic.
 * ``extract``: pure text core (coordinates, title, proof body), reused by
   every path.
-* ``syndication``: X I/O (URL normalisation, fetch + token + cache, schema
-  mappers).
-* ``telegram``: off-platform footage chase, a t.me post's public embed to its
-  post date (+ media when served). Used by the archive chase.
-* ``records``: the normalized ``TweetRecord`` acquire unit, source-agnostic.
+* ``stitch``: recombine records into threads (union-find on reply edges).
+* ``resolve``: the engine, a thread to one ``ResolvedThread``.
+* ``detect``: the machine path, a thread to ``DetectedGeoloc`` DTOs.
+* ``syndication``: X I/O (fetch + token + cache, payload mappers).
+* ``chase``: one module per technology behind one dispatcher, for the single
+  fetch spent on a post's declared source.
 * ``acquire``: the live acquisition, a tweet id plus the same author's post it
   replies to, which is the thread the bot and the paste both resolve.
-* ``stitch``: recombine records into threads (union-find on reply edges).
-* ``detect``: the machine path, a thread to ``DetectedGeoloc`` DTOs.
+* ``archive``: the export reader, plus the CDN media fetchers.
 
-Callers import the public surface from this package; the module layout is an
-internal detail. ``errors`` is a leaf module so any brick can raise the
-shared failures without a cycle.
+The four pure modules (``records``, ``extract``, ``stitch``, ``resolve``) read
+no I/O module, which ``tests/test_ingest_boundaries.py`` states. Callers import
+the public surface from this package; the module layout is an internal detail.
+``errors`` is a leaf module so any brick can raise the shared failures without a
+cycle.
 """
 
 from __future__ import annotations
@@ -46,14 +52,10 @@ from .extract import (
     derive_title,
     extract_coords,
 )
-from .records import TweetRecord
+from .records import ParsedMedia, TweetRecord
 from .stitch import stitch
-from .syndication import (
-    ParsedMedia,
-    fetch_syndication,
-    is_trusted_media_url,
-    normalise_tweet_url,
-)
+from .syndication import fetch_syndication
+from .urls import is_trusted_media_url, normalise_tweet_url
 
 __all__ = [
     "COORDS_INVALID",

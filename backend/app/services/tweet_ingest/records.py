@@ -1,9 +1,11 @@
-"""Normalized acquire unit: one tweet, source-agnostic.
+"""Normalized acquire units: one tweet and one chased footage post.
 
 ``TweetRecord`` is what every acquire adapter produces (syndication for the
-preview, the archive reader for backfill) and what ``stitch`` consumes. The
-unit is a normalized record, not a bare id, so the archive's inline reply
+live entries, the archive reader for backfill) and what ``stitch`` consumes.
+The unit is a normalized record, not a bare id, so the archive's inline reply
 edges and media survive into the pipeline, which syndication cannot expose.
+``ChasedPost`` is its off-thread twin: the footage post a chase resolved,
+whichever technology served it.
 """
 
 from __future__ import annotations
@@ -11,8 +13,26 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from typing import Literal
 
-from .syndication import ParsedMedia
+
+@dataclass(frozen=True)
+class ParsedMedia:
+    """One image or video a post carries.
+
+    ``remote_url`` is where the bytes are fetched from: a CDN URL on every live
+    path, an archive-relative ``tweets_media/`` path on the export path.
+    """
+
+    kind: Literal["image", "video"]
+    remote_url: str
+    content_type: str
+    # Where this media came from in the payload. The frontend's
+    # primary-vs-proof split is by ``kind`` (videos = source footage,
+    # images = annotated screenshots), so ``origin`` is informational only
+    # (proof-body attribution, debugging, a future smarter split). Don't add
+    # consumers that assume one origin maps to one bucket.
+    origin: Literal["op", "quote"] = "op"
 
 
 @dataclass(frozen=True)
@@ -100,10 +120,6 @@ class TweetRecord:
     handle: str
     text: str
     created_at: str  # ISO 8601 UTC
-    # Canonical permalink ``https://x.com/<handle>/status/<id>``, always
-    # present, so it anchors the ``(detected_from_url, coordinate)`` idempotency
-    # where ``source_url`` (the footage origin) may be absent.
-    permalink: str
     media: list[ParsedMedia] = field(default_factory=list)
     # Reply edges — inline from an archive; from syndication the parent pointer
     # maps when the payload carries it (the chain itself still takes one fetch
@@ -119,3 +135,24 @@ class TweetRecord:
     telegram: TelegramFootage | None = None
     # The URLs the post links in its text (``entities.urls``).
     external_sources: list[SourceLink] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ChasedPost:
+    """The footage post one chase resolved, whichever technology served it.
+
+    The common return of every chaser under ``chase/``, so the acquisition and
+    the archive reader ask for a URL's footage without naming a technology.
+    ``url`` is the target as the post wrote it, which is what matches the
+    chase back onto the link the analyst declared. ``author``, ``text`` and
+    ``status_id`` are filled only where the technology models them: an X status
+    carries all three, a Telegram post carries none, and ``chase.apply_chase``
+    reads ``status_id`` to pick the record slot the result belongs in.
+    """
+
+    url: str
+    posted_at: str | None = None  # ISO 8601 UTC, None when the post serves none
+    media: list[ParsedMedia] = field(default_factory=list)
+    author: str | None = None
+    text: str = ""
+    status_id: str | None = None
