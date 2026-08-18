@@ -3,11 +3,11 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MapPin } from "lucide-react";
+import { History, MapPin } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useMutation } from "@/hooks/useMutation";
-import { deleteEvent } from "@/lib/events";
+import { deleteEvent, eventHistoryHref } from "@/lib/events";
 import { buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/ui/OverflowMenu";
@@ -27,7 +27,8 @@ import type { EventDetail } from "@/types";
  *
  * 1. **Utilities**, far right, icon-compact: the share pair plus the report
  *    flag. On every surface, because reading an event and passing it on or
- *    flagging it needs no standing in the row.
+ *    flagging it needs no standing in the row. The event page opens the row
+ *    with the version history, a read like the others.
  * 2. **The flow action**, at most one, filled: what this surface exists to move
  *    forward. Only an open request carries one (geolocate it).
  * 3. **Owner management**, behind one `⋯` `<OverflowMenu>`: the controls only
@@ -60,15 +61,17 @@ export type ActionSurface = "event" | "request" | "panel" | "edit";
 // only the event page offers, and `dispose` is withdrawing or deleting a
 // request, which only the request page offers. Each surface serves rows of
 // several statuses, so the split is what keeps a request's verbs off the event
-// page and back.
+// page and back. `history` is the read into a published record's versions,
+// public, first in the utilities row: the event page alone carries it, since
+// the map panel and the forms show one version by construction.
 const TIERS: Record<
   ActionSurface,
-  { flow: boolean; revise: boolean; dispose: boolean }
+  { flow: boolean; revise: boolean; dispose: boolean; history: boolean }
 > = {
-  event: { flow: false, revise: true, dispose: false },
-  request: { flow: true, revise: false, dispose: true },
-  panel: { flow: false, revise: false, dispose: false },
-  edit: { flow: false, revise: false, dispose: false },
+  event: { flow: false, revise: true, dispose: false, history: true },
+  request: { flow: true, revise: false, dispose: true, history: false },
+  panel: { flow: false, revise: false, dispose: false, history: false },
+  edit: { flow: false, revise: false, dispose: false, history: false },
 };
 
 // Ties the menu entry to the panel it opens two levels down the tree, which
@@ -195,9 +198,24 @@ export function useEventActions({
         )}
         <OverflowMenu items={ownerItems} />
         {/* The utilities tier, one unit so it stays together when the row
-            wraps: the share pair plus the report flag, in that order, on every
-            surface. */}
+            wraps: the history (event page only), the share pair, then the
+            report flag, in that order. */}
         <div className="flex items-center gap-1.5">
+          {/* The way into the record's history, first in the row. Public like
+              the history itself: a corrected record is only auditable if any
+              reader can walk the corrections, so it is not the owner's
+              control. A published row is the only one with versions to walk,
+              since every other state is edited in place. */}
+          {tiers.history && event.status === "geolocated" && (
+            <Link
+              href={eventHistoryHref(event.id)}
+              className={buttonClasses("ghost", { icon: true })}
+              aria-label="Version history"
+              title="Version history"
+            >
+              <History size={14} />
+            </Link>
+          )}
           <ShareButtons
             id={event.id}
             title={event.title}
