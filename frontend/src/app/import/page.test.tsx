@@ -26,13 +26,29 @@ describe("/import", () => {
       "Upload your X archive",
     ]) {
       expect(
-        screen.getByRole("heading", { name: heading }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("heading", { name: heading }).length,
+      ).toBeGreaterThan(0);
     }
 
     // The anchors the two redirect stubs and the import panels target.
     for (const id of ["detection", "bot", "paste", "archive"]) {
       expect(container.querySelector(`#${id}`)).not.toBeNull();
+    }
+  });
+
+  it("opens on a chooser linking the three entry sections", () => {
+    // The chooser is the page's first action: a reader picks an entry before
+    // reading anything, so each tile must resolve to the section it names.
+    const { container } = render(<ImportGuidePage />);
+
+    for (const [href, title] of [
+      ["#archive", "Upload your X archive"],
+      ["#bot", "Tag @ViditBot on X"],
+      ["#paste", "Paste a post URL"],
+    ]) {
+      const tile = container.querySelector(`a[href="${href}"]`);
+      expect(tile).not.toBeNull();
+      expect(tile?.textContent).toContain(title);
     }
   });
 
