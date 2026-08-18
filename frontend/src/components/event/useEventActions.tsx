@@ -31,7 +31,9 @@ import type { EventDetail } from "@/types";
  * 2. **The flow action**, at most one, filled: what this surface exists to move
  *    forward. Only an open request carries one (geolocate it).
  * 3. **Owner management**, behind one `⋯` `<OverflowMenu>`: the controls only
- *    the author holds. Only the request page carries any.
+ *    the author holds. The request page carries closing and deleting it; the
+ *    event page carries editing a published geolocation, which files a revision
+ *    rather than overwriting the record.
  *
  * The hook returns nodes rather than rendering them, the shape `useReportEvent`
  * already uses, because the row and the panels its triggers open land in two
@@ -45,11 +47,12 @@ import type { EventDetail } from "@/types";
 export type ActionSurface = "event" | "request" | "panel" | "edit";
 
 // The grammar itself. Utilities are unconditional, so only the two gated tiers
-// are listed: a surface that is a reading surface (a geolocated event, the map
-// panel, the detection confirmation form, whose own flow action is the form's
-// bottom submit) renders neither.
+// are listed: a surface with neither (the map panel, the detection confirmation
+// form, whose own flow action is the form's bottom submit) renders the
+// utilities alone. The event page has no flow action (a published geolocation
+// is finished work) but does carry owner management: its author corrects it.
 const TIERS: Record<ActionSurface, { flow: boolean; owner: boolean }> = {
-  event: { flow: false, owner: false },
+  event: { flow: false, owner: true },
   request: { flow: true, owner: true },
   panel: { flow: false, owner: false },
   edit: { flow: false, owner: false },
@@ -129,10 +132,20 @@ export function useEventActions({
     await deleteMutation.run();
   };
 
-  // Tier 3. Exactly today's visibility: the author closes a request only while
-  // it is open, and deletes one that is open or already closed.
+  // Tier 3. Per state: the author edits a published geolocation, closes a
+  // request only while it is open, and deletes one that is open or already
+  // closed.
   const ownerItems: OverflowMenuItem[] = [];
   if (tiers.owner && isAuthor) {
+    if (event.status === "geolocated") {
+      ownerItems.push({
+        // "Edit" alone would read as an in-place rewrite. The record is
+        // corrected by adding a version, and the entry says so.
+        label: "Edit this geolocation",
+        onClick: () => router.push(`/events/${event.id}/edit`),
+        disabled: pending,
+      });
+    }
     if (isOpenRequest) {
       ownerItems.push({
         label: "Close this request",

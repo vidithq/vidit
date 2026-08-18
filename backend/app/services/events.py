@@ -6,8 +6,9 @@ loop, proof-image intake, the DB commit, and the post-commit S3 sweep on
 rollback. The write verbs map one-to-one onto the lifecycle:
 :func:`create_with_evidence` births a ``geolocated`` row, :func:`create_request`
 a ``requested`` one, :func:`geolocate` is the one generalized transition to
-``geolocated`` (fulfil a request, vouch a detection), and :func:`close` is the
-terminal withdraw / reject.
+``geolocated`` (fulfil a request, vouch a detection), :func:`revise` corrects a
+published row and files the superseded version as a revision, and :func:`close`
+is the terminal withdraw / reject.
 
 Errors are typed `EventError` subclasses with stable `.code`
 strings, translated to HTTP via the same `{code, message}` envelope as
@@ -47,7 +48,7 @@ from app.models.event import (
 from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
-from app.services import source_archive
+from app.services import revisions, source_archive
 from app.services.event_filters import visible_events
 from app.services.evidence_intake import (
     EvidenceIntakeError,
@@ -152,9 +153,11 @@ class EventStateError(EventError):
     """The event's lifecycle state forbids the requested transition.
 
     Raised when a geolocate targets a row that isn't ``requested`` /
-    ``detected`` (a ``geolocated`` row is frozen, ``closed`` is terminal), or a
-    close targets a row already past those states. Maps to 409: the request is
-    well-formed but conflicts with the row's current state.
+    ``detected`` (a ``geolocated`` row is past that transition, ``closed`` is
+    terminal), when a close targets a row already past those states, or when a
+    revise targets a row that is not ``geolocated`` (there is no version to
+    supersede before publication). Maps to 409: the request is well-formed but
+    conflicts with the row's current state.
     """
 
     code = "invalid_state"
@@ -813,6 +816,143 @@ async def geolocate(
     # Committed; sweep the removed media's S3 objects (best-effort).
     sweep_keys(removed_keys, context=f"event {geo.id} geolocate media removal")
     db.refresh(geo)
+    points_cache.invalidate()
+    return geo
+
+
+async def revise(
+    db: Session,
+    *,
+    geo: Event,
+    current_user: User,
+    title: str,
+    lat: float,
+    lng: float,
+    capture_source_lat: float | None,
+    capture_source_lng: float | None,
+    secondary_source_urls: list[str],
+    event_date: date | None,
+    event_time: time | None,
+    source_posted_at: datetime,
+    proof_data: dict | None,
+    tag_ids: list,
+    conflict_ids: list,
+    is_graphic: bool = False,
+    proof_files: list[UploadFile],
+    note: str | None = None,
+    source_snapshot_url: str | None = None,
+) -> Event:
+    """Correct a published event, filing the superseded state as a revision.
+
+    Owner-only, and only on a ``geolocated`` row: before publication a row is
+    still being written (a detection is machine output its owner submits, a
+    request is an open call anyone answers), so there is no vouched version for
+    an edit to supersede. The pre-edit state is snapshotted into
+    ``event_revisions`` at the current ``revision_no``, the edit is applied, and
+    the row takes the next number, all in one transaction under the same row
+    lock :func:`close` and :func:`geolocate` take.
+
+    **The evidence anchor is immutable.** ``source_url`` and the ``source``
+    media are what the published claim rests on, so this write accepts neither:
+    a wrong source is handled by :func:`close` and a fresh submission, or by an
+    admin. Everything else the publish form wrote is editable and versioned:
+    title, both coordinate sets, the event date and hour, the source post time,
+    the graphic-content flag, tags, conflicts, the proof body and its inline
+    images, and the secondary source links (mirrors, outside the anchor).
+
+    ``is_graphic`` ratchets exactly as on :func:`geolocate`: a posted false
+    leaves an already-flagged event flagged, and only ``PATCH
+    /admin/events/{id}/moderation`` clears it.
+
+    ``source_snapshot_url`` records the archived copy of the event's stored
+    source URL, the same slot ``POST /events/{id}/archives`` fills and on the
+    same checks. It archives the anchor rather than changing it, so it is
+    accepted here.
+
+    The evidence floor a publication met is re-checked against the post-edit
+    state, so an edit cannot drop a published row below it: a ``source`` media
+    on the row, at least one proof image in the final proof body, a conflict,
+    and the curated ``capture_source`` tag. Proof images ride in ``proof_files``
+    and resolve against the doc's ``placeholder://`` srcs, exactly as on the
+    publish forms; an image the new body drops is deleted only if no snapshot
+    references it (see ``services/revisions.referenced_media_urls``).
+
+    Raises :class:`EventStateError` (409) off ``geolocated``, the 403 of
+    ``ensure_owner`` for anyone but the owner,
+    :class:`InvalidCoordinatesError` / :class:`InvalidProofError` /
+    :class:`ProofImageRequiredError` / :class:`MediaRequiredError` /
+    :class:`TagRequirementsError` / :class:`TooManySourceLinksError` (400) on a
+    bad value or an unmet floor, and the shared file-validation errors. Returns
+    the refreshed row, one version further on.
+    """
+    # Same lock discipline as ``geolocate`` and ``close``: serialize on the row,
+    # then re-read status and ownership under the lock. ``populate_existing()``
+    # is what makes the re-read real, since the router already put this row in
+    # the session identity map. Two concurrent revises therefore take their
+    # ``revision_no`` in a defined order rather than both snapshotting version N.
+    geo = db.query(Event).filter(Event.id == geo.id).populate_existing().with_for_update().one()
+    ensure_owner(geo, current_user)
+    if geo.status != STATUS_GEOLOCATED:
+        raise EventStateError("Only a geolocated event can be revised")
+
+    validate_coordinates(lat, lng)
+    capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
+    # Normalized against the stored anchor, which this write cannot change, so a
+    # mirror equal to the source URL is dropped rather than stored twice.
+    secondary_links = normalize_secondary_source_urls(secondary_source_urls, geo.source_url)
+
+    proof_data = _sanitize_proof(proof_data, allow_placeholders=True)
+
+    # The published floor, re-checked before any S3 work against the post-edit
+    # state. The source-media leg reads the row rather than a form field: the
+    # anchor is immutable here, so the only way it could fail is a row that was
+    # already broken.
+    _require_submission_media(any(m.role == "source" for m in geo.media))
+    _require_proof_image(proof_data if proof_data is not None else geo.proof)
+    effective_tags = _resolve_tags(db, tag_ids)
+    effective_conflicts = _resolve_conflicts(db, conflict_ids)
+    _require_submission_floor(effective_tags, effective_conflicts)
+
+    # File the version this edit supersedes BEFORE any field moves: the snapshot
+    # reads the live collections, so it has to run against the pre-edit row.
+    revisions.snapshot(db, geo=geo, edited_by=current_user, note=note)
+
+    # Same autoflush suppression as ``geolocate``: the collection assignments
+    # lazy-load the current sets, which would flush a half-edited row.
+    with db.no_autoflush:
+        geo.title = title
+        geo.event_coords = from_shape(Point(lng, lat), srid=4326)
+        geo.capture_source_coords = capture_point
+        geo.event_date = event_date
+        geo.event_time = event_time
+        geo.source_posted_at = source_posted_at
+        geo.is_graphic = geo.is_graphic or is_graphic
+        geo.tags = effective_tags
+        geo.conflicts = effective_conflicts
+        # The row is now the next version; the snapshot above holds the last one.
+        geo.revision_no = geo.revision_no + 1
+
+    replace_source_links(db, geo, secondary_links)
+
+    # The archived copy of the anchor, filed in this same transaction. No
+    # ``reconcile_source_archive``: the source URL cannot move here, so a stored
+    # copy can never come to describe a link the event no longer carries.
+    if source_snapshot_url:
+        source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
+
+    # No source files: the anchor is immutable, so the intake only uploads the
+    # proof body's new images and commits everything atomically.
+    await attach_evidence_and_commit(
+        db,
+        event=geo,
+        source_files=[],
+        proof_doc=proof_data,
+        proof_files=proof_files,
+        sweep_context=f"event {geo.id} revise rollback",
+    )
+
+    db.refresh(geo)
+    # The coordinates may have moved, so the map's point cache is stale.
     points_cache.invalidate()
     return geo
 

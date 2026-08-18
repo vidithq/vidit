@@ -28,6 +28,9 @@ processed_at  # app/models/bot_mention.py — audit stamp, written at insert onl
 # Stamped by services/reports.resolve_report and read on the wire only (the
 # column, the ContentReportRead field, and the assignment all collapse here).
 resolved_by  # app/models/content_report.py + app/schemas/report.py
+# Set at construction in services/revisions.snapshot and read only through the
+# `edited_by` relationship the history serializer walks.
+edited_by_id  # app/models/event.py EventRevision
 email_verified_at  # app/models/user.py, audit stamp written at registration only
 
 # ── ASGI middleware override ──────────────────────────────────────────────────

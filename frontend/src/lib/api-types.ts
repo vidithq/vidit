@@ -1068,6 +1068,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/{geolocation_id}/revise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revise Event
+         * @description Correct a published event, keeping the version it replaces readable.
+         *
+         *     Owner-only, and only while ``geolocated`` (409 otherwise): a correction to a
+         *     vouched record must not silently rewrite it, so the pre-edit state is filed
+         *     as an ``event_revisions`` row and the event moves to the next
+         *     ``revision_no``, in one transaction under a row lock.
+         *
+         *     The evidence anchor is immutable: ``source_url`` and the source media take
+         *     no field, and a wrong source is handled by ``POST /events/{id}/close`` plus
+         *     a fresh submission, or by an admin. Everything else the publish form wrote
+         *     is editable and versioned, the secondary source links included. The
+         *     published evidence floor is re-checked on the post-edit state, so a revision
+         *     cannot drop the row below it. Soft-deleted rows read as 404.
+         */
+        post: operations["revise_event_api_v1_events__geolocation_id__revise_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{geolocation_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Event Revisions
+         * @description The event's superseded versions, newest first.
+         *
+         *     Public, like the event itself: a corrected record is only auditable if the
+         *     corrections are readable. The live row is the current version and is not
+         *     listed here, so an event nobody has revised answers with an empty list.
+         *     Soft-deleted and withheld rows read as 404, as they do everywhere else.
+         */
+        get: operations["list_event_revisions_api_v1_events__geolocation_id__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search": {
         parameters: {
             query?: never;
@@ -2051,6 +2108,47 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** Body_revise_event_api_v1_events__geolocation_id__revise_post */
+        Body_revise_event_api_v1_events__geolocation_id__revise_post: {
+            /** Capture Source Lat */
+            capture_source_lat?: number | null;
+            /** Capture Source Lng */
+            capture_source_lng?: number | null;
+            /** Conflict Ids */
+            conflict_ids?: string | null;
+            /** Event Date */
+            event_date?: string | null;
+            /** Event Time */
+            event_time?: string | null;
+            /**
+             * Is Graphic
+             * @default false
+             */
+            is_graphic: boolean;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /** Note */
+            note?: string | null;
+            /** Proof */
+            proof?: string | null;
+            /** Proof Files */
+            proof_files?: string[] | null;
+            /**
+             * Secondary Source Urls
+             * @default []
+             */
+            secondary_source_urls: string[];
+            /** Source Posted At */
+            source_posted_at: string;
+            /** Source Snapshot Url */
+            source_snapshot_url?: string | null;
+            /** Tag Ids */
+            tag_ids?: string | null;
+            /** Title */
+            title: string;
+        };
         /** Body_set_my_avatar_api_v1_users_me_avatar_put */
         Body_set_my_avatar_api_v1_users_me_avatar_put: {
             /** File */
@@ -2317,6 +2415,8 @@ export interface components {
             /** Requested At */
             requested_at: string | null;
             requested_by: components["schemas"]["AuthorRef"] | null;
+            /** Revision No */
+            revision_no: number;
             /** Secondary Source Urls */
             secondary_source_urls: string[];
             /** Source Posted At */
@@ -2338,6 +2438,52 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * EventRevisionList
+         * @description An event's history: every superseded version, newest first.
+         *
+         *     Not paginated: an event carries a handful of versions, so the whole history
+         *     is one response. ``total`` counts the rows served, which is the whole set
+         *     below ``services/revisions.MAX_REVISIONS``.
+         */
+        EventRevisionList: {
+            /** Items */
+            items: components["schemas"]["EventRevisionRead"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * EventRevisionRead
+         * @description One superseded version of an event.
+         *
+         *     ``revision_no`` is the version this row holds, not the version that replaced
+         *     it: an event at ``revision_no`` 3 answers with snapshots 2 and 1, and the
+         *     live row is version 3. ``snapshot`` carries the editable fields as they
+         *     stood (see ``services/revisions.build_snapshot``); the evidence anchor
+         *     (``source_url`` and the source media) is absent because no edit can move it,
+         *     so the live row is authoritative for it at every version.
+         */
+        EventRevisionRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            edited_by: components["schemas"]["AuthorRef"] | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Note */
+            note: string | null;
+            /** Revision No */
+            revision_no: number;
+            /** Snapshot */
+            snapshot: {
+                [key: string]: unknown;
+            };
         };
         /**
          * ExternalLinks
@@ -4368,6 +4514,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContentReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revise_event_api_v1_events__geolocation_id__revise_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_revise_event_api_v1_events__geolocation_id__revise_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_event_revisions_api_v1_events__geolocation_id__revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRevisionList"];
                 };
             };
             /** @description Validation Error */

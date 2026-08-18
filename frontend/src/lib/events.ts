@@ -243,7 +243,9 @@ function appendSharedEventFields(
   fd: FormData,
   input: {
     title: string;
-    source_url: string;
+    /** Omitted on a revise: the evidence anchor is immutable past publication,
+     *  so that endpoint declares no `source_url` field at all. */
+    source_url?: string;
     source_snapshot_url?: string;
     secondary_source_urls?: string[];
     source_posted_at: string;
@@ -260,7 +262,7 @@ function appendSharedEventFields(
   // Always sent, never conditional: the geolocate path posts the whole state,
   // so an omitted field would clear a flag the detection already carried.
   fd.append("is_graphic", String(input.is_graphic ?? false));
-  fd.append("source_url", input.source_url);
+  if (input.source_url !== undefined) fd.append("source_url", input.source_url);
   // The archived copy of that source, when the analyst made one on the form.
   // Omitted rather than posted empty: the field is optional on all three paths.
   if (input.source_snapshot_url?.trim()) {
@@ -299,7 +301,10 @@ function appendSharedEventFields(
  *  optional `event_date`, the source media, and the proof-body images. */
 function appendEventFormFields(
   fd: FormData,
-  input: Omit<EventEditInput, "remove_media_ids">,
+  input: Omit<EventEditInput, "remove_media_ids" | "source_url" | "files"> & {
+    source_url?: string;
+    files?: File[];
+  },
   sourceKey: "file" | "files" = "files"
 ): void {
   appendSharedEventFields(fd, input);
@@ -308,7 +313,7 @@ function appendEventFormFields(
   if (input.event_date) {
     fd.append("event_date", input.event_date);
   }
-  for (const file of input.files) {
+  for (const file of input.files ?? []) {
     fd.append(sourceKey, file);
   }
   // The proof body's inline images, matched to its `placeholder://` srcs by
@@ -338,6 +343,48 @@ export function geolocateEvent(
 /** Create fields: the shared form minus geolocate's media-removal (a new
  *  event has no existing media to drop). */
 export type EventCreateInput = Omit<EventEditInput, "remove_media_ids">;
+
+/** How long a revision's edit note may run. Mirrors
+ *  `schemas/event.EDIT_NOTE_MAX_LENGTH`: the form stops at the cap instead of
+ *  letting the server 422 a note someone just typed out. */
+export const EDIT_NOTE_MAX_LEN = 280;
+
+/**
+ * Correcting a published event: the geolocate form minus the evidence anchor.
+ * `source_url`, the source media (`files`) and `remove_media_ids` are absent
+ * because the endpoint declares none of them: past publication the anchor is
+ * what the claim rests on, and a wrong source is handled by closing the event
+ * and posting it again. Everything else stays editable and is versioned.
+ */
+export type EventReviseInput = Omit<
+  EventEditInput,
+  "source_url" | "remove_media_ids" | "files"
+> & {
+  /** The editor's own words about this edit, stored on the version it
+   *  supersedes. Optional, capped at `EDIT_NOTE_MAX_LEN`. */
+  note?: string;
+};
+
+/**
+ * Save a correction to a published event: `POST /events/{id}/revise`
+ * (multipart), owner-only and `geolocated`-only. The server files the
+ * superseded state as a revision and moves the row to the next `revision_no`,
+ * so the edit adds a version rather than overwriting the record.
+ */
+export function reviseEvent(
+  id: string,
+  input: EventReviseInput
+): Promise<EventDetail> {
+  const fd = new FormData();
+  appendEventFormFields(fd, input);
+  if (input.note?.trim()) {
+    fd.append("note", input.note.trim());
+  }
+  return apiFetch<EventDetail>(`/events/${id}/revise`, {
+    method: "POST",
+    body: fd,
+  });
+}
 
 /**
  * Create a geolocation: `POST /events` (multipart), returning the new id for the

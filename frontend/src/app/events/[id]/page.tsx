@@ -12,6 +12,7 @@ import { useEventActions } from "@/components/event/useEventActions";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { DetailRow } from "@/components/ui/DetailRow";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
+import { Pill } from "@/components/ui/Pill";
 
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
@@ -21,9 +22,9 @@ export default function EventPage() {
   const { data: geo, error } = useApiResource<EventDetail>(
     eventId ? `/events/${eventId}` : null
   );
-  // A geolocated event is finished work, so its cluster is the utilities tier
-  // alone: share, copy, report. Called before the early returns, as every hook
-  // here must be.
+  // A geolocated event is finished work, so it carries no flow action: the
+  // cluster is the utilities tier plus, for its author, the edit that files a
+  // revision. Called before the early returns, as every hook here must be.
   const { actions, panels } = useEventActions({ event: geo, surface: "event" });
 
   if (error)
@@ -36,7 +37,18 @@ export default function EventPage() {
     <PageShell
       back
       title={geo.title}
-      subtitle={<AuthorByline author={geo.owner} avatar />}
+      subtitle={
+        <span className="flex flex-wrap items-center gap-2">
+          <AuthorByline author={geo.owner} avatar />
+          {/* Which version the page is showing, next to who filed it: an event
+              nobody has corrected is version 1 and says nothing. */}
+          {geo.revision_no > 1 && (
+            <Pill tone="neutral" title={`Version ${geo.revision_no}`}>
+              v{geo.revision_no}
+            </Pill>
+          )}
+        </span>
+      }
       actions={actions}
     >
         {/* Directly under the header, where the trigger that opened it is. */}

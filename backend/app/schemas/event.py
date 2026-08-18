@@ -122,6 +122,51 @@ class EventArchiveCreate(BaseModel):
     snapshot_url: str = Field(min_length=1, max_length=SOURCE_URL_MAX_LENGTH)
 
 
+# How long the note an editor may attach to one revision runs. Short on
+# purpose: it says what changed and why, and the argument itself belongs in the
+# proof body. The column stays unbounded ``Text``; this is the boundary cap, so
+# an over-long note is a 422 on the field rather than a database error.
+EDIT_NOTE_MAX_LENGTH = 280
+
+
+class EventRevisionRead(BaseModel):
+    """One superseded version of an event.
+
+    ``revision_no`` is the version this row holds, not the version that replaced
+    it: an event at ``revision_no`` 3 answers with snapshots 2 and 1, and the
+    live row is version 3. ``snapshot`` carries the editable fields as they
+    stood (see ``services/revisions.build_snapshot``); the evidence anchor
+    (``source_url`` and the source media) is absent because no edit can move it,
+    so the live row is authoritative for it at every version.
+    """
+
+    id: uuid.UUID
+    revision_no: int
+    # Who made the edit that superseded this version. NULL once that account is
+    # erased, or when it was soft-deleted (the serializer drops it for the same
+    # reason ``EventRead.requested_by`` does).
+    edited_by: AuthorRef | None
+    # The editor's own words about the edit. NULL when they left none.
+    note: str | None
+    # When the edit that superseded this version happened.
+    created_at: datetime
+    snapshot: dict[str, Any]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EventRevisionList(BaseModel):
+    """An event's history: every superseded version, newest first.
+
+    Not paginated: an event carries a handful of versions, so the whole history
+    is one response. ``total`` counts the rows served, which is the whole set
+    below ``services/revisions.MAX_REVISIONS``.
+    """
+
+    items: list[EventRevisionRead]
+    total: int
+
+
 class EventCloseRequest(BaseModel):
     """Body for ``POST /events/{id}/close``. The reason is required: a closed
     event stays publicly visible, so the why must travel with it."""
@@ -260,6 +305,11 @@ class EventRead(BaseModel):
     # The 4-value lifecycle: ``requested`` / ``detected`` / ``geolocated`` /
     # ``closed``. See ``models.event.STATUS_*``.
     status: EventStatus
+    # Which version of the event this payload is. 1 until the owner revises it;
+    # each revise files the superseded state and increments this. Every state
+    # carries it (the column is NOT NULL), but only a ``geolocated`` row can
+    # move past 1, since revising is the published-row correction path.
+    revision_no: int
     # Free-text reason the event was closed; NULL while it is open.
     close_reason: str | None
     # The status held just before ``closed`` (withdrawn vs rejected); drives the

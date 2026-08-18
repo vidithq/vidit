@@ -154,6 +154,7 @@ const MOCK_DETAIL: EventDetail = {
   event_date: "2026-05-09",
   is_graphic: false,
   status: "geolocated",
+  revision_no: 1,
   close_reason: null,
   before_closed_status: null,
   owner: {

@@ -20,9 +20,15 @@ from fastapi import HTTPException
 from pydantic import StringConstraints
 from sqlalchemy.orm import Session
 
-from app.models.event import SOURCE_URL_MAX_LENGTH, Event
+from app.models.event import SOURCE_URL_MAX_LENGTH, Event, EventRevision
 from app.routers._errors import raise_typed_error
-from app.schemas.event import ArchivedLinkRead, CoordsRead, EventList, EventRead
+from app.schemas.event import (
+    ArchivedLinkRead,
+    CoordsRead,
+    EventList,
+    EventRead,
+    EventRevisionRead,
+)
 from app.schemas.media import MediaRead
 from app.services.event_filters import visible_events
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
@@ -144,6 +150,25 @@ def build_event_list(
     )
 
 
+def build_revision_read(row: EventRevision) -> EventRevisionRead:
+    """Assemble one superseded version's wire shape.
+
+    The snapshot travels as stored, so a version reads back exactly as it was
+    filed. A soft-deleted editor is dropped for the same reason
+    :func:`build_event_read` drops a soft-deleted requester or geolocator: a
+    banned account must not surface as the byline of a still-live event.
+    """
+    editor = row.edited_by
+    return EventRevisionRead(
+        id=row.id,
+        revision_no=row.revision_no,
+        edited_by=editor if editor is not None and editor.deleted_at is None else None,
+        note=row.note,
+        created_at=row.created_at,
+        snapshot=row.snapshot,
+    )
+
+
 def _archived_link(geo: Event, url: str | None) -> ArchivedLinkRead | None:
     """One link's archived copy as wire shape, or ``None`` when it has none.
 
@@ -208,6 +233,7 @@ def build_event_read(
         closed_at=geo.closed_at,
         is_graphic=geo.is_graphic,
         status=geo.status,
+        revision_no=geo.revision_no,
         close_reason=geo.close_reason,
         before_closed_status=geo.before_closed_status,
         detected_from_url=geo.detected_from_url,

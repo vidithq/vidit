@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 import type { ArchivedLink } from "@/types";
 import { ArchiveSourceField } from "@/components/ui/ArchivedCopies";
 import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
@@ -50,9 +52,13 @@ interface DetailsFieldsProps {
    *  is set yet); fulfilling a flagged request sets it, like the edit form. */
   graphicLocked?: boolean;
   /** Render the source URL read-only — it's inherited from the request on a
-   *  fulfilment (shows a "from request" hint). The detection edit form leaves it
-   *  editable (`false`). */
+   *  fulfilment (shows a "from request" hint), and frozen as the evidence
+   *  anchor on a published event. The detection edit form leaves it editable
+   *  (`false`). */
   sourceUrlLocked: boolean;
+  /** What the locked marker on the source URL says. Defaults to `LockedHint`'s
+   *  "from request"; the revise form names the reason it can't move. */
+  sourceLockNote?: ReactNode;
   /** A machine detection's provenance — the post it was imported from. Shown
    *  read-only inside this block (it's the one immutable field) when provided;
    *  the submit form omits it. */
@@ -84,6 +90,7 @@ export function DetailsFields({
   setIsGraphic,
   graphicLocked = false,
   sourceUrlLocked,
+  sourceLockNote,
   detectedFromUrl,
   sourcePostedAtInvalid = false,
   sourceUrlInvalid = false,
@@ -95,7 +102,7 @@ export function DetailsFields({
   const sourceUrlLabel = (
     <>
       Source URL <FieldHelp concept="source_url" />{" "}
-      {sourceUrlLocked && <LockedHint />}
+      {sourceUrlLocked && <LockedHint>{sourceLockNote}</LockedHint>}
     </>
   );
 

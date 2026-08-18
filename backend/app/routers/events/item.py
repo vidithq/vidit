@@ -1,5 +1,5 @@
-"""Single-event ops by id: detail, delete, and the lifecycle verbs
-(geolocate, close)."""
+"""Single-event ops by id: detail, delete, the lifecycle verbs (geolocate,
+close), and the published-row correction path (revise + its version history)."""
 
 import uuid
 
@@ -40,14 +40,21 @@ from app.routers.events._common import (
     SecondarySourceUrl,
     _raise_event_error,
     build_event_read,
+    build_revision_read,
     raise_archive_error,
     resolve_live_event,
 )
-from app.schemas.event import EventCloseRequest, EventRead
+from app.schemas.event import (
+    EDIT_NOTE_MAX_LENGTH,
+    EventCloseRequest,
+    EventRead,
+    EventRevisionList,
+)
 from app.schemas.report import ContentReportCreate, ContentReportRead
 from app.services import events as events_service
 from app.services import permissions
 from app.services import reports as reports_service
+from app.services import revisions as revisions_service
 from app.services.evidence_intake import EvidenceIntakeError, collect_media_keys
 from app.services.source_archive import SnapshotRejected
 from app.services.storage import (
@@ -202,8 +209,9 @@ def delete_event(
 # Geolocate writes the caller's edits and moves a ``requested`` or
 # ``detected`` event to ``geolocated``; close is the terminal withdraw /
 # reject. A detection is owner-only; a ``requested`` event is
-# answerable by anyone (the fulfiller becomes the owner). A ``geolocated``
-# row is frozen (409). See ``api.md``.
+# answerable by anyone (the fulfiller becomes the owner). Past the geolocate a
+# row is corrected through revise, owner-only, which files the superseded
+# version rather than overwriting it. See ``api.md``.
 
 
 @router.post("/{geolocation_id}/geolocate", response_model=EventRead)
@@ -312,6 +320,121 @@ async def geolocate_event(
     except SnapshotRejected as exc:
         raise_archive_error(exc)
     return _serialize_event(db, geolocated)
+
+
+@router.post("/{geolocation_id}/revise", response_model=EventRead)
+@limiter.limit("30/minute")
+async def revise_event(
+    request: Request,
+    geolocation_id: uuid.UUID,
+    # Multipart, mirroring geolocate: the form posts the whole editable state
+    # and the service writes it, plus the superseded version, atomically. The
+    # evidence anchor takes NO field here: ``source_url``, ``files`` and
+    # ``remove_media_ids`` are absent by design, so the endpoint cannot be asked
+    # to move what the published claim rests on.
+    title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
+    lat: float = Form(...),
+    lng: float = Form(...),
+    capture_source_lat: float | None = Form(None),
+    capture_source_lng: float | None = Form(None),
+    # The archived copy of the event's stored source URL. Accepted because it
+    # archives the anchor rather than changing it, on the same checks as
+    # ``POST /events/{id}/archives``.
+    source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
+    # The mirrors, repeated once per link. Outside the anchor, so the submitted
+    # list replaces whatever the row held.
+    secondary_source_urls: list[SecondarySourceUrl] = Form([]),
+    event_date: str | None = Form(None),
+    event_time: str | None = Form(None),
+    source_posted_at: str = Form(...),
+    proof: str | None = Form(None),
+    tag_ids: str | None = Form(None),
+    conflict_ids: str | None = Form(None),
+    # Ratchets exactly as on geolocate: a posted false leaves a flagged event
+    # flagged, and only the admin moderation endpoint clears one.
+    is_graphic: bool = Form(False),
+    # The editor's own words about this edit, stored on the version it
+    # supersedes. Optional.
+    note: str | None = Form(None, max_length=EDIT_NOTE_MAX_LENGTH),
+    # The proof body's new inline images, matched to its ``placeholder://``
+    # srcs. Source media carry no field: the anchor is immutable.
+    proof_files: list[UploadFile] | None = File(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Correct a published event, keeping the version it replaces readable.
+
+    Owner-only, and only while ``geolocated`` (409 otherwise): a correction to a
+    vouched record must not silently rewrite it, so the pre-edit state is filed
+    as an ``event_revisions`` row and the event moves to the next
+    ``revision_no``, in one transaction under a row lock.
+
+    The evidence anchor is immutable: ``source_url`` and the source media take
+    no field, and a wrong source is handled by ``POST /events/{id}/close`` plus
+    a fresh submission, or by an admin. Everything else the publish form wrote
+    is editable and versioned, the secondary source links included. The
+    published evidence floor is re-checked on the post-edit state, so a revision
+    cannot drop the row below it. Soft-deleted rows read as 404.
+    """
+    proof_files = proof_files or []
+    parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
+    parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
+    parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
+    proof_data = parse_optional_json_object(proof, field="proof")
+    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids", as_uuid=True)
+    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
+
+    # Not owner-gated at the router: the service re-checks ownership and status
+    # under the row lock, where the decision is race-free.
+    geo = resolve_live_event(db, geolocation_id)
+    try:
+        revised = await events_service.revise(
+            db,
+            geo=geo,
+            current_user=current_user,
+            title=title,
+            lat=lat,
+            lng=lng,
+            capture_source_lat=capture_source_lat,
+            capture_source_lng=capture_source_lng,
+            source_snapshot_url=source_snapshot_url,
+            secondary_source_urls=secondary_source_urls,
+            event_date=parsed_event_date,
+            event_time=parsed_event_time,
+            source_posted_at=parsed_source_posted_at,
+            proof_data=proof_data,
+            tag_ids=parsed_tag_ids,
+            conflict_ids=parsed_conflict_ids,
+            is_graphic=is_graphic,
+            proof_files=proof_files,
+            note=note,
+        )
+    except EvidenceIntakeError as exc:
+        _raise_event_error(exc)
+    except SnapshotRejected as exc:
+        raise_archive_error(exc)
+    return _serialize_event(db, revised)
+
+
+@router.get("/{geolocation_id}/revisions", response_model=EventRevisionList)
+@authenticated_read_quota
+@limiter.limit("120/minute")
+def list_event_revisions(
+    request: Request,
+    geolocation_id: uuid.UUID,
+    db: Session = Depends(get_db),
+):
+    """The event's superseded versions, newest first.
+
+    Public, like the event itself: a corrected record is only auditable if the
+    corrections are readable. The live row is the current version and is not
+    listed here, so an event nobody has revised answers with an empty list.
+    Soft-deleted and withheld rows read as 404, as they do everywhere else.
+    """
+    geo = resolve_live_event(db, geolocation_id)
+    rows = revisions_service.list_revisions(db, geo.id)
+    items = [build_revision_read(row) for row in rows]
+    return EventRevisionList(items=items, total=len(items))
 
 
 @router.post("/{geolocation_id}/close", response_model=EventRead)

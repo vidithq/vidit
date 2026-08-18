@@ -11,6 +11,7 @@ import { ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
 import { ARMED_RING } from "@/components/ui/styles";
 import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
@@ -27,11 +28,14 @@ import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { useMutation } from "@/hooks/useMutation";
+import { Input } from "@/components/ui/Input";
 import { cleanNumber } from "@/lib/coordinates";
 import {
+  EDIT_NOTE_MAX_LEN,
   geolocateEvent,
   missingEventFields,
   parseCaptureCoords,
+  reviseEvent,
   type EventFieldsState,
 } from "@/lib/events";
 import { toDatetimeLocalUTC } from "@/lib/format";
@@ -40,17 +44,35 @@ import type { EventDetail } from "@/types";
 // Ties Reject to the reason panel it opens, which is not its DOM sibling.
 const REJECT_PANEL_ID = "reject-detection-form";
 
+// What the two locked anchor fields say on a published event, with the `?` that
+// explains why they are locked. The submit form leaves both editable, so this
+// marker only ever appears in revise mode.
+const ANCHOR_LOCK_NOTE = (
+  <>
+    evidence anchor <FieldHelp concept="evidence_anchor" size={10} />
+  </>
+);
+
 /**
- * Owner edit + submit of a machine-`detected` geolocation. Built like the create
- * form (same field bricks, same `MediaManager` staging): the owner curates the
- * whole detection (title, coordinate, source URL, dates, proof including inline
- * images, tags, and source media, with new files staged and existing ones marked
- * for removal). Only `detected_from_url` (provenance) is immutable. A `detected`
- * row is immutable machine output; **Submit** is the only write, applying the
- * whole form and flipping the row to `geolocated` in one atomic multipart request
- * (with a confirm, since submitting freezes it). State is seeded from props (the
- * form mounts only after the row loaded), so the Tiptap editor gets its
- * `initialContent` on first paint.
+ * Owner edit of one event, in the two shapes an owner edits in.
+ *
+ * **Submit** (a machine-`detected` row): the owner curates the whole detection
+ * (title, coordinate, source URL, dates, proof including inline images, tags,
+ * and source media, with new files staged and existing ones marked for removal)
+ * and submits it, which applies the form and flips the row to `geolocated` in
+ * one atomic multipart request. Only `detected_from_url` (provenance) is
+ * immutable, and the write takes a confirm, since submitting freezes the row.
+ *
+ * **Save revision** (a `geolocated` row): the same fields, minus the evidence
+ * anchor. `source_url` and the source media are what the published claim rests
+ * on, so they render read-only and the endpoint declares no field for either;
+ * everything else is editable, and the write files the version it supersedes
+ * rather than overwriting it. An optional note travels with that version. No
+ * confirm: a revision adds a version, it freezes nothing.
+ *
+ * Built like the create form throughout (same field bricks, same `MediaManager`
+ * staging). State is seeded from props (the form mounts only after the row
+ * loaded), so the Tiptap editor gets its `initialContent` on first paint.
  *
  * Reviewing a queue of detections is this same surface with `queue` set: the header
  * gains the position and a Skip, and a finished detection hands over to the next one
@@ -75,8 +97,12 @@ export function EventEditForm({
 }) {
   const router = useRouter();
   const { refresh: refreshDetectionCount } = useDetectionsCount();
+  // Which of the two edits this is. Read off the row rather than passed in:
+  // the state IS the mode, so the page and the form cannot disagree about it.
+  const revising = geo.status === "geolocated";
   // Where a write that finishes with this row goes: back to the queue list on
-  // its own, on to the next detection during a review pass.
+  // its own, on to the next detection during a review pass, and to the event
+  // itself after a revision (`redirectTo`, which the page sets per surface).
   const finish = queue?.onAdvance ?? (() => router.push(redirectTo));
 
   // The utilities tier only: this surface's flow action is the form's own
@@ -135,6 +161,9 @@ export function EventEditForm({
   // at submit. A detection's existing proof images are already stored URLs in
   // the doc, so this set covers only newly-added images.
   const [proofFiles, setProofFiles] = useState<File[]>([]);
+  // The note that travels with the version this edit supersedes. Revise only:
+  // there is no superseded version to annotate before publication.
+  const [editNote, setEditNote] = useState("");
 
   // Media is staged (applied on save), like submit: existing rows can be marked
   // for removal, new files queued for upload.
@@ -160,7 +189,10 @@ export function EventEditForm({
     clearIncomplete,
   } = useIncompleteForm();
 
-  const buildInput = () => ({
+  // Everything both writes post. The anchor fields (`source_url` and the source
+  // media) are added by the submit path alone: revise declares no field for
+  // them, so they must not even be assembled there.
+  const buildCommon = () => ({
     title: title.trim(),
     // Same strict parse as the two optional coordinate pairs, so one coordinate
     // can't read valid one way and invalid the other. Required here (the floor
@@ -168,7 +200,6 @@ export function EventEditForm({
     lat: cleanNumber(lat) ?? NaN,
     lng: cleanNumber(lng) ?? NaN,
     ...parseCaptureCoords(captureLat, captureLng),
-    source_url: sourceUrl.trim(),
     source_snapshot_url: sourceSnapshotUrl,
     secondary_source_urls: secondarySourceUrls,
     event_date: eventDate || undefined,
@@ -178,21 +209,34 @@ export function EventEditForm({
     proof,
     tag_ids: selectedTagIds,
     conflict_ids: selectedConflictIds,
-    remove_media_ids: [...removedIds],
-    files: newFiles,
     proof_files: proofFiles,
   });
 
-  // Submit is the only write to a detection: it applies the whole form and flips
-  // the row to `geolocated` in one atomic request (the server enforces the floor
-  // too). A `detected` row is otherwise immutable machine output.
-  const submitMutation = useMutation(() => geolocateEvent(geo.id, buildInput()), {
-    fallback: "Couldn't submit.",
-    onSuccess: () => {
-      refreshDetectionCount();
-      finish();
-    },
-  });
+  // The one write this surface makes, in whichever shape the row is in. On a
+  // detection, submit applies the whole form and flips the row to `geolocated`
+  // in one atomic request; on a published event, revise applies the editable
+  // fields and files the version it supersedes. The server enforces the same
+  // evidence floor on both.
+  const submitMutation = useMutation(
+    () =>
+      revising
+        ? reviseEvent(geo.id, { ...buildCommon(), note: editNote })
+        : geolocateEvent(geo.id, {
+            ...buildCommon(),
+            source_url: sourceUrl.trim(),
+            remove_media_ids: [...removedIds],
+            files: newFiles,
+          }),
+    {
+      fallback: revising ? "Couldn't save this revision." : "Couldn't submit.",
+      onSuccess: () => {
+        // The detections badge counts `detected` rows, which only the submit
+        // path changes.
+        if (!revising) refreshDetectionCount();
+        finish();
+      },
+    }
+  );
 
   // Submitting freezes the row, so it takes a second click. The button arms in
   // place rather than swapping itself for a confirm pair: the control the
@@ -216,9 +260,11 @@ export function EventEditForm({
   const actionError = submitMutation.error;
 
   // Submit floor is computed on the post-edit state: kept existing media plus
-  // staged new files, and the selected curated tags.
-  const keptMediaCount =
-    geo.media.filter((m) => !removedIds.has(m.id)).length + newFiles.length;
+  // staged new files, and the selected curated tags. On a revision the anchor
+  // cannot move, so the count is simply what the row already carries.
+  const keptMediaCount = revising
+    ? geo.media.length
+    : geo.media.filter((m) => !removedIds.has(m.id)).length + newFiles.length;
   const selectedCurated = taxonomy.curatedTags.filter((t) =>
     selectedTagIds.includes(t.id)
   );
@@ -266,22 +312,44 @@ export function EventEditForm({
       flagIncomplete(missing);
       return;
     }
-    // A complete form arms the button; the click after it writes. Every check
-    // above runs on both clicks, so a form that stopped being submittable
-    // between them says so instead of posting.
+    // A revision adds a version and freezes nothing, so it writes on the click
+    // that made it. A submit freezes the row, so it arms the button and the
+    // click after it writes; every check above runs on both clicks, so a form
+    // that stopped being submittable between them says so instead of posting.
+    if (revising) {
+      void submitMutation.run();
+      return;
+    }
     triggerSubmit();
   };
+
+  // The one label the flow action wears, and the sentence the confirm step
+  // announces. Kept together so the button, its sizer and the status region
+  // can't name the write three different ways.
+  const CONFIRM_SENTENCE = "Click again to submit. Submitting freezes the event.";
+  const widestLabel = revising ? "Save revision" : "Confirm submit";
+  const submitLabel = revising
+    ? busy
+      ? "Saving…"
+      : "Save revision"
+    : busy
+      ? "Submitting…"
+      : submitArmed
+        ? "Confirm submit"
+        : "Submit";
 
   return (
     <PageShell
       back
       backFallback={redirectTo}
-      title="Submit detection"
+      title={revising ? "Edit geolocation" : "Submit detection"}
       actions={
         // Everything that disposes of this detection rather than filling it in,
         // in the header's own cluster: the position and the way past it during
         // a review pass, then Reject, then the utilities. Submit is the only
-        // action left at the foot of the fields.
+        // action left at the foot of the fields. A published event has none of
+        // those verbs (it is neither skippable nor rejectable), so the cluster
+        // is the utilities alone.
         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
           {queue && (
             <>
@@ -291,15 +359,17 @@ export function EventEditForm({
               </Button>
             </>
           )}
-          <Button
-            variant="danger"
-            onClick={() => setRejecting(true)}
-            disabled={busy || rejecting}
-            aria-controls={REJECT_PANEL_ID}
-            aria-expanded={rejecting}
-          >
-            Reject
-          </Button>
+          {!revising && (
+            <Button
+              variant="danger"
+              onClick={() => setRejecting(true)}
+              disabled={busy || rejecting}
+              aria-controls={REJECT_PANEL_ID}
+              aria-expanded={rejecting}
+            >
+              Reject
+            </Button>
+          )}
           {actions}
         </div>
       }
@@ -345,6 +415,10 @@ export function EventEditForm({
           onRemoveStaged={(i) =>
             setNewFiles((prev) => prev.filter((_, idx) => idx !== i))
           }
+          // Half of the published event's evidence anchor: readable, never
+          // swappable, and the `?` on the marker says why.
+          locked={revising}
+          lockNote={revising ? ANCHOR_LOCK_NOTE : undefined}
           invalid={invalidKeys.has("source_media")}
         />
 
@@ -379,7 +453,10 @@ export function EventEditForm({
           // The loaded value, not the live one: the flag ratchets on the
           // backend, so an event that arrived flagged cannot be unflagged here.
           graphicLocked={geo.is_graphic}
-          sourceUrlLocked={false}
+          // The other half of the anchor. A detection's source is still being
+          // established, so the submit form leaves it editable.
+          sourceUrlLocked={revising}
+          sourceLockNote={revising ? ANCHOR_LOCK_NOTE : undefined}
           detectedFromUrl={geo.detected_from_url}
           sourcePostedAtInvalid={invalidKeys.has("source_posted_at")}
           sourceUrlInvalid={invalidKeys.has("source_url")}
@@ -402,6 +479,24 @@ export function EventEditForm({
           invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
         />
 
+        {/* The note rides with the version this edit supersedes, so it sits at
+            the end of the fields it describes, next to the action that files
+            them. Optional, and never part of the floor. */}
+        {revising && (
+          <Card as="section">
+            <SectionHeading title="Edit note" concept="edit_note" />
+            <Input
+              id="edit_note"
+              type="text"
+              value={editNote}
+              maxLength={EDIT_NOTE_MAX_LEN}
+              onChange={(e) => setEditNote(e.target.value)}
+              placeholder="What changed, and why"
+              aria-label="Edit note"
+            />
+          </Card>
+        )}
+
         {/* Validation + errors sit right above the actions: the notice lists
             every missing field at once, the banner carries server failures. */}
         <IncompleteFormNotice
@@ -421,40 +516,30 @@ export function EventEditForm({
               variant="primary"
               disabled={busy}
               className={submitArmed ? ARMED_RING : ""}
-              title={
-                submitArmed
-                  ? "Click again to submit. Submitting freezes the event."
-                  : undefined
-              }
+              title={submitArmed ? CONFIRM_SENTENCE : undefined}
             >
-              {/* The three labels stack in one grid cell, so the button is as
-                  wide as the longest of them from the first paint and arming
-                  moves nothing at all, not even the `?` beside it. */}
+              {/* The labels stack in one grid cell, so the button is as wide as
+                  the longest of them from the first paint and arming moves
+                  nothing at all, not even the `?` beside it. */}
               <span className="grid">
                 <span aria-hidden className="col-start-1 row-start-1 invisible">
-                  Confirm submit
+                  {widestLabel}
                 </span>
-                <span className="col-start-1 row-start-1">
-                  {busy
-                    ? "Submitting…"
-                    : submitArmed
-                      ? "Confirm submit"
-                      : "Submit"}
-                </span>
+                <span className="col-start-1 row-start-1">{submitLabel}</span>
               </span>
             </Button>
             {/* What the second click costs is the button's `?`, which every
                 field on this form already carries, rather than a line of copy
-                that appears mid-gesture and pushes the button sideways. */}
-            <FieldHelp concept="action_submit" />
+                that appears mid-gesture and pushes the button sideways. A
+                revision writes on the click that made it, so it has nothing to
+                warn about. */}
+            {!revising && <FieldHelp concept="action_submit" />}
           </span>
           {/* Sibling status region, the shape `<CopyButton>` uses: the armed
               state is reported once, as a status, so a reader who cannot see
               the ring hears what the next click will do. */}
           <span className="sr-only" role="status" aria-live="polite">
-            {submitArmed
-              ? "Click again to submit. Submitting freezes the event."
-              : ""}
+            {submitArmed ? CONFIRM_SENTENCE : ""}
           </span>
         </div>
       </form>

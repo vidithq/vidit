@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.event import Event
 from app.models.media import Media
+from app.services import revisions
 from app.services.evidence_processing import EvidenceProcessingError
 from app.services.sanitize import PROOF_PLACEHOLDER_PREFIX, extract_image_srcs
 from app.services.storage import (
@@ -243,6 +244,13 @@ async def attach_evidence_and_commit(
     kept_srcs = {
         s for s in extract_image_srcs(final_doc) if not s.startswith(PROOF_PLACEHOLDER_PREFIX)
     }
+    # A proof image a past version still shows is kept, row and object, even
+    # once the current body drops it: history has to stay renderable, and the
+    # snapshots are the only thing pointing at that URL by then. Asked only of a
+    # row that has a history at all (version 1 has no snapshot to protect), so
+    # the ordinary write pays no query.
+    if event.revision_no > 1:
+        kept_srcs |= revisions.referenced_media_urls(db, event.id)
     storage = get_storage()
     removed_proof_keys: list[str] = []
     for m in list(event.media):

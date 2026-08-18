@@ -49,16 +49,18 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 vi.mock("@/lib/events", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/events")>()),
   geolocateEvent: vi.fn(),
+  reviseEvent: vi.fn(),
   closeEvent: vi.fn(),
 }));
 
-import { closeEvent, geolocateEvent } from "@/lib/events";
+import { closeEvent, geolocateEvent, reviseEvent } from "@/lib/events";
 import { ARM_MS } from "@/hooks/useConfirmAction";
 import type { Conflict, EventDetail, Tag } from "@/types";
 
 import EditEventPage from "./page";
 
 const geolocateMock = vi.mocked(geolocateEvent);
+const reviseMock = vi.mocked(reviseEvent);
 const closeMock = vi.mocked(closeEvent);
 
 const CONFLICTS: Conflict[] = [
@@ -89,6 +91,7 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
     status: "detected",
+    revision_no: 1,
     is_graphic: false,
     close_reason: null,
     before_closed_status: null,
@@ -126,11 +129,29 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   };
 }
 
+/**
+ * A published geolocation the owner is correcting: the same row past its
+ * confirmation, already carrying the curated picks a publication required.
+ */
+function publishedFixture(overrides: Partial<EventDetail> = {}): EventDetail {
+  return detectionFixture({
+    status: "geolocated",
+    revision_no: 1,
+    geolocated_at: "2026-06-02T11:00:00Z",
+    tags: CURATED_TAGS,
+    conflicts: CONFLICTS,
+    ...overrides,
+  });
+}
+
+/** The row `/events/d1` serves, set per test. */
+let row: EventDetail;
+
 /** The queue this detection is being walked through: itself, then two more. */
 let queueItems: EventDetail[] = [];
 
 function resource(path: string) {
-  if (path.startsWith("/events/d1")) return detectionFixture();
+  if (path.startsWith("/events/d1")) return row;
   if (path.startsWith("/events/detections"))
     return { items: queueItems, total: queueItems.length, page: 1, per_page: 100 };
   if (path === "/tags?curated=true") return CURATED_TAGS;
@@ -166,8 +187,11 @@ function rejectDetection(reason: string) {
 beforeEach(() => {
   push.mockReset();
   geolocateMock.mockReset();
+  reviseMock.mockReset();
   closeMock.mockReset();
   geolocateMock.mockResolvedValue(detectionFixture({ status: "geolocated" }));
+  reviseMock.mockResolvedValue(publishedFixture({ revision_no: 2 }));
+  row = detectionFixture();
   queryParam = null;
   queueItems = [
     detectionFixture(),
@@ -372,5 +396,95 @@ describe("the submit confirm", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("revising a published geolocation", () => {
+  beforeEach(() => {
+    row = publishedFixture();
+  });
+
+  it("opens the correction form instead of refusing the edit", () => {
+    render(<EditEventPage />);
+
+    // The old gate turned every non-`detected` row away here; a published row
+    // now reaches the form, under its own title and its own action.
+    expect(
+      screen.getByRole("heading", { name: "Edit geolocation" })
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/no longer be edited/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Save revision" })).toBeInTheDocument();
+    // Neither verb belongs to a published row: it is not skippable and not
+    // rejectable.
+    expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
+  });
+
+  it("renders the evidence anchor read-only", () => {
+    render(<EditEventPage />);
+
+    // The source URL is a link to open, not a field to retype, and the media
+    // block offers no add or remove.
+    expect(screen.queryByRole("textbox", { name: /Source URL/ })).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "https://t.me/channel/12345" })
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Add media/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
+    // And the reason it can't move is one click away, on the locked marker.
+    expect(
+      screen.getAllByRole("button", { name: "Why can't I change the source?" })
+    ).toHaveLength(2);
+  });
+
+  it("saves on the click that made it, then lands on the event", async () => {
+    render(<EditEventPage />);
+
+    // No arming step: a revision adds a version, it freezes nothing.
+    fireEvent.click(screen.getByRole("button", { name: "Save revision" }));
+    await waitFor(() => expect(reviseMock).toHaveBeenCalledTimes(1));
+    expect(geolocateMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/events/d1"));
+  });
+
+  it("posts the edit note and never the evidence anchor", async () => {
+    render(<EditEventPage />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Edit note" }), {
+      target: { value: "Coordinates were off by a block." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save revision" }));
+    await waitFor(() => expect(reviseMock).toHaveBeenCalledTimes(1));
+
+    const [id, input] = reviseMock.mock.calls[0];
+    expect(id).toBe("d1");
+    expect(input.note).toBe("Coordinates were off by a block.");
+    // The anchor is not assembled at all, so no client bug can post it.
+    expect(input).not.toHaveProperty("source_url");
+    expect(input).not.toHaveProperty("files");
+    expect(input).not.toHaveProperty("remove_media_ids");
+  });
+
+  it("still holds the published floor before it posts", async () => {
+    row = publishedFixture({ conflicts: [] });
+    render(<EditEventPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save revision" }));
+    // The notice names the miss and nothing is written; the server enforces
+    // the same floor, this just spares the round trip.
+    const notice = await screen.findByRole("alert");
+    expect(notice).toHaveTextContent("Conflict");
+    expect(reviseMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("a state with no owner edit", () => {
+  it("says so instead of offering a form", () => {
+    row = detectionFixture({ status: "closed", close_reason: "AI-generated." });
+    render(<EditEventPage />);
+
+    expect(screen.getByText(/no edit form/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save revision" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
   });
 });

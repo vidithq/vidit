@@ -44,6 +44,8 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/events/{id}` | 🔒 | Owner-only hard delete + S3 sweep |
 | POST | `/events/{id}/geolocate` | 🔒 | Give an event a vouched location: `requested` \| `detected` → `geolocated` |
 | POST | `/events/batch-complete` | 🔒 | Publish a selection of your detections in one call (per-row verdicts) |
+| POST | `/events/{id}/revise` | 🔒 | Correct a published event, owner only; files the version it supersedes |
+| GET | `/events/{id}/revisions` | 🌐 | The event's superseded versions, newest first |
 | POST | `/events/{id}/close` | 🔒 | Withdraw a request or reject a detection, owner only (→ `closed`) |
 | POST | `/events/{id}/archives` | 🔒 | Record the archived copy of one of your event's links |
 | GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated, filterable on readiness) |
@@ -629,6 +631,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
   "closed_at": null,
   "is_graphic": false,
   "status": "geolocated",
+  "revision_no": 1,
   "close_reason": null,
   "before_closed_status": null,
   "detected_from_url": null,
@@ -670,7 +673,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 }
 ```
 
-`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source` is the archived copy of that `source_url`: `url` is the snapshot and `provider` (`wayback` or `archive_today`) is the service holding it. One copy per link, whichever service produced it. The field is `null` when no copy has been recorded, which is every link's starting state, since archival is an act the event's owner performs (see [`archival.md`](archival.md) and [`POST /events/{id}/archives`](#post-eventsidarchives)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `archived_secondary_sources` is the same list's archived copies, same length and same order: entry `i` covers mirror `i`, with the same shape and the same `null` conditions as `archived_source`, and the detail surface renders each beside its mirror. `archived_detected_from` is the archived copy of `detected_from_url`, on the same terms again, and `null` for a human submit, which carries no provenance link. `detected_via` names the ingest entry that produced a machine detection, `bot`, `paste` or `archive` (see [`ingestion.md`](ingestion.md)); it is read-only, stamped once at creation, and `null` for a human submit and for machine rows that predate it. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`). `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick. `is_graphic` is `true` when the footage is flagged as showing death, injury or human remains; every media surface that renders this event's images or video covers them behind [`GraphicContentGate`](design.md#components) while it is.
+`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source` is the archived copy of that `source_url`: `url` is the snapshot and `provider` (`wayback` or `archive_today`) is the service holding it. One copy per link, whichever service produced it. The field is `null` when no copy has been recorded, which is every link's starting state, since archival is an act the event's owner performs (see [`archival.md`](archival.md) and [`POST /events/{id}/archives`](#post-eventsidarchives)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `archived_secondary_sources` is the same list's archived copies, same length and same order: entry `i` covers mirror `i`, with the same shape and the same `null` conditions as `archived_source`, and the detail surface renders each beside its mirror. `archived_detected_from` is the archived copy of `detected_from_url`, on the same terms again, and `null` for a human submit, which carries no provenance link. `detected_via` names the ingest entry that produced a machine detection, `bot`, `paste` or `archive` (see [`ingestion.md`](ingestion.md)); it is read-only, stamped once at creation, and `null` for a human submit and for machine rows that predate it. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`). `revision_no` is which version of the event this payload is: `1` until its owner corrects it, and one higher per correction (see [`POST /events/{id}/revise`](#post-eventsidrevise)). `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick. `is_graphic` is `true` when the footage is flagged as showing death, injury or human remains; every media surface that renders this event's images or video covers them behind [`GraphicContentGate`](design.md#components) while it is.
 
 **Errors:**
 | Code | Case |
@@ -842,7 +845,7 @@ Opens a request: creates a `requested` event with no coordinates yet (ex `POST /
 
 ### `POST /events/{id}/geolocate` 🔒
 
-Gives an event a vouched location: transitions `requested` | `detected` → `geolocated` in one atomic request, writing your whole edited form. This is the **single** fulfil / geolocate path. A `detected` row is immutable machine output, so this is the **only** write to it, and it stays owner-only. A `requested` event is answerable by anyone, and you become its `owner` (`requested_by` keeps the original poster). **Multipart**, mirroring `POST /events`: the form posts the whole row state, and the server applies the field updates, media removals, and new-media uploads, then freezes the row as `geolocated`, in one transaction under a row lock (a concurrent geolocate on the same row serializes, and the loser gets 409). Allowed **only while `requested` / `detected`**: a `geolocated` row is frozen.
+Gives an event a vouched location: transitions `requested` | `detected` → `geolocated` in one atomic request, writing your whole edited form. This is the **single** fulfil / geolocate path. A `detected` row is immutable machine output, so this is the **only** write to it, and it stays owner-only. A `requested` event is answerable by anyone, and you become its `owner` (`requested_by` keeps the original poster). **Multipart**, mirroring `POST /events`: the form posts the whole row state, and the server applies the field updates, media removals, and new-media uploads, then publishes the row as `geolocated`, in one transaction under a row lock (a concurrent geolocate on the same row serializes, and the loser gets 409). Allowed **only while `requested` / `detected`**: past publication a row is corrected through [`POST /events/{id}/revise`](#post-eventsidrevise), which files the version it supersedes.
 
 **Request body (`multipart/form-data`):**
 | Field | Type | Description |
@@ -876,7 +879,7 @@ Gives an event a vouched location: transitions `requested` | `detected` → `geo
 | 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required` (no proof image in the final body), `tag_requirements_not_met`, `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), a rejected file (`invalid_file` / `evidence_processing_failed`), no surviving source media (`media_required`), `proof_files_mismatch`, `source_url_required` (a detection with no declared source, geolocated with a blank `source_url` field), or a rejected `source_snapshot_url` (the `snapshot_*` codes of [`POST /events/{id}/archives`](#post-eventsidarchives)) |
 | 403 | You are not the owner of a detection (a `requested` event is answerable by anyone) |
 | 404 | Event not found (incl. soft-deleted) |
-| 409 | Row is not `requested` / `detected` (`invalid_state`, a `geolocated` row is frozen), or `source_media_conflict` (a concurrent edit raced past the one-source cap) |
+| 409 | Row is not `requested` / `detected` (`invalid_state`; a published row is corrected through [`POST /events/{id}/revise`](#post-eventsidrevise)), or `source_media_conflict` (a concurrent edit raced past the one-source cap) |
 | 422 | Kept + new source media over one (`too_many_files`), more than `max_proof_images_per_event` proof files, or a single `secondary_source_urls` item over 2000 chars |
 
 ---
@@ -939,6 +942,103 @@ The first six are the same stable codes the single-row geolocate answers with, a
 | 400 | `tag_requirements_not_met`: no `conflict_ids` entry resolves to a live conflict, so no row could clear the floor |
 | 403 | A targeted detection belongs to another analyst; nothing is published |
 | 422 | Empty `conflict_ids` / `rows`, over 10 conflicts, over 100 rows, the same `event_id` in two rows, or a malformed UUID |
+
+---
+
+### `POST /events/{id}/revise` 🔒
+
+Correct a published event. Owner-only, and only while `geolocated`: the state a correction applies to is the vouched record, so before publication a row is edited through its own path ([`POST /events/{id}/geolocate`](#post-eventsidgeolocate) for a detection or a request). The write files the pre-edit state as a revision, applies your form, and moves the event to the next `revision_no`, all in one transaction under a row lock. Two concurrent revises therefore take their numbers in order rather than racing. **Multipart**, mirroring geolocate.
+
+**Editability contract.** After publication the **evidence anchor is immutable**: `source_url` and the source media are what the published claim rests on, so this endpoint declares no field for either, and sending one changes nothing. A wrong source is handled by [`POST /events/{id}/close`](#post-eventsidclose) plus a fresh submission, or by an admin. Everything else the publish form wrote is editable and versioned: the title, both coordinate sets, the event date and hour, the source post time, the graphic-content flag, the tags, the conflicts, the proof body with its inline images, and the secondary source links, which are mirrors rather than the evidence origin and sit outside the anchor.
+
+**Request body (`multipart/form-data`):**
+| Field | Type | Description |
+|-------|------|-------------|
+| `title` | string | 1-255 chars |
+| `lat` | float | Latitude (-90 to 90) of the subject |
+| `lng` | float | Longitude (-180 to 180) of the subject |
+| `capture_source_lat` | float | Latitude of the camera position. Both-or-neither with `capture_source_lng`. |
+| `capture_source_lng` | float | Longitude of the camera position. |
+| `source_snapshot_url` | string | The archived copy of the event's stored source URL, ≤2000 chars, same contract as [`POST /events/{id}/archives`](#post-eventsidarchives). Accepted here because it archives the anchor rather than changing it |
+| `secondary_source_urls` | string[] (repeated field) | Optional mirrors, same normalization and cap as [`POST /events`](#post-events). The submitted list replaces whatever the row held |
+| `event_date` | string (YYYY-MM-DD) | When the depicted event happened. Empty / omitted stores NULL (renders as *Unknown*) |
+| `event_time` | string (HH:MM) | Optional time-of-day for the event (UTC); empty / omitted clears it |
+| `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | When the source posted the media, a full instant (UTC). Required |
+| `proof` | JSON string | Tiptap document (sanitized); its `placeholder://` srcs resolve against `proof_files`, already-uploaded URLs pass through untouched |
+| `tag_ids` | JSON string (UUID[]) | Replaces the tag set wholesale |
+| `conflict_ids` | JSON string (UUID[]) | Replaces the event's [conflict](#conflicts) set wholesale |
+| `is_graphic` | boolean | The graphic-content declaration. Ratchets exactly as on geolocate: `true` sets the flag, `false` leaves an already-flagged event flagged. To clear it, use [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation) |
+| `note` | string | Optional, ≤280 chars. Your own words about this edit, stored on the version it supersedes and read back by [`GET /events/{id}/revisions`](#get-eventsidrevisions) |
+| `proof_files` | file[] | New proof images referenced by `placeholder://` srcs in `proof` |
+
+The published evidence floor is re-checked against the post-edit state, so a correction cannot drop the row below what publishing it required: a source media on the row, at least one proof image in the final proof body, one conflict, and one `capture_source` tag.
+
+**Media and history.** A proof image the new body no longer references is normally deleted, row and object. It is kept instead when any past version's snapshot points at it, so a version stays renderable after the image left the current body.
+
+**Response 200:** same shape as `GET /events/{id}`, with `revision_no` one higher.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `too_many_source_links`, `media_required` (the row carries no source media), a rejected file (`invalid_file` / `evidence_processing_failed`), `proof_files_mismatch`, or a rejected `source_snapshot_url` (the `snapshot_*` codes of [`POST /events/{id}/archives`](#post-eventsidarchives)) |
+| 403 | You are not the owner |
+| 404 | Event not found (incl. soft-deleted) |
+| 409 | Row is not `geolocated` (`invalid_state`) |
+| 422 | `note` over 280 chars, more than `max_proof_images_per_event` proof files, or a single `secondary_source_urls` item over 2000 chars |
+
+---
+
+### `GET /events/{id}/revisions` 🌐
+
+The event's superseded versions, newest first. Public, like the event itself: a corrected record is auditable only when its corrections are readable. The live row is the current version and is not listed here, so an event nobody has corrected answers with an empty list.
+
+Not paginated: an event carries a handful of versions, so the whole history is one response, capped at 200 rows.
+
+**Response 200:**
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "revision_no": 1,
+      "edited_by": { "id": "uuid", "username": "kalush" },
+      "note": "Coordinates were off by a block.",
+      "created_at": "2026-03-18T11:20:00Z",
+      "snapshot": {
+        "title": "Strike on depot, Donetsk",
+        "event_coords": { "lat": 48.123, "lng": 37.456 },
+        "capture_source_coords": null,
+        "event_date": "2026-03-15",
+        "event_time": "14:30:00",
+        "source_posted_at": "2026-03-14T18:05:00Z",
+        "is_graphic": false,
+        "secondary_source_urls": [],
+        "tags": [{ "id": "uuid", "name": "Drone", "category": "capture_source" }],
+        "conflicts": [{ "id": "uuid", "name": "Russian invasion of Ukraine" }],
+        "proof": { "type": "doc", "content": [] },
+        "proof_media": [
+          {
+            "id": "uuid",
+            "storage_url": "https://d10w3bld05vsky.cloudfront.net/proof/.../overlay.jpg",
+            "media_type": "image",
+            "original_filename": "overlay.jpg"
+          }
+        ]
+      }
+    }
+  ],
+  "total": 1
+}
+```
+
+`revision_no` is the version the row **holds**, not the one that replaced it: an event whose `revision_no` is 3 answers with snapshots 2 and 1, and the live row is version 3. `edited_by` is the analyst whose edit superseded that version, `null` once their account is erased. `note` is their optional line about the edit, `null` when they left none. `created_at` is when the edit happened.
+
+`snapshot` carries the editable fields as they stood. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `proof_media` carries enough to render the snapshot's images. The evidence anchor is absent by design: no edit can move `source_url` or the source media, so the live row is authoritative for both at every version.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | Event not found, soft-deleted, or withheld |
 
 ---
 

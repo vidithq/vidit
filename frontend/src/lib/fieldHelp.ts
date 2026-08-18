@@ -103,6 +103,16 @@ export const FIELD_HELP = {
     text: "Ready: the import left the detection with every piece of evidence a publish needs, so a review adds the conflict and the capture source, then publishes it. Incomplete: the import left a required piece missing (the source URL, the coordinates, the source media, or a proof image), so it needs a manual pass on the form before it can be published.",
     label: "What does this filter select?",
   },
+  // Why the two anchor fields are read-only once an event is published.
+  evidence_anchor: {
+    text: "The source link and the source media are what the published geolocation rests on, so they can't be edited afterwards. Everything else is editable, and each edit is kept as a version. If the source itself is wrong, close the event with a reason and post it again.",
+    label: "Why can't I change the source?",
+  },
+  // What a revision note is for.
+  edit_note: {
+    text: "Optional. One line on what you changed and why, kept with the version this edit replaces so a reader can follow the correction.",
+    label: "What is the edit note?",
+  },
   // Detection submit action, spelled out here.
   action_submit: {
     text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it). Submitting freezes the event, so it can no longer be edited. Give it a full read first, then click Submit twice to confirm.",
