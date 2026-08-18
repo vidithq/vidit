@@ -35,6 +35,7 @@ export function CopyButton({
   title,
   className,
   beforeCopy,
+  disabled = false,
 }: {
   /** The text to write, resolved at click time. */
   value: () => string;
@@ -49,10 +50,12 @@ export function CopyButton({
   title?: string;
   /** Orthogonal extras (an armed-state ring, spacing). */
   className?: string;
-  /** Gate for a call site that must approve the write first (the event share
-   *  row arms a detection link on the first click). Return `false` to swallow the
-   *  click, `true` to let the copy proceed. */
+  /** Gate for a call site that must approve the write first. Return `false` to
+   *  swallow the click, `true` to let the copy proceed. */
   beforeCopy?: () => boolean;
+  /** Greyed and unclickable, for a value that does not exist yet: the coordinate
+   *  actions hold their width while the pair is still half-typed. */
+  disabled?: boolean;
 }) {
   const { copied, copy } = useCopyToClipboard();
 
@@ -67,6 +70,7 @@ export function CopyButton({
         icon
         variant="ghost"
         onClick={handleClick}
+        disabled={disabled}
         aria-label={label}
         title={copied ? copiedLabel : (title ?? label)}
         className={className}

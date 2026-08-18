@@ -445,10 +445,11 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<CopyButton>" usage="The one copy-to-clipboard control: a square ghost icon button whose resting glyph flips to a check for the flash window (useCopyToClipboard). Used by the coordinate actions and the profile's Discord account. `value` is a getter so the call site can read window at click time; `icon` swaps the resting glyph where the value names itself better than a copy mark does (the check is fixed); `beforeCopy` gates the write for a call site that must approve it first; the accessible name stays constant and the copied state is announced by a sibling live region.">
+          <Item name="<CopyButton>" usage="The one copy-to-clipboard control: a square ghost icon button whose resting glyph flips to a check for the flash window (useCopyToClipboard). Used by the coordinate actions and the profile's Discord account. `value` is a getter so the call site can read window at click time; `icon` swaps the resting glyph where the value names itself better than a copy mark does (the check is fixed); `beforeCopy` gates the write for a call site that must approve it first; `disabled` greys it for a value that does not exist yet (the coordinate actions hold their width while the pair is half-typed); the accessible name stays constant and the copied state is announced by a sibling live region.">
             <div className="flex items-center gap-2">
               <CopyButton value={() => "48.015883, 37.802411"} label="Copy coordinates" copiedLabel="Coordinates copied" />
               <CopyButton icon={DiscordGlyph} value={() => "a-handle"} label="Copy Discord username: a-handle" copiedLabel="Discord username copied" />
+              <CopyButton value={() => ""} label="Copy coordinates" disabled />
             </div>
           </Item>
 

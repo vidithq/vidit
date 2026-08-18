@@ -68,7 +68,7 @@ export function EventPageBody({
               align="center"
               className="border-t border-neutral-800 bg-neutral-900 rounded-b-lg"
             >
-              {/* The pair plus its two actions is wider than the row on a
+              {/* The pair plus its two icon buttons is wider than the row on a
                   narrow phone, so the group wraps and the actions take a
                   second line under the coordinates rather than pushing the
                   page sideways. `min-w-0` lets this flex item shrink below

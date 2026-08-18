@@ -67,9 +67,9 @@ describe("CoordinateInputs", () => {
     ).toBeInTheDocument();
   });
 
-  // The pair sits in the input row's third column, so the link is the icon
-  // shape: its name comes from the label, not from text that would widen the
-  // cell at the fields' expense.
+  // The pair sits in the input row's third column, so both controls are the
+  // icon shape: the name comes from the label, not from text that would widen
+  // the cell at the fields' expense.
   it("names the map link on the icon itself, beside the fields", () => {
     render(<CoordinateInputs {...baseProps} lat="48.015883" lng="37.802411" />);
     const link = screen.getByRole("link", { name: "View on Maps" });
@@ -77,11 +77,27 @@ describe("CoordinateInputs", () => {
     expect(link).toHaveAttribute("title", "View on Maps");
   });
 
-  it("hides both while the pair is half-typed or out of bounds", () => {
-    const { rerender } = render(<CoordinateInputs {...baseProps} lat="48.01" />);
-    expect(screen.queryByRole("link", { name: /View on Maps/ })).toBeNull();
-    rerender(<CoordinateInputs {...baseProps} lat="91" lng="37.8" />);
-    expect(screen.queryByRole("link", { name: /View on Maps/ })).toBeNull();
+  // Greyed rather than gone: the cell keeps one width, so typing the second
+  // half of a coordinate does not shift the row it sits in.
+  it.each([
+    ["half-typed", "48.01", ""],
+    ["out of bounds", "91", "37.8"],
+  ])("disables both while the pair is %s", (_case, lat, lng) => {
+    render(<CoordinateInputs {...baseProps} lat={lat} lng={lng} />);
+    // Not a link at all: there is nowhere to navigate without a point.
+    expect(screen.queryByRole("link", { name: "View on Maps" })).toBeNull();
+    expect(screen.getByRole("button", { name: "View on Maps" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Copy coordinates" })
+    ).toBeDisabled();
+  });
+
+  it("enables both once the pair parses", () => {
+    render(<CoordinateInputs {...baseProps} lat="48.015883" lng="37.802411" />);
+    expect(screen.queryByRole("button", { name: "View on Maps" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Copy coordinates" })
+    ).toBeEnabled();
   });
 
   it("keeps the camera pair's field ids distinct from the subject's", () => {

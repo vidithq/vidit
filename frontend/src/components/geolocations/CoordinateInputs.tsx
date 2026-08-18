@@ -3,7 +3,6 @@
 import type { ClipboardEvent } from "react";
 
 import { CoordinateActions } from "@/components/event/CoordinateActions";
-import { buttonClasses } from "@/components/ui/Button";
 import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { coordinatePair, parsePastedCoordinates } from "@/lib/coordinates";
@@ -48,8 +47,8 @@ export function CoordinateInputs({
     setLng(String(pair.lng));
   };
 
-  // The verification affordances only make sense on a real point, so they
-  // appear once the pair parses in bounds and disappear while it is half-typed.
+  // The verification affordances only act on a real point, so they grey out
+  // while the pair is half-typed or out of bounds.
   const pair = coordinatePair(lat, lng);
 
   return (
@@ -108,20 +107,11 @@ export function CoordinateInputs({
         {/* `flex-1` + `items-center` against a cell the grid stretches to the
             field's height, which is what centres the buttons on the inputs
             without either side naming a pixel height. */}
-        <div className="flex flex-1 items-center justify-end gap-1">
-          {pair ? (
-            <CoordinateActions compact lat={pair.lat} lng={pair.lng} />
-          ) : (
-            // The same footprint the two buttons will take, built from the
-            // button shape itself, so the row does not jump sideways the
-            // moment the pair starts parsing. A hidden pair of live controls
-            // would keep the link in the accessibility tree; two empty boxes
-            // keep only the width.
-            <span aria-hidden className="inline-flex items-center gap-1">
-              <span className={buttonClasses("ghost", { icon: true })} />
-              <span className={buttonClasses("ghost", { icon: true })} />
-            </span>
-          )}
+        <div className="flex flex-1 items-center justify-end">
+          {/* Always mounted, greyed until the pair parses: the cell holds one
+              width, so the row does not jump the moment the second half of a
+              coordinate is typed. */}
+          <CoordinateActions lat={pair?.lat ?? null} lng={pair?.lng ?? null} />
         </div>
       </div>
     </div>
