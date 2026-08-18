@@ -1165,6 +1165,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/{geolocation_id}/revisions/{revision_no}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Event Revision
+         * @description One superseded version of an event, by its number.
+         *
+         *     The direct read behind the ``/vN`` address: a reader opening one version
+         *     reads that version, rather than walking the history until the page holding
+         *     it comes back. Public and visibility-gated exactly like the list above.
+         *
+         *     The live row is the current version and is not filed here, so its number
+         *     answers 404: ``GET /{id}`` is where the current version is read. A number
+         *     the event never carried answers 404 too, and a redacted version answers
+         *     with its blanked shape rather than a 404, since the version exists and the
+         *     record still shows that it does.
+         */
+        get: operations["get_event_revision_api_v1_events__geolocation_id__revisions__revision_no__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search": {
         parameters: {
             query?: never;
@@ -4663,6 +4693,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventRevisionList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_event_revision_api_v1_events__geolocation_id__revisions__revision_no__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+                revision_no: number;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRevisionRead"];
                 };
             };
             /** @description Validation Error */

@@ -672,6 +672,89 @@ def test_revisions_read_serves_a_withheld_row_to_an_admin_only(
     assert [item["revision_no"] for item in response.json()["items"]] == [1]
 
 
+def test_one_revision_reads_by_its_number(db, author, conflict, capture_source_tag):
+    """The direct read behind ``/vN``: one version, without walking the list."""
+    geo = _published(db, author, conflict, capture_source_tag, title="v1 title")
+    for title in ("v2 title", "v3 title"):
+        assert (
+            _revise(
+                geo.id, author, data=_form(conflict, capture_source_tag, title=title, note=title)
+            ).status_code
+            == 200
+        )
+
+    response = client.get(f"/api/v1/events/{geo.id}/revisions/1")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["revision_no"] == 1
+    assert body["snapshot"]["title"] == "v1 title"
+    assert body["note"] == "v2 title"
+    assert body["edited_by"]["username"] == author.username
+    assert body["redacted"] is False
+
+    assert client.get(f"/api/v1/events/{geo.id}/revisions/2").json()["snapshot"]["title"] == (
+        "v2 title"
+    )
+
+
+def test_one_revision_404s_outside_the_filed_history(db, author, conflict, capture_source_tag):
+    """The live row is the current version and is not filed, so its own number
+    answers 404 here; so does a number the event never carried, and an unknown
+    event."""
+    geo = _published(db, author, conflict, capture_source_tag)
+    assert _revise(geo.id, author, data=_form(conflict, capture_source_tag)).status_code == 200
+
+    assert client.get(f"/api/v1/events/{geo.id}/revisions/2").status_code == 404
+    assert client.get(f"/api/v1/events/{geo.id}/revisions/9").status_code == 404
+    assert client.get(f"/api/v1/events/{geo.id}/revisions/0").status_code == 404
+    assert client.get(f"/api/v1/events/{uuid.uuid4()}/revisions/1").status_code == 404
+
+
+def test_one_revision_serves_a_redacted_version_blanked(
+    db, author, admin_user, conflict, capture_source_tag
+):
+    """A redacted version is not a missing one: the address stays, and the page
+    it serves is the blanked row rather than a 404."""
+    geo = _published(db, author, conflict, capture_source_tag)
+    assert (
+        _revise(geo.id, author, data=_form(conflict, capture_source_tag, note="why")).status_code
+        == 200
+    )
+    assert _redact(geo.id, 1, admin_user).status_code == 200
+
+    response = client.get(f"/api/v1/events/{geo.id}/revisions/1")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["redacted"] is True
+    assert body["snapshot"] == {}
+    assert body["note"] is None
+    assert body["edited_by"]["username"] == author.username
+
+
+def test_one_revision_serves_a_withheld_row_to_an_admin_only(
+    db, author, admin_user, conflict, capture_source_tag
+):
+    """The direct read takes the same takedown branch as the list."""
+    geo = _published(db, author, conflict, capture_source_tag)
+    assert _revise(geo.id, author, data=_form(conflict, capture_source_tag)).status_code == 200
+    geo.hidden_at = datetime.now(UTC)
+    db.commit()
+
+    assert client.get(f"/api/v1/events/{geo.id}/revisions/1").status_code == 404
+    assert (
+        client.get(
+            f"/api/v1/events/{geo.id}/revisions/1", headers=login_as(client, author)
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"/api/v1/events/{geo.id}/revisions/1", headers=login_as(client, admin_user)
+        ).status_code
+        == 200
+    )
+
+
 # ── Redaction ─────────────────────────────────────────────────────────────
 
 

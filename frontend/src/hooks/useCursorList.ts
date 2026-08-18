@@ -11,6 +11,14 @@ interface PagedResult<T> {
   path: string | null;
 }
 
+/** The rows out of a page payload that *is* the rows. The default for every
+ *  list endpoint answering a bare array; an endpoint answering an envelope
+ *  (`GET /events/{id}/revisions` serves `{items, total}`) passes its own reader.
+ *  Module-level so the default keeps one identity across renders: it is a hook
+ *  dependency, and a fresh closure per render would refetch the first page
+ *  forever. */
+const bareArray = (payload: unknown): unknown[] => payload as unknown[];
+
 /**
  * Declarative GET for a cursor-paged list: fetches the first page on mount and
  * on path change, and appends each further page on `loadMore`.
@@ -28,8 +36,15 @@ interface PagedResult<T> {
  *
  * `reload` refetches the first page and drops the walk so far, for a caller
  * whose own writes change the set (minting or revoking an invite code).
+ *
+ * `rows` reads the page's rows out of its payload, for the endpoints that wrap
+ * them (`{items, total}`). It has to keep one identity across renders, so pass
+ * a module-level function, never an inline closure.
  */
-export function useCursorList<T>(buildPath: (cursor: string | null) => string): {
+export function useCursorList<T, P = T[]>(
+  buildPath: (cursor: string | null) => string,
+  rows: (payload: P) => T[] = bareArray as (payload: P) => T[]
+): {
   items: T[];
   error: string | null;
   loading: boolean;
@@ -55,11 +70,11 @@ export function useCursorList<T>(buildPath: (cursor: string | null) => string): 
 
   useEffect(() => {
     const controller = new AbortController();
-    apiFetchPage<T[]>(firstPath, { signal: controller.signal })
+    apiFetchPage<P>(firstPath, { signal: controller.signal })
       .then((page) => {
         if (controller.signal.aborted) return;
         setResult({
-          items: page.items,
+          items: rows(page.items),
           cursor: page.nextCursor,
           error: null,
           path: firstPath,
@@ -79,7 +94,7 @@ export function useCursorList<T>(buildPath: (cursor: string | null) => string): 
       moreRequest.current?.abort();
       moreRequest.current = null;
     };
-  }, [firstPath, reloadToken]);
+  }, [firstPath, reloadToken, rows]);
 
   const fresh = result.path === firstPath ? result : null;
   const cursor = fresh?.cursor ?? null;
@@ -94,7 +109,7 @@ export function useCursorList<T>(buildPath: (cursor: string | null) => string): 
     const controller = new AbortController();
     moreRequest.current = controller;
     setLoadingMore(true);
-    apiFetchPage<T[]>(buildPath(cursor), { signal: controller.signal })
+    apiFetchPage<P>(buildPath(cursor), { signal: controller.signal })
       .then((page) => {
         if (controller.signal.aborted) return;
         // Append, never replace: the walk is totally ordered, so a page can
@@ -104,7 +119,7 @@ export function useCursorList<T>(buildPath: (cursor: string | null) => string): 
             ? prev
             : {
                 ...prev,
-                items: [...prev.items, ...page.items],
+                items: [...prev.items, ...rows(page.items)],
                 cursor: page.nextCursor,
               }
         );
@@ -127,7 +142,7 @@ export function useCursorList<T>(buildPath: (cursor: string | null) => string): 
         // stays disabled forever.
         setLoadingMore(false);
       });
-  }, [buildPath, cursor, firstPath, loadingMore]);
+  }, [buildPath, cursor, firstPath, loadingMore, rows]);
 
   const reload = useCallback(() => setReloadToken((n) => n + 1), []);
 

@@ -52,6 +52,7 @@ from app.schemas.event import (
     EventCloseRequest,
     EventRead,
     EventRevisionList,
+    EventRevisionRead,
 )
 from app.schemas.report import ContentReportCreate, ContentReportRead
 from app.services import events as events_service
@@ -435,6 +436,24 @@ async def revise_event(
     return _serialize_event(db, revised)
 
 
+def _readable_event(db: Session, geolocation_id: uuid.UUID, current_user: User | None) -> Event:
+    """The event a history read is allowed to serve, or a 404.
+
+    Soft-deleted rows are invisible to everyone; a withheld row is invisible to
+    everyone but an admin, who still needs to read what was taken down in order
+    to judge the report that took it down. The same branch ``GET /{id}`` takes,
+    shared by the two history reads so one of them cannot start serving a
+    takedown the other hides.
+    """
+    query = db.query(Event).filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
+    if current_user is None or not current_user.is_admin:
+        query = query.filter(Event.hidden_at.is_(None))
+    geo = query.first()
+    if geo is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return geo
+
+
 @router.get("/{geolocation_id}/revisions", response_model=EventRevisionList)
 @authenticated_read_quota
 @limiter.limit("120/minute")
@@ -460,13 +479,7 @@ def list_event_revisions(
     and a caller reading past the first page follows the ``cursor`` in the
     ``Link: rel="next"`` header. ``total`` is the whole history, not the page.
     """
-    admin_read = current_user is not None and current_user.is_admin
-    query = db.query(Event).filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
-    if not admin_read:
-        query = query.filter(Event.hidden_at.is_(None))
-    geo = query.first()
-    if geo is None:
-        raise HTTPException(status_code=404, detail="Event not found")
+    geo = _readable_event(db, geolocation_id, current_user)
 
     size = page_size(limit)
     window = revisions_service.list_revisions(
@@ -483,6 +496,35 @@ def list_event_revisions(
         items=[build_revision_read(row) for row in rows],
         total=revisions_service.count_revisions(db, geo.id),
     )
+
+
+@router.get("/{geolocation_id}/revisions/{revision_no}", response_model=EventRevisionRead)
+@authenticated_read_quota
+@limiter.limit("120/minute")
+def get_event_revision(
+    request: Request,
+    geolocation_id: uuid.UUID,
+    revision_no: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
+):
+    """One superseded version of an event, by its number.
+
+    The direct read behind the ``/vN`` address: a reader opening one version
+    reads that version, rather than walking the history until the page holding
+    it comes back. Public and visibility-gated exactly like the list above.
+
+    The live row is the current version and is not filed here, so its number
+    answers 404: ``GET /{id}`` is where the current version is read. A number
+    the event never carried answers 404 too, and a redacted version answers
+    with its blanked shape rather than a 404, since the version exists and the
+    record still shows that it does.
+    """
+    geo = _readable_event(db, geolocation_id, current_user)
+    row = revisions_service.get_revision(db, event_id=geo.id, revision_no=revision_no)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Revision not found")
+    return build_revision_read(row)
 
 
 @router.post("/{geolocation_id}/close", response_model=EventRead)

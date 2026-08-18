@@ -242,19 +242,31 @@ export function renderProof(
   return null;
 }
 
-/** True when the proof document carries at least one image node with a `src`
- *  (anywhere in the tree). A geolocation's proof is a source-media ↔ satellite
- *  cross-reference, so it must show the imagery: text alone can't be audited.
+/** Every image `src` the proof document carries, in document order.
  *
- *  A `src` string is what counts, not the node type, because that is the
- *  verdict the server reaches: `sanitize.extract_image_srcs` collects srcs and
- *  `events._require_proof_image` refuses an empty collection, so an image node
- *  without one never satisfies the floor. A `placeholder://` src counts on both
- *  sides: it is the not-yet-uploaded image riding in the same request. */
+ *  Mirrors `sanitize.extract_image_srcs`, the collection the server reaches its
+ *  own verdicts from: a `src` string is what counts, not the node type, so an
+ *  image node without one is not an image here either. A `placeholder://` src
+ *  counts on both sides: it is the not-yet-uploaded image riding in the same
+ *  request. */
+export function proofImageSrcs(proof: Record<string, unknown> | null): string[] {
+  if (!proof) return [];
+  const srcs: string[] = [];
+  const walk = (node: TiptapNode): void => {
+    if (node.type === "image" && typeof node.attrs?.src === "string") {
+      srcs.push(node.attrs.src);
+    }
+    node.content?.forEach(walk);
+  };
+  walk(proof as TiptapNode);
+  return srcs;
+}
+
+/** True when the proof document carries at least one image (anywhere in the
+ *  tree). A geolocation's proof is a source-media ↔ satellite cross-reference,
+ *  so it must show the imagery: text alone can't be audited. The server refuses
+ *  an empty collection in `events._require_proof_image`, over the same srcs
+ *  `proofImageSrcs` collects. */
 export function proofHasImage(proof: Record<string, unknown> | null): boolean {
-  if (!proof) return false;
-  const hasImage = (node: TiptapNode): boolean =>
-    (node.type === "image" && typeof node.attrs?.src === "string") ||
-    (node.content?.some(hasImage) ?? false);
-  return hasImage(proof as TiptapNode);
+  return proofImageSrcs(proof).length > 0;
 }

@@ -46,6 +46,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/batch-complete` | 🔒 | Publish a selection of your detections in one call (per-row verdicts) |
 | POST | `/events/{id}/revise` | 🔒 | Correct a published event, owner only; files the version it supersedes |
 | GET | `/events/{id}/revisions` | 🌐 | The event's superseded versions, newest first |
+| GET | `/events/{id}/revisions/{revision_no}` | 🌐 | One superseded version, by its number |
 | POST | `/events/{id}/close` | 🔒 | Withdraw a request or reject a detection, owner only (→ `closed`) |
 | POST | `/events/{id}/archives` | 🔒 | Record the archived copy of one of your event's links |
 | GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated, filterable on readiness) |
@@ -108,7 +109,7 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | `POST /auth/reset-password` | 10/hour |
 | `POST /auth/change-password` | 10/hour (keyed per session) |
 | **Events** | |
-| `GET /events`, `GET /events/{id}`, `GET /events/detections` | 120/min |
+| `GET /events`, `GET /events/{id}`, `GET /events/{id}/revisions`, `GET /events/{id}/revisions/{revision_no}`, `GET /events/detections` | 120/min |
 | `GET /events/points` | 60/min |
 | `GET /events/possible-duplicates` | 60/min |
 | `POST /events/import-from-tweet` | 30/min |
@@ -1052,6 +1053,21 @@ Paged like every list endpoint: capped at 100 rows however large `limit` is, and
 |------|------|
 | 404 | Event not found, soft-deleted, or withheld (an admin still reads a withheld row's history, as they do the row itself) |
 | 422 | Malformed `cursor`, or `limit` below 1 |
+
+---
+
+### `GET /events/{id}/revisions/{revision_no}` 🌐
+
+One superseded version by its number, the direct read behind a `/events/{id}/vN` address: a reader opening one version reads that version instead of walking the history until the page holding it comes back. Public and visibility-gated exactly like the list above.
+
+The live row is the current version and is not filed, so its own number answers 404: [`GET /events/{id}`](#get-eventsid) is where the current version is read. A redacted version answers 200 with its blanked shape rather than 404, since the version exists and the record still shows that it does.
+
+**Response 200:** one revision, the same shape as an item of [`GET /events/{id}/revisions`](#get-eventsidrevisions).
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | Event not found, soft-deleted, or withheld (an admin still reads a withheld row's history); or the event carries no version under that number, the current version's own number included |
 
 ---
 

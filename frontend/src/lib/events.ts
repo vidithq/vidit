@@ -2,12 +2,13 @@ import { apiFetch } from "./api";
 import type { components } from "@/lib/api-types";
 import { archiveTooLarge } from "./archive";
 import { cleanNumber, inBounds } from "./coordinates";
-import { proofHasImage } from "./proof";
+import { proofHasImage, proofImageSrcs } from "./proof";
 import type {
   ArchiveImportJob,
   ArchivedLink,
   ArchiveImportPresign,
   EventDetail,
+  EventRevision,
   EventStatus,
   Media,
   TagCategory,
@@ -395,6 +396,330 @@ export function reviseEvent(
     method: "POST",
     body: fd,
   });
+}
+
+// ── Version history ───────────────────────────────────────────────────────
+//
+// The read side of a corrected record. `GET /events/{id}/revisions` serves the
+// superseded versions newest first and `GET /events/{id}/revisions/{n}` serves
+// one of them; the live row is the current version and is served by
+// `GET /events/{id}` alone. Everything below turns those three payloads into
+// what `/events/{id}/history` and `/events/{id}/vN` render.
+
+/** One page of an event's history. `cursor` is the value the previous page's
+ *  `Link: rel="next"` carried, `null` for the first page. */
+export function eventRevisionsPath(id: string, cursor: string | null): string {
+  const params = new URLSearchParams();
+  if (cursor) params.set("cursor", cursor);
+  const query = params.toString();
+  return `/events/${id}/revisions${query ? `?${query}` : ""}`;
+}
+
+/** One filed version by its number, the direct read behind a `/vN` address. */
+export function eventRevisionPath(id: string, revisionNo: number): string {
+  return `/events/${id}/revisions/${revisionNo}`;
+}
+
+/** Where one version of an event is read. The current version keeps the
+ *  canonical `/events/{id}`, so this is only ever a past version's address. */
+export function eventVersionHref(id: string, revisionNo: number): string {
+  return `/events/${id}/v${revisionNo}`;
+}
+
+/** Where an event's version list is read. */
+export function eventHistoryHref(id: string): string {
+  return `/events/${id}/history`;
+}
+
+/** The version number a `/events/{id}/vN` path segment names, or `null` when
+ *  the segment is not one. `v0` and any other shape are `null`, so the route
+ *  answers 404 rather than asking the API about a number no event carries. */
+export function parseVersionSegment(segment: string): number | null {
+  if (!/^v[1-9][0-9]*$/.test(segment)) return null;
+  return Number(segment.slice(1));
+}
+
+/** The one human label per versioned field, in the order a changed-field list
+ *  prints them. They are the names the event page already prints over the same
+ *  values, so a reader recognises what moved without a second vocabulary. Keyed
+ *  by the fields `services/revisions.build_snapshot` files, since a field a
+ *  version cannot carry is a field no diff can name. */
+const VERSION_FIELD_LABELS = {
+  title: "Title",
+  event_coords: "Coordinates",
+  capture_source_coords: "Camera position",
+  event_date: "Event date",
+  event_time: "Event time",
+  source_posted_at: "Source posted",
+  conflicts: "Conflict",
+  tags: "Tags",
+  secondary_source_urls: "Secondary sources",
+  proof: "Proof",
+  proof_images: "Proof images",
+  is_graphic: "Graphic flag",
+} as const;
+
+const asString = (value: unknown, fallback: string): string =>
+  typeof value === "string" ? value : fallback;
+
+const asNullableString = (value: unknown): string | null =>
+  typeof value === "string" ? value : null;
+
+const asCoords = (value: unknown): EventDetail["event_coords"] => {
+  if (value === null || typeof value !== "object") return null;
+  const { lat, lng } = value as { lat?: unknown; lng?: unknown };
+  return typeof lat === "number" && typeof lng === "number" ? { lat, lng } : null;
+};
+
+const asList = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
+
+/**
+ * One filed version as the shape every event surface already renders.
+ *
+ * The snapshot carries the fields an edit can move; the evidence anchor
+ * (`source_url`, the source media) and the row's identity (id, owner, status,
+ * creation date) carry no field because no edit can move them, so they come
+ * from the current row, which is authoritative for them at every version.
+ * `revision_no` is the version being read, so the page prints which one it is.
+ *
+ * Two overlays are rebuilt rather than copied. The archived copies of the
+ * secondary sources are index-aligned with the links they cover, so each of
+ * this version's links takes the copy recorded for that same URL rather than
+ * whatever sits at its position in the current list. A conflict is stored on
+ * the snapshot as its id and name alone, so the referential row is used when
+ * the id still resolves and the stored name stands in when it does not, which
+ * is what keeps a version readable after a conflict is renamed or deleted.
+ *
+ * The snapshot arrives untyped (the backend declares it as a JSON object), so
+ * every field is read defensively: a redacted version, whose snapshot is `{}`,
+ * maps to the current row's immutables and empty content rather than throwing.
+ * Callers render the redaction notice instead of this view.
+ */
+export function snapshotToEventView(
+  current: EventDetail,
+  revision: EventRevision
+): EventDetail {
+  const snapshot = revision.snapshot;
+  const archivedByUrl = new Map(
+    current.secondary_source_urls.map((url, index) => [
+      url,
+      current.archived_secondary_sources[index] ?? null,
+    ])
+  );
+  const conflictsById = new Map(current.conflicts.map((c) => [c.id, c]));
+  const secondarySourceUrls = asList<string>(snapshot.secondary_source_urls);
+  return {
+    ...current,
+    revision_no: revision.revision_no,
+    title: asString(snapshot.title, current.title),
+    event_coords: asCoords(snapshot.event_coords),
+    capture_source_coords: asCoords(snapshot.capture_source_coords),
+    event_date: asNullableString(snapshot.event_date),
+    event_time: asNullableString(snapshot.event_time),
+    source_posted_at: asNullableString(snapshot.source_posted_at),
+    is_graphic: snapshot.is_graphic === true,
+    secondary_source_urls: secondarySourceUrls,
+    archived_secondary_sources: secondarySourceUrls.map(
+      (url) => archivedByUrl.get(url) ?? null
+    ),
+    tags: asList<EventDetail["tags"][number]>(snapshot.tags),
+    conflicts: asList<{ id: string; name: string }>(snapshot.conflicts).map(
+      (stored) =>
+        conflictsById.get(stored.id) ?? {
+          id: stored.id,
+          name: stored.name,
+          ongoing: false,
+          start_year: null,
+          end_year: null,
+          tier: null,
+          wikidata_id: null,
+        }
+    ),
+    proof: (snapshot.proof as Record<string, unknown> | null | undefined) ?? null,
+  };
+}
+
+/** Two instants are the same moment whatever their spelling: the snapshot and
+ *  the live row serialise the same column through two paths, so a comparison
+ *  on the strings would report a change on `+00:00` against `Z`. An
+ *  unparseable value falls back to the string it is. */
+function sameInstant(a: string | null, b: string | null): boolean {
+  if (a === null || b === null) return a === b;
+  const [left, right] = [Date.parse(a), Date.parse(b)];
+  return isNaN(left) || isNaN(right) ? a === b : left === right;
+}
+
+const sameCoords = (
+  a: EventDetail["event_coords"],
+  b: EventDetail["event_coords"]
+): boolean => (a === null || b === null ? a === b : a.lat === b.lat && a.lng === b.lng);
+
+const sameList = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((value, index) => value === b[index]);
+
+/**
+ * The versioned fields that differ between one version and the one before it,
+ * as the labels a history row prints ("Title, Coordinates, Proof").
+ *
+ * Computed on the client from two adjacent versions, since the API serves what
+ * each version held rather than what an edit did. Both arguments are the view
+ * shape, so the current row and a mapped snapshot compare identically.
+ *
+ * Tags and conflicts compare by identity rather than by name: a referential row
+ * renamed under a published event changes no version. `proof_images` is the set
+ * of images the proof body displays, which moves with the body and is named
+ * separately because swapping one image is the edit a reader most wants to see
+ * announced.
+ */
+export function changedFields(version: EventDetail, previous: EventDetail): string[] {
+  const ids = (rows: readonly { id: string }[]) => rows.map((row) => row.id);
+  const changed: string[] = [];
+  const flag = (label: string, differs: boolean) => {
+    if (differs) changed.push(label);
+  };
+  flag(VERSION_FIELD_LABELS.title, version.title !== previous.title);
+  flag(
+    VERSION_FIELD_LABELS.event_coords,
+    !sameCoords(version.event_coords, previous.event_coords)
+  );
+  flag(
+    VERSION_FIELD_LABELS.capture_source_coords,
+    !sameCoords(version.capture_source_coords, previous.capture_source_coords)
+  );
+  flag(VERSION_FIELD_LABELS.event_date, version.event_date !== previous.event_date);
+  flag(VERSION_FIELD_LABELS.event_time, version.event_time !== previous.event_time);
+  flag(
+    VERSION_FIELD_LABELS.source_posted_at,
+    !sameInstant(version.source_posted_at, previous.source_posted_at)
+  );
+  flag(
+    VERSION_FIELD_LABELS.conflicts,
+    !sameList(ids(version.conflicts), ids(previous.conflicts))
+  );
+  flag(VERSION_FIELD_LABELS.tags, !sameList(ids(version.tags), ids(previous.tags)));
+  flag(
+    VERSION_FIELD_LABELS.secondary_source_urls,
+    !sameList(version.secondary_source_urls, previous.secondary_source_urls)
+  );
+  flag(
+    VERSION_FIELD_LABELS.proof,
+    JSON.stringify(version.proof ?? null) !== JSON.stringify(previous.proof ?? null)
+  );
+  flag(
+    VERSION_FIELD_LABELS.proof_images,
+    !sameList(proofImageSrcs(version.proof), proofImageSrcs(previous.proof))
+  );
+  flag(VERSION_FIELD_LABELS.is_graphic, version.is_graphic !== previous.is_graphic);
+  return changed;
+}
+
+/** One version of an event, as the history list and the version page read it. */
+export interface EventVersion {
+  /** Which version this is. `1` is the record as it was published. */
+  number: number;
+  /** True for the live row, the one `/events/{id}` serves. */
+  current: boolean;
+  /** The event as it stood at this version, or `null` when the version was
+   *  redacted and carries no content to render. */
+  view: EventDetail | null;
+  /** Who produced this version, and when. */
+  editor: EventDetail["owner"] | null;
+  createdAt: string;
+  /** That editor's own words about the edit, `null` when they left none. */
+  note: string | null;
+  /** Whether an admin blanked this version's content. */
+  redacted: boolean;
+  /** The fields this version changed against the one before it, empty when the
+   *  edit moved none of them. `null` when the two versions cannot be compared
+   *  at all: version 1 had nothing before it, and a redacted version on either
+   *  side carries no content to compare. */
+  changed: string[] | null;
+}
+
+/** The revision rows one version is assembled from.
+ *
+ *  `own` holds this version's content, and is absent for the current version,
+ *  which is the live row rather than a filed one. `producedBy` holds the edit
+ *  that **produced** this version, which the API files on the version that edit
+ *  superseded, so it is the row numbered one lower. `previous` is the view of
+ *  that lower version, the base the changed-field list is computed against. */
+export interface EventVersionRows {
+  own?: EventRevision | null;
+  producedBy?: EventRevision | null;
+  previous?: EventDetail | null;
+}
+
+/**
+ * One version of an event, from the rows that describe it.
+ *
+ * A version is described by the edit that **produced** it, the way a page
+ * history reads: who made that edit, when, their note about it, and the fields
+ * it moved. The API files the two halves of that apart, because a revision row
+ * carries the content of the version it holds alongside the byline, date and
+ * note of the edit that superseded it. Version `n` therefore takes its content
+ * from row `n` and its authorship from row `n - 1`; version 1, which no edit
+ * produced, takes the analyst who published the record and the date the row was
+ * opened.
+ */
+export function eventVersion(
+  current: EventDetail,
+  number: number,
+  { own = null, producedBy = null, previous = null }: EventVersionRows = {}
+): EventVersion {
+  const isCurrent = number === current.revision_no;
+  const view = isCurrent
+    ? current
+    : own && !own.redacted
+      ? snapshotToEventView(current, own)
+      : null;
+  return {
+    number,
+    current: isCurrent,
+    view,
+    editor: producedBy ? producedBy.edited_by : number === 1 ? current.owner : null,
+    createdAt: producedBy ? producedBy.created_at : current.created_at,
+    note: producedBy?.note ?? null,
+    redacted: own?.redacted ?? false,
+    changed: view && previous ? changedFields(view, previous) : null,
+  };
+}
+
+/**
+ * The event's versions, newest first, assembled from the current row and the
+ * history rows loaded so far.
+ *
+ * `hasMore` is the walk's own answer about whether the history has further
+ * pages. While it does, the oldest row loaded is authorship for the version
+ * above it rather than a version of its own, so it is held back until the page
+ * that completes it arrives: a row is either whole or absent, never a version
+ * number with no editor beside it.
+ */
+export function eventVersions(
+  current: EventDetail,
+  revisions: EventRevision[],
+  hasMore = false
+): EventVersion[] {
+  const byNumber = new Map(revisions.map((row) => [row.revision_no, row]));
+  const oldest = hasMore && revisions.length > 0 ? Math.min(...byNumber.keys()) + 1 : 1;
+
+  // The version below is built as its own row too, so this is the diff base
+  // only: the content it reads is the same snapshot either way.
+  const viewOf = (number: number): EventDetail | null =>
+    eventVersion(current, number, { own: byNumber.get(number) }).view;
+
+  const versions: EventVersion[] = [];
+  for (let number = current.revision_no; number >= oldest; number--) {
+    const own = byNumber.get(number);
+    if (number !== current.revision_no && own === undefined) break;
+    versions.push(
+      eventVersion(current, number, {
+        own,
+        producedBy: byNumber.get(number - 1),
+        previous: number > 1 ? viewOf(number - 1) : null,
+      })
+    );
+  }
+  return versions;
 }
 
 /**
