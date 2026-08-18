@@ -175,6 +175,30 @@ def _img() -> ParsedMedia:
     return ParsedMedia(kind="image", remote_url="https://pbs.twimg.com/media/x.jpg")
 
 
+def _publish_the_default_pair(db, owner: User) -> None:
+    """A ``geolocated`` row at the post and coordinate ``_draft()`` defaults to.
+
+    The human submit a machine re-detection has to leave alone, which is what
+    the skip, the untouched row and the empty warning count are all read
+    against.
+    """
+    db.add(
+        Event(
+            owner_id=owner.id,
+            title="Human submit",
+            event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+            source_url="https://example.com/footage",
+            source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+            event_date=date(2025, 11, 12),
+            status=STATUS_GEOLOCATED,
+            geolocated_at=datetime.now(UTC),
+            detected_from_tweet_id=1,
+            detected_from_url="https://x.com/own/status/1",
+        )
+    )
+    db.commit()
+
+
 async def test_assemble_injects_proof_images_into_proof_doc(db, owner):
     # Proof media persist as role=proof rows AND land as image nodes in the proof
     # JSON; that is how the read surfaces proof images (source travels in ``media``).
@@ -520,20 +544,7 @@ async def test_the_entry_that_produced_a_draft_is_stamped_on_the_row(db, owner, 
 async def test_geolocated_pair_is_skipped(db, owner):
     # A geolocated row already at this (detected_from_tweet_id, coordinate)
     # blocks a machine re-detection.
-    existing = Event(
-        owner_id=owner.id,
-        title="Human submit",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/footage",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=date(2025, 11, 12),
-        status=STATUS_GEOLOCATED,
-        geolocated_at=datetime.now(UTC),
-        detected_from_tweet_id=1,
-        detected_from_url="https://x.com/own/status/1",
-    )
-    db.add(existing)
-    db.commit()
+    _publish_the_default_pair(db, owner)
 
     outcome = await _persist(db, owner=owner, drafts=[_draft()], fetch_media=_missing_fetcher)
     assert len(outcome.skipped) == 1 and outcome.created == []
@@ -649,20 +660,7 @@ async def test_a_pass_that_wrote_nothing_reports_no_warnings(db, owner):
     A draft whose match is a published row is left alone, so there is no draft
     to go and look at and nothing to warn about.
     """
-    published = Event(
-        owner_id=owner.id,
-        title="Human submit",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/footage",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        event_date=date(2025, 11, 12),
-        status=STATUS_GEOLOCATED,
-        geolocated_at=datetime.now(UTC),
-        detected_from_tweet_id=1,
-        detected_from_url="https://x.com/own/status/1",
-    )
-    db.add(published)
-    db.commit()
+    _publish_the_default_pair(db, owner)
 
     outcome = await _persist(db, owner=owner, drafts=[_draft()], fetch_media=_missing_fetcher)
 
@@ -672,19 +670,7 @@ async def test_a_pass_that_wrote_nothing_reports_no_warnings(db, owner):
 
 async def test_the_warnings_count_the_rows_the_pass_wrote(db, owner):
     """Two drafts, one already published: only the one that landed is counted."""
-    published = Event(
-        owner_id=owner.id,
-        title="Human submit",
-        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
-        source_url="https://example.com/footage",
-        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
-        status=STATUS_GEOLOCATED,
-        geolocated_at=datetime.now(UTC),
-        detected_from_tweet_id=1,
-        detected_from_url="https://x.com/own/status/1",
-    )
-    db.add(published)
-    db.commit()
+    _publish_the_default_pair(db, owner)
 
     outcome = await _persist(
         db,
@@ -818,37 +804,6 @@ async def test_reimporting_the_same_detection_twice_writes_nothing(db, owner):
     assert row.updated_at == before_updated_at
     assert {(m.id, m.storage_url, m.sha256) for m in row.media} == before_media
     assert _stored_objects(row.id) == before_objects
-
-
-async def test_backfill_from_archive_end_to_end(db, owner):
-    # Full chain: read the synthetic X export -> stitch -> resolve -> persist.
-    outcome = await backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE)
-    assert len(outcome.created) == 6  # see test_archive for the per-tweet breakdown
-
-    geos = db.query(Event).filter(Event.owner_id == owner.id).all()
-    assert len(geos) == 6
-    assert all(g.status == STATUS_DETECTED for g in geos)
-    assert all(g.proof and g.proof["content"] for g in geos)
-    # No tweet in the synthetic archive quotes or links footage: every row is
-    # honestly source-less, nothing deduced from the posts' own URLs.
-    assert all(g.source_url is None for g in geos)
-    assert all(g.source_posted_at is None for g in geos)
-
-    # Only the two photo-bearing tweets (1001 + the 2001/2002 thread head)
-    # ingested media, and their own photos are annotation (role=proof), never
-    # promoted to source; the coord-only tweets persist media-incomplete.
-    media_rows = (
-        db.query(Media)
-        .join(Event, Media.event_id == Event.id)
-        .filter(Event.owner_id == owner.id)
-        .all()
-    )
-    assert len(media_rows) == 2
-    assert all(m.role == "proof" for m in media_rows)
-
-    # Re-running the same archive is a no-op (idempotent on post id + coord).
-    again = await backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE)
-    assert again.created == [] and len(again.skipped) == 6
 
 
 async def test_a_backfill_refuses_an_owner_with_no_linked_handle(db, owner):

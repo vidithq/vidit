@@ -1,17 +1,16 @@
-"""Acquisition: quoted sub-record, link extraction, the one hop, the chase.
+"""Acquisition: link extraction, the one hop, the chase.
 
-Tests over canned syndication bodies (no network, a ``MockTransport``): the
-inline quoted tweet must resolve to a full sub-record (id, handle, date,
-media), ``entities.urls`` must reach the record as expanded URLs bound to their
+Tests over canned syndication bodies (no network, a ``MockTransport``):
+``entities.urls`` must reach the record as expanded URLs bound to their
 wrappers, and ``acquire_thread`` must read the post plus its same-author parent,
-nothing further, then chase the thread's sole source candidate.
+nothing further, then chase the thread's sole source candidate. What the
+acquired thread then resolves to is pinned by ``tests/ingest_contract``.
 """
 
 import httpx
 import pytest
 
 from app.services.tweet_ingest import TweetNotAccessible, acquire_thread
-from app.services.tweet_ingest.acquire import _quoted_record
 from app.services.tweet_ingest.syndication import (
     _cache_clear,
     extract_source_links,
@@ -39,32 +38,6 @@ def test_extract_source_links_expands_dedupes_skips_tco():
 
 def test_extract_source_links_empty_without_entities():
     assert extract_source_links({}) == []
-
-
-def test_quoted_record_carries_date_and_media():
-    body = {
-        "quoted_tweet": {
-            "id_str": "111",
-            "created_at": "2025-06-07T07:27:30.000Z",
-            "user": {"screen_name": "dom"},
-            "text": "footage here",
-            "mediaDetails": [
-                {"type": "photo", "media_url_https": "https://pbs.twimg.com/media/x.jpg"}
-            ],
-        }
-    }
-    quoted = _quoted_record(body)
-    assert quoted is not None
-    assert quoted.tweet_id == "111"
-    assert quoted.handle == "dom"
-    assert quoted.created_at.startswith("2025-06-07")
-    assert len(quoted.media) == 1
-    assert quoted.media[0].kind == "image"
-    assert quoted.media[0].origin == "quote"
-
-
-def test_quoted_record_none_without_quote():
-    assert _quoted_record({"text": "no quote here"}) is None
 
 
 # ── acquire_thread: the one hop the bot and the paste share ───────────────

@@ -26,6 +26,7 @@ import httpx
 from app.services.tweet_ingest import Resolution, acquire_thread, read_tweets, stitch
 from app.services.tweet_ingest.records import TweetRecord
 from app.services.tweet_ingest.syndication import _cache_clear
+from tests._fixtures import write_archive_js
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -342,19 +343,6 @@ def archive_tweet_from_thread_entry(
                 ArchiveMediaFile(relative_path=f"tweets_media/{tweet_id}-{basename}", data=TINY_MP4)
             )
     return files
-
-
-def write_archive_js(dest: Path, entries: list[dict[str, Any]]) -> None:
-    """Write ``tweets.js`` under ``dest`` wrapping ``entries`` in the export shape.
-
-    Each entry is a raw X-export tweet dict; the reader unwraps
-    ``window.YTD.tweets.part0 = [{"tweet": ...}, ...]``.
-    """
-    dest.mkdir(parents=True, exist_ok=True)
-    (dest / "tweets.js").write_text(
-        "window.YTD.tweets.part0 = " + json.dumps([{"tweet": e} for e in entries]),
-        encoding="utf-8",
-    )
 
 
 def build_consolidated_archive(typologies: list[str], dest: Path) -> None:

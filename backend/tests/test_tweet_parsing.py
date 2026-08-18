@@ -262,15 +262,6 @@ def test_extract_coords_dedupes_across_extractors():
     assert len(coords) == 1
 
 
-def test_extract_coords_has_no_candidate_cap():
-    # Every coordinate the analyst wrote makes a draft; the 6-decimal dedup is
-    # the only guard, and the length of a post already bounds the count.
-    text = (
-        "48.111111, 37.111111\n48.222222, 37.222222\n48.333333, 37.333333\n48.444444, 37.444444\n"
-    )
-    assert len(extract_coords(text)) == 4
-
-
 # ── Title heuristic ───────────────────────────────────────────────────────
 
 

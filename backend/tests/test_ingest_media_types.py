@@ -10,7 +10,6 @@ mislabelled JPEG off syndication.
 from __future__ import annotations
 
 import io
-import json
 from pathlib import Path
 
 from PIL import Image
@@ -24,6 +23,7 @@ from app.services.tweet_ingest.records import (
     ParsedMedia,
 )
 from app.services.tweet_ingest.syndication import extract_media
+from tests._fixtures import write_archive_js
 
 
 def test_an_imported_photo_is_stored_as_the_derivative_format() -> None:
@@ -65,22 +65,16 @@ def test_a_png_reads_the_same_off_the_export_and_off_syndication(tmp_path: Path)
     different stored types depending on the entry that read the post."""
     url = "https://pbs.twimg.com/media/SHOT.png"
     archive = tmp_path / "arc"
-    archive.mkdir()
-    (archive / "tweets.js").write_text(
-        "window.YTD.tweets.part0 = "
-        + json.dumps(
-            [
-                {
-                    "tweet": {
-                        "id_str": "7001",
-                        "full_text": "shot",
-                        "created_at": "Wed Nov 12 14:33:00 +0000 2025",
-                        "extended_entities": {"media": [{"type": "photo", "media_url_https": url}]},
-                    }
-                }
-            ]
-        ),
-        encoding="utf-8",
+    write_archive_js(
+        archive,
+        [
+            {
+                "id_str": "7001",
+                "full_text": "shot",
+                "created_at": "Wed Nov 12 14:33:00 +0000 2025",
+                "extended_entities": {"media": [{"type": "photo", "media_url_https": url}]},
+            }
+        ],
     )
 
     [record] = read_tweets(archive, handle="ana")

@@ -33,7 +33,6 @@ from app.services.bot import (
     run_bot_once,
 )
 from app.services.tweet_ingest import (
-    COORDS_INVALID,
     DUPLICATE_MEDIA,
     REFUSAL_MESSAGES,
     SEVERAL_COORDINATES,
@@ -48,25 +47,23 @@ from app.services.tweet_ingest.syndication import _cache_clear
 BOT_USER_ID = "999000"
 HANDLE = f"hawk{uuid.uuid4().hex[:8]}"
 
-FOREIGN_ID = "1930000000000000001"
-PARENT_ID = "1930000000000000002"
-TAGGED_ID = "1930000000000000003"
-NO_COORD_ID = "1930000000000000004"
-OUT_OF_BOUNDS_ID = "1930000000000000005"
-COORD_ONLY_ID = "1930000000000000006"
-MULTI_COORD_ID = "1930000000000000007"
-AMBIGUOUS_ID = "1930000000000000008"
-REPLY_BARE_ID = "1930000000000000010"
-TWO_POST_PARENT_ID = "1930000000000000011"
-TWO_POST_TAGGED_ID = "1930000000000000012"
-TWO_POST_TAGGED_TWICE_ID = "1930000000000000013"
-FOREIGN_PARENT_TAG_ID = "1930000000000000014"
-RETWEET_ID = "1930000000000000015"
+# The mention ids sit above any snowflake X will mint this century (9.1e18 is
+# year 2079), because the poll's ``since_id`` is the ledger's max id over the
+# whole table: a real mention of the live bot left in a shared development
+# database would otherwise outrank the fixtures and starve the two cursor
+# tests below of their own rows.
+FOREIGN_ID = "9100000000000000001"
+TAGGED_ID = "9100000000000000003"
+NO_COORD_ID = "9100000000000000004"
+TWO_POST_PARENT_ID = "9100000000000000011"
+TWO_POST_TAGGED_ID = "9100000000000000012"
+TWO_POST_TAGGED_TWICE_ID = "9100000000000000013"
+FOREIGN_PARENT_TAG_ID = "9100000000000000014"
 # The tagged post X refuses to serve unauthenticated: ``_syndication_client``
 # answers the tombstone body for this id, so nothing is ever read from it. Its
 # ``BODIES`` entry exists only to feed the mentions payload's ``text``.
-TOMBSTONE_ID = "1930000000000000017"
-SOURCE_ID = "1930000000000000042"
+TOMBSTONE_ID = "9100000000000000017"
+SOURCE_ID = "9100000000000000042"
 
 _SOURCE_URL = f"https://x.com/warfootage/status/{SOURCE_ID}"
 _STRUCT_TEXT = (
@@ -78,22 +75,15 @@ _STRUCT_TEXT = (
 )
 _SOURCE_ENTITIES = {"urls": [{"url": "https://t.co/src", "expanded_url": _SOURCE_URL}]}
 
-# The chain: a foreign coordinate tweet, the analyst's own coordinate reply to
-# it, and the analyst's tag on their own reply. The foreign ancestor is never
-# read: the acquisition stops at the same author.
+# A foreign coordinate tweet the analyst tags the bot under, and the tagged
+# posts themselves. The foreign post is never read: the acquisition stops at
+# the same author.
 BODIES = {
     FOREIGN_ID: {
         "id_str": FOREIGN_ID,
         "created_at": "2026-03-11T10:00:00.000Z",
         "user": {"screen_name": "other_analyst"},
         "text": "look at 11.111111, 22.222222 maybe?",
-    },
-    PARENT_ID: {
-        "id_str": PARENT_ID,
-        "created_at": "2026-03-11T11:00:00.000Z",
-        "user": {"screen_name": HANDLE},
-        "text": "Geolocated 55.751200, 37.617600 near the bridge",
-        "in_reply_to_status_id_str": FOREIGN_ID,
     },
     TAGGED_ID: {
         "id_str": TAGGED_ID,
@@ -107,53 +97,6 @@ BODIES = {
         "created_at": "2026-03-11T13:00:00.000Z",
         "user": {"screen_name": HANDLE},
         "text": "@viditbot nothing to see here",
-    },
-    OUT_OF_BOUNDS_ID: {
-        "id_str": OUT_OF_BOUNDS_ID,
-        "created_at": "2026-03-11T14:00:00.000Z",
-        "user": {"screen_name": HANDLE},
-        "text": "@viditbot Geolocated 991.123456, 37.654321 somewhere",
-    },
-    # A post whose only line is a coordinate: a draft still lands, with an
-    # empty title the analyst fills at review.
-    COORD_ONLY_ID: {
-        "id_str": COORD_ONLY_ID,
-        "created_at": "2026-03-11T15:00:00.000Z",
-        "user": {"screen_name": HANDLE},
-        "text": "@viditbot\n48.123456, 37.654321",
-    },
-    MULTI_COORD_ID: {
-        "id_str": MULTI_COORD_ID,
-        "created_at": "2026-03-11T15:30:00.000Z",
-        "user": {"screen_name": HANDLE},
-        "text": (
-            "@viditbot Air defence positions at 35.700886, 51.391665 "
-            "and 35.800886, 51.491665 on the rooftops"
-        ),
-    },
-    # Two candidate links: the source slot stays empty and both land as
-    # mirrors, with a warning on the reply.
-    AMBIGUOUS_ID: {
-        "id_str": AMBIGUOUS_ID,
-        "created_at": "2026-03-11T16:00:00.000Z",
-        "user": {"screen_name": HANDLE},
-        "text": "@viditbot Depot strike 48.123456, 37.654321\nhttps://t.co/src\nhttps://t.co/tg",
-        "entities": {
-            "urls": [
-                {"url": "https://t.co/src", "expanded_url": _SOURCE_URL},
-                {"url": "https://t.co/tg", "expanded_url": "https://t.me/chan/42"},
-            ]
-        },
-    },
-    # A bare tag replying to the analyst's own coordinate tweet: the one hop
-    # brings the parent in, so the coordinate lands under the parent's
-    # provenance.
-    REPLY_BARE_ID: {
-        "id_str": REPLY_BARE_ID,
-        "created_at": "2026-03-11T18:00:00.000Z",
-        "user": {"screen_name": HANDLE},
-        "text": "@viditbot see above",
-        "in_reply_to_status_id_str": PARENT_ID,
     },
     # The two-post field format: the coordinate on the analyst's post, the
     # source link on their own reply where the bot is tagged. Media-less on
@@ -197,13 +140,6 @@ BODIES = {
         "user": {"screen_name": HANDLE},
         "text": "@viditbot relay this",
         "in_reply_to_status_id_str": FOREIGN_ID,
-    },
-    # A hand-typed retweet: someone else's words, so it produces nothing.
-    RETWEET_ID: {
-        "id_str": RETWEET_ID,
-        "created_at": "2026-03-11T20:00:00.000Z",
-        "user": {"screen_name": HANDLE},
-        "text": "RT @front_cam: Geolocated 48.123456, 37.654321 at the depot @viditbot",
     },
     # A perfectly readable post whose own body X will not serve: the tombstone
     # alone must stop it, so the text is deliberately valid.
@@ -400,22 +336,6 @@ async def test_a_tagged_post_creates_a_draft(db, linked_owner):
     assert "http" not in text and ".app" not in text and ".com" not in text
 
 
-async def test_a_bare_tag_reads_the_same_authors_parent(db, linked_owner):
-    # The one hop: the tagged post carries nothing, its author's own parent
-    # carries the coordinate, and provenance anchors on that parent.
-    outcome, _, posted, _ = await _run(db, [REPLY_BARE_ID])
-
-    assert outcome.events_created == 1
-    event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
-    assert event.detected_from_url == f"https://x.com/{HANDLE}/status/{PARENT_ID}"
-    assert event.title == "Geolocated 55.751200, 37.617600 near the bridge"
-    # The foreign grandparent is never read, so its coordinate cannot leak.
-    assert to_shape(event.event_coords).y == pytest.approx(55.7512)
-    assert "11.111111" not in json.dumps(event.proof)
-    (payload,) = posted
-    assert payload["text"].startswith("✅ 1 geolocation draft saved")
-
-
 async def test_the_two_post_field_format_lands_one_draft(db, linked_owner):
     # The coordinate on the analyst's post, the source link on their own reply
     # where the bot is tagged. The TikTok link is outside the chase vocabulary,
@@ -473,57 +393,6 @@ async def test_a_tag_under_a_foreign_parent_reads_only_the_tag(db, linked_owner)
     assert outcome.events_created == 0
     (payload,) = posted  # the linked author still gets the diagnosis
     assert payload["text"].startswith("❌ Nothing saved\n⚠ No coordinate in the post\n")
-
-
-async def test_a_coordinate_only_post_lands_a_titleless_draft(db, linked_owner):
-    # No line qualifies as a title, so the analyst types one at review rather
-    # than the mention being refused.
-    outcome, _, _, _ = await _run(db, [COORD_ONLY_ID])
-
-    assert outcome.events_created == 1
-    event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
-    assert event.title == ""
-
-
-async def test_several_coordinates_land_one_draft_each_with_a_warning(db, linked_owner):
-    outcome, _, posted, _ = await _run(db, [MULTI_COORD_ID])
-
-    assert outcome.events_created == 2
-    assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 2
-    (payload,) = posted
-    text = payload["text"]
-    assert text.startswith("✅ 2 geolocation drafts saved")
-    assert "Several coordinates, one draft each" in text
-
-
-async def test_several_candidate_links_leave_the_source_empty_and_warn(db, linked_owner):
-    outcome, _, posted, _ = await _run(db, [AMBIGUOUS_ID])
-
-    assert outcome.events_created == 1
-    event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
-    assert event.source_url is None
-    assert [link.url for link in event.source_links] == [_SOURCE_URL, "https://t.me/chan/42"]
-    (payload,) = posted
-    assert "Several possible sources" in payload["text"]
-
-
-async def test_a_retweet_produces_nothing(db, linked_owner):
-    # A hand-typed retweet carries someone else's words, on every entry.
-    outcome, _, posted, _ = await _run(db, [RETWEET_ID])
-
-    assert outcome.no_detection == 1
-    assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 0
-    (payload,) = posted
-    assert payload["text"].startswith("❌ Nothing saved\n⚠ No coordinate in the post\n")
-
-
-async def test_an_out_of_bounds_coordinate_is_named_as_such(db, linked_owner):
-    outcome, _, posted, _ = await _run(db, [OUT_OF_BOUNDS_ID])
-
-    assert outcome.no_detection == 1
-    assert outcome.events_created == 0
-    (payload,) = posted
-    assert payload["text"].startswith(f"❌ Nothing saved\n⚠ {REFUSAL_MESSAGES[COORDS_INVALID]}\n")
 
 
 async def test_tombstoned_tagged_post_earns_a_reply_not_a_page(db, linked_owner, monkeypatch):
@@ -719,16 +588,21 @@ async def test_failure_reply_loop_guard_on_replies_to_the_bot(db, linked_owner):
     assert ledger.reply_tweet_id is None
 
 
-async def test_reply_budget_cap_skips_reply_but_draft_still_lands(db, linked_owner, monkeypatch):
+@pytest.mark.parametrize("cap", ["_MAX_REPLIES_PER_HOUR", "_MAX_REPLIES_PER_AUTHOR_PER_HOUR"])
+async def test_reply_budget_cap_skips_reply_but_draft_still_lands(
+    db, linked_owner, monkeypatch, cap
+):
+    # Either cap spent, in total or on this one author: detection is unbilled,
+    # so the draft still lands and only the gesture is skipped.
     import app.services.bot as bot_service
 
-    monkeypatch.setattr(bot_service, "_MAX_REPLIES_PER_HOUR", 0)
+    monkeypatch.setattr(bot_service, cap, 0)
     outcome, _, posted, liked = await _run(db, [TAGGED_ID])
 
     assert posted == []
     assert liked == []
     assert outcome.replies_posted == 0
-    assert outcome.events_created == 1  # detection is unbilled; only the gesture is skipped
+    assert outcome.events_created == 1
 
 
 async def test_self_mention_is_ledgered_so_cursor_advances(db):
@@ -789,7 +663,7 @@ async def test_gap_detector_fires_on_failed_verdict_too(db, linked_owner, monkey
         "capture_message",
         lambda message, level=None: captured.append((message, level)),
     )
-    unknown_id = "1930000000000000009"
+    unknown_id = "9100000000000000009"
 
     def read_handler(_req: httpx.Request) -> httpx.Response:
         return httpx.Response(

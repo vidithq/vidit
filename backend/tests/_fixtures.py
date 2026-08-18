@@ -1,4 +1,5 @@
-"""Shared upload-path test fixtures.
+"""Shared test fixtures: upload bytes, and the X-export file every archive
+test writes.
 
 Real (non-stub) image bytes. The previous ``b"\\xff\\xd8\\xff\\xd9"`` 4-byte
 JPEG stub passed content-type sniffing but Pillow rejects it as
@@ -13,6 +14,24 @@ generated once via:
 """
 
 from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+
+def write_archive_js(dest: Path, entries: list[dict[str, Any]]) -> None:
+    """Write ``tweets.js`` under ``dest`` wrapping ``entries`` in the export shape.
+
+    Each entry is a raw X-export tweet dict; the reader unwraps
+    ``window.YTD.tweets.part0 = [{"tweet": ...}, ...]``.
+    """
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / "tweets.js").write_text(
+        "window.YTD.tweets.part0 = " + json.dumps([{"tweet": e} for e in entries]),
+        encoding="utf-8",
+    )
+
 
 # 1×1 red JPEG, ~635 bytes, no EXIF, no ICC. Round-trips through any
 # image decoder (Pillow, libvips, browser, OS preview) cleanly.
