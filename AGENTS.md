@@ -25,6 +25,7 @@ CI enforces a floor: every PR to `main` must touch *both* `docs/` and `planning/
 5. **Adjectives → consequences or delete.** "Critical" → "fails the deploy if missing". "Important" → delete. "Complex" → describe or drop.
 6. **If a sentence can be deleted with no information loss, delete it.**
 7. **Google developer documentation style in `docs/*.md`.** Second person, present tense, active voice, imperative mood for instructions, sentence-case headings, one idea per sentence. No aphorisms, idioms, metaphors, marketing adjectives, rhetorical questions, or exclamation marks.
+8. **Diagram first.** A human-facing doc opens with a Mermaid diagram of the mechanism, function or module names in bold, one visual class per level of sharing or criticality, and a legend; the prose then explains one region of the diagram at a time, and a section that needs more detail gets another diagram in the same style rather than paragraphs. Reference tables stay tables (the grammar table, warning and refusal codes, disposition matrices), and every diagram renders locally before it is committed (`npx -y @mermaid-js/mermaid-cli -i x.mmd -o x.png -b white -w 1500`); [`ingestion.md`](docs/ingestion.md) is the model.
 
 ## Conventions
 
