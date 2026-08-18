@@ -5,7 +5,7 @@
 acquired, :func:`import_pasted_post` over the post an analyst pasted,
 :func:`backfill_from_archive` over every stitched self-thread of an export. It
 turns each ``Draft`` into an ``Event`` row owned by the importer, with media
-through the evidence pipeline and idempotency on ``(detected_from_tweet_id OR
+through the evidence pipeline and idempotency on ``(the thread's post ids OR
 source_url, coordinate)``. The draft never reaches the ORM, which is what keeps
 the engine pure.
 
@@ -32,7 +32,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.cache import points_cache
-from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
+from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, DetectedVia, Event
 from app.models.media import Media, MediaRole
 from app.models.user import User
 from app.services.events import build_source_link_rows, replace_source_links
@@ -167,16 +167,22 @@ def _disposition(db: Session, owner: User, draft: Draft) -> tuple[Verdict, Event
     """Verdict for one detection, with the row it applies to when there is one.
 
     Scoped to ``owner``: a detection only dedups against the backfiller's own
-    rows. Among those, looks at every row sharing ``detected_from_tweet_id`` (or,
-    when the draft declares one, ``source_url``) whatever state that row is in, and
-    matches the coordinate to ``_COORD_PLACES``. Each match is read by
+    rows. Among those, looks at every row the draft's provenance or its
+    ``source_url`` matches, whatever state that row is in, and matches the
+    coordinate to ``_COORD_PLACES``. Each match is read by
     :func:`_row_disposition`; a single ``skip`` among them wins, since a row the
     import must not touch already holds the pair. No match at all creates.
 
-    The provenance leg is the post's id, not its URL: one post spells the same
-    URL several ways (``x.com`` or ``twitter.com``, the handle in any case, the
-    handle-less ``/i/web/status/`` form), and two spellings must not split one
-    geolocation across two drafts.
+    The provenance leg is the thread's post ids, not a URL and not the anchor
+    alone. Not a URL, because one post spells the same URL several ways
+    (``x.com`` or ``twitter.com``, the handle in any case, the handle-less
+    ``/i/web/status/`` form). Not the anchor alone, because the entries anchor
+    differently on one self-thread: an export stitches A→B→C whole and anchors on
+    A, while a bot tag or a paste on C reads one hop and anchors on B, so one
+    geolocation imported through two entries would land as two drafts. The rows
+    whose thread shares a post with the incoming one are the match, an array
+    overlap, which holds whichever entry ran first. The anchor equality stays for
+    the rows written before the array existed.
 
     The ``source_url`` leg catches the delete-and-repost duplicate: the analyst
     posts the same geolocation twice (a typo fix, an X repost), the bot is
@@ -190,6 +196,8 @@ def _disposition(db: Session, owner: User, draft: Draft) -> tuple[Verdict, Event
     legs = []
     if draft.detected_from_tweet_id is not None:
         legs.append(Event.detected_from_tweet_id == draft.detected_from_tweet_id)
+    if draft.thread_tweet_ids:
+        legs.append(Event.detected_thread_tweet_ids.overlap(list(draft.thread_tweet_ids)))
     if draft.source_url is not None:
         legs.append(Event.source_url == draft.source_url)
     if not legs:
@@ -375,6 +383,7 @@ async def _persist_one(
     *,
     owner: User,
     draft: Draft,
+    via: DetectedVia,
     fetch_media: MediaFetcher,
     media_cache: _MediaCache,
 ) -> Event:
@@ -398,6 +407,11 @@ async def _persist_one(
             detected_at=datetime.now(UTC),
             detected_from_tweet_id=draft.detected_from_tweet_id,
             detected_from_url=draft.detected_from_url,
+            # Provenance, written once: the thread the draft came from and the
+            # entry that read it. A re-import through another entry moves
+            # neither (see :func:`_apply_import_fields`).
+            detected_thread_tweet_ids=list(draft.thread_tweet_ids) or None,
+            detected_via=via,
         )
         # The mirrors the post also linked. Already normalized + capped by the
         # resolution, so no second pass here.
@@ -447,8 +461,12 @@ def _apply_import_fields(db: Session, row: Event, draft: Draft) -> tuple[bool, b
     is assigned, so a re-import of an unchanged post dirties no attribute and
     SQLAlchemy emits no UPDATE, which is what keeps ``updated_at`` still.
     ``id``, ``owner_id``, ``created_at``, ``detected_at``, ``status`` and the
-    two ``detected_from_*`` columns are not the import's to move: the row keeps
-    its identity, its place in the queue and the provenance it was filed under.
+    four provenance columns (``detected_from_tweet_id``, ``detected_from_url``,
+    ``detected_thread_tweet_ids``, ``detected_via``) are not the import's to
+    move: the row keeps its identity, its place in the queue, the thread it was
+    read from and the entry that first read it. A bot tag over a draft the
+    archive created therefore updates the draft and still reads ``archive``,
+    which is what happened.
     """
     changed = False
     if _projected(row) != (draft.coordinate.lat, draft.coordinate.lng):
@@ -639,6 +657,7 @@ async def persist_drafts(
     *,
     owner: User,
     resolution: Resolution,
+    via: DetectedVia,
     fetch_media: MediaFetcher,
     on_progress: Callable[[int, int], None] | None = None,
 ) -> Outcome:
@@ -651,12 +670,17 @@ async def persist_drafts(
     an export. ``owner`` is the importer, the account whose verified handle the
     posts belong to; every row is attributed to it.
 
-    A draft is matched on ``(detected_from_tweet_id OR source_url, coordinate)``
-    across states, then dispatched by the disposition matrix (see
-    :func:`_row_disposition`): an open ``detected`` draft takes the newer parse
-    in place, every other match is left untouched, and only an unmatched draft
-    creates a row. A second pass over the same export therefore writes nothing
-    at all and counts as ``skipped``, not ``updated``.
+    ``via`` names the entry, and every row this pass creates is stamped with it
+    (``events.detected_via``). An upsert leaves it where it was: it says which
+    entry first read the post, not which one last touched the row.
+
+    A draft is matched on its provenance (the thread's post ids) or its
+    ``source_url``, plus the coordinate, across states, then dispatched by the
+    disposition matrix (see :func:`_row_disposition`): an open ``detected`` draft
+    takes the newer parse in place, every other match is left untouched, and only
+    an unmatched draft creates a row. A second pass over the same export
+    therefore writes nothing at all and counts as ``skipped``, not ``updated``,
+    and so does the same thread arriving through another entry.
 
     Each draft commits in its own transaction so one failure neither loses the
     others nor strands S3 objects: a raise is caught, counted in
@@ -721,6 +745,7 @@ async def persist_drafts(
                     db,
                     owner=owner,
                     draft=draft,
+                    via=via,
                     fetch_media=fetch_media,
                     media_cache=media_cache,
                 )
@@ -821,6 +846,7 @@ async def import_pasted_post(
         db,
         owner=owner,
         resolution=resolve_threads([acquired.records]),
+        via="paste",
         fetch_media=fetch_cdn_media,
     )
 
@@ -864,6 +890,7 @@ async def backfill_from_archive(
         db,
         owner=owner,
         resolution=resolve_threads(threads),
+        via="archive",
         fetch_media=archive_media_fetcher(archive_dir),
         on_progress=on_progress,
     )

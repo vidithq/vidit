@@ -21,6 +21,17 @@ function missingLabel(blockers: string[]): string {
     : `Missing: ${blockers.length} pieces`;
 }
 
+/** Where a draft came in from, as the metadata line says it. One word beside
+ *  the date and the source host, in the same secondary text: the three entries
+ *  read one engine, so this answers "how did this reach me", not "how good is
+ *  it". A draft imported before the column existed carries no value and the
+ *  segment is simply absent, like a missing event date. */
+const ENTRY_LABELS: Record<string, string> = {
+  bot: "Tagged the bot",
+  paste: "Pasted",
+  archive: "From your archive",
+};
+
 /**
  * One row of the Detections queue: a thumbnail, the title, the event date, the
  * source host, and one state badge. Deliberately denser and quieter than
@@ -74,6 +85,9 @@ export function DetectionQueueRow({ draft }: { draft: EventDetail }) {
               {draft.event_date ? formatDate(draft.event_date) : "No event date"}
             </span>
             <SourceLabel variant="inline" url={draft.source_url} />
+            {draft.detected_via !== null && ENTRY_LABELS[draft.detected_via] !== undefined && (
+              <span>{ENTRY_LABELS[draft.detected_via]}</span>
+            )}
           </div>
         </div>
         {/* Nothing on the row takes a pointer of its own, so the badge sits

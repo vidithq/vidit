@@ -186,6 +186,7 @@ const MOCK_DETAIL: EventDetail = {
   event_time: "15:45:00",
   source_posted_at: "2026-05-09T15:45:00Z",
   detected_from_url: null,
+  detected_via: null,
   archived_detected_from: null,
   detected_post_at: null,
   proof: null,

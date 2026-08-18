@@ -17,7 +17,7 @@ from sqlalchemy import (
     Time,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -47,6 +47,13 @@ STATUS_CLOSED: EventStatus = "closed"
 # ``detected`` = rejected. Drives the status badge, the requested-view routing,
 # and lets re-import treat a closed detection as re-importable.
 BeforeClosedStatus = Literal["requested", "detected"]
+
+# Which of the three ingest entries produced a machine draft. Stamped once, by
+# ``detection.persist_drafts``, from a value each entry passes; NULL on a human
+# submit and on every row written before the column existed. The value domain is
+# pinned at the database by ``ck_events_detected_via_valid``; keep the two in
+# step. Read-only on the wire, like the other provenance fields.
+DetectedVia = Literal["bot", "paste", "archive"]
 
 # Field-length ceilings for the create / edit multipart forms, kept next to the
 # columns so a Form(...) ``max_length`` can't drift from them. ``TITLE`` is the
@@ -211,6 +218,21 @@ class Event(Base):
     # (``tweet_ingest.urls.canonical_tweet_url``) and what an analyst opens.
     detected_from_tweet_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     detected_from_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Every post id of the thread the draft was read from, the anchor included.
+    # The re-import match reads it so the three entries land on one row for one
+    # geolocation: an archive stitches a self-thread A→B→C whole and anchors on
+    # A, while a bot tag or a paste on C reads one hop and anchors on B, so
+    # matching the anchor alone would file one geolocation as two drafts. Written
+    # once, at creation: it is provenance, not import-owned state. NULL for human
+    # submits; rows written before the column carry their anchor id alone.
+    detected_thread_tweet_ids: Mapped[list[int] | None] = mapped_column(
+        ARRAY(BigInteger), nullable=True
+    )
+    # Which entry produced this draft (see ``DetectedVia``). Stamped at creation
+    # and never moved: a re-import through another entry does not rewrite where
+    # the draft first came from. NULL for human submits and for rows that predate
+    # the column.
+    detected_via: Mapped[DetectedVia | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -322,6 +344,14 @@ class Event(Base):
             "status IN ('requested', 'detected', 'geolocated', 'closed')",
             name="ck_events_status_valid",
         ),
+        # Same reason as the status domain above, for the entry that produced a
+        # machine draft. NULL is in-domain: a human submit names no entry, and
+        # neither does a row written before the column. Mirror of
+        # ``DetectedVia``; keep the two in step.
+        CheckConstraint(
+            "detected_via IS NULL OR detected_via IN ('bot', 'paste', 'archive')",
+            name="ck_events_detected_via_valid",
+        ),
         # "Open requests / detections / geolocations, newest first" — the list,
         # map and requested-view reads all filter on status.
         Index("ix_events_status_created_at", "status", "created_at"),
@@ -333,6 +363,15 @@ class Event(Base):
             "owner_id",
             "detected_from_tweet_id",
             postgresql_where="detected_from_tweet_id IS NOT NULL",
+        ),
+        # Backs the other leg of the same match, "does this incoming thread share
+        # a post with a draft I already hold": an array overlap, which reads off
+        # a GIN index. Partial on the populated cohort for the same reason.
+        Index(
+            "ix_events_detected_thread_tweet_ids",
+            "detected_thread_tweet_ids",
+            postgresql_using="gin",
+            postgresql_where="detected_thread_tweet_ids IS NOT NULL",
         ),
         # Backs the admin machine-detection cohort scans, which count the rows
         # carrying a provenance link at all.

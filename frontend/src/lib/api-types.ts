@@ -2288,6 +2288,8 @@ export interface components {
             detected_from_url: string | null;
             /** Detected Post At */
             detected_post_at: string | null;
+            /** Detected Via */
+            detected_via: ("bot" | "paste" | "archive") | null;
             event_coords: components["schemas"]["CoordsRead"] | null;
             /** Event Date */
             event_date: string | null;

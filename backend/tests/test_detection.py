@@ -21,7 +21,7 @@ from shapely.geometry import Point
 from app.cache import points_cache
 from app.config import settings
 from app.database import SessionLocal
-from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
+from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, DetectedVia, Event
 from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
@@ -105,10 +105,16 @@ async def _missing_fetcher(_parsed: ParsedMedia) -> tuple[bytes, str] | None:
     return None
 
 
-async def _persist(db, *, owner: User, drafts: list[Draft], fetch_media) -> Outcome:
+async def _persist(
+    db, *, owner: User, drafts: list[Draft], fetch_media, via: DetectedVia = "archive"
+) -> Outcome:
     """Persist ``drafts`` as one resolution, which is what an entry hands over."""
     return await persist_drafts(
-        db, owner=owner, resolution=Resolution(drafts=drafts), fetch_media=fetch_media
+        db,
+        owner=owner,
+        resolution=Resolution(drafts=drafts),
+        via=via,
+        fetch_media=fetch_media,
     )
 
 
@@ -117,6 +123,7 @@ def _draft(
     lat: float = 48.5,
     lng: float = 34.5,
     url: str = "https://x.com/own/status/1",
+    thread_tweet_ids: tuple[int, ...] | None = None,
     media: list[ParsedMedia] | None = None,
     proof_media: list[ParsedMedia] | None = None,
     source_url: str | None = None,
@@ -137,6 +144,12 @@ def _draft(
         # so a test varying one varies both, as the engine does.
         detected_from_tweet_id=int(url.rsplit("/", 1)[-1]),
         detected_from_url=url,
+        # A one-post thread by default: the anchor is the whole thread, which
+        # is what the two live entries read off a post with no same-author
+        # parent. A stitched thread passes its ids.
+        thread_tweet_ids=(
+            thread_tweet_ids if thread_tweet_ids is not None else (int(url.rsplit("/", 1)[-1]),)
+        ),
         event_date=date(2025, 11, 12),
         source_posted_at=source_posted_at,
         detected_post_at=datetime(2025, 11, 12, 14, 33, tzinfo=UTC),
@@ -404,6 +417,92 @@ async def test_two_spellings_of_one_post_land_on_one_draft(db, owner):
     assert row.title == "Second read"
     # The provenance the row was filed under is not the import's to move.
     assert row.detected_from_url == "https://x.com/own/status/7"
+
+
+async def test_an_archive_thread_then_a_bot_tag_on_its_tail_is_one_draft(db, owner):
+    """The cross-entry case the anchor alone could not see.
+
+    A 3-post self-thread A→B→C with the coordinate in C. The export stitches it
+    whole and anchors the draft on A; a bot tag on C reads one hop and anchors
+    on B. Two anchors, one geolocation, so the match reads the threads' post ids
+    and finds the row whichever entry ran first.
+    """
+    archive = _draft(
+        url="https://x.com/own/status/101",
+        thread_tweet_ids=(101, 102, 103),
+        title="From the export",
+    )
+    await _persist(db, owner=owner, drafts=[archive], fetch_media=_missing_fetcher, via="archive")
+
+    tagged = _draft(
+        url="https://x.com/own/status/102",
+        thread_tweet_ids=(102, 103),
+        title="From the tag",
+    )
+    outcome = await _persist(
+        db, owner=owner, drafts=[tagged], fetch_media=_missing_fetcher, via="bot"
+    )
+
+    assert len(outcome.updated) == 1 and outcome.created == []
+    row = db.query(Event).filter(Event.owner_id == owner.id).one()
+    assert row.title == "From the tag"
+    # Provenance is not the import's to move, the entry that first read the post
+    # included: the row still says where the draft came from.
+    assert row.detected_from_url == "https://x.com/own/status/101"
+    assert row.detected_thread_tweet_ids == [101, 102, 103]
+    assert row.detected_via == "archive"
+
+
+async def test_a_bot_tag_then_the_archive_of_the_same_thread_is_one_draft(db, owner):
+    """The same, in the other order: the export arrives after the tag and lands
+    on the row the tag created rather than beside it."""
+    tagged = _draft(
+        url="https://x.com/own/status/102",
+        thread_tweet_ids=(102, 103),
+        title="From the tag",
+    )
+    await _persist(db, owner=owner, drafts=[tagged], fetch_media=_missing_fetcher, via="bot")
+
+    archive = _draft(
+        url="https://x.com/own/status/101",
+        thread_tweet_ids=(101, 102, 103),
+        title="From the export",
+    )
+    outcome = await _persist(
+        db, owner=owner, drafts=[archive], fetch_media=_missing_fetcher, via="archive"
+    )
+
+    assert len(outcome.updated) == 1 and outcome.created == []
+    row = db.query(Event).filter(Event.owner_id == owner.id).one()
+    assert row.title == "From the export"
+    assert row.detected_from_url == "https://x.com/own/status/102"
+    assert row.detected_via == "bot"
+
+
+async def test_two_threads_sharing_no_post_are_two_drafts(db, owner):
+    """The overlap is what matches, so two unrelated threads at one coordinate
+    still land as two rows: the leg widens the match, it does not collapse
+    everything an owner holds at one place."""
+    first = _draft(url="https://x.com/own/status/201", thread_tweet_ids=(201, 202))
+    second = _draft(url="https://x.com/own/status/301", thread_tweet_ids=(301, 302))
+    await _persist(db, owner=owner, drafts=[first], fetch_media=_missing_fetcher)
+    outcome = await _persist(db, owner=owner, drafts=[second], fetch_media=_missing_fetcher)
+
+    assert len(outcome.created) == 1 and outcome.updated == []
+    assert db.query(Event).filter(Event.owner_id == owner.id).count() == 2
+
+
+@pytest.mark.parametrize(("via", "tweet_id"), [("bot", 401), ("paste", 402), ("archive", 403)])
+async def test_the_entry_that_produced_a_draft_is_stamped_on_the_row(db, owner, via, tweet_id):
+    outcome = await _persist(
+        db,
+        owner=owner,
+        drafts=[_draft(url=f"https://x.com/own/status/{tweet_id}")],
+        fetch_media=_missing_fetcher,
+        via=via,
+    )
+    [row] = outcome.created
+    assert row.detected_via == via
 
 
 async def test_geolocated_pair_is_skipped(db, owner):

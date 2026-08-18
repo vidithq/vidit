@@ -5,7 +5,12 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.archive_import_job import ArchiveImportJobStatus
-from app.models.event import SOURCE_URL_MAX_LENGTH, BeforeClosedStatus, EventStatus
+from app.models.event import (
+    SOURCE_URL_MAX_LENGTH,
+    BeforeClosedStatus,
+    DetectedVia,
+    EventStatus,
+)
 from app.models.source_archive import SourceArchiveProvider
 from app.schemas.conflict import ConflictRead
 from app.schemas.media import MediaRead
@@ -263,6 +268,11 @@ class EventRead(BaseModel):
     # The post a machine detection was imported from, a provenance link
     # distinct from ``source_url`` (footage origin). NULL for human submits.
     detected_from_url: str | None
+    # Which of the three ingest entries produced the draft: ``bot``, ``paste``
+    # or ``archive``. Read-only, stamped at creation and never moved, so a
+    # re-import through another entry does not rewrite it. NULL for human
+    # submits and for machine rows that predate the column.
+    detected_via: DetectedVia | None
     # The archived copy of ``detected_from_url``, same shape and same NULL
     # conditions as ``archived_source``: the provenance link is archivable on
     # the same terms as the footage source.

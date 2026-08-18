@@ -93,6 +93,7 @@ function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     close_reason: null,
     before_closed_status: null,
     detected_from_url: "https://x.com/analyst/status/1",
+    detected_via: null,
     detected_post_at: "2026-05-30T15:00:00Z",
     owner: { id: "u1", username: "ana" },
     tags: [],

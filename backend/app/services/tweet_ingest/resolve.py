@@ -377,6 +377,12 @@ class Draft:
     # adapter handed over a non-numeric one, which no upstream writes.
     detected_from_tweet_id: int | None
     detected_from_url: str
+    # Every post id of the thread this draft was read from, the anchor included
+    # and in thread order. The entries anchor differently on one self-thread
+    # (the archive stitches it whole, the two live entries read one hop), so
+    # this is what lets the write path recognise the same geolocation whichever
+    # entry read it. Non-numeric ids are dropped, like the anchor's.
+    thread_tweet_ids: tuple[int, ...]
     # Provisional event date = the geoloc tweet's post date; the owner corrects
     # it at submit (the true event usually predates the post). None when the
     # tweet's timestamp is unusable.
@@ -530,6 +536,15 @@ def _thread_drafts(thread: list[TweetRecord]) -> tuple[list[Draft], str | None]:
     title = derive_title(own_text)
     proof_text = clean_proof_text(own_text)
     warnings = _warnings_for(scan.coords, source_url, secondary_source_urls)
+    # Every post the thread is made of, not only the anchor: the entries anchor
+    # differently on one self-thread, so this is the set the write path
+    # recognises a re-import by. The retweets ``own_posts`` dropped are not part
+    # of it, since they are not the analyst's thread.
+    thread_tweet_ids = tuple(
+        tweet_id
+        for tweet_id in (_tweet_id(post.tweet_id) for post in posts)
+        if tweet_id is not None
+    )
     return [
         Draft(
             coordinate=coord,
@@ -538,6 +553,7 @@ def _thread_drafts(thread: list[TweetRecord]) -> tuple[list[Draft], str | None]:
             source_url=source_url,
             detected_from_tweet_id=_tweet_id(head.tweet_id),
             detected_from_url=canonical_tweet_url(head.tweet_id, head.handle),
+            thread_tweet_ids=thread_tweet_ids,
             event_date=_event_date(head.created_at, detected_post_at),
             source_posted_at=_posted_at(source_iso) if source_iso else None,
             detected_post_at=detected_post_at,

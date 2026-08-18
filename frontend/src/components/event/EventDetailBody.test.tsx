@@ -43,6 +43,7 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     close_reason: null,
     before_closed_status: null,
     detected_from_url: null,
+    detected_via: null,
     archived_detected_from: null,
     detected_post_at: null,
     owner: {

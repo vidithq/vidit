@@ -258,6 +258,7 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
         db,
         owner=owner,
         resolution=resolution,
+        via="archive",
         fetch_media=archive_media_fetcher(archive),
     )
     assert len(outcome.created) == 1
@@ -308,6 +309,7 @@ async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: 
         db,
         owner=owner,
         resolution=resolution,
+        via="archive",
         fetch_media=archive_media_fetcher(archive),
     )
     assert len(outcome.created) == 1 and outcome.failed == 0
@@ -399,6 +401,7 @@ async def test_reimport_fills_a_draft_an_earlier_run_left_bare(db, owner, tmp_pa
         db,
         owner=owner,
         resolution=Resolution(drafts=[_bare_draft(tweet_id, permalink)]),
+        via="archive",
         fetch_media=archive_media_fetcher(archive),
     )
     assert len(stale.created) == 1
@@ -437,6 +440,7 @@ def _bare_draft(tweet_id: str, permalink: str) -> Draft:
         source_url=None,
         detected_from_tweet_id=int(tweet_id),
         detected_from_url=permalink,
+        thread_tweet_ids=(int(tweet_id),),
         event_date=date(2026, 3, 4),
         source_posted_at=None,
         detected_post_at=datetime.fromisoformat("2026-03-04T13:20:00+00:00"),

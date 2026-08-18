@@ -132,6 +132,8 @@ The `self_thread` fixture ships export entries rather than syndication bodies, s
 
 A machine-produced event starts in the `detected` status. A `detected` row may lack a `source_url`, a source media item, or a location. This partial state is normal, not an error condition.
 
+Which of the three entries produced a draft is recorded on the row as `detected_via` (`bot`, `paste` or `archive`), stamped once at creation and read-only on the wire. The detections queue shows it beside the event date and the source host. It answers how a draft reached the analyst, never how good it is: the three entries read one engine.
+
 A `detected` row is **public on every read surface from the moment it lands**, badged as a machine draft and attributed to the importing account (see the `EventStatus` block in [`event.py`](../backend/app/models/event.py)). Review gates the vouching, not the visibility. The owner either completes the draft and promotes it to `geolocated`, an explicit act that puts their name behind the coordinates, or rejects it, which closes the row (`before_closed_status = 'detected'`) and takes it off the read surfaces. Reader-facing copy states it the same way: the guides say a draft is on the map straight away, marked and credited, and that only the owner turns one into a geolocation.
 
 The source requirement applies at promotion to `geolocated`. `services/events.geolocate` rejects the transition with `source_url_required` (400) when no `source_url` is set. This matches the `ck_events_source_url_status` CHECK constraint on the `events` table: `requested` and `geolocated` rows always carry a `source_url` (see [`data-model.md`](data-model.md#events)). A human submit or edit already requires a source URL at the form level, so this invariant holds across every path that produces a `requested` or `geolocated` row.
@@ -210,9 +212,15 @@ An X "Download your data" export exposes the analyst's own reply edges and inlin
 
 ### Re-import
 
-A detection is matched against the importing owner's own rows on `(detected_from_tweet_id, coordinate)`, and on `(source_url, coordinate)` when the detection declares a source. The coordinate compares to six decimal places, the same rounding the coordinate extraction dedups on.
+A detection is matched against the importing owner's own rows on the provenance leg plus the coordinate, and on `(source_url, coordinate)` when the detection declares a source. The coordinate compares to six decimal places, the same rounding the coordinate extraction dedups on.
 
-The provenance leg is the post's ID, not its URL. One post spells the same URL several ways (`x.com` or `twitter.com`, the handle in any case, the handle-less `/i/web/status/` form), and two spellings of one post must not split one geolocation across two drafts. `detected_from_url` stays as the display value, written from the ID at the engine's exit (see [`data-model.md`](data-model.md#events)). The source URL leg collapses the delete-and-repost shape: two provenance posts declaring the same footage at the same coordinate are one draft.
+The provenance leg is the thread's post IDs, not a URL and not the anchor alone.
+
+Not a URL, because one post spells the same URL several ways (`x.com` or `twitter.com`, the handle in any case, the handle-less `/i/web/status/` form), and two spellings of one post must not split one geolocation across two drafts. `detected_from_url` stays as the display value, written from the ID at the engine's exit (see [`data-model.md`](data-model.md#events)).
+
+Not the anchor alone, because the entries anchor differently on one thread. In a 3-post self-thread A→B→C carrying the coordinate in C, the archive stitches the thread whole and anchors the draft on A, while a bot tag or a paste on C reads [one hop](#the-contract) and anchors on B. Matching the anchor would file one geolocation as two drafts, one per entry. Each row therefore stores every post ID of the thread it was read from (`events.detected_thread_tweet_ids`), and a detection matches when the incoming thread's IDs intersect a stored set. The intersection holds whichever entry ran first. Rows written before the column carry their anchor ID alone, which is what they used to be matched on.
+
+The source URL leg collapses the delete-and-repost shape: two provenance posts declaring the same footage at the same coordinate are one draft.
 
 What happens to a matched row depends on what the row is. [`detection._row_disposition`](../backend/app/services/detection.py) holds the matrix:
 
@@ -225,7 +233,7 @@ What happens to a matched row depends on what the row is. [`detection._row_dispo
 | `closed` | Skipped. A rejected detection stays rejected, so nobody rejects the same post twice. |
 | No match | A new `detected` row. |
 
-**What an update rewrites.** The row keeps its id, its owner, its `created_at` and `detected_at` stamps, the post it was detected from (`detected_from_tweet_id` and `detected_from_url`), and its place in the review queue. The import overwrites what it owns: the title, the coordinate, the event date, `source_url`, the [secondary source links](data-model.md#event_source_links), `source_posted_at`, `detected_post_at`, the proof document, and the media. This is safe because no analyst-facing path writes those fields and leaves the row `detected`: every field edit is welded to the `geolocated` promotion, so an open draft carries no analyst work to lose. The one artifact an analyst can attach to a draft is an [archived copy](#source-archival), and those survive the update; if the update moves `source_url`, the copy filed as the source is re-filed under another link the row still carries, or dropped when the row no longer carries it.
+**What an update rewrites.** The row keeps its id, its owner, its `created_at` and `detected_at` stamps, its provenance (`detected_from_tweet_id`, `detected_from_url`, `detected_thread_tweet_ids` and `detected_via`), and its place in the review queue. Provenance says where the draft first came from, so a bot tag landing on a draft the archive created updates the draft and still reads `archive`. The import overwrites what it owns: the title, the coordinate, the event date, `source_url`, the [secondary source links](data-model.md#event_source_links), `source_posted_at`, `detected_post_at`, the proof document, and the media. This is safe because no analyst-facing path writes those fields and leaves the row `detected`: every field edit is welded to the `geolocated` promotion, so an open draft carries no analyst work to lose. The one artifact an analyst can attach to a draft is an [archived copy](#source-archival), and those survive the update; if the update moves `source_url`, the copy filed as the source is re-filed under another link the row still carries, or dropped when the row no longer carries it.
 
 **An unchanged post writes nothing.** Every field is compared before it is written, and media is compared by SHA-256, so re-running the same export leaves `updated_at` where it was, uploads no bytes and creates no storage objects. Such a row counts as `skipped`, not `updated`.
 

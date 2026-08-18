@@ -20,6 +20,7 @@ function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     close_reason: null,
     before_closed_status: null,
     detected_from_url: "https://x.com/analyst/status/1",
+    detected_via: null,
     detected_post_at: "2026-05-30T15:00:00Z",
     owner: { id: "u1", username: "ana" },
     tags: [],
@@ -76,6 +77,18 @@ describe("DetectionQueueRow", () => {
       "href",
       "/events/d1/edit?queue=1"
     );
+  });
+
+  it("says which entry the draft came in from, beside the date and the host", () => {
+    render(<DetectionQueueRow draft={draftFixture({ detected_via: "archive" })} />);
+    expect(screen.getByText("From your archive")).toBeInTheDocument();
+  });
+
+  it("says nothing about the entry when the draft predates the record", () => {
+    render(<DetectionQueueRow draft={draftFixture({ detected_via: null })} />);
+    // Absent rather than "Unknown": the row is a triage line, and a segment
+    // saying nothing is worse than one segment fewer.
+    expect(screen.queryByText(/archive|Pasted|bot/)).toBeNull();
   });
 
   it("names the one piece a draft is missing", () => {

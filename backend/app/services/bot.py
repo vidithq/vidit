@@ -394,6 +394,7 @@ async def _process_mention(
         db,
         owner=owner,
         resolution=resolve_threads([acquired.records]),
+        via="bot",
         fetch_media=fetch_cdn_media,
     )
     if assembled.reason is not None:
