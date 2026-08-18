@@ -63,25 +63,22 @@ const TILE_TITLE = "text-sm font-medium text-neutral-100";
 
 // The three rules that decide whether a post produces anything at all. Every
 // entry applies them, so they read the same whichever way you import.
-const RULES: { step: string; label: string; body: string }[] = [
+const RULES: { label: string; body: string }[] = [
   {
-    step: "1",
     label: "A coordinate in your own text",
-    body: "Your post carries a coordinate anywhere in its text, or the post of yours it directly replies to does. A coordinate that lives only in a post you quote is that author's geolocation, not yours.",
+    body: "Your post carries a coordinate anywhere in its text, or the post of yours it directly replies to does; one outside the world does not count. A coordinate that lives only in a post you quote is that author's geolocation, not yours.",
   },
   {
-    step: "2",
     label: "Your own post",
     body: "Every entry reads posts from the X handle linked to your Vidit account, and nothing else. A retweet produces nothing: its words belong to another account.",
   },
   {
-    step: "3",
     label: "A source, if you have one",
     body: "A quote of the source post, or a single link, becomes the source. Several links leave the source empty and land as secondary links you pick from at review.",
   },
 ];
 
-// The four X-side export steps are shared with the import panel on `/submit`;
+// The three X-side export steps are shared with the import panel on `/submit`;
 // only the closing step differs, since a reader here has not opened the drop
 // zone yet.
 const EXPORT_STEPS: NumberedStep[] = [
@@ -120,12 +117,9 @@ export default function ImportGuidePage() {
           What makes a draft
         </h2>
         <div className="grid gap-4 sm:grid-cols-3">
-          {RULES.map(({ step, label, body }) => (
-            <div key={step} className={TILE}>
-              <span className="inline-flex size-9 items-center justify-center rounded-md border border-neutral-700 bg-neutral-800 font-mono text-sm text-orange-400">
-                {step}
-              </span>
-              <h3 className={`mt-4 ${TILE_TITLE}`}>{label}</h3>
+          {RULES.map(({ label, body }) => (
+            <div key={label} className={TILE}>
+              <h3 className={TILE_TITLE}>{label}</h3>
               <p className={`mt-1.5 ${NOTE}`}>{body}</p>
             </div>
           ))}
@@ -146,8 +140,7 @@ export default function ImportGuidePage() {
             thread carries is a candidate, whatever the platform. Three are
             never candidates, because none points at footage: a link back to
             your own post, an X link naming no post, and a Google Maps link. A
-            quote outranks links. One candidate becomes the source; several
-            leave the source empty and all of them land as secondary links.
+            quote outranks links.
           </li>
           <li>
             <span className="text-neutral-100">Media.</span> A quoted
@@ -178,13 +171,6 @@ export default function ImportGuidePage() {
             Importing the same geolocation again reuses the first draft instead
             of duplicating it. A draft you already published or rejected stays
             as it is, so re-running an import is always safe.
-          </li>
-          <li>
-            <span className="text-neutral-100">
-              Nothing imports without a coordinate.
-            </span>{" "}
-            A post whose own text carries none, or whose coordinate sits
-            outside the world, produces nothing.
           </li>
         </ul>
         <p className={NOTE}>
@@ -252,7 +238,7 @@ export default function ImportGuidePage() {
                   replyingTo={MOCK_ANALYST.handle}
                   media={{
                     kind: "video",
-                    label: "the re-uploaded footage (source)",
+                    label: "the re-uploaded footage video (source)",
                   }}
                 >
                   <MockPostLink>tiktok.com/@warfootage/video/7</MockPostLink>
@@ -291,7 +277,8 @@ export default function ImportGuidePage() {
           </Link>
           , pick <span className="text-neutral-100">From an X post</span> and
           paste the link to one of your own posts. The draft is created while
-          you wait and the review opens on it. Your own posts only, matched
+          you wait; the review opens on it when nothing needs your attention,
+          otherwise the page tells you what does. Your own posts only, matched
           against the X account linked to your profile; a third party&apos;s
           footage goes through the plain submit form with a source URL.
         </p>
@@ -312,7 +299,7 @@ export default function ImportGuidePage() {
           published comes back as a draft. This is the only entry that reads
           your whole history at once, and the only entry that stitches full self
           threads, so a coordinate you posted three replies down still lands
-          beside the source you posted at the top. Media files import intact.
+          beside the source you posted at the top.
         </p>
         <NumberedSteps steps={EXPORT_STEPS} />
         <p className="text-xs leading-relaxed text-neutral-400">

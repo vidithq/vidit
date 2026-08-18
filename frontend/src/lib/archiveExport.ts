@@ -1,4 +1,4 @@
-import { Clock, Download, Scissors, Settings } from "lucide-react";
+import { Clock, Download, Settings } from "lucide-react";
 
 import type { NumberedStep } from "@/components/ui/NumberedSteps";
 
@@ -28,10 +28,5 @@ export const ARCHIVE_EXPORT_STEPS: NumberedStep[] = [
     icon: Download,
     title: "Download the .zip",
     body: "Open the link from X's email or in-app banner and save the zip to your device.",
-  },
-  {
-    icon: Scissors,
-    title: "Trim it to your posts (recommended)",
-    body: "Open the archive and keep only your tweets.js and tweets_media folder (inside the data folder); delete the rest, then re-zip. We strip it automatically too, this is for full control.",
   },
 ];
