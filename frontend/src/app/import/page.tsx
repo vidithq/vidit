@@ -24,11 +24,11 @@ import { ARCHIVE_EXPORT_STEPS, X_ARCHIVE_HELP } from "@/lib/archiveExport";
 // `docs/ingestion.md` holds the mechanism; this page is its reader-facing
 // projection.
 //
-// Order is orientation, then action, then reference: the intro card opens on a
-// chooser linking the three entry sections, the two conditions follow in one
-// paragraph, the entries come in the order a reader picks them (archive for a
-// whole history, bot for a daily feed, paste for a single post), and the field
-// list a reader consults rather than reads closes the page.
+// Order is orientation, then action, then reference: one common card (what
+// Vidit reads, the two conditions, a chooser linking the three entry sections),
+// then the entries in the order a reader picks them (archive for a whole
+// history, paste for a single post, bot for a daily feed), and the field list a
+// reader consults rather than reads closes the page.
 //
 // Anchors are contract: `/bot` and `/archive` redirect to `#bot` and
 // `#archive`, the bot's X bio points at `/bot`, and the import panels link to
@@ -98,14 +98,14 @@ const ENTRIES = [
     when: "Your whole history, once.",
   },
   {
-    href: "#bot",
-    title: "Tag @ViditBot on X",
-    when: "Every day, from your feed.",
-  },
-  {
     href: "#paste",
     title: "Paste a post URL",
     when: "One post, no public trace.",
+  },
+  {
+    href: "#bot",
+    title: "Tag @ViditBot on X",
+    when: "Every day, from your feed.",
   },
 ];
 
@@ -120,6 +120,17 @@ export default function ImportGuidePage() {
           reads the same whichever you use. There is no format to learn: write
           your post as you always do.
         </p>
+        <h2 id="detection" className={SECTION}>
+          What makes a detection
+        </h2>
+        <p className={BODY}>
+          Two conditions, the same for every entry. The post is yours: it comes
+          from the X handle linked to your Vidit account, and a retweet does not
+          count. It carries a coordinate: anywhere in its text, or in the text
+          of your own post it directly replies to. A coordinate that appears
+          only in a post you quote does not count.
+        </p>
+        <h2 className={SECTION}>Three ways in</h2>
         <div className="grid gap-4 sm:grid-cols-3">
           {ENTRIES.map(({ href, title, when }) => (
             <Link
@@ -136,19 +147,6 @@ export default function ImportGuidePage() {
             </Link>
           ))}
         </div>
-      </Card>
-
-      <Card as="section">
-        <h2 id="detection" className={SECTION}>
-          What makes a detection
-        </h2>
-        <p className={BODY}>
-          Two conditions, the same for every entry. The post is yours: it comes
-          from the X handle linked to your Vidit account, and a retweet does not
-          count. It carries a coordinate: anywhere in its text, or in the text
-          of your own post it directly replies to. A coordinate that appears
-          only in a post you quote does not count.
-        </p>
       </Card>
 
       <Card as="section">
@@ -182,6 +180,31 @@ export default function ImportGuidePage() {
           created, updated and skipped, and how many need a source or carry
           several coordinates. Uploading the same export again creates no
           duplicates, which is also how you resume an import that failed.
+        </p>
+      </Card>
+
+      <Card as="section">
+        <h2 id="paste" className={SECTION}>
+          Paste a post URL on Vidit
+        </h2>
+        <p className={BODY}>
+          Open{" "}
+          <Link href="/submit" className={TEXT_LINK}>
+            Submit
+          </Link>
+          , pick <span className="text-neutral-100">From an X post</span> and
+          paste the link to one of your own posts. The detection is created
+          while you wait; the review opens on it when nothing needs your
+          attention, otherwise the page tells you what does. Your own posts
+          only, matched against the X account linked to your profile; a third
+          party&apos;s footage goes through the plain submit form with a source
+          URL.
+        </p>
+        <p className={NOTE}>
+          Warnings and refusals are shown on the page rather than on X, and
+          nothing is posted under your handle, so this is the way in when you do
+          not want a public trace. Pasting a post the bot already imported
+          reopens that detection instead of making a second one.
         </p>
       </Card>
 
@@ -241,31 +264,6 @@ export default function ImportGuidePage() {
             {"✅ 1 detection saved · ref 94183d44\nReview from your profile"}
           </MockPost>
         </div>
-      </Card>
-
-      <Card as="section">
-        <h2 id="paste" className={SECTION}>
-          Paste a post URL on Vidit
-        </h2>
-        <p className={BODY}>
-          Open{" "}
-          <Link href="/submit" className={TEXT_LINK}>
-            Submit
-          </Link>
-          , pick <span className="text-neutral-100">From an X post</span> and
-          paste the link to one of your own posts. The detection is created
-          while you wait; the review opens on it when nothing needs your
-          attention, otherwise the page tells you what does. Your own posts
-          only, matched against the X account linked to your profile; a third
-          party&apos;s footage goes through the plain submit form with a source
-          URL.
-        </p>
-        <p className={NOTE}>
-          Warnings and refusals are shown on the page rather than on X, and
-          nothing is posted under your handle, so this is the way in when you do
-          not want a public trace. Pasting a post the bot already imported
-          reopens that detection instead of making a second one.
-        </p>
       </Card>
 
       <Card as="section">
