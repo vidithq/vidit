@@ -8,6 +8,10 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+_Nothing yet._
+
+## v0.5.5, 2026-08-18
+
 ### Changed
 
 - **One grammar for the bot, the paste and the archive backfill** ([`backend/app/services/tweet_ingest/`](backend/app/services/tweet_ingest), [`backend/app/services/detection.py`](backend/app/services/detection.py), [`backend/app/services/bot.py`](backend/app/services/bot.py), [`backend/app/routers/events/import_tweet.py`](backend/app/routers/events/import_tweet.py), [`frontend/src/components/geolocations/ImportPostPanel.tsx`](frontend/src/components/geolocations/ImportPostPanel.tsx), [`docs/ingestion.md`](docs/ingestion.md), [`docs/api.md`](docs/api.md#post-eventsimport-from-tweet), [`docs/data-model.md`](docs/data-model.md#events)) (#292). The three entries shared a resolution and nothing else, so each carried its own grammar and its own write path: the two-post field format worked for the bot and not for the paste, and the `Coords:` / `Source:` habits analysts actually write failed the bot's marker grammar outright. There is now one engine. Every entry acquires a thread, resolves it through one core and writes through one path, and the label grammars are gone: no `T:` / `C:` / `S:` markers, no `Source:` designation, no automatic line stripping. What the engine reads is stated once for the three entries in [`ingestion.md`](docs/ingestion.md), and a 30-row grammar table pins each input shape against all three. Every link a post carries is a source candidate whatever its host, one candidate is the source, several leave it empty and all of them land as secondary links; a coordinate counts only in the analyst's own text, and every coordinate found makes its own detection. The engine is two functions over one object: `resolve_threads` reads threads and returns the detections they carry, `detection.persist_detections` writes those detections as rows, and `Detection` is the single shape travelling between them.
