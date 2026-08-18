@@ -67,7 +67,7 @@ const RULES: { step: string; label: string; body: string }[] = [
   {
     step: "1",
     label: "A coordinate in your own text",
-    body: "Your post, or another post of yours in the same thread, carries a coordinate anywhere in its text. A coordinate that lives only in a post you quote is that author's geolocation, not yours.",
+    body: "Your post carries a coordinate anywhere in its text, or the post of yours it directly replies to does. A coordinate that lives only in a post you quote is that author's geolocation, not yours.",
   },
   {
     step: "2",
@@ -272,7 +272,9 @@ export default function ImportGuidePage() {
           The bot answers in-thread with your draft&apos;s reference and with
           what to fix at review: an empty source, several coordinates, a missing
           footage file or post date, or media already on Vidit. When nothing
-          imports, it names which of the three refusals it was.
+          imports, it names which of the three refusals it was. Replies are
+          capped per hour, so a burst of tags still creates every draft while
+          some of them go unanswered.
         </p>
         <div className="sm:max-w-md">
           <MockPost {...MOCK_BOT} replyingTo={MOCK_ANALYST.handle}>
@@ -313,9 +315,9 @@ export default function ImportGuidePage() {
         <p className={BODY}>
           Upload your official X export and every geolocation you already
           published comes back as a draft. This is the only entry that reads
-          your whole history at once, and the only one that stitches full self
-          threads, so a coordinate you posted three replies down still lands.
-          Threads and media files import intact.
+          your whole history at once, and the only entry that stitches full self
+          threads, so a coordinate you posted three replies down still lands
+          beside the source you posted at the top. Media files import intact.
         </p>
         <NumberedSteps steps={EXPORT_STEPS} />
         <p className="text-xs leading-relaxed text-neutral-400">

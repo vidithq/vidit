@@ -32,6 +32,21 @@ describe("/import", () => {
       expect(container.querySelector(`#${id}`)).not.toBeNull();
     }
   });
+
+  it("states the coordinate rule at the one hop the bot and the paste read", () => {
+    // Two of the three entries read the post plus the post it directly replies
+    // to, and nothing further, so a rule promising "the same thread" would send
+    // an analyst tagging the bot three replies down away empty-handed. Only the
+    // archive reads a whole self thread, and its section is where that is said.
+    render(<ImportGuidePage />);
+
+    expect(
+      screen.getByText(/the post of yours it directly replies to/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/the only entry that stitches full self\s+threads/i),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("the absorbed guide routes", () => {

@@ -74,6 +74,8 @@ An import pass returns the drafts it wrote plus what those drafts still need fro
 
 The first two are dropped on a draft that already carries `source_ambiguous` or `source_missing`, since an empty source slot already says why there is neither footage nor date.
 
+A warning counts the rows the pass wrote, the created and updated ones: a draft the import left alone is not one the analyst has anything to look at, so a pass that wrote nothing reports no warnings at all.
+
 Each entry surfaces the whole set its own way: the bot in its [reply](#the-bot), the paste in its response ([`api.md`](api.md#post-eventsimport-from-tweet)), the archive backfill as counts in its [outcome email](#archive-import-worker).
 
 Three refusals are all the engine can tell apart: `post_unreadable` (X served no body), `coords_missing` (the analyst's own text carries no coordinate) and `coords_invalid` (a coordinate-shaped string sat outside the world). The bot and the paste both name them back; the archive reports counts instead, since an export refusing several threads for different reasons would be picking a winner.
@@ -154,9 +156,10 @@ The bot adds a delivery and a reply on top of the engine. It reads no grammar of
 | Moment | Gesture | Condition |
 |---|---|---|
 | Drafts created | In-thread reply, opening ✅: the draft count, a bare event ref, one ⚠ line per [warning](#warnings) | Always (budget permitting) |
+| No draft created, an open one overwritten | The same ✅ reply, reading *updated* rather than *saved* and naming the draft it landed on | Always (budget permitting). A tag on a post the analyst edited since importing it is an answered tag, ledgered `updated` |
 | Nothing created | In-thread reply mirroring the success shape: the ❌ header, one ⚠ line naming the refusal, the footer; no recited lesson and no fix recipe (the guide lives behind the bio link) | Author linked AND the tagged tweet is not itself a reply to the bot (the loop guard: a courtesy answer to the bot's own reply auto-mentions it and must not earn another reply, forever) |
 | Nothing created because the write path raised on every draft | The same ❌ reply, with a ⚠ line stating that the case is unexpected and naming the admin contact: no code was refused, so there is nothing to diagnose and nothing for the analyst to fix | The same two conditions |
-| Anything else | Nothing | `no_account` and every unlinked author stay fully silent |
+| Anything else | Nothing | A tag that matched a row and moved nothing on it (`skipped`), plus `no_account` and every unlinked author, stay fully silent |
 
 Reply text is **linkless**: it never carries a URL or an auto-linkable domain. X bills a link-carrying post about 13 times a plain one, so the clickable link lives in the bot bio instead. Every reply is also **unique per mention**, using the success reference and a short mention tail on failures. X refuses a tweet identical to a recent one (403 duplicate content), which would otherwise block a repeated diagnosis; that specific 403 is logged without paging anyone.
 
@@ -184,6 +187,8 @@ Register the webhook **after** you deploy the endpoint: X fires a CRC at registe
 An analyst pastes a post URL into the submit form and `POST /events/import-from-tweet` creates the drafts the post carries, one per coordinate, owned by the analyst. The response returns the created, updated and skipped ids plus the [warnings](#warnings) review has to answer, and the browser opens the first draft. The request and response contract is [`api.md`](api.md#post-eventsimport-from-tweet).
 
 **Own posts only.** The post's author must resolve to the caller's own account through [`detection.linked_owner`](../backend/app/services/detection.py), the one map from an X handle to the account an import may attribute to, which the bot reads on each mention's author; anything else answers `not_your_post`. A third party's footage goes through the plain submit form with a `source_url`.
+
+The check runs on the pasted post alone, before the rest of the hop. A caller with no linked handle is refused before any fetch, and a caller pasting someone else's post is refused after the one read of that post: the parent hop and the chase each read a post the URL only points at, on the shared syndication budget, so neither runs until the post is the caller's own. A post X serves to nobody answers `post_unreadable`, the code and the sentence the bot's failure reply names for the same case.
 
 The entry reads the same acquisition, the same engine and the same write path as the bot, so a coordinate in a post and a source link in its author's own reply resolve together whichever of the two was pasted, and pasting the same post twice overwrites the open draft instead of duplicating it (see [re-import](#re-import)).
 
@@ -236,9 +241,11 @@ What happens to a matched row depends on what the row is. [`detection._row_dispo
 
 **What an update rewrites.** The row keeps its id, its owner, its `created_at` and `detected_at` stamps, its provenance (`detected_from_tweet_id`, `detected_from_url`, `detected_thread_tweet_ids` and `detected_via`), and its place in the review queue. Provenance says where the draft first came from, so a bot tag landing on a draft the archive created updates the draft and still reads `archive`. The import overwrites what it owns: the title, the coordinate, the event date, `source_url`, the [secondary source links](data-model.md#event_source_links), `source_posted_at`, `detected_post_at`, the proof document, and the media. This is safe because no analyst-facing path writes those fields and leaves the row `detected`: every field edit is welded to the `geolocated` promotion, so an open draft carries no analyst work to lose. The one artifact an analyst can attach to a draft is an [archived copy](#source-archival), and those survive the update; if the update moves `source_url`, the copy filed as the source is re-filed under another link the row still carries, or dropped when the row no longer carries it.
 
+**A short fetch keeps the stored media.** A media the fetch cannot turn into bytes leaves the resolution short of what the post declares, and a short list reads exactly like a post whose media is gone. So a re-import that resolves less than the post carries leaves the row's media as it stands, uploads nothing and sweeps nothing; the other fields still update, and a pass that moves nothing else counts the row `skipped`. A CDN refusing for a minute therefore costs an import nothing, where it used to delete every stored `Media` row and its objects.
+
 **An unchanged post writes nothing.** Every field is compared before it is written, and media is compared by SHA-256, so re-running the same export leaves `updated_at` where it was, uploads no bytes and creates no storage objects. Such a row counts as `skipped`, not `updated`.
 
-**Email.** The job typically finishes after the analyst has navigated away, so the worker emails the outcome. On success, the email carries the counts (created, updated, skipped, failed, each a disjoint bucket), then how many drafts carry each of the engine's [warnings](#warnings) under a "what to look at first" heading, and a link to the Detections queue. The warning counts cut across the four buckets, which is why they sit apart from them. On failure, the email carries a retry-safe failure notice. The upload page also polls `GET /events/import-archive/{job_id}` while it stays open.
+**Email.** The job typically finishes after the analyst has navigated away, so the worker emails the outcome. On success, the email carries the counts (created, updated, skipped, failed, each a disjoint bucket), then how many drafts carry each of the [warnings](#warnings) under a "what to look at first" heading, and a link to the Detections queue. The warning counts cover the created and updated drafts, so they cut across two of the four buckets, which is why they sit apart from them. On failure, the email carries a retry-safe failure notice. The upload page also polls `GET /events/import-archive/{job_id}` while it stays open.
 
 **Runner.** `uv run python scripts/run_import_worker.py` polls the queue forever, with a 5-second idle sleep and one fresh session per pass. Each pass also drains the bot's [`bot_webhook_events`](data-model.md#bot_webhook_events) queue (see [The bot](#the-bot)). Set `IMPORT_WORKER_ONCE=1` to run a single drain-and-exit pass over both queues, by hand or as a cron fallback.
 
