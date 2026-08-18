@@ -12,14 +12,15 @@ import BotGuideRedirect from "../bot/page";
 import ArchiveGuideRedirect from "../archive/page";
 
 describe("/import", () => {
-  it("states the engine rules once and holds one section per entry", () => {
+  it("states the conditions once and holds one section per entry", () => {
     const { container } = render(<ImportGuidePage />);
 
     expect(
       screen.getByRole("heading", { name: "Import your work from X" }),
     ).toBeInTheDocument();
     for (const heading of [
-      "What makes a draft",
+      "What makes a detection",
+      "What the detection carries",
       "Tag @ViditBot on X",
       "Paste a post URL on Vidit",
       "Upload your X archive",
@@ -28,7 +29,7 @@ describe("/import", () => {
     }
 
     // The anchors the two redirect stubs and the import panels target.
-    for (const id of ["draft", "bot", "paste", "archive"]) {
+    for (const id of ["detection", "bot", "paste", "archive"]) {
       expect(container.querySelector(`#${id}`)).not.toBeNull();
     }
   });

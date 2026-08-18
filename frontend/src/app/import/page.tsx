@@ -19,9 +19,10 @@ import { ARCHIVE_EXPORT_STEPS, X_ARCHIVE_HELP } from "@/lib/archiveExport";
 
 // The one analyst-facing import guide, reachable without an account (see
 // `PUBLIC_PREFIXES` in `proxy.ts`). One detection engine reads every entry, so
-// the rules are stated once under "What makes a draft" and each entry section
-// holds only what differs. `docs/ingestion.md` holds the mechanism; this page
-// is its reader-facing projection.
+// the conditions are stated once, in one paragraph under "What makes a
+// detection", the fields a detection carries follow under their own heading,
+// and each entry section holds only what differs. `docs/ingestion.md` holds the
+// mechanism; this page is its reader-facing projection.
 //
 // Anchors are contract: `/bot` and `/archive` redirect to `#bot` and
 // `#archive`, the bot's X bio points at `/bot`, and the import panels link to
@@ -32,7 +33,7 @@ import { ARCHIVE_EXPORT_STEPS, X_ARCHIVE_HELP } from "@/lib/archiveExport";
 
 const TITLE = "Import your work from X";
 const DESCRIPTION =
-  "Tag @ViditBot, paste a post URL, or upload your X archive. Vidit reads your posts and creates a draft for each geolocation, with its coordinates, source, media and proof note.";
+  "Tag @ViditBot, paste a post URL, or upload your X archive. Vidit reads your posts and creates a detection for each geolocation, with its coordinates, source, media and proof note.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -61,23 +62,6 @@ const LIST = `list-disc space-y-1 pl-4 ${NOTE}`;
 const TILE = "rounded-lg border border-neutral-800 bg-neutral-900 p-4";
 const TILE_TITLE = "text-sm font-medium text-neutral-100";
 
-// The three rules that decide whether a post produces anything at all. Every
-// entry applies them, so they read the same whichever way you import.
-const RULES: { label: string; body: string }[] = [
-  {
-    label: "A coordinate in your own text",
-    body: "Your post carries a coordinate anywhere in its text, or the post of yours it directly replies to does; one outside the world does not count. A coordinate that lives only in a post you quote is that author's geolocation, not yours.",
-  },
-  {
-    label: "Your own post",
-    body: "Every entry reads posts from the X handle linked to your Vidit account, and nothing else. A retweet produces nothing: its words belong to another account.",
-  },
-  {
-    label: "A source, if you have one",
-    body: "A quote of the source post, or a single link, becomes the source. Several links leave the source empty and land as secondary links you pick from at review.",
-  },
-];
-
 // The three X-side export steps are shared with the import panel on `/submit`;
 // only the closing step differs, since a reader here has not opened the drop
 // zone yet.
@@ -105,7 +89,7 @@ export default function ImportGuidePage() {
       <Card as="section">
         <p className={BODY}>
           Vidit reads the geolocations you already publish on X and creates a
-          draft for each one, with its coordinates, source, media and proof
+          detection for each one, with its coordinates, source, media and proof
           note. There are three ways in and one engine behind them, so a post
           reads the same whichever you use. There is no format to learn: write
           your post as you always do.
@@ -113,17 +97,19 @@ export default function ImportGuidePage() {
       </Card>
 
       <Card as="section">
-        <h2 id="draft" className={SECTION}>
-          What makes a draft
+        <h2 id="detection" className={SECTION}>
+          What makes a detection
         </h2>
-        <div className="grid gap-4 sm:grid-cols-3">
-          {RULES.map(({ label, body }) => (
-            <div key={label} className={TILE}>
-              <h3 className={TILE_TITLE}>{label}</h3>
-              <p className={`mt-1.5 ${NOTE}`}>{body}</p>
-            </div>
-          ))}
-        </div>
+        <p className={BODY}>
+          A detection needs a coordinate in your own text: your post carries a
+          coordinate anywhere in its text, or the post of yours it directly
+          replies to does; a coordinate outside the world does not count, and
+          one that lives only in a post you quote is that author&apos;s
+          geolocation, not yours. Every entry reads posts from the X handle
+          linked to your Vidit account and nothing else; a retweet produces
+          nothing, its words belong to another account.
+        </p>
+        <h3 className={TILE_TITLE}>What the detection carries</h3>
         <ul className={LIST}>
           <li>
             <span className="text-neutral-100">Coordinate formats.</span>{" "}
@@ -140,7 +126,9 @@ export default function ImportGuidePage() {
             thread carries is a candidate, whatever the platform. Three are
             never candidates, because none points at footage: a link back to
             your own post, an X link naming no post, and a Google Maps link. A
-            quote outranks links.
+            quote of the source post, or a single candidate link, becomes the
+            source, and a quote outranks links. Several candidates leave the
+            source empty and land as secondary links you pick from at review.
           </li>
           <li>
             <span className="text-neutral-100">Media.</span> A quoted
@@ -161,23 +149,23 @@ export default function ImportGuidePage() {
           </li>
           <li>
             <span className="text-neutral-100">
-              One draft per coordinate.
+              One detection per coordinate.
             </span>{" "}
-            A post carrying several coordinates makes one draft each, sharing
+            A post carrying several coordinates makes one detection each, sharing
             every other field.
           </li>
           <li>
             <span className="text-neutral-100">Importing twice.</span>{" "}
-            Importing the same geolocation again reuses the first draft instead
-            of duplicating it. A draft you already published or rejected stays
+            Importing the same geolocation again reuses the first detection instead
+            of duplicating it. A detection you already published or rejected stays
             as it is, so re-running an import is always safe.
           </li>
         </ul>
         <p className={NOTE}>
-          A draft is on the map from the moment it lands, marked as a machine
-          draft and attributed to your account, and it waits in your detections
+          A detection is on the map from the moment it lands, marked as a machine
+          detection and attributed to your account, and it waits in your detections
           queue. Review it, correct the event date, then publish it as a
-          geolocation. Rejecting it removes it. Only you turn your draft into a
+          geolocation. Rejecting it removes it. Only you turn your detection into a
           geolocation.
         </p>
       </Card>
@@ -191,7 +179,7 @@ export default function ImportGuidePage() {
           Tag @ViditBot on X
         </h2>
         <p className={BODY}>
-          Tag @ViditBot on a geolocation post and the draft appears on Vidit
+          Tag @ViditBot on a geolocation post and the detection appears on Vidit
           within seconds. You do not leave your feed and you retype nothing.
           The bot imports only for X handles linked to a Vidit account: it stays
           silent for any other handle and creates nothing. It reads public posts
@@ -221,7 +209,7 @@ export default function ImportGuidePage() {
             <h3 className={TILE_TITLE}>Your post, then your own reply</h3>
             <p className={`mt-1.5 mb-4 ${NOTE}`}>
               Post the geolocation, then reply to yourself with the source and
-              the tag. The bot reads both posts as one, and the draft is filed
+              the tag. The bot reads both posts as one, and the detection is filed
               under the first of them, so tagging either one imports the same
               geolocation once. This is also how you import a post you published
               earlier.
@@ -250,17 +238,17 @@ export default function ImportGuidePage() {
           </div>
         </div>
         <p className={NOTE}>
-          The bot answers in-thread with your draft&apos;s reference and with
+          The bot answers in-thread with your detection&apos;s reference and with
           what to fix at review: an empty source, several coordinates, a missing
           footage file or post date, or media already on Vidit. When nothing
           imports, it names which of the three refusals it was. Replies are
-          capped per hour, so a burst of tags still creates every draft while
+          capped per hour, so a burst of tags still creates every detection while
           some of them go unanswered.
         </p>
         <div className="sm:max-w-md">
           <MockPost {...MOCK_BOT} replyingTo={MOCK_ANALYST.handle}>
             {
-              "✅ 1 geolocation draft saved · ref 94183d44\nReview from your profile"
+              "✅ 1 detection saved · ref 94183d44\nReview from your profile"
             }
           </MockPost>
         </div>
@@ -276,7 +264,7 @@ export default function ImportGuidePage() {
             Submit
           </Link>
           , pick <span className="text-neutral-100">From an X post</span> and
-          paste the link to one of your own posts. The draft is created while
+          paste the link to one of your own posts. The detection is created while
           you wait; the review opens on it when nothing needs your attention,
           otherwise the page tells you what does. Your own posts only, matched
           against the X account linked to your profile; a third party&apos;s
@@ -286,7 +274,7 @@ export default function ImportGuidePage() {
           Warnings and refusals are shown on the page rather than on X, and
           nothing is posted under your handle, so this is the way in when you do
           not want a public trace. Pasting a post the bot already imported
-          reopens that draft instead of making a second one.
+          reopens that detection instead of making a second one.
         </p>
       </Card>
 
@@ -296,7 +284,7 @@ export default function ImportGuidePage() {
         </h2>
         <p className={BODY}>
           Upload your official X export and every geolocation you already
-          published comes back as a draft. This is the only entry that reads
+          published comes back as a detection. This is the only entry that reads
           your whole history at once, and the only entry that stitches full self
           threads, so a coordinate you posted three replies down still lands
           beside the source you posted at the top.
@@ -317,7 +305,7 @@ export default function ImportGuidePage() {
         </p>
         <p className={NOTE}>
           An export runs as a background job, so you can close the page. Vidit
-          emails you the outcome when it finishes: how many drafts were created,
+          emails you the outcome when it finishes: how many detections were created,
           updated and skipped, and how many need a source or carry several
           coordinates. Uploading the same export again creates no duplicates,
           which is also how you resume an import that failed.

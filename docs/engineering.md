@@ -85,7 +85,7 @@ The auth wall in [`proxy.ts`](../frontend/src/proxy.ts) is default-deny over an 
 - **A task queue (Celery or similar)**: the MVP does no async processing.
 - **Multi-region S3 or cross-region replication**: the deployment is single-region.
 - **Monitoring and observability**: UptimeRobot runs liveness checks on the API health endpoint, and a Sentry SDK runs on both tiers (backend and frontend), opt-in through a DSN environment variable (see [Observability](#observability-whats-wired-and-how-to-turn-it-on)). There's no full APM or tracing pipeline yet.
-- **Handle-ownership verification**: the curated-onboarding import attributes work to an analyst's `@handle` **without proving the uploader controls it**. X's OAuth consent is too broad for the privacy-conscious audience, and X has no lighter identity integration (no OpenID Connect; OAuth 1.0a is worse). Imports land as `detected` drafts, and ownership proof plus a claim/dispute path are deferred (tracked in [`planning/next.md`](../planning/next.md)).
+- **Handle-ownership verification**: the curated-onboarding import attributes work to an analyst's `@handle` **without proving the uploader controls it**. X's OAuth consent is too broad for the privacy-conscious audience, and X has no lighter identity integration (no OpenID Connect; OAuth 1.0a is worse). Imports land as detections, and ownership proof plus a claim/dispute path are deferred (tracked in [`planning/next.md`](../planning/next.md)).
 
 ---
 

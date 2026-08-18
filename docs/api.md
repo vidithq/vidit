@@ -33,7 +33,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events` | 🌐 | List one lifecycle view, `located` (default) or `requested` (ex `/requests`) |
 | GET | `/events/points` | 🌐 | Compact map-points tuples for one viewport (`bbox` required, cached) |
 | GET | `/events/possible-duplicates` | 🔒 | Soft-warning probe for the submit form |
-| POST | `/events/import-from-tweet` | 🔒 | Import your own X post as `detected` drafts |
+| POST | `/events/import-from-tweet` | 🔒 | Import your own X post as detections |
 | POST | `/events/import-archive/presign` | 🔒 | Mint a presigned direct-to-storage upload for your X data archive |
 | POST | `/events/import-archive` | 🔒 | Enqueue your staged archive (by `upload_key`) for the backfill worker |
 | GET | `/events/import-archive/{job_id}` | 🔒 | Poll your import job (status + import counts) |
@@ -43,7 +43,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event (ex `POST /requests`) |
 | DELETE | `/events/{id}` | 🔒 | Owner-only hard delete + S3 sweep |
 | POST | `/events/{id}/geolocate` | 🔒 | Give an event a vouched location: `requested` \| `detected` → `geolocated` |
-| POST | `/events/batch-complete` | 🔒 | Publish a selection of your `detected` drafts in one call (per-row verdicts) |
+| POST | `/events/batch-complete` | 🔒 | Publish a selection of your detections in one call (per-row verdicts) |
 | POST | `/events/{id}/close` | 🔒 | Withdraw a request or reject a detection, owner only (→ `closed`) |
 | POST | `/events/{id}/archives` | 🔒 | Record the archived copy of one of your event's links |
 | GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated, filterable on readiness) |
@@ -75,14 +75,14 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST/GET/DELETE | `/admin/invite-codes[/{id}]` | 🛡️ | Mint / list / revoke invite codes |
 | GET | `/admin/users` | 🛡️ | Substring search on username/email |
 | DELETE | `/admin/users/{id}` | 🛡️ | Soft delete (default) or `?hard=true` GDPR erasure |
-| DELETE | `/admin/users/{id}/detected-events` | 🛡️ | Purge every `detected` draft the user owns, account untouched |
+| DELETE | `/admin/users/{id}/detected-events` | 🛡️ | Purge every detection the user owns, account untouched |
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
 | PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
 | GET | `/admin/reports` | 🛡️ | The moderation queue: open reports first, then newest first |
 | POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to the event |
 | PATCH | `/admin/events/{id}/moderation` | 🛡️ | Set an event's graphic flag / takedown directly, no report behind it |
 | POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, pending regs) |
-| POST | `/admin/maintenance/send-completion-digests` | 🛡️ | Email each analyst the count of drafts awaiting completion |
+| POST | `/admin/maintenance/send-completion-digests` | 🛡️ | Email each analyst the count of detections awaiting completion |
 
 ---
 
@@ -477,7 +477,7 @@ Inputs are tolerated gracefully:
 
 ### `POST /events/import-from-tweet` 🔒
 
-Import one of your own X posts. The route runs the shared detection engine over the post and writes what it reads as `detected` drafts owned by you, one per coordinate the post carries. It is the same engine and the same write path the bot and the archive backfill run, so a post produces the same drafts whichever entry read it (see [`ingestion.md`](ingestion.md#the-contract)). Rate-limited to 30/min/IP.
+Import one of your own X posts. The route runs the shared detection engine over the post and writes what it reads as detections owned by you, one per coordinate the post carries. It is the same engine and the same write path the bot and the archive backfill run, so a post produces the same detections whichever entry read it (see [`ingestion.md`](ingestion.md#the-contract)). Rate-limited to 30/min/IP.
 
 **Own posts only.** The post's author must equal the X handle linked to your account (`users.x_handle`, compared case-insensitively). A post by anyone else, or a caller with no linked handle, returns `400 not_your_post`. Third-party footage goes through [`POST /events`](#post-events) with a `source_url` instead.
 
@@ -496,21 +496,21 @@ Accepts both `x.com` and `twitter.com` (with or without `www.`), tolerates query
   "created": ["9a2b…"],
   "updated": [],
   "skipped": [],
-  "warnings": [{ "code": "several_coordinates", "message": "Several coordinates, one draft each" }],
+  "warnings": [{ "code": "several_coordinates", "message": "Several coordinates, one detection each" }],
   "reason": null,
   "failed": 0
 }
 ```
 
-`created`, `updated` and `skipped` carry event ids in the order the engine produced them: new drafts, open drafts a re-import overwrote, and rows the import left alone. Open the first id you get. Re-importing is safe and idempotent: the match key is `(the thread's post ids OR source_url, coordinate)` scoped to you, so a post already imported through the bot or an archive backfill lands on the draft it already produced, and what happens to a matched row follows the [re-import matrix](ingestion.md#re-import), so a published or closed row is skipped rather than overwritten.
+`created`, `updated` and `skipped` carry event ids in the order the engine produced them: new detections, open detections a re-import overwrote, and rows the import left alone. Open the first id you get. Re-importing is safe and idempotent: the match key is `(the thread's post ids OR source_url, coordinate)` scoped to you, so a post already imported through the bot or an archive backfill lands on the detection it already produced, and what happens to a matched row follows the [re-import matrix](ingestion.md#re-import), so a published or closed row is skipped rather than overwritten.
 
-`warnings` carries what review still has to answer on these drafts, each entry a `{code, message}` pair. Three codes say what the engine could not settle from the post: `several_coordinates` (one thread, one draft per coordinate), `source_ambiguous` (several candidate links, so the source is left empty) and `source_missing` (no candidate link and no quote). Four say what the drafts ended up with: `source_footage_missing` (no footage stored from the source), `source_fetch_failed` (the source could not be read this time, so importing the post again later may fill it), `source_date_unknown` (the source's post date came back unknown) and `duplicate_media` (the media already exists on another event). See [`ingestion.md`](ingestion.md#warnings). They are warnings, not refusals: the drafts landed.
+`warnings` carries what review still has to answer on these detections, each entry a `{code, message}` pair. Three codes say what the engine could not settle from the post: `several_coordinates` (one thread, one detection per coordinate), `source_ambiguous` (several candidate links, so the source is left empty) and `source_missing` (no candidate link and no quote). Four say what the detections ended up with: `source_footage_missing` (no footage stored from the source), `source_fetch_failed` (the source could not be read this time, so importing the post again later may fill it), `source_date_unknown` (the source's post date came back unknown) and `duplicate_media` (the media already exists on another event). See [`ingestion.md`](ingestion.md#warnings). They are warnings, not refusals: the detections landed.
 
-`reason` names the refusal when the post produced no draft at all, in the same `{code, message}` shape, and is null whenever drafts were produced: `coords_missing` (no coordinate in the author's own text, which also covers a retweet, since a retweet produces nothing) or `coords_invalid` (a coordinate-shaped string outside the world). `failed` counts detections that raised mid-persist; the drafts that did land are unaffected.
+`reason` names the refusal when the post produced no detection at all, in the same `{code, message}` shape, and is null whenever detections were produced: `coords_missing` (no coordinate in the author's own text, which also covers a retweet, since a retweet produces nothing) or `coords_invalid` (a coordinate-shaped string outside the world). `failed` counts detections that raised mid-persist; the detections that did land are unaffected.
 
 Branch on `code`, which is the stable half. `message` is the one sentence the platform says for that code everywhere it is surfaced, so the page can render it as it arrives; it is prose and may be reworded.
 
-Media travels with the drafts: the engine fetches the post's own attachments from the X CDN, stores the footage in the source slot and the analyst's images as proof, and inlines the proof images into the draft's proof document. A draft whose media could not be fetched lands media-incomplete and is completed at review.
+Media travels with the detections: the engine fetches the post's own attachments from the X CDN, stores the footage in the source slot and the analyst's images as proof, and inlines the proof images into the detection's proof document. A detection whose media could not be fetched lands media-incomplete and is completed at review.
 
 **Errors:** all four carry the typed `{"code", "message"}` envelope.
 
@@ -548,7 +548,7 @@ Step one of the archive import: mint a staging key and a presigned direct-to-sto
 
 Step two: enqueue the staged archive for the backfill worker. The upload **is the consent**: every geolocation lands `detected`, attributed to you. The job runs under the X handle linked to your account, which is what every provenance permalink is written from; a job whose owner carries no linked handle lands `failed`. The request verifies the staged object (your own `upload_key`, present, under the size guard; a storage HEAD, the zip is never opened here) and returns a **`queued` job (202)**: the worker service (see [`ingestion.md`](ingestion.md#archive-import-worker)) runs the import off the request path and emails you the outcome. Poll the job (below) for the counts. A malformed zip therefore surfaces as a `failed` job plus a failure email, not a synchronous 4xx. The browser strip catches the common shapes before upload.
 
-**Tweets-only intake guard.** The backend extracts only the allowlisted entries (`tweets.js`, `tweets_media/`); everything else (DMs, email, account data, `deleted-*`) is never read. The allowlist is anchored on the export root the `tweets.js` sits in, so a sibling directory whose name contains `tweets_media/` (`deleted_tweets_media/`, the media of deleted posts) and the media of a second export nested in the same zip stay outside it. The browser strip anchors the same way before upload. Extraction is hardened against zip-slip and zip-bombs; the per-media caps applied when a draft is persisted are the product limits (see [`ingestion.md`](ingestion.md#archive-import-worker)).
+**Tweets-only intake guard.** The backend extracts only the allowlisted entries (`tweets.js`, `tweets_media/`); everything else (DMs, email, account data, `deleted-*`) is never read. The allowlist is anchored on the export root the `tweets.js` sits in, so a sibling directory whose name contains `tweets_media/` (`deleted_tweets_media/`, the media of deleted posts) and the media of a second export nested in the same zip stay outside it. The browser strip anchors the same way before upload. Extraction is hardened against zip-slip and zip-bombs; the per-media caps applied when a detection is persisted are the product limits (see [`ingestion.md`](ingestion.md#archive-import-worker)).
 
 Idempotent on the thread's post ids plus the coordinate (see [re-import](ingestion.md#re-import)), so a re-upload is a free catch-up and so is an export of posts the bot or the paste already imported. A detection with no recoverable media persists media-incomplete; you add media before submitting.
 
@@ -589,7 +589,7 @@ A thread whose sole source candidate is an X status has that footage chased via 
 
 One archive-import job. Owner only: someone else's job ID reads as 404, indistinguishable from unknown. The upload page polls this endpoint until `status` is terminal. The completion email is the durable signal for an analyst who has since left.
 
-`status` walks `queued` → `running` → `done` | `failed`. `post_estimate` is a free zip-metadata volume hint stamped at enqueue (declared `tweets.js` size over a per-record average; a display hint, not a promise); once the worker's parse has the exact detection count it stamps `progress_total` and batches `progress_done` as rows land, the upload page's live "137 / 412". The counts are final once `done`, and every detection lands in exactly one of them: `created` is new `detected` rows; `updated` an open `detected` draft the import overwrote with a newer parse; `skipped` a detection whose matched row the import leaves alone (published, rejected, withheld, removed, or already up to date); `failed` a detection that raised mid-persist (the rest still land). The [re-import rule](ingestion.md#re-import) states which row gets which. A `failed` **job** keeps whatever landed before the failure (re-uploading skips it and continues); `error` is a terse operator-facing reason. Rate-limited to 60/min/IP.
+`status` walks `queued` → `running` → `done` | `failed`. `post_estimate` is a free zip-metadata volume hint stamped at enqueue (declared `tweets.js` size over a per-record average; a display hint, not a promise); once the worker's parse has the exact detection count it stamps `progress_total` and batches `progress_done` as rows land, the upload page's live "137 / 412". The counts are final once `done`, and every detection lands in exactly one of them: `created` is new `detected` rows; `updated` an open detection the import overwrote with a newer parse; `skipped` a detection whose matched row the import leaves alone (published, rejected, withheld, removed, or already up to date); `failed` a detection that raised mid-persist (the rest still land). The [re-import rule](ingestion.md#re-import) states which row gets which. A `failed` **job** keeps whatever landed before the failure (re-uploading skips it and continues); `error` is a terse operator-facing reason. Rate-limited to 60/min/IP.
 
 **Response 200:** the job payload above, counts and timestamps filled per status.
 
@@ -670,7 +670,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 }
 ```
 
-`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source` is the archived copy of that `source_url`: `url` is the snapshot and `provider` (`wayback` or `archive_today`) is the service holding it. One copy per link, whichever service produced it. The field is `null` when no copy has been recorded, which is every link's starting state, since archival is an act the event's owner performs (see [`archival.md`](archival.md) and [`POST /events/{id}/archives`](#post-eventsidarchives)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `archived_secondary_sources` is the same list's archived copies, same length and same order: entry `i` covers mirror `i`, with the same shape and the same `null` conditions as `archived_source`, and the detail surface renders each beside its mirror. `archived_detected_from` is the archived copy of `detected_from_url`, on the same terms again, and `null` for a human submit, which carries no provenance link. `detected_via` names the ingest entry that produced a machine draft, `bot`, `paste` or `archive` (see [`ingestion.md`](ingestion.md)); it is read-only, stamped once at creation, and `null` for a human submit and for machine rows that predate it. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`). `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick. `is_graphic` is `true` when the footage is flagged as showing death, injury or human remains; every media surface that renders this event's images or video covers them behind [`GraphicContentGate`](design.md#components) while it is.
+`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source` is the archived copy of that `source_url`: `url` is the snapshot and `provider` (`wayback` or `archive_today`) is the service holding it. One copy per link, whichever service produced it. The field is `null` when no copy has been recorded, which is every link's starting state, since archival is an act the event's owner performs (see [`archival.md`](archival.md) and [`POST /events/{id}/archives`](#post-eventsidarchives)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `archived_secondary_sources` is the same list's archived copies, same length and same order: entry `i` covers mirror `i`, with the same shape and the same `null` conditions as `archived_source`, and the detail surface renders each beside its mirror. `archived_detected_from` is the archived copy of `detected_from_url`, on the same terms again, and `null` for a human submit, which carries no provenance link. `detected_via` names the ingest entry that produced a machine detection, `bot`, `paste` or `archive` (see [`ingestion.md`](ingestion.md)); it is read-only, stamped once at creation, and `null` for a human submit and for machine rows that predate it. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`). `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick. `is_graphic` is `true` when the footage is flagged as showing death, injury or human remains; every media surface that renders this event's images or video covers them behind [`GraphicContentGate`](design.md#components) while it is.
 
 **Errors:**
 | Code | Case |
@@ -778,9 +778,9 @@ Your "Detections" queue: your machine-`detected` events awaiting a geolocate, ne
 |-------|------|-------------|
 | `page` | int | Page number (default 1). Below 1 or non-numeric returns 422. |
 | `per_page` | int | Rows per page (default 20). Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
-| `readiness` | string | Which drafts to page through: `all` (default), `ready`, or `incomplete`. Any other value returns 422. |
+| `readiness` | string | Which detections to page through: `all` (default), `ready`, or `incomplete`. Any other value returns 422. |
 
-**Readiness.** A draft is `ready` when it carries every piece of evidence a publish needs and waits only on the two judgments a review supplies (a conflict and a `capture_source` tag): a `source` media row, a non-blank `source_url`, coordinates, and a proof body embedding at least one image. `incomplete` is the exact complement, so the two sets partition the queue and no draft falls out of both. The filter runs in SQL over the whole queue, not over the page you loaded, so `readiness=ready` on page 1 answers about every draft you hold.
+**Readiness.** A detection is `ready` when it carries every piece of evidence a publish needs and waits only on the two judgments a review supplies (a conflict and a `capture_source` tag): a `source` media row, a non-blank `source_url`, coordinates, and a proof body embedding at least one image. `incomplete` is the exact complement, so the two sets partition the queue and no detection falls out of both. The filter runs in SQL over the whole queue, not over the page you loaded, so `readiness=ready` on page 1 answers about every detection you hold.
 
 **Response 200:** each item is the same shape as `GET /events/{id}`.
 ```json
@@ -852,7 +852,7 @@ Gives an event a vouched location: transitions `requested` | `detected` → `geo
 | `lng` | float | Longitude (-180 to 180) of the subject |
 | `capture_source_lat` | float | Latitude of the camera position. Both-or-neither with `capture_source_lng`. |
 | `capture_source_lng` | float | Longitude of the camera position. |
-| `source_url` | string | ≤2000 chars, the footage origin. A `detected` draft may start with no declared source (`null`, see [`ingestion.md`](ingestion.md)): a blank value here 400s as `source_url_required`, since a `geolocated` row always carries one. Fulfilling a `requested` event ignores this field and keeps the request's `source_url`, so you can't rewrite the requester's evidence anchor |
+| `source_url` | string | ≤2000 chars, the footage origin. A detection may start with no declared source (`null`, see [`ingestion.md`](ingestion.md)): a blank value here 400s as `source_url_required`, since a `geolocated` row always carries one. Fulfilling a `requested` event ignores this field and keeps the request's `source_url`, so you can't rewrite the requester's evidence anchor |
 | `source_snapshot_url` | string | The archived copy of the source URL this write stores, ≤2000 chars, same contract as [`POST /events`](#post-events). On a `requested` fulfilment it is checked against the request's own `source_url`, the one that is kept. Whether or not you send it, a write that changes `source_url` never keeps a copy of the old one filed as the archived source: see [`archival.md`](archival.md). |
 | `secondary_source_urls` | string[] (repeated field) | Optional mirrors, same normalization and cap as [`POST /events`](#post-events). Unlike `source_url`, this field is **not** ignored on a `requested` fulfilment: the submitted list replaces whatever the row held, since the mirrors sit outside the frozen evidence anchor. |
 | `event_date` | string (YYYY-MM-DD) | When the depicted event happened. Optional, mirroring create: empty / omitted stores NULL (renders as *Unknown*) |
@@ -873,8 +873,8 @@ Gives an event a vouched location: transitions `requested` | `detected` → `geo
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required` (no proof image in the final body), `tag_requirements_not_met`, `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), a rejected file (`invalid_file` / `evidence_processing_failed`), no surviving source media (`media_required`), `proof_files_mismatch`, `source_url_required` (a `detected` draft with no declared source, geolocated with a blank `source_url` field), or a rejected `source_snapshot_url` (the `snapshot_*` codes of [`POST /events/{id}/archives`](#post-eventsidarchives)) |
-| 403 | You are not the owner of a `detected` draft (a `requested` event is answerable by anyone) |
+| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required` (no proof image in the final body), `tag_requirements_not_met`, `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), a rejected file (`invalid_file` / `evidence_processing_failed`), no surviving source media (`media_required`), `proof_files_mismatch`, `source_url_required` (a detection with no declared source, geolocated with a blank `source_url` field), or a rejected `source_snapshot_url` (the `snapshot_*` codes of [`POST /events/{id}/archives`](#post-eventsidarchives)) |
+| 403 | You are not the owner of a detection (a `requested` event is answerable by anyone) |
 | 404 | Event not found (incl. soft-deleted) |
 | 409 | Row is not `requested` / `detected` (`invalid_state`, a `geolocated` row is frozen), or `source_media_conflict` (a concurrent edit raced past the one-source cap) |
 | 422 | Kept + new source media over one (`too_many_files`), more than `max_proof_images_per_event` proof files, or a single `secondary_source_urls` item over 2000 chars |
@@ -883,11 +883,11 @@ Gives an event a vouched location: transitions `requested` | `detected` → `geo
 
 ### `POST /events/batch-complete` 🔒
 
-Publish a selection of your own `detected` drafts in one call: the bulk door onto the same `detected` → `geolocated` transition [`POST /events/{id}/geolocate`](#post-eventsidgeolocate) performs one row at a time. **JSON, not multipart**: nothing uploads here and no field is written. A machine draft already carries its title, coordinates, source and (when the imported thread had annotation media) its proof images, so the call supplies only what the machine can't judge: the **conflict**, once for the whole selection, and one **`capture_source` tag per row**.
+Publish a selection of your own detections in one call: the bulk door onto the same `detected` → `geolocated` transition [`POST /events/{id}/geolocate`](#post-eventsidgeolocate) performs one row at a time. **JSON, not multipart**: nothing uploads here and no field is written. A machine detection already carries its title, coordinates, source and (when the imported thread had annotation media) its proof images, so the call supplies only what the machine can't judge: the **conflict**, once for the whole selection, and one **`capture_source` tag per row**.
 
-Each row runs in its **own transaction** against the **same evidence floor** as the single-row transition: one source media, at least one proof image in the stored proof body, a conflict, a `capture_source` tag, plus the coordinates and `source_url` a `geolocated` row always carries. A row that fails rolls back alone and stays a `detected` draft. The rest of the selection still publishes. Publishing a row credits you in `event_geolocators`, exactly as a single geolocate does.
+Each row runs in its **own transaction** against the **same evidence floor** as the single-row transition: one source media, at least one proof image in the stored proof body, a conflict, a `capture_source` tag, plus the coordinates and `source_url` a `geolocated` row always carries. A row that fails rolls back alone and stays a detection. The rest of the selection still publishes. Publishing a row credits you in `event_geolocators`, exactly as a single geolocate does.
 
-Owner only: every targeted draft must belong to you. There is no fulfil-someone-else's-row path here, unlike `requested` events.
+Owner only: every targeted detection must belong to you. There is no fulfil-someone-else's-row path here, unlike `requested` events.
 
 **Request body:**
 ```json
@@ -902,8 +902,8 @@ Owner only: every targeted draft must belong to you. There is no fulfil-someone-
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `conflict_ids` | UUID[] | 1-10 [conflicts](#conflicts), applied to every row. Replaces whatever conflicts the drafts held |
-| `rows` | object[] | 1-100 drafts, one row per `event_id` (a repeated id is a 422). `event_id` is a `detected` row you own; `capture_source_tag_id` is one curated `capture_source` tag, replacing an imported one rather than adding to it. Other tags on the draft survive |
+| `conflict_ids` | UUID[] | 1-10 [conflicts](#conflicts), applied to every row. Replaces whatever conflicts the detections held |
+| `rows` | object[] | 1-100 detections, one row per `event_id` (a repeated id is a 422). `event_id` is a `detected` row you own; `capture_source_tag_id` is one curated `capture_source` tag, replacing an imported one rather than adding to it. Other tags on the detection survive |
 
 **Response 200:** verdicts in the order the rows were submitted.
 ```json
@@ -922,14 +922,14 @@ A `200` does **not** mean everything published; read `published` / `failed`. A f
 
 | `code` | Case |
 |--------|------|
-| `source_url_required` | The draft carries no source URL |
-| `coordinates_required` | The import found no location in the thread, so the draft carries no point |
-| `media_required` | The draft carries no `source` media row |
+| `source_url_required` | The detection carries no source URL |
+| `coordinates_required` | The import found no location in the thread, so the detection carries no point |
+| `media_required` | The detection carries no `source` media row |
 | `proof_image_required` | The stored proof body holds no image (the imported thread carried no annotation media) |
 | `tag_requirements_not_met` | The row's `capture_source_tag_id` is unknown or is not a `capture_source` tag |
 | `invalid_state` | The row is no longer `detected` |
 | `event_not_found` | Hard-deleted, or soft-deleted by an admin |
-| `internal_error` | A database failure on that row alone. Every other row's verdict still stands, and the draft is untouched, so the row is retriable as-is |
+| `internal_error` | A database failure on that row alone. Every other row's verdict still stands, and the detection is untouched, so the row is retriable as-is |
 
 The first six are the same stable codes the single-row geolocate answers with, and they are checked in the order above.
 
@@ -937,14 +937,14 @@ The first six are the same stable codes the single-row geolocate answers with, a
 | Code | Case |
 |------|------|
 | 400 | `tag_requirements_not_met`: no `conflict_ids` entry resolves to a live conflict, so no row could clear the floor |
-| 403 | A targeted draft belongs to another analyst; nothing is published |
+| 403 | A targeted detection belongs to another analyst; nothing is published |
 | 422 | Empty `conflict_ids` / `rows`, over 10 conflicts, over 100 rows, the same `event_id` in two rows, or a malformed UUID |
 
 ---
 
 ### `POST /events/{id}/close` 🔒
 
-Close an event: withdraw a `requested` row or reject a `detected` draft, owner-only, in one verb. The row stays publicly visible (transparency: a queue entry that didn't produce a geolocation, or a machine draft judged wrong); `before_closed_status` records which state it left (drives the requested-view routing). A re-import leaves a closed `detected` row closed, so a rejection does not have to be made twice. Distinct from `DELETE`, which removes the row for good.
+Close an event: withdraw a `requested` row or reject a detection, owner-only, in one verb. The row stays publicly visible (transparency: a queue entry that didn't produce a geolocation, or a machine detection judged wrong); `before_closed_status` records which state it left (drives the requested-view routing). A re-import leaves a closed `detected` row closed, so a rejection does not have to be made twice. Distinct from `DELETE`, which removes the row for good.
 
 **Request body:**
 ```json
@@ -1212,7 +1212,7 @@ Public profile of an analyst.
 
 `bio` and `external_links` are self-set via `PATCH /users/me`, which is also where the per-platform rules for each link value live; `avatar_url` is written by `PUT` / `DELETE /users/me/avatar`. Defaults are `null` / `null` / `{}`. `is_following` is `true` only when you are authenticated and follow this user; anonymous viewers and self-views always get `false`. Email is never on this shape.
 
-`geolocations_count` counts the analyst's published geolocations: live rows with `status = "geolocated"`. It equals the `total` on [`GET /users/{username}/events`](#get-usersusernameevents), which serves the same set. For the analyst's whole body of live work, machine drafts included, read `total_events` on [`GET /users/{username}/stats`](#get-usersusernamestats).
+`geolocations_count` counts the analyst's published geolocations: live rows with `status = "geolocated"`. It equals the `total` on [`GET /users/{username}/events`](#get-usersusernameevents), which serves the same set. For the analyst's whole body of live work, machine detections included, read `total_events` on [`GET /users/{username}/stats`](#get-usersusernamestats).
 
 **Errors:**
 | Code | Case |
@@ -1242,11 +1242,11 @@ Aggregated shape of an analyst's work. Pure aggregation over existing columns; d
 }
 ```
 
-Every field describes one population: the analyst's visible events (`deleted_at IS NULL`, `hidden_at IS NULL`) in the three worked statuses, `geolocated` + `detected` + `closed`. That set is `total_events`, and it includes drafts. A `requested` row is an open call for help rather than documented work, so it takes part in no aggregate here.
+Every field describes one population: the analyst's visible events (`deleted_at IS NULL`, `hidden_at IS NULL`) in the three worked statuses, `geolocated` + `detected` + `closed`. That set is `total_events`, and it includes detections. A `requested` row is an open call for help rather than documented work, so it takes part in no aggregate here.
 
 `top_conflicts` and `capture_sources` are capped at 5, ordered by count desc then name.
 
-`source_hosts` breaks the same set down by the host of `source_url`, folded to lower case with a leading `www.` removed, so `www.tiktok.com` and `tiktok.com` are one entry. Capped at 5 and ordered by count desc then host; `other_hosts_count` carries every event on a host past the fifth, and `no_source_count` the events whose `source_url` is null or names no readable host (a machine `detected` draft whose post declared no source). The five counts plus those two totals add up to `total_events`.
+`source_hosts` breaks the same set down by the host of `source_url`, folded to lower case with a leading `www.` removed, so `www.tiktok.com` and `tiktok.com` are one entry. Capped at 5 and ordered by count desc then host; `other_hosts_count` carries every event on a host past the fifth, and `no_source_count` the events whose `source_url` is null or names no readable host (a machine detection whose post declared no source). The five counts plus those two totals add up to `total_events`.
 
 `activity` buckets `event_date`, the date the documented event happened, one bucket per calendar month across the span this analyst's own events cover: from their earliest dated event to their latest, oldest bucket first, zero-filled in between. `period` is `YYYY-MM`. Events with no `event_date` count in the status split and take no bucket. The list is empty when no event carries a date.
 
@@ -1334,7 +1334,7 @@ Remove your profile picture. Clears `users.avatar_url` and deletes the stored ob
 
 An analyst's published geolocations, newest event date first, ties broken by `created_at DESC, id DESC`.
 
-Serves `status = "geolocated"` only, the rows the analyst vouched for and froze. A `detected` draft is machine output they have not stood behind, a `closed` row off `detected` is one they rejected, and a `requested` row is an open call for help rather than an answer, so none of the three appear here. The filter applies to `total` as well as to the rows, so the pager never counts a row the feed will not serve. `geolocations_count` on [`GET /users/{username}`](#get-usersusername) counts the same set, so `total` and the profile's count agree. The drafts stay reachable: [`GET /users/{username}/stats`](#get-usersusernamestats) tallies them alongside the published work, and the owner works their own drafts from [`GET /events/detections`](#get-eventsdetections).
+Serves `status = "geolocated"` only, the rows the analyst vouched for and froze. A detection is machine output they have not stood behind, a `closed` row off `detected` is one they rejected, and a `requested` row is an open call for help rather than an answer, so none of the three appear here. The filter applies to `total` as well as to the rows, so the pager never counts a row the feed will not serve. `geolocations_count` on [`GET /users/{username}`](#get-usersusername) counts the same set, so `total` and the profile's count agree. The detections stay reachable: [`GET /users/{username}/stats`](#get-usersusernamestats) tallies them alongside the published work, and the owner works their own detections from [`GET /events/detections`](#get-eventsdetections).
 
 Offset-paged, not cursor-paged: the ordering this feed reads by is `event_date`, a nullable and editable column, so it cannot key a cursor (see [Pagination](#pagination)). The tiebreaker makes the ordering total, so a page cannot repeat a row the previous page served.
 
@@ -1439,11 +1439,11 @@ Returns 403 for non-admins, 401 for anonymous callers.
 
 Quality signal on the machine-extraction pipeline. A **machine detection** is an event imported from X (the archive backfill or the bot), identified by `detected_from_url` being set; a human submit always carries `detected_from_url = null`. Read-only, no audit row (a metric read is not an administrative act).
 
-**Reject-rate** is the share of machine detections dismissed while still a draft, whichever door they left through. A machine detection counts as a reject if either an owner closed it straight out of `detected` (`status = "closed"` with `before_closed_status = "detected"`) or an admin soft-deleted it while it was still `detected` (`deleted_at` set with `status = "detected"`). A detection the owner vouched (promoted to `geolocated`) is **not** a reject, even once soft-deleted (it was vouched before removal); one still awaiting review is **not** a reject yet. `reject_rate` is `machine_rejected / machine_total` as a 0..1 ratio (`0` when there are no machine detections). Counted over every machine row, soft-deleted or not: the metric measures what the pipeline produced.
+**Reject-rate** is the share of machine detections dismissed before publication, whichever door they left through. A machine detection counts as a reject if either an owner closed it straight out of `detected` (`status = "closed"` with `before_closed_status = "detected"`) or an admin soft-deleted it while it was still `detected` (`deleted_at` set with `status = "detected"`). A detection the owner vouched (promoted to `geolocated`) is **not** a reject, even once soft-deleted (it was vouched before removal); one still awaiting review is **not** a reject yet. `reject_rate` is `machine_rejected / machine_total` as a 0..1 ratio (`0` when there are no machine detections). Counted over every machine row, soft-deleted or not: the metric measures what the pipeline produced.
 
-Two counting edges the metric accepts, both favouring over-counting dismissals over under-counting them: an owner **hard-delete** (`DELETE /events/{id}` on an own draft) removes the row from both counts entirely; an **account-departure cascade** soft-delete counts that account's pending drafts as rejects.
+Two counting edges the metric accepts, both favouring over-counting dismissals over under-counting them: an owner **hard-delete** (`DELETE /events/{id}` on an own detection) removes the row from both counts entirely; an **account-departure cascade** soft-delete counts that account's pending detections as rejects.
 
-The `pending_*` counts profile the **live** `detected` queue (`deleted_at IS NULL`, machine rows only): drafts missing a piece the geolocate floor will demand (a source media, a proof-role image, or a `source_url`), so a low-quality extraction run is visible before an analyst opens the queue.
+The `pending_*` counts profile the **live** `detected` queue (`deleted_at IS NULL`, machine rows only): detections missing a piece the geolocate floor will demand (a source media, a proof-role image, or a `source_url`), so a low-quality extraction run is visible before an analyst opens the queue.
 
 **Response 200:**
 ```json
@@ -1531,7 +1531,7 @@ Capped and cursor-paged like the catalog lists (the table is append-only, one ro
 ]
 ```
 
-`archives_imported` counts `done` archive-import jobs. `bot_detection_count` sums `bot_mentions.events_created` for the account's X handle (case-insensitive), a historical total that survives later deletes. `detected_count` / `geolocated_count` are the live events they own in that status; the purge endpoint below also sweeps soft-deleted drafts, so its `deleted_events` can exceed `detected_count`. `last_login_at` is the newest `login` auth event, `null` for an account that has never logged in since the audit log existed.
+`archives_imported` counts `done` archive-import jobs. `bot_detection_count` sums `bot_mentions.events_created` for the account's X handle (case-insensitive), a historical total that survives later deletes. `detected_count` / `geolocated_count` are the live events they own in that status; the purge endpoint below also sweeps soft-deleted detections, so its `deleted_events` can exceed `detected_count`. `last_login_at` is the newest `login` auth event, `null` for an account that has never logged in since the audit log existed.
 
 ### `DELETE /admin/invite-codes/{id}` 🛡️
 
@@ -1585,7 +1585,7 @@ Remove a user. Default is soft delete (sets `users.deleted_at` *and* cascade-sof
 
 ### `DELETE /admin/users/{id}/detected-events` 🛡️
 
-Hard-delete every `detected` draft the user owns (rows + media rows + S3 objects with hero/thumb derivatives, soft-deleted drafts included), keeping the account, its geolocations and its requests. The broken-archive repair: a bad import can mint hundreds of junk drafts; this sweeps them without a full account delete. `closed` rows that were once detected stay (the owner explicitly acted on those). Invalidates the points cache. Audited via `admin_events` (`action = "detected_events_purged"`). Same commit-then-sweep ordering as the user hard delete. `media_count` counts swept storage objects, derivatives included.
+Hard-delete every detection the user owns (rows + media rows + S3 objects with hero/thumb derivatives, soft-deleted detections included), keeping the account, its geolocations and its requests. The broken-archive repair: a bad import can mint hundreds of junk detections; this sweeps them without a full account delete. `closed` rows that were once detected stay (the owner explicitly acted on those). Invalidates the points cache. Audited via `admin_events` (`action = "detected_events_purged"`). Same commit-then-sweep ordering as the user hard delete. `media_count` counts swept storage objects, derivatives included.
 
 **Response 200:**
 ```json
@@ -1742,11 +1742,11 @@ Drop expired `pending_registrations` rows. Sweeps expired pending rows that the 
 
 ### `POST /admin/maintenance/send-completion-digests` 🛡️
 
-Email every analyst holding unpublished `detected` drafts: one message per analyst carrying the count and a link to their own Detections queue, where [`POST /events/batch-complete`](#post-eventsbatch-complete) publishes them. The other half of the completion flow, since the import-complete email scrolls away while the backlog does not. Selection: live drafts only (never soft-deleted, published or closed rows), and the owner must be a live, active account with an address. Ordered by backlog and cut at 200 analysts, one provider round-trip each, so a click stays bounded; the tail is covered by clicking again. A provider failure on one address is counted, not raised, and the digest is re-sendable on the next run. Audited as `maintenance_send_completion_digests`.
+Email every analyst holding unpublished detections: one message per analyst carrying the count and a link to their own Detections queue, where [`POST /events/batch-complete`](#post-eventsbatch-complete) publishes them. The other half of the completion flow, since the import-complete email scrolls away while the backlog does not. Selection: live detections only (never soft-deleted, published or closed rows), and the owner must be a live, active account with an address. Ordered by backlog and cut at 200 analysts, one provider round-trip each, so a click stays bounded; the tail is covered by clicking again. A provider failure on one address is counted, not raised, and the digest is re-sendable on the next run. Audited as `maintenance_send_completion_digests`.
 
-**Response 200:** `drafts_pending` counts the drafts the *delivered* messages covered, so a failed send adds to `digest_send_failures` and to neither other count.
+**Response 200:** `detections_pending` counts the detections the *delivered* messages covered, so a failed send adds to `digest_send_failures` and to neither other count.
 ```json
-{ "analysts_notified": 4, "drafts_pending": 137, "digest_send_failures": 0 }
+{ "analysts_notified": 4, "detections_pending": 137, "digest_send_failures": 0 }
 ```
 
 </details>

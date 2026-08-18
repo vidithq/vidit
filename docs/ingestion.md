@@ -41,8 +41,8 @@ flowchart LR
   chase["`**chase_thread**
   the sole source candidate: X status or Telegram embed, retries`"]:::shared
   resolve["`**resolve_threads**
-  pure: one Draft per coordinate, warnings and refusals`"]:::core
-  persist["`**persist_drafts**
+  pure: one Detection per coordinate, warnings and refusals`"]:::core
+  persist["`**persist_detections**
   re-import match, media, write`"]:::core
   rows[("`**events**
   detected rows`")]:::store
@@ -52,7 +52,7 @@ flowchart LR
     f1["`**compose_reply**
     bot: in-thread reply, ref plus warnings`"]:::spec
     f2["`**TweetImportRead**
-    paste: draft ids and warnings; review opens on a clean run`"]:::spec
+    paste: detection ids and warnings; review opens on a clean run`"]:::spec
     f3["`**archive_import_complete_email**
     archive: counts plus warnings`"]:::spec
   end
@@ -66,7 +66,7 @@ flowchart LR
   persist --> f3
 ```
 
-`Draft` is the only shape travelling between [`resolve_threads`](../backend/app/services/tweet_ingest/resolve.py) and [`detection.persist_drafts`](../backend/app/services/detection.py). Each region of the diagram has a section below: [the contract](#the-contract) is what the engine reads, the [grammar table](#grammar-table) pins it shape by shape, and the entries are [the bot](#the-bot), [the pasted-tweet import](#the-pasted-tweet-import) and [the archive backfill](#archive-formats). The analyst-facing projection is [`/import`](../frontend/src/app/import/page.tsx), one section per entry (`#bot`, `#paste`, `#archive`); `/bot` and `/archive` redirect into it.
+`Detection` is the only shape travelling between [`resolve_threads`](../backend/app/services/tweet_ingest/resolve.py) and [`detection.persist_detections`](../backend/app/services/detection.py). Each region of the diagram has a section below: [the contract](#the-contract) is what the engine reads, the [grammar table](#grammar-table) pins it shape by shape, and the entries are [the bot](#the-bot), [the pasted-tweet import](#the-pasted-tweet-import) and [the archive backfill](#archive-formats). The analyst-facing projection is [`/import`](../frontend/src/app/import/page.tsx), one section per entry (`#bot`, `#paste`, `#archive`); `/bot` and `/archive` redirect into it.
 
 **Module layout.** [`tweet_ingest/`](../backend/app/services/tweet_ingest) splits on whether a module fetches: `records`, `extract`, `stitch` and `resolve` fetch nothing, and `urls` is the URL vocabulary they read, the one place a post URL is written back from an id. `syndication` is the X read, `chase/` holds one chaser per technology behind one dispatcher, `acquire` is the live one-hop acquisition, `archive` reads the export off disk, and `retry` is the schedule every fetch runs under. [`test_ingest_boundaries.py`](../backend/tests/test_ingest_boundaries.py) pins the direction: no pure module imports `syndication`, and only `acquire` imports `chase/`.
 
@@ -102,30 +102,30 @@ flowchart LR
   the source's media, or the first own video; everything else role=proof`"]:::shared
   title["`**derive_title, clean_proof_text**
   first line beyond coordinates and links; the raw text, t.co expanded`"]:::shared
-  draft["`**Draft**
+  detection["`**Detection**
   one per coordinate, plus its warnings`"]:::core
 
   text --> coords
   coords -- "no coordinate" --> refuse
-  coords --> src --> media --> title --> draft
-  src --> sec --> draft
+  coords --> src --> media --> title --> detection
+  src --> sec --> detection
 ```
 
 **In**: the threads the entry acquired. One hop and never across authors ([`acquire.py`](../backend/app/services/tweet_ingest/acquire.py)), so an analyst posts the coordinate and replies to themselves with the source link, and provenance anchors on the parent whichever of the two the entry was pointed at. The archive reads its threads from the export, which carries every reply edge inline. Acquisition runs [the chase](#the-chase), so resolution does no I/O.
 
-**Out**: one `Draft` per coordinate, or one refusal for the thread. `post_unreadable` (X served no body), `coords_missing` (no coordinate in the analyst's own text) and `coords_invalid` (a coordinate-shaped string outside the world) are all the engine tells apart.
+**Out**: one `Detection` per coordinate, or one refusal for the thread. `post_unreadable` (X served no body), `coords_missing` (no coordinate in the analyst's own text) and `coords_invalid` (a coordinate-shaped string outside the world) are all the engine tells apart.
 
 Each derived field fills on a signal in that text, or stays empty:
 
 | Field | Rule |
 |---|---|
-| Coordinate | Four extractors ([`extract.py`](../backend/app/services/tweet_ingest/extract.py)) run in the order below; position in the line does not matter and there is no cap. Several coordinates make several drafts and raise `several_coordinates`. |
+| Coordinate | Four extractors ([`extract.py`](../backend/app/services/tweet_ingest/extract.py)) run in the order below; position in the line does not matter and there is no cap. Several coordinates make several detections and raise `several_coordinates`. |
 | `source_url` | Every link is a candidate whatever its host, minus three that point at no footage: a status link back to the analyst's own post, an X link naming no status, and a Google Maps link, which is where the coordinate came from. A quote is itself a candidate, so two quoted posts are two candidates. Several candidates raise `source_ambiguous` and all of them land in the [secondary source links](#secondary-source-links); none raises `source_missing`. |
 | `detected_from_url` | The thread's own permalink. Provenance, never the source. |
 | Source media | The media of the post the source names and nothing else, so another quoted post's media is dropped rather than filed as annotation. One `role=source` media per event (`uq_media_source_per_event`); with no quote, the chased post's media fills the slot, else the thread's first own video. Photos are never promoted: the proof document embeds images only, so a video left in the annotation slot is dropped at persistence. |
 | Title | Cut at 120 characters on a word boundary. Nothing inside the qualifying line is stripped, so a hashtag, a mention, a link or a coordinate inside it stays. No line qualifying leaves it empty for review. |
 | Proof | The raw text minus two things: the `t.co` wrappers X appends for the post's own attached media, and the bot's `@handle` where it opens a line. |
-| Stored media | Photos re-encoded to `records.PHOTO_CONTENT_TYPE`, the format the display derivatives (`_hero`, `_thumb`) use, so no entry reads a photo's type off a payload field or a filename; videos stored as fetched, the mp4 variant every payload reader picks. `MAX_IMAGE_SIZE` and `MAX_VIDEO_SIZE` apply to the fetched bytes, before the re-encode, and over-cap media is skipped while the draft still lands. |
+| Stored media | Photos re-encoded to `records.PHOTO_CONTENT_TYPE`, the format the display derivatives (`_hero`, `_thumb`) use, so no entry reads a photo's type off a payload field or a filename; videos stored as fetched, the mp4 variant every payload reader picks. `MAX_IMAGE_SIZE` and `MAX_VIDEO_SIZE` apply to the fetched bytes, before the re-encode, and over-cap media is skipped while the detection still lands. |
 
 | Coordinate form | Example |
 |---|---|
@@ -136,9 +136,9 @@ Each derived field fills on a signal in that text, or stays empty:
 
 **Retweet.** `extract.is_retweet` anchors the `RT @<handle>:` prefix at the start of the text, so text mentioning RT further in is kept. [`archive.py`](../backend/app/services/tweet_ingest/archive.py)'s `read_tweets` drops the entry before stitching, which costs no thread: a retweet is never anyone's reply parent.
 
-**Attribution.** A draft is owned by the existing Vidit account whose `x_handle` an admin linked ([`detection.linked_owner`](../backend/app/services/detection.py), the one map from a handle to an account), and no entry creates a user. The link binds to the invite code at mint time and copies onto the account at registration; `PATCH /admin/users/{id}/x-handle` (see [`api.md`](api.md)) repairs and backfills it, and self-serve linking is a later gate (see [`planning/next.md`](../planning/next.md)). A post quoting someone else's footage credits the importer, and contested attribution goes through the claim/dispute pipeline.
+**Attribution.** A detection is owned by the existing Vidit account whose `x_handle` an admin linked ([`detection.linked_owner`](../backend/app/services/detection.py), the one map from a handle to an account), and no entry creates a user. The link binds to the invite code at mint time and copies onto the account at registration; `PATCH /admin/users/{id}/x-handle` (see [`api.md`](api.md)) repairs and backfills it, and self-serve linking is a later gate (see [`planning/next.md`](../planning/next.md)). A post quoting someone else's footage credits the importer, and contested attribution goes through the claim/dispute pipeline.
 
-**Coverage is text-only.** On a 48.5k-tweet external OSINT corpus (853 analysts), reading coordinates from post text recovers about 86% of the geolocations at about 0% false positives. The remaining 14% carry the coordinate only inside the image, which would take vision over every backfilled media item and is out of scope. The import panel states the limit when a pasted post produces no draft.
+**Coverage is text-only.** On a 48.5k-tweet external OSINT corpus (853 analysts), reading coordinates from post text recovers about 86% of the geolocations at about 0% false positives. The remaining 14% carry the coordinate only inside the image, which would take vision over every backfilled media item and is out of scope. The import panel states the limit when a pasted post produces no detection.
 
 ### The chase
 
@@ -164,15 +164,15 @@ Two links count as one when they share an identity. An X status keys on its stat
 
 ### Warnings
 
-A warning is not a refusal: the draft lands either way, and review answers it. `Outcome.warnings` counts one per code over the drafts of the pass, from both halves of the engine. `resolve_threads` raises what it could not settle from the post:
+A warning is not a refusal: the detection lands either way, and review answers it. `Outcome.warnings` counts one per code over the detections of the pass, from both halves of the engine. `resolve_threads` raises what it could not settle from the post:
 
 | Warning | Raised when |
 |---|---|
 | `source_ambiguous` | Several candidate links, so `source_url` stayed empty and all of them landed as secondary links. |
 | `source_missing` | No candidate link and no quote. |
-| `several_coordinates` | One thread carried several coordinates, so it produced one draft each. |
+| `several_coordinates` | One thread carried several coordinates, so it produced one detection each. |
 
-`persist_drafts` raises what the row it wrote ended up with, on every created or updated row:
+`persist_detections` raises what the row it wrote ended up with, on every created or updated row:
 
 | Warning | Raised when |
 |---|---|
@@ -181,7 +181,7 @@ A warning is not a refusal: the draft lands either way, and review answers it. `
 | `source_date_unknown` | The source's post date came back unknown, so the provisional event date anchors on the analyst's own post alone. |
 | `duplicate_media` | The row's media already exists on another event, by exact `Media.sha256` equality against every event outside the pass. |
 
-The footage and date warnings are dropped on a draft already carrying `source_ambiguous` or `source_missing`, since an empty source slot already says why there is neither footage nor date. Only created and updated rows count, so a pass that wrote nothing reports no warnings.
+The footage and date warnings are dropped on a detection already carrying `source_ambiguous` or `source_missing`, since an empty source slot already says why there is neither footage nor date. Only created and updated rows count, so a pass that wrote nothing reports no warnings.
 
 The bot names a refusal back in its [reply](#the-bot), and so does the paste in its response ([`api.md`](api.md#post-eventsimport-from-tweet)); the archive reports counts in its [outcome email](#archive-import-worker), since an export refusing several threads for different reasons would be picking a winner. Every code has exactly one wording, in `resolve.WARNING_MESSAGES` and `REFUSAL_MESSAGES`, and every surface reads it; a code added without a sentence fails `test_engine_copy`. Branch on the code, which is stable, not on the sentence.
 
@@ -192,43 +192,43 @@ Each row is one input shape and the outcome the engine produces for it. The thre
 | Input shape | Outcome |
 |---|---|
 | No coordinate anywhere (`no_coord`) | `0`, no coordinate (`coords_missing`) |
-| Coordinate inside prose, no link and no quote (`referenceless_annotation`) | 1 draft, source empty |
-| Coordinate inside prose behind an `@mention` prefix (`mention_prefix`) | 1 draft, source empty |
-| Coordinate alone on its line, or beside its maps link, no other link and no quote | 1 draft, source empty, title empty |
-| Two coordinates inside prose (`multi_coord`) | 2 drafts |
-| Four or more coordinates in the text | one draft per coordinate |
-| Hemisphere or DMS coordinate | 1 draft |
-| Google Maps `@lat,lng` link carrying the only coordinate | 1 draft |
+| Coordinate inside prose, no link and no quote (`referenceless_annotation`) | 1 detection, source empty |
+| Coordinate inside prose behind an `@mention` prefix (`mention_prefix`) | 1 detection, source empty |
+| Coordinate alone on its line, or beside its maps link, no other link and no quote | 1 detection, source empty, title empty |
+| Two coordinates inside prose (`multi_coord`) | 2 detections |
+| Four or more coordinates in the text | one detection per coordinate |
+| Hemisphere or DMS coordinate | 1 detection |
+| Google Maps `@lat,lng` link carrying the only coordinate | 1 detection |
 | Coordinate out of bounds and nothing else | `0`, coordinate out of bounds (`coords_invalid`) |
 | Coordinate only in the quoted post (`quote_coord_in_quoted`) | `0`, no coordinate (`coords_missing`) |
-| `T:` / `C:` / `S:` marker lines (`marker_lines`) | 1 draft, the markers kept as text |
-| `Source:` line naming one of two links | 1 draft, source empty, two mirrors |
-| Two links, no `Source:` line | 1 draft, source empty, two mirrors |
-| Sole link off the chase vocabulary (TikTok, Instagram, an article) | 1 draft, source is the link |
-| Sole X profile link (`x_profile_link`) | 1 draft, source empty |
-| Sole Google Maps link | 1 draft, source empty |
-| Sole link back to the analyst's own status | 1 draft, source empty |
-| Quote plus one other link | 1 draft, source is the quote, one mirror |
-| Two quotes in one thread (`two_quotes`) | 1 draft, source empty, both quoted statuses as mirrors, no source media |
-| Sole X status link (`x_status_link`) | 1 draft, source is the chased status, with its date and video |
-| Sole Telegram link (`telegram_link`) | 1 draft, source is the link, with the chased date and media |
-| Sole YouTube link (`youtube_link`) | 1 draft, source is the link |
-| Own-status link, profile link and one third-party status (`self_reference_link`) | 1 draft, source is the third-party status |
-| Coordinate in the post, quoted post carries a photo (`quote_coord_in_op`) | 1 draft, source is the quote, its photo as source media |
-| Coordinate in the post, quoted post carries a video (`quoted_video`) | 1 draft, source is the quote, its video as source media |
-| Own video, coordinate, no link and no quote (`self_video_no_signal`) | 1 draft, source empty, the video as source media |
-| Coordinate in the post, source link in the analyst's own reply (`self_reply_geo_then_source`) | 1 draft, source is the reply's link |
-| Self-thread, video in the head, coordinate in the reply (`self_thread`) | 1 draft, source empty, the head video as source media; archive only, `n/a` for the two live entries |
+| `T:` / `C:` / `S:` marker lines (`marker_lines`) | 1 detection, the markers kept as text |
+| `Source:` line naming one of two links | 1 detection, source empty, two mirrors |
+| Two links, no `Source:` line | 1 detection, source empty, two mirrors |
+| Sole link off the chase vocabulary (TikTok, Instagram, an article) | 1 detection, source is the link |
+| Sole X profile link (`x_profile_link`) | 1 detection, source empty |
+| Sole Google Maps link | 1 detection, source empty |
+| Sole link back to the analyst's own status | 1 detection, source empty |
+| Quote plus one other link | 1 detection, source is the quote, one mirror |
+| Two quotes in one thread (`two_quotes`) | 1 detection, source empty, both quoted statuses as mirrors, no source media |
+| Sole X status link (`x_status_link`) | 1 detection, source is the chased status, with its date and video |
+| Sole Telegram link (`telegram_link`) | 1 detection, source is the link, with the chased date and media |
+| Sole YouTube link (`youtube_link`) | 1 detection, source is the link |
+| Own-status link, profile link and one third-party status (`self_reference_link`) | 1 detection, source is the third-party status |
+| Coordinate in the post, quoted post carries a photo (`quote_coord_in_op`) | 1 detection, source is the quote, its photo as source media |
+| Coordinate in the post, quoted post carries a video (`quoted_video`) | 1 detection, source is the quote, its video as source media |
+| Own video, coordinate, no link and no quote (`self_video_no_signal`) | 1 detection, source empty, the video as source media |
+| Coordinate in the post, source link in the analyst's own reply (`self_reply_geo_then_source`) | 1 detection, source is the reply's link |
+| Self-thread, video in the head, coordinate in the reply (`self_thread`) | 1 detection, source empty, the head video as source media; archive only, `n/a` for the two live entries |
 | Parent by another author carries the coordinate | `0`, no coordinate (`coords_missing`); `n/a` for the archive, whose export holds the analyst's own tweets only |
 | Retweet, text opening `RT @<handle>:` | `0`, dropped; the archive drops it before detection, the live entries read no coordinate (`coords_missing`) |
 
 The `self_thread` fixture ships export entries rather than syndication bodies, so the two live entries cannot be pointed at it. The same two-post shape reaches them through the one-hop acquisition, which the `self_reply_geo_then_source` row covers.
 
-## `detected`: a partial draft by definition
+## `detected`: a partial detection by definition
 
 A machine-produced event starts in the `detected` status and may lack a `source_url`, a source media item, or a location. Which entry produced it is recorded as `detected_via` (`bot`, `paste` or `archive`), stamped once at creation and read-only on the wire.
 
-A `detected` row is **public on every read surface from the moment it lands**, badged as a machine draft and attributed to the importing account (see the `EventStatus` block in [`event.py`](../backend/app/models/event.py)). Review gates the vouching, not the visibility. The owner either completes the draft and promotes it to `geolocated`, or rejects it, which closes the row (`before_closed_status = 'detected'`) and takes it off the read surfaces. `services/events.geolocate` rejects the promotion with `source_url_required` (400) when no `source_url` is set, matching the `ck_events_source_url_status` CHECK constraint (see [`data-model.md`](data-model.md#events)).
+A `detected` row is **public on every read surface from the moment it lands**, badged as a machine detection and attributed to the importing account (see the `EventStatus` block in [`event.py`](../backend/app/models/event.py)). Review gates the vouching, not the visibility. The owner either completes the detection and promotes it to `geolocated`, or rejects it, which closes the row (`before_closed_status = 'detected'`) and takes it off the read surfaces. `services/events.geolocate` rejects the promotion with `source_url_required` (400) when no `source_url` is set, matching the `ck_events_source_url_status` CHECK constraint (see [`data-model.md`](data-model.md#events)).
 
 ## The bot
 
@@ -261,7 +261,7 @@ flowchart LR
   linked_owner, acquire_tagged_thread, the engine`"]:::core
   ledger[("`**bot_mentions**
   the idempotency ledger: a mention is processed, billed and answered at most once`")]:::store
-  engine["`**resolve_threads, persist_drafts**`"]:::shared
+  engine["`**resolve_threads, persist_detections**`"]:::shared
   reply["`**compose_reply**
   one in-thread reply, linkless and unique, capped per trailing hour in total and per author`"]:::spec
 
@@ -273,16 +273,16 @@ flowchart LR
 
 The webhook is signature-verified ([`/webhooks/x`](api.md#webhooks)) and queues into [`bot_webhook_events`](data-model.md#bot_webhook_events), drained by the always-on [import worker](#archive-import-worker); the poll ([`run_bot.py`](../backend/scripts/run_bot.py)) takes the paid mentions read (see [`x_api.py`](../backend/app/services/x_api.py)).
 
-The [`bot_mentions`](data-model.md#bot_mentions) ledger is written whatever the outcome, so whichever path sees a mention first records it and the other counts it as handled. A `failed` row retries only when an operator deletes it. A mention from a handle with no [linked account](#the-contract) is ledgered `no_account` and produces nothing: no user row, no draft, no reply; the tag itself is the consent for sync. When syndication refuses the tagged post outright, because it is deleted, protected, age-restricted or withheld, the mention lands `no_detection` and the failure reply names the restriction.
+The [`bot_mentions`](data-model.md#bot_mentions) ledger is written whatever the outcome, so whichever path sees a mention first records it and the other counts it as handled. A `failed` row retries only when an operator deletes it. A mention from a handle with no [linked account](#the-contract) is ledgered `no_account` and produces nothing: no user row, no detection, no reply; the tag itself is the consent for sync. When syndication refuses the tagged post outright, because it is deleted, protected, age-restricted or withheld, the mention lands `no_detection` and the failure reply names the restriction.
 
-**Response model.** The in-thread reply is the only gesture the bot makes: no like, no retweet. Replies are capped at 40 per trailing hour in total and 10 per author, and a reply weighs at most 280 characters in X's units (`bot.py`). The caps are seeded from the ledger, so they hold across drain passes and worker restarts. Past a cap the draft still lands, since detection is unbilled, and only the reply is skipped and logged.
+**Response model.** The in-thread reply is the only gesture the bot makes: no like, no retweet. Replies are capped at 40 per trailing hour in total and 10 per author, and a reply weighs at most 280 characters in X's units (`bot.py`). The caps are seeded from the ledger, so they hold across drain passes and worker restarts. Past a cap the detection still lands, since detecting is unbilled, and only the reply is skipped and logged.
 
 | Moment | Gesture | Condition |
 |---|---|---|
-| Drafts created | In-thread reply, opening ✅: the draft count, a bare event ref, one ⚠ line per [warning](#warnings), in one fixed order | Always (budget permitting) |
-| No draft created, an open one overwritten | The same ✅ reply, reading *updated* rather than *saved* and naming the draft it landed on | Always (budget permitting). A tag on a post the analyst edited since importing it is an answered tag, ledgered `updated` |
+| Detections created | In-thread reply, opening ✅: the detection count, a bare event ref, one ⚠ line per [warning](#warnings), in one fixed order | Always (budget permitting) |
+| No detection created, an open one overwritten | The same ✅ reply, reading *updated* rather than *saved* and naming the detection it landed on | Always (budget permitting). A tag on a post the analyst edited since importing it is an answered tag, ledgered `updated` |
 | Nothing created | The same shape with an ❌ header and one ⚠ line naming the [refusal](#warnings); no recited lesson and no fix recipe (the guide lives behind the bio link) | Author linked AND the tagged tweet is not itself a reply to the bot (the loop guard: a courtesy answer to the bot's own reply auto-mentions it and must not earn another reply, forever) |
-| Nothing created because the write path raised on every draft | The same ❌ reply, its ⚠ line stating that the case is unexpected and naming the admin contact | The same two conditions |
+| Nothing created because the write path raised on every detection | The same ❌ reply, its ⚠ line stating that the case is unexpected and naming the admin contact | The same two conditions |
 | Anything else | Nothing | A tag that matched a row and moved nothing on it (`skipped`), plus `no_account` and every unlinked author, stay fully silent |
 
 Re-tagging repairs no warning, since it lands on the existing idempotency key and deduplicates; review does. Reply text is **linkless**, since X bills a link-carrying post about 13 times a plain one, so the clickable link lives in the bot bio. Every reply is **unique per mention**, using the success reference and a short mention tail on failures, since X refuses a tweet identical to a recent one (403 duplicate content); that 403 is logged without paging anyone.
@@ -291,7 +291,7 @@ Deployment, the webhook runbook and the CRC operator notes: see [`engineering.md
 
 ## The pasted-tweet import
 
-An analyst pastes a post URL into the submit form and `POST /events/import-from-tweet` creates the drafts the post carries, one per coordinate, owned by the analyst. The response returns the created, updated and skipped ids plus the [warnings](#warnings) review has to answer; the browser opens the first created draft when the run raised no warning, and otherwise stays on the page and states what it raised ([`api.md`](api.md#post-eventsimport-from-tweet)).
+An analyst pastes a post URL into the submit form and `POST /events/import-from-tweet` creates the detections the post carries, one per coordinate, owned by the analyst. The response returns the created, updated and skipped ids plus the [warnings](#warnings) review has to answer; the browser opens the first created detection when the run raised no warning, and otherwise stays on the page and states what it raised ([`api.md`](api.md#post-eventsimport-from-tweet)).
 
 **Own posts only.** The post's author must resolve to the caller's own [linked account](#the-contract); anything else answers `not_your_post`, and a third party's footage goes through the plain submit form with a `source_url`. The check runs on the pasted post alone, before the rest of the hop, so neither the parent hop nor the chase spends the shared syndication budget on a post that is not the caller's. A post X serves to nobody answers `post_unreadable`.
 
@@ -339,7 +339,7 @@ flowchart LR
   hardened extract: 4 GB staged, 8 GB uncompressed, 200 MB per file`"]:::core
   read["`**read_tweets, stitch**
   retweets dropped, self-threads stitched, in-archive quote join`"]:::spec
-  engine["`**resolve_threads, persist_drafts**`"]:::shared
+  engine["`**resolve_threads, persist_detections**`"]:::shared
   mail["`**archive_import_complete_email**
   counts and warning counts, or a retry-safe failure notice`"]:::spec
 
@@ -356,7 +356,7 @@ The archive-level numbers in [`archive_zip.py`](../backend/app/services/tweet_in
 
 The zip never crosses the API, so the archive limit is not an HTTP body cap, and `api.vidit.app` sits behind Cloudflare's free-plan 100 MB request cap for read-surface protection. The dev upload endpoint stands in for S3 against local storage, using the same form shape.
 
-**The job row.** [`archive_jobs.py`](../backend/app/services/archive_jobs.py) claims the oldest runnable row, the pattern the bot's webhook queue drains with too, and re-checks the staged object's size, since the presign window outlives the enqueue. The terminal states are `done`, with assemble counts stamped, and `failed`, with a terse `error`; both delete the staged object, and the bucket's versioning keeps a noncurrent copy until the lifecycle rule expires it (see [`engineering.md`](engineering.md#deployment)). A job whose owner was soft-deleted, deactivated or left without a handle lands `failed`, so a suspended account accrues no drafts, and so does a malformed upload, which the browser strip catches first and the worker validates last. `started_at` doubles as the liveness heartbeat, so a long import never crosses the stale window while it is alive and a reclaim never races a still-running first run, for example two worker instances overlapping during a rolling deploy. A reclaimed run duplicates nothing, because [re-import](#re-import) matching holds every row the first pass wrote.
+**The job row.** [`archive_jobs.py`](../backend/app/services/archive_jobs.py) claims the oldest runnable row, the pattern the bot's webhook queue drains with too, and re-checks the staged object's size, since the presign window outlives the enqueue. The terminal states are `done`, with assemble counts stamped, and `failed`, with a terse `error`; both delete the staged object, and the bucket's versioning keeps a noncurrent copy until the lifecycle rule expires it (see [`engineering.md`](engineering.md#deployment)). A job whose owner was soft-deleted, deactivated or left without a handle lands `failed`, so a suspended account accrues no detections, and so does a malformed upload, which the browser strip catches first and the worker validates last. `started_at` doubles as the liveness heartbeat, so a long import never crosses the stale window while it is alive and a reclaim never races a still-running first run, for example two worker instances overlapping during a rolling deploy. A reclaimed run duplicates nothing, because [re-import](#re-import) matching holds every row the first pass wrote.
 
 **Email and runner.** The job typically finishes after the analyst has navigated away, so the outcome arrives by email: the counts (created, updated, skipped, failed) are disjoint buckets, and the warning counts cut across the created and updated ones, under a "what to look at first" heading above a link to the Detections queue. The upload page also polls `GET /events/import-archive/{job_id}` while it stays open. The worker polls forever, with a 5-second idle sleep and one fresh session per pass, and each pass also drains the bot's [`bot_webhook_events`](data-model.md#bot_webhook_events) queue; `IMPORT_WORKER_ONCE=1` runs a single drain-and-exit pass over both queues, by hand or as a cron fallback. Deployment: see [`engineering.md`](engineering.md#scheduler-services).
 
@@ -377,7 +377,7 @@ flowchart LR
     l1 ~~~ l2 ~~~ l3
   end
 
-  draft["`**Draft**
+  detection["`**Detection**
   one coordinate, from the engine`"]:::shared
   match["`**_disposition**
   the owner's own rows, matched on the thread's post ids or on source_url, plus the coordinate`"]:::core
@@ -386,7 +386,7 @@ flowchart LR
   fetch["`**fetch_media**
   three attempts, per-media caps, photos re-encoded`"]:::shared
   write["`**_persist_one / _upsert_one**
-  one transaction per draft, every field compared before it is written`"]:::shared
+  one transaction per detection, every field compared before it is written`"]:::shared
   rows[("`**events**
   detected rows`")]:::store
   skip["`**skipped**
@@ -394,16 +394,16 @@ flowchart LR
   warn["`**_write_warnings**
   footage, date and duplicate-media warnings, per written row`"]:::spec
 
-  draft --> match --> matrix
+  detection --> match --> matrix
   matrix -- "no match, or detected" --> fetch --> write --> rows
   matrix -- "protected row" --> skip
   write --> skip
   write --> warn
 ```
 
-The coordinate compares to six decimal places, the rounding the extraction dedups on. The source URL leg collapses the delete-and-repost shape: two provenance posts declaring the same footage at the same coordinate are one draft.
+The coordinate compares to six decimal places, the rounding the extraction dedups on. The source URL leg collapses the delete-and-repost shape: two provenance posts declaring the same footage at the same coordinate are one detection.
 
-The provenance leg is the thread's post IDs, not a URL and not the anchor alone. Not a URL, because one post spells the same URL several ways (`x.com` or `twitter.com`, the handle in any case, the handle-less `/i/web/status/` form), which would split one geolocation across two drafts; `detected_from_url` stays as the display value, written from the ID at the engine's exit. Not the anchor alone, because the entries anchor differently on one thread: in a 3-post self-thread A→B→C carrying the coordinate in C, the archive anchors on A while a bot tag or a paste on C reads [one hop](#the-contract) and anchors on B. Each row therefore stores every post ID of the thread it was read from (`events.detected_thread_tweet_ids`), and a detection matches when the incoming thread's IDs intersect a stored set; a row carrying none matches on its anchor ID alone.
+The provenance leg is the thread's post IDs, not a URL and not the anchor alone. Not a URL, because one post spells the same URL several ways (`x.com` or `twitter.com`, the handle in any case, the handle-less `/i/web/status/` form), which would split one geolocation across two detections; `detected_from_url` stays as the display value, written from the ID at the engine's exit. Not the anchor alone, because the entries anchor differently on one thread: in a 3-post self-thread A→B→C carrying the coordinate in C, the archive anchors on A while a bot tag or a paste on C reads [one hop](#the-contract) and anchors on B. Each row therefore stores every post ID of the thread it was read from (`events.detected_thread_tweet_ids`), and a detection matches when the incoming thread's IDs intersect a stored set; a row carrying none matches on its anchor ID alone.
 
 [`detection._row_disposition`](../backend/app/services/detection.py) holds the matrix, and each row states why:
 
@@ -416,7 +416,7 @@ The provenance leg is the thread's post IDs, not a URL and not the anchor alone.
 | `closed` | Skipped. A rejected detection stays rejected, so nobody rejects the same post twice. |
 | No match | A new `detected` row. |
 
-**What an update rewrites.** The row keeps its id, its owner, its `created_at` and `detected_at` stamps, its provenance (`detected_from_tweet_id`, `detected_from_url`, `detected_thread_tweet_ids` and `detected_via`) and its place in the review queue, so a bot tag landing on a draft the archive created updates it and still reads `archive`. The import overwrites what it owns: the title, the coordinate, the event date, `source_url`, the [secondary source links](data-model.md#event_source_links), `source_posted_at`, `detected_post_at`, the proof document, and the media. Every field edit is welded to the `geolocated` promotion, so an open draft carries no analyst work to lose. An [archived copy](archival.md) survives: if the update moves `source_url`, the copy is re-filed under another link the row still carries, or dropped when it carries none.
+**What an update rewrites.** The row keeps its id, its owner, its `created_at` and `detected_at` stamps, its provenance (`detected_from_tweet_id`, `detected_from_url`, `detected_thread_tweet_ids` and `detected_via`) and its place in the review queue, so a bot tag landing on a detection the archive created updates it and still reads `archive`. The import overwrites what it owns: the title, the coordinate, the event date, `source_url`, the [secondary source links](data-model.md#event_source_links), `source_posted_at`, `detected_post_at`, the proof document, and the media. Every field edit is welded to the `geolocated` promotion, so an open detection carries no analyst work to lose. An [archived copy](archival.md) survives: if the update moves `source_url`, the copy is re-filed under another link the row still carries, or dropped when it carries none.
 
 **A short fetch keeps the stored media.** A media the fetch cannot turn into bytes leaves the resolution short of what the post declares, which reads exactly like a post whose media is gone, so the row's media stays as it stands; the other fields still update, and a pass that moves nothing else counts the row `skipped`. Media compares by `Media.sha256`, so re-running the same export leaves `updated_at` where it was and creates no storage objects.
 
