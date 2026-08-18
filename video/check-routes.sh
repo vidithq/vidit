@@ -11,8 +11,10 @@
 # It bans the spellings that have already gone stale once: the `/geolocations`
 # API namespace (the backend mounts `/events`), `requests` as a top-level API
 # resource (a request is a `requested` event, so it is `POST /events/requests`
-# and `GET /events?view=requested`), and the two frontend routes that are now
-# redirect stubs (`/geolocations/new` and `/requests/new`, both `/submit`).
+# and `GET /events?view=requested`), the two frontend routes that are now
+# redirect stubs (`/geolocations/new` and `/requests/new`, both `/submit`), and
+# the removed tweet-media proxy (`GET /events/import-from-tweet/media`: the
+# paste creates drafts now, so media comes off the draft's `storage_url`).
 #
 # Comments are stripped before the scan, so prose may name an old route while
 # code may not.
@@ -34,6 +36,7 @@ admin/geolocations	admin/events
 \$\{API\}/requests	${API}/events/requests or ${API}/events?view=requested
 /requests/new	/submit
 /requests/\$\{	/events/${...} for the API; /requests/${...} stays valid only as a frontend link
+import-from-tweet/media	GET /events/{id} plus the storage_url on its media (the proxy is removed)
 EOF
 )
 

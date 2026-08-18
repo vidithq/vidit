@@ -1,13 +1,22 @@
 // Seed requests from a list of tweet URLs.
 //
 // For each tweet:
-//   1. import-from-tweet → gets author, text, parsed media URLs
-//   2. fetch each media URL via the import-from-tweet/media proxy
-//      (X CDN doesn't set CORS; the proxy is the path the real form
-//      uses too)
-//   3. POST /events/requests multipart: title (from tweet text),
-//      source_url (canonical tweet URL), source_posted_at, the
-//      classification ids, and the one source file the row is born with
+//   1. POST /events/import-from-tweet → creates `detected` drafts and
+//      answers their ids
+//   2. GET /events/{id} → the draft's title, source, post instant, proof
+//      and stored media
+//   3. fetch each media file from its `storage_url` (the drafts already
+//      hold the bytes, so nothing re-reads the X CDN)
+//   4. POST /events/requests multipart: title (from the draft's proof
+//      text), source_url, source_posted_at, the classification ids, and
+//      the one source file the row is born with
+//   5. delete the drafts the import created: they are working state for
+//      this script, not part of the promo catalog
+//
+// PRECONDITION: the import reads the caller's OWN posts only, so the
+// seeding account's linked X handle must be the author of `TWEETS` and
+// `RECORDING_TWEET_URL`. See planning/next.md → "Give the promo pipeline
+// its own user bootstrap".
 //
 // Idempotent: deletes the request author's and the recording viewer's
 // prior "seeded request" rows before re-seeding so re-runs converge to
@@ -68,7 +77,10 @@ async function mintAuth(email, password) {
   };
 }
 
-async function importTweet(auth, url) {
+// The paste entry: creates the drafts the post carries and answers their
+// ids under `created` / `updated` / `skipped`, plus `warnings` and a
+// `reason` when it produced none.
+async function importPost(auth, url) {
   const res = await fetch(`${API}/events/import-from-tweet`, {
     method: "POST",
     headers: {
@@ -78,17 +90,55 @@ async function importTweet(auth, url) {
     },
     body: JSON.stringify({ url }),
   });
-  if (!res.ok) throw new Error(`import ${url}: ${res.status}`);
+  if (!res.ok) throw new Error(`import ${url}: ${res.status} ${await res.text()}`);
   return res.json();
 }
 
-async function fetchMediaViaProxy(auth, remoteUrl) {
-  const proxyUrl = `${API}/events/import-from-tweet/media?u=${encodeURIComponent(remoteUrl)}`;
-  const res = await fetch(proxyUrl, { headers: { cookie: auth.cookieHeader } });
-  if (!res.ok) throw new Error(`proxy ${remoteUrl}: ${res.status}`);
+// The first draft an import landed on, whichever verdict it fell under, or
+// null when the post produced none.
+function firstDraftId(outcome) {
+  return [...outcome.created, ...outcome.updated, ...outcome.skipped][0] || null;
+}
+
+async function readEvent(auth, id) {
+  const res = await fetch(`${API}/events/${id}`, {
+    headers: { cookie: auth.cookieHeader },
+  });
+  if (!res.ok) throw new Error(`read event ${id}: ${res.status}`);
+  return res.json();
+}
+
+async function deleteEvent(auth, id) {
+  const res = await fetch(`${API}/events/${id}`, {
+    method: "DELETE",
+    headers: { cookie: auth.cookieHeader, "X-CSRF-Token": auth.csrf },
+  });
+  if (!res.ok && res.status !== 404) console.warn(`  skip delete ${id}: ${res.status}`);
+}
+
+// A draft's media is already stored, so the bytes come from the media host
+// rather than from the X CDN. No auth: the objects are public reads.
+async function fetchStoredMedia(storageUrl) {
+  const res = await fetch(storageUrl);
+  if (!res.ok) throw new Error(`media ${storageUrl}: ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
   const type = res.headers.get("content-type") || "application/octet-stream";
   return { buf, type };
+}
+
+// The draft's proof body as plain text. The proof is a Tiptap document, and
+// the import writes the thread's own words into it, which is the text the
+// request title is built from.
+function proofText(proof) {
+  const out = [];
+  const walk = (node) => {
+    if (!node || typeof node !== "object") return;
+    if (typeof node.text === "string") out.push(node.text);
+    if (node.type === "paragraph") out.push("\n");
+    for (const child of node.content || []) walk(child);
+  };
+  walk(proof);
+  return out.join("");
 }
 
 function titleFromTweetText(text, fallback) {
@@ -234,28 +284,35 @@ const wipeUserGeolocations = (auth) =>
 
 // Wipe every event that the recording's tweet would resolve to as
 // "possibly related" — same heuristic the submit form uses
-// (`/events/possible-duplicates`). Routes through the
+// (`/events/possible-duplicates`). Routes the deletes through the
 // `DELETE /admin/events/{id}` endpoint so cross-author rows
 // (e.g. an old admin@vidit.app submission of the same tweet) actually
 // get cleaned up; the public DELETE would 403 on those and the wipe
 // would silently no-op, leaving the duplicate-warning card to fire on
 // every re-record.
-async function wipeTweetDuplicatesAs(adminAuth, tweetUrl) {
-  const parsed = await fetch(`${API}/events/import-from-tweet`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      cookie: adminAuth.cookieHeader,
-      "X-CSRF-Token": adminAuth.csrf,
-    },
-    body: JSON.stringify({ url: tweetUrl }),
-  }).then((r) => (r.ok ? r.json() : null));
-  if (!parsed) {
-    console.warn("  wipeTweetDuplicatesAs: could not parse tweet, skipping");
+//
+// The coordinate and the date come from the draft the import creates, so
+// the import itself runs under `ownerAuth`, the account whose linked X
+// handle authored the tweet: the paste reads its caller's own posts only.
+// The draft is deleted again straight away; it exists here to answer
+// "where and when is this tweet", not to appear in the promo catalog.
+async function wipeTweetDuplicatesAs(adminAuth, ownerAuth, tweetUrl) {
+  let outcome;
+  try {
+    outcome = await importPost(ownerAuth, tweetUrl);
+  } catch (e) {
+    console.warn(`  wipeTweetDuplicatesAs: could not import tweet, skipping: ${e.message}`);
     return;
   }
-  const coord = parsed.parsed_coords?.[0];
-  const date = parsed.posted_at?.slice(0, 10);
+  const draftId = firstDraftId(outcome);
+  if (!draftId) {
+    console.warn("  wipeTweetDuplicatesAs: tweet produced no draft, skipping");
+    return;
+  }
+  const draft = await readEvent(ownerAuth, draftId);
+  for (const id of outcome.created) await deleteEvent(ownerAuth, id);
+  const coord = draft.event_coords;
+  const date = (draft.event_date || draft.detected_post_at || "").slice(0, 10);
   if (!coord || !date) {
     console.warn(
       "  wipeTweetDuplicatesAs: missing coords/date on tweet, skipping"
@@ -296,7 +353,10 @@ const RECORDING_TWEET_URL =
   // public DELETE (admin can't reach those without going through the
   // soft-delete admin path, which leaves orphan `deleted_at` rows).
   const admin = await mintAuth("admin@vidit.app", "admin");
-  await wipeTweetDuplicatesAs(admin, RECORDING_TWEET_URL);
+  // The recording's tweet is the analyst's own post, so the import that
+  // answers "where and when" runs under that account.
+  const recorder = await mintAuth("analyst@vidit.app", "analyst");
+  await wipeTweetDuplicatesAs(admin, recorder, RECORDING_TWEET_URL);
 
   // The request author is someone OTHER than the recording viewer, so the
   // detail page reads as a request you could pick up rather than one you
@@ -309,7 +369,6 @@ const RECORDING_TWEET_URL =
   // The recording's `analyst` also posts a request + a geolocation
   // during the live "Post request" / "Submit geolocation" beats. Wipe
   // any prior copies from earlier recordings so they don't linger.
-  const recorder = await mintAuth("analyst@vidit.app", "analyst");
   await wipeUserRequests(recorder);
   await wipeUserGeolocations(recorder);
 
@@ -323,27 +382,32 @@ const RECORDING_TWEET_URL =
 
   for (const url of TWEETS) {
     console.log(`→ ${url}`);
-    const tweet = await importTweet(auth, url);
-    const title = titleFromTweetText(tweet.tweet_text, "Unplaced footage");
+    const outcome = await importPost(auth, url);
+    const draftId = firstDraftId(outcome);
+    if (!draftId) {
+      console.warn(`  no draft: ${outcome.reason?.message || "post produced none"}`);
+      continue;
+    }
+    const draft = await readEvent(auth, draftId);
+    const title = titleFromTweetText(proofText(draft.proof), "Unplaced footage");
     console.log(`  title: ${title.slice(0, 60)}${title.length > 60 ? "…" : ""}`);
-    console.log(`  media: ${tweet.media?.length || 0}`);
+    console.log(`  media: ${draft.media.length}`);
 
     // One source file per event, so this picks a single attachment.
-    // Prefer the tweet's VIDEOS — a request is the analyst's source
-    // footage that nobody's placed yet; the images attached to the tweet
-    // are usually the geolocator's annotated satellite stills, which
-    // contradict the "unplaced footage" premise. Images stay as the
-    // fallback so a flaky video proxy doesn't drop the request entirely.
-    const allMedia = tweet.media || [];
-    const videos = allMedia.filter((m) => m.kind === "video");
-    const candidates = [...videos, ...allMedia.filter((m) => m.kind === "image")];
+    // Prefer the draft's VIDEOS — a request is the analyst's source
+    // footage that nobody's placed yet; the images are usually the
+    // geolocator's annotated satellite stills, which contradict the
+    // "unplaced footage" premise. Images stay as the fallback so one
+    // unreadable object doesn't drop the request entirely.
+    const videos = draft.media.filter((m) => m.media_type === "video");
+    const candidates = [...videos, ...draft.media.filter((m) => m.media_type === "image")];
     let mediaFile = null;
     for (const m of candidates) {
       try {
-        mediaFile = await fetchMediaViaProxy(auth, m.remote_url);
+        mediaFile = await fetchStoredMedia(m.storage_url);
         break;
       } catch (e) {
-        console.warn(`  skip ${m.remote_url}: ${e.message}`);
+        console.warn(`  skip ${m.storage_url}: ${e.message}`);
       }
     }
     if (!mediaFile) {
@@ -354,23 +418,29 @@ const RECORDING_TWEET_URL =
       console.warn("  video fetch failed; falling back to an image");
     }
 
-    // The tweet's own post instant. The backend requires it: a source is a
-    // post, and a post always has a time.
-    const sourcePostedAt = tweet.source_posted_at || tweet.posted_at;
+    // The source's own post instant. The backend requires it: a source is
+    // a post, and a post always has a time. The draft carries the source's
+    // instant when the chase resolved one, else the analyst's own.
+    const sourcePostedAt = draft.source_posted_at || draft.detected_post_at;
     if (!sourcePostedAt) {
-      console.warn("  tweet carries no post instant, skipping request");
+      console.warn("  draft carries no post instant, skipping request");
       continue;
     }
 
     const request = await createRequest(auth, {
       title,
-      sourceUrl: tweet.original_tweet_url || url,
+      sourceUrl: draft.source_url || draft.detected_from_url || url,
       sourcePostedAt,
       tagIds,
       conflictIds,
       mediaFile,
     });
     console.log(`  ✓ ${request.id}`);
+
+    // The drafts were the read path, not the promo state: the seeded
+    // requests are what the recording shows, and a machine draft beside
+    // them would put an unreviewed row on the map.
+    for (const id of outcome.created) await deleteEvent(auth, id);
   }
 
   console.log("done");
