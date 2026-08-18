@@ -4,13 +4,13 @@ import { Pencil } from "lucide-react";
 
 import { formatDate } from "@/lib/format";
 import type { PublicProfile } from "@/lib/users";
-import FollowButton from "./FollowButton";
-import { CopyProfileLink } from "./CopyProfileLink";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { FileManager } from "@/components/ui/FileManager";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
+import FollowButton from "./FollowButton";
+import { LinkedAccountsLine } from "./LinkedAccounts";
 import type { ProfileEditState } from "./useProfileEdit";
 
 /** The page title: avatar + handle. The analyst is what the page is about, so
@@ -80,6 +80,9 @@ export function ProfileTitle({
  * Each segment holds together on its own line, so the row wraps between
  * segments rather than inside one at 375 px. Passing `null` drops the line,
  * which is what edit mode does: the page collapses to the form there.
+ *
+ * One `space-y-1` on the wrapper owns the spacing between every line here, so a
+ * line that drops out leaves no gap behind it.
  */
 export function ProfileIdentity({
   bio,
@@ -99,12 +102,10 @@ export function ProfileIdentity({
     : [];
 
   return (
-    <>
+    <div className="space-y-1">
       {bio && <p>{bio}</p>}
       {segments.length > 0 && (
-        <p
-          className={`flex flex-wrap items-center text-xs text-neutral-500 ${bio ? "mt-1" : ""}`}
-        >
+        <p className="flex flex-wrap items-center text-xs text-neutral-500">
           {segments.map((segment, i) => (
             <span key={segment} className="whitespace-nowrap">
               {i > 0 && (
@@ -117,19 +118,27 @@ export function ProfileIdentity({
           ))}
         </p>
       )}
-      {/* `mt-1` only when a line precedes it: alone it is the slot's only
-          line and needs no lead. */}
-      {email && (
-        <p className={`text-xs text-neutral-500 ${bio || segments.length ? "mt-1" : ""}`}>
-          {email}
-        </p>
-      )}
-    </>
+      {email && <p className="text-xs text-neutral-500">{email}</p>}
+    </div>
   );
 }
 
-/** The header action cluster: share on every profile, plus Follow (someone
- *  else's) or the edit / save pair (your own). */
+/** The header action cluster: the linked-account icon buttons
+ *  (`LinkedAccountsLine`), then Follow on someone else's profile or the edit /
+ *  save pair on your own.
+ *
+ *  Reaching the analyst is an action on the page rather than a line of the
+ *  identity, so the icons sit where every other page keeps the controls that
+ *  act on the thing the page is about, right of the title. The icon row keeps
+ *  its own `gap-1` and the cluster's `gap-2` separates it from the button at
+ *  the far right, so the marks read as one group beside a control rather than
+ *  as five peers. The cluster wraps and right-aligns, the shape every
+ *  page-level action cluster uses, so the icons and the button break onto
+ *  separate lines on a phone instead of widening the header.
+ *
+ *  Editing drops the icons: the links are the inputs below for the duration.
+ *  `LinkedAccountsLine` renders nothing for a profile that carries no reachable
+ *  account, so on such a profile the cluster is the button alone. */
 export function ProfileActions({
   profile,
   isOwn,
@@ -140,8 +149,8 @@ export function ProfileActions({
   edit: ProfileEditState;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <CopyProfileLink username={profile.username} />
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      {!edit.editing && <LinkedAccountsLine profile={profile} />}
       {isOwn ? (
         edit.editing ? (
           <>

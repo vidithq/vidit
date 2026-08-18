@@ -431,7 +431,68 @@ def test_patch_me_replaces_external_links_wholesale(live_user, db):
 
     db.expire_all()
     refreshed = db.query(User).filter(User.id == live_user.id).first()
-    assert refreshed.external_links == {"github": "@me-gh-2"}
+    assert refreshed.external_links == {"github": "me-gh-2"}
+
+
+@pytest.mark.parametrize(
+    ("field", "sent", "stored"),
+    [
+        ("x", "@ana", "ana"),
+        ("x", "ana", "ana"),
+        ("x", "https://x.com/ana", "ana"),
+        ("x", "https://twitter.com/ana/", "ana"),
+        ("x", "https://www.x.com/ana", "ana"),
+        ("github", "https://github.com/vidithq", "vidithq"),
+        ("github", "@vidit-hq", "vidit-hq"),
+        ("discord", "@ana", "ana"),
+        ("discord", "ana#1234", "ana#1234"),
+    ],
+)
+def test_patch_me_stores_the_handle_alone(live_user, db, field, sent, stored):
+    """Both accepted forms land on the column as the bare handle.
+
+    One form on the column is what lets every reader print the account name
+    without parsing a URL, and it is why the profile can link an ``x`` value to
+    the platform without trusting the host the analyst typed.
+    """
+    response = client.patch(
+        "/api/v1/users/me",
+        json={"external_links": {field: sent}},
+        headers=login_as(client, live_user),
+    )
+    assert response.status_code == 200
+    assert response.json()["external_links"] == {field: stored}
+
+    db.expire_all()
+    refreshed = db.query(User).filter(User.id == live_user.id).first()
+    assert refreshed.external_links == {field: stored}
+
+
+@pytest.mark.parametrize(
+    ("field", "sent"),
+    [
+        # A post is not an account, and neither is a product path.
+        ("x", "https://x.com/ana/status/1"),
+        ("x", "https://x.com/i/flow"),
+        # A mirror names the platform's account on a host the platform does
+        # not own, so linking it would send readers somewhere else entirely.
+        ("x", "https://evil.example/ana"),
+        # Neither a handle nor a URL: the message says which two forms exist.
+        ("x", "x.com/ana"),
+        ("x", "some user"),
+        ("x", "sixteencharacters"),
+        ("github", "https://github.com/orgs/vidithq/people"),
+        ("discord", "https://discord.gg/abc"),
+        ("discord", "ana/1234"),
+    ],
+)
+def test_patch_me_rejects_a_value_that_is_not_an_account(live_user, field, sent):
+    response = client.patch(
+        "/api/v1/users/me",
+        json={"external_links": {field: sent}},
+        headers=login_as(client, live_user),
+    )
+    assert response.status_code == 422
 
 
 def test_patch_me_omitted_fields_preserved(live_user, db):
@@ -450,7 +511,7 @@ def test_patch_me_omitted_fields_preserved(live_user, db):
     db.expire_all()
     refreshed = db.query(User).filter(User.id == live_user.id).first()
     assert refreshed.bio == "seeded bio"
-    assert refreshed.external_links == {"x": "@edited"}
+    assert refreshed.external_links == {"x": "edited"}
 
 
 def test_patch_me_empty_string_clears_bio(live_user, db):

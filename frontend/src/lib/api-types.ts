@@ -2343,9 +2343,13 @@ export interface components {
          * ExternalLinks
          * @description Linktree-style external account links rendered on the profile.
          *
-         *     Stored as JSONB on ``users.external_links``. Each value is a free-form
-         *     string (handle *or* URL — Discord/X handles often aren't URLs); the frontend
-         *     decides whether to render it as a link by sniffing for an http scheme.
+         *     Stored as JSONB on ``users.external_links``. Each platform validates its own
+         *     shape on the way in and stores one form: ``x`` and ``github`` take a handle
+         *     or a profile URL on the platform's own hosts (:data:`SOCIAL_PROFILE_HOSTS`)
+         *     and store the bare handle, ``discord`` takes a username, and ``website``
+         *     takes an http(s) URL. A value that fits none of those raises, so the profile
+         *     surfaces render an account name the platform's own rules
+         *     (:data:`SOCIAL_HANDLE_PATTERNS`) admit rather than free-form text.
          */
         ExternalLinks: {
             /** Discord */

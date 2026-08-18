@@ -1197,7 +1197,7 @@ Public profile of an analyst.
   "bio": "OSINT analyst tracking armoured movement in Eastern Ukraine.",
   "avatar_url": "https://<cloudfront-domain>/avatars/<user_id>/<uuid>.jpg",
   "external_links": {
-    "x": "@kalush",
+    "x": "kalush",
     "discord": null,
     "website": "https://kalush.example.com",
     "github": null
@@ -1210,7 +1210,7 @@ Public profile of an analyst.
 }
 ```
 
-`bio` and `external_links` are self-set via `PATCH /users/me`; `avatar_url` is written by `PUT` / `DELETE /users/me/avatar`. Defaults are `null` / `null` / `{}`. `is_following` is `true` only when you are authenticated and follow this user; anonymous viewers and self-views always get `false`. Email is never on this shape.
+`bio` and `external_links` are self-set via `PATCH /users/me`, which is also where the per-platform rules for each link value live; `avatar_url` is written by `PUT` / `DELETE /users/me/avatar`. Defaults are `null` / `null` / `{}`. `is_following` is `true` only when you are authenticated and follow this user; anonymous viewers and self-views always get `false`. Email is never on this shape.
 
 `geolocations_count` counts the analyst's published geolocations: live rows with `status = "geolocated"`. It equals the `total` on [`GET /users/{username}/events`](#get-usersusernameevents), which serves the same set. For the analyst's whole body of live work, machine drafts included, read `total_events` on [`GET /users/{username}/stats`](#get-usersusernamestats).
 
@@ -1276,7 +1276,16 @@ Edit your own bio and Linktree-style external account handles.
 }
 ```
 
-`bio` is capped at 500 characters. `external_links` is **wholesale-replaced**, not deep-merged: send the full panel each time. Per-platform values are 200 chars max; values are free-form strings (handle or URL).
+`bio` is capped at 500 characters. `external_links` is **wholesale-replaced**, not deep-merged: send the full panel each time. Each platform validates its own shape and stores one form:
+
+| Field | Accepted | Stored |
+|-------|----------|--------|
+| `x` | a handle (`ana` or `@ana`: 1 to 15 characters of `A-Za-z0-9_`), or a profile URL on `x.com` or `twitter.com` with exactly one path segment (`https://x.com/ana`, optional `www.`, optional trailing slash, no query and no fragment) | the handle alone, without the `@` |
+| `github` | a user or organization name (`vidithq` or `@vidithq`: 1 to 39 characters of `A-Za-z0-9-`), or a profile URL on `github.com` with exactly one path segment | the name alone, without the `@` |
+| `discord` | a username, never a link: 2 to 32 characters of `A-Za-z0-9_.`, optionally followed by the legacy `#0000` discriminator | the username, without a leading `@` |
+| `website` | an http or https URL | the URL as sent, whitespace trimmed |
+
+The three handle fields cap at 200 characters and `website` at 500. A value that fits none of the accepted forms is a 422: a status URL (`https://x.com/ana/status/1`), a product path (`https://x.com/i/flow`), a URL on another host, a scheme-less `x.com/ana`, and an `x` or `github` handle carrying a space or a dot are all rejected. A stored value can also be a full URL on the platform, so a client that reads a profile handles both forms.
 
 The body rejects unknown fields, `avatar_url` among them. The profile picture is server-minted, so it changes only through the two endpoints below.
 
@@ -1286,7 +1295,7 @@ The body rejects unknown fields, `avatar_url` among them. The profile picture is
 | Code | Case |
 |------|------|
 | 401 | Not authenticated |
-| 422 | Validation failure (bio too long, non-http(s) website, unknown field) |
+| 422 | Validation failure (bio too long, non-http(s) website, a link value that is neither a handle nor a profile URL on the platform, unknown field) |
 
 ---
 

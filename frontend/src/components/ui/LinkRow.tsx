@@ -3,13 +3,13 @@ import { ExternalLink, type LucideIcon } from "lucide-react";
 import { TAPPABLE_HOVER } from "./styles";
 import { FORM_LABEL } from "./form-styles";
 
-// "icon + label + value" link row, shared by the profile's linked-accounts and
-// the About page's "Stay in touch" channels.
+// "icon + label + value" link row, carrying the About page's guide, legal and
+// "Stay in touch" channels.
 //
 // - `href` present  -> renders a link; the value reads as orange and the row
 //   gets the orange-border hover.
-// - `href` absent   -> renders a <div>; the value stays neutral (a plain handle
-//   that doesn't resolve to a URL, e.g. a Discord name).
+// - `href` absent   -> renders a <div>; the value stays neutral, for a value
+//   that names a destination without resolving to one.
 // - `external`      -> the row leaves the app: opens in a new tab and takes the
 //   trailing ↗ glyph. The glyph tracks exactly this, so it is the one thing
 //   that promises a new tab. An in-app route (`external` false, `href`
