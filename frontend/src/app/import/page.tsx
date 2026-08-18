@@ -149,6 +149,14 @@ export default function ImportGuidePage() {
         <h2 className={SECTION}>What the detection carries</h2>
         <ul className={LIST}>
           <li>
+            <span className="text-neutral-100">Coordinates.</span> Read from
+            your text in any usual form: decimal pairs (48.012345, 37.802411),
+            decimal degrees with a hemisphere letter (33.1°N 35.5°E, N48.0123
+            E37.8024), DMS (48°00&apos;45&quot;N 37°48&apos;08&quot;E) and
+            Google Maps @lat,lng links. A coordinate that appears only inside an
+            image is not read.
+          </li>
+          <li>
             <span className="text-neutral-100">Source URL.</span> Every link
             your thread carries is a candidate, whatever the platform. Three are
             never candidates, because none points at footage: a link back to
