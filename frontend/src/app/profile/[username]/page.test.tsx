@@ -99,6 +99,9 @@ const BLOCKS: Record<string, string> = {
   "Recent submissions": "recent submissions",
   Insights: "insights",
   Coverage: "coverage",
+  // Edit mode only: reading the links is the header action cluster, so this
+  // eyebrow titles the inputs and nothing else.
+  "Linked accounts": "linked accounts",
   "1 detection to submit": "detections queue",
   "Sign out": "account controls",
 };
@@ -158,6 +161,9 @@ describe("public profile order", () => {
       "insights",
       "recent submissions",
     ]);
+    // The links are buttons in the header here, so the section that titles
+    // their inputs belongs to edit mode alone.
+    expect(screen.queryByText("Linked accounts")).toBeNull();
   });
 
   it("puts where to reach the analyst in the header, above the work", async () => {
@@ -170,8 +176,8 @@ describe("public profile order", () => {
     const x = screen.getByRole("link", { name: "X / Twitter: @ana_osint" });
     expect(x).toHaveAttribute("href", "https://x.com/ana_osint");
     expect(x.textContent).toBe("");
-    // The href is the URL as pasted; the name spends its width on the domain
-    // rather than on the scheme the reader can assume.
+    // The href is the pasted URL as `URL` normalises it; the name spends its
+    // width on the domain rather than on the scheme the reader can assume.
     const site = screen.getByRole("link", { name: "Website: ana.example" });
     expect(site).toHaveAttribute("href", "https://ana.example/");
 
@@ -299,6 +305,18 @@ describe("public profile identity", () => {
     expect(screen.getByText("ana")).toBeInTheDocument();
   });
 
+  it("copies the Discord username rather than linking it", () => {
+    withProfile({ external_links: { discord: "mpgeoint" } });
+    mountProfile();
+
+    // Discord publishes no profile URL for a username, so the one thing a
+    // reader can do with it is take it to their own client.
+    expect(
+      screen.getByRole("button", { name: "Copy Discord username: mpgeoint" })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Discord/ })).toBeNull();
+  });
+
   it("renders no links line for a profile that carries no link", () => {
     withProfile({ external_links: {} });
     mountProfile();
@@ -361,7 +379,7 @@ describe("public profile edit mode", () => {
     });
   });
 
-  it("collapses the page to the form, bio and linked accounts contiguous", async () => {
+  it("collapses the page to the fields: the bio, then the linked-account inputs", async () => {
     const { container } = mountProfile();
     await screen.findByText("Insights");
 
@@ -371,11 +389,18 @@ describe("public profile edit mode", () => {
       expect(screen.getByText("Profile picture")).toBeInTheDocument()
     );
     // The read-only portfolio drops out, so every field sits between the
-    // header and Save.
-    expect(blockOrder(container)).toEqual([]);
-    expect(screen.getByText("Bio")).toBeInTheDocument();
-    // The two field groups stay contiguous: bio, then the links inputs.
-    expect(screen.getByText("Linked accounts")).toBeInTheDocument();
+    // header and Save, with the links inputs the one section left.
+    expect(blockOrder(container)).toEqual(["linked accounts"]);
+    // The two field groups stay contiguous and in reading order.
+    expect(
+      screen
+        .getByText("Bio")
+        .compareDocumentPosition(screen.getByText("Linked accounts")) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    // The header's link buttons give way to those inputs: one place to read a
+    // linked account per mode, so the page never shows both at once.
+    expect(screen.queryByRole("link", { name: /X \/ Twitter/ })).toBeNull();
     // The saved bio is not also printed under the handle: one field, one copy
     // of it on screen. The owner's email keeps the slot.
     expect(container.querySelector("h1 + div")?.textContent).toBe("ana@example.test");

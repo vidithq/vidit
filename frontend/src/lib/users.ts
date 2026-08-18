@@ -94,104 +94,119 @@ function asHttpUrl(value: string | null | undefined): string | null {
   return null;
 }
 
-const SOCIAL_HANDLE_BASES: Record<"x" | "github", string> = {
-  x: "https://x.com/",
-  github: "https://github.com/",
+/** The hosts whose URLs name a profile on the platform, canonical first: a
+ *  parsed handle links to that first host. The `www.` form of each is folded in
+ *  by the parser, so this lists the bare hosts only. Mirrors
+ *  `schemas/user.SOCIAL_PROFILE_HOSTS`. */
+const SOCIAL_HOSTS: Record<"x" | "github", readonly string[]> = {
+  x: ["x.com", "twitter.com"],
+  github: ["github.com"],
 };
 
-/** Hosts other than the canonical one whose URLs still name a profile on the
- *  platform. The canonical host is read off `SOCIAL_HANDLE_BASES` and the
- *  `www.` form of either is folded in, so this lists only the true aliases. */
-const SOCIAL_HANDLE_ALIASES: Record<"x" | "github", readonly string[]> = {
-  x: ["twitter.com"],
-  github: [],
-};
-
-function isPlatformHost(platform: "x" | "github", host: string): boolean {
-  const bare = host.toLowerCase().replace(/^www\./, "");
-  return (
-    bare === new URL(SOCIAL_HANDLE_BASES[platform]).host ||
-    SOCIAL_HANDLE_ALIASES[platform].includes(bare)
-  );
-}
-
+/** Each platform's own account-name rule, mirroring
+ *  `schemas/user.SOCIAL_HANDLE_PATTERNS`: 1 to 15 characters of alphanumerics
+ *  and underscores for X, up to 39 alphanumerics and hyphens for a GitHub user
+ *  or organization. A value the platform itself would refuse is not an account,
+ *  so it neither links nor prints as a handle. */
 const SOCIAL_HANDLE_PATTERN: Record<"x" | "github", RegExp> = {
-  // 1–15 chars, alphanumeric + underscore — the platform rule, so a typo
-  // like "@some user" doesn't auto-link to a nonsense URL.
   x: /^[A-Za-z0-9_]{1,15}$/,
-  // Up to 39 chars, alphanumeric + hyphen. Leading/trailing hyphens aren't
-  // rejected: a near-miss should fall back to plain text, not block.
   github: /^[A-Za-z0-9-]{1,39}$/,
 };
 
 /**
- * Resolve a per-platform link value to a clickable href, or `null` to
- * render as plain text. Handles three cases:
+ * The account a stored X or GitHub value names, or `{ handle: null }` when it
+ * names none. Both helpers below run off this one parse, so what the profile
+ * links and what it prints cannot disagree.
  *
- *  - Full URL pasted → use it (after the `asHttpUrl` safety sniff).
- *  - X / GitHub bare handle (`@me` or `me`) → expand to the canonical
- *    profile URL on that platform.
- *  - Anything else (Discord username, a non-URL Website value, an
- *    invalid handle shape) → null, render as plain text.
+ * Two forms pass: a bare handle (`ana`, `@ana`), which is what the backend
+ * stores, and a profile URL on the platform's own hosts carrying exactly one
+ * path segment, which is the form a value written before that rule can still
+ * hold. A URL is compared on its `hostname`, so a host that merely contains the
+ * platform's name (`x.com.evil.example`) is a foreign host. A status URL, a
+ * product path (`/i/flow`), a query or a fragment all carry more than an
+ * account, and a URL segment is read literally: `/@ana` is not the handle
+ * `ana`, since the stored form of that account is the handle itself.
+ */
+function parseSocialLink(
+  platform: "x" | "github",
+  value: string
+): { handle: string | null } {
+  const trimmed = value.trim();
+  const url = asHttpUrl(trimmed);
+
+  if (url) {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    if (!SOCIAL_HOSTS[platform].includes(host)) return { handle: null };
+    if (parsed.search || parsed.hash) return { handle: null };
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    if (segments.length !== 1) return { handle: null };
+    return {
+      handle: SOCIAL_HANDLE_PATTERN[platform].test(segments[0])
+        ? segments[0]
+        : null,
+    };
+  }
+
+  const handle = trimmed.replace(/^@/, "");
+  return { handle: SOCIAL_HANDLE_PATTERN[platform].test(handle) ? handle : null };
+}
+
+/**
+ * Resolve a per-platform link value to a clickable href, or `null` to render
+ * no link at all. Handles three cases:
+ *
+ *  - X / GitHub → the profile URL for the account the value names, built on the
+ *    platform's canonical host. A value naming no account resolves to nothing,
+ *    including a URL on a host the platform does not own: a brand mark pointing
+ *    at someone else's server is the one thing this row must not do.
+ *  - Website → the URL, after the `asHttpUrl` safety sniff, which is what keeps
+ *    a `javascript:` value from reaching the DOM as an anchor target.
+ *  - Discord → nothing. The platform exposes no profile URL for a username, so
+ *    the caller copies it instead.
  */
 export function resolveLinkHref(
-  platform: "x" | "discord" | "website" | "github",
+  platform: keyof ExternalLinks,
   value: string | null | undefined
 ): string | null {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
 
-  const direct = asHttpUrl(trimmed);
-  if (direct) return direct;
-
-  // Bare-handle resolution. Discord has no canonical web URL for a handle,
-  // and Website only accepts a full URL — both fall through to non-clickable.
   if (platform === "x" || platform === "github") {
-    const handle = trimmed.replace(/^@/, "");
-    if (SOCIAL_HANDLE_PATTERN[platform].test(handle)) {
-      return `${SOCIAL_HANDLE_BASES[platform]}${handle}`;
-    }
+    const { handle } = parseSocialLink(platform, trimmed);
+    return handle ? `https://${SOCIAL_HOSTS[platform][0]}/${handle}` : null;
   }
+  if (platform === "website") return asHttpUrl(trimmed);
   return null;
 }
 
 /**
- * The text to print for a link value, which is not the text to click: the
- * href stays whatever `resolveLinkHref` returns. A profile line reads as
- * identity, and `https://x.com/LoLManya` spends a whole entry saying which
- * platform the icon beside it already said.
+ * The text to print for a link value, which is not the text to click: the href
+ * stays whatever `resolveLinkHref` returns. `https://x.com/LoLManya` spends
+ * most of its width saying which platform the icon beside it already said.
  *
- *  - X / GitHub → the handle with an `@`, whether the analyst stored a full
- *    profile URL on the platform's own host or a bare handle.
+ *  - X / GitHub → the handle with an `@`, off the same parse the href runs.
  *  - Website → the URL without its scheme and without a trailing slash, so
  *    `https://osintmethat.com/` reads `osintmethat.com` and a path is kept.
- *  - Discord, and anything that fits none of the above → as stored, because
- *    a value this cannot parse is one only its owner can vouch for.
+ *  - Discord, and anything that fits none of the above → as stored, because a
+ *    value this cannot parse is one only its owner can vouch for.
  */
 export function displayLinkValue(
-  platform: "x" | "discord" | "website" | "github",
+  platform: keyof ExternalLinks,
   value: string | null | undefined
 ): string {
   const trimmed = value?.trim() ?? "";
   if (!trimmed) return "";
 
-  const url = asHttpUrl(trimmed);
-
   if (platform === "x" || platform === "github") {
-    if (url) {
-      const parsed = new URL(url);
-      const [segment] = parsed.pathname.split("/").filter(Boolean);
-      if (segment && isPlatformHost(platform, parsed.host)) return `@${segment}`;
-      return trimmed;
-    }
-    const handle = trimmed.replace(/^@/, "");
-    if (SOCIAL_HANDLE_PATTERN[platform].test(handle)) return `@${handle}`;
-    return trimmed;
+    const { handle } = parseSocialLink(platform, trimmed);
+    return handle ? `@${handle}` : trimmed;
   }
 
-  if (platform === "website" && url) {
-    return url.replace(/^https?:\/\//i, "").replace(/\/$/, "");
+  if (platform === "website") {
+    const url = asHttpUrl(trimmed);
+    if (url) return url.replace(/^https?:\/\//i, "").replace(/\/$/, "");
   }
 
   return trimmed;

@@ -839,7 +839,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="BrandGlyphs (XGlyph / GitHubGlyph / DiscordGlyph)" usage="The three third-party marks lucide doesn't ship, as inline SVG paths painting currentColor. `size` in px, so they sit with lucide icons at the same stop: the sidebar's community links, the submit form's 'From an X post' segment, the event share row.">
+          <Item name="BrandGlyphs (XGlyph / GitHubGlyph / DiscordGlyph)" usage="The three third-party marks lucide doesn't ship, as inline SVG paths painting currentColor. `size` in px, so they sit with lucide icons at the same stop: the sidebar's community links, the submit form's 'From an X post' segment, the event share row, the profile's linked-account buttons.">
             <span className="inline-flex items-center gap-3 text-neutral-400">
               <XGlyph />
               <GitHubGlyph />

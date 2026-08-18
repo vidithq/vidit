@@ -19,17 +19,42 @@ import type { ProfileEditState } from "./useProfileEdit";
  *  [`BrandGlyphs`](../ui/BrandGlyphs.tsx), the marks the sidebar and the share
  *  row already use, so one platform reads the same everywhere. The glyphs paint
  *  `currentColor` and take no `className`, so a caller that wants a colour
- *  wraps them, which is what the fields below do. */
+ *  wraps them, which is what the fields below do.
+ *
+ *  `action` is what the reader can do with the account: `link` opens the
+ *  profile, `copy` hands the value over. It is a property of the platform, not
+ *  of the value, since Discord publishes no profile URL for a username at all.
+ *  The hint is the shape the backend accepts, so a value the form suggests is
+ *  one that saves. */
 const LINK_PLATFORMS: {
   key: keyof ExternalLinks;
   label: string;
   Icon: ComponentType<{ size?: number }>;
   hint: string;
+  action: "link" | "copy";
 }[] = [
-  { key: "x", label: "X / Twitter", Icon: XGlyph, hint: "@handle or https://x.com/handle" },
-  { key: "discord", label: "Discord", Icon: DiscordGlyph, hint: "username" },
-  { key: "website", label: "Website", Icon: Globe, hint: "https://your-site.com" },
-  { key: "github", label: "GitHub", Icon: GitHubGlyph, hint: "@handle or https://github.com/handle" },
+  {
+    key: "x",
+    label: "X / Twitter",
+    Icon: XGlyph,
+    hint: "@handle or https://x.com/handle",
+    action: "link",
+  },
+  { key: "discord", label: "Discord", Icon: DiscordGlyph, hint: "username", action: "copy" },
+  {
+    key: "website",
+    label: "Website",
+    Icon: Globe,
+    hint: "https://your-site.com",
+    action: "link",
+  },
+  {
+    key: "github",
+    label: "GitHub",
+    Icon: GitHubGlyph,
+    hint: "@handle or https://github.com/handle",
+    action: "link",
+  },
 ];
 
 /** Edit-mode inputs, one per platform, sitting under the bio field so every
@@ -86,23 +111,27 @@ export function LinkedAccountsFields({ edit }: { edit: ProfileEditState }) {
  * the event page keeps its share controls, so reaching the analyst is an action
  * on the page rather than a line of the identity. That also puts it above the
  * work: a visitor who wants the analyst's X account does not scroll a portfolio
- * to find it. Icons rather than tiles, because the handles are the analyst's
- * names on other platforms and printing four of them next to the one name this
- * page is about buries the handle that titles it. The account each button
- * reaches is in its `title` and its accessible name (`X / Twitter: @LoLManya`),
- * which is where a reader who wants the handle itself gets it: a bare mark says
- * the platform and nothing else.
+ * to find it. Marks rather than tiles printing the handles: four names the
+ * analyst holds elsewhere, set beside the one name this page is about, take the
+ * weight off the handle that titles the page. The account each button reaches
+ * is in its `title` and its accessible name (`X / Twitter: @LoLManya`), which
+ * is where a reader who wants the handle itself gets it: a bare mark says the
+ * platform and nothing else.
  *
  * The name prints `displayLinkValue`, not the stored string, so an X value reads
  * `@LoLManya` whether it was stored as a profile URL or as a bare handle.
  *
- * A value `resolveLinkHref` resolves is an `<a>` wearing the button shape, the
- * sanctioned pattern for a navigation control that looks like a button, opening
- * in a new tab. Discord resolves to no URL and gets a `<CopyButton>` carrying
- * the brand mark instead: handing over the username is the one thing a reader
- * can do with it. Any other unresolved value (a website that is not a URL, a
- * handle whose shape is invalid) renders nothing, since a button that neither
- * goes anywhere nor copies anything is a dead control.
+ * The platform's `action` decides the control. `copy` is a `<CopyButton>`
+ * carrying the brand mark, which is Discord: the platform publishes no profile
+ * URL for a username, so handing it over is the one thing a reader can do with
+ * it. `link` is an anchor carrying the button shape, the pattern for a
+ * navigation control that looks like a button, opening in a new tab.
+ *
+ * A `link` platform whose value `resolveLinkHref` refuses renders nothing: a
+ * button that goes nowhere is a dead control. The backend validates these
+ * values on the way in, so an unresolvable one cannot be stored, and what falls
+ * here is a stored value the strict parse still refuses, a URL on a host the
+ * platform does not own among them.
  *
  * A profile carrying no reachable account renders nothing at all.
  *
@@ -111,29 +140,13 @@ export function LinkedAccountsFields({ edit }: { edit: ProfileEditState }) {
  * second right-aligned line on a phone instead of widening the header.
  */
 export function LinkedAccountsLine({ profile }: { profile: PublicProfile }) {
-  const buttons = LINK_PLATFORMS.flatMap(({ key, label, Icon }) => {
+  const buttons = LINK_PLATFORMS.flatMap(({ key, label, Icon, action }) => {
     const value = profile.external_links[key]?.trim() ?? "";
     if (!value) return [];
     const shown = displayLinkValue(key, value);
     const name = `${label}: ${shown}`;
-    const href = resolveLinkHref(key, value);
 
-    if (href) {
-      return [
-        <a
-          key={key}
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={buttonClasses("ghost", { icon: true })}
-          title={name}
-          aria-label={name}
-        >
-          <Icon size={15} />
-        </a>,
-      ];
-    }
-    if (key === "discord") {
+    if (action === "copy") {
       return [
         <CopyButton
           key={key}
@@ -144,7 +157,22 @@ export function LinkedAccountsLine({ profile }: { profile: PublicProfile }) {
         />,
       ];
     }
-    return [];
+
+    const href = resolveLinkHref(key, value);
+    if (!href) return [];
+    return [
+      <a
+        key={key}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={buttonClasses("ghost", { icon: true })}
+        title={name}
+        aria-label={name}
+      >
+        <Icon size={14} />
+      </a>,
+    ];
   });
 
   if (buttons.length === 0) return null;

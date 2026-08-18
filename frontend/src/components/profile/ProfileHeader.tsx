@@ -132,7 +132,9 @@ export function ProfileIdentity({
  *  act on the thing the page is about, right of the title. The icon row keeps
  *  its own `gap-1` and the cluster's `gap-2` separates it from the button at
  *  the far right, so the marks read as one group beside a control rather than
- *  as five peers.
+ *  as five peers. The cluster wraps and right-aligns, the shape every
+ *  page-level action cluster uses, so the icons and the button break onto
+ *  separate lines on a phone instead of widening the header.
  *
  *  Editing drops the icons: the links are the inputs below for the duration.
  *  `LinkedAccountsLine` renders nothing for a profile that carries no reachable
@@ -147,7 +149,7 @@ export function ProfileActions({
   edit: ProfileEditState;
 }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center justify-end gap-2">
       {!edit.editing && <LinkedAccountsLine profile={profile} />}
       {isOwn ? (
         edit.editing ? (

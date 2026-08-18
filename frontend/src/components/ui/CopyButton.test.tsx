@@ -45,6 +45,34 @@ describe("CopyButton", () => {
     );
   });
 
+  it("flips a custom resting glyph to the same check", async () => {
+    // `icon` names the value (the profile's Discord button carries the brand
+    // mark); what confirms the write is fixed, so it reads the same everywhere.
+    function BrandMark({ size }: { size?: number }) {
+      return <svg data-testid="brand-mark" width={size} height={size} />;
+    }
+    render(
+      <CopyButton
+        icon={BrandMark}
+        value={() => "ana"}
+        label="Copy Discord username: ana"
+        copiedLabel="Discord username copied"
+      />
+    );
+    expect(screen.getByTestId("brand-mark")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy Discord username: ana" })
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Discord username copied"
+      )
+    );
+    expect(screen.queryByTestId("brand-mark")).toBeNull();
+    expect(screen.getByRole("button").querySelector("svg")).toBeInTheDocument();
+  });
+
   it("cancels the write when beforeCopy returns false (the armed first click)", () => {
     const beforeCopy = vi.fn(() => false);
     render(

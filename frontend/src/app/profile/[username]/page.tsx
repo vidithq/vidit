@@ -83,9 +83,9 @@ export default function ProfilePage() {
 
   const isOwn = !!currentUser && profile.username === currentUser.username;
 
-  // Portfolio order: say who the analyst is and where to reach them, then show
-  // the work, then explain the work. Most probative first, most incidental
-  // last.
+  // Portfolio order: the identity and how to reach the analyst in the header,
+  // then the work most probative first: the map, what interprets it, then the
+  // list that grows.
   //
   // The identity is one compact block and not a section: the handle titles the
   // page, the avatar sits beside it, and the bio plus the followers /
