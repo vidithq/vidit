@@ -198,11 +198,6 @@ export default function ImportGuidePage() {
 
       <Card as="section">
         <h2 className={SECTION}>Three ways to import</h2>
-        <p className={BODY}>
-          The rules above hold for all three. What changes is where you work,
-          how fast the draft appears, and how much of your history comes in at
-          once.
-        </p>
       </Card>
 
       <Card as="section">
