@@ -17,8 +17,9 @@ import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
  *
  * The byline names who produced this version, which is the edit that
  * superseded the one before it; version 1 was published rather than edited, so
- * it says so. An editor whose account is gone leaves the clause out rather than
- * naming nobody.
+ * it says so, and its date is the publication. An editor whose account is gone
+ * leaves the clause out rather than naming nobody, and a version whose
+ * producing row could not be read drops the date the same way.
  */
 export function EventVersionBanner({
   eventId,
@@ -37,8 +38,8 @@ export function EventVersionBanner({
           , {version.number === 1 ? "published" : "edited"} by{" "}
           <AuthorByline author={version.editor} prefix={false} />
         </>
-      )}{" "}
-      on {formatDate(version.createdAt)}.{" "}
+      )}
+      {version.createdAt && <> on {formatDate(version.createdAt)}</>}.{" "}
       <Link href={`/events/${eventId}`} className={TEXT_LINK}>
         View the current version
       </Link>

@@ -21,7 +21,9 @@ import { Pill } from "@/components/ui/Pill";
  * snapshot instead of the live row, so a version cannot drift into a second
  * layout of its own. The banner says which version this is before anything else,
  * and the action cluster is absent: sharing, reporting and editing act on the
- * record, and the record is at `/events/{id}`.
+ * record, and the record is at `/events/{id}`. The body renders read-only for
+ * the same reason, so its owner is offered no archive action on a link this
+ * version showed and the live row may no longer carry.
  *
  * Three reads, each only when it is needed: the event (the immutables and the
  * version count), the version itself, and the version below it, which is where
@@ -89,7 +91,7 @@ export default function EventVersionPage() {
     >
       <EventVersionBanner eventId={geo.id} version={version} total={geo.revision_no} />
       {version.view ? (
-        <EventPageBody geo={version.view} />
+        <EventPageBody geo={version.view} readOnly />
       ) : (
         <EmptyState>
           An administrator redacted this version, so its content is no longer

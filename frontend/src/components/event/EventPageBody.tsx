@@ -17,13 +17,20 @@ const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
  *
  * It takes a view rather than an id, so the same markup renders the live row on
  * `/events/{id}` and a filed version on `/events/{id}/vN`, which is fed the same
- * shape by `snapshotToEventView`. Nothing here acts on the event: the page
- * chrome above it carries the controls, which is what lets a version page drop
- * them without touching this.
+ * shape by `snapshotToEventView`. The page chrome above it carries the controls
+ * that act on the record, which is what lets a version page drop them without
+ * touching this; `readOnly` drops the one write affordance the body itself
+ * carries, the owner's archive action on the link rows.
  */
-export function EventPageBody({ geo }: { geo: EventDetail }) {
+export function EventPageBody({
+  geo,
+  readOnly = false,
+}: {
+  geo: EventDetail;
+  readOnly?: boolean;
+}) {
   return (
-    <EventDetailBody geo={geo} variant="page">
+    <EventDetailBody geo={geo} variant="page" readOnly={readOnly}>
       {/* A located row (``geolocated`` / ``detected`` with coords) gets the
           Location module; a coordless event (a ``requested`` row served here
           by id) has no point, so the block is omitted. */}

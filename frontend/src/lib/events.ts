@@ -557,6 +557,12 @@ const sameCoords = (
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((value, index) => value === b[index]);
 
+/** Two unordered relationships hold the same members. Tags and conflicts are
+ *  sets the API serves in whatever order it read them, so a position-sensitive
+ *  comparison would announce a changed field on an edit that touched neither. */
+const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
+  sameList([...a].sort(), [...b].sort());
+
 /**
  * The versioned fields that differ between one version and the one before it,
  * as the labels a history row prints ("Title, Coordinates, Proof").
@@ -566,7 +572,8 @@ const sameList = (a: readonly string[], b: readonly string[]): boolean =>
  * shape, so the current row and a mapped snapshot compare identically.
  *
  * Tags and conflicts compare by identity rather than by name: a referential row
- * renamed under a published event changes no version. `proof_images` is the set
+ * renamed under a published event changes no version. They also compare as
+ * sets, the relationship being unordered. `proof_images` is the set
  * of images the proof body displays, which moves with the body and is named
  * separately because swapping one image is the edit a reader most wants to see
  * announced.
@@ -594,9 +601,9 @@ export function changedFields(version: EventDetail, previous: EventDetail): stri
   );
   flag(
     VERSION_FIELD_LABELS.conflicts,
-    !sameList(ids(version.conflicts), ids(previous.conflicts))
+    !sameSet(ids(version.conflicts), ids(previous.conflicts))
   );
-  flag(VERSION_FIELD_LABELS.tags, !sameList(ids(version.tags), ids(previous.tags)));
+  flag(VERSION_FIELD_LABELS.tags, !sameSet(ids(version.tags), ids(previous.tags)));
   flag(
     VERSION_FIELD_LABELS.secondary_source_urls,
     !sameList(version.secondary_source_urls, previous.secondary_source_urls)
@@ -622,9 +629,10 @@ export interface EventVersion {
   /** The event as it stood at this version, or `null` when the version was
    *  redacted and carries no content to render. */
   view: EventDetail | null;
-  /** Who produced this version, and when. */
+  /** Who produced this version, and when. `null` when the row that carries
+   *  that byline and date could not be read, so neither is stated. */
   editor: EventDetail["owner"] | null;
-  createdAt: string;
+  createdAt: string | null;
   /** That editor's own words about the edit, `null` when they left none. */
   note: string | null;
   /** Whether an admin blanked this version's content. */
@@ -658,8 +666,13 @@ export interface EventVersionRows {
  * carries the content of the version it holds alongside the byline, date and
  * note of the edit that superseded it. Version `n` therefore takes its content
  * from row `n` and its authorship from row `n - 1`; version 1, which no edit
- * produced, takes the analyst who published the record and the date the row was
- * opened.
+ * produced, takes the analyst who published the record and `geolocated_at`, the
+ * date they published it. `created_at` is the submission or detection stamp,
+ * which is when the record was opened rather than when version 1 came to be.
+ *
+ * A version above 1 whose producing row is missing states neither byline nor
+ * date: the edit that made it is what the reader is being told about, and an
+ * unread row is not a reason to credit the publication instead.
  */
 export function eventVersion(
   current: EventDetail,
@@ -677,7 +690,11 @@ export function eventVersion(
     current: isCurrent,
     view,
     editor: producedBy ? producedBy.edited_by : number === 1 ? current.owner : null,
-    createdAt: producedBy ? producedBy.created_at : current.created_at,
+    createdAt: producedBy
+      ? producedBy.created_at
+      : number === 1
+        ? current.geolocated_at
+        : null,
     note: producedBy?.note ?? null,
     redacted: own?.redacted ?? false,
     changed: view && previous ? changedFields(view, previous) : null,

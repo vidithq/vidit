@@ -72,7 +72,10 @@ export function EventVersionRow({
             // not a click a reader can aim at.
             <AuthorByline author={version.editor} prefix={false} />
           )}
-          <span>{formatDate(version.createdAt)}</span>
+          {/* Dropped, like the byline beside it, when the row that carries the
+              edit's date could not be read: the metadata line states what is
+              known rather than filling the gap with another version's date. */}
+          {version.createdAt && <span>{formatDate(version.createdAt)}</span>}
         </div>
         {/* The editor's own words about the edit, kept out of the metadata line
             so a long note wraps on its own rather than pushing the date away. */}

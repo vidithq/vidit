@@ -51,6 +51,12 @@ interface EventDetailBodyProps {
   /** Extra DetailRows appended to the Details section, where the request view
    *  slots its "Closed" row. */
   detailExtras?: ReactNode;
+  /** Render the body with no affordance that writes to the record, whoever is
+   *  looking. A filed version is read at `/events/{id}/vN` and acted on at
+   *  `/events/{id}`, so its owner is offered nothing here: the endpoints behind
+   *  these controls take the live row, and the links a past version shows are
+   *  not always the ones that row still carries. */
+  readOnly?: boolean;
 }
 
 /**
@@ -63,13 +69,19 @@ export function EventDetailBody({
   variant,
   children,
   detailExtras,
+  readOnly = false,
 }: EventDetailBodyProps) {
   const compact = variant === "panel";
   return (
     <>
       <MediaBlock geo={geo} compact={compact} />
       {children}
-      <DetailRows geo={geo} compact={compact} detailExtras={detailExtras} />
+      <DetailRows
+        geo={geo}
+        compact={compact}
+        detailExtras={detailExtras}
+        readOnly={readOnly}
+      />
       <ProofBlock geo={geo} compact={compact} />
     </>
   );
@@ -106,10 +118,12 @@ function DetailRows({
   geo,
   compact,
   detailExtras,
+  readOnly,
 }: {
   geo: EventDetailBodyData;
   compact: boolean;
   detailExtras?: ReactNode;
+  readOnly: boolean;
 }) {
   const { user } = useAuth();
   const viewerId = user?.id;
@@ -121,8 +135,8 @@ function DetailRows({
   // Archiving a link is the owner's own act, so the affordance is offered to
   // exactly the analyst the endpoint would accept it from. A detection is included:
   // archival is no longer tied to publication, and a detection's source rots while
-  // it waits.
-  const canArchive = viewerId === geo.owner.id;
+  // it waits. A read-only render offers it to nobody, the owner included.
+  const canArchive = !readOnly && viewerId === geo.owner.id;
   const sourceMaxWidth = compact ? "max-w-[200px]" : "max-w-[300px]";
   const sourceClass = compact ? "ml-4" : "text-sm ml-4";
   const tagRow = (name: string, tags: EventDetailBodyData["tags"], concept?: Concept) =>

@@ -53,7 +53,9 @@ const CURRENT: EventDetail = {
   updated_at: "2026-06-04T00:00:00Z",
   requested_at: null,
   detected_at: null,
-  geolocated_at: "2026-06-01T00:00:00Z",
+  // Deliberately apart from `created_at`: the record was submitted at midnight
+  // and published nine hours later, and version 1 is the publication.
+  geolocated_at: "2026-06-01T09:00:00Z",
   closed_at: null,
   media: [
     {
@@ -222,6 +224,24 @@ describe("changedFields", () => {
     expect(changedFields(CURRENT, renamed)).not.toContain("Tags");
   });
 
+  it("compares tags and conflicts as sets, the relationship being unordered", () => {
+    const tags: EventDetail["tags"] = [
+      { id: "t2", name: "Drone", category: "capture_source" },
+      { id: "t7", name: "Night", category: "free" },
+    ];
+    const conflicts: EventDetail["conflicts"] = [
+      CURRENT.conflicts[0],
+      { ...CURRENT.conflicts[0], id: "c2", name: "War in Sudan" },
+    ];
+    const version = { ...CURRENT, tags, conflicts };
+    const reordered = {
+      ...CURRENT,
+      tags: [...tags].reverse(),
+      conflicts: [...conflicts].reverse(),
+    };
+    expect(changedFields(version, reordered)).toEqual([]);
+  });
+
   it("names the moved coordinates, dates, graphic flag and camera position", () => {
     const before = snapshotToEventView(
       CURRENT,
@@ -274,9 +294,11 @@ describe("eventVersions", () => {
     expect(versions[1].changed).toEqual(["Title"]);
 
     // Version 1 was published, not edited: it carries the record's own author
-    // and date, and nothing preceded it to compare against.
+    // and the date it was published, and nothing preceded it to compare
+    // against.
     expect(versions[2].editor).toEqual(CURRENT.owner);
-    expect(versions[2].createdAt).toBe(CURRENT.created_at);
+    expect(versions[2].createdAt).toBe(CURRENT.geolocated_at);
+    expect(versions[2].createdAt).not.toBe(CURRENT.created_at);
     expect(versions[2].note).toBeNull();
     expect(versions[2].changed).toBeNull();
   });
@@ -323,5 +345,15 @@ describe("eventVersion", () => {
       changed: null,
     });
     expect(version.view?.title).toBe("v2 title");
+  });
+
+  it("states neither byline nor date when the producing row could not be read", () => {
+    // The content read landed and the one below it did not, so the version has
+    // its snapshot and nothing to say about the edit that made it. The
+    // record's own author and publication date belong to version 1 alone.
+    const version = eventVersion(CURRENT, 2, { own: revision(2, snapshot()) });
+    expect(version.view?.title).toBe("v2 title");
+    expect(version.editor).toBeNull();
+    expect(version.createdAt).toBeNull();
   });
 });
