@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ExternalLink, Upload } from "lucide-react";
+import { Archive, AtSign, ExternalLink, Upload } from "lucide-react";
+import { XGlyph } from "@/components/ui/BrandGlyphs";
 import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
@@ -90,20 +91,25 @@ const EXPORT_STEPS: NumberedStep[] = [
 ];
 
 // The chooser under the intro, in the order the sections follow. Each line
-// says when to use that entry, not what it does; the section says that.
+// says when to use that entry, not what it does; the section says that. The
+// glyphs are the ones the Submit page's mode control uses for the same entries
+// (X glyph for a post, Archive for the export) and the landing's for the bot.
 const ENTRIES = [
   {
     href: "#archive",
+    icon: <Archive size={13} strokeWidth={1.8} />,
     title: "Upload your X archive",
     when: "Your whole history, once.",
   },
   {
     href: "#paste",
+    icon: <XGlyph size={12} />,
     title: "Paste a post URL",
     when: "One post, no public trace.",
   },
   {
     href: "#bot",
+    icon: <AtSign size={13} strokeWidth={1.8} />,
     title: "Tag @ViditBot on X",
     when: "Every day, from your feed.",
   },
@@ -132,15 +138,16 @@ export default function ImportGuidePage() {
         </p>
         <h2 className={SECTION}>Three ways in</h2>
         <div className="grid gap-4 sm:grid-cols-3">
-          {ENTRIES.map(({ href, title, when }) => (
+          {ENTRIES.map(({ href, icon, title, when }) => (
             <Link
               key={href}
               href={href}
               className={`group block ${TILE} ${TAPPABLE_HOVER}`}
             >
               <h3
-                className={`${TILE_TITLE} transition-colors group-hover:text-orange-400`}
+                className={`inline-flex items-center gap-1.5 ${TILE_TITLE} transition-colors group-hover:text-orange-400`}
               >
+                {icon}
                 {title}
               </h3>
               <p className={`mt-1.5 ${NOTE}`}>{when}</p>
