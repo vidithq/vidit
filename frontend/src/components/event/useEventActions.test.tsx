@@ -81,10 +81,25 @@ function ownerMenuItems(): string[] {
 }
 
 describe("owner management is scoped to the surface that owns the verb", () => {
-  it("offers the published correction on the event surface, and nothing else", () => {
+  // The one owner verb of the event page is a visible icon, not a menu entry:
+  // a `⋯` holding a single non-destructive entry hides the author's most used
+  // control for nothing.
+  it("offers the published correction on the event surface as a visible icon, and no menu", () => {
     render(<Harness status="geolocated" surface="event" />);
-    expect(ownerMenuItems()).toEqual(["Edit this geolocation"]);
+    expect(screen.getByRole("link", { name: "Edit this geolocation" })).toHaveAttribute(
+      "href",
+      "/events/e1/edit"
+    );
+    expect(ownerMenuItems()).toEqual([]);
   });
+
+  it.each<EventStatus>(["requested", "closed", "detected"])(
+    "shows no edit icon on the event surface for a %s row",
+    (status) => {
+      render(<Harness status={status} surface="event" />);
+      expect(screen.queryByRole("link", { name: "Edit this geolocation" })).toBeNull();
+    }
+  );
 
   // `/events/{id}` serves a row of ANY status, so the request verbs must not
   // appear there just because the reader owns the row: a requested or closed

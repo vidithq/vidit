@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { History, MapPin } from "lucide-react";
+import { History, MapPin, Pencil } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useMutation } from "@/hooks/useMutation";
@@ -31,13 +31,14 @@ import type { EventDetail } from "@/types";
  *    with the version history, a read like the others.
  * 2. **The flow action**, at most one, filled: what this surface exists to move
  *    forward. Only an open request carries one (geolocate it).
- * 3. **Owner management**, behind one `⋯` `<OverflowMenu>`: the controls only
- *    the author holds, and each surface carries only its own. The request page
- *    carries closing and deleting the request; the event page carries editing a
- *    published geolocation, which files a revision rather than overwriting the
- *    record. The two do not cross: `/events/{id}` serves a row of any status,
- *    so an unscoped owner tier put "Close this request" on the page for a row
- *    that is not a request at all.
+ * 3. **Owner management**: the controls only the author holds, and each
+ *    surface carries only its own. The request page carries closing and
+ *    deleting the request behind one `⋯` `<OverflowMenu>` (two verbs, one
+ *    destructive); the event page carries editing a published geolocation,
+ *    which files a revision rather than overwriting the record, as a pencil
+ *    icon in the open (one verb, not destructive). The two do not cross:
+ *    `/events/{id}` serves a row of any status, so an unscoped owner tier put
+ *    "Close this request" on the page for a row that is not a request at all.
  *
  * The hook returns nodes rather than rendering them, the shape `useReportEvent`
  * already uses, because the row and the panels its triggers open land in two
@@ -148,20 +149,14 @@ export function useEventActions({
     await deleteMutation.run();
   };
 
-  // Tier 3. Per surface, then per state: the author corrects a published
-  // geolocation on the event page, and on the request page closes a request
-  // only while it is open and deletes one that is open or already closed.
+  // Tier 3. Per surface, then per state. The event page's one owner verb,
+  // correcting a published geolocation, is a visible icon rather than a menu
+  // entry: it is the author's most used control and it is not destructive, and
+  // a `⋯` holding a single entry hides it for nothing. The request page keeps
+  // the menu, since closing and deleting are two verbs and one is destructive.
+  const canRevise = isAuthor && tiers.revise && event.status === "geolocated";
   const ownerItems: OverflowMenuItem[] = [];
   if (isAuthor) {
-    if (tiers.revise && event.status === "geolocated") {
-      ownerItems.push({
-        // "Edit" alone would read as an in-place rewrite. The record is
-        // corrected by adding a version, and the entry says so.
-        label: "Edit this geolocation",
-        onClick: () => router.push(`/events/${event.id}/edit`),
-        disabled: pending,
-      });
-    }
     if (tiers.dispose && isOpenRequest) {
       ownerItems.push({
         label: "Close this request",
@@ -194,6 +189,19 @@ export function useEventActions({
           >
             <MapPin size={14} />
             Geolocate
+          </Link>
+        )}
+        {canRevise && (
+          <Link
+            href={`/events/${event.id}/edit`}
+            className={buttonClasses("ghost", { icon: true })}
+            aria-disabled={pending || undefined}
+            // "Edit" alone would read as an in-place rewrite. The record is
+            // corrected by adding a version, and the label says so.
+            aria-label="Edit this geolocation"
+            title="Edit this geolocation (files a new version)"
+          >
+            <Pencil size={14} />
           </Link>
         )}
         <OverflowMenu items={ownerItems} />
