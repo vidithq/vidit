@@ -25,7 +25,9 @@ describe("/import", () => {
       "Paste a post URL on Vidit",
       "Upload your X archive",
     ]) {
-      expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: heading }),
+      ).toBeInTheDocument();
     }
 
     // The anchors the two redirect stubs and the import panels target.
@@ -42,7 +44,7 @@ describe("/import", () => {
     render(<ImportGuidePage />);
 
     expect(
-      screen.getByText(/the post of yours it directly replies to/i),
+      screen.getByText(/your own post it directly replies to/i),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/the only entry that stitches full self\s+threads/i),

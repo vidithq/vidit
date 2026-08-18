@@ -101,13 +101,11 @@ export default function ImportGuidePage() {
           What makes a detection
         </h2>
         <p className={BODY}>
-          A detection needs a coordinate in your own text: your post carries a
-          coordinate anywhere in its text, or the post of yours it directly
-          replies to does; a coordinate outside the world does not count, and
-          one that lives only in a post you quote is that author&apos;s
-          geolocation, not yours. Every entry reads posts from the X handle
-          linked to your Vidit account and nothing else; a retweet produces
-          nothing, its words belong to another account.
+          Two conditions, the same for every entry. The post is yours: it comes
+          from the X handle linked to your Vidit account, and a retweet does not
+          count. It carries a coordinate: anywhere in its text, or in the text
+          of your own post it directly replies to. A coordinate that appears
+          only in a post you quote does not count.
         </p>
         <h3 className={TILE_TITLE}>What the detection carries</h3>
         <ul className={LIST}>
@@ -115,11 +113,10 @@ export default function ImportGuidePage() {
             <span className="text-neutral-100">Coordinate formats.</span>{" "}
             Decimal pairs (48.012345, 37.802411), decimal degrees with a
             hemisphere letter (33.1°N 35.5°E, N48.0123 E37.8024), DMS
-            (48°00&apos;45&quot;N 37°48&apos;08&quot;E) and Google Maps
-            @lat,lng links all read. Position does not matter: a coordinate
-            inside a sentence reads like one alone on its line. Coordinates are
-            read from text only, so one that appears only inside an image is
-            not read.
+            (48°00&apos;45&quot;N 37°48&apos;08&quot;E) and Google Maps @lat,lng
+            links all read. Position does not matter: a coordinate inside a
+            sentence reads like one alone on its line. Coordinates are read from
+            text only, so one that appears only inside an image is not read.
           </li>
           <li>
             <span className="text-neutral-100">Source.</span> Every link your
@@ -133,14 +130,14 @@ export default function ImportGuidePage() {
           <li>
             <span className="text-neutral-100">Media.</span> A quoted
             post&apos;s media is the footage. With no quote, the source
-            post&apos;s media fills the slot, then your thread&apos;s first
-            own video; your photos stay proof.
+            post&apos;s media fills the slot, then your thread&apos;s first own
+            video; your photos stay proof.
           </li>
           <li>
-            <span className="text-neutral-100">Title.</span> The first line
-            that carries text beyond coordinates and links, taken as written and
-            cut at 120 characters. No line qualifying leaves the title empty,
-            and you type one at review.
+            <span className="text-neutral-100">Title.</span> The first line that
+            carries text beyond coordinates and links, taken as written and cut
+            at 120 characters. No line qualifying leaves the title empty, and
+            you type one at review.
           </li>
           <li>
             <span className="text-neutral-100">Proof.</span> Your thread&apos;s
@@ -151,22 +148,22 @@ export default function ImportGuidePage() {
             <span className="text-neutral-100">
               One detection per coordinate.
             </span>{" "}
-            A post carrying several coordinates makes one detection each, sharing
-            every other field.
+            A post carrying several coordinates makes one detection each,
+            sharing every other field.
           </li>
           <li>
-            <span className="text-neutral-100">Importing twice.</span>{" "}
-            Importing the same geolocation again reuses the first detection instead
-            of duplicating it. A detection you already published or rejected stays
+            <span className="text-neutral-100">Importing twice.</span> Importing
+            the same geolocation again reuses the first detection instead of
+            duplicating it. A detection you already published or rejected stays
             as it is, so re-running an import is always safe.
           </li>
         </ul>
         <p className={NOTE}>
-          A detection is on the map from the moment it lands, marked as a machine
-          detection and attributed to your account, and it waits in your detections
-          queue. Review it, correct the event date, then publish it as a
-          geolocation. Rejecting it removes it. Only you turn your detection into a
-          geolocation.
+          A detection is on the map from the moment it lands, marked as a
+          machine detection and attributed to your account, and it waits in your
+          detections queue. Review it, correct the event date, then publish it
+          as a geolocation. Rejecting it removes it. Only you turn your
+          detection into a geolocation.
         </p>
       </Card>
 
@@ -180,8 +177,8 @@ export default function ImportGuidePage() {
         </h2>
         <p className={BODY}>
           Tag @ViditBot on a geolocation post and the detection appears on Vidit
-          within seconds. You do not leave your feed and you retype nothing.
-          The bot imports only for X handles linked to a Vidit account: it stays
+          within seconds. You do not leave your feed and you retype nothing. The
+          bot imports only for X handles linked to a Vidit account: it stays
           silent for any other handle and creates nothing. It reads public posts
           only, so a tag from a protected account imports nothing.
         </p>
@@ -209,10 +206,10 @@ export default function ImportGuidePage() {
             <h3 className={TILE_TITLE}>Your post, then your own reply</h3>
             <p className={`mt-1.5 mb-4 ${NOTE}`}>
               Post the geolocation, then reply to yourself with the source and
-              the tag. The bot reads both posts as one, and the detection is filed
-              under the first of them, so tagging either one imports the same
-              geolocation once. This is also how you import a post you published
-              earlier.
+              the tag. The bot reads both posts as one, and the detection is
+              filed under the first of them, so tagging either one imports the
+              same geolocation once. This is also how you import a post you
+              published earlier.
             </p>
             <div className="space-y-3">
               <MockPost {...MOCK_ANALYST}>
@@ -238,18 +235,16 @@ export default function ImportGuidePage() {
           </div>
         </div>
         <p className={NOTE}>
-          The bot answers in-thread with your detection&apos;s reference and with
-          what to fix at review: an empty source, several coordinates, a missing
-          footage file or post date, or media already on Vidit. When nothing
-          imports, it names which of the three refusals it was. Replies are
-          capped per hour, so a burst of tags still creates every detection while
-          some of them go unanswered.
+          The bot answers in-thread with your detection&apos;s reference and
+          with what to fix at review: an empty source, several coordinates, a
+          missing footage file or post date, or media already on Vidit. When
+          nothing imports, it names which of the three refusals it was. Replies
+          are capped per hour, so a burst of tags still creates every detection
+          while some of them go unanswered.
         </p>
         <div className="sm:max-w-md">
           <MockPost {...MOCK_BOT} replyingTo={MOCK_ANALYST.handle}>
-            {
-              "✅ 1 detection saved · ref 94183d44\nReview from your profile"
-            }
+            {"✅ 1 detection saved · ref 94183d44\nReview from your profile"}
           </MockPost>
         </div>
       </Card>
@@ -264,11 +259,12 @@ export default function ImportGuidePage() {
             Submit
           </Link>
           , pick <span className="text-neutral-100">From an X post</span> and
-          paste the link to one of your own posts. The detection is created while
-          you wait; the review opens on it when nothing needs your attention,
-          otherwise the page tells you what does. Your own posts only, matched
-          against the X account linked to your profile; a third party&apos;s
-          footage goes through the plain submit form with a source URL.
+          paste the link to one of your own posts. The detection is created
+          while you wait; the review opens on it when nothing needs your
+          attention, otherwise the page tells you what does. Your own posts
+          only, matched against the X account linked to your profile; a third
+          party&apos;s footage goes through the plain submit form with a source
+          URL.
         </p>
         <p className={NOTE}>
           Warnings and refusals are shown on the page rather than on X, and
@@ -305,10 +301,10 @@ export default function ImportGuidePage() {
         </p>
         <p className={NOTE}>
           An export runs as a background job, so you can close the page. Vidit
-          emails you the outcome when it finishes: how many detections were created,
-          updated and skipped, and how many need a source or carry several
-          coordinates. Uploading the same export again creates no duplicates,
-          which is also how you resume an import that failed.
+          emails you the outcome when it finishes: how many detections were
+          created, updated and skipped, and how many need a source or carry
+          several coordinates. Uploading the same export again creates no
+          duplicates, which is also how you resume an import that failed.
         </p>
       </Card>
     </PageShell>
