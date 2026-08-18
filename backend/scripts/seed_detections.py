@@ -48,7 +48,7 @@ def main() -> None:
         outcome = asyncio.run(backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE))
         print(
             f"Success: {len(outcome.created)} detected geolocation(s) created, "
-            f"{outcome.updated} updated, {outcome.skipped} skipped."
+            f"{len(outcome.updated)} updated, {len(outcome.skipped)} skipped."
         )
     except Exception as exc:
         print(f"Error: {exc}")
