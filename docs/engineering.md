@@ -42,7 +42,7 @@ PostGIS handles coordinates, bounding boxes, and geographic queries (radius, int
 | CDN | **AWS CloudFront** (with Origin Access Control) |
 | Python SDK | `boto3` |
 
-The backend uses S3 and CloudFront from day one instead of Supabase, for AWS familiarity, evidence-preservation primitives (Object Lock, versioning, replication), and no migration cost later. The backend talks to storage through a small `Storage` protocol (`S3Storage` for production, `LocalStorage` for development and CI). See [`CHANGELOG.md`](CHANGELOG.md) for the history of this decision.
+The backend uses S3 and CloudFront from day one instead of Supabase, for AWS familiarity, evidence-preservation primitives (Object Lock, versioning, replication), and no migration cost later. The backend talks to storage through a small `Storage` protocol (`S3Storage` for production, `LocalStorage` for development and CI). See [`CHANGELOG.md`](../CHANGELOG.md) for the history of this decision.
 
 ### Frontend
 
@@ -208,11 +208,15 @@ vidit/
 │   └── next.config.mjs
 │
 ├── docs/                          # technical reference
+│   ├── index.md
 │   ├── api.md
+│   ├── archival.md             # analyst-recorded archived copies of an event's links
 │   ├── backups.md              # daily pg_dump cron + restore drill + media replication
+│   ├── conflicts.md            # conflict referential + daily Wikipedia sync
 │   ├── data-model.md
 │   ├── design.md
-│   └── engineering.md          # tech stack + repo layout + deployment + particularities
+│   ├── engineering.md          # tech stack + repo layout + deployment + particularities
+│   └── ingestion.md            # the post-to-event detection engine and its three entries
 │
 ├── planning/                       # project planning (not user docs)
 │   ├── next.md                 # scheduled work + unscheduled candidates
@@ -331,7 +335,7 @@ The override applies only to the localhost regex. Explicit `CORS_ORIGINS` (produ
 
 | Workflow | Trigger | Steps |
 |----------|---------|-------|
-| `ci.yml` | Every push to `main` and every PR (no path filters, so required checks always report even on a docs-only PR) | Four jobs. `backend-lint`: `uv sync` → `ruff check` → `ruff format --check` → `mypy app` → `vulture` (dead code). `backend-test` (parallel with `backend-lint`, no gate): `pytest -n 4 --dist loadfile` against a PostGIS service container (no separate migrate step: the xdist template build runs the migrations, see the tests entry in [Repo layout](#repo-layout)). `frontend`: `npm ci` → `eslint` → `tsc --noEmit` → `vitest run` → `next build`. `docs-pairing` (PR-only): fails when the PR doesn't touch *both* `docs/` AND `planning/`; override with a justification in the PR description if the change genuinely needs neither. Dependabot PRs are exempt. Force-pushes cancel the obsolete in-flight run; pushes to `main` run to completion. |
+| `ci.yml` | Every push to `main` and every PR (no path filters, so required checks always report even on a docs-only PR) | Four jobs. `backend-lint`: `uv sync` → `ruff check` → `ruff format --check` → `mypy app` → `vulture` (dead code). `backend-test` (parallel with `backend-lint`, no gate): `pytest -n 4 --dist loadfile` against a PostGIS service container (no separate migrate step: the xdist template build runs the migrations, see the tests entry in [Repo layout](#repository-layout-monorepo)). `frontend`: `npm ci` → `eslint` → `tsc --noEmit` → `vitest run` → `next build`. `docs-pairing` (PR-only): fails when the PR doesn't touch *both* `docs/` AND `planning/`; override with a justification in the PR description if the change genuinely needs neither. Dependabot PRs are exempt. Force-pushes cancel the obsolete in-flight run; pushes to `main` run to completion. |
 | `codeql.yml` | Push to `main`, PR to `main`, weekly cron (Monday 06:00 UTC) | CodeQL dataflow analysis on Python + TypeScript/JavaScript with the `security-extended` query suite. Findings post to *Security tab → Code scanning alerts*. The `analyze` job is gated on `!github.event.repository.private`: code scanning is free on public repos but a paid GitHub Advanced Security add-on on private ones, so the job runs on the public repo and skips (rather than fails) anywhere the repository is private, e.g. a private fork. |
 | `pr-title.yml` | PR opened / edited / synchronized | Validates the PR title against Conventional Commits. Stays outside `ci.yml` on purpose: it re-runs on title edits, and bundling it would re-run the full test suite on every edit. |
 | `deploy.yml` | `workflow_dispatch` | See [Deployment](#deployment) below. |
@@ -352,7 +356,7 @@ The workflows are hardened because forks make every workflow run reachable to at
 |---------|----------|------------|--------|
 | Source | GitHub | [`github.com/vidithq/vidit`](https://github.com/vidithq/vidit): public, AGPL-3.0. Cross-linked from the landing roadmap card, the `/about` AGPL paragraph, and the sidebar header (next to the X + Discord shortcuts). | Direct push to feature branches; `main` is branch-protected, every change lands via PR. |
 | Backend | Railway | project `vidit` / service `backend`; public host `https://api.vidit.app` (Railway-internal `backend.railway.internal`) | Dockerfile build, deployed via the [`deploy` workflow](../.github/workflows/deploy.yml) (`workflow_dispatch`). Auto-deploy on push to `main` is **off**. Each matrix job runs `railway up --detach`, then polls `railway deployment list --service <svc> --json` until the new deployment reaches a terminal status: `SUCCESS` passes the job, `FAILED` / `CRASHED` / `REMOVED` / `SKIPPED` fail it, and a 15-minute poll budget fails it too. The job prints the deployment id and its final status. The workflow pins the Railway CLI version because the step depends on those flags. `railway up --service backend` from the **repo root** works as a manual fallback (the service's Root Directory `backend` navigates into the uploaded snapshot; running from `backend/` uploads a snapshot with no `backend/` subdir and the build fails). |
-| Scheduler services | Railway | services `backend-import-worker` (always-on archive-import worker), `backend-conflicts` (daily conflict-sync cron), and `backend-x-bot` (mention-pipeline reconciliation cron, hourly); per-service config in [`ingestion.md`](ingestion.md) | Same [`deploy` workflow](../.github/workflows/deploy.yml), same repo-root `railway up` snapshot as the API: the five services (these three plus `backend` and `backend-backup`) deploy as parallel matrix jobs (`fail-fast: false`, per-service concurrency group), so the backend deploy costs the slowest service, not the sum. No GitHub source connected: the workflow is their only deploy path, so every service ships the same ref. Config-as-code: [`backend/railway.scheduler.json`](../backend/railway.scheduler.json). |
+| Scheduler services | Railway | services `backend-import-worker` (always-on archive-import worker), `backend-conflicts` (daily conflict-sync cron), and `backend-x-bot` (mention-pipeline reconciliation cron, hourly); per-service config under [Scheduler services](#scheduler-services) | Same [`deploy` workflow](../.github/workflows/deploy.yml), same repo-root `railway up` snapshot as the API: the five services (these three plus `backend` and `backend-backup`) deploy as parallel matrix jobs (`fail-fast: false`, per-service concurrency group), so the backend deploy costs the slowest service, not the sum. No GitHub source connected: the workflow is their only deploy path, so every service ships the same ref. |
 | Frontend | Vercel | team `vidithq` / project `vidit-frontend`; primary domain `https://vidit.app` (apex); `www.vidit.app`, `vidit-frontend.vercel.app` and any other non-canonical host 308-redirect at the Next.js proxy layer ([`frontend/src/proxy.ts`](../frontend/src/proxy.ts), the file convention `next@16` renamed from `middleware.ts`) so the project alias doesn't accumulate duplicate-content surface in search. | Deployed via the [`deploy` workflow](../.github/workflows/deploy.yml) (`workflow_dispatch`) using `vercel pull` + `vercel build` + `vercel deploy --prebuilt --prod`. `vercel --prod` from `frontend/` works as a manual fallback. Per-deployment hash URLs are SSO-walled; only the project alias is public. |
 | DNS | Cloudflare | `vidit.app` zone, **DNS-only** (gray cloud) | Apex + `www` A → Vercel `76.76.21.21`; `api` CNAME → Railway. Proxy mode (orange cloud) breaks Let's Encrypt cert provisioning. |
 | Database | Railway | managed Postgres + PostGIS, service `postgres-db` (image `postgis/postgis:16-3.4`) | `DATABASE_URL` (with internal `*.railway.internal` host) is auto-injected onto the **`backend`** service when the DB is attached. New consumers wire it as `${{backend.DATABASE_URL}}`. Public networking is **off**; admin scripts run inside the backend container via `railway ssh --service backend`. |
@@ -385,6 +389,35 @@ The workflows are hardened because forks make every workflow run reachable to at
 A staged object normally lives for minutes, because the worker deletes it at terminal states. An uploaded-but-never-enqueued object has no job row to trigger that delete. Add an S3 lifecycle rule on the `archive-imports/` prefix that expires current objects after 7 days **and noncurrent versions after 7 days** (`NoncurrentVersionExpiration`). The noncurrent half matters: the bucket has Versioning ON, so the worker's delete only writes a delete marker. Without the rule, every raw personal X export would persist as a noncurrent version. The bucket-wide Object Lock default (GOVERNANCE, 365 days) still floors how early a version can disappear, independent of the lifecycle rule. This is also why `archive-imports/` sits outside the cross-region replication described in [`backups.md`](backups.md#media-replication).
 
 Naming follows `<product>-<env>-<region>` for the bucket, so a future `vidit-staging-eu-west-3` fits the pattern. The service is named `backend` because Railway already nests it under `vidit/production`. The Vercel project is `vidit-frontend` because the team scope is `vidithq`.
+
+### Scheduler services
+
+The three services in the table above are built from the backend image with Root Directory `backend`, on the config-as-code path [`backend/railway.scheduler.json`](../backend/railway.scheduler.json). That path is mandatory: with Root Directory `backend` and no config of their own, they auto-discover the API's [`railway.json`](../backend/railway.json), whose alembic pre-deploy replays before every run and whose `/health` healthcheck fails any deploy that is not the API server. A cron service merely replays the pre-deploy, but the always-on worker listens on no port, so the inherited healthcheck fails its deploy outright.
+
+All three take `DATABASE_URL=${{backend.DATABASE_URL}}` and `JWT_SECRET=${{backend.JWT_SECRET}}`, because [`config.py`](../backend/app/config.py)'s boot check refuses the placeholder secret against a non-local database. Set `SENTRY_DSN` on each so a failure pages instead of sitting in the logs.
+
+**`backend-import-worker`**, always-on, no exposed port. Start command `uv run python scripts/run_import_worker.py`. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials, since it posts the webhook path's bot replies. What it drains: [`ingestion.md`](ingestion.md#archive-import-worker).
+
+**`backend-x-bot`**, cron `0 * * * *`, since the webhook owns latency and the cron only reconciles. Start command `uv run python scripts/run_bot.py`. It also takes the six `X_*` credentials and `X_WEBHOOK_ENABLED` (see `backend/.env.example`): a bearer token and bot user ID to read, and the four OAuth 1.0a values to post. Without the OAuth values, the bot processes mentions but posts nothing. The process makes one pass, then exits; a failed mentions pull exits non-zero. A missed run is harmless, because the next pass resumes from the ledger. What it runs: [`ingestion.md`](ingestion.md#the-bot).
+
+**`backend-conflicts`**, a cron. Schedule, start command and behaviour: [`conflicts.md`](conflicts.md).
+
+### X webhook operations
+
+[`manage_x_webhook.py`](../backend/scripts/manage_x_webhook.py) reads the same `X_*` environment variables as the bot:
+
+```
+uv run python scripts/manage_x_webhook.py register https://api.vidit.app/api/v1/webhooks/x
+uv run python scripts/manage_x_webhook.py subscribe <webhook_id>   # bind the bot account
+uv run python scripts/manage_x_webhook.py list                     # webhook ids + valid flag
+uv run python scripts/manage_x_webhook.py status <webhook_id>      # subscription check
+uv run python scripts/manage_x_webhook.py revalidate <webhook_id>  # re-run the CRC after an outage
+uv run python scripts/manage_x_webhook.py delete <webhook_id>
+```
+
+Register the webhook **after** you deploy the endpoint: X fires a Challenge-Response Check (CRC) at register time. Once `register` and `subscribe` succeed, set `X_WEBHOOK_ENABLED=true` on the backend services.
+
+X re-runs the CRC hourly, and the endpoint answers it in-request, using pure HMAC with no database access. A failed check deactivates the webhook silently, and two nets catch that. `manage_x_webhook.py list` shows the webhook's `valid` flag. While `X_WEBHOOK_ENABLED=true`, the poll's gap detector catches it live: a mention the poll processes fresh logs a warning and captures a Sentry message (`webhook gap: mention <id> arrived via reconciliation`). For a known outage longer than the poll covers, X's replay API re-delivers up to 24 hours of events on request, manually, from the developer console or API.
 
 ### Operating the platform: CLIs
 

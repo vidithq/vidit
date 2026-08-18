@@ -550,7 +550,7 @@ Composite PK: `(event_id, tag_id)`
 
 ### `conflicts`
 
-The conflict referential: one row per armed conflict, externally synced. Three writers feed it, discriminated by `source`: the daily Wikipedia ongoing-conflicts sync (`sync`), the one-shot Wikidata historical seed (`seed`), and operator rows (`manual`), which include the `Other` escape value and the rows migrated out of `tags`. See [`ingestion.md`](ingestion.md#conflict-referential-sync) for the sync mechanics.
+The conflict referential: one row per armed conflict, externally synced. Three writers feed it, discriminated by `source`: the daily Wikipedia ongoing-conflicts sync (`sync`), the one-shot Wikidata historical seed (`seed`), and operator rows (`manual`), which include the `Other` escape value and the rows migrated out of `tags`. See [`conflicts.md`](conflicts.md) for the sync mechanics.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -631,7 +631,7 @@ The durable queue behind `POST /events/import-archive`. The endpoint stages the 
 
 ### `source_archives`
 
-One row per link an analyst has recorded an archived copy for: the event's `source_url`, its [`event_source_links`](#event_source_links) mirrors, its `detected_from_url`, or an `http(s)` href in the proof body's Tiptap document. A row exists because a copy exists, so there is no queue state and no attempt counter. The capture happens in the analyst's own browser, and [`POST /events/{event_id}/archives`](api.md#post-eventsevent_idarchives) is where the snapshot URL comes back. See [`ingestion.md`](ingestion.md#source-archival) for the flow and the validation.
+One row per link an analyst has recorded an archived copy for: the event's `source_url`, its [`event_source_links`](#event_source_links) mirrors, its `detected_from_url`, or an `http(s)` href in the proof body's Tiptap document. A row exists because a copy exists, so there is no queue state and no attempt counter. The capture happens in the analyst's own browser, and [`POST /events/{id}/archives`](api.md#post-eventsidarchives) is where the snapshot URL comes back. See [`archival.md`](archival.md) for the flow and the validation.
 
 | Column | Type | Constraints |
 |--------|------|-------------|

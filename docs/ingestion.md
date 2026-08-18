@@ -15,7 +15,7 @@ Every derived field is either correct or empty. A field fills only on an explici
 
 **Acquisition.** The two live entries read their thread through `acquire_thread` in [`acquire.py`](../backend/app/services/tweet_ingest/acquire.py): the post named by a tweet ID, plus the post it replies to when that parent has the same author. One hop, never across authors. So the analyst can post the coordinate and reply to themselves with the source link, and provenance (`detected_from_url`) anchors on the parent whichever of the two the entry was pointed at. The acquisition runs the chase, so resolution does no I/O. The archive backfill reads its threads from the export, which carries every reply edge inline, and chases each stitched thread the same way.
 
-**Attribution.** A draft is owned by the existing Vidit account whose `x_handle` an admin linked, and [`detection.linked_owner`](../backend/app/services/detection.py) is the one map from a handle to that account. No entry creates a user, and none falls back onto the Vidit username. The link binds to the invite code at mint time and copies onto the account at registration; `PATCH /admin/users/{id}/x-handle` (see [`api.md`](api.md)) repairs and backfills it, and self-serve linking is a later gate (see `planning/next.md`). A post quoting someone else's footage credits the importer, the quoted post stays `source_url`, and contested attribution goes through the claim/dispute pipeline.
+**Attribution.** A draft is owned by the existing Vidit account whose `x_handle` an admin linked, and [`detection.linked_owner`](../backend/app/services/detection.py) is the one map from a handle to that account. No entry creates a user, and none falls back onto the Vidit username. The link binds to the invite code at mint time and copies onto the account at registration; `PATCH /admin/users/{id}/x-handle` (see [`api.md`](api.md)) repairs and backfills it, and self-serve linking is a later gate (see [`planning/next.md`](../planning/next.md)). A post quoting someone else's footage credits the importer, the quoted post stays `source_url`, and contested attribution goes through the claim/dispute pipeline.
 
 **Retweet.** A post whose text opens with `RT @<handle>:` produces nothing: its words belong to another account. `extract.is_retweet` anchors the prefix at the start of the text, so text mentioning RT further in is kept. [`archive.py`](../backend/app/services/tweet_ingest/archive.py)'s `read_tweets` drops the entry before stitching, which costs no thread, since a retweet is never anyone's reply parent.
 
@@ -87,54 +87,54 @@ Each entry surfaces the set its own way: the bot in its [reply](#the-bot), the p
 
 ## Grammar table
 
-Each row is one input shape, and the three middle columns are what the bot, the pasted-tweet import and the archive backfill make of it. They read one grammar, so every row's three columns equal its target. The table is the regression reference: a change that splits an entry off the target shows up here as a cell that stops matching.
+Each row is one input shape and the outcome the engine produces for it. The bot, the pasted-tweet import and the archive backfill read one grammar, so all three produce the row's outcome, and a change that splits an entry off shows up here as a row that stops matching.
 
 Reading the cells:
 
 - A shape in backticks names the fixture that pins the row, under [`tests/ingest_contract/`](../backend/tests/ingest_contract/).
-- The bot's refusals carry the code its failure reply names.
-- The archive column reads with the chase on, which is how the import worker runs it.
-- `n/a` marks a shape that cannot reach that path.
+- A refusal carries the code the bot's failure reply names.
+- Outcomes read with the chase on, which is how the import worker runs the archive.
+- Where an entry cannot reach a shape, the outcome says so.
 - The proof, the title and the empty-source and several-coordinates warnings apply to every row and stay out of the cells (see [the contract](#the-contract)).
 
-| Input shape | Bot | Paste | Archive | Target |
-|---|---|---|---|---|
-| No coordinate anywhere (`no_coord`) | `0, coords_missing` | `0` | `0` | `0, no coordinate` |
-| Coordinate inside prose, no link and no quote (`referenceless_annotation`) | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty |
-| Coordinate inside prose behind an `@mention` prefix (`mention_prefix`) | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty |
-| Coordinate alone on its line, or beside its maps link, no other link and no quote | 1 draft, source empty, title empty | 1 draft, source empty, title empty | 1 draft, source empty, title empty | 1 draft, source empty, title empty |
-| Two coordinates inside prose (`multi_coord`) | 2 drafts | 2 drafts | 2 drafts | 2 drafts |
-| Four or more coordinates in the text | one draft per coordinate | one draft per coordinate | one draft per coordinate | one draft per coordinate |
-| Hemisphere or DMS coordinate | 1 draft | 1 draft | 1 draft | 1 draft |
-| Google Maps `@lat,lng` link carrying the only coordinate | 1 draft | 1 draft | 1 draft | 1 draft |
-| Coordinate out of bounds and nothing else | `0, coords_invalid` | `0` | `0` | `0, coordinate out of bounds` |
-| Coordinate only in the quoted post (`quote_coord_in_quoted`) | `0, coords_missing` | `0` | `0` | `0, no coordinate` |
-| `T:` / `C:` / `S:` marker lines | 1 draft, the markers kept as text | 1 draft, the markers kept as text | 1 draft, the markers kept as text | 1 draft, the markers kept as text |
-| `Source:` line naming one of two links | 1 draft, source empty, two mirrors | 1 draft, source empty, two mirrors | 1 draft, source empty, two mirrors | 1 draft, source empty, two mirrors |
-| Two links, no `Source:` line | 1 draft, source empty, two mirrors | 1 draft, source empty, two mirrors | 1 draft, source empty, two mirrors | 1 draft, source empty, two mirrors |
-| Sole link off the chase vocabulary (TikTok, Instagram, an article) | 1 draft, source is the link | 1 draft, source is the link | 1 draft, source is the link | 1 draft, source is the link |
-| Sole X profile link (`x_profile_link`) | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty |
-| Sole Google Maps link | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty |
-| Sole link back to the analyst's own status | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty |
-| Quote plus one other link | 1 draft, source is the quote, one mirror | 1 draft, source is the quote, one mirror | 1 draft, source is the quote, one mirror | 1 draft, source is the quote, one mirror |
-| Two quotes in one thread (`two_quotes`) | 1 draft, source empty, both quoted statuses as mirrors, no source media | 1 draft, source empty, both quoted statuses as mirrors, no source media | 1 draft, source empty, both quoted statuses as mirrors, no source media | 1 draft, source empty, both quoted statuses as mirrors, no source media |
-| Sole X status link (`x_status_link`) | 1 draft, source is the chased status, with its date and video | 1 draft, source is the chased status, with its date and video | 1 draft, source is the chased status, with its date and video | 1 draft, source is the chased status, with its date and video |
-| Sole Telegram link (`telegram_link`) | 1 draft, source is the link, with the chased date and media | 1 draft, source is the link, with the chased date and media | 1 draft, source is the link, with the chased date and media | 1 draft, source is the link, with the chased date and media |
-| Sole YouTube link (`youtube_link`) | 1 draft, source is the link | 1 draft, source is the link | 1 draft, source is the link | 1 draft, source is the link |
-| Own-status link, profile link and one third-party status (`self_reference_link`) | 1 draft, source is the third-party status | 1 draft, source is the third-party status | 1 draft, source is the third-party status | 1 draft, source is the third-party status |
-| Coordinate in the post, quoted post carries a photo (`quote_coord_in_op`) | 1 draft, source is the quote, its photo as source media | 1 draft, source is the quote, its photo as source media | 1 draft, source is the quote, its photo as source media | 1 draft, source is the quote, its photo as source media |
-| Coordinate in the post, quoted post carries a video (`quoted_video`) | 1 draft, source is the quote, its video as source media | 1 draft, source is the quote, its video as source media | 1 draft, source is the quote, its video as source media | 1 draft, source is the quote, its video as source media |
-| Own video, coordinate, no link and no quote (`self_video_no_signal`) | 1 draft, source empty, the video as source media | 1 draft, source empty, the video as source media | 1 draft, source empty, the video as source media | 1 draft, source empty, the video as source media |
-| Coordinate in the post, source link in the analyst's own reply (`self_reply_geo_then_source`) | 1 draft, source is the reply's link | 1 draft, source is the reply's link | 1 draft, source is the reply's link | 1 draft, source is the reply's link |
-| Self-thread, video in the head, coordinate in the reply (`self_thread`) | `n/a` | `n/a` | 1 draft, source empty, the head video as source media | 1 draft, source empty, the head video as source media |
-| Parent by another author carries the coordinate | `0, coords_missing` | `0` | `n/a` | `0, no coordinate` |
-| Retweet, text opening `RT @<handle>:` | `0, coords_missing` | `0` | `0`, dropped before detection | `0`, dropped |
+| Input shape | Outcome |
+|---|---|
+| No coordinate anywhere (`no_coord`) | `0`, no coordinate (`coords_missing`) |
+| Coordinate inside prose, no link and no quote (`referenceless_annotation`) | 1 draft, source empty |
+| Coordinate inside prose behind an `@mention` prefix (`mention_prefix`) | 1 draft, source empty |
+| Coordinate alone on its line, or beside its maps link, no other link and no quote | 1 draft, source empty, title empty |
+| Two coordinates inside prose (`multi_coord`) | 2 drafts |
+| Four or more coordinates in the text | one draft per coordinate |
+| Hemisphere or DMS coordinate | 1 draft |
+| Google Maps `@lat,lng` link carrying the only coordinate | 1 draft |
+| Coordinate out of bounds and nothing else | `0`, coordinate out of bounds (`coords_invalid`) |
+| Coordinate only in the quoted post (`quote_coord_in_quoted`) | `0`, no coordinate (`coords_missing`) |
+| `T:` / `C:` / `S:` marker lines | 1 draft, the markers kept as text |
+| `Source:` line naming one of two links | 1 draft, source empty, two mirrors |
+| Two links, no `Source:` line | 1 draft, source empty, two mirrors |
+| Sole link off the chase vocabulary (TikTok, Instagram, an article) | 1 draft, source is the link |
+| Sole X profile link (`x_profile_link`) | 1 draft, source empty |
+| Sole Google Maps link | 1 draft, source empty |
+| Sole link back to the analyst's own status | 1 draft, source empty |
+| Quote plus one other link | 1 draft, source is the quote, one mirror |
+| Two quotes in one thread (`two_quotes`) | 1 draft, source empty, both quoted statuses as mirrors, no source media |
+| Sole X status link (`x_status_link`) | 1 draft, source is the chased status, with its date and video |
+| Sole Telegram link (`telegram_link`) | 1 draft, source is the link, with the chased date and media |
+| Sole YouTube link (`youtube_link`) | 1 draft, source is the link |
+| Own-status link, profile link and one third-party status (`self_reference_link`) | 1 draft, source is the third-party status |
+| Coordinate in the post, quoted post carries a photo (`quote_coord_in_op`) | 1 draft, source is the quote, its photo as source media |
+| Coordinate in the post, quoted post carries a video (`quoted_video`) | 1 draft, source is the quote, its video as source media |
+| Own video, coordinate, no link and no quote (`self_video_no_signal`) | 1 draft, source empty, the video as source media |
+| Coordinate in the post, source link in the analyst's own reply (`self_reply_geo_then_source`) | 1 draft, source is the reply's link |
+| Self-thread, video in the head, coordinate in the reply (`self_thread`) | 1 draft, source empty, the head video as source media; archive only, `n/a` for the two live entries |
+| Parent by another author carries the coordinate | `0`, no coordinate (`coords_missing`); `n/a` for the archive, whose export holds the analyst's own tweets only |
+| Retweet, text opening `RT @<handle>:` | `0`, dropped; the archive drops it before detection, the live entries read no coordinate (`coords_missing`) |
 
 The `self_thread` fixture ships export entries rather than syndication bodies, so the two live entries cannot be pointed at it. The same two-post shape reaches them through the one-hop acquisition, which the `self_reply_geo_then_source` row covers.
 
 ## `detected`: a partial draft by definition
 
-A machine-produced event starts in the `detected` status, and a `detected` row may lack a `source_url`, a source media item, or a location. This partial state is normal, not an error condition.
+A machine-produced event starts in the `detected` status, and a `detected` row may lack a `source_url`, a source media item, or a location.
 
 Which entry produced the draft is recorded as `detected_via` (`bot`, `paste` or `archive`), stamped once at creation and read-only on the wire. The detections queue shows it beside the event date and the source host.
 
@@ -164,22 +164,7 @@ Re-tagging repairs no warning, since it lands on the existing idempotency key an
 
 Reply text is **linkless**: X bills a link-carrying post about 13 times a plain one, so the clickable link lives in the bot bio and no reply carries a URL or an auto-linkable domain. Every reply is **unique per mention**, using the success reference and a short mention tail on failures, since X refuses a tweet identical to a recent one (403 duplicate content); that 403 is logged without paging anyone.
 
-**CRC and the gap detector.** X re-runs the Challenge-Response Check (CRC) hourly, and the endpoint answers it in-request, using pure HMAC with no database access. A failed check deactivates the webhook silently, and two nets catch that. `scripts/manage_x_webhook.py list` shows the webhook's `valid` flag. While `X_WEBHOOK_ENABLED=true`, the poll's gap detector catches it live: a mention the poll processes fresh logs a warning and captures a Sentry message (`webhook gap: mention <id> arrived via reconciliation`). For a known outage longer than the poll covers, X's replay API re-delivers up to 24 hours of events on request, manually, from the developer console or API.
-
-**Webhook runbook** ([`manage_x_webhook.py`](../backend/scripts/manage_x_webhook.py) reads the same `X_*` environment variables as the bot):
-
-```
-uv run python scripts/manage_x_webhook.py register https://api.vidit.app/api/v1/webhooks/x
-uv run python scripts/manage_x_webhook.py subscribe <webhook_id>   # bind the bot account
-uv run python scripts/manage_x_webhook.py list                     # webhook ids + valid flag
-uv run python scripts/manage_x_webhook.py status <webhook_id>      # subscription check
-uv run python scripts/manage_x_webhook.py revalidate <webhook_id>  # re-run the CRC after an outage
-uv run python scripts/manage_x_webhook.py delete <webhook_id>
-```
-
-Register the webhook **after** you deploy the endpoint: X fires a CRC at register time. Once `register` and `subscribe` succeed, set `X_WEBHOOK_ENABLED=true` on the backend services.
-
-**Scheduler config.** A dedicated Railway service built from the backend image, on the [`backend/railway.scheduler.json`](../backend/railway.scheduler.json) config-as-code path the [conflict sync](#conflict-referential-sync) also uses. Cron schedule `0 * * * *`, since the webhook owns latency and the cron only reconciles. Start command `uv run python scripts/run_bot.py`. The environment takes `DATABASE_URL=${{backend.DATABASE_URL}}` and `JWT_SECRET=${{backend.JWT_SECRET}}` (the script imports `app.config`, whose boot check refuses the placeholder secret against a non-local database), plus the six `X_*` credentials and `X_WEBHOOK_ENABLED` (see `backend/.env.example`): a bearer token and bot user ID to read, and the four OAuth 1.0a values to post. Without the OAuth values, the bot processes mentions but posts nothing. The process makes one pass, then exits. A failed mentions pull exits non-zero and is captured to Sentry when `SENTRY_DSN` is set. A missed run is harmless: the next pass resumes from the ledger. The [import worker](#archive-import-worker) service needs the same six `X_*` values, since it posts the webhook path's replies.
+Deployment, the webhook runbook and the CRC operator notes: see [`engineering.md`](engineering.md#scheduler-services) and [`engineering.md`](engineering.md#x-webhook-operations).
 
 ## The pasted-tweet import
 
@@ -198,7 +183,7 @@ An X "Download your data" export exposes the analyst's own reply edges and inlin
 
 ## Archive import worker
 
-**The upload goes direct to storage, never through the API.** The browser strips the export down to the allowlist, then calls `POST /events/import-archive/presign` for a staging key (`archive-imports/<user_id>/<uuid>.zip`; the owner ID in the path binds the key to the caller) plus a presigned S3 POST policy (exact key, `application/zip`, a size guard, 15-minute expiry; the dev upload endpoint stands in for it against local storage, using the same form shape). The browser POSTs the zip there itself, then enqueues it by key: the JSON `POST /events/import-archive` call HEAD-verifies the staged object and inserts an [`archive_import_jobs`](data-model.md) row. The archive size limit is therefore not an HTTP body cap, and `api.vidit.app` sits behind Cloudflare's free-plan 100 MB request cap for read-surface protection.
+**The upload goes direct to storage, never through the API.** The browser strips the export down to the allowlist, then calls `POST /events/import-archive/presign` for a staging key (`archive-imports/<user_id>/<uuid>.zip`; the owner ID in the path binds the key to the caller) plus a presigned S3 POST policy (exact key, `application/zip`, a size guard, 15-minute expiry; the dev upload endpoint stands in for it against local storage, using the same form shape). The browser POSTs the zip there itself, then enqueues it by key: the JSON `POST /events/import-archive` call HEAD-verifies the staged object and inserts an [`archive_import_jobs`](data-model.md#archive_import_jobs) row. The archive size limit is therefore not an HTTP body cap, and `api.vidit.app` sits behind Cloudflare's free-plan 100 MB request cap for read-surface protection.
 
 **Limits.** The product limits are the per-media caps applied at persistence (see [the contract](#the-contract)); the archive-level numbers in [`archive_zip.py`](../backend/app/services/tweet_ingest/archive_zip.py) are guards, not policy. The staged zip is capped at 4 GB, under S3's 5 GB single-part POST ceiling, and enforced by the browser strip, the POST policy, the enqueue HEAD check, and again at claim time. The uncompressed archive is capped at 8 GB total and 200 MB per file, an anti-zip-bomb guard sized to never bind a legitimate export.
 
@@ -225,7 +210,7 @@ What happens to a matched row depends on what the row is. [`detection._row_dispo
 | `closed` | Skipped. A rejected detection stays rejected, so nobody rejects the same post twice. |
 | No match | A new `detected` row. |
 
-**What an update rewrites.** The row keeps its id, its owner, its `created_at` and `detected_at` stamps, its provenance (`detected_from_tweet_id`, `detected_from_url`, `detected_thread_tweet_ids` and `detected_via`), and its place in the review queue. Provenance says where the draft first came from, so a bot tag landing on a draft the archive created updates it and still reads `archive`. The import overwrites what it owns: the title, the coordinate, the event date, `source_url`, the [secondary source links](data-model.md#event_source_links), `source_posted_at`, `detected_post_at`, the proof document, and the media. Every field edit is welded to the `geolocated` promotion, so an open draft carries no analyst work to lose. The one artifact an analyst can attach to a draft is an [archived copy](#source-archival), and those survive the update: if the update moves `source_url`, the copy filed as the source is re-filed under another link the row still carries, or dropped when the row carries it nowhere.
+**What an update rewrites.** The row keeps its id, its owner, its `created_at` and `detected_at` stamps, its provenance (`detected_from_tweet_id`, `detected_from_url`, `detected_thread_tweet_ids` and `detected_via`), and its place in the review queue. Provenance says where the draft first came from, so a bot tag landing on a draft the archive created updates it and still reads `archive`. The import overwrites what it owns: the title, the coordinate, the event date, `source_url`, the [secondary source links](data-model.md#event_source_links), `source_posted_at`, `detected_post_at`, the proof document, and the media. Every field edit is welded to the `geolocated` promotion, so an open draft carries no analyst work to lose. The one artifact an analyst can attach to a draft is an [archived copy](archival.md), and those survive the update: if the update moves `source_url`, the copy filed as the source is re-filed under another link the row still carries, or dropped when the row carries it nowhere.
 
 **A short fetch keeps the stored media.** A media the fetch cannot turn into bytes leaves the resolution short of what the post declares, and a short list reads exactly like a post whose media is gone. So a re-import that resolves less than the post carries leaves the row's media as it stands, uploads nothing and sweeps nothing; the other fields still update, and a pass that moves nothing else counts the row `skipped`.
 
@@ -233,55 +218,14 @@ What happens to a matched row depends on what the row is. [`detection._row_dispo
 
 **Email.** The job typically finishes after the analyst has navigated away, so the worker emails the outcome. On success, the email carries the counts (created, updated, skipped, failed, each a disjoint bucket), then how many drafts carry each of the [warnings](#warnings) under a "what to look at first" heading, and a link to the Detections queue. The warning counts cover the created and updated drafts, so they cut across two of the four buckets and sit apart from them. On failure, the email carries a retry-safe failure notice. The upload page also polls `GET /events/import-archive/{job_id}` while it stays open.
 
-**Runner.** `uv run python scripts/run_import_worker.py` polls the queue forever, with a 5-second idle sleep and one fresh session per pass. Each pass also drains the bot's [`bot_webhook_events`](data-model.md#bot_webhook_events) queue (see [The bot](#the-bot)). Set `IMPORT_WORKER_ONCE=1` to run a single drain-and-exit pass over both queues, by hand or as a cron fallback.
+**Runner.** The worker polls the queue forever, with a 5-second idle sleep and one fresh session per pass. Each pass also drains the bot's [`bot_webhook_events`](data-model.md#bot_webhook_events) queue (see [The bot](#the-bot)). Set `IMPORT_WORKER_ONCE=1` to run a single drain-and-exit pass over both queues, by hand or as a cron fallback.
 
-**Scheduler config.** An **always-on** Railway service, not a cron, built from the backend image (Root Directory `backend`) on the config-as-code path [`backend/railway.scheduler.json`](../backend/railway.scheduler.json). That path is mandatory here: the worker listens on no port, so the API `railway.json`'s inherited `/health` healthcheck would fail the deploy, whereas a cron service merely replays the pre-deploy. Start command `uv run python scripts/run_import_worker.py`, no exposed port. The environment takes `DATABASE_URL=${{backend.DATABASE_URL}}` and `JWT_SECRET=${{backend.JWT_SECRET}}` (the boot check refuses the placeholder secret against a non-local database), the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the backend takes, and `SENTRY_DSN` so a failed job pages instead of sitting in logs.
-
-## Source archival
-
-Source tweets get deleted and accounts get suspended, which destroys exactly the evidence the catalog preserves. An archived copy keeps a dead original readable, and the analyst who owns the event is who makes it.
-
-**The capture happens in the analyst's browser, not on the server.** Roughly nine in ten sources here are `x.com`, which Save Page Now refuses structurally (`We're currently facing some limitations when it comes to archiving this site`), and archive.today has no API and answers a burst of server-side submissions by banning the submitting host. Both services work from a browser, which is how the OSINT community uses them. So the event page hands the analyst one prefilled submit page, `https://web.archive.org/save/<link>`, and takes back the snapshot URL the service produced. The Wayback Machine is the page it opens because Save Page Now runs from a browser and mints a replay URL that embeds the link it captured, which is what `validate_snapshot` checks a paste against; an analyst who prefers archive.today opens it themselves and pastes the snapshot into the same field, which takes all three hosts.
-
-**Scope.** An analyst can archive the event's `source_url`, its [secondary source links](data-model.md#event_source_links) (the analyst-submitted mirrors, which carry the same link-rot risk as the primary), its `detected_from_url` (the analyst's own post a machine draft was detected from, which is the provenance of the geolocation claim), and every `http(s)` href carried by a link mark in the proof body's Tiptap document. [`source_archive.collect_links`](../backend/app/services/source_archive.py) is the one home for that walk, reading the proof body through [`sanitize.extract_link_hrefs`](../backend/app/services/sanitize.py). Each row records where its link came from in `origin` (`source_url`, `secondary_source`, `detected_from`, `proof_link`); a URL reachable from more than one is one link, kept under the first of those it appears in. Every link goes through [`sanitize.safe_link_href`](../backend/app/services/sanitize.py) (the same allowlist the proof editor writes against) plus a 2000-byte ceiling matching the `source_url` column. Analyst profile external links are out of scope, since they represent identity rather than evidence.
-
-**One copy per link, from whichever service produced it.** [`source_archives`](data-model.md#source_archives) is unique on `(event_id, original_url)`, and the row holds one `snapshot_url` plus the `provider` that produced it. Two snapshots of one link is redundancy nobody reads back, and a resubmission by the owner overwrites the slot instead of competing with it, which is how a wrong paste is corrected. There is no queue state, no attempt counter and no per-provider slot: a row exists because a copy exists.
-
-**The write is [`POST /events/{event_id}/archives`](api.md#post-eventsevent_idarchives), owner-only.** The body names which link the copy is of (`original_url`) and where the copy lives (`snapshot_url`). `original_url` is checked against `collect_links`, so a snapshot cannot be filed against a URL the event does not carry, and the stored `origin` comes from the same walk.
-
-**Archival starts at the submit form, not after publication.** The source is most archivable while the analyst still has it open, so the field that takes the source URL carries the affordance beside it: one link opening `https://web.archive.org/save/<link>` prefilled with the value currently typed, and one field taking the snapshot back from any of the three accepted hosts. The paste posts with the form as `source_snapshot_url` on [`POST /events`](api.md#post-events), [`POST /events/requests`](api.md#post-eventsrequests) and [`POST /events/{id}/geolocate`](api.md#post-eventsidgeolocate) (the edit / submit transition), runs the same `validate_snapshot` checks as the standalone endpoint, and lands in the same transaction as the event, filed under origin `source_url`. A rejected paste therefore publishes nothing: the analyst fixes it and submits the same form again. The field is optional and sits in no publish floor. Mirrors, the provenance link and proof citations are archived from the event page afterwards, through the endpoint above.
-
-**A copy always matches the source URL it is filed against.** The source URL is editable until the event is published, so an edit can leave a snapshot describing a link the event no longer declares. Every write that stores a source URL therefore reconciles the copy filed under origin `source_url`: if that copy's `original_url` is no longer the event's `source_url`, it is re-filed under the origin the URL now has (the analyst moved it to the mirrors, or cited it in the proof) or deleted when the event no longer carries the URL at all. An edit that changes the source and pastes no new snapshot thus leaves the event with **no** archived source rather than a stale one; pasting a `source_snapshot_url` with the same write fills the slot back in. The reconcile reads the links the event carries at that moment, so the mirrors are the submitted ones while the proof body is still the stored one (a write applies its new proof at commit).
-
-**What counts as a snapshot.** `https` only, on exactly three hosts: `web.archive.org`, `archive.ph`, `archive.today`. The host is also what infers the provider. A `web.archive.org` URL must be a replay URL (`/web/<timestamp>/<original>`) whose embedded original names the same page as `original_url`; the comparison drops the scheme, the host case, a leading `www.` and a trailing slash, because Wayback stores the URL it crawled rather than the string the analyst submitted. An `archive.ph` / `archive.today` URL is a short code (`/<code>`) that embeds nothing, so only the code's shape is checked. The server deliberately does not fetch the page to verify it: fetching archive.today from a server is what gets the deployment's IP banned. The paste comes from the authenticated owner of the event, whose own catalog entry a wrong code degrades, and the host allowlist plus the code shape is what bounds the abuse. Every rejection is a 400 carrying the code for the check it failed (`snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_original_mismatch`, `snapshot_not_a_snapshot_code`, `original_url_not_on_event`).
-
-**Read surface.** `EventRead.archived_source` carries the archived copy of the event's own `source_url` as `{url, provider}`. `archived_secondary_sources` carries the same per mirror, index-aligned with `secondary_source_urls`, and `archived_detected_from` carries it for the provenance link (see [`api.md`](api.md#get-eventsid)). All three are `null` when no copy has been recorded, which is every link's starting state. The event detail surface, both the full page and the map side panel, renders each as one small icon beside the link it covers, using [`ArchivedCopies`](../frontend/src/components/ui/ArchivedCopies.tsx) as the one component for the primary source, the mirrors and the provenance link. The icon is accent-coloured and opens the copy where one exists. Where none does, it is grey: inert for a reader, and for the event's owner a disclosure that opens `https://web.archive.org/save/<link>` in a new tab and takes the snapshot back in one field, flipping the icon in place. Drafts get the affordance too, since a draft's source rots while it waits. The submit and edit forms render the same affordance as a field under the Source URL input ([`ArchiveSourceField`](../frontend/src/components/ui/ArchivedCopies.tsx), which reuses the same provider link), showing the copy an event already carries above the field that replaces it. Proof-link copies are stored but not rendered inline.
-
-
-## Conflict referential sync
-
-The conflicts an event can be tagged with are not user-created. They live in the [`conflicts`](data-model.md#conflicts) table, fed from two external sources by [`conflict_sync.py`](../backend/app/services/conflict_sync.py) and [`seed_conflicts.py`](../backend/scripts/seed_conflicts.py).
-
-**Source.** The daily sync parses Wikipedia's "List of ongoing armed conflicts" through the MediaWiki API. It reads the top-level rows of the three top tiers (major wars, minor wars, conflicts), and excludes skirmishes as high-churn editorial noise. The page's presence boundary (a conflict is listed only if editors judge it ongoing) matches the product's `ongoing` flag exactly, so syncing the page externalizes both the list and the "is it still ongoing" judgment.
-
-**QID identity.** Each row's article resolves to its Wikidata QID, and the sync upserts by QID, not by name. The page renames conflicts constantly: 24 of 35 month transitions over 2023-2026 changed at least one name, almost all editorial renames of the same conflict. The QID survives every rename. A rename updates `conflicts.name` in place. A same-name row without a QID is adopted. A name collision is skipped and logged.
-
-**Tier capture.** Each row's tier table becomes `conflicts.tier`: `major`, `minor`, or `conflict`. These match the page's death-toll bands: 10,000+ combat deaths in the current or previous year, 1,000-9,999, or 100-999. A conflict that moves to another tier table gets `tier` updated on the next pass. Rows the sync has never seen keep `tier` as NULL.
-
-**start_year fill.** The sync parses each row's start-of-conflict year from the page and writes `start_year` only where it is NULL. It never overwrites an existing value, such as the Wikidata seed's years.
-
-**Grace period, never delete.** Disappearance from the page is ambiguous: a conflict may have ended, been renamed, or slid below a tier threshold. A row flips `ongoing=false` only after 14 consecutive days of absence (`last_seen_at`), and rows are never deleted. Rows the sync has never seen (`last_seen_at IS NULL`, such as the manual `Other` row and unseen seed rows) are never touched.
-
-**Strict-parse abort.** If the page structure stops matching (tier tables missing) or the row count falls outside [15, 80], the sync raises an error and writes nothing, leaving the referential table as it was. The runner exits non-zero.
-
-**The two scripts:**
-
-- `uv run python scripts/seed_conflicts.py [--dry-run]` runs **once at setup**. It performs a Wikidata SPARQL pull of historical conflicts since 1914, about 700 to 850 rows, using a P31 type allowlist: wars, civil wars, armed conflicts, rebellions, insurgencies, and the relevant margins. It excludes battles, operations, and coup attempts. Rows with missing QIDs insert as `source='seed'`, `ongoing=false`. It never modifies existing rows, since the sync owns them. It is idempotent and safe to re-run.
-- `uv run python scripts/sync_conflicts.py` runs **daily through a Railway cron service**: one pass of the Wikipedia sync described above. You can also run it by hand.
-
-**Scheduler config.** This mirrors the [`backend-backup`](backups.md) pattern. It runs as a dedicated Railway service built from the backend image (Root Directory `backend`), using the config-as-code path [`backend/railway.scheduler.json`](../backend/railway.scheduler.json). Without that config-as-code path, Root Directory `backend` auto-discovers the API's [`railway.json`](../backend/railway.json), whose alembic pre-deploy replays before every run and whose `/health` healthcheck fails any deploy that is not the API server. The cron schedule is `0 6 * * *`, and the start command is `uv run python scripts/sync_conflicts.py`. The environment includes `DATABASE_URL=${{backend.DATABASE_URL}}` (reference `backend.DATABASE_URL`, not the DB service) and `JWT_SECRET=${{backend.JWT_SECRET}}` (the boot check refuses the placeholder secret against a non-local database). The process makes one pass and exits. A non-zero exit shows on the service's deployment view, and when `SENTRY_DSN` is set, a strict-parse abort is captured to Sentry. A missed run is harmless: the sync is idempotent, and the 14-day grace period absorbs multi-day gaps.
+Deployment: see [`engineering.md`](engineering.md#scheduler-services).
 
 ## See also
 
-- [`api.md`](api.md#post-eventsimport-from-tweet) for the `import-from-tweet` and `import-archive` request/response contracts, and [`GET /conflicts`](api.md#get-conflicts) for the referential on the wire.
-- [`data-model.md`](data-model.md#conflicts) for the `conflicts` / `event_conflicts` columns, [`data-model.md`](data-model.md#events) for the `events` table columns and CHECK constraints, and [`data-model.md`](data-model.md#source_archives) for the `source_archives` columns.
+- [`api.md`](api.md#post-eventsimport-from-tweet) for the `import-from-tweet` and `import-archive` request/response contracts.
+- [`data-model.md`](data-model.md#events) for the `events` table columns and CHECK constraints.
+- [`engineering.md`](engineering.md#scheduler-services) for the Railway services the bot and the import worker run as, and [`engineering.md`](engineering.md#x-webhook-operations) for the webhook runbook.
+- [`archival.md`](archival.md) for the archived copies an analyst records against an event's links.
+- [`conflicts.md`](conflicts.md) for the conflict referential the daily sync feeds.
