@@ -44,7 +44,7 @@ The host of a candidate link then decides what gets *fetched*, never what gets *
 
 **Media split.** The footage is the media of the post the source names, and it is the only media the source slot takes: the quoted post that filled `source_url`, and no other quoted post the thread carries. So a thread quoting two posts stores neither one's video, matching its empty source slot, and the media of a quoted post the source did not name is dropped rather than filed as annotation, which the analyst's own media alone fills. With no quote anywhere in the thread, a chased Telegram embed's media fills the slot instead. When both leave the slot empty, the thread's **first own video** fills it, and every other own media stays `role=proof`. The promotion moves media only: `source_url` is unaffected, so a video-only draft still declares no source. Photos are never promoted, because an analyst's photo is a map crop, a screenshot, or an annotated frame. The proof document embeds images only, so a video left in the annotation slot is dropped at persistence, which is what the promotion prevents.
 
-**Title.** The first line that is neither a coordinate alone nor a URL alone, taken verbatim, whitespace collapsed, cut at 120 characters on a word boundary. Nothing is stripped out of it: a hashtag, a mention or a coordinate inside the line stays. No line qualifying leaves the title empty, and the analyst types one at review.
+**Title.** The first line that carries text beyond coordinates and links, taken verbatim, whitespace collapsed, cut at 120 characters on a word boundary. A line qualifies when something is left of it once every coordinate token, every URL token and the punctuation and list markers around them are removed, so a line pairing a coordinate with its maps link is skipped exactly as a bare coordinate is. Nothing is stripped out of the line that qualifies: a hashtag, a mention, a link or a coordinate inside it stays. No line qualifying leaves the title empty, and the analyst types one at review.
 
 **Proof.** The thread's raw text, with each link's `t.co` wrapper expanded back to the real URL so the analyst's references stay readable. Two things go: the wrappers X appends for the post's own attached media, which expand to a permalink of the post itself, and the bot's `@handle` where it opens a line, which is addressing rather than content. Nothing else, and the coordinate line stays. The analyst edits the proof at review.
 
@@ -92,14 +92,14 @@ Reading the cells:
 - The bot's refusals carry the code its failure reply names.
 - The archive column reads with the chase on, which is how the import worker runs it.
 - `n/a` marks a shape that cannot reach that path.
-- Three behaviours apply to every row and stay out of the cells: the proof keeps the analyst's text as written, coordinate lines and label lines included; the title is the first line that is neither a coordinate alone nor a URL alone, taken verbatim and cut at 120 characters on a word boundary; a draft whose source slot stays empty, and each draft of a post carrying several coordinates, carries a warning.
+- Three behaviours apply to every row and stay out of the cells: the proof keeps the analyst's text as written, coordinate lines and label lines included; the title is the first line that carries text beyond coordinates and links, taken verbatim and cut at 120 characters on a word boundary; a draft whose source slot stays empty, and each draft of a post carrying several coordinates, carries a warning.
 
 | Input shape | Bot | Paste | Archive | Target |
 |---|---|---|---|---|
 | No coordinate anywhere (`no_coord`) | `0, coords_missing` | `0` | `0` | `0, no coordinate` |
 | Coordinate inside prose, no link and no quote (`referenceless_annotation`) | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty |
 | Coordinate inside prose behind an `@mention` prefix (`mention_prefix`) | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty | 1 draft, source empty |
-| Coordinate alone on its line, no link and no quote | 1 draft, source empty, title empty | 1 draft, source empty, title empty | 1 draft, source empty, title empty | 1 draft, source empty, title empty |
+| Coordinate alone on its line, or beside its maps link, no other link and no quote | 1 draft, source empty, title empty | 1 draft, source empty, title empty | 1 draft, source empty, title empty | 1 draft, source empty, title empty |
 | Two coordinates inside prose (`multi_coord`) | 2 drafts | 2 drafts | 2 drafts | 2 drafts |
 | Four or more coordinates in the text | one draft per coordinate | one draft per coordinate | one draft per coordinate | one draft per coordinate |
 | Hemisphere or DMS coordinate | 1 draft | 1 draft | 1 draft | 1 draft |

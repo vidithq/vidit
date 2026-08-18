@@ -358,8 +358,8 @@ async def test_a_tagged_post_creates_a_draft(db, linked_owner):
     event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
     assert event.status == STATUS_DETECTED
     assert event.detected_from_url == f"https://x.com/{HANDLE}/status/{TAGGED_ID}"
-    # The title is the first line that is neither a coordinate alone nor a URL
-    # alone, the bot tag having left the line it opened.
+    # The title is the first line carrying text beyond coordinates and links,
+    # the bot tag having left the line it opened.
     assert event.title == "Strike on the vehicle depot"
     point = to_shape(event.event_coords)
     assert point.y == pytest.approx(48.123456)

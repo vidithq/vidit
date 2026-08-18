@@ -281,8 +281,8 @@ def test_title_first_non_empty_line():
 
 
 def test_title_keeps_hashtags_and_inline_urls():
-    # Taken verbatim: only a line that is a coordinate alone or a URL alone is
-    # skipped, and the analyst rewrites a bad title at review.
+    # Taken verbatim: a line is skipped only when coordinates and links are all
+    # it carries, and the analyst rewrites a bad title at review.
     text = "Strike on depot https://example.com #ukraine #war"
     assert derive_title(text) == text
 
@@ -342,6 +342,39 @@ def test_title_empty_when_only_coordinates():
 def test_title_skips_every_coordinate_spelling_alone_on_its_line():
     for line in ("48.012345, 37.802411", "33.1°N 35.5°E", "48°00'45\"N 37°48'08\"E"):
         assert derive_title(f"{line}\nDepot strike") == "Depot strike"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        # A coordinate and the maps link it came from, the commonest pairing.
+        "48.012345, 37.802411 https://www.google.com/maps/@48.012345,37.802411,15z",
+        # Punctuation between the two carries no text of its own.
+        "48.012345, 37.802411 - https://t.co/abc123",
+        # Two coordinates on one line.
+        "48.012345, 37.802411 | 50.450100, 30.523400",
+        # A list-marked coordinate: an enumerated dump, not a headline.
+        "1. 48.012345, 37.802411",
+        # Links alone, several tokens, which is how X appends its media wrapper.
+        "https://example.com https://t.co/abc123",
+    ],
+)
+def test_title_skips_a_line_of_coordinates_and_links(line):
+    # Neither a coordinate nor a link is text, so a line made only of them,
+    # whatever punctuation or marker sits around them, is not a headline.
+    assert derive_title(f"{line}\nDepot strike") == "Depot strike"
+
+
+def test_title_keeps_a_line_pairing_a_coordinate_with_words():
+    # One word beyond the coordinate and the link is enough, and the line is
+    # then the title as written.
+    line = "48.012345, 37.802411 depot https://t.co/abc123"
+    assert derive_title(line) == line
+
+
+def test_title_empty_when_every_line_is_coordinates_and_links():
+    text = "48.012345, 37.802411\nhttps://t.co/abc123\n50.450100, 30.523400 https://example.com"
+    assert derive_title(text) == ""
 
 
 def test_title_collapses_whitespace():

@@ -27,8 +27,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .records import url_only_tokens
-
 # ── Coordinate extractors ─────────────────────────────────────────────────
 
 
@@ -100,8 +98,8 @@ _GMAPS_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Every coordinate form, for asking whether a line is a coordinate and nothing
-# else (the title rule).
+# Every coordinate form, for asking what a line carries besides its coordinates
+# (the title rule).
 _COORD_RES = (
     _DECIMAL_PAIR_RE,
     _DECIMAL_HEMI_SUFFIX_RE,
@@ -265,17 +263,42 @@ _WHITESPACE_RE = re.compile(r"\s+")
 _TITLE_MAX_LEN = 120
 
 
-def _is_coord_only(line: str) -> bool:
-    """Whether ``line`` is one coordinate and nothing else."""
-    return any(rx.fullmatch(line) for rx in _COORD_RES)
+# A URL as it appears inline in a line of post text.
+_URL_TOKEN_RE = re.compile(r"https?://\S+", re.IGNORECASE)
+
+# The enumeration a line may open on once its coordinates are gone: an OSINT
+# thread numbers its posts (``9|``) and a coordinate list numbers its entries
+# (``1.``, ``2)``). Bullets and every other separator are punctuation, which
+# :data:`_NON_TEXT_RE` removes on its own.
+_LIST_MARKER_RE = re.compile(r"^\s*\d+\s*[.)\]|:-]")
+
+# Punctuation, separators and whitespace: what carries no text of its own.
+_NON_TEXT_RE = re.compile(r"[\W_]", re.UNICODE)
+
+
+def _carries_text(line: str) -> bool:
+    """Whether ``line`` says anything beyond its coordinates and its links.
+
+    Every coordinate token and every URL token comes out, then the list marker
+    the line may open on, then the punctuation around them. What is left is the
+    analyst's own words, and a line with none of them is a coordinate dump, a
+    link dump, or both at once.
+    """
+    residue = _URL_TOKEN_RE.sub(" ", line)
+    for rx in _COORD_RES:
+        residue = rx.sub(" ", residue)
+    return bool(_NON_TEXT_RE.sub("", _LIST_MARKER_RE.sub(" ", residue)))
 
 
 def derive_title(text: str) -> str:
-    """The first line of ``text`` that is neither a coordinate alone nor a URL
-    alone, whitespace-collapsed and cut at ``_TITLE_MAX_LEN`` on a word boundary.
+    """The first line of ``text`` carrying text beyond coordinates and links,
+    whitespace-collapsed and cut at ``_TITLE_MAX_LEN`` on a word boundary.
 
-    Taken verbatim otherwise: what the analyst wrote is the headline, and the
-    review pass is where a bad one gets rewritten. ``""`` when no line
+    :func:`_carries_text` decides which line that is, so a line pairing a
+    coordinate with the maps link it came from is skipped exactly as a bare
+    coordinate is. The chosen line is then taken verbatim, coordinates, links,
+    hashtags and list marker included: what the analyst wrote is the headline,
+    and the review pass is where a bad one gets rewritten. ``""`` when no line
     qualifies, so the analyst types one; a wrong title in the field is worse
     than none.
 
@@ -284,7 +307,7 @@ def derive_title(text: str) -> str:
     """
     for raw_line in text.splitlines():
         line = _WHITESPACE_RE.sub(" ", raw_line).strip()
-        if not line or _is_coord_only(line) or url_only_tokens(line) is not None:
+        if not _carries_text(line):
             continue
         if len(line) <= _TITLE_MAX_LEN:
             return line

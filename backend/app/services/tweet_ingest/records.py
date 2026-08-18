@@ -10,7 +10,6 @@ whichever technology served it.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Literal
@@ -109,22 +108,6 @@ class SourceLink:
 
     url: str
     shortlink: str | None = None
-
-
-# A line carrying URL tokens and nothing else. Read by the title rule, which
-# never picks such a line.
-_URL_TOKENS_LINE_RE = re.compile(r"^\s*https?://\S+(?:\s+https?://\S+)*\s*$", re.IGNORECASE)
-
-
-def url_only_tokens(line: str) -> list[str] | None:
-    """``line``'s URL tokens when the line is nothing but URL tokens, ``None``
-    otherwise (a word, a stray character, an empty line).
-
-    Several tokens still match: X appends the wrapper of the post's own attached
-    media behind whatever the analyst wrote, so a one-link line reaches storage
-    as two tokens.
-    """
-    return line.split() if _URL_TOKENS_LINE_RE.match(line) else None
 
 
 def expand_shortlinks(text: str, links: Iterable[SourceLink]) -> str:

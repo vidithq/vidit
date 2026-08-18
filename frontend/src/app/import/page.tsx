@@ -157,9 +157,9 @@ export default function ImportGuidePage() {
           </li>
           <li>
             <span className="text-neutral-100">Title.</span> The first line
-            that is neither a coordinate alone nor a link alone, taken as
-            written and cut at 120 characters. No line qualifying leaves the
-            title empty, and you type one at review.
+            that carries text beyond coordinates and links, taken as written and
+            cut at 120 characters. No line qualifying leaves the title empty,
+            and you type one at review.
           </li>
           <li>
             <span className="text-neutral-100">Proof.</span> Your thread&apos;s
