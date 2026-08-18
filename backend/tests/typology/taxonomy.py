@@ -30,10 +30,6 @@ from app.services.tweet_ingest.extract import (
     extract_coords,
 )
 
-COORD_FORMATS = ("decimal", "hemisphere", "dms", "gmaps", "none")
-COORD_LOCATIONS = ("op", "quoted", "image_only")
-STRUCTURES = ("single", "quote")
-
 # Probe order: gmaps first (a Google-Maps link embeds a decimal pair, so the
 # more specific label wins), then extractor-priority decimal / hemisphere / dms.
 # Approximation: labels by the first pattern that matches the text; a rare miss
@@ -57,7 +53,7 @@ class Typology:
 
 
 def _joined(op_text: str, quoted_text: str) -> str:
-    # ``detect`` concatenates every tweet's text before extraction; mirror that
+    # The engine concatenates every tweet's text before extraction; mirror that
     # so a coordinate split across OP + quoted tweet is seen the same way.
     return op_text + ("\n" + quoted_text if quoted_text else "")
 

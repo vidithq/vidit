@@ -78,7 +78,10 @@ erDiagram
         GEOMETRY event_coords "nullable, the subject; required at geolocated"
         GEOMETRY capture_source_coords "nullable, the camera position"
         TEXT source_url "nullable, required at requested/geolocated"
-        TEXT detected_from_url "nullable, detection provenance"
+        BIGINT detected_from_tweet_id "nullable, detection provenance id"
+        BIGINT_ARRAY detected_thread_tweet_ids "nullable, the thread's post ids"
+        TEXT detected_from_url "nullable, detection provenance link"
+        VARCHAR detected_via "nullable, bot | paste | archive"
         JSONB proof
         DATE event_date "nullable"
         TIME event_time "nullable, optional UTC hour"
@@ -338,8 +341,11 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 | `title` | `VARCHAR(255)` | NOT NULL |
 | `event_coords` | `GEOMETRY(Point, 4326)` | nullable. The subject: what the footage shows. Tied to `status` by `ck_events_coords_status`: required for `geolocated`, optional otherwise. A `requested` request may carry an approximate guess. This column was renamed from `location`. Each event has one subject point. Multi-point support is a deferred `event_points` child table. |
 | `capture_source_coords` | `GEOMETRY(Point, 4326)` | nullable. The camera position: where the footage was shot from. Always optional, one per event. |
-| `source_url` | `TEXT` | nullable. Where the footage was first published. Tied to `status` by `ck_events_source_url_status`: required for `requested` and `geolocated`, optional for `detected`. A machine draft may declare no source; see [`ingestion.md`](ingestion.md). |
-| `detected_from_url` | `TEXT` | nullable. The post a machine detection was imported from. Serves as the `(detected_from_url, coordinate)` [re-import](ingestion.md#re-import) matching anchor and a provenance link, distinct from `source_url`. NULL for human submits. |
+| `source_url` | `TEXT` | nullable. Where the footage was first published. Tied to `status` by `ck_events_source_url_status`: required for `requested` and `geolocated`, optional for `detected`. A machine detection may declare no source; see [`ingestion.md`](ingestion.md). |
+| `detected_from_tweet_id` | `BIGINT` | nullable. The ID of the post a machine detection was imported from, which anchors the display link and matches the rows written before `detected_thread_tweet_ids` existed: one post spells its URL several ways, so the ID is what keeps two spellings on one detection. NULL for human submits. Indexed with `owner_id`, partial on the populated cohort. |
+| `detected_thread_tweet_ids` | `BIGINT[]` | nullable. Every post ID of the thread the detection was read from, the anchor included, and the [re-import](ingestion.md#re-import) matching leg: the three ingest entries anchor differently on one self-thread, so a match on the anchor alone filed one geolocation as two detections. A detection matches a row when their post-ID sets intersect. Written once at creation, like the other provenance columns. NULL for human submits; rows that predate the column carry their anchor ID alone. GIN-indexed, partial on the populated cohort. |
+| `detected_from_url` | `TEXT` | nullable. The post a machine detection was imported from, as a link an analyst can open: the display value, written from `detected_from_tweet_id` at the engine's exit. A provenance link, distinct from `source_url`. NULL for human submits. |
+| `detected_via` | `VARCHAR(20)` | nullable, `ck_events_detected_via_valid`: `'bot'`, `'paste'` or `'archive'`, the ingest entry that produced the detection (see [`ingestion.md`](ingestion.md)). Stamped once at creation by the shared write path and never moved, so a re-import through another entry does not rewrite where the detection first came from. Read-only on `EventRead`. NULL for human submits and for machine rows that predate the column. |
 | `proof` | `JSONB` | NOT NULL. A Tiptap document stored as ProseMirror JSON. Every row carries a proof document: a human submit carries the analyst's write-up, and a machine detection carries the tweet or thread text. A submission with no proof body stores an empty document, not NULL. |
 | `event_date` | `DATE` | nullable in every status. When the depicted event happened. NULL when unknown: the footage doesn't always establish the date, and it renders as *Unknown*. For a machine detection, this is provisionally the originating tweet's post date; the owner corrects it at submit. |
 | `event_time` | `TIME` | nullable. An optional time of day for `event_date`, in UTC. NULL when the hour is unknown. |
@@ -349,7 +355,7 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 | `detected_at` | `TIMESTAMPTZ` | nullable. Stamped when a machine produced it, entering `detected`. |
 | `geolocated_at` | `TIMESTAMPTZ` | nullable. Stamped when a person vouched for it and froze it, entering `geolocated`. |
 | `closed_at` | `TIMESTAMPTZ` | nullable. Stamped when the event entered the terminal `closed` state. |
-| `status` | `VARCHAR(20)` | NOT NULL, `server_default 'geolocated'`. The lifecycle runs `requested` (an open call to geolocate) → `detected` (a machine draft, marked on every surface, immutable until vouched) → `geolocated` (a person vouched for it and froze it; always has a location) → `closed` (a withdrawn request or a rejected detection). It is a plain string, not a native enum, and `ck_events_status_valid` pins the value domain. The default keeps a direct human submit correct without setting the value explicitly; the requested and detected paths pass `status` explicitly. The `geolocate` and `close` transitions are documented in [`api.md`](api.md). |
+| `status` | `VARCHAR(20)` | NOT NULL, `server_default 'geolocated'`. The lifecycle runs `requested` (an open call to geolocate) → `detected` (a machine detection, marked on every surface, immutable until vouched) → `geolocated` (a person vouched for it and froze it; always has a location) → `closed` (a withdrawn request or a rejected detection). It is a plain string, not a native enum, and `ck_events_status_valid` pins the value domain. The default keeps a direct human submit correct without setting the value explicitly; the requested and detected paths pass `status` explicitly. The `geolocate` and `close` transitions are documented in [`api.md`](api.md). |
 | `close_reason` | `TEXT` | nullable. A free-text reason the event was closed, such as AI image, bot bug, or withdrawn. Kept visible for transparency. A curated reason picker is deferred. |
 | `before_closed_status` | `VARCHAR(20)` | nullable. The status held just before `closed`: `requested` means withdrawn, `detected` means rejected. Drives the requested-view routing. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks an admin soft-delete: the row and its media stay in place, but every public read filters it out, admins included. |
@@ -360,8 +366,9 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 
 **Check constraints:**
 - `ck_events_status_valid`: `status IN ('requested', 'detected', 'geolocated', 'closed')`. Pins the value domain at the database. The column is a plain `VARCHAR`, not a native enum, so this constraint rejects a bad write at the Postgres level, not only at the app-layer `Literal`.
+- `ck_events_detected_via_valid`: `detected_via IS NULL OR detected_via IN ('bot', 'paste', 'archive')`. The same reason as the status domain, for the ingest entry. NULL is in-domain: a human submit names no entry, and neither does a row written before the column.
 - `ck_events_coords_status`: `status <> 'geolocated' OR event_coords IS NOT NULL`. A `geolocated` event always has a subject coordinate. The other states leave it free. The constraint deliberately drops the old rule that forbade coordinates on a `requested` row, so a `requested` request may carry an approximate guess.
-- `ck_events_source_url_status`: `status NOT IN ('requested', 'geolocated') OR source_url IS NOT NULL`. A `requested` or `geolocated` event always has a source URL. A `detected` draft may carry none; see [`ingestion.md`](ingestion.md). The promotion to `geolocated` enforces the same rule in `services/events.geolocate` before the row can violate this CHECK.
+- `ck_events_source_url_status`: `status NOT IN ('requested', 'geolocated') OR source_url IS NOT NULL`. A `requested` or `geolocated` event always has a source URL. A detection may carry none; see [`ingestion.md`](ingestion.md). The promotion to `geolocated` enforces the same rule in `services/events.geolocate` before the row can violate this CHECK.
 - `ck_events_closed_stamp` (`status <> 'closed' OR closed_at IS NOT NULL`) and `ck_events_geolocated_stamp` (`status <> 'geolocated' OR geolocated_at IS NOT NULL`). These tie the terminal stamps to status. An app path that forgets to stamp is rejected at write time, not stored as silent bad data.
 - `ck_events_before_closed_status`: `(status = 'closed' AND before_closed_status IS NOT NULL AND before_closed_status IN ('requested', 'detected')) OR (status <> 'closed' AND before_closed_status IS NULL)`. The field is non-NULL and in-domain exactly when `closed`, and NULL otherwise. The explicit `IS NOT NULL` clause is required: `NULL IN (...)` evaluates to unknown, not false, so without it a `closed` row could keep a NULL discriminator and slip through.
 
@@ -390,7 +397,9 @@ event happens ──▶ source posts the media ──▶ analyst posts the geolo
 - `ix_events_live`: partial index on `(created_at) WHERE deleted_at IS NULL`. Every public read filters on `deleted_at IS NULL`, and the partial index keeps it tight.
 - `ix_events_status_created_at` on `(status, created_at)`. The requested view (formerly the request list), the map, and the detection queue all filter on `status`, newest first.
 - `ix_events_created_at_id` on `(created_at, id)`. Backs the keyset that the capped list endpoints page on. `GET /events`, `GET /events/detections`, and `GET /timeline` order by `created_at DESC, id DESC` and cut each page with a row comparison over that pair; see [`api.md`](api.md#pagination).
-- `ix_events_detected_from_url`: partial index on `(detected_from_url) WHERE detected_from_url IS NOT NULL`. Backs the assemble idempotency lookup, one per detection during a backfill. Human rows are always NULL here.
+- `ix_events_detected_from_url`: partial index on `(detected_from_url) WHERE detected_from_url IS NOT NULL`. Backs the admin machine-detection cohort scans, which count the rows carrying a provenance link at all. Human rows are always NULL here.
+- `ix_events_owner_detected_from_tweet_id`: partial index on `(owner_id, detected_from_tweet_id) WHERE detected_from_tweet_id IS NOT NULL`. Backs the post-id leg of the re-import match, one lookup per detection during a backfill, scoped to the importer's own rows.
+- `ix_events_detected_thread_tweet_ids`: partial GIN index on `(detected_thread_tweet_ids) WHERE detected_thread_tweet_ids IS NOT NULL`. Backs the array-overlap leg of the re-import match, one lookup per detection during a backfill.
 - `ix_events_search_fts`: GIN index on `to_tsvector('simple', coalesce(title, ''))`. Backs `GET /search`; both the located and requested views run through it. The `simple` configuration, not `english`, keeps matching predictable for the corpus of place names and analyst handles. Soft-delete is filtered at query time. `source_url` is intentionally not in the indexed expression, because Postgres' simple parser tokenizes URLs as host and path units; see migration `o1j3k5l7m9n1` for the rationale.
 
 > `event_coords` and `capture_source_coords` are PostGIS points in WGS84 (SRID 4326, standard GPS coordinates). GeoAlchemy2 exposes them as `.lat` and `.lng` through `WKBElement`, or as `ST_X` and `ST_Y` in raw SQL.
@@ -492,7 +501,7 @@ Every uploaded file for an event, source footage and proof-body images alike, sp
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL. Always set. Files upload at publish, so there is no unattached staging row; see Upload timing below. |
 | `role` | `VARCHAR` | NOT NULL. `'source'` for the footage, at most one per event, enforced by a partial unique index, or `'proof'` for inline images referenced from the proof body, with no per-event limit. |
 | `storage_url` | `TEXT` | NOT NULL. An S3 or CloudFront URL. |
-| `media_type` | `VARCHAR(10)` | NOT NULL, `'image'` or `'video'` |
+| `media_type` | `VARCHAR(10)` | NOT NULL, `'image'` or `'video'`. The stored MIME type is not a column: an analyst's upload keeps the accepted type it arrived as, and a machine-imported photo is re-encoded to one format at ingest whichever entry read the post; see [`ingestion.md`](ingestion.md#the-contract). |
 | `sha256` | `VARCHAR(64)` | nullable. Hex-encoded SHA-256 of the uploaded bytes, captured at upload time. A stable content fingerprint that survives storage-class changes and copies, unlike the S3 ETag, which is an MD5 for non-multipart uploads and is not stable across copies. NULL on rows that predate this column. **The hash is computed on the bytes that land on S3, for images after the EXIF strip, so an auditor downloading the public URL can independently verify it.** |
 | `original_filename` | `TEXT` | nullable. The client-supplied filename, for example `IMG_1234.jpg`. Surfaced on the public read API so investigators can trace evidence back to a source post by filename. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
@@ -541,7 +550,7 @@ Composite PK: `(event_id, tag_id)`
 
 ### `conflicts`
 
-The conflict referential: one row per armed conflict, externally synced. Three writers feed it, discriminated by `source`: the daily Wikipedia ongoing-conflicts sync (`sync`), the one-shot Wikidata historical seed (`seed`), and operator rows (`manual`), which include the `Other` escape value and the rows migrated out of `tags`. See [`ingestion.md`](ingestion.md#conflict-referential-sync) for the sync mechanics.
+The conflict referential: one row per armed conflict, externally synced. Three writers feed it, discriminated by `source`: the daily Wikipedia ongoing-conflicts sync (`sync`), the one-shot Wikidata historical seed (`seed`), and operator rows (`manual`), which include the `Other` escape value and the rows migrated out of `tags`. See [`conflicts.md`](conflicts.md) for the sync mechanics.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -574,23 +583,23 @@ Composite PK: `(event_id, conflict_id)`
 
 ### `bot_mentions`
 
-The bot's idempotency ledger: one row per processed @-mention of the bot, whatever the outcome. This ensures a mention is processed, and billed since the reads and gestures use the paid X API, at most once. Both delivery paths, the webhook and the reconciliation poll, share this ledger: whichever sees a mention first records it, and the other skips it. The poll's `since_id` is the max `mention_tweet_id` minus a one-interval lookback, so a mention the webhook dropped stays reachable even after a newer delivery advanced the max. The ledger absorbs the re-read overlap as already handled. See [`ingestion.md`](ingestion.md#bot-format) for the pipeline.
+The bot's idempotency ledger: one row per processed @-mention of the bot, whatever the outcome. This ensures a mention is processed, and billed since the reads and gestures use the paid X API, at most once. Both delivery paths, the webhook and the reconciliation poll, share this ledger: whichever sees a mention first records it, and the other skips it. The poll's `since_id` is the max `mention_tweet_id` minus a one-interval lookback, so a mention the webhook dropped stays reachable even after a newer delivery advanced the max. The ledger absorbs the re-read overlap as already handled. See [`ingestion.md`](ingestion.md#the-bot) for the pipeline.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `mention_tweet_id` | `VARCHAR(25)` | UNIQUE, NOT NULL. The tagged tweet's id: an X snowflake, stored as a numeric string. |
 | `author_handle` | `VARCHAR(50)` | NOT NULL. The tagging analyst's handle, normalized to lowercase with no leading `@`. Stored for forensics, not as a FK. Attribution resolves through the admin-linked `users.x_handle`. |
-| `outcome` | `VARCHAR(20)` | NOT NULL, `'created'`, `'no_detection'`, `'no_account'` (no live account carries the tagged author's admin-linked `x_handle`, so nothing is created and no reply is sent), `'skipped'`, `'self'` (the bot's own post, ledgered so the cursor advances past it), or `'failed'`. A `failed` row retries only when an operator deletes it. |
+| `outcome` | `VARCHAR(20)` | NOT NULL, `'created'`, `'updated'` (no row created, an open detection overwritten with the newer parse, which earns the success reply as a creation does), `'no_detection'`, `'no_account'` (no live account carries the tagged author's admin-linked `x_handle`, so nothing is created and no reply is sent), `'skipped'` (a match the pass moved nothing on), `'self'` (the bot's own post, ledgered so the cursor advances past it), or `'failed'`. A `failed` row retries only when an operator deletes it. |
 | `events_created` | `INTEGER` | NOT NULL, default 0 |
-| `reply_tweet_id` | `VARCHAR(25)` | nullable. The bot's in-thread reply: on success, an event reference plus warnings; on failure, a diagnosis plus the format lesson, sent only to linked authors (see [`ingestion.md`](ingestion.md#bot-format)). NULL when no reply was earned, reply credentials are absent, or the post failed. The detection stays durable either way. |
+| `reply_tweet_id` | `VARCHAR(25)` | nullable. The bot's in-thread reply: on success, an event reference plus warnings; on failure, the refusal the engine named, sent only to linked authors (see [`ingestion.md`](ingestion.md#the-bot)). NULL when no reply was earned, reply credentials are absent, or the post failed. The detection stays durable either way. |
 | `processed_at` | `TIMESTAMPTZ` | NOT NULL |
 
 ---
 
 ### `bot_webhook_events`
 
-The queue between the X Account Activity webhook endpoint ([`POST /webhooks/x`](api.md#post-webhooksx)), which must answer X fast and therefore only inserts, and the import worker, which drains the queue through the shared mention pipeline. Idempotency lives in [`bot_mentions`](#bot_mentions), not here: a redelivered or poll-raced mention processes once. See [`ingestion.md`](ingestion.md#bot-format).
+The queue between the X Account Activity webhook endpoint ([`POST /webhooks/x`](api.md#post-webhooksx)), which must answer X fast and therefore only inserts, and the import worker, which drains the queue through the shared mention pipeline. Idempotency lives in [`bot_mentions`](#bot_mentions), not here: a redelivered or poll-raced mention processes once. See [`ingestion.md`](ingestion.md#the-bot).
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -604,7 +613,7 @@ The queue between the X Account Activity webhook endpoint ([`POST /webhooks/x`](
 
 ### `archive_import_jobs`
 
-The durable queue behind `POST /events/import-archive`. The endpoint stages the uploaded zip to storage and inserts a row. The worker service claims rows with `FOR UPDATE SKIP LOCKED`, runs the backfill, stamps the assemble counts, and emails the owner. See [`ingestion.md`](ingestion.md#archive-import-worker) for the pipeline and recovery semantics.
+The durable queue behind `POST /events/import-archive`. The endpoint stages the uploaded zip to storage and inserts a row. The worker service claims rows with `FOR UPDATE SKIP LOCKED`, runs the backfill, stamps the import counts, and emails the owner. See [`ingestion.md`](ingestion.md#archive-import-worker) for the pipeline and recovery semantics.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -615,21 +624,21 @@ The durable queue behind `POST /events/import-archive`. The endpoint stages the 
 | `attempts` | `INTEGER` | NOT NULL, default 0. A claim counter. When it reaches the budget, the job lands `failed` instead of looping, a poison-pill guard. |
 | `post_estimate` | `INTEGER` | nullable. A volume hint from zip metadata, stamped at enqueue: the declared `tweets.js` size divided by a per-record average. Display only. |
 | `progress_done` / `progress_total` | `INTEGER` | NOT NULL default 0, and nullable, respectively. The worker's live scan position, updated every few rows once the parse has the exact detection count. |
-| `created_count` / `updated_count` / `skipped_count` / `failed_count` | `INTEGER` | NOT NULL, default 0. The assemble counts, final once `done`, disjoint. |
+| `created_count` / `updated_count` / `skipped_count` / `failed_count` | `INTEGER` | NOT NULL, default 0. The import counts, final once `done`, disjoint. |
 | `error` | `TEXT` | nullable. A terse, operator-facing failure reason. The owner gets the full story by email. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 | `started_at` / `finished_at` | `TIMESTAMPTZ` | nullable |
 
 ### `source_archives`
 
-One row per link an analyst has recorded an archived copy for: the event's `source_url`, its [`event_source_links`](#event_source_links) mirrors, its `detected_from_url`, or an `http(s)` href in the proof body's Tiptap document. A row exists because a copy exists, so there is no queue state and no attempt counter. The capture happens in the analyst's own browser, and [`POST /events/{event_id}/archives`](api.md#post-eventsevent_idarchives) is where the snapshot URL comes back. See [`ingestion.md`](ingestion.md#source-archival) for the flow and the validation.
+One row per link an analyst has recorded an archived copy for: the event's `source_url`, its [`event_source_links`](#event_source_links) mirrors, its `detected_from_url`, or an `http(s)` href in the proof body's Tiptap document. A row exists because a copy exists, so there is no queue state and no attempt counter. The capture happens in the analyst's own browser, and [`POST /events/{id}/archives`](api.md#post-eventsidarchives) is where the snapshot URL comes back. See [`archival.md`](archival.md) for the flow and the validation.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `event_id` | `UUID` | FK → `events.id`, ON DELETE CASCADE, NOT NULL, indexed |
 | `original_url` | `TEXT` | NOT NULL. The link exactly as stored on the event. It is never normalized, because it is half the row's identity and what the read surface matches against `events.source_url`. |
-| `origin` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_origin_valid`: `'source_url'` (the event's declared footage source), `'secondary_source'` (a row of [`event_source_links`](#event_source_links)), `'detected_from'` (the event's `detected_from_url`, the post a machine draft was detected from), or `'proof_link'` (an href inside the proof body). A link reachable from several of these is stored once, under the first of them it appears in. |
+| `origin` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_origin_valid`: `'source_url'` (the event's declared footage source), `'secondary_source'` (a row of [`event_source_links`](#event_source_links)), `'detected_from'` (the event's `detected_from_url`, the post a machine detection came from), or `'proof_link'` (an href inside the proof body). A link reachable from several of these is stored once, under the first of them it appears in. |
 | `snapshot_url` | `TEXT` | NOT NULL. The archived copy, validated against `original_url` before it is stored. |
 | `provider` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_provider_valid`: `'wayback'` or `'archive_today'`. Inferred from the snapshot's host at write time, and what the read surface picks its icon from. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |

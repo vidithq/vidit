@@ -19,7 +19,7 @@ comes back and to store it.
 
 Which links can be archived: the event's ``source_url``, its secondary source
 links (the analyst-submitted mirrors in ``event_source_links``), its
-``detected_from_url`` (the analyst's post a machine draft was detected from),
+``detected_from_url`` (the analyst's post a machine detection came from),
 and every ``http(s)`` href carried by a link mark in the proof body's Tiptap
 document. :func:`collect_links` is the one home for that walk, and it is what
 the endpoint validates ``original_url`` against, so a snapshot cannot be
@@ -121,7 +121,7 @@ def collect_links(event: Event) -> list[tuple[str, SourceArchiveOrigin]]:
     The proof body's hrefs come from :func:`sanitize.extract_link_hrefs`, so
     the Tiptap walk has one home. Duplicates collapse to the first origin the
     walk reaches: the declared source, then an analyst-submitted mirror, then
-    the post a machine draft was detected from, then a proof citation. That is
+    the post a machine detection came from, then a proof citation. That is
     the strongest provenance the event carries for the URL.
 
     Both halves of the archival contract read this: it is the set the detail

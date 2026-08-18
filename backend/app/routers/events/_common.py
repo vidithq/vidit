@@ -211,6 +211,7 @@ def build_event_read(
         close_reason=geo.close_reason,
         before_closed_status=geo.before_closed_status,
         detected_from_url=geo.detected_from_url,
+        detected_via=geo.detected_via,
         # Same eager-loaded collection as the source and the mirrors, so the
         # provenance row costs no extra query either.
         archived_detected_from=_archived_link(geo, geo.detected_from_url),

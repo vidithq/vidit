@@ -259,7 +259,7 @@ def tiptap_doc_from_text(text: str) -> dict[str, Any]:
     """Build a minimal Tiptap proof document from plain text.
 
     One paragraph node per non-blank line; blank lines drop out. Used by the
-    machine-detection assemble step to wrap a tweet / thread's cleaned text
+    machine-detection write path to wrap a tweet / thread's cleaned text
     (from ``clean_proof_text``) into the JSONB proof shape every row carries.
     Empty or all-blank input yields an empty document
     (``{"type": "doc", "content": []}``).

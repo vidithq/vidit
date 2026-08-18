@@ -174,16 +174,16 @@ npm run render:v04   # → out/promo-v04.mp4 (1920×1080, 60 fps)
 
 The recorded takes import the maintainer's REAL X export ("Vidit
 stuff.zip" at the repo root, their published geolocation work), copied
-read-only to `out/real-archive.zip`, so every draft and event on camera
+read-only to `out/real-archive.zip`, so every detection and event on camera
 carries real media. `gen-archive.js` (a synthetic real-shaped archive)
 stays for CI / reproducibility when the real export isn't available.
 
 Per clip (all real UI, none of it staged on camera): `map.mp4` opens the
 anonymous map, dezooms to clusters and opens a real promoted geolocation
-(one draft from the real archive, promoted at setup and remembered in
+(one detection from the real archive, promoted at setup and remembered in
 `out/hero.json`); `import.mp4` uploads the real archive through `/submit`
 and lands on the filled detections queue; `queue.mp4` is a steady queue
-shot; `promote.mp4` reviews a real draft, submits it and shows the
+shot; `promote.mp4` reviews a real detection, submits it and shows the
 published point; `bot-embed.mp4` records the official X embed (dark) of
 the analyst's real coordinate tweet as the bot beat's base plate. Timing
 marks from each take go to `public/clips/meta.json`;

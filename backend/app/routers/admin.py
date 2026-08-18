@@ -175,7 +175,7 @@ def purge_detected_events_admin(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminPurgeDetectedResponse:
-    """Hard-delete every `detected` draft the user owns (rows + S3 media),
+    """Hard-delete every detection the user owns (rows + S3 media),
     keeping the account and everything else they authored. The
     broken-archive repair."""
     try:
@@ -417,9 +417,9 @@ def maintenance_send_completion_digests(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminMaintenanceResponse:
-    """Email every analyst holding unpublished ``detected`` drafts.
+    """Email every analyst holding unpublished detections.
 
-    One message per analyst: how many drafts wait, and the link back to their
+    One message per analyst: how many detections wait, and the link back to their
     own Detections queue, where the batch completion publishes them. The nudge
     behind the import: the completion mail scrolls away, the backlog does not.
     Runs on a click like the reapers above, one provider round-trip per

@@ -186,6 +186,7 @@ const MOCK_DETAIL: EventDetail = {
   event_time: "15:45:00",
   source_posted_at: "2026-05-09T15:45:00Z",
   detected_from_url: null,
+  detected_via: null,
   archived_detected_from: null,
   detected_post_at: null,
   proof: null,
@@ -201,13 +202,13 @@ const MOCK_DETAIL: EventDetail = {
   geolocators: [],
 };
 
-// The three badge states a Detections queue row can be in: the draft that
+// The three badge states a Detections queue row can be in: the detection that
 // carries the whole evidence floor and is waiting on a review's judgment, the
 // one short of a single named piece, and the one short of several, which
 // collapse to a count.
-const MOCK_DRAFT_READY: EventDetail = {
+const MOCK_DETECTION_READY: EventDetail = {
   ...MOCK_DETAIL,
-  id: "draft-ready",
+  id: "detection-ready",
   status: "detected",
   source_url: "https://t.me/channel/12345",
   proof: { type: "doc", content: [{ type: "image", attrs: { src: "" } }] },
@@ -221,16 +222,16 @@ const MOCK_DRAFT_READY: EventDetail = {
   ],
 };
 
-const MOCK_DRAFT_ONE_MISSING: EventDetail = {
-  ...MOCK_DRAFT_READY,
-  id: "draft-one-missing",
+const MOCK_DETECTION_ONE_MISSING: EventDetail = {
+  ...MOCK_DETECTION_READY,
+  id: "detection-one-missing",
   title: "Convoy on a rural road, unnamed",
   proof: null,
 };
 
-const MOCK_DRAFT_SEVERAL_MISSING: EventDetail = {
-  ...MOCK_DRAFT_ONE_MISSING,
-  id: "draft-several-missing",
+const MOCK_DETECTION_SEVERAL_MISSING: EventDetail = {
+  ...MOCK_DETECTION_ONE_MISSING,
+  id: "detection-several-missing",
   title: "Smoke over a treeline, location unclear",
   media: [],
   source_url: null,
@@ -397,7 +398,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="ARMED_RING" usage="The armed half of a two-click confirm on a control that stays put: a ring plus a neutral plate, so the button reads as changed without moving or resizing anything. Applied via className over any variant, paired with useConfirmAction (which owns the arming, the timeout, and the Escape / outside-click exits) and a label that says what the next click does. Every armed control that is not the loud red point of no return uses it: the event share row's draft-link pair, the detection form's Submit. DANGER_CONFIRM is the destructive counterpart.">
+          <Item name="ARMED_RING" usage="The armed half of a two-click confirm on a control that stays put: a ring plus a neutral plate, so the button reads as changed without moving or resizing anything. Applied via className over any variant, paired with useConfirmAction (which owns the arming, the timeout, and the Escape / outside-click exits) and a label that says what the next click does. Every armed control that is not the loud red point of no return uses it: the event share row's detection-link pair, the detection form's Submit. DANGER_CONFIRM is the destructive counterpart.">
             <div className="flex items-center gap-3">
               <Button variant="primary" className={ARMED_RING}>
                 Confirm submit
@@ -443,7 +444,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<CopyButton>" usage="The one copy-to-clipboard control: a square ghost icon button whose resting glyph flips to a check for the flash window (useCopyToClipboard). Used by the event share row and the profile's Discord account. `value` is a getter so the call site can read window at click time; `icon` swaps the resting glyph where the value names itself better than a copy mark does (the check is fixed); `beforeCopy` gates the write (the share row arms a draft link on the first click); the accessible name stays constant and the copied state is announced by a sibling live region.">
+          <Item name="<CopyButton>" usage="The one copy-to-clipboard control: a square ghost icon button whose resting glyph flips to a check for the flash window (useCopyToClipboard). Used by the event share row and the profile's Discord account. `value` is a getter so the call site can read window at click time; `icon` swaps the resting glyph where the value names itself better than a copy mark does (the check is fixed); `beforeCopy` gates the write (the share row arms a detection link on the first click); the accessible name stays constant and the copied state is announced by a sibling live region.">
             <div className="flex items-center gap-2">
               <CopyButton value={() => "https://vidit.app/events/demo"} label="Copy event link" />
               <CopyButton icon={DiscordGlyph} value={() => "a-handle"} label="Copy Discord username: a-handle" copiedLabel="Discord username copied" />
@@ -959,7 +960,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<NumberedSteps>" usage="Static &quot;1, 2, 3…&quot; instruction list: numbered disc + title + body. `plain` on the public guides (/guide, /methodology), `boxed` with a per-step icon for the archive export walkthrough on /submit. Not <ProgressSteps>: this is reference copy the reader works through, every step identical; ProgressSteps renders one running operation's live state (done / active / pending / failed).">
+          <Item name="<NumberedSteps>" usage="Static &quot;1, 2, 3…&quot; instruction list: numbered disc + title + body. `plain` on the public guides (/guide, /methodology, /import), `boxed` with a per-step icon for the archive export walkthrough on /submit. Not <ProgressSteps>: this is reference copy the reader works through, every step identical; ProgressSteps renders one running operation's live state (done / active / pending / failed).">
             <div className="w-full max-w-md space-y-4">
               <Variant label="plain (the guides)">
                 <NumberedSteps
@@ -995,7 +996,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<MockPost>" usage="A fake X post in X's own dark card, so a guide can show the shape of a real post instead of describing it (/bot teaches what to write, /archive maps an exported post to the draft it becomes). Illustration only: the &quot;links&quot; are <MockPostLink> spans, never anchors, and the body breaks anywhere so a long one cannot widen its column. MOCK_ANALYST and MOCK_BOT are the shared identities, so the guides read as one person's posts. `media` attaches one placeholder, `quoted` renders the quote card X draws around a quoted post (with its own optional media), `replyingTo` puts a handle in the byline.">
+          <Item name="<MockPost>" usage="A fake X post in X's own dark card, so a guide can show the shape of a real post instead of describing it (/import teaches what to write and what the bot answers). Illustration only: the &quot;links&quot; are <MockPostLink> spans, never anchors, and the body breaks anywhere so a long one cannot widen its column. MOCK_ANALYST and MOCK_BOT are the shared identities, so the guides read as one person's posts. `media` attaches one placeholder, `quoted` renders the quote card X draws around a quoted post (with its own optional media), `replyingTo` puts a handle in the byline.">
             <div className="w-full max-w-sm space-y-3">
               <Variant label="a post with an attachment">
                 <MockPost
@@ -1020,7 +1021,7 @@ export default function PalettePage() {
               </Variant>
               <Variant label="the bot answering in-thread">
                 <MockPost {...MOCK_BOT} replyingTo={MOCK_ANALYST.handle}>
-                  {"✅ 1 geolocation draft saved · ref 94183d44"}
+                  {"✅ 1 detection saved · ref 94183d44"}
                 </MockPost>
               </Variant>
             </div>
@@ -1258,9 +1259,9 @@ export default function PalettePage() {
 
           <Item name="<DetectionQueueRow>" usage="Detections queue: denser than a card (no byline, coords or tags), whole row clicks through to the edit form. One badge, describing the evidence: 'Ready to review' (outline tone, waiting on a review's judgment, never a complete state), one named missing piece, or a count of several. Hover any badge: every state carries title text saying what it means, which pieces are missing in full, and what to do next.">
             <div className="w-full max-w-xl space-y-2">
-              <DetectionQueueRow draft={MOCK_DRAFT_READY} />
-              <DetectionQueueRow draft={MOCK_DRAFT_ONE_MISSING} />
-              <DetectionQueueRow draft={MOCK_DRAFT_SEVERAL_MISSING} />
+              <DetectionQueueRow detection={MOCK_DETECTION_READY} />
+              <DetectionQueueRow detection={MOCK_DETECTION_ONE_MISSING} />
+              <DetectionQueueRow detection={MOCK_DETECTION_SEVERAL_MISSING} />
             </div>
           </Item>
 

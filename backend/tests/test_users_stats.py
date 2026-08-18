@@ -426,7 +426,7 @@ def test_stats_excludes_a_withdrawn_request(db, live_user, conflict, capture_sou
 
 
 def test_stats_counts_a_rejected_detection(db, live_user):
-    """The other half of the ``closed`` split: a thrown-out machine draft is
+    """The other half of the ``closed`` split: a thrown-out machine detection is
     documented work and keeps its place in the tally."""
     _make_geo(
         db,
@@ -488,8 +488,8 @@ def test_stats_source_hosts_keep_five_and_tip_the_tail_into_other(db, live_user)
     assert sum(row["count"] for row in body["source_hosts"]) + body["other_hosts_count"] == 21
 
 
-def test_stats_source_hosts_count_a_source_less_draft(db, live_user):
-    """A machine draft whose post declared no source, and a stored value no
+def test_stats_source_hosts_count_a_source_less_detection(db, live_user):
+    """A machine detection whose post declared no source, and a stored value no
     host can be read from, both land in ``no_source_count`` rather than
     vanishing: the breakdown adds up to ``total_events``."""
     _make_geo(db, author=live_user, status=STATUS_DETECTED, source_url=None)

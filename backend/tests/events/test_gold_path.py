@@ -84,7 +84,10 @@ def email_recorder(monkeypatch):
 
 @pytest.fixture
 def invite_code(db):
-    row = InviteCode(code=f"gold-invite-{uuid.uuid4().hex}")
+    # The handle is bound at mint and copies onto the account at registration,
+    # which is the nominal path: an archive import runs under it, and the
+    # provenance permalinks it writes name that X account.
+    row = InviteCode(code=f"gold-invite-{uuid.uuid4().hex}", x_handle=f"gold{uuid.uuid4().hex[:8]}")
     db.add(row)
     db.commit()
     yield row
@@ -177,7 +180,10 @@ def test_gold_path_register_import_geolocate_publish(
 
         row = db.query(Event).filter(Event.owner_id == user_id).one()
         assert row.status == STATUS_DETECTED
-        assert row.detected_from_url == f"https://x.com/{handle}/status/{_TWEET_ID}"
+        # Provenance names the X account the invite linked, not the Vidit
+        # username: the permalink has to open the analyst's actual post.
+        assert row.detected_from_url == f"https://x.com/{invite_code.x_handle}/status/{_TWEET_ID}"
+        assert row.detected_via == "archive"
         assert row.source_url is None  # the tweet declared no source
         assert row.proof is not None  # the tweet text became the proof body
         media = db.query(Media).filter(Media.event_id == row.id).all()

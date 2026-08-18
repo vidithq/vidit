@@ -14,8 +14,6 @@ const baseProps = {
   setCaptureLat: () => {},
   captureLng: "",
   setCaptureLng: () => {},
-  extraCoordCandidates: [],
-  onSwapCandidate: () => {},
 };
 
 describe("LocationPicker", () => {
@@ -62,19 +60,5 @@ describe("LocationPicker", () => {
     expect(screen.getByText("Camera position").closest("span")).not.toHaveClass(
       FORM_INVALID_LABEL
     );
-  });
-
-  it("offers detected swap candidates and reports the pick", () => {
-    const onSwap = vi.fn();
-    render(
-      <LocationPicker
-        {...baseProps}
-        extraCoordCandidates={[{ lat: 48.01, lng: 37.8 }]}
-        onSwapCandidate={onSwap}
-      />
-    );
-    const chip = screen.getByRole("button", { name: /48\.01000, 37\.80000/ });
-    fireEvent.click(chip);
-    expect(onSwap).toHaveBeenCalledWith({ lat: 48.01, lng: 37.8 });
   });
 });

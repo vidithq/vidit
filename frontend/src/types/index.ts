@@ -49,6 +49,11 @@ export type Conflict = components["schemas"]["ConflictRead"];
  *  request). */
 export type EventStatus = components["schemas"]["EventRead"]["status"];
 
+/** Which entry produced a machine detection: the bot, a pasted URL, or an archive
+ *  backfill. Generated, so a fourth entry reaches every reader through the
+ *  drift gate. Null on a row imported before the column existed. */
+export type DetectedVia = NonNullable<components["schemas"]["EventRead"]["detected_via"]>;
+
 /** Compact point from /events/points:
  *  [id, lat, lng, event_date, added_date, detected]. ``event_date`` and
  *  ``added_date`` (the created_at day) are ISO ``YYYY-MM-DD`` strings;
@@ -84,36 +89,14 @@ export function filterPointsByStatus(points: MapPoint[], statuses: string[]): Ma
   return points.filter((p) => statuses.includes(pointLifecycleStatus(p)));
 }
 
-/** One coordinate pair parsed out of a tweet's text. */
-export type TweetImportCoord = components["schemas"]["TweetImportCoord"];
-
-/** One attachment on a parsed tweet. ``kind`` is the shared media-file kind (a
- *  stored `Media`'s ``media_type``); ``origin`` is ``op`` for the analyst's own
- *  attachment (→ proof imagery) and ``quote`` for the quoted-tweet attachment
- *  (→ primary geolocation media). */
-export type TweetImportMedia = components["schemas"]["TweetImportMedia"];
-
 /**
- * Pre-fill payload from `POST /events/import-from-tweet`. Best-effort: any
- * field can be empty if the tweet lacks the signal (no coords in the text →
- * ``parsed_coords`` is ``[]``). What the form does with the nullable fields:
- *
- *  - ``source_url``: the quoted tweet's URL when the OP quote-retweets, an
- *    off-platform footage link when the OP declares one, otherwise null (no
- *    fallback to the OP's own URL). Bound directly to the Source URL field,
- *    which starts empty when null.
- *  - ``original_tweet_url``: the OP's URL, kept separately so the proof body
- *    can still credit the analyst when ``source_url`` points at the quote.
- *  - ``source_posted_at``: the source's own post instant. Null when unknown;
- *    the field starts empty rather than falling back to ``posted_at`` (the
- *    OP's own date, which the form truncates to a UTC date).
- *  - ``secondary_source_urls``: the post's other declared links, ordered and
- *    already capped at the event's secondary-link ceiling.
- *  - ``media``: OP + quoted-tweet attachments combined, ``origin`` telling
- *    primary from proof.
- *  - ``detected``: the machine path's view of the same tweet, for inspection.
+ * What one pasted X post did: `POST /events/import-from-tweet`. The ids the
+ * engine created, updated and left alone, in the order it produced them, so
+ * the page opens the first detection it gets. `warnings` are the engine's codes
+ * for what review still has to answer; `reason` names the refusal when the
+ * post produced no detection at all.
  */
-export type TweetImportResponse = components["schemas"]["TweetImportResponse"];
+export type TweetImportOutcome = components["schemas"]["TweetImportRead"];
 
 /**
  * One candidate from the submit-form duplicate probe

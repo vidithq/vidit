@@ -1,45 +1,43 @@
-"""Tweet ingestion — acquire a tweet / thread, extract structured data.
+"""Tweet ingestion: acquire a tweet / thread, extract structured data.
 
 Single-responsibility bricks behind one import surface:
 
-* ``extract`` — pure text core (coordinates, title, proof body), reused by
+* ``urls``: the URL vocabulary (read a post URL to its id, write one back,
+  the host predicates), pure string work.
+* ``records``: the normalized acquire units (``TweetRecord``, ``ChasedPost``,
+  ``ParsedMedia``), source-agnostic.
+* ``extract``: pure text core (coordinates, title, proof body), reused by
   every path.
-* ``syndication`` — X I/O (URL normalisation, fetch + token + cache, schema
-  mappers).
-* ``telegram``: off-platform footage chase, a t.me post's public embed to its
-  post date (+ media when served). Used by the archive chase.
-* ``records`` — the normalized ``TweetRecord`` acquire unit, source-agnostic.
-* ``stitch`` — recombine records into threads (union-find on reply edges).
-* ``detect`` — the machine path: a thread → ``DetectedGeoloc`` DTOs.
-* ``parse`` — the human pre-fill orchestration behind ``import-from-tweet``;
-  sibling of ``detect``.
+* ``stitch``: recombine records into threads (union-find on reply edges).
+* ``resolve``: the engine, threads to one ``Detection`` per coordinate plus the
+  reason a thread produced none.
+* ``syndication``: X I/O (fetch + token + cache, payload mappers).
+* ``chase``: the one chase step (``chase_thread``), one module per technology
+  behind one dispatcher, for the single fetch a thread's declared source costs.
+* ``acquire``: the live acquisition, a tweet id plus the same author's post it
+  replies to, which is the thread the bot and the paste both resolve.
+* ``archive``: the export reader (pure disk), plus the CDN media fetchers.
+* ``retry``: the one retry schedule every outgoing fetch above shares, for the
+  half of a failure a second attempt can clear.
 
-Callers import the public surface from this package; the module layout is an
-internal detail. ``errors`` is a leaf module so any brick can raise the
-shared failures without a cycle.
+The four pure modules (``records``, ``extract``, ``stitch``, ``resolve``) read
+no I/O module, which ``tests/test_ingest_boundaries.py`` states. Callers import
+the public surface from this package; the module layout is an internal detail.
+``errors`` is a leaf module so any brick can raise the shared failures without a
+cycle.
 """
 
 from __future__ import annotations
 
-from .acquire import record_from_syndication
-from .archive import archive_media_fetcher, fetch_cdn_media, read_tweets
-from .detect import (
-    COORDS_AMBIGUOUS,
-    COORDS_INVALID,
-    COORDS_MISSING,
-    MARKERS_INCOMPLETE,
-    POST_UNREADABLE,
-    SOURCE_AMBIGUOUS,
-    SOURCE_MISSING,
-    SOURCE_OWN,
-    SOURCE_UNBOUND,
-    TITLE_MISSING,
-    DetectedGeoloc,
-    detect,
-    detect_relay_diagnosed,
-    detect_structured_diagnosed,
-    fetch_relay_parent,
+from .acquire import (
+    AcquiredThread,
+    acquire_from_post,
+    acquire_pasted_thread,
+    acquire_thread,
+    read_pasted_post,
 )
+from .archive import archive_media_fetcher, fetch_cdn_media, read_tweets
+from .chase import chase_thread
 from .errors import (
     InvalidTweetUrl,
     TweetFetchFailed,
@@ -52,52 +50,65 @@ from .extract import (
     derive_title,
     extract_coords,
 )
-from .parse import ParsedTweet, parse_tweet
-from .records import TweetRecord
-from .stitch import stitch
-from .syndication import (
-    MEDIA_FETCH_MAX_BYTES,
-    ParsedMedia,
-    fetch_syndication,
-    is_trusted_media_url,
-    normalise_tweet_url,
+from .records import ParsedMedia, TweetRecord
+from .resolve import (
+    COORDS_INVALID,
+    COORDS_MISSING,
+    DUPLICATE_MEDIA,
+    POST_UNREADABLE,
+    REFUSAL_MESSAGES,
+    SEVERAL_COORDINATES,
+    SOURCE_AMBIGUOUS,
+    SOURCE_DATE_UNKNOWN,
+    SOURCE_FETCH_FAILED,
+    SOURCE_FOOTAGE_MISSING,
+    SOURCE_MISSING,
+    WARNING_MESSAGES,
+    Detection,
+    Resolution,
+    resolve_threads,
+    sole_refusal,
 )
+from .stitch import stitch
+from .urls import is_trusted_media_url, normalise_tweet_url
 
 __all__ = [
-    "COORDS_AMBIGUOUS",
     "COORDS_INVALID",
     "COORDS_MISSING",
-    "MARKERS_INCOMPLETE",
-    "MEDIA_FETCH_MAX_BYTES",
+    "DUPLICATE_MEDIA",
     "POST_UNREADABLE",
+    "REFUSAL_MESSAGES",
+    "SEVERAL_COORDINATES",
     "SOURCE_AMBIGUOUS",
+    "SOURCE_DATE_UNKNOWN",
+    "SOURCE_FETCH_FAILED",
+    "SOURCE_FOOTAGE_MISSING",
     "SOURCE_MISSING",
-    "SOURCE_OWN",
-    "SOURCE_UNBOUND",
-    "TITLE_MISSING",
-    "DetectedGeoloc",
+    "WARNING_MESSAGES",
+    "AcquiredThread",
+    "Detection",
     "InvalidTweetUrl",
     "ParsedCoord",
     "ParsedMedia",
-    "ParsedTweet",
+    "Resolution",
     "TweetFetchFailed",
     "TweetNotAccessible",
     "TweetRecord",
     "TweetUpstreamBusy",
+    "acquire_from_post",
+    "acquire_pasted_thread",
+    "acquire_thread",
     "archive_media_fetcher",
+    "chase_thread",
     "clean_proof_text",
     "derive_title",
-    "detect",
-    "detect_relay_diagnosed",
-    "detect_structured_diagnosed",
     "extract_coords",
     "fetch_cdn_media",
-    "fetch_relay_parent",
-    "fetch_syndication",
     "is_trusted_media_url",
     "normalise_tweet_url",
-    "parse_tweet",
+    "read_pasted_post",
     "read_tweets",
-    "record_from_syndication",
+    "resolve_threads",
+    "sole_refusal",
     "stitch",
 ]

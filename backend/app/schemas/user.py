@@ -188,7 +188,7 @@ class UserProfile(BaseModel):
     ``geolocations_count`` counts the analyst's published geolocations, the
     same set ``GET /users/{username}/events`` serves, so the profile's share
     card and the feed on the page print one number. For the whole body of
-    live work, drafts included, read ``total_events`` on
+    live work, detections included, read ``total_events`` on
     :class:`UserStatsRead`.
     """
 
@@ -230,7 +230,7 @@ class UserStatsRead(BaseModel):
     One population throughout: the analyst's live events (``deleted_at IS
     NULL``, ``hidden_at IS NULL``) in the three worked statuses, ``geolocated``
     + ``detected`` + ``closed``. That set is ``total_events``, and every other
-    field here describes it, drafts included. An open ``requested`` call for
+    field here describes it, detections included. An open ``requested`` call for
     help is not documented work and takes part in no aggregate.
 
     ``source_hosts`` breaks the same set down by the host of ``source_url``,

@@ -45,7 +45,7 @@ deleted_events  # schemas/admin.py AdminPurgeDetectedResponse
 media_count  # schemas/admin.py
 pending_registrations_deleted  # schemas/admin.py
 analysts_notified  # schemas/admin.py AdminMaintenanceResponse
-drafts_pending  # schemas/admin.py AdminMaintenanceResponse
+detections_pending  # schemas/admin.py AdminMaintenanceResponse
 digest_send_failures  # schemas/admin.py AdminMaintenanceResponse
 archived_source  # schemas/event.py EventRead
 archived_secondary_sources  # schemas/event.py EventRead
@@ -81,10 +81,6 @@ period  # schemas/user.py ActivityBucket (wire field)
 finished_at  # models/archive_import_job.py + schemas/event.py ArchiveImportJobRead: written by the worker, read on the wire only
 progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
-
-# ── Dataclass fields set at construction, read via attribute access ───────────
-owner_handle  # services/tweet_ingest/detect.py DetectedGeoloc
-in_reply_to_user_id  # services/tweet_ingest/records.py TweetRecord
 
 # ── Test-only helper ──────────────────────────────────────────────────────────
 # Called from tests/, which the gate does not scan, so it reads as unused here.

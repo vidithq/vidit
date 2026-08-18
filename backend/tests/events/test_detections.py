@@ -36,7 +36,7 @@ def _detected(db, author, **kwargs):
 
 
 def _mixed_queue(db, author) -> dict[str, str]:
-    """One draft per shape in the shared table; returns name -> event id."""
+    """One detection per shape in the shared table; returns name -> event id."""
     return {
         name: str(_detected(db, author, **dict(overrides)).id)
         for name, (overrides, _) in READINESS_CASES.items()
@@ -137,12 +137,12 @@ def test_detections_rejects_out_of_range_paging(author):
 
 
 def test_detections_readiness_selects_over_the_whole_queue(db, author):
-    """``ready`` pages through ready drafts only, ``incomplete`` through the
+    """``ready`` pages through ready detections only, ``incomplete`` through the
     rest, and ``all`` (the default) through both.
 
     The bug this replaces: the queue filtered the loaded page client-side while
     paging server-side, so an analyst on a page of ten incomplete rows read
-    "no ready drafts" and concluded their whole import carried no evidence.
+    "no ready detections" and concluded their whole import carried no evidence.
     """
     ids = _mixed_queue(db, author)
     headers = login_as(client, author)

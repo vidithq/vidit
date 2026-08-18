@@ -224,7 +224,7 @@ describe("public profile order", () => {
     // past `total_events`, and the grid counts dated events only.
     expect(
       screen.getByText(
-        "The tiles below describe one set of 3 events: this analyst's geolocations, machine drafts and closed rows."
+        "The tiles below describe one set of 3 events: this analyst's geolocations, machine detections and closed rows."
       )
     ).toBeInTheDocument();
     expect(screen.getByText("Source origin")).toBeInTheDocument();

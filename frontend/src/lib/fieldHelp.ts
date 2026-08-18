@@ -54,7 +54,7 @@ export const FIELD_HELP = {
     label: "What is the event time?",
   },
   source_posted_at: {
-    text: "When the source posted the media (the Telegram / X post date and time, UTC). Required to publish; a machine-detected draft can still have it blank when the source's post time wasn't resolved, and you fill it in before submitting. Not when the event happened, nor when you submitted it here.",
+    text: "When the source posted the media (the Telegram / X post date and time, UTC). Required to publish; a detection can still have it blank when the source's post time wasn't resolved, and you fill it in before submitting. Not when the event happened, nor when you submitted it here.",
     label: "What is the source post time?",
   },
   added: {
@@ -63,10 +63,6 @@ export const FIELD_HELP = {
   },
   status: {
     text: "Requested: an open call to geolocate this footage. Detected: machine output from a tweet, shown marked until its owner submits it. Geolocated: a person vouched for it (via the form, or by submitting a reviewed detection), not independently verified. Closed: the request was withdrawn, or the detection was rejected.",
-    label: "What does the status mean?",
-  },
-  request_status: {
-    text: "Requested: waiting for an analyst to geolocate it. Once someone does, it becomes a geolocation. Closed: the author withdrew it.",
     label: "What does the status mean?",
   },
   detected_from: {
@@ -87,7 +83,7 @@ export const FIELD_HELP = {
     label: "What goes in Location?",
   },
   section_import: {
-    text: "Paste a public tweet to pre-fill the form: title, source, date, media, and best-effort coordinates. You review everything before submitting.",
+    text: "Vidit reads one of your own X posts into a detection you review before publishing; the import guide states what it reads.",
     label: "What does importing do?",
   },
   section_details: {
@@ -104,7 +100,7 @@ export const FIELD_HELP = {
   },
   // Detections queue: the filter over the page.
   detection_queue_filter: {
-    text: "Ready: the import left the draft with every piece of evidence a publish needs, so a review adds the conflict and the capture source, then publishes it. Incomplete: the import left a required piece missing (the source URL, the coordinates, the source media, or a proof image), so it needs a manual pass on the form before it can be published.",
+    text: "Ready: the import left the detection with every piece of evidence a publish needs, so a review adds the conflict and the capture source, then publishes it. Incomplete: the import left a required piece missing (the source URL, the coordinates, the source media, or a proof image), so it needs a manual pass on the form before it can be published.",
     label: "What does this filter select?",
   },
   // Detection submit action, spelled out here.

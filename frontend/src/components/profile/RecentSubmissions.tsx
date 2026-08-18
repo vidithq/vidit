@@ -55,7 +55,7 @@ export function RecentSubmissions({
         {submissions.length > 0 && (
           // ``status=geolocated`` so the expansion serves the same body of
           // work the block above does: search's located group otherwise
-          // widens to machine drafts. The value is in the panel's own
+          // widens to machine detections. The value is in the panel's own
           // vocabulary, so it lands as a removable chip a reader can drop to
           // widen the view deliberately.
           <Link

@@ -1,9 +1,9 @@
-"""Unit tests for the Telegram footage chase (offline).
+"""Unit tests for the Telegram chaser (offline).
 
 Two surfaces: the SSRF URL guard (``_telegram_post_url`` admits nothing but a
-public t.me post) and the embed parser (``fetch_telegram_embed`` over synthetic
-HTML carrying the real ``tgme_*`` classes). Every fetch runs through an
-``httpx.MockTransport`` client, so no request leaves the box.
+public t.me post) and the embed parser (``chase`` over synthetic HTML carrying
+the real ``tgme_*`` classes). Every fetch runs through an ``httpx.MockTransport``
+client, so no request leaves the box.
 """
 
 from __future__ import annotations
@@ -11,11 +11,9 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.services.tweet_ingest.telegram import (
-    TelegramEmbed,
-    _telegram_post_url,
-    fetch_telegram_embed,
-)
+from app.services.tweet_ingest import retry
+from app.services.tweet_ingest.chase.telegram import _telegram_post_url, chase
+from app.services.tweet_ingest.records import ChasedPost, ChaseResult
 
 # ── SSRF URL guard ────────────────────────────────────────────────────────
 
@@ -66,8 +64,8 @@ def test_disallowed_url_never_fetches() -> None:
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
     try:
-        assert fetch_telegram_embed("https://evil.com/chan/12", client=client) is None
-        assert fetch_telegram_embed("https://t.me/joinchat/AAA", client=client) is None
+        assert chase("https://evil.com/chan/12", client=client).outcome == "no_target"
+        assert chase("https://t.me/joinchat/AAA", client=client).outcome == "no_target"
     finally:
         client.close()
 
@@ -92,10 +90,16 @@ def _raising_client(exc: httpx.HTTPError) -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
-def _fetch(html_text: str, *, status: int = 200) -> TelegramEmbed | None:
+def _fetch(html_text: str, *, status: int = 200) -> ChasedPost | None:
+    """The post one chase of a canned embed yields, ``None`` when it yields
+    none. The outcome behind that ``None`` is its own handful of tests below."""
+    return _chase(html_text, status=status).post
+
+
+def _chase(html_text: str, *, status: int = 200) -> ChaseResult:
     client = _client(html_text, status=status)
     try:
-        return fetch_telegram_embed("https://t.me/somechannel/12345", client=client)
+        return chase("https://t.me/somechannel/12345", client=client)
     finally:
         client.close()
 
@@ -268,13 +272,40 @@ def test_message_without_date_or_media_yields_none() -> None:
 
 
 def test_non_200_yields_none() -> None:
-    assert _fetch(_PHOTO_HTML, status=404) is None
-    assert _fetch(_PHOTO_HTML, status=302) is None
+    """A refusal that is not throttling is answered once and for all: no footage,
+    and the outcome says the embed is not there to be had."""
+    for status in (404, 302):
+        result = _chase(_PHOTO_HTML, status=status)
+        assert result.post is None
+        assert result.outcome == "not_accessible"
 
 
-def test_transport_error_yields_none() -> None:
-    client = _raising_client(httpx.ConnectError("boom"))
+def test_a_throttled_embed_is_retried_and_named_transient(retry_sleeps) -> None:
+    """Telegram refusing to serve right now is the one failure worth a second
+    attempt, and what comes back says so, since the detection it lands on tells the
+    analyst to import again later rather than that the source has no footage."""
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(429)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
     try:
-        assert fetch_telegram_embed("https://t.me/somechannel/12345", client=client) is None
+        result = chase("https://t.me/somechannel/12345", client=client)
     finally:
         client.close()
+    assert result.post is None
+    assert result.outcome == "transient_failure"
+    assert len(calls) == retry.ATTEMPTS
+    assert retry_sleeps == list(retry.BACKOFF_S)
+
+
+def test_transport_error_yields_none(retry_sleeps) -> None:
+    client = _raising_client(httpx.ConnectError("boom"))
+    try:
+        result = chase("https://t.me/somechannel/12345", client=client)
+    finally:
+        client.close()
+    assert result.post is None
+    assert result.outcome == "transient_failure"

@@ -1,7 +1,8 @@
 """Contract test framework for the tweet-ingest core.
 
-Exercises the one brick (``resolve_thread`` / ``detect`` / the archive backfill)
-against a fixed catalogue of geolocation-tweet typologies, all fixtures fully
+Exercises the one engine (``resolve_threads``, and the archive backfill that
+persists what it reads) against a fixed catalogue of geolocation-tweet
+typologies, all fixtures fully
 synthetic: invented handles, invented text, invented numeric ids, and media
 URLs in the ``https://pbs.twimg.com/media/FAKE....jpg`` /
 ``https://video.twimg.com/....mp4`` shape. No real tweet content lives here.

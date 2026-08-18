@@ -61,6 +61,7 @@ from app.main import app  # noqa: E402
 from app.models.user import User  # noqa: E402
 from app.services.auth import create_access_token  # noqa: E402
 from app.services.auth_cookies import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE  # noqa: E402
+from app.services.tweet_ingest import retry  # noqa: E402
 
 TEST_CSRF_TOKEN = "test-csrf-token"
 
@@ -177,6 +178,26 @@ def login_as(client: TestClient, user: User) -> dict[str, str]:
     client.cookies.set(SESSION_COOKIE, token)
     client.cookies.set(CSRF_COOKIE, TEST_CSRF_TOKEN)
     return {CSRF_HEADER: TEST_CSRF_TOKEN}
+
+
+@pytest.fixture(autouse=True)
+def retry_sleeps(monkeypatch):
+    """The ingest retry schedule, recorded instead of lived through.
+
+    Every fetch under ``tweet_ingest`` retries a throttled or unreachable
+    upstream with real seconds between the attempts
+    (``tweet_ingest.retry.BACKOFF_S``), and the suite drives those failures on a
+    mock transport. Autouse, so no test pays the wall clock; requested by name
+    to assert the schedule a fetch actually spent.
+    """
+    slept: list[float] = []
+
+    async def sleep_async(seconds: float) -> None:
+        slept.append(seconds)
+
+    monkeypatch.setattr(retry, "_sleep", slept.append)
+    monkeypatch.setattr(retry, "_sleep_async", sleep_async)
+    return slept
 
 
 @pytest.fixture(autouse=True)

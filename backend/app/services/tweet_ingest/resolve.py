@@ -1,63 +1,114 @@
-"""The one brick: a thread of ``TweetRecord`` resolves to a ``ResolvedTweet``.
+"""The engine: threads of ``TweetRecord`` resolve to a ``Resolution``.
 
-A "thread" is a list of ``TweetRecord`` (``stitch``'s output). ``resolve_thread``
-is the single core both consumers run: the human ``parse`` path (a single-record
-thread) and the machine ``detect`` path (a real self-thread) map its output into
-their own shape, so they can't drift on coordinates, source, dates, or media.
-``resolve_tweet(tweet_id)`` is the single-tweet convenience (fetch, then resolve).
+A "thread" is a list of ``TweetRecord``: ``stitch``'s output for the archive, or
+the one hop ``acquire.acquire_thread`` reads for the bot and the paste.
+:func:`resolve_threads` is the single core every entry runs, so the bot, the
+pasted import and the archive backfill cannot drift on coordinates, source,
+dates, or media. It is pure: no network, no database. Each thread yields one
+:class:`Detection` per coordinate it carries, or one refusal code when it yields
+none; ``services/detection.persist_detections`` is what turns a detection into a row.
 
 Every derived field follows one contract: filled only on an explicit signal in
-the tweet (a quote, a footage link, a coordinate), otherwise empty. No
+the analyst's own text (a quote, a link, a coordinate), otherwise empty. No
 deduction: no self-source fallback, no fabricated dates. The media split is the
 one place a thread's own attachment moves without such a signal, and only a
 video, and only into the source media slot: ``source_url`` is untouched, so a
 promotion never reads as a declared source (see :func:`split_media`).
 
-The small ``resolve_coords`` / ``resolve_source`` / ``split_media`` helpers are
-the pieces; ``resolve_thread`` composes them plus the title / proof / date
-derivations into the bundled ``ResolvedTweet``.
+The small ``resolve_source`` / ``split_media`` helpers are the pieces;
+:func:`resolve_threads` composes them plus the coordinate / title / proof / date
+derivations into the detections.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from urllib.parse import parse_qsl, urlencode, urlparse
 
-import httpx
-
-from .extract import ParsedCoord, clean_proof_text, derive_title, extract_coords
+from .extract import (
+    ParsedCoord,
+    clean_proof_text,
+    derive_title,
+    is_retweet,
+    scan_coords,
+    strip_bot_tag,
+)
 from .records import (
+    ParsedMedia,
     QuotedTweet,
-    SourceLink,
     TelegramFootage,
     TweetRecord,
-    bound_link,
     expand_shortlinks,
-    url_only_tokens,
-    written_tokens,
 )
-from .syndication import _TWITTER_URL_HOST_RE, _X_STATUS_URL_RE, ParsedMedia
+from .urls import (
+    TWITTER_URL_HOST_RE,
+    X_STATUS_URL_RE,
+    canonical_tweet_url,
+    hostname,
+    x_status_id,
+)
 
-# External links whose target is footage (a tweet, a channel, a video), unlike a
-# coordinate link (Google Maps) or an article. Their presence means the analyst
-# is referencing someone else's footage, so the analyst's own media is
-# annotation (proof), not the source.
-_FOOTAGE_SOURCE_HOSTS = frozenset({"x", "telegram", "youtube"})
+# ── The engine's vocabulary ───────────────────────────────────────────────
+
+# Why a thread produced nothing. The entry that cares names it back to the
+# analyst (the bot's failure reply); the other entries ignore it.
+# ``POST_UNREADABLE`` is raised by the acquisition rather than here: X served no
+# body at all, so no thread ever reached the engine.
+COORDS_MISSING = "coords_missing"
+COORDS_INVALID = "coords_invalid"
+POST_UNREADABLE = "post_unreadable"
+
+# What a created detection still needs from its owner. Warnings, not refusals: the
+# detection lands either way and review is where they are answered. The first three
+# are what the engine could not settle from the post; the last four are what the
+# row ended up with, so ``detection.persist_detections`` raises them once the write
+# is done. One home for the vocabulary, whichever half raises a code.
+SOURCE_AMBIGUOUS = "source_ambiguous"  # several candidate links, source left empty
+SOURCE_MISSING = "source_missing"  # no candidate link and no quote
+SEVERAL_COORDINATES = "several_coordinates"  # one thread, several detections
+SOURCE_FOOTAGE_MISSING = "source_footage_missing"  # a declared source, no footage stored
+SOURCE_FETCH_FAILED = "source_fetch_failed"  # the source could not be read, retries spent
+SOURCE_DATE_UNKNOWN = "source_date_unknown"  # the source's post date came back unknown
+DUPLICATE_MEDIA = "duplicate_media"  # the row's media is already on another event
+
+# The one sentence each code reads as, in the order the surfaces read them.
+# Every surface that shows a code shows this sentence: the bot's in-thread reply
+# behind its ⚠, the archive's outcome email behind a count of detections, and the
+# paste's response, which the import panel renders as it arrives. One home, so
+# the three entries cannot tell an analyst three different things about one
+# code, and adding a code to the vocabulary above without wording it here fails
+# ``test_engine_copy``.
+#
+# Two constraints the table holds for its tightest surface, the reply: each
+# sentence is short (a composed reply must stay under
+# ``bot.REPLY_MAX_WEIGHTED_LEN``) and linkless (X bills a link-carrying post
+# about 13 times a plain one).
+WARNING_MESSAGES: dict[str, str] = {
+    SEVERAL_COORDINATES: "Several coordinates, one detection each",
+    SOURCE_AMBIGUOUS: "Several possible sources. Pick one at review",
+    SOURCE_MISSING: "No source found. Add one at review",
+    SOURCE_FOOTAGE_MISSING: "No footage from the source. Add it at review",
+    SOURCE_FETCH_FAILED: "Source unreachable. Import again later or add the footage",
+    SOURCE_DATE_UNKNOWN: "The source's post date is unknown. Check it at review",
+    DUPLICATE_MEDIA: "Media already on Vidit. Possible duplicate",
+}
+
+# The same, for the refusals. A surface that names no refusal (the archive email
+# reports counts) simply never reads this table.
+REFUSAL_MESSAGES: dict[str, str] = {
+    COORDS_MISSING: "No coordinate in the post",
+    COORDS_INVALID: "The post's coordinate sits outside the world",
+    POST_UNREADABLE: "Post not readable on X (age-restricted, withheld or gone)",
+}
 
 
 def _status_link_handle(url: str) -> str | None:
-    """The handle segment of an X status link, or ``None`` when ``url`` isn't
-    a status link (``_X_STATUS_URL_RE`` doesn't match) or is the handle-less
-    ``i/web/status`` form.
-
-    Reuses ``_X_STATUS_URL_RE``, the single source of truth for "this X link is
-    a status" (also used by ``classify_source_host`` and the archive chase),
-    then reads the handle straight off the URL path.
-    """
-    if _X_STATUS_URL_RE.search(url) is None:
+    """The handle segment of an X status link, or ``None`` when ``url`` names no
+    status or is the handle-less ``i/web/status`` form."""
+    if x_status_id(url) is None:
         return None
     try:
         parts = [p for p in urlparse(url).path.split("/") if p]
@@ -71,45 +122,55 @@ def _status_link_handle(url: str) -> str | None:
 def _is_own_status_link(url: str, owner_handle: str) -> bool:
     """Whether ``url`` is a status link back to ``owner_handle``'s own post.
 
-    A link to the analyst's own earlier post is a cross-reference, never
-    third-party footage: the OSINT convention this brick reads for a source is
-    "the analyst points at someone else's footage", not their own thread.
+    A link to the analyst's own earlier post is a cross-reference, never a
+    source: the source rule reads "the analyst points at someone else's
+    footage", not at their own thread.
     """
     handle = _status_link_handle(url)
     return handle is not None and handle.lower() == owner_handle.lower()
 
 
-@dataclass(frozen=True)
-class FootageCandidate:
-    """A deduplicated footage-source candidate: the link, its host class, and,
-    for an X status, the extracted status id (the archive chase key)."""
+def _is_non_status_x_link(url: str) -> bool:
+    """Whether ``url`` points at X without naming a status (a profile, a search,
+    a hashtag page).
 
-    url: str
-    host: str
-    status_id: str | None
-
-
-def _footage_dedup_key(url: str, host: str, status_id: str | None) -> str:
-    """The identity two footage links share, so duplicates collapse to one
-    candidate.
-
-    An X status keys on the status id, so ``x.com`` / ``twitter.com`` (or
-    query / trailing-slash) variants of one status are one candidate; other
-    hosts key on host plus path with the query and any trailing slash stripped.
-
-    Collapsing the query is the right call for picking ONE source (a lone
-    YouTube path spelled several ways must not read as ambiguous) and the wrong
-    one for listing mirrors, where ``watch?v=`` carries the video identity;
-    :func:`_mirror_dedup_key` is that stricter key.
+    On X, footage lives at a status and nowhere else, so a link to a profile
+    credits an author without pointing at anything a source slot can hold.
     """
-    if status_id is not None:
-        return f"x:{status_id}"
-    parsed = urlparse(url)
-    return f"{host}:{(parsed.hostname or '').lower()}{parsed.path.rstrip('/')}"
+    return TWITTER_URL_HOST_RE.match(hostname(url)) is not None and (
+        X_STATUS_URL_RE.search(url) is None
+    )
+
+
+_GOOGLE_HOST_RE = re.compile(r"^(?:www\.|maps\.)?google\.[a-z0-9.\-]+$", re.IGNORECASE)
+
+
+def _is_coordinate_link(url: str) -> bool:
+    """Whether ``url`` is a Google Maps link.
+
+    A maps link points at where the coordinate is, not at where the footage
+    lives, so it is never a source candidate. Both the ``maps.`` subdomain and a
+    ``/maps`` path on a Google host count, plus the two share forms: today's
+    ``maps.app.goo.gl`` and the legacy ``goo.gl/maps/`` one. The long form is
+    also what ``extract._GMAPS_RE`` reads a coordinate out of; a share link
+    carries no coordinate in its text, and excluding it here is what keeps it
+    out of the source slot either way.
+    """
+    host = hostname(url)
+    if host == "maps.app.goo.gl":
+        return True
+    path = urlparse(url).path.lower()
+    if host == "goo.gl":
+        # The legacy share form. The bare shortener serves every Google product,
+        # so only the ``/maps/`` prefix counts.
+        return path.startswith("/maps/")
+    if _GOOGLE_HOST_RE.match(host) is None:
+        return False
+    return host.startswith("maps.") or path.startswith("/maps")
 
 
 # Query parameters that carry share / campaign provenance rather than the
-# target's identity: two links differing only in these point at one video.
+# target's identity: two links differing only in these point at one target.
 _TRACKING_QUERY_PARAMS = frozenset(
     {"s", "si", "t", "feature", "ref", "ref_src", "ref_url", "fbclid", "gclid", "igshid"}
 )
@@ -126,353 +187,188 @@ def _identifying_query(query: str) -> str:
     return urlencode(kept)
 
 
-def _mirror_dedup_key(url: str, host: str, status_id: str | None) -> str:
-    """The identity two footage links share when the question is "are these the
-    same mirror", stricter than :func:`_footage_dedup_key`.
+def link_identity(url: str) -> str:
+    """The identity two spellings of one link share, the one dedup rule.
 
-    An X status still keys on the status id (the path carries the identity, the
-    query never does). Every other host keys on host plus path plus the
-    *identifying* query (:func:`_identifying_query`): on the sanctioned footage
-    hosts the video id lives in the query, so ``watch?v=AAA`` and ``watch?v=BBB``
-    are two videos, while ``watch?v=AAA&si=...`` is one video shared twice.
+    An X status keys on its status id, so ``x.com`` / ``twitter.com``, query and
+    trailing-slash variants of one status are one link. Every other host keys on
+    host plus path plus the *identifying* query (:func:`_identifying_query`): a
+    video id usually lives in the query, so ``watch?v=AAA`` and ``watch?v=BBB``
+    are two links, while ``watch?v=AAA&si=…`` is one link shared twice.
     """
+    status_id = x_status_id(url)
     if status_id is not None:
         return f"x:{status_id}"
     parsed = urlparse(url)
-    base = f"{host}:{(parsed.hostname or '').lower()}{parsed.path.rstrip('/')}"
+    base = f"{hostname(url)}{parsed.path.rstrip('/')}"
     query = _identifying_query(parsed.query)
     return f"{base}?{query}" if query else base
 
 
-def footage_candidates(
-    links: Iterable[tuple[str, str]],
-    *,
-    owner_handle: str,
-    dedup_key: Callable[[str, str, str | None], str] = _footage_dedup_key,
-) -> list[FootageCandidate]:
-    """The deduplicated footage candidates among host-classified source links.
+def source_candidates(urls: Iterable[str], *, owner_handle: str) -> list[str]:
+    """The deduplicated source candidate URLs among ``urls``, in order.
 
-    The single source of truth both the shared resolution (:func:`_source_link`)
-    and the archive chase run, so "which link is the footage source" cannot drift
-    between them. A link is a candidate when its host is footage
-    (X status / Telegram / YouTube); an X status back to ``owner_handle``'s own
-    post is a cross-reference, not footage, and is dropped first (only the X host
-    carries a handle to compare). Duplicates collapse per ``dedup_key``, the
-    source slot's :func:`_footage_dedup_key` by default; the mirror list passes
-    :func:`_mirror_dedup_key` so two videos sharing a path stay two candidates.
+    Host-blind: every link the thread carries is a candidate unless it is one of
+    the three exclusions, which are exclusions because they point at no footage
+    at all rather than because of what platform they name:
+
+    * a status link back to ``owner_handle``'s own post (a cross-reference);
+    * an X link naming no status (a profile, a search);
+    * a Google Maps link (a coordinate).
+
+    So a TikTok, an Instagram post or a news article is a candidate exactly like
+    an X status is. Duplicates collapse on :func:`link_identity`.
+
+    A candidate is the link as the post wrote it and nothing more: what may be
+    *fetched* from it is the chase's business (``chase.chase_post`` reads the
+    host), and what is *stored* is this resolution's.
     """
-    candidates: list[FootageCandidate] = []
+    candidates: list[str] = []
     seen: set[str] = set()
-    for url, host in links:
-        if host not in _FOOTAGE_SOURCE_HOSTS:
+    for url in urls:
+        if _is_own_status_link(url, owner_handle) or _is_non_status_x_link(url):
             continue
-        status_id: str | None = None
-        if host == "x":
-            if _is_own_status_link(url, owner_handle):
-                continue
-            match = _X_STATUS_URL_RE.search(url)
-            status_id = match.group(1) if match is not None else None
-        key = dedup_key(url, host, status_id)
+        if _is_coordinate_link(url):
+            continue
+        key = link_identity(url)
         if key in seen:
             continue
         seen.add(key)
-        candidates.append(FootageCandidate(url=url, host=host, status_id=status_id))
+        candidates.append(url)
     return candidates
 
 
-def _source_link(thread: list[TweetRecord]) -> FootageCandidate | None:
-    """The only external link that points at footage (X / Telegram / YouTube),
-    or ``None`` when there is none or several.
+def quoted_posts(thread: list[TweetRecord]) -> list[QuotedTweet]:
+    """The distinct posts ``thread`` quotes, in thread order, deduped on post id.
 
-    Decided by :func:`footage_candidates` (the shared rule): a sole candidate is
-    the declared source; several distinct candidates are ambiguous, so no link is
-    picked and the source stays empty for review.
+    Two records quoting one post name one candidate; two records quoting two
+    different posts name two, which is the ambiguity :func:`sole_quote` refuses
+    to pick between.
     """
-    owner_handle = thread[0].handle if thread else ""
-    links = [(link.url, link.host) for record in thread for link in record.external_sources]
-    candidates = footage_candidates(links, owner_handle=owner_handle)
+    posts: list[QuotedTweet] = []
+    seen: set[str] = set()
+    for record in thread:
+        quoted = record.quoted
+        if quoted is None or quoted.tweet_id in seen:
+            continue
+        seen.add(quoted.tweet_id)
+        posts.append(quoted)
+    return posts
+
+
+def sole_quote(thread: list[TweetRecord]) -> QuotedTweet | None:
+    """The one post ``thread`` quotes, ``None`` when it quotes none or several.
+
+    The one rule :func:`resolve_source` and :func:`split_media` both read, so a
+    detection cannot name one post as its source and store another post's footage.
+    """
+    posts = quoted_posts(thread)
+    return posts[0] if len(posts) == 1 else None
+
+
+def thread_candidates(thread: list[TweetRecord]) -> list[str]:
+    """The thread's source candidates: the posts it quotes, then the links it
+    carries, through :func:`source_candidates` under the thread head's handle.
+
+    A quoted post is a candidate the analyst declared by quoting rather than by
+    linking. X writes the quoted permalink into the links too, so the two
+    spellings collapse on :func:`link_identity` and one quote is one candidate.
+    """
+    quoted = [canonical_tweet_url(post.tweet_id, post.handle) for post in quoted_posts(thread)]
+    links = [link.url for record in thread for link in record.external_sources]
+    return source_candidates(quoted + links, owner_handle=thread[0].handle if thread else "")
+
+
+def sole_candidate(thread: list[TweetRecord]) -> str | None:
+    """The thread's one source candidate, or ``None`` when it has none or
+    several.
+
+    Several candidates are ambiguous: the slot stays empty and every candidate
+    lands in the secondary links for the analyst to promote one at review. The
+    chase reads the same answer, so it never fetches a link the resolution will
+    not store.
+    """
+    candidates = thread_candidates(thread)
     return candidates[0] if len(candidates) == 1 else None
 
 
-def _mirror_identity(url: str) -> str:
-    """The identity two spellings of one mirror share, via :func:`_mirror_dedup_key`.
-
-    Used to compare arbitrary links (the primary source against the thread's
-    other links) where no host classification is in hand: the host prefix is
-    left empty, which is harmless because both sides of every comparison come
-    through here. The X-status collapse still applies, so ``x.com`` /
-    ``twitter.com`` / query variants of one status compare equal, and so does
-    the tracking-parameter strip, so ``?si=`` / ``?utm_source=`` spellings of one
-    video compare equal too.
-    """
-    match = _X_STATUS_URL_RE.search(url)
-    return _mirror_dedup_key(url, "", match.group(1) if match is not None else None)
-
-
-# The OSINT convention for naming the footage source explicitly: the ``Source:``
-# label at the start of a line. Whole-line, like the bot's bare shape: a label
-# written inside prose is a proof reference, never a designation.
-#
-# The label's value is whatever follows on that line, or, when nothing does, the
-# following line (the two-line habit, see :func:`designated_source`). Either way
-# the value must be URL tokens and nothing else (``records.url_only_tokens``): a
-# word after the label designates nothing rather than a guess.
-#
-# The value is read as several tokens rather than one because X appends the
-# wrapper of the post's OWN attached media to the end of the text, so an
-# analyst's one-token designation reaches storage as two tokens. Those wrappers
-# are dropped by name (``records.written_tokens``); what the analyst wrote must
-# still come to exactly one token, so two genuine links stay ambiguous and
-# designate nothing.
-_SOURCE_LABEL_RE = re.compile(r"^\s*source\s*:\s*(.*?)\s*$", re.IGNORECASE)
-
-
-def _is_non_status_x_link(url: str) -> bool:
-    """Whether ``url`` points at X without naming a status (a profile, a search,
-    a hashtag page).
-
-    On X, footage lives at a status and nowhere else, which is why
-    ``classify_source_host`` demotes every other X path to host ``other``. The
-    designation reads that as a hard rule rather than a classification, so
-    writing ``Source: x.com/<handle>`` credits an author without filling the
-    footage slot with a link that points at no footage.
-    """
-    try:
-        host = (urlparse(url).hostname or "").lower()
-    except ValueError:
-        return False
-    return _TWITTER_URL_HOST_RE.match(host) is not None and _X_STATUS_URL_RE.search(url) is None
-
-
-def _as_candidate(link: SourceLink) -> FootageCandidate:
-    """``link`` as a footage candidate, whatever its host.
-
-    :func:`footage_candidates` answers "does this link classify as footage";
-    an explicit designation has already answered that, so this only carries the
-    X status id across for the chase.
-    """
-    match = _X_STATUS_URL_RE.search(link.url)
-    return FootageCandidate(
-        url=link.url, host=link.host, status_id=match.group(1) if match is not None else None
-    )
-
-
-def designated_source(
-    text: str,
-    links: Iterable[SourceLink],
-    *,
-    owner_handle: str,
-    media_shortlinks: Iterable[str] = (),
-) -> FootageCandidate | None:
-    """The footage source a ``Source: <url>`` line designates, or ``None``.
-
-    The explicit half of the source contract: a designation is host-blind off
-    X, since the chase vocabulary (X status via syndication, Telegram via embed)
-    decides what gets fetched, never what gets stored. So an Instagram / TikTok /
-    article link fills ``source_url`` link-only, with no date and no media.
-
-    The label takes its value from its own line, or, when the label sits there
-    alone, from the following line: analysts write the designation both ways,
-    and the two-line habit is the dominant one among the lines the single-line
-    rule left unread. The continuation is accepted only when it is exactly one
-    URL token the analyst wrote and nothing else (:func:`url_only_tokens`); a
-    second URL, a word, or any stray character on it refuses the designation
-    rather than guessing which part was meant. A label ending the text has no
-    following line and designates nothing.
-
-    ``media_shortlinks`` are the post's own attached-media wrappers
-    (``syndication.extract_media_shortlinks``): X appends them to the text, so
-    they sit on whatever line ends the post, designation lines and continuation
-    lines included. They are dropped from the value's tokens
-    (:func:`written_tokens`) before the count, which is what lets the whole-line
-    rule read the designation as the analyst wrote it. What is left must be
-    exactly one token: a value naming two genuine links is ambiguous and
-    designates nothing.
-
-    The token must bind to one of ``links`` (:func:`bound_link`), which is what
-    keeps a link the analyst only wrote about out of the slot. Two links are
-    refused whatever the line says: an X link that names no status
-    (:func:`_is_non_status_x_link`) and a status link back to ``owner_handle``'s
-    own post (a cross-reference, not footage). Both fall through to the
-    sole-candidate rule instead. Several ``Source:`` lines naming different
-    links are ambiguous and designate nothing; the same link named twice is one
-    designation.
-    """
-    entries = list(links)
-    own_media = list(media_shortlinks)
-    designated: FootageCandidate | None = None
-    lines = text.splitlines()
-    for index, line in enumerate(lines):
-        match = _SOURCE_LABEL_RE.match(line)
-        if match is None:
-            continue
-        value = match.group(1)
-        if not value:
-            value = lines[index + 1] if index + 1 < len(lines) else ""
-        written = url_only_tokens(value)
-        if written is None:
-            continue
-        tokens = written_tokens(written, own_media)
-        if len(tokens) != 1:
-            continue
-        link = bound_link(tokens[0], entries)
-        if link is None or _is_non_status_x_link(link.url):
-            continue
-        if _is_own_status_link(link.url, owner_handle):
-            continue
-        if designated is not None:
-            if _mirror_identity(designated.url) != _mirror_identity(link.url):
-                return None
-            continue
-        designated = _as_candidate(link)
-    return designated
-
-
-def _declared_footage(thread: list[TweetRecord]) -> FootageCandidate | None:
-    """The thread's footage link: the explicit ``Source:`` designation
-    (:func:`designated_source`) when it has one, else the sole footage candidate
-    (:func:`_source_link`).
-
-    One home for "which link is the footage" across the source URL, the source
-    date, and the media split, so the three cannot disagree. The whole thread is
-    read at once, so two records naming different links read as the ambiguity
-    they are and the sole-candidate rule decides instead; the own-media wrappers
-    are pooled the same way, since the text is.
-    """
-    designated = designated_source(
-        "\n".join(record.text for record in thread),
-        [link for record in thread for link in record.external_sources],
-        owner_handle=thread[0].handle if thread else "",
-        media_shortlinks=[token for record in thread for token in record.media_shortlinks],
-    )
-    return designated if designated is not None else _source_link(thread)
-
-
 def resolve_secondary_sources(thread: list[TweetRecord], source_url: str | None) -> list[str]:
-    """The mirrors: the footage links the source slot did not take.
+    """The mirrors: the source candidates the slot did not take.
 
-    Secondary source links are the same footage posted elsewhere, so which links
-    qualify is :func:`footage_candidates`, the same rule that picks the primary:
-    one home for "which link points at footage", and the own-status
-    cross-reference skip comes with it. A bare profile link or a coordinate link
-    classifies as host ``other`` and is not a mirror any more than it is a
-    source, so it stays out.
-
-    What differs is the identity two links share, because a list asks a stricter
-    question than a slot. Mirrors key on :func:`_mirror_dedup_key`: an X status
-    on its status id, every other host on host plus path plus the query minus
-    tracking parameters. So two YouTube ``watch?v=`` ids on one path are two
-    mirrors, while ``?si=`` / ``?utm_source=`` spellings of one video are one.
-    The source slot's own key collapses the whole query, which is right for
-    picking one link and would silently swallow the second video here.
-
-    :func:`resolve_source` keeps at most one candidate and drops the rest; those
-    land here in order instead. The candidate whose mirror identity matches the
-    resolved ``source_url`` is the primary in another spelling and is excluded.
-    When the source was ambiguous (several candidates, so the slot stayed empty)
-    every candidate lands here for the owner to promote one at submit. Blanks
-    and the cap are the shared normalizer's job.
+    The candidate whose identity matches the resolved ``source_url`` is the
+    primary in another spelling and is excluded. When the source was ambiguous
+    (several candidates, so the slot stayed empty) every candidate lands here.
+    Blanks and the write-path cap are the shared normalizer's job.
     """
-    owner_handle = thread[0].handle if thread else ""
-    links = [(link.url, link.host) for record in thread for link in record.external_sources]
-    primary = _mirror_identity(source_url) if source_url else None
+    primary = link_identity(source_url) if source_url else None
     urls = [
-        candidate.url
-        for candidate in footage_candidates(
-            links, owner_handle=owner_handle, dedup_key=_mirror_dedup_key
-        )
-        if _mirror_identity(candidate.url) != primary
+        candidate for candidate in thread_candidates(thread) if link_identity(candidate) != primary
     ]
     # Imported locally so the rest of ``tweet_ingest`` stays importable without
-    # the app's service layer, same as ``detect``'s coordinate-bounds check.
+    # the app's service layer.
     from app.services.events import truncate_secondary_source_urls
 
     return truncate_secondary_source_urls(urls, source_url)
 
 
-def _telegram_footage(thread: list[TweetRecord], link: FootageCandidate) -> TelegramFootage | None:
-    """The chased Telegram embed backing the resolved footage ``link``, or ``None``.
+def _chased_footage(thread: list[TweetRecord], link: str) -> TelegramFootage | None:
+    """The off-platform footage chased for the resolved source ``link``.
 
-    Only when the resolved source link is a Telegram post whose embed was chased
-    onto some record (matched by URL). ``None`` for any non-Telegram link or when
-    the chase did not run / found nothing, so the source degrades to link-only
+    Only when some record carries a chase filed under that exact URL, which is
+    why a chaser returns the target as the post wrote it. ``None`` for any other
+    link or when the chase found nothing, so the source degrades to link-only
     (url, no date, no media). Callers reach this only after the quote branch has
     been ruled out, so a quote always takes precedence over a link.
     """
-    if link.host != "telegram":
-        return None
     return next(
         (
             record.telegram
             for record in thread
-            if record.telegram is not None and record.telegram.url == link.url
+            if record.telegram is not None and record.telegram.url == link
         ),
         None,
     )
 
 
-def resolve_coords(thread: list[TweetRecord]) -> list[ParsedCoord]:
-    """Coordinates from the thread's own text, falling back to any quoted tweet.
-
-    Analyst commentary usually carries the coordinate, but some posts just say
-    "here ↓" and let the quoted source carry it, so the quoted text is a
-    thread-wide fallback only when the OP text yields nothing.
-    """
-    op_text = "\n".join(record.text for record in thread if record.text)
-    coords = extract_coords(op_text)
-    if coords:
-        return coords
-    quoted_text = "\n".join(
-        record.quoted.text for record in thread if record.quoted is not None and record.quoted.text
-    )
-    return extract_coords(quoted_text) if quoted_text else []
-
-
 def resolve_source(thread: list[TweetRecord]) -> tuple[str | None, str | None]:
-    """The footage source URL and its post date (ISO 8601), either may be ``None``.
+    """The source URL and its post date (ISO 8601), either may be ``None``.
 
-    Priority, matching how OSINT posts attribute a source:
+    A quote outranks links: the analyst quote-tweeted the footage, so the quoted
+    tweet is the source and its date comes free. That includes a status the
+    acquisition chased into the quote slot on the analyst's behalf. The thread's
+    one quoted post takes the slot (:func:`sole_quote`); records quoting two
+    different posts are as ambiguous as two candidate links and are answered the
+    same way, with the slot left empty and both quoted statuses landing in the
+    mirrors for review to pick from. Failing a quote, the thread's one source
+    candidate is the source (:func:`sole_candidate`); a link whose post was
+    chased carries its date, every other link is stored link-only.
 
-    1. the first quoted tweet (the analyst quote-tweeted the footage, date known);
-    2. the link an explicit ``Source: <url>`` line designates, whatever its host
-       (:func:`designated_source`), stored link-only when the chase vocabulary
-       cannot fetch it;
-    3. the sole external footage link (X status / Telegram / YouTube) elsewhere
-       in the text (date unknown); several distinct footage links are ambiguous
-       and fill nothing (see :func:`_source_link`).
-
-    A Telegram footage link whose public embed was chased (archive path) carries
-    the post date, so the link cases fill the date from that embed instead of
-    leaving it ``None``.
-
-    No other signal counts. A thread that neither quotes nor links footage has
-    declared no source, so both halves are ``None``; the thread head's permalink
-    is provenance (``detected_from_url``), never the source. Absent an explicit
-    designation, a coordinate link (Google Maps) or an article (host ``other``)
-    is not a footage source.
+    No other signal counts. A thread that neither quotes nor links anything has
+    declared no source, so both halves are ``None``; the thread head's own post is
+    provenance (``detected_from_tweet_id`` and the URL built from it), never the
+    source.
     """
-    for record in thread:
-        if record.quoted is not None:
-            quoted = record.quoted
-            return (
-                f"https://x.com/{quoted.handle}/status/{quoted.tweet_id}",
-                quoted.created_at or None,
-            )
-    link = _declared_footage(thread)
+    quote = sole_quote(thread)
+    if quote is not None:
+        return canonical_tweet_url(quote.tweet_id, quote.handle), quote.created_at or None
+    if quoted_posts(thread):
+        return None, None
+    link = sole_candidate(thread)
     if link is not None:
-        footage = _telegram_footage(thread, link)
-        return link.url, (footage.posted_at if footage is not None else None)
+        footage = _chased_footage(thread, link)
+        return link, (footage.posted_at if footage is not None else None)
     return None, None
 
 
 def split_media(thread: list[TweetRecord]) -> tuple[list[ParsedMedia], list[ParsedMedia]]:
     """``(source_media, proof_media)``.
 
-    Footage (``source``) vs the analyst's annotation (``proof``): a quoted
-    tweet's media is the footage, so it is the only media that lands in the
-    source slot. When there is no quote but the resolved source is a chased
-    Telegram post whose embed served footage, that footage is the source media
-    instead (a sensitive post serves none, leaving the slot empty).
+    Footage (``source``) vs the analyst's annotation (``proof``): the footage is
+    the media of the post :func:`resolve_source` named, so a quoted tweet's media
+    is the only media that lands in the source slot, and it is the media of that
+    same quoted post. When there is no quote but the resolved source is a link
+    whose post was chased and served footage, that footage is the source media
+    instead (a chase that served none leaves the slot empty).
 
     With the source slot still empty after both, the thread's first own video
     fills it and leaves the proof: a video an analyst attaches is the footage
@@ -482,16 +378,19 @@ def split_media(thread: list[TweetRecord]) -> tuple[list[ParsedMedia], list[Pars
     absolute precedence even when it carried no media at all.
     """
     own_media = [media for record in thread for media in record.media]
-    if any(record.quoted is not None for record in thread):
+    if quoted_posts(thread):
         # A quote takes precedence as the source (even when it carried no media),
         # so its media is the only footage; a Telegram link is never consulted.
-        quoted_media = [
-            media for record in thread if record.quoted is not None for media in record.quoted.media
-        ]
-        return quoted_media, own_media
-    link = _declared_footage(thread)
+        # Records quoting two different posts leave the source empty, and the
+        # slot stays empty with them: storing one quoted post's video under a
+        # detection that names the other post as its source is the mismatch this
+        # reads ``sole_quote`` to avoid. The unnamed post's media is not the
+        # analyst's own, so it is dropped rather than filed as annotation.
+        quote = sole_quote(thread)
+        return (list(quote.media) if quote is not None else []), own_media
+    link = sole_candidate(thread)
     if link is not None:
-        footage = _telegram_footage(thread, link)
+        footage = _chased_footage(thread, link)
         if footage is not None:
             return list(footage.media), own_media
     video = next((i for i, media in enumerate(own_media) if media.kind == "video"), None)
@@ -501,89 +400,250 @@ def split_media(thread: list[TweetRecord]) -> tuple[list[ParsedMedia], list[Pars
 
 
 @dataclass(frozen=True)
-class ResolvedTweet:
-    """Everything a tweet / thread resolves to: the "tweet id → all info" object.
+class Detection:
+    """One coordinate's worth of a thread: the fields a ``detected`` row needs.
 
-    ``parse`` and ``detect`` are thin mappers over this: nothing derived lives in
-    either of them.
+    Plain data, never an ORM row: ``services/detection.persist_detections`` turns
+    each into an ``Event`` and owns persistence, evidence and the
+    ``(detected_from_tweet_id, coordinate)`` idempotency. A thread carrying
+    several coordinates yields one detection each, all sharing the same source,
+    proof, dates and provenance.
     """
 
-    # Identity / provenance (from the thread head, the geoloc tweet).
-    detected_from_url: str
-    owner_handle: str
-    # The thread's own text with each entity's ``t.co`` wrapper expanded back to
-    # the real URL, carried for the mappers.
-    text: str
-    created_at: str  # the geoloc tweet's post time, ISO 8601 (raw)
-    quoted: QuotedTweet | None
-    op_media: list[ParsedMedia]  # the thread's own media (op + quote origins)
-    # Derived.
-    coords: list[ParsedCoord]
+    coordinate: ParsedCoord
     title: str
+    # Plain-text proof body (the thread's text, media wrappers dropped). The
+    # caller wraps it into the model's JSONB proof document.
     proof_text: str
-    # The declared footage source; None when the thread neither quotes nor
-    # links footage (no self-source deduction).
+    # The declared source (the quoted tweet or a linked post), distinct from
+    # ``detected_from_url``. None when the thread neither quoted nor carried
+    # exactly one candidate link: a detection may have no source.
     source_url: str | None
-    # The source's post instant, only when actually known (a dated quote);
-    # never a fallback onto the geoloc tweet's own date.
-    source_posted_at: datetime | None
-    detected_post_at: datetime | None  # the geoloc tweet's date
-    # Provisional proxy from the geoloc tweet's post date; None when the
-    # timestamp is unusable (no epoch fabrication).
+    # The post this detection came from (the geoloc post): its id is the
+    # identity every surface keys on, the URL the provenance link built from it
+    # (:func:`urls.canonical_tweet_url`). The id is ``None`` only when an
+    # adapter handed over a non-numeric one, which no upstream writes.
+    detected_from_tweet_id: int | None
+    detected_from_url: str
+    # Every post id of the thread this detection was read from, the anchor included
+    # and in thread order. The entries anchor differently on one self-thread
+    # (the archive stitches it whole, the two live entries read one hop), so
+    # this is what lets the write path recognise the same geolocation whichever
+    # entry read it. Non-numeric ids are dropped, like the anchor's.
+    thread_tweet_ids: tuple[int, ...]
+    # Provisional event date = the geoloc tweet's post date; the owner corrects
+    # it at submit (the true event usually predates the post). None when the
+    # tweet's timestamp is unusable.
     event_date: date | None
-    # The mirrors: the declared links the source slot didn't take, normalized
-    # and capped (:func:`resolve_secondary_sources`).
+    # The source's post instant (UTC), only when actually known (a dated quote
+    # or a chased post); never a fallback onto the geoloc tweet's own date.
+    source_posted_at: datetime | None
+    # When the analyst posted THIS geolocation (the geoloc tweet) → the nullable
+    # ``detected_post_at``.
+    detected_post_at: datetime | None
+    # The mirrors: the candidates the source slot did not take, ordered,
+    # normalized and capped (:func:`resolve_secondary_sources`). Prefills the
+    # row's secondary source links, which the owner edits at submit.
     secondary_source_urls: list[str] = field(default_factory=list)
+    # Footage (role=source, capped at one) vs the analyst's annotation (role=proof).
     source_media: list[ParsedMedia] = field(default_factory=list)
     proof_media: list[ParsedMedia] = field(default_factory=list)
+    # Whether the thread's chase came back with nothing because the upstream
+    # would not answer, the retry schedule already spent (a chaser's
+    # ``transient_failure``). It says why the source slot is footage-less, so
+    # the write path can raise ``SOURCE_FETCH_FAILED`` instead of
+    # ``SOURCE_FOOTAGE_MISSING``: one is worth importing again later, the other
+    # is not. False on every thread that chased nothing, chased successfully, or
+    # was refused for good.
+    source_fetch_failed: bool = False
+    # What this detection still needs from its owner (the ``*_MISSING`` /
+    # ``*_AMBIGUOUS`` / ``SEVERAL_COORDINATES`` constants above). Every detection of
+    # one thread carries the same list; the entry surfaces it its own way (the
+    # bot's reply, the archive's outcome email).
+    warnings: list[str] = field(default_factory=list)
 
 
-def resolve_thread(thread: list[TweetRecord]) -> ResolvedTweet | None:
-    """Resolve a stitched thread into a ``ResolvedTweet``. ``None`` for an empty
-    thread; a coordinate-less thread still resolves (``coords == []``)."""
-    if not thread:
-        return None
-    head = thread[0]
-    # Expanded per record before the join: raw tweet text carries only opaque
-    # ``t.co`` wrappers, which ``clean_proof_text`` strips, so an analyst's
-    # ``Source:`` / reference line would reach the proof as a dangling label.
-    own_text = "\n".join(
-        expand_shortlinks(record.text, record.external_sources) for record in thread if record.text
-    )
-    source_url, source_iso = resolve_source(thread)
-    source_media, proof_media = split_media(thread)
-    detected_post_at = _posted_at(head.created_at)
-    source_posted_at = _posted_at(source_iso) if source_iso else None
-    return ResolvedTweet(
-        detected_from_url=head.permalink,
-        owner_handle=head.handle,
-        text=own_text,
-        created_at=head.created_at,
-        quoted=next((record.quoted for record in thread if record.quoted is not None), None),
-        op_media=[media for record in thread for media in record.media],
-        coords=resolve_coords(thread),
-        title=derive_title(own_text),
-        proof_text=clean_proof_text(own_text),
-        source_url=source_url,
-        source_posted_at=source_posted_at,
-        detected_post_at=detected_post_at,
-        event_date=_event_date(head.created_at, detected_post_at),
-        secondary_source_urls=resolve_secondary_sources(thread, source_url),
-        source_media=source_media,
-        proof_media=proof_media,
-    )
+def sole_refusal(refusals: dict[str, int]) -> str | None:
+    """The one refusal code to name back to the analyst, or ``None``.
 
-
-def resolve_tweet(url: str, *, client: httpx.Client | None = None) -> ResolvedTweet | None:
-    """The single-tweet entry: fetch ``url`` via syndication and resolve it.
-
-    ``resolve_thread([record_from_syndication(url)])``. Used by the human
-    import; the archive and the bot pass a stitched thread to
-    ``resolve_thread`` (via ``detect``).
+    ``None`` when nothing refused, and when several threads refused for
+    different reasons: an export naming one of its refusals would be picking a
+    winner, so it reads the counts instead.
     """
-    from .acquire import record_from_syndication
+    return next(iter(refusals)) if len(refusals) == 1 else None
 
-    return resolve_thread([record_from_syndication(url, client=client)])
+
+@dataclass(frozen=True)
+class Resolution:
+    """What a batch of threads resolves to, the engine's whole answer.
+
+    ``detections`` are in thread order, and one thread's detections are contiguous:
+    the write path caches a thread's media on that.
+    """
+
+    detections: list[Detection] = field(default_factory=list)
+    # How many threads the engine refused, keyed by the refusal constants above.
+    # A one-thread entry (the bot, the paste) reads :attr:`reason`; an export
+    # refusing several threads reads the counts.
+    refusals: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def warnings(self) -> dict[str, int]:
+        """How many detections carry each warning, keyed by the warning constants.
+
+        The count is of what the engine read, not of what persisted, so the
+        bot's reply and the archive's outcome email read the same numbers.
+        """
+        counts: dict[str, int] = {}
+        for detection in self.detections:
+            for warning in detection.warnings:
+                counts[warning] = counts.get(warning, 0) + 1
+        return counts
+
+    @property
+    def reason(self) -> str | None:
+        """The one refusal to name when the batch resolved no detection at all."""
+        return None if self.detections else sole_refusal(self.refusals)
+
+
+def own_posts(thread: list[TweetRecord]) -> list[TweetRecord]:
+    """``thread`` without the retweets: posts carrying someone else's words.
+
+    A retweet's content belongs to another account, so importing one would file
+    a stranger's geolocation under the analyst. The rule holds on every entry
+    (:func:`extract.is_retweet`); the archive reader also drops them earlier, so
+    they never enter its stitching.
+    """
+    return [record for record in thread if not is_retweet(record.text)]
+
+
+def _warnings_for(
+    coords: list[ParsedCoord], source_url: str | None, mirrors: list[str]
+) -> list[str]:
+    """What the resolution could not settle, in reply order.
+
+    The source is empty in exactly two cases, and the mirrors tell them apart:
+    several candidates all landed there (ambiguous), or there was no candidate
+    and no quote at all (missing).
+    """
+    warnings: list[str] = []
+    if len(coords) > 1:
+        warnings.append(SEVERAL_COORDINATES)
+    if source_url is None:
+        warnings.append(SOURCE_AMBIGUOUS if mirrors else SOURCE_MISSING)
+    return warnings
+
+
+def resolve_threads(threads: list[list[TweetRecord]]) -> Resolution:
+    """The engine: every thread's detections, plus one count per refusal code.
+
+    Pure and in memory, so an export resolves in full before the write path
+    touches a row, which is what gives its progress callback an exact total.
+    Every entry runs it: the bot and the paste over the single thread they
+    acquired, the archive backfill over every stitched self-thread of an export.
+    """
+    detections: list[Detection] = []
+    refusals: dict[str, int] = {}
+    for thread in threads:
+        found, refusal = _thread_detections(thread)
+        detections.extend(found)
+        if refusal is not None:
+            refusals[refusal] = refusals.get(refusal, 0) + 1
+    return Resolution(detections=detections, refusals=refusals)
+
+
+def _thread_detections(thread: list[TweetRecord]) -> tuple[list[Detection], str | None]:
+    """One ``Detection`` per coordinate the thread carries, or the reason it carries
+    none.
+
+    Two reasons, which is all the engine can tell apart: a coordinate-shaped
+    string sat outside the world (``COORDS_INVALID``), or the analyst's own text
+    carried no coordinate at all (``COORDS_MISSING``), which also covers a
+    thread that is empty or holds only retweets. A thread that produced detections
+    carries no reason; what those detections still need is on their ``warnings``.
+    """
+    posts = own_posts(thread)
+    if not posts:
+        return [], COORDS_MISSING
+    head = posts[0]
+    # Expanded per record before the join: raw tweet text carries only opaque
+    # ``t.co`` wrappers, so an analyst's reference link would otherwise reach the
+    # proof unreadable. The bot tag is addressing rather than content, so it
+    # goes; everything else the analyst wrote stays, the coordinate line
+    # included. Imported locally, like the two service-layer helpers below, so
+    # the rest of ``tweet_ingest`` stays importable on its own.
+    from app.config import settings
+
+    joined = "\n".join(
+        expand_shortlinks(record.text, record.external_sources) for record in posts if record.text
+    )
+    own_text = strip_bot_tag(joined, settings.x_bot_handle)
+    # A coordinate counts only in the analyst's own text: one that lives solely
+    # in a third party's quoted post is that party's geolocation.
+    scan = scan_coords(own_text)
+    if not scan.coords:
+        return [], COORDS_INVALID if scan.out_of_bounds else COORDS_MISSING
+    source_url, source_iso = resolve_source(posts)
+    source_media, proof_media = split_media(posts)
+    detected_post_at = _posted_at(head.created_at)
+    secondary_source_urls = resolve_secondary_sources(posts, source_url)
+    # Everything but the coordinate is derived once and shared: the detections of
+    # one thread differ on the coordinate alone.
+    title = derive_title(own_text)
+    proof_text = clean_proof_text(own_text)
+    warnings = _warnings_for(scan.coords, source_url, secondary_source_urls)
+    # Every post the thread is made of, not only the anchor: the entries anchor
+    # differently on one self-thread, so this is the set the write path
+    # recognises a re-import by. The retweets ``own_posts`` dropped are not part
+    # of it, since they are not the analyst's thread.
+    thread_tweet_ids = tuple(
+        tweet_id
+        for tweet_id in (_tweet_id(post.tweet_id) for post in posts)
+        if tweet_id is not None
+    )
+    return [
+        Detection(
+            coordinate=coord,
+            title=title,
+            proof_text=proof_text,
+            source_url=source_url,
+            detected_from_tweet_id=_tweet_id(head.tweet_id),
+            detected_from_url=canonical_tweet_url(head.tweet_id, head.handle),
+            thread_tweet_ids=thread_tweet_ids,
+            event_date=_event_date(head.created_at, detected_post_at),
+            source_posted_at=_posted_at(source_iso) if source_iso else None,
+            detected_post_at=detected_post_at,
+            secondary_source_urls=secondary_source_urls,
+            source_media=source_media,
+            proof_media=proof_media,
+            source_fetch_failed=any(post.chase_outcome == "transient_failure" for post in posts),
+            warnings=warnings,
+        )
+        for coord in scan.coords
+    ], None
+
+
+# A post id is a snowflake, so it fits a signed 64-bit integer by construction
+# and the column is a bigint. The bound is still checked: an export is
+# attacker-controlled and its reader admits any digit string, and a value past
+# this would fail the insert rather than the parse.
+_MAX_TWEET_ID = 2**63 - 1
+
+
+def _tweet_id(raw: str) -> int | None:
+    """The head post's id as the ``events`` column holds it, ``None`` when the
+    adapter handed over something that is not a post id.
+
+    Both adapters produce digits (the archive rejects anything else outright,
+    syndication is fetched by an id that matched ``urls``), so ``None`` is the
+    shape no upstream writes rather than a case with behaviour of its own: a
+    detection carrying it dedups on its source URL alone.
+    """
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if 0 <= value <= _MAX_TWEET_ID else None
 
 
 def _posted_at(created_at: str) -> datetime | None:

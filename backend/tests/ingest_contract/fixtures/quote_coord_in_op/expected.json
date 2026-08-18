@@ -1,11 +1,32 @@
 {
-  "description": "Coordinate in the OP text, a quoted footage tweet with its own photo. The quote is the source (url + its date + its media); the OP's own photo is annotation (proof).",
-  "coords": [[48.012345, 37.802411]],
+  "description": "Coordinate in the OP text, a quoted footage tweet with its own photo. The quote outranks links, so it is the source (url + its date + its media); the OP's own photo is annotation (proof).",
+  "coords": [
+    [
+      48.012345,
+      37.802411
+    ]
+  ],
   "source_url": "https://x.com/front_cam/status/8100000000000000002",
   "secondary_source_urls": [],
   "source_posted_at": "2026-02-28T18:40:00+00:00",
   "event_date": "2026-03-01",
-  "title": "Depot hit confirmed near the rail yard",
-  "source_media": [["image", "quote"]],
-  "proof_media": [["image", "op"]]
+  "title": "Depot hit confirmed 48.012345, 37.802411 near the rail yard",
+  "source_media": [
+    [
+      "image",
+      "quote"
+    ]
+  ],
+  "proof_media": [
+    [
+      "image",
+      "op"
+    ]
+  ],
+  "warnings": [],
+  "paths": {
+    "archive": {
+      "skip": "Quote shape: an archive resolves a quote by an in-archive join or by the chase, and the consolidated export the backfill test builds carries neither the quoted post nor a stubbed fetch. The archive's quote paths have their own tests in test_archive_contract."
+    }
+  }
 }

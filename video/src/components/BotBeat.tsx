@@ -255,8 +255,8 @@ const MockTweet: React.FC<{ bodyWidth: number; bodyHeight: number }> = ({
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <Avatar src={staticFile("clips/geoimint-avatar.jpg")} />
             <div style={{ lineHeight: 1.25 }}>
-              <div style={{ color: X_TEXT, fontSize: 15.5, fontWeight: 700 }}>GEOIMINT</div>
-              <div style={{ color: X_DIM, fontSize: 14 }}>@GEOIMINT</div>
+              <div style={{ color: X_TEXT, fontSize: 15.5, fontWeight: 700 }}>analyst</div>
+              <div style={{ color: X_DIM, fontSize: 14 }}>@analyst</div>
             </div>
           </div>
           <div
@@ -310,7 +310,7 @@ const MockTweet: React.FC<{ bodyWidth: number; bodyHeight: number }> = ({
             <div style={{ lineHeight: 1.25 }}>
               <div style={{ color: X_TEXT, fontSize: 15, fontWeight: 700 }}>Vidit</div>
               <div style={{ color: X_DIM, fontSize: 14 }}>
-                @viditbot · replying to <span style={{ color: X_BLUE }}>@GEOIMINT</span>
+                @viditbot · replying to <span style={{ color: X_BLUE }}>@analyst</span>
               </div>
             </div>
           </div>
@@ -323,7 +323,7 @@ const MockTweet: React.FC<{ bodyWidth: number; bodyHeight: number }> = ({
               whiteSpace: "pre-line",
             }}
           >
-            {"Vidit: 1 geolocation draft saved · ref 94183d44\nReview it from your profile (link in bio)."}
+            {"Vidit: 1 detection saved · ref 94183d44\nReview it from your profile (link in bio)."}
           </div>
           <ActionBar />
         </div>

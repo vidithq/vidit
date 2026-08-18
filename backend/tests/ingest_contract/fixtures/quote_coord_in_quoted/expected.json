@@ -1,11 +1,30 @@
 {
-  "description": "The OP carries no coordinate; it lives in the quoted tweet's text. resolve_coords falls back to the quoted text. Source is still the quote (url + date + media); the OP photo is proof.",
-  "coords": [[50.4501, 30.5234]],
+  "description": "The OP carries no coordinate; it lives in the quoted tweet's text. A coordinate counts only in the analyst's own text, so nothing is detected: a coordinate that lives only in a third party's post is that party's geolocation.",
+  "coords": [],
   "source_url": "https://x.com/raw_feed/status/8200000000000000002",
   "secondary_source_urls": [],
   "source_posted_at": "2026-03-01T20:05:00+00:00",
   "event_date": "2026-03-02",
   "title": "Geolocated the clip below, see the pinned spot",
-  "source_media": [["image", "quote"]],
-  "proof_media": [["image", "op"]]
+  "source_media": [
+    [
+      "image",
+      "quote"
+    ]
+  ],
+  "proof_media": [
+    [
+      "image",
+      "op"
+    ]
+  ],
+  "warnings": [],
+  "paths": {
+    "bot": {
+      "reason": "coords_missing"
+    },
+    "archive": {
+      "skip": "Quote shape: an archive resolves a quote by an in-archive join or by the chase, and the consolidated export the backfill test builds carries neither the quoted post nor a stubbed fetch. The archive's quote paths have their own tests in test_archive_contract."
+    }
+  }
 }

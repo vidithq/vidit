@@ -115,7 +115,7 @@ def get_user_profile(
     # Published work, not everything owned: this is the number the profile's
     # share card headlines and the size of the set the Recent submissions
     # block and the coverage split's ``geolocated`` leg both count. Counting
-    # machine drafts here made the page contradict itself (a headline of 496
+    # machine detections here made the page contradict itself (a headline of 496
     # over a feed of 47) and credited an analyst with claims they never made.
     # Same predicate as the feed below, so the card and the feed's ``total``
     # cannot drift. The wider figure, the three worked statuses minus the
@@ -214,13 +214,13 @@ def get_user_geolocations(
 
     Published, not merely visible: :func:`published_events` narrows to
     ``geolocated``, so the portfolio carries only rows the analyst vouched
-    for. Machine drafts and the rows they rejected are theirs to work, not
-    theirs to be credited with; the owner reaches the drafts through their
+    for. Machine detections and the rows they rejected are theirs to work, not
+    theirs to be credited with; the owner reaches the detections through their
     detections queue instead. The filter is applied to the count and to the
     rows alike, so a page of the feed and its ``total`` agree, and
     ``geolocations_count`` on the profile payload counts the same set, so the
     share card's headline agrees with both. The whole body of live
-    work, drafts included, is ``total_events`` on
+    work, detections included, is ``total_events`` on
     :func:`get_user_stats`.
 
     Offset-paged rather than cursor-paged: the ordering the profile reads by

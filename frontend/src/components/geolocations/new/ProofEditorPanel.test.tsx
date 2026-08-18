@@ -15,8 +15,6 @@ import { FORM_INVALID_LABEL } from "@/components/ui/form-styles";
 import { ProofEditorPanel } from "./ProofEditorPanel";
 
 const base = {
-  importedFrom: null,
-  importGen: 0,
   proof: null,
   onChange: () => {},
 };

@@ -169,9 +169,9 @@ export interface paths {
         put?: never;
         /**
          * Maintenance Send Completion Digests
-         * @description Email every analyst holding unpublished ``detected`` drafts.
+         * @description Email every analyst holding unpublished detections.
          *
-         *     One message per analyst: how many drafts wait, and the link back to their
+         *     One message per analyst: how many detections wait, and the link back to their
          *     own Detections queue, where the batch completion publishes them. The nudge
          *     behind the import: the completion mail scrolls away, the backlog does not.
          *     Runs on a click like the reapers above, one provider round-trip per
@@ -312,7 +312,7 @@ export interface paths {
         post?: never;
         /**
          * Purge Detected Events Admin
-         * @description Hard-delete every `detected` draft the user owns (rows + S3 media),
+         * @description Hard-delete every detection the user owns (rows + S3 media),
          *     keeping the account and everything else they authored. The
          *     broken-archive repair.
          */
@@ -636,22 +636,22 @@ export interface paths {
         put?: never;
         /**
          * Batch Complete Events
-         * @description Publish the selected ``detected`` drafts: ``detected`` → ``geolocated``.
+         * @description Publish the selected detections: ``detected`` → ``geolocated``.
          *
-         *     JSON, not multipart: nothing uploads here. The drafts keep the evidence the
+         *     JSON, not multipart: nothing uploads here. The detections keep the evidence the
          *     import gave them, and the call supplies only the conflict set (once, for the
          *     whole selection) and one ``capture_source`` tag per row.
          *
          *     Each row commits on its own, so a mixed selection publishes what it can: a
-         *     draft that fails the floor (no proof image, no source media, no
-         *     coordinates, no source URL) rolls back alone and stays a draft with its
+         *     detection that fails the floor (no proof image, no source media, no
+         *     coordinates, no source URL) rolls back alone and stays a detection with its
          *     reason in ``rows[]``. Publishing a row credits the caller as its
          *     geolocator, exactly as the single-row transition does.
          *
          *     Two conditions reject the whole call, before anything is published: no
          *     resolvable conflict (400, since no row could clear the floor) and a
-         *     targeted draft owned by another analyst (403). Rows are owner-only, so
-         *     there is no fulfil-someone-else's-draft path here.
+         *     targeted detection owned by another analyst (403). Rows are owner-only, so
+         *     there is no fulfil-someone-else's-detection path here.
          */
         post: operations["batch_complete_events_api_v1_events_batch_complete_post"];
         delete?: never;
@@ -675,18 +675,18 @@ export interface paths {
          *     "Detections" queue behind ``/profile/{username}/detections`` where a
          *     ``detected`` row becomes ``geolocated`` over time. Returns full
          *     ``EventRead`` (media + tags) so the queue shows the evidence and names, per
-         *     row, what a draft is still missing with no per-row round-trip. Ordered by
+         *     row, what a detection is still missing with no per-row round-trip. Ordered by
          *     ``created_at DESC, id DESC``: the latest import is the first thing to
          *     triage.
          *
-         *     ``readiness`` narrows the queue server-side to the drafts that clear the
+         *     ``readiness`` narrows the queue server-side to the detections that clear the
          *     publish floor (``ready``) or to those that don't (``incomplete``), ``all``
          *     being the whole queue; anything else is a 422, as ``view`` is on
-         *     :func:`list_events`. The floor is :func:`draft_ready_predicate`, the SQL
-         *     projection of the one ``services.events._publish_draft`` enforces. Filtering
+         *     :func:`list_events`. The floor is :func:`detection_ready_predicate`, the SQL
+         *     projection of the one ``services.events._publish_detection`` enforces. Filtering
          *     here rather than over the loaded page is the point: the queue pages at 10
          *     rows over imports of several hundred, so a page-local filter answers about
-         *     ten drafts while the analyst reads it as an answer about the queue.
+         *     ten detections while the analyst reads it as an answer about the queue.
          *
          *     ``total`` counts the filtered set, so the page arithmetic describes what is
          *     being walked; ``ready_total`` and ``incomplete_total`` always count the
@@ -719,11 +719,12 @@ export interface paths {
          * @description Enqueue the caller's staged X "Download your data" zip for the worker.
          *
          *     The upload is the consent: every row lands ``detected``, attributed to the
-         *     caller (no handle-ownership check in this version, see ``planning``). The
-         *     request verifies the staged object (the caller's own key, present, under
-         *     the size guard) and returns the ``queued`` job; the worker service runs
-         *     the import (extracting only the allowlisted entries) and emails the
-         *     outcome. Poll ``GET /events/import-archive/{job_id}`` for the counts.
+         *     caller, and the export's contents are not checked against the handle the
+         *     caller linked. The request verifies the staged object (the caller's own
+         *     key, present, under the size guard) and returns the ``queued`` job; the
+         *     worker service runs the import (extracting only the allowlisted entries)
+         *     and emails the outcome. Poll ``GET /events/import-archive/{job_id}`` for
+         *     the counts.
          */
         post: operations["import_archive_api_v1_events_import_archive_post"];
         delete?: never;
@@ -790,42 +791,18 @@ export interface paths {
         put?: never;
         /**
          * Import From Tweet
-         * @description Parse a public tweet into a submit-form pre-fill payload.
+         * @description Import the caller's own X post as detections.
          *
-         *     Auth-only because (a) the result feeds a write flow only logged-in
-         *     analysts can complete and (b) the syndication endpoint's rate budget is
-         *     finite — an anonymous client shouldn't burn it to scrape X via our
-         *     proxy. Per-IP 30/minute to bound the same risk per logged-in caller.
+         *     The paste runs the same engine and the same write path as the bot and the
+         *     archive backfill (``detection.import_pasted_post``), so one post yields one
+         *     detection per coordinate it carries, owned by the caller. A second paste of the
+         *     same post overwrites the open detection instead of duplicating it.
+         *
+         *     Auth-only, and own posts only: the post's author must be the handle linked
+         *     to the caller's account. Per-IP 30/minute bounds what one caller can spend
+         *     of the shared, finite syndication budget.
          */
         post: operations["import_from_tweet_api_v1_events_import_from_tweet_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/events/import-from-tweet/media": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Import From Tweet Media
-         * @description Stream an X-CDN media URL back to the browser.
-         *
-         *     The submit form needs ``File`` objects in ``files[]`` (the contract
-         *     ``services/evidence_processing.py`` keys off), but the X CDN sets no
-         *     CORS headers for a direct browser ``fetch``, so this thin proxy is the
-         *     only path. Strict host whitelist on ``u`` (the X CDN hosts plus the
-         *     Telegram CDN hosts ``is_trusted_media_url`` allows, see
-         *     ``tweet_ingest``) keeps it from becoming an SSRF / open-redirect vector;
-         *     auth-required so it can't be abused as a bandwidth pipe.
-         */
-        get: operations["import_from_tweet_media_api_v1_events_import_from_tweet_media_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1043,7 +1020,7 @@ export interface paths {
          *     ``remove_media_ids`` dropped), and on
          *     success the row is written and frozen as ``geolocated``, with the caller
          *     credited as a geolocator. Only ``detected_from_url`` (provenance) and
-         *     ``status`` carry no field. A ``detected`` draft is owner-only (403
+         *     ``status`` carry no field. A detection is owner-only (403
          *     otherwise); a ``requested`` event is answerable by anyone, and the
          *     fulfiller becomes its owner (``requested_by`` keeps the original poster).
          *     Blocked until the evidence floor is met (one source media, a proof image,
@@ -1297,13 +1274,13 @@ export interface paths {
          *
          *     Published, not merely visible: :func:`published_events` narrows to
          *     ``geolocated``, so the portfolio carries only rows the analyst vouched
-         *     for. Machine drafts and the rows they rejected are theirs to work, not
-         *     theirs to be credited with; the owner reaches the drafts through their
+         *     for. Machine detections and the rows they rejected are theirs to work, not
+         *     theirs to be credited with; the owner reaches the detections through their
          *     detections queue instead. The filter is applied to the count and to the
          *     rows alike, so a page of the feed and its ``total`` agree, and
          *     ``geolocations_count`` on the profile payload counts the same set, so the
          *     share card's headline agrees with both. The whole body of live
-         *     work, drafts included, is ``total_events`` on
+         *     work, detections included, is ``total_events`` on
          *     :func:`get_user_stats`.
          *
          *     Offset-paged rather than cursor-paged: the ordering the profile reads by
@@ -1440,9 +1417,9 @@ export interface components {
          *     A machine detection is a row imported from X, ``detected_from_url`` set
          *     (the archive backfill / the bot); a human submit always carries NULL there.
          *
-         *     Reject-rate: of every machine detection, the fraction dismissed while still
-         *     a draft, whichever door they left through. A machine detection counts as a
-         *     reject if either an owner closed it straight out of ``detected``
+         *     Reject-rate: of every machine detection, the fraction dismissed before it
+         *     was published, whichever door they left through. A machine detection counts
+         *     as a reject if either an owner closed it straight out of ``detected``
          *     (``status = 'closed'`` with ``before_closed_status = 'detected'``) or an
          *     admin soft-deleted it while it was still ``detected``
          *     (``deleted_at IS NOT NULL`` with ``status = 'detected'``). A detection the
@@ -1457,12 +1434,12 @@ export interface components {
          *
          *     Two counting edges the metric accepts, both favouring over-counting
          *     dismissals over under-counting them: an owner hard-delete
-         *     (``DELETE /events/{id}`` on an own draft) removes the row from both counts
+         *     (``DELETE /events/{id}`` on an own detection) removes the row from both counts
          *     entirely; an account-departure cascade soft-delete counts that account's
-         *     pending drafts as rejects.
+         *     pending detections as rejects.
          *
          *     The ``pending_*`` counts profile the live ``detected`` queue (awaiting
-         *     review, ``deleted_at IS NULL``, machine rows only): how many drafts are
+         *     review, ``deleted_at IS NULL``, machine rows only): how many detections are
          *     missing a piece the geolocate floor will demand, so a low-quality
          *     extraction run is visible before an analyst opens the queue.
          */
@@ -1648,10 +1625,10 @@ export interface components {
         AdminMaintenanceResponse: {
             /** Analysts Notified */
             analysts_notified?: number | null;
+            /** Detections Pending */
+            detections_pending?: number | null;
             /** Digest Send Failures */
             digest_send_failures?: number | null;
-            /** Drafts Pending */
-            drafts_pending?: number | null;
             /** Expired */
             expired?: number | null;
             /** Old Consumed */
@@ -1675,7 +1652,7 @@ export interface components {
          * AdminPurgeDetectedResponse
          * @description Response for `DELETE /admin/users/{id}/detected-events`.
          *
-         *     The broken-archive repair: every ``detected`` draft the user owns is
+         *     The broken-archive repair: every detection the user owns is
          *     hard-deleted (rows + S3 media), the account itself untouched. The counts
          *     are the copy-pasteable record of what was swept.
          */
@@ -1778,7 +1755,7 @@ export interface components {
          *     ``status`` walks ``queued`` → ``running`` → ``done`` | ``failed``. The
          *     counts are the assemble outcome, final once ``done`` (zero until then):
          *     ``created`` is new ``detected`` rows; ``updated`` an open ``detected``
-         *     draft the import overwrote with a newer parse; ``skipped`` a detection the
+         *     detection the import overwrote with a newer parse; ``skipped`` a detection the
          *     import left alone, either because the row it matched is not one to touch
          *     or because that row was already up to date; ``failed`` a detection that
          *     raised mid-persist and was rolled back (the others still land). ``error``
@@ -1908,7 +1885,7 @@ export interface components {
         };
         /**
          * BatchCompletionRowCreate
-         * @description One draft in a batch completion: which row, and the capture source its
+         * @description One detection in a batch completion: which row, and the capture source its
          *     analyst picked for it.
          */
         BatchCompletionRowCreate: {
@@ -1925,7 +1902,7 @@ export interface components {
         };
         /**
          * BatchCompletionRowRead
-         * @description One row's outcome. ``code`` / ``message`` are NULL when the draft
+         * @description One row's outcome. ``code`` / ``message`` are NULL when the detection
          *     published; otherwise they carry the same stable error code the single-row
          *     geolocate would have answered with, so the queue can render the reason
          *     against that row.
@@ -2235,34 +2212,6 @@ export interface components {
             lng: number;
         };
         /**
-         * DetectedGeolocPreview
-         * @description One machine detection the pipeline would produce from a pasted tweet.
-         *
-         *     The no-persist preview output (``import-from-tweet``): zero DB writes, the
-         *     inspection window into the machine ``detect`` path. ``proof_text`` is the
-         *     plain proof body the assemble step would wrap into the JSONB proof doc;
-         *     ``detected_from_url`` is the originating post. ``event_date`` is None when
-         *     the tweet's timestamp is unusable (required-nullable).
-         */
-        DetectedGeolocPreview: {
-            /** Detected From Url */
-            detected_from_url: string;
-            /** Event Date */
-            event_date: string | null;
-            /** Lat */
-            lat: number;
-            /** Lng */
-            lng: number;
-            /** Media */
-            media: components["schemas"]["TweetImportMedia"][];
-            /** Proof Text */
-            proof_text: string;
-            /** Secondary Source Urls */
-            secondary_source_urls: string[];
-            /** Title */
-            title: string;
-        };
-        /**
          * EventArchiveCreate
          * @description Body of ``POST /events/{event_id}/archives``.
          *
@@ -2340,6 +2289,8 @@ export interface components {
             detected_from_url: string | null;
             /** Detected Post At */
             detected_post_at: string | null;
+            /** Detected Via */
+            detected_via: ("bot" | "paste" | "archive") | null;
             event_coords: components["schemas"]["CoordsRead"] | null;
             /** Event Date */
             event_date: string | null;
@@ -2423,6 +2374,22 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * ImportNote
+         * @description One thing the import has to say, as a stable code plus its sentence.
+         *
+         *     The sentence travels with the code so the page renders what it is given
+         *     rather than keeping its own table: the same wording reaches the bot's
+         *     in-thread reply and the archive's outcome email, out of one backend table
+         *     (``tweet_ingest.WARNING_MESSAGES`` / ``REFUSAL_MESSAGES``). Branch on
+         *     ``code``, which is the stable half; ``message`` is prose and may be reworded.
+         */
+        ImportNote: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
         /** LoginRequest */
         LoginRequest: {
             /**
@@ -2464,7 +2431,7 @@ export interface components {
          *     Mirrors ``PaginatedEvents`` but carries ``EventRead`` items
          *     (media + tags + provenance) rather than the lightweight ``EventList``
          *     card: the Detections queue needs the media to judge a detection and the
-         *     tags + conflicts to name what a draft is still missing without a per-row
+         *     tags + conflicts to name what a detection is still missing without a per-row
          *     round-trip.
          *
          *     ``total`` counts the set the ``readiness`` filter selected, so the page
@@ -2741,99 +2708,47 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** TweetImportCoord */
-        TweetImportCoord: {
-            /** Lat */
-            lat: number;
-            /** Lng */
-            lng: number;
-        };
-        /** TweetImportMedia */
-        TweetImportMedia: {
-            /** Content Type */
-            content_type: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "image" | "video";
-            /**
-             * Origin
-             * @default op
-             * @enum {string}
-             */
-            origin: "op" | "quote";
-            /** Remote Url */
-            remote_url: string;
-        };
         /**
-         * TweetImportQuotedTweet
-         * @description The tweet quoted by the OP, when present.
+         * TweetImportRead
+         * @description What one pasted post did, in the order the engine produced it.
          *
-         *     Surfaced so the frontend can credit the original author in the proof body
-         *     even though ``source_url`` already points at this quoted tweet.
+         *     One coordinate makes one detection, so a thread carrying several lands several
+         *     ids. ``created`` holds the new detections, ``updated`` the open detections a
+         *     re-import overwrote, and ``skipped`` the rows the import must not touch
+         *     (published, closed, withheld) or found already up to date. The caller opens
+         *     the first id it gets.
+         *
+         *     ``warnings`` carries what review still has to answer on the detections of this
+         *     post, never a refusal. Three codes say what the engine could not settle from
+         *     the post (``several_coordinates``, ``source_ambiguous``, ``source_missing``)
+         *     and four what the detections ended up with (``source_footage_missing``,
+         *     ``source_fetch_failed``, ``source_date_unknown``, ``duplicate_media``); the
+         *     fetch-failed one is the source that could not be read this time, so the same
+         *     import later may well fill it. ``reason`` is the refusal when
+         *     the post produced no detection at all (``coords_missing``, ``coords_invalid``),
+         *     and null whenever detections were produced. ``failed`` counts the detections that
+         *     raised mid-persist.
          */
-        TweetImportQuotedTweet: {
-            /** Author Handle */
-            author_handle: string;
-            /** Source Url */
-            source_url: string;
-            /** Tweet Text */
-            tweet_text: string;
+        TweetImportRead: {
+            /** Created */
+            created: string[];
+            /** Failed */
+            failed: number;
+            reason: components["schemas"]["ImportNote"] | null;
+            /** Skipped */
+            skipped: string[];
+            /** Updated */
+            updated: string[];
+            /** Warnings */
+            warnings: components["schemas"]["ImportNote"][];
         };
         /**
          * TweetImportRequest
-         * @description Body of ``POST /geolocations/import-from-tweet``.
+         * @description Body of ``POST /events/import-from-tweet``.
          */
         TweetImportRequest: {
             /** Url */
             url: string;
-        };
-        /**
-         * TweetImportResponse
-         * @description Pre-fill payload for the submit form.
-         *
-         *     All fields best-effort: ``suggested_title`` empty when the text yields
-         *     nothing usable, ``parsed_coords`` empty when no recognised coordinate
-         *     format, ``media`` empty when no attached image / video. The analyst reviews
-         *     everything before submitting — a typing shortcut, not an authority.
-         *
-         *     When the OP quote-retweets, ``source_url`` is the quoted tweet's URL (the
-         *     OSINT-correct attribution), ``original_tweet_url`` is always the OP's, and
-         *     ``quoted_tweet`` carries the quote's metadata so the frontend renders both.
-         *     Without a quote or a footage link ``source_url`` is None (required-nullable)
-         *     and the form field starts empty; the OP's own URL is never a fallback.
-         *     ``source_posted_at`` follows the same rule for the source's post time: it
-         *     carries the quote's actual timestamp, never the OP's, and is None when
-         *     that timestamp isn't known.
-         */
-        TweetImportResponse: {
-            /** Author Handle */
-            author_handle: string;
-            /**
-             * Detected
-             * @default []
-             */
-            detected: components["schemas"]["DetectedGeolocPreview"][];
-            /** Media */
-            media: components["schemas"]["TweetImportMedia"][];
-            /** Original Tweet Url */
-            original_tweet_url: string;
-            /** Parsed Coords */
-            parsed_coords: components["schemas"]["TweetImportCoord"][];
-            /** Posted At */
-            posted_at: string;
-            quoted_tweet?: components["schemas"]["TweetImportQuotedTweet"] | null;
-            /** Secondary Source Urls */
-            secondary_source_urls: string[];
-            /** Source Posted At */
-            source_posted_at: string | null;
-            /** Source Url */
-            source_url: string | null;
-            /** Suggested Title */
-            suggested_title: string;
-            /** Tweet Text */
-            tweet_text: string;
         };
         /**
          * UserProfile
@@ -2846,7 +2761,7 @@ export interface components {
          *     ``geolocations_count`` counts the analyst's published geolocations, the
          *     same set ``GET /users/{username}/events`` serves, so the profile's share
          *     card and the feed on the page print one number. For the whole body of
-         *     live work, drafts included, read ``total_events`` on
+         *     live work, detections included, read ``total_events`` on
          *     :class:`UserStatsRead`.
          */
         UserProfile: {
@@ -2922,7 +2837,7 @@ export interface components {
          *     One population throughout: the analyst's live events (``deleted_at IS
          *     NULL``, ``hidden_at IS NULL``) in the three worked statuses, ``geolocated``
          *     + ``detected`` + ``closed``. That set is ``total_events``, and every other
-         *     field here describes it, drafts included. An open ``requested`` call for
+         *     field here describes it, detections included. An open ``requested`` call for
          *     help is not documented work and takes part in no aggregate.
          *
          *     ``source_hosts`` breaks the same set down by the host of ``source_url``,
@@ -4128,40 +4043,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TweetImportResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    import_from_tweet_media_api_v1_events_import_from_tweet_media_get: {
-        parameters: {
-            query: {
-                u: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TweetImportRead"];
                 };
             };
             /** @description Validation Error */

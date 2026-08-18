@@ -14,19 +14,11 @@ const ProofEditor = dynamic(
 );
 
 interface ProofEditorPanelProps {
-  /** Handle of the most recent tweet import; null when none / cleared. */
-  importedFrom: string | null;
-  /** Monotonic import counter — drives the editor remount key. */
-  importGen: number;
   proof: Record<string, unknown> | null;
   onChange: (proof: Record<string, unknown> | null) => void;
   /** The inline proof images the editor is holding locally; the form uploads
    *  them as `proof_files[]` at publish. */
   onProofFilesChange?: (files: File[]) => void;
-  /** Files the tweet-import flow already downloaded and matched to
-   *  ``placeholder://<filename>`` nodes in `proof`, for the editor to hydrate
-   *  into a live preview on mount (see `components/editor/ProofEditor.tsx`). */
-  initialProofFiles?: File[];
   /** Flag the section as a missing required field (red outline). */
   invalid?: boolean;
 }
@@ -34,12 +26,9 @@ interface ProofEditorPanelProps {
 /** The "Proof" section: the dynamically-loaded Tiptap editor where the
  *  analyst annotates the source-media ↔ satellite cross-reference. */
 export function ProofEditorPanel({
-  importedFrom,
-  importGen,
   proof,
   onChange,
   onProofFilesChange,
-  initialProofFiles,
   invalid = false,
 }: ProofEditorPanelProps) {
   return (
@@ -64,16 +53,11 @@ export function ProofEditorPanel({
         }
       />
 
-      {/* Re-mount the editor on every import. ``importGen`` changes even
-          on same-author re-import, where the handle alone would leave the
-          ``key`` unchanged and Tiptap would keep its old content despite
-          the new ``initialContent``. Seeding from the current ``proof``
-          (not null) also restores the draft when the panel remounts on a
-          submit-type toggle. */}
+      {/* Tiptap reads ``initialContent`` once, at construction: seeding from
+          the current ``proof`` (not null) restores the draft when the panel
+          remounts on a submit-type toggle. */}
       <ProofEditor
-        key={importedFrom !== null ? `import-${importGen}` : "blank"}
         initialContent={proof}
-        initialProofFiles={initialProofFiles}
         onChange={onChange}
         onProofFilesChange={onProofFilesChange}
       />

@@ -2,8 +2,8 @@
 
 An OSINT geolocation often spans a self-thread: the footage in the head tweet,
 the coordinate in a reply. ``stitch`` groups records that belong to the same
-reply chain so ``detect`` sees the whole thread at once (head media + reply
-coord).
+reply chain so ``resolve_threads`` sees the whole thread at once (head media +
+reply coord).
 
 Source-agnostic: the edges come from whatever fed the records. An archive
 carries ``in_reply_to_status_id`` inline, so real self-threads assemble; the
@@ -61,8 +61,8 @@ def _chronological(record: TweetRecord) -> tuple[str, int, int]:
 
     ISO 8601 timestamps sort lexicographically by time. A missing ("") or
     non-ISO ``created_at`` (an adapter that couldn't normalise the upstream
-    format) is pushed *last* so it can't hijack the head: ``detect`` anchors
-    the thread's provenance + event date on ``thread[0]``.
+    format) is pushed *last* so it can't hijack the head: the resolution
+    anchors the thread's provenance + event date on ``thread[0]``.
 
     An archive stores ``created_at`` at second precision, so a reply posted in
     the same second as its parent ties on the timestamp, and ``tweets.js`` lists

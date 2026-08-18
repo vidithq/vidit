@@ -26,7 +26,7 @@ const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
  * opens on the region the analyst covers instead of a default camera.
  *
  * Both live statuses are mapped: `geolocated` submissions and the `detected`
- * machine drafts behind them, which the shared `<Map>` already paints in its
+ * machine detections behind them, which the shared `<Map>` already paints in its
  * own shade from the point tuple's `detected` flag, so the two read apart on a
  * profile exactly as they do on `/map`.
  *

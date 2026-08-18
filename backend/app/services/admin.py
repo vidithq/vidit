@@ -531,11 +531,11 @@ def purge_detected_events(
     actor_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> dict[str, Any]:
-    """Hard-delete every ``detected`` draft a user owns, keeping the account.
+    """Hard-delete every detection a user owns, keeping the account.
 
-    The broken-archive repair: a bad import can mint hundreds of junk drafts;
+    The broken-archive repair: a bad import can mint hundreds of junk detections;
     this sweeps them (rows + S3 objects via :func:`collect_media_keys`,
-    derivatives included, soft-deleted drafts included) without touching the
+    derivatives included, soft-deleted detections included) without touching the
     account, its geolocations, or its requests. ``closed`` rows that were once
     detected stay (the owner explicitly acted on those). Same
     commit-then-sweep ordering as :func:`hard_delete_user`.
@@ -544,24 +544,24 @@ def purge_detected_events(
     if user is None:
         raise UserNotFoundError("User not found")
 
-    drafts = (
+    detections = (
         db.query(Event)
         .options(joinedload(Event.media))
         .filter(Event.owner_id == user.id, Event.status == STATUS_DETECTED)
         .all()
     )
     media_keys: list[str] = []
-    for draft in drafts:
-        media_keys.extend(collect_media_keys(list(draft.media)))
+    for detection in detections:
+        media_keys.extend(collect_media_keys(list(detection.media)))
 
     target = {
         "user_id": str(user.id),
         "username": user.username,
-        "deleted_events": len(drafts),
+        "deleted_events": len(detections),
         "media_count": len(media_keys),
     }
-    for draft in drafts:
-        db.delete(draft)
+    for detection in detections:
+        db.delete(detection)
     log_admin_event(db, actor_id=actor_id, action="detected_events_purged", target=target)
     db.commit()
 
@@ -578,15 +578,15 @@ def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
 
     1. Reject-rate over every machine detection (``detected_from_url`` set):
        the ``count(*) FILTER (WHERE ...)`` of dismissed
-       drafts over the total. A machine detection dismissed while still a draft
-       counts as a reject whichever door it left through: an owner close off
+       detections over the total. A machine detection dismissed before it was
+       published counts as a reject whichever door it left through: an owner close off
        ``detected`` or an admin soft-delete that never left ``detected``. A
        soft-deleted ``geolocated`` row is not a reject (it was vouched before
        removal). Both shapes are ones
        :func:`app.services.detection._row_disposition` refuses to re-import,
        since each records a judgment a re-import must not undo.
     2. The live ``detected`` queue (``deleted_at IS NULL``, human rows
-       excluded), counting the drafts missing a source media, a proof image,
+       excluded), counting the detections missing a source media, a proof image,
        or a source URL, the pieces the geolocate floor will demand.
     """
     machine = Event.detected_from_url.isnot(None)

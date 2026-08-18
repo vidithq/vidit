@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { DownloadSourceMedia } from "@/components/geolocations/DownloadSourceMedia";
 import { SourceMediaField } from "@/components/geolocations/SourceMediaField";
 import { TitleField } from "@/components/geolocations/TitleField";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
@@ -53,10 +52,10 @@ const REJECT_PANEL_ID = "reject-detection-form";
  * form mounts only after the row loaded), so the Tiptap editor gets its
  * `initialContent` on first paint.
  *
- * Reviewing a queue of drafts is this same surface with `queue` set: the header
- * gains the position and a Skip, and a finished draft hands over to the next one
- * instead of returning to the queue list. Nothing else differs, so a draft opened
- * from a queue row and a draft under review are one form.
+ * Reviewing a queue of detections is this same surface with `queue` set: the header
+ * gains the position and a Skip, and a finished detection hands over to the next one
+ * instead of returning to the queue list. Nothing else differs, so a detection opened
+ * from a queue row and a detection under review are one form.
  */
 export function EventEditForm({
   geo,
@@ -65,11 +64,11 @@ export function EventEditForm({
 }: {
   geo: EventDetail;
   redirectTo: string;
-  /** Set when this draft is one step of a review pass over the queue. */
+  /** Set when this detection is one step of a review pass over the queue. */
   queue?: {
-    /** Where this draft sits in the queue, as `Draft n of m`. */
+    /** Where this detection sits in the queue, as `Detection n of m`. */
     position: string;
-    /** Open the next draft, or leave for `redirectTo` past the last one. Runs
+    /** Open the next detection, or leave for `redirectTo` past the last one. Runs
      *  on Skip, and after a submit or a rejection. */
     onAdvance: () => void;
   };
@@ -77,24 +76,24 @@ export function EventEditForm({
   const router = useRouter();
   const { refresh: refreshDetectionCount } = useDetectionsCount();
   // Where a write that finishes with this row goes: back to the queue list on
-  // its own, on to the next draft during a review pass.
+  // its own, on to the next detection during a review pass.
   const finish = queue?.onAdvance ?? (() => router.push(redirectTo));
 
   // The utilities tier only: this surface's flow action is the form's own
   // Submit, at the bottom where the fields it applies end. The header still
-  // shares and reports the draft like every other detail surface.
+  // shares and reports the detection like every other detail surface.
   const { actions, panels } = useEventActions({ event: geo, surface: "edit" });
 
-  // Reject the draft: the confirm step is the inline `CloseEventForm` (a
+  // Reject the detection: the confirm step is the inline `CloseEventForm` (a
   // required, publicly visible reason), so this flag only opens the panel. It
   // sits in the open beside Skip rather than behind the `⋯` menu: the menu is
-  // for the rare management action on a reading surface, while working a draft
+  // for the rare management action on a reading surface, while working a detection
   // has three verbs (submit it, skip it, reject it) and hiding one of them
   // behind a disclosure costs a click on every pass.
   const [rejecting, setRejecting] = useState(false);
 
   const [title, setTitle] = useState(geo.title);
-  // Coordinates + event date are optional on a ``detected`` draft, so seed the
+  // Coordinates + event date are optional on a detection, so seed the
   // string inputs from empty (not ``String(null)``) when the row lacks them.
   const [lat, setLat] = useState(
     geo.event_coords ? String(geo.event_coords.lat) : ""
@@ -110,10 +109,10 @@ export function EventEditForm({
   const [captureLng, setCaptureLng] = useState(
     geo.capture_source_coords ? String(geo.capture_source_coords.lng) : ""
   );
-  // A ``detected`` draft may be born with no declared source, so the field
+  // A detection may be born with no declared source, so the field
   // starts empty (not `String(null)`) rather than showing a fabricated value.
   const [sourceUrl, setSourceUrl] = useState(geo.source_url ?? "");
-  // A snapshot pasted here replaces whatever copy the draft carries, so the
+  // A snapshot pasted here replaces whatever copy the detection carries, so the
   // field starts empty and the existing copy shows beside it instead: the value
   // is what to write, not what is stored.
   const [sourceSnapshotUrl, setSourceSnapshotUrl] = useState("");
@@ -127,7 +126,7 @@ export function EventEditForm({
   const [sourcePostedAt, setSourcePostedAt] = useState(
     toDatetimeLocalUTC(geo.source_posted_at)
   );
-  // The graphic-content declaration the draft already carries, editable here.
+  // The graphic-content declaration the detection already carries, editable here.
   // Submitting posts the whole state, so an untouched switch re-posts the same
   // value rather than clearing it.
   const [isGraphic, setIsGraphic] = useState(geo.is_graphic);
@@ -279,7 +278,7 @@ export function EventEditForm({
       backFallback={redirectTo}
       title="Submit detection"
       actions={
-        // Everything that disposes of this draft rather than filling it in,
+        // Everything that disposes of this detection rather than filling it in,
         // in the header's own cluster: the position and the way past it during
         // a review pass, then Reject, then the utilities. Submit is the only
         // action left at the foot of the fields.
@@ -347,16 +346,7 @@ export function EventEditForm({
             setNewFiles((prev) => prev.filter((_, idx) => idx !== i))
           }
           invalid={invalidKeys.has("source_media")}
-        >
-          {/* Offered only while the slot is empty: one source media per event,
-              so with one kept or staged there is nothing to download into. */}
-          {keptMediaCount === 0 && (
-            <DownloadSourceMedia
-              sourceUrl={sourceUrl}
-              onFile={(file) => setNewFiles([file])}
-            />
-          )}
-        </SourceMediaField>
+        />
 
         <LocationPicker
           lat={lat}
@@ -367,8 +357,6 @@ export function EventEditForm({
           setCaptureLat={setCaptureLat}
           captureLng={captureLng}
           setCaptureLng={setCaptureLng}
-          extraCoordCandidates={[]}
-          onSwapCandidate={() => {}}
           invalid={invalidKeys.has("coordinates")}
         />
 
@@ -408,8 +396,6 @@ export function EventEditForm({
         />
 
         <ProofEditorPanel
-          importedFrom={null}
-          importGen={0}
           proof={proof}
           onChange={setProof}
           onProofFilesChange={setProofFiles}
@@ -425,7 +411,7 @@ export function EventEditForm({
         {actionError && <div className={FORM_ERROR_BANNER}>{actionError}</div>}
 
         {/* The flow action, alone at the foot of the fields it applies, as on
-            the create form. Disposing of the draft is not a form action: Skip
+            the create form. Disposing of the detection is not a form action: Skip
             and Reject sit in the header. */}
         <div className="flex flex-wrap items-center gap-3">
           <span className="inline-flex items-center gap-1.5">

@@ -10,7 +10,7 @@ import { Pill, type PillTone } from "@/components/ui/Pill";
  *
  * - `requested` (accent, a megaphone): an open call to geolocate (the requested /
  *   request view). Accent draws attention: it's the actionable, still-open state.
- * - `detected` (accent, a robot): a machine draft imported from a tweet, shown
+ * - `detected` (accent, a robot): a machine detection imported from a tweet, shown
  *   marked until the owner submits it. The mark that must stand out. Accent-
  *   tinted, so it follows the user's chosen palette.
  * - `geolocated` (neutral, a pin): the located state, a point on the map.

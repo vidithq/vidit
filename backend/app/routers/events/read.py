@@ -42,7 +42,7 @@ from app.services.event_filters import (
     validate_status_filter,
     visible_events,
 )
-from app.services.events import DRAFT_READINESS, draft_ready_predicate
+from app.services.events import DETECTION_READINESS, detection_ready_predicate
 from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_cursor,
@@ -354,18 +354,18 @@ def list_detections(
     "Detections" queue behind ``/profile/{username}/detections`` where a
     ``detected`` row becomes ``geolocated`` over time. Returns full
     ``EventRead`` (media + tags) so the queue shows the evidence and names, per
-    row, what a draft is still missing with no per-row round-trip. Ordered by
+    row, what a detection is still missing with no per-row round-trip. Ordered by
     ``created_at DESC, id DESC``: the latest import is the first thing to
     triage.
 
-    ``readiness`` narrows the queue server-side to the drafts that clear the
+    ``readiness`` narrows the queue server-side to the detections that clear the
     publish floor (``ready``) or to those that don't (``incomplete``), ``all``
     being the whole queue; anything else is a 422, as ``view`` is on
-    :func:`list_events`. The floor is :func:`draft_ready_predicate`, the SQL
-    projection of the one ``services.events._publish_draft`` enforces. Filtering
+    :func:`list_events`. The floor is :func:`detection_ready_predicate`, the SQL
+    projection of the one ``services.events._publish_detection`` enforces. Filtering
     here rather than over the loaded page is the point: the queue pages at 10
     rows over imports of several hundred, so a page-local filter answers about
-    ten drafts while the analyst reads it as an answer about the queue.
+    ten detections while the analyst reads it as an answer about the queue.
 
     ``total`` counts the filtered set, so the page arithmetic describes what is
     being walked; ``ready_total`` and ``incomplete_total`` always count the
@@ -375,10 +375,10 @@ def list_detections(
     Walked with the ``page`` / ``per_page`` offset pager the queue renders,
     capped at 100 rows per page.
     """
-    if readiness not in DRAFT_READINESS:
+    if readiness not in DETECTION_READINESS:
         raise HTTPException(
             status_code=422,
-            detail=f"readiness must be one of: {', '.join(sorted(DRAFT_READINESS))}",
+            detail=f"readiness must be one of: {', '.join(sorted(DETECTION_READINESS))}",
         )
     # A too-large page size is clamped (over-asking buys nothing, it isn't an
     # error); below-1 values are 422 at the ``Query(ge=1)`` gate rather than a
@@ -390,7 +390,7 @@ def list_detections(
         Event.status == STATUS_DETECTED,
         *visible_events(),
     )
-    ready = draft_ready_predicate()
+    ready = detection_ready_predicate()
 
     # Both counts in one pass with ``FILTER``, rather than a count per branch:
     # the payload carries them whatever ``readiness`` asks for, and the filtered

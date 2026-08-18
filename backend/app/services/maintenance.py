@@ -71,14 +71,14 @@ def reap_auth_tokens(db: Session) -> dict[str, int]:
 COMPLETION_DIGEST_LIMIT = 200
 
 
-def drafts_awaiting_completion(
+def detections_awaiting_completion(
     db: Session, *, limit: int = COMPLETION_DIGEST_LIMIT
 ) -> list[tuple[User, str, int]]:
-    """Every analyst holding unpublished ``detected`` drafts, with the count.
+    """Every analyst holding unpublished detections, with the count.
 
     The digest's selection rule, split out so it is readable and testable on
     its own. Who is in: an account that still exists (not soft-deleted), is
-    active, and has an address to write to. What counts: live drafts (never a
+    active, and has an address to write to. What counts: live detections (never a
     soft-deleted row, never a published or closed one). Ordered by count,
     biggest backlog first, and cut at ``limit``.
 
@@ -92,8 +92,8 @@ def drafts_awaiting_completion(
         .join(Event, Event.owner_id == User.id)
         .filter(
             Event.status == STATUS_DETECTED,
-            # The same visibility floor `list_detections` and `_publish_draft`
-            # apply: a takedown freezes a draft for its owner, so nagging them
+            # The same visibility floor `list_detections` and `_publish_detection`
+            # apply: a takedown freezes a detection for its owner, so nagging them
             # to complete one they cannot publish is a dead-end prompt.
             *visible_events(),
             User.deleted_at.is_(None),
@@ -109,23 +109,23 @@ def drafts_awaiting_completion(
 
 
 def send_completion_digests(db: Session) -> dict[str, int]:
-    """Email each analyst the count of drafts still awaiting completion.
+    """Email each analyst the count of detections still awaiting completion.
 
-    The other half of the completion flow: an import lands dozens of drafts and
+    The other half of the completion flow: an import lands dozens of detections and
     nothing brings the analyst back to the queue once the import mail has
     scrolled away. One message per analyst, a count and a link to their own
-    queue (see :func:`drafts_awaiting_completion` for who gets one, and for the
+    queue (see :func:`detections_awaiting_completion` for who gets one, and for the
     :data:`COMPLETION_DIGEST_LIMIT` ceiling one click carries).
 
     A provider failure on one address is logged and counted, never raised: the
     remaining analysts still get theirs, and a digest is by definition
-    re-sendable on the next run. Returns the analysts written to, the drafts
+    re-sendable on the next run. Returns the analysts written to, the detections
     the delivered messages covered, and the failed sends.
     """
     notified = 0
-    drafts = 0
+    detections = 0
     failures = 0
-    for user, address, count in drafts_awaiting_completion(db):
+    for user, address, count in detections_awaiting_completion(db):
         try:
             email_service.send(
                 email_service.completion_digest_email(
@@ -139,11 +139,11 @@ def send_completion_digests(db: Session) -> dict[str, int]:
             logger.warning("completion digest send failed for user %s", user.id, exc_info=True)
             continue
         notified += 1
-        # Counted after the send, so ``drafts_pending`` reads as "drafts a
-        # delivered digest covered" rather than "drafts we looked at".
-        drafts += count
+        # Counted after the send, so ``detections_pending`` reads as "detections a
+        # delivered digest covered" rather than "detections we looked at".
+        detections += count
     return {
         "analysts_notified": notified,
-        "drafts_pending": drafts,
+        "detections_pending": detections,
         "digest_send_failures": failures,
     }

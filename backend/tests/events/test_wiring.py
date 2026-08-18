@@ -2,8 +2,7 @@
 
 ``item`` (the ``/{geolocation_id}`` ops) must mount **last**, or its
 single-segment catch-all shadows the literal-path GETs (``/points``,
-``/possible-duplicates``, ``/import-from-tweet/media``) and they 422 on the
-non-UUID segment. The order is positional in ``routers/events/__init__.py``;
+``/possible-duplicates``) and they 422 on the non-UUID segment. The order is positional in ``routers/events/__init__.py``;
 these fail loudly if a future re-sort breaks it.
 """
 

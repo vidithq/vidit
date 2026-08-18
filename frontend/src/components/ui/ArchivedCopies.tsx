@@ -438,7 +438,7 @@ export function ArchiveSourceField({
 /** The primary source's own name, kept distinct from every mirror's. */
 export const PRIMARY_SOURCE_DESCRIPTION = "the source";
 
-/** The provenance link's name: the post a machine draft was detected from,
+/** The provenance link's name: the post a machine detection came from,
  *  which is not the footage source and must not announce as it. */
 export const DETECTED_FROM_DESCRIPTION = "the post it was detected from";
 

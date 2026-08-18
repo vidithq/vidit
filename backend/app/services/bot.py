@@ -1,4 +1,4 @@
-"""The @ViditBot pipeline — a tag on X becomes a ``detected`` draft + a reply.
+"""The @ViditBot pipeline — a tag on X becomes a detection + a reply.
 
 An analyst tags the bot on the tweet that carries the coordinate. Two paths
 feed the same per-mention pipeline (:func:`process_single_mention`):
@@ -12,31 +12,17 @@ feed the same per-mention pipeline (:func:`process_single_mention`):
   (``X_WEBHOOK_ENABLED``), a mention first seen here raises a "webhook gap"
   Sentry message so a silently dead webhook pages.
 
-The pipeline per mention accepts one strict structure (a title, one
-decimal coordinate pair, a source link, remaining lines becoming the proof
-text), spelled bare (the shape carries the fields, the primary form) or
-with explicit ``T:`` / ``C:`` / ``S:`` markers, and delivered in two forms:
-
-* **Inline**: the tagged tweet itself carries the markers
-  (:func:`tweet_ingest.detect_structured_diagnosed`; at most one extra syndication
-  fetch resolves the ``S:`` target's media and post date).
-* **Relay**: the tagged tweet is the analyst's direct reply to their own
-  marker tweet, carrying the re-uploaded footage as attached media, for an
-  ``S:`` link the chase vocabulary cannot fetch (TikTok, Instagram, an
-  article). One fetch resolves the parent, which must be the same author's
-  conforming tweet; the reply's media becomes the source media, and a
-  bare-shape parent missing only its source link borrows the reply's sole
-  link (the dominant "source in the reply" field habit)
-  (:func:`tweet_ingest.detect_relay_diagnosed`).
-
-That one-hop parent fetch is the only ancestor read: there is no free-text
-parent rollup (the archive backfill keeps its own self-thread stitching, the
-bot does not share it), and free-text coordinate detection is deliberately
-not a fallback here. The detection persists
-through ``assemble_detections`` owned by the existing Vidit account whose
-admin-linked ``x_handle`` matches the tagged author (the bot never mints
-users: an unknown handle is ledgered ``no_account`` and produces nothing),
-then the mention lands in the ``bot_mentions`` ledger.
+The bot runs the same engine as the pasted import and the archive backfill;
+nothing about the grammar lives here. Acquisition is
+:func:`tweet_ingest.acquire_thread`, shared with the paste: the tagged post plus
+the same author's post it replies to, one hop and no further, with the one chase
+step run over the pair. ``tweet_ingest.resolve_threads`` then reads that thread
+and ``detection.persist_detections`` writes what it read, owned by the account
+``detection.linked_owner`` maps the tagged author's handle to, read once per
+mention (the bot never mints users: an unknown handle is ledgered
+``no_account`` and produces nothing). The mention then lands in the
+``bot_mentions`` ledger. What is left in this module is orchestration: the X
+API, the reply, the ledger, the budget and the webhook drain.
 
 Both paths share that ledger, so a mention is processed (and billed) at most
 once whichever path sees it first; the poll's ``since_id`` derives from it,
@@ -46,11 +32,12 @@ dropped is still re-read even after a newer one advanced the ledger.
 Response model: the reply is the only gesture (a like at worker pickup,
 seconds before the reply, would signal nothing the reply does not, and it
 was the most expensive call of the mention). Replies open with the ✅/❌
-verdict. A created draft earns the in-thread success reply (event ref +
-warnings); a linked author whose tag produced nothing gets a failure reply
-carrying the diagnosis, unless the tagged tweet is itself a reply to
-the bot (the loop guard: a courtesy answer to the bot's own reply
-auto-mentions the bot and must not earn another reply). An unlinked author
+verdict. A detection the tag created, or the newer parse overwrote, earns the
+in-thread success reply (event ref + warnings); a linked author whose tag
+produced nothing gets a failure reply carrying the diagnosis, unless the
+tagged tweet is itself a reply to the bot (the loop guard: a courtesy answer
+to the bot's own reply auto-mentions the bot and must not earn another
+reply). An unlinked author
 stays fully silent (``no_account``). All reply text is linkless by contract
 (a URL 13x's the per-post price; the clickable link lives in the bot bio)
 and unique per mention (X 403s duplicate content); the composers own both
@@ -61,8 +48,10 @@ caps hold across passes, not per drain).
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -75,28 +64,17 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.bot_mention import BotMention, BotMentionOutcome
 from app.models.bot_webhook_event import BotWebhookEvent
-from app.models.event import Event
-from app.models.media import Media
 from app.models.user import User
-from app.services.detection import assemble_detections
+from app.services.detection import Outcome, linked_owner, persist_detections
 from app.services.tweet_ingest import (
-    COORDS_AMBIGUOUS,
-    COORDS_INVALID,
-    COORDS_MISSING,
-    MARKERS_INCOMPLETE,
     POST_UNREADABLE,
-    SOURCE_AMBIGUOUS,
-    SOURCE_MISSING,
-    SOURCE_OWN,
-    SOURCE_UNBOUND,
-    TITLE_MISSING,
+    REFUSAL_MESSAGES,
+    WARNING_MESSAGES,
+    AcquiredThread,
     TweetNotAccessible,
-    TweetRecord,
-    detect_relay_diagnosed,
-    detect_structured_diagnosed,
+    acquire_thread,
     fetch_cdn_media,
-    fetch_relay_parent,
-    record_from_syndication,
+    resolve_threads,
 )
 from app.services.x_api import Mention, XApiError, fetch_mentions, post_reply
 
@@ -158,7 +136,7 @@ def _within_reply_cap(text: str) -> str:
 # Billed-spend ceilings on the write side. The mention surface is public: any
 # stranger can tag the bot on a coordinate tweet, and each posted reply is
 # billed. The window posts at most this many replies (success + failure), in
-# total and per author; past a ceiling the draft still lands (detection is
+# total and per author; past a ceiling the detection still lands (detecting is
 # unbilled) but the reply is skipped and logged: a flood burns nothing but
 # its own posting effort. The window is wall-clock (the trailing hour, read
 # from the ledger), not per pass: the worker drains every few seconds, so a
@@ -233,6 +211,10 @@ class BotRunOutcome:
     mentions_seen: int = 0
     already_handled: int = 0
     events_created: int = 0
+    # Mentions whose whole answer was overwriting an open detection: no row created,
+    # at least one updated. Counted apart from ``events_created`` so a pass over
+    # re-tagged posts does not read as an idle one.
+    events_updated: int = 0
     replies_posted: int = 0
     no_detection: int = 0
     no_account: int = 0
@@ -240,142 +222,80 @@ class BotRunOutcome:
     failed: int = 0
 
 
-def _tagged_record(mention: Mention, *, client: httpx.Client | None = None) -> TweetRecord:
-    """Exactly the tagged tweet, one syndication fetch.
+def acquire_tagged_thread(
+    tweet_id: str, author_handle: str, *, client: httpx.Client | None = None
+) -> AcquiredThread:
+    """The thread behind one mention, through the shared acquisition.
 
-    The markers live either here (inline form) or on the direct parent (relay
-    form, fetched separately by :func:`tweet_ingest.fetch_relay_parent`); a
-    coordinate living anywhere else in the thread does not count. The archive
-    backfill keeps its own self-thread stitching untouched (its threads are
-    same-author by construction, see docs/ingestion.md).
+    :func:`tweet_ingest.acquire_thread` reads the tagged post plus, when it
+    replies to one of its author's own posts, that parent, which is the same one
+    hop the pasted import reads. A parent by another author never joins the
+    thread, so a tag under someone else's post reads only the tag itself, and so
+    does the courtesy reply to the bot's own reply.
+
+    Raises ``TweetNotAccessible`` when X serves nothing for the tagged post.
+
+    The handle is case-folded before it goes in. It is the fallback the record
+    keeps when the syndication body carries no screen name, and it is what every
+    provenance permalink is written from and what the own-status exclusion
+    compares a link against, so the mention payload's spelling of the handle
+    must not reach a record as typed. The idempotency anchor itself is the post
+    id (``events.detected_from_tweet_id``), which no spelling can move.
     """
-    # Lowercased handle: the permalink is the ``(detected_from_url,
-    # coordinate)`` idempotency anchor, and the relay path builds the
-    # parent's permalink from the syndication screen_name while this one
-    # comes from the mention payload. Case-folding both keeps one
-    # geolocation on one key even if the two feeds disagree on case.
-    return record_from_syndication(
-        f"https://x.com/{mention.author_handle.lower()}/status/{mention.tweet_id}",
-        client=client,
-    )
-
-
-def _linked_owner(db: Session, handle: str) -> User | None:
-    """The live Vidit account linked to ``handle``, or ``None``.
-
-    The bot never mints users: attribution requires an existing account whose
-    ``x_handle`` was linked (invite-bound at registration, or the admin PATCH).
-    A soft-deleted or deactivated account doesn't count: its work is hidden or
-    suspended, so new drafts and billed replies must not land under it.
-    """
-    return (
-        db.query(User)
-        .filter(
-            User.x_handle == handle.lower(),
-            User.deleted_at.is_(None),
-            User.is_active.is_(True),
-        )
-        .first()
-    )
-
-
-def _has_duplicate_media(db: Session, created: list[Event]) -> bool:
-    """Whether any of the created events' media already exists elsewhere.
-
-    Exact ``Media.sha256`` equality against every other event's media — the
-    dedup warning the reply surfaces (perceptual near-duplicate matching is a
-    separate value-layer feature).
-    """
-    event_ids = [event.id for event in created]
-    hashes = [
-        sha
-        for (sha,) in db.query(Media.sha256).filter(
-            Media.event_id.in_(event_ids), Media.sha256.isnot(None)
-        )
-    ]
-    if not hashes:
-        return False
-    return (
-        db.query(Media.id)
-        .filter(Media.sha256.in_(hashes), Media.event_id.notin_(event_ids))
-        .first()
-        is not None
-    )
+    return acquire_thread(tweet_id, handle=author_handle.lower(), client=client)
 
 
 # The ref shown in the success reply: the UUID's first block, enough to
-# eyeball the draft in the Detections queue; the full 36 chars would eat a
+# eyeball the detection in the Detections queue; the full 36 chars would eat a
 # third of the reply for no extra identification value there.
 _REPLY_REF_CHARS = 8
 
 
 def compose_reply(
-    created_id: str,
-    *,
-    source_footage_missing: bool,
-    source_date_missing: bool,
-    duplicate_media: bool,
+    created_id: str, *, detections: int, warnings: Iterable[str], updated: bool = False
 ) -> str:
-    """The in-thread reply for a mention that created its draft.
+    """The in-thread reply for a mention that wrote its detections.
 
-    One draft by construction: the strict format carries exactly one
-    coordinate line, so a mention never yields more (multi-detection lists
-    are the archive path's shape). Opens with the at-a-glance ✅ (the ❌
-    twin lives in :func:`compose_failure_reply`). Linkless by contract: a
-    bare event ref (shortened to ``_REPLY_REF_CHARS``), never a URL or
-    auto-linkable domain (X bills link posts ~13x higher; the clickable
-    link lives in the bot bio). Three warnings: no footage stored from the
-    source (off-vocabulary link, media-less or restricted source post, or a
-    failed fetch; review is the only repair, re-tagging dedups), the
-    source's post date came back unknown (the draft's provisional event
-    date then anchors on nothing but the analyst's own post), and the dedup
-    question. A sourceless draft cannot pass the format, so there is no
-    missing-source warning to raise. The ref also makes each reply unique,
-    so X's duplicate-content 403 cannot eat it.
+    ``updated`` swaps the verb for the pass that created nothing and overwrote
+    an open detection with a newer parse: the analyst is told what happened to the
+    detection they already hold rather than that a second one was saved.
+
+    Opens with the at-a-glance ✅ (the ❌ twin lives in
+    :func:`compose_failure_reply`). Linkless by contract: a bare event ref
+    (shortened to ``_REPLY_REF_CHARS``), never a URL or auto-linkable domain (X
+    bills link posts about 13x higher; the clickable link lives in the bot bio).
+    The ref also makes each reply unique, so X's duplicate-content 403 cannot eat
+    it.
+
+    One ⚠ line per warning the pass raised, worded by ``WARNING_MESSAGES`` and
+    read in its order. The reply owns the glyph and the length discipline, never
+    the sentence: the same sentence reaches the archive's outcome email and the
+    import panel, so the three surfaces cannot describe one code differently.
+    Which warnings a detection carries is the engine's and the write path's answer
+    (``detection.persist_detections``), not the reply's.
     """
-    lines = [f"✅ 1 geolocation draft saved · ref {created_id[:_REPLY_REF_CHARS]}"]
-    if source_footage_missing:
-        # The draft carries its source link but no stored footage: an
-        # off-vocabulary link, a media-less or restricted source post, or a
-        # failed fetch. Not repairable by re-tagging (the idempotency key
-        # already exists, a relay would be skipped): review is the fix.
-        lines.append("⚠ No footage stored from the source. Add it at review")
-    if source_date_missing:
-        lines.append("⚠ Couldn't read the source's post date. Check the event date at review")
-    if duplicate_media:
-        lines.append("⚠ This media already exists on Vidit. Possible duplicate")
-    lines.append("Review it from your profile")
+    plural = "s" if detections > 1 else ""
+    verb = "updated" if updated else "saved"
+    lines = [f"✅ {detections} detection{plural} {verb} · ref {created_id[:_REPLY_REF_CHARS]}"]
+    raised = set(warnings)
+    lines.extend(f"⚠ {message}" for code, message in WARNING_MESSAGES.items() if code in raised)
+    lines.append("Review from your profile")
     return _within_reply_cap("\n".join(lines))
 
 
-# Per failure-reason code: the diagnosis, as a terse noun phrase so every
-# ⚠ line reads in one uniform voice (no first person, no fix recipe: the
-# fix lives behind the bio guide). Keyed by the ``tweet_ingest`` reason
-# constants; keep each short (the composed reply must stay under
-# ``REPLY_MAX_WEIGHTED_LEN``, see :func:`compose_failure_reply`) and linkless.
-_FAILURE_DIAGNOSES: dict[str, str] = {
-    MARKERS_INCOMPLETE: "Incomplete marker set",
-    COORDS_MISSING: "No coordinate line",
-    COORDS_AMBIGUOUS: "Several coordinate lines",
-    COORDS_INVALID: "Coordinate pair malformed or out of bounds",
-    SOURCE_MISSING: "No source link (a media preview link does not count)",
-    SOURCE_AMBIGUOUS: "Several possible source links",
-    SOURCE_UNBOUND: "Source line URL matches none of the post's attached links",
-    SOURCE_OWN: "Source link points to your own post",
-    TITLE_MISSING: "No title line",
-    POST_UNREADABLE: "Post not readable on X (age-restricted, withheld or gone)",
-}
+# Where an analyst goes when the bot has nothing to diagnose. A handle mention
+# is not a link, so it keeps the reply's linkless contract.
+_ADMIN_CONTACT = "@vidithq"
 
 
 def compose_failure_reply(reason: str | None = None, *, mention_id: str) -> str:
     """The in-thread reply for a linked author whose tag produced nothing.
 
     Mirrors :func:`compose_reply`'s shape so the two verdicts read as one
-    voice: the ❌ header, one ⚠ line per problem (what the pipeline saw; it
-    surfaces one reason per mention today, so one line), and the footer.
-    One header for both delivery forms: the diagnosed post is the analyst's
-    own thread either way, so naming it added nothing. No recited lesson
-    and no fix recipe: the full format lives behind the bio link.
+    voice: the ❌ header, one ⚠ line naming what the engine saw, and the
+    footer. No recited lesson and no fix recipe: the rules live behind the bio
+    link. The diagnosis is ``REFUSAL_MESSAGES``, the same sentence the paste
+    answers with for the same code.
 
     Same linkless contract as :func:`compose_reply`: no URL, no auto-linkable
     domain (the "source link" phrase is a placeholder, not a link). Only
@@ -387,12 +307,11 @@ def compose_failure_reply(reason: str | None = None, *, mention_id: str) -> str:
     """
     head = "❌ Nothing saved"
     ref = f" (m{mention_id[-5:]})"
-    diagnosis = _FAILURE_DIAGNOSES.get(reason or "")
-    # An undiagnosed failure is a case the mapper does not name: not the
-    # analyst's format to fix, so route them to the maintainers instead of
-    # reciting a lesson. A handle mention is not a link (the linkless
-    # contract concerns URLs).
-    warning = f"⚠ {diagnosis}" if diagnosis else "⚠ Unexpected case. Reach out to @vidithq"
+    diagnosis = REFUSAL_MESSAGES.get(reason or "")
+    # No code to name: the engine refused nothing, the write path raised on
+    # every detection. Not the analyst's format to fix, so route them to the
+    # maintainers instead of reciting a lesson.
+    warning = f"⚠ {diagnosis}" if diagnosis else f"⚠ Unexpected case. Reach out to {_ADMIN_CONTACT}"
     return _within_reply_cap("\n".join([head, warning, f"Guide in bio{ref}"]))
 
 
@@ -454,12 +373,20 @@ async def _process_mention(
     db: Session,
     mention: Mention,
     *,
+    owner: User | None,
     syndication_client: httpx.Client | None,
     x_write_client: httpx.Client | None,
     reply_allowed: bool,
 ) -> tuple[BotMentionOutcome, int, str | None, str | None]:
     try:
-        record = _tagged_record(mention, client=syndication_client)
+        # Blocking network I/O; a thread keeps the event loop serving siblings
+        # while X answers, the same offload the pasted import takes.
+        acquired = await asyncio.to_thread(
+            acquire_tagged_thread,
+            mention.tweet_id,
+            mention.author_handle,
+            client=syndication_client,
+        )
     except TweetNotAccessible:
         # X serves the tagged post to no unauthenticated reader: a syndication
         # 404 (deleted, protected) or the tombstone body it answers for an
@@ -469,42 +396,25 @@ async def _process_mention(
         # rather than raise into the pass's ``failed`` + Sentry capture, where
         # the analyst would get no answer and an operator a false outage.
         return "no_detection", 0, None, POST_UNREADABLE
-    detections, failure_reason = detect_structured_diagnosed(
-        record, bot_handle=settings.x_bot_handle, client=syndication_client
-    )
-    if not detections:
-        # The relay form: a tag in a direct reply to the author's own
-        # structured tweet, the reply relaying the footage (and, when the
-        # parent lacks one, the source link: see ``detect_relay_diagnosed``).
-        # One parent fetch, same-author guarded; anything short of a
-        # conforming parent keeps the ``no_detection`` verdict. When a parent
-        # exists, its diagnosis outranks the tagged reply's (the reply is
-        # usually a bare tag, whose own diagnosis is just "no coordinate
-        # line"), and the failure reply then carries the parent's diagnosis. A reply
-        # to the bot itself (the courtesy-thanks shape, the most common
-        # non-conforming mention) skips the fetch: its parent is the bot's
-        # own reply, which the same-author guard would only discard.
-        parent = None
-        if record.in_reply_to_user_id != settings.x_bot_user_id:
-            parent = fetch_relay_parent(record, client=syndication_client)
-        if parent is not None:
-            detections, parent_reason = detect_relay_diagnosed(
-                record, parent, bot_handle=settings.x_bot_handle, client=syndication_client
-            )
-            if not detections and parent_reason is not None:
-                failure_reason = parent_reason
-    if not detections:
-        return "no_detection", 0, None, failure_reason
-    # After the detection step on purpose: an unknown handle with a
-    # non-conforming tweet ledgers ``no_detection``, so ``no_account`` isolates
-    # the mentions where a link would actually have produced a draft.
-    owner = _linked_owner(db, record.handle)
     if owner is None:
-        return "no_account", 0, None, None
-    assembled = await assemble_detections(
-        db, owner=owner, detections=detections, fetch_media=fetch_cdn_media
+        # The engine runs here too, writing nothing: a mention from an unknown
+        # handle whose post carries no coordinate ledgers ``no_detection``, so
+        # ``no_account`` isolates the mentions where a link would actually have
+        # produced a detection.
+        resolution = resolve_threads([acquired.records])
+        if resolution.detections:
+            return "no_account", 0, None, None
+        return "no_detection", 0, None, resolution.reason
+    assembled = await persist_detections(
+        db,
+        owner=owner,
+        resolution=resolve_threads([acquired.records]),
+        via="bot",
+        fetch_media=fetch_cdn_media,
     )
-    if not assembled.created:
+    if assembled.reason is not None:
+        return "no_detection", 0, None, assembled.reason
+    if not assembled.created and not assembled.updated:
         # ``skipped`` is the dedup verdict; a persist that raised on every
         # detection is a transient failure, and ``failed`` keeps it on the
         # operator's retry path (delete the ledger row) instead of burying it
@@ -512,24 +422,47 @@ async def _process_mention(
         return ("failed" if assembled.failed else "skipped"), 0, None, None
     reply_id: str | None = None
     if reply_allowed:
-        created = assembled.created[0]
-        has_footage = (
-            db.query(Media.id).filter(Media.event_id == created.id, Media.role == "source").first()
-            is not None
-        )
-        reply = compose_reply(
-            str(created.id),
-            source_footage_missing=not has_footage,
-            source_date_missing=created.source_posted_at is None,
-            duplicate_media=_has_duplicate_media(db, assembled.created),
-        )
-        reply_id = _post_reply_failsoft(mention, reply, client=x_write_client)
+        reply_id = _post_reply_failsoft(mention, _success_reply(assembled), client=x_write_client)
     else:
         logger.warning(
-            "Reply budget reached; draft created without reply for mention %s",
+            "Reply budget reached; detection written without reply for mention %s",
             mention.tweet_id,
         )
-    return "created", len(assembled.created), reply_id, None
+    if assembled.created:
+        return "created", len(assembled.created), reply_id, None
+    # A tag on a post the analyst already imported, edited since: the newer
+    # parse landed on the open detection. The tag was answered, so it earns the
+    # success reply and its own ledger verdict rather than the silent
+    # ``skipped`` a tag that moved nothing gets.
+    return "updated", 0, reply_id, None
+
+
+def _success_reply(assembled: Outcome) -> str:
+    """The composed ✅ reply for one mention's outcome.
+
+    The ref reads the first row the pass wrote, the created detections first: a
+    thread carrying several coordinates lands several, and the
+    ``several_coordinates`` warning is what tells the analyst so. A pass that
+    created nothing and overwrote an open detection names that row instead, and
+    says it updated rather than saved.
+    """
+    written = assembled.created or assembled.updated
+    return compose_reply(
+        str(written[0]),
+        detections=len(written),
+        warnings=assembled.warnings,
+        updated=not assembled.created,
+    )
+
+
+# The verdicts a linked author gets an answer for when their tag produced no
+# detection. ``no_detection`` is the engine's refusal, named back by code;
+# ``failed`` is the write path raising on every detection, which names no code and
+# reads as the reply's unexpected case. A tag that answers neither either wrote
+# a row (``created`` / ``updated``, both the ✅ reply) or deduplicated onto a row
+# it moved nothing on (``skipped``, which is not a failure to report), and an
+# unlinked author stays fully silent whatever the tweet yielded.
+_ANSWERED_VERDICTS = ("no_detection", "failed")
 
 
 async def process_single_mention(
@@ -565,13 +498,15 @@ async def process_single_mention(
             outcome.already_handled += 1
             return "already_handled"
         return "self"
-    # Read once for the failure-reply gate: an unlinked author stays fully
-    # silent, whatever the tweet yields.
-    author_linked = _linked_owner(db, mention.author_handle) is not None
+    # The one handle-to-account read of the mention: the account every detection is
+    # attributed to, and the failure-reply gate, since an unlinked author stays
+    # fully silent whatever the tweet yields.
+    owner = linked_owner(db, mention.author_handle)
     try:
         verdict, created, reply_id, failure_reason = await _process_mention(
             db,
             mention,
+            owner=owner,
             syndication_client=syndication_client,
             x_write_client=x_write_client,
             reply_allowed=budget.reply_allowed(mention.author_handle),
@@ -586,8 +521,8 @@ async def process_single_mention(
         outcome.failed += 1
         return "failed"
     if (
-        verdict == "no_detection"
-        and author_linked
+        verdict in _ANSWERED_VERDICTS
+        and owner is not None
         and mention.in_reply_to_user_id != settings.x_bot_user_id
         and budget.reply_allowed(mention.author_handle)
     ):
@@ -613,7 +548,9 @@ async def process_single_mention(
     if reply_id is not None:
         budget.note_reply(mention.author_handle)
         outcome.replies_posted += 1
-    if verdict == "no_detection":
+    if verdict == "updated":
+        outcome.events_updated += 1
+    elif verdict == "no_detection":
         outcome.no_detection += 1
     elif verdict == "no_account":
         outcome.no_account += 1

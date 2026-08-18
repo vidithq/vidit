@@ -115,7 +115,7 @@ export function MaintenancePanel() {
           }
         />
         <MaintenanceRow
-          label="Email the drafts-awaiting-completion digest"
+          label="Email the detections-awaiting-completion digest"
           busyLabel="Sending…"
           loading={sendDigests.loading}
           disabled={running}
@@ -123,8 +123,8 @@ export function MaintenancePanel() {
           summary={
             digestResult && (
               <>
-                Analysts emailed: {digestResult.analysts_notified ?? 0} · Drafts:{" "}
-                {digestResult.drafts_pending ?? 0} · Failed sends:{" "}
+                Analysts emailed: {digestResult.analysts_notified ?? 0} · Detections:{" "}
+                {digestResult.detections_pending ?? 0} · Failed sends:{" "}
                 {digestResult.digest_send_failures ?? 0}
               </>
             )

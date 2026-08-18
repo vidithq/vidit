@@ -119,8 +119,8 @@ function DetailRows({
   const captureTags = geo.tags.filter((t) => t.category === "capture_source");
   const freeTags = geo.tags.filter((t) => t.category === "free");
   // Archiving a link is the owner's own act, so the affordance is offered to
-  // exactly the analyst the endpoint would accept it from. A draft is included:
-  // archival is no longer tied to publication, and a draft's source rots while
+  // exactly the analyst the endpoint would accept it from. A detection is included:
+  // archival is no longer tied to publication, and a detection's source rots while
   // it waits.
   const canArchive = viewerId === geo.owner.id;
   const sourceMaxWidth = compact ? "max-w-[200px]" : "max-w-[300px]";

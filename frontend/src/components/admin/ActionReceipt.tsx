@@ -49,7 +49,7 @@ export function PurgeReceipt({ purge }: { purge: AdminPurgeDetectedResponse }) {
       header={<span className="font-medium">@{purge.username}</span>}
     >
       <div className="text-neutral-500">
-        {`Purged ${purge.deleted_events} detected draft${
+        {`Purged ${purge.deleted_events} detection${
           purge.deleted_events === 1 ? "" : "s"
         }, swept ${purge.media_count} storage object${
           purge.media_count === 1 ? "" : "s"

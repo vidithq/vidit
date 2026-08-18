@@ -269,11 +269,17 @@ async function slowScrollToBottom(page, durationMs = 2200) {
   await slowScrollToY(page, targetY, durationMs);
 }
 
-// Pre-fetch a VIDEO file from one of the analyst's tweets via the
-// import-from-tweet media proxy, saved to `video/.cache/` so the
-// recording's `setInputFiles` call is instant. Tries the dedicated
-// request tweet first; falls back to a sibling tweet (`TWEET_URL`) if
-// the primary's video proxy 502s — X CDN behaviour is unreliable.
+// Pre-fetch a VIDEO file from one of the analyst's tweets, saved to
+// `video/.cache/` so the recording's `setInputFiles` call is instant.
+// Tries the dedicated request tweet first; falls back to a sibling tweet
+// (`TWEET_URL`) if the primary produces no video detection — X CDN behaviour
+// is unreliable.
+//
+// The import creates detections and answers their ids, so the
+// bytes come off the detection's stored media rather than from a CDN proxy.
+// It reads the caller's OWN posts only, so `auth` must be the account
+// whose linked X handle authored those tweets (see planning/next.md →
+// "Give the promo pipeline its own user bootstrap").
 //
 // Returns the on-disk path the caller should upload, or null if no
 // candidate produced a usable video. The cache filename embeds the
@@ -283,7 +289,7 @@ async function slowScrollToBottom(page, durationMs = 2200) {
 async function prepareRequestUpload(auth) {
   // Candidate tweets: the dedicated request tweet first, then the
   // Hezbollah/Iron Dome tweet from the geolocation submit flow (we
-  // know that one's video proxy works).
+  // know that one carries a readable video).
   const candidates = [REQUEST_TWEET_URL, TWEET_URL];
   for (const url of candidates) {
     const cachePath = requestUploadCachePath(url);
@@ -301,14 +307,14 @@ async function prepareRequestUpload(auth) {
         },
         body: JSON.stringify({ url }),
       }).then((r) => r.json());
-      const video = (imp.media || []).find((m) => m.kind === "video");
-      if (!video) continue;
-      const proxyUrl =
-        `${API}/events/import-from-tweet/media?u=` +
-        encodeURIComponent(video.remote_url);
-      const res = await fetch(proxyUrl, {
+      const detectionId = [...(imp.created || []), ...(imp.updated || []), ...(imp.skipped || [])][0];
+      if (!detectionId) continue;
+      const detection = await fetch(`${API}/events/${detectionId}`, {
         headers: { cookie: auth.cookieHeader },
-      });
+      }).then((r) => r.json());
+      const video = (detection.media || []).find((m) => m.media_type === "video");
+      if (!video) continue;
+      const res = await fetch(video.storage_url);
       if (!res.ok) continue;
       const buf = Buffer.from(await res.arrayBuffer());
       if (buf.length < 10000) continue;

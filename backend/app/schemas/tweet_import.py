@@ -1,113 +1,60 @@
-"""Tweet-import DTOs — the pre-fill payloads for ``import-from-tweet``.
+"""Tweet-import DTOs: the request and the outcome of ``import-from-tweet``.
 
-The shapes the ``GET/POST /geolocations/import-from-tweet`` endpoints return: the
-human pre-fill (``TweetImportResponse`` + its ``Coord`` / ``Media`` /
-``QuotedTweet`` parts) and the no-persist machine ``DetectedGeolocPreview``. Kept
-separate from the core geolocation read/write schemas in ``event.py`` —
-they're a self-contained sub-feature, consumed only by the import router.
+The paste runs the shared detection engine and writes detections, so the response
+is the outcome of that run. Kept separate from the core geolocation read/write
+schemas in ``event.py``: they are a self-contained sub-feature, consumed only
+by the import router.
 """
 
-from datetime import date
-from typing import Literal
+import uuid
 
 from pydantic import BaseModel, Field
 
-from app.models.media import MediaType
-
 
 class TweetImportRequest(BaseModel):
-    """Body of ``POST /geolocations/import-from-tweet``."""
+    """Body of ``POST /events/import-from-tweet``."""
 
     url: str = Field(..., min_length=1, max_length=2048)
 
 
-class TweetImportCoord(BaseModel):
-    lat: float
-    lng: float
+class ImportNote(BaseModel):
+    """One thing the import has to say, as a stable code plus its sentence.
 
-
-class TweetImportMedia(BaseModel):
-    kind: MediaType
-    # Upstream X CDN URL — the frontend fetches it directly when CORS permits
-    # (usually it doesn't) or proxies via ``GET /geolocations/import-from-tweet/media``.
-    remote_url: str
-    content_type: str
-    # Where the media came from in the OP/quote pair. Informational only — the
-    # primary-vs-proof split is by ``kind`` (videos → primary, images → proof),
-    # see api.md.
-    origin: Literal["op", "quote"] = "op"
-
-
-class TweetImportQuotedTweet(BaseModel):
-    """The tweet quoted by the OP, when present.
-
-    Surfaced so the frontend can credit the original author in the proof body
-    even though ``source_url`` already points at this quoted tweet.
+    The sentence travels with the code so the page renders what it is given
+    rather than keeping its own table: the same wording reaches the bot's
+    in-thread reply and the archive's outcome email, out of one backend table
+    (``tweet_ingest.WARNING_MESSAGES`` / ``REFUSAL_MESSAGES``). Branch on
+    ``code``, which is the stable half; ``message`` is prose and may be reworded.
     """
 
-    source_url: str
-    author_handle: str
-    tweet_text: str
+    code: str
+    message: str
 
 
-class DetectedGeolocPreview(BaseModel):
-    """One machine detection the pipeline would produce from a pasted tweet.
+class TweetImportRead(BaseModel):
+    """What one pasted post did, in the order the engine produced it.
 
-    The no-persist preview output (``import-from-tweet``): zero DB writes, the
-    inspection window into the machine ``detect`` path. ``proof_text`` is the
-    plain proof body the assemble step would wrap into the JSONB proof doc;
-    ``detected_from_url`` is the originating post. ``event_date`` is None when
-    the tweet's timestamp is unusable (required-nullable).
+    One coordinate makes one detection, so a thread carrying several lands several
+    ids. ``created`` holds the new detections, ``updated`` the open detections a
+    re-import overwrote, and ``skipped`` the rows the import must not touch
+    (published, closed, withheld) or found already up to date. The caller opens
+    the first id it gets.
+
+    ``warnings`` carries what review still has to answer on the detections of this
+    post, never a refusal. Three codes say what the engine could not settle from
+    the post (``several_coordinates``, ``source_ambiguous``, ``source_missing``)
+    and four what the detections ended up with (``source_footage_missing``,
+    ``source_fetch_failed``, ``source_date_unknown``, ``duplicate_media``); the
+    fetch-failed one is the source that could not be read this time, so the same
+    import later may well fill it. ``reason`` is the refusal when
+    the post produced no detection at all (``coords_missing``, ``coords_invalid``),
+    and null whenever detections were produced. ``failed`` counts the detections that
+    raised mid-persist.
     """
 
-    lat: float
-    lng: float
-    title: str
-    proof_text: str
-    detected_from_url: str
-    event_date: date | None
-    # The mirrors the detection would carry (the post's other declared links).
-    secondary_source_urls: list[str]
-    media: list[TweetImportMedia]
-
-
-class TweetImportResponse(BaseModel):
-    """Pre-fill payload for the submit form.
-
-    All fields best-effort: ``suggested_title`` empty when the text yields
-    nothing usable, ``parsed_coords`` empty when no recognised coordinate
-    format, ``media`` empty when no attached image / video. The analyst reviews
-    everything before submitting — a typing shortcut, not an authority.
-
-    When the OP quote-retweets, ``source_url`` is the quoted tweet's URL (the
-    OSINT-correct attribution), ``original_tweet_url`` is always the OP's, and
-    ``quoted_tweet`` carries the quote's metadata so the frontend renders both.
-    Without a quote or a footage link ``source_url`` is None (required-nullable)
-    and the form field starts empty; the OP's own URL is never a fallback.
-    ``source_posted_at`` follows the same rule for the source's post time: it
-    carries the quote's actual timestamp, never the OP's, and is None when
-    that timestamp isn't known.
-    """
-
-    source_url: str | None
-    # Mirrors of the same media: the post's other declared links, ordered and
-    # capped at the event's secondary-link ceiling. Prefills the form's
-    # secondary-source rows; empty when the post linked nothing else.
-    secondary_source_urls: list[str]
-    original_tweet_url: str
-    posted_at: str  # ISO 8601 from X — frontend truncates to date for the form
-    # The source's own post instant (the quote's timestamp), ISO 8601 UTC.
-    # None when the source has no known date (no quote, or a footage link
-    # whose timestamp isn't derivable): the form field then starts empty
-    # rather than falling back to the OP's own date (required-nullable).
-    source_posted_at: str | None
-    author_handle: str
-    tweet_text: str
-    suggested_title: str
-    parsed_coords: list[TweetImportCoord]
-    media: list[TweetImportMedia]
-    quoted_tweet: TweetImportQuotedTweet | None = None
-    # The machine path's view of the same tweet — the detections the pipeline
-    # would produce, surfaced for inspection. Zero DB writes. Empty when no
-    # coordinate parses.
-    detected: list[DetectedGeolocPreview] = []
+    created: list[uuid.UUID]
+    updated: list[uuid.UUID]
+    skipped: list[uuid.UUID]
+    warnings: list[ImportNote]
+    reason: ImportNote | None
+    failed: int

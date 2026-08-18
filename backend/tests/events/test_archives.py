@@ -153,8 +153,8 @@ def test_a_mirror_and_the_provenance_link_are_archivable_too(db, author):
     assert _copy(db, geo.id, DETECTED_FROM).origin == "detected_from"
 
 
-def test_a_draft_owner_can_archive_its_links(db, author):
-    """Archival is no longer tied to publication, so an unpublished draft's
+def test_a_detection_owner_can_archive_its_links(db, author):
+    """Archival is no longer tied to publication, so an unpublished detection's
     links carry the same affordance."""
     geo = _make_geo(db, author=author, status=STATUS_DETECTED, source_url=SOURCE, with_media=True)
 
@@ -331,7 +331,7 @@ def test_geolocate_replaces_the_copy_the_event_already_had(
 
 
 def test_geolocate_refuses_a_snapshot_of_another_link(db, author, conflict, capture_source_tag):
-    """A rejected paste writes nothing at all: the draft is still a draft, so
+    """A rejected paste writes nothing at all: the detection stays unpublished, so
     the analyst fixes the paste and submits the same form again."""
     geo = _make_geo(db, author=author, status=STATUS_DETECTED, source_url=SOURCE, with_media=True)
 

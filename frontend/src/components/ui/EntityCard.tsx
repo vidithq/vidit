@@ -114,7 +114,7 @@ interface EntityCardBaseProps {
   author: { username: string };
   date?: string;
   coords?: { lat: number; lng: number } | null;
-  /** ``url`` is null on a sourceless machine draft; `SourceLabel` renders the
+  /** ``url`` is null on a sourceless machine detection; `SourceLabel` renders the
    *  muted "To confirm" label for it. */
   source?: { url: string | null };
   tags?: { id: string; name: string }[];

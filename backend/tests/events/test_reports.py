@@ -254,7 +254,7 @@ def test_hidden_event_absent_from_search(db, author):
 
 
 def test_hidden_event_detail_is_404_for_everyone_but_an_admin(db, author, second_user, admin_user):
-    """The owner loses the detail read too: a takedown is not a private draft
+    """The owner loses the detail read too: a takedown is not a private detection
     state. An admin keeps it, since judging the report means seeing the row."""
     hidden = _make_geo(db, author=author, hidden=True)
 

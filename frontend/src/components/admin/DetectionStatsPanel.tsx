@@ -68,15 +68,15 @@ export function DetectionStatsPanel() {
           imported from X (the archive backfill or the bot;{" "}
           <code className="text-neutral-400">detected_from_url</code> set). The{" "}
           <span className="text-neutral-300">reject-rate</span> is the share of
-          machine detections dismissed while still a draft, whichever door they
-          left through: an owner closed straight out of{" "}
+          machine detections dismissed before publication, whichever door
+          they left through: an owner closed straight out of{" "}
           <code className="text-neutral-400">detected</code>, or an admin
           soft-deleted while still{" "}
           <code className="text-neutral-400">detected</code>. A detection
           vouched into{" "}
           <code className="text-neutral-400">geolocated</code>, or still
           awaiting review, is not a reject. The pending counts profile the live
-          review queue (machine drafts only) for drafts missing a piece the
+          review queue (machine detections only) for detections missing a piece the
           geolocate floor will demand.
         </p>
       </header>

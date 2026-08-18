@@ -155,7 +155,7 @@ def test_geolocate_sets_the_flag(db, author, conflict, capture_source_tag):
 
 def test_geolocate_cannot_clear_the_flag(db, author, conflict, capture_source_tag):
     """The flag ratchets: unlike every other field on the form, an omitted box
-    leaves a flag the draft already carried rather than clearing it."""
+    leaves a flag the detection already carried rather than clearing it."""
     geo = _make_geo(
         db,
         author=author,
