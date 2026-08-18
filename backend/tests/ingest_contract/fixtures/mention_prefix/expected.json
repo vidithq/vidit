@@ -1,5 +1,5 @@
 {
-  "description": "A reply-style post whose text is prefixed with @mentions, as real threaded posts are. The coordinate is read from the prose and the draft is sourceless (source null, source_missing warning). The title is the line as written, @mentions and coordinate included.",
+  "description": "A reply-style post whose text is prefixed with @mentions, as real threaded posts are. The coordinate is read from the prose and the detection is sourceless (source null, source_missing warning). The title is the line as written, @mentions and coordinate included.",
   "coords": [
     [
       55.7512,

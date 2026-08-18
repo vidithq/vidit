@@ -2,7 +2,7 @@
 
 Assembles every typology this entry runs into one consolidated X export, runs
 the real ``read_tweets`` to ``stitch`` to ``resolve_threads`` to
-``persist_drafts`` chain over it against the test database, and asserts per
+``persist_detections`` chain over it against the test database, and asserts per
 typology: the ``detected`` status,
 ``source_url`` NULL exactly where the contract says so, the media roles in the
 ``media`` table, and the proof images injected into the proof JSON.
@@ -30,10 +30,10 @@ from app.models.event import STATUS_DETECTED, Event
 from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
-from app.services.detection import backfill_from_archive, persist_drafts
+from app.services.detection import backfill_from_archive, persist_detections
 from app.services.tweet_ingest import (
     COORDS_MISSING,
-    Draft,
+    Detection,
     ParsedCoord,
     ParsedMedia,
     Resolution,
@@ -253,9 +253,9 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
 
     records = chase_thread(read_tweets(archive, handle=owner.x_handle))
     resolution = resolve_threads(stitch(records))
-    assert len(resolution.drafts) == 1
+    assert len(resolution.detections) == 1
 
-    outcome = await persist_drafts(
+    outcome = await persist_detections(
         db,
         owner=owner,
         resolution=resolution,
@@ -305,9 +305,9 @@ async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: 
 
     records = chase_thread(read_tweets(archive, handle=owner.x_handle))
     resolution = resolve_threads(stitch(records))
-    assert len(resolution.drafts) == 1
+    assert len(resolution.detections) == 1
 
-    outcome = await persist_drafts(
+    outcome = await persist_detections(
         db,
         owner=owner,
         resolution=resolution,
@@ -361,8 +361,10 @@ async def test_telegram_chase_sensitive_degrades_to_date_only(db, owner, tmp_pat
     assert len(proof) == 2 and all(m.media_type == "image" for m in proof)
 
 
-async def test_reimport_fills_a_draft_an_earlier_run_left_bare(db, owner, tmp_path, monkeypatch):
-    """A re-import completes a draft in place instead of leaving it bare.
+async def test_reimport_fills_a_detection_an_earlier_run_left_bare(
+    db, owner, tmp_path, monkeypatch
+):
+    """A re-import completes a detection in place instead of leaving it bare.
 
     A first pass with the chase off stored the post with no ``source_url``, no
     source date and no source media. Running the same export with the chase on
@@ -402,10 +404,10 @@ async def test_reimport_fills_a_draft_an_earlier_run_left_bare(db, owner, tmp_pa
 
     # The row the old import left behind: the right post at the right place,
     # and nothing the whole-line designation would have given it.
-    stale = await persist_drafts(
+    stale = await persist_detections(
         db,
         owner=owner,
-        resolution=Resolution(drafts=[_bare_draft(tweet_id, permalink)]),
+        resolution=Resolution(detections=[_bare_detection(tweet_id, permalink)]),
         via="archive",
         fetch_media=archive_media_fetcher(archive),
     )
@@ -434,11 +436,11 @@ async def test_reimport_fills_a_draft_an_earlier_run_left_bare(db, owner, tmp_pa
     assert len(source) == 1 and source[0].media_type == "video"
 
 
-def _bare_draft(tweet_id: str, permalink: str) -> Draft:
+def _bare_detection(tweet_id: str, permalink: str) -> Detection:
     """What a chase-less pass produced for this post: the coordinate, the text
-    and the annotation photo, and nothing else, so the draft carried no source
+    and the annotation photo, and nothing else, so the detection carried no source
     URL, no mirrors and no footage."""
-    return Draft(
+    return Detection(
         coordinate=ParsedCoord(lat=44.6123, lng=33.5221),
         title="Geolocated airfield perimeter",
         proof_text="Geolocated airfield perimeter",

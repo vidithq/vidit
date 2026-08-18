@@ -209,7 +209,7 @@ async def fetch_cdn_media(parsed: ParsedMedia) -> tuple[bytes, str] | None:
 
     A throttled or unreachable CDN is retried on the package's one schedule
     (:mod:`tweet_ingest.retry`) before it degrades: the footage is the point of
-    the draft, and a CDN blip is the cheapest thing in this pipeline to sit out.
+    the detection, and a CDN blip is the cheapest thing in this pipeline to sit out.
     """
     if not is_trusted_media_url(parsed.remote_url):
         return None

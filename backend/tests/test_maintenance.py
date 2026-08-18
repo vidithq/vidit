@@ -169,11 +169,11 @@ def test_reap_auth_tokens_endpoint_403_for_regular_user(regular_user):
 
 
 @pytest.fixture
-def draft_owner(db):
+def detection_owner(db):
     """An analyst with an address, torn down with everything that FKs to them."""
     user = User(
         username=f"d{uuid.uuid4().hex[:8]}",
-        email=f"drafts-{uuid.uuid4().hex}@example.com",
+        email=f"detections-{uuid.uuid4().hex}@example.com",
         password_hash=hash_password("p"),
     )
     db.add(user)
@@ -186,11 +186,11 @@ def draft_owner(db):
     db.commit()
 
 
-def _draft(db, owner, **kwargs) -> Event:
-    """One live machine ``detected`` draft owned by ``owner``."""
+def _detection(db, owner, **kwargs) -> Event:
+    """One live machine detection owned by ``owner``."""
     row = Event(
         owner_id=owner.id,
-        title=f"Draft {uuid.uuid4().hex[:8]}",
+        title=f"Detection {uuid.uuid4().hex[:8]}",
         event_coords=from_shape(Point(34.5, 48.5), srid=4326),
         source_url="https://x.com/a/status/1",
         detected_from_url="https://x.com/a/status/1",
@@ -205,55 +205,55 @@ def _draft(db, owner, **kwargs) -> Event:
 
 def _counts(db, owner) -> int | None:
     """The digest's count for ``owner``, or None when they aren't selected."""
-    for user, _address, count in maintenance_service.drafts_awaiting_completion(db):
+    for user, _address, count in maintenance_service.detections_awaiting_completion(db):
         if user.id == owner.id:
             return count
     return None
 
 
-def test_digest_selects_analysts_by_live_draft_count(db, draft_owner):
-    _draft(db, draft_owner)
-    _draft(db, draft_owner)
-    assert _counts(db, draft_owner) == 2
+def test_digest_selects_analysts_by_live_detection_count(db, detection_owner):
+    _detection(db, detection_owner)
+    _detection(db, detection_owner)
+    assert _counts(db, detection_owner) == 2
 
 
-def test_digest_counts_only_unpublished_real_work(db, draft_owner):
-    """What the count is about: drafts still awaiting a decision. A published
+def test_digest_counts_only_unpublished_real_work(db, detection_owner):
+    """What the count is about: detections still awaiting a decision. A published
     row and a soft-deleted one are both out."""
-    _draft(db, draft_owner)
-    _draft(db, draft_owner, deleted_at=datetime.now(UTC))
-    published = _draft(db, draft_owner)
+    _detection(db, detection_owner)
+    _detection(db, detection_owner, deleted_at=datetime.now(UTC))
+    published = _detection(db, detection_owner)
     published.status = STATUS_GEOLOCATED
     published.geolocated_at = datetime.now(UTC)
     db.commit()
 
-    assert _counts(db, draft_owner) == 1
+    assert _counts(db, detection_owner) == 1
 
 
-def test_digest_does_not_count_a_withheld_draft(db, draft_owner):
-    """A takedown freezes the draft for its owner, so the digest must not nag
+def test_digest_does_not_count_a_withheld_detection(db, detection_owner):
+    """A takedown freezes the detection for its owner, so the digest must not nag
     them to complete one they are not allowed to publish."""
-    _draft(db, draft_owner)
-    _draft(db, draft_owner, hidden_at=datetime.now(UTC))
-    assert _counts(db, draft_owner) == 1
+    _detection(db, detection_owner)
+    _detection(db, detection_owner, hidden_at=datetime.now(UTC))
+    assert _counts(db, detection_owner) == 1
 
 
-def test_digest_skips_an_analyst_with_no_drafts(db, draft_owner):
-    assert _counts(db, draft_owner) is None
+def test_digest_skips_an_analyst_with_no_detections(db, detection_owner):
+    assert _counts(db, detection_owner) is None
 
 
-def test_digest_skips_a_deactivated_analyst(db, draft_owner):
-    _draft(db, draft_owner)
-    draft_owner.is_active = False
+def test_digest_skips_a_deactivated_analyst(db, detection_owner):
+    _detection(db, detection_owner)
+    detection_owner.is_active = False
     db.commit()
-    assert _counts(db, draft_owner) is None
+    assert _counts(db, detection_owner) is None
 
 
-def test_digest_sends_one_email_per_analyst(db, draft_owner, monkeypatch):
+def test_digest_sends_one_email_per_analyst(db, detection_owner, monkeypatch):
     """One message, the count in it, and the link back to that analyst's own
     queue."""
-    _draft(db, draft_owner)
-    _draft(db, draft_owner)
+    _detection(db, detection_owner)
+    _detection(db, detection_owner)
     sent: list = []
     monkeypatch.setattr(maintenance_service.email_service, "send", sent.append)
 
@@ -261,17 +261,17 @@ def test_digest_sends_one_email_per_analyst(db, draft_owner, monkeypatch):
 
     assert result["analysts_notified"] >= 1
     assert result["digest_send_failures"] == 0
-    mine = [email for email in sent if email.to == draft_owner.email]
+    mine = [email for email in sent if email.to == detection_owner.email]
     assert len(mine) == 1
     assert "2" in mine[0].subject
-    assert f"/profile/{draft_owner.username}/detections" in mine[0].text
+    assert f"/profile/{detection_owner.username}/detections" in mine[0].text
 
 
-def test_digest_survives_a_provider_failure(db, draft_owner, monkeypatch):
+def test_digest_survives_a_provider_failure(db, detection_owner, monkeypatch):
     """A rejected address is counted, never raised: a digest is re-sendable on
     the next run, and the other analysts still get theirs. A failed send covers
-    no drafts, so ``drafts_pending`` counts delivered messages only."""
-    _draft(db, draft_owner)
+    no detections, so ``detections_pending`` counts delivered messages only."""
+    _detection(db, detection_owner)
 
     def _boom(email):
         raise EmailSendError("provider down")
@@ -281,14 +281,14 @@ def test_digest_survives_a_provider_failure(db, draft_owner, monkeypatch):
     result = maintenance_service.send_completion_digests(db)
     assert result["analysts_notified"] == 0
     assert result["digest_send_failures"] >= 1
-    assert result["drafts_pending"] == 0
+    assert result["detections_pending"] == 0
 
 
-def test_digest_caps_the_addresses_one_click_writes_to(db, draft_owner):
+def test_digest_caps_the_addresses_one_click_writes_to(db, detection_owner):
     """The action is one provider round-trip per analyst with no resume marker,
     so a click is bounded; the biggest backlogs survive the cut."""
-    _draft(db, draft_owner)
-    selected = maintenance_service.drafts_awaiting_completion(db, limit=1)
+    _detection(db, detection_owner)
+    selected = maintenance_service.detections_awaiting_completion(db, limit=1)
     assert len(selected) == 1
 
 
@@ -301,7 +301,7 @@ def test_send_completion_digests_endpoint_for_admin(admin_user, db, monkeypatch)
     assert response.status_code == 200
     body = response.json()
     assert "analysts_notified" in body
-    assert "drafts_pending" in body
+    assert "detections_pending" in body
 
     event = (
         db.query(AdminEvent)

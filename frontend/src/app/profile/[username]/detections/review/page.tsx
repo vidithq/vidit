@@ -9,15 +9,15 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { skipBackRecord } from "@/lib/navigation";
 import {
   detectionsReviewPath,
-  draftEditPath,
+  detectionEditPath,
   type PaginatedEventDetails,
 } from "@/lib/events";
 
 /**
  * The entry to a review pass: `/profile/{username}/detections/review` opens the
- * first draft of the queue and hands the walk over to that draft's own URL.
+ * first detection of the queue and hands the walk over to that detection's own URL.
  *
- * A pass lives on the edit route, one address per draft, so this page holds no
+ * A pass lives on the edit route, one address per detection, so this page holds no
  * state of its own. It stays as the entry because it is the link the queue's
  * *Start reviewing* and any kept bookmark point at, and it always resolves to
  * whatever is at the head of the queue now. It leaves no trace behind it: the
@@ -34,7 +34,7 @@ export default function DetectionReviewPage() {
   const queueHref = `/profile/${username}/detections`;
 
   // Same owner rule as the queue: the endpoint scopes to `current_user` and
-  // ignores the URL username, so a non-owner would review their own drafts
+  // ignores the URL username, so a non-owner would review their own detections
   // under someone else's handle.
   useEffect(() => {
     if (user && !isOwn) router.replace(`/profile/${username}`);
@@ -51,10 +51,10 @@ export default function DetectionReviewPage() {
     const first = data.items[0];
     // This route resolves and hands over, so it is no part of the walk: the
     // back arrow must reach the page that opened it. Left in the back-stack it
-    // would redirect again and land back on the draft the reader is trying to
+    // would redirect again and land back on the detection the reader is trying to
     // leave.
     skipBackRecord();
-    router.replace(first ? draftEditPath(first.id, true) : queueHref);
+    router.replace(first ? detectionEditPath(first.id, true) : queueHref);
   }, [data, router, queueHref]);
 
   if (authLoading || !user || !isOwn) {

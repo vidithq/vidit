@@ -1,6 +1,6 @@
 """Tweet-import DTOs: the request and the outcome of ``import-from-tweet``.
 
-The paste runs the shared detection engine and writes drafts, so the response
+The paste runs the shared detection engine and writes detections, so the response
 is the outcome of that run. Kept separate from the core geolocation read/write
 schemas in ``event.py``: they are a self-contained sub-feature, consumed only
 by the import router.
@@ -34,21 +34,21 @@ class ImportNote(BaseModel):
 class TweetImportRead(BaseModel):
     """What one pasted post did, in the order the engine produced it.
 
-    One coordinate makes one draft, so a thread carrying several lands several
-    ids. ``created`` holds the new drafts, ``updated`` the open drafts a
+    One coordinate makes one detection, so a thread carrying several lands several
+    ids. ``created`` holds the new detections, ``updated`` the open detections a
     re-import overwrote, and ``skipped`` the rows the import must not touch
     (published, closed, withheld) or found already up to date. The caller opens
     the first id it gets.
 
-    ``warnings`` carries what review still has to answer on the drafts of this
+    ``warnings`` carries what review still has to answer on the detections of this
     post, never a refusal. Three codes say what the engine could not settle from
     the post (``several_coordinates``, ``source_ambiguous``, ``source_missing``)
-    and four what the drafts ended up with (``source_footage_missing``,
+    and four what the detections ended up with (``source_footage_missing``,
     ``source_fetch_failed``, ``source_date_unknown``, ``duplicate_media``); the
     fetch-failed one is the source that could not be read this time, so the same
     import later may well fill it. ``reason`` is the refusal when
-    the post produced no draft at all (``coords_missing``, ``coords_invalid``),
-    and null whenever drafts were produced. ``failed`` counts the detections that
+    the post produced no detection at all (``coords_missing``, ``coords_invalid``),
+    and null whenever detections were produced. ``failed`` counts the detections that
     raised mid-persist.
     """
 

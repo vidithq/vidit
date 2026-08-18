@@ -201,7 +201,7 @@ def delete_event(
 # ── Lifecycle verbs ───────────────────────────────────────────────────
 # Geolocate writes the caller's edits and moves a ``requested`` or
 # ``detected`` event to ``geolocated``; close is the terminal withdraw /
-# reject. A ``detected`` draft is owner-only; a ``requested`` event is
+# reject. A detection is owner-only; a ``requested`` event is
 # answerable by anyone (the fulfiller becomes the owner). A ``geolocated``
 # row is frozen (409). See ``api.md``.
 
@@ -257,7 +257,7 @@ async def geolocate_event(
     ``remove_media_ids`` dropped), and on
     success the row is written and frozen as ``geolocated``, with the caller
     credited as a geolocator. Only ``detected_from_url`` (provenance) and
-    ``status`` carry no field. A ``detected`` draft is owner-only (403
+    ``status`` carry no field. A detection is owner-only (403
     otherwise); a ``requested`` event is answerable by anyone, and the
     fulfiller becomes its owner (``requested_by`` keeps the original poster).
     Blocked until the evidence floor is met (one source media, a proof image,

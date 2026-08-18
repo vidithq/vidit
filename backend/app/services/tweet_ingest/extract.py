@@ -15,7 +15,7 @@ Four extractors run over the full text, de-duped:
 3. DMS (``48°00'45"N 37°48'08"E``)
 4. Google Maps ``@lat,lng,zoom`` links
 
-Every coordinate found makes a draft; the 6-decimal dedup is the only guard.
+Every coordinate found makes a detection; the 6-decimal dedup is the only guard.
 The decimal-pair extractor requires 3 or more decimal places to avoid matching
 dates / version strings (`1.2.3`, `2025-11-12`); the hemisphere and DMS forms
 use the directional letters as the discriminator (one fractional digit
@@ -150,7 +150,7 @@ def scan_coords(text: str) -> CoordScan:
     OSINT posts), decimal degrees plus hemisphere, DMS (older intel), then
     Google Maps URLs.
 
-    No cap: every coordinate the analyst wrote makes a draft, and the text
+    No cap: every coordinate the analyst wrote makes a detection, and the text
     length of a post already bounds how many that is. Dedup by
     rounded-to-6-decimals key; finer gives float-equality artefacts, coarser
     conflates candidates the analyst wants distinct.

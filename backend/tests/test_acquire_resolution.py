@@ -244,7 +244,7 @@ def test_a_chase_that_found_nothing_reports_its_class_to_the_resolution(
     """The chase is fail-soft, so a failure never reaches the analyst as an
     error. The class of it still travels, on the record that declared the
     target: only a transient one is worth importing again later, and the
-    resolution is what turns that into the draft's warning."""
+    resolution is what turns that into the detection's warning."""
     import app.services.tweet_ingest.chase.telegram as telegram_mod
     from app.services.tweet_ingest import resolve_threads
     from app.services.tweet_ingest.records import ChaseResult
@@ -258,9 +258,9 @@ def test_a_chase_that_found_nothing_reports_its_class_to_the_resolution(
     assert record.telegram is None
     assert (record.chase_outcome == "transient_failure") is expected
 
-    [draft] = resolve_threads([acquired.records]).drafts
-    assert draft.source_url == _TG_URL
-    assert draft.source_fetch_failed is expected
+    [detection] = resolve_threads([acquired.records]).detections
+    assert detection.source_url == _TG_URL
+    assert detection.source_fetch_failed is expected
 
 
 def test_nothing_is_chased_when_the_candidates_are_ambiguous(monkeypatch):

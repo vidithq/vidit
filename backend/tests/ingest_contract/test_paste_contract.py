@@ -49,6 +49,6 @@ def test_the_paste_reads_the_same_authors_parent() -> None:
     resolution = resolve_threads([acquired.records])
 
     assert resolution.reason is None
-    [draft] = resolution.drafts
-    assert draft.detected_from_url.endswith(f"/status/{expected['head_tweet_id']}")
-    assert draft.source_url == expected["source_url"]
+    [detection] = resolution.detections
+    assert detection.detected_from_url.endswith(f"/status/{expected['head_tweet_id']}")
+    assert detection.source_url == expected["source_url"]

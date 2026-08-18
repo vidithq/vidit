@@ -202,13 +202,13 @@ const MOCK_DETAIL: EventDetail = {
   geolocators: [],
 };
 
-// The three badge states a Detections queue row can be in: the draft that
+// The three badge states a Detections queue row can be in: the detection that
 // carries the whole evidence floor and is waiting on a review's judgment, the
 // one short of a single named piece, and the one short of several, which
 // collapse to a count.
-const MOCK_DRAFT_READY: EventDetail = {
+const MOCK_DETECTION_READY: EventDetail = {
   ...MOCK_DETAIL,
-  id: "draft-ready",
+  id: "detection-ready",
   status: "detected",
   source_url: "https://t.me/channel/12345",
   proof: { type: "doc", content: [{ type: "image", attrs: { src: "" } }] },
@@ -222,16 +222,16 @@ const MOCK_DRAFT_READY: EventDetail = {
   ],
 };
 
-const MOCK_DRAFT_ONE_MISSING: EventDetail = {
-  ...MOCK_DRAFT_READY,
-  id: "draft-one-missing",
+const MOCK_DETECTION_ONE_MISSING: EventDetail = {
+  ...MOCK_DETECTION_READY,
+  id: "detection-one-missing",
   title: "Convoy on a rural road, unnamed",
   proof: null,
 };
 
-const MOCK_DRAFT_SEVERAL_MISSING: EventDetail = {
-  ...MOCK_DRAFT_ONE_MISSING,
-  id: "draft-several-missing",
+const MOCK_DETECTION_SEVERAL_MISSING: EventDetail = {
+  ...MOCK_DETECTION_ONE_MISSING,
+  id: "detection-several-missing",
   title: "Smoke over a treeline, location unclear",
   media: [],
   source_url: null,
@@ -398,7 +398,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="ARMED_RING" usage="The armed half of a two-click confirm on a control that stays put: a ring plus a neutral plate, so the button reads as changed without moving or resizing anything. Applied via className over any variant, paired with useConfirmAction (which owns the arming, the timeout, and the Escape / outside-click exits) and a label that says what the next click does. Every armed control that is not the loud red point of no return uses it: the event share row's draft-link pair, the detection form's Submit. DANGER_CONFIRM is the destructive counterpart.">
+          <Item name="ARMED_RING" usage="The armed half of a two-click confirm on a control that stays put: a ring plus a neutral plate, so the button reads as changed without moving or resizing anything. Applied via className over any variant, paired with useConfirmAction (which owns the arming, the timeout, and the Escape / outside-click exits) and a label that says what the next click does. Every armed control that is not the loud red point of no return uses it: the event share row's detection-link pair, the detection form's Submit. DANGER_CONFIRM is the destructive counterpart.">
             <div className="flex items-center gap-3">
               <Button variant="primary" className={ARMED_RING}>
                 Confirm submit
@@ -444,7 +444,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<CopyButton>" usage="The one copy-to-clipboard control: a square ghost icon button whose resting glyph flips to a check for the flash window (useCopyToClipboard). Used by the event share row and the profile's Discord account. `value` is a getter so the call site can read window at click time; `icon` swaps the resting glyph where the value names itself better than a copy mark does (the check is fixed); `beforeCopy` gates the write (the share row arms a draft link on the first click); the accessible name stays constant and the copied state is announced by a sibling live region.">
+          <Item name="<CopyButton>" usage="The one copy-to-clipboard control: a square ghost icon button whose resting glyph flips to a check for the flash window (useCopyToClipboard). Used by the event share row and the profile's Discord account. `value` is a getter so the call site can read window at click time; `icon` swaps the resting glyph where the value names itself better than a copy mark does (the check is fixed); `beforeCopy` gates the write (the share row arms a detection link on the first click); the accessible name stays constant and the copied state is announced by a sibling live region.">
             <div className="flex items-center gap-2">
               <CopyButton value={() => "https://vidit.app/events/demo"} label="Copy event link" />
               <CopyButton icon={DiscordGlyph} value={() => "a-handle"} label="Copy Discord username: a-handle" copiedLabel="Discord username copied" />
@@ -1021,7 +1021,7 @@ export default function PalettePage() {
               </Variant>
               <Variant label="the bot answering in-thread">
                 <MockPost {...MOCK_BOT} replyingTo={MOCK_ANALYST.handle}>
-                  {"✅ 1 geolocation draft saved · ref 94183d44"}
+                  {"✅ 1 detection saved · ref 94183d44"}
                 </MockPost>
               </Variant>
             </div>
@@ -1259,9 +1259,9 @@ export default function PalettePage() {
 
           <Item name="<DetectionQueueRow>" usage="Detections queue: denser than a card (no byline, coords or tags), whole row clicks through to the edit form. One badge, describing the evidence: 'Ready to review' (outline tone, waiting on a review's judgment, never a complete state), one named missing piece, or a count of several. Hover any badge: every state carries title text saying what it means, which pieces are missing in full, and what to do next.">
             <div className="w-full max-w-xl space-y-2">
-              <DetectionQueueRow draft={MOCK_DRAFT_READY} />
-              <DetectionQueueRow draft={MOCK_DRAFT_ONE_MISSING} />
-              <DetectionQueueRow draft={MOCK_DRAFT_SEVERAL_MISSING} />
+              <DetectionQueueRow detection={MOCK_DETECTION_READY} />
+              <DetectionQueueRow detection={MOCK_DETECTION_ONE_MISSING} />
+              <DetectionQueueRow detection={MOCK_DETECTION_SEVERAL_MISSING} />
             </div>
           </Item>
 

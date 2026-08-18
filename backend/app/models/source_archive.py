@@ -17,7 +17,7 @@ from app.database import Base
 # Where the link was found on the event. ``source_url`` is the event's declared
 # footage source (the column of the same name); ``secondary_source`` is one of
 # the analyst-submitted mirrors in ``event_source_links``; ``detected_from`` is
-# the analyst's own post a machine draft was detected from (``events.
+# the analyst's own post a machine detection came from (``events.
 # detected_from_url``), provenance rather than footage origin; ``proof_link`` is
 # an href carried by a link mark inside the proof body's Tiptap document.
 SourceArchiveOrigin = Literal["source_url", "secondary_source", "detected_from", "proof_link"]
@@ -34,7 +34,7 @@ class SourceArchive(Base):
 
     A child table rather than a column on ``events`` because one event carries
     several links: its ``source_url``, its secondary source links, the post a
-    machine draft was detected from, and every href in the proof body.
+    machine detection came from, and every href in the proof body.
 
     One row per link, holding one snapshot from whichever provider produced it.
     The capture happens in the analyst's own browser, on the provider's own

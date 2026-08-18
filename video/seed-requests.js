@@ -1,16 +1,16 @@
 // Seed requests from a list of tweet URLs.
 //
 // For each tweet:
-//   1. POST /events/import-from-tweet → creates `detected` drafts and
+//   1. POST /events/import-from-tweet → creates detections and
 //      answers their ids
-//   2. GET /events/{id} → the draft's title, source, post instant, proof
+//   2. GET /events/{id} → the detection's title, source, post instant, proof
 //      and stored media
-//   3. fetch each media file from its `storage_url` (the drafts already
+//   3. fetch each media file from its `storage_url` (the detections already
 //      hold the bytes, so nothing re-reads the X CDN)
-//   4. POST /events/requests multipart: title (from the draft's proof
+//   4. POST /events/requests multipart: title (from the detection's proof
 //      text), source_url, source_posted_at, the classification ids, and
 //      the one source file the row is born with
-//   5. delete the drafts the import created: they are working state for
+//   5. delete the detections the import created: they are working state for
 //      this script, not part of the promo catalog
 //
 // PRECONDITION: the import reads the caller's OWN posts only, so the
@@ -77,7 +77,7 @@ async function mintAuth(email, password) {
   };
 }
 
-// The paste entry: creates the drafts the post carries and answers their
+// The paste entry: creates the detections the post carries and answers their
 // ids under `created` / `updated` / `skipped`, plus `warnings` and a
 // `reason` when it produced none.
 async function importPost(auth, url) {
@@ -94,9 +94,9 @@ async function importPost(auth, url) {
   return res.json();
 }
 
-// The first draft an import landed on, whichever verdict it fell under, or
+// The first detection an import landed on, whichever verdict it fell under, or
 // null when the post produced none.
-function firstDraftId(outcome) {
+function firstDetectionId(outcome) {
   return [...outcome.created, ...outcome.updated, ...outcome.skipped][0] || null;
 }
 
@@ -116,7 +116,7 @@ async function deleteEvent(auth, id) {
   if (!res.ok && res.status !== 404) console.warn(`  skip delete ${id}: ${res.status}`);
 }
 
-// A draft's media is already stored, so the bytes come from the media host
+// A detection's media is already stored, so the bytes come from the media host
 // rather than from the X CDN. No auth: the objects are public reads.
 async function fetchStoredMedia(storageUrl) {
   const res = await fetch(storageUrl);
@@ -126,7 +126,7 @@ async function fetchStoredMedia(storageUrl) {
   return { buf, type };
 }
 
-// The draft's proof body as plain text. The proof is a Tiptap document, and
+// The detection's proof body as plain text. The proof is a Tiptap document, and
 // the import writes the thread's own words into it, which is the text the
 // request title is built from.
 function proofText(proof) {
@@ -291,10 +291,10 @@ const wipeUserGeolocations = (auth) =>
 // would silently no-op, leaving the duplicate-warning card to fire on
 // every re-record.
 //
-// The coordinate and the date come from the draft the import creates, so
+// The coordinate and the date come from the detection the import creates, so
 // the import itself runs under `ownerAuth`, the account whose linked X
 // handle authored the tweet: the paste reads its caller's own posts only.
-// The draft is deleted again straight away; it exists here to answer
+// The detection is deleted again straight away; it exists here to answer
 // "where and when is this tweet", not to appear in the promo catalog.
 async function wipeTweetDuplicatesAs(adminAuth, ownerAuth, tweetUrl) {
   let outcome;
@@ -304,15 +304,15 @@ async function wipeTweetDuplicatesAs(adminAuth, ownerAuth, tweetUrl) {
     console.warn(`  wipeTweetDuplicatesAs: could not import tweet, skipping: ${e.message}`);
     return;
   }
-  const draftId = firstDraftId(outcome);
-  if (!draftId) {
-    console.warn("  wipeTweetDuplicatesAs: tweet produced no draft, skipping");
+  const detectionId = firstDetectionId(outcome);
+  if (!detectionId) {
+    console.warn("  wipeTweetDuplicatesAs: tweet produced no detection, skipping");
     return;
   }
-  const draft = await readEvent(ownerAuth, draftId);
+  const detection = await readEvent(ownerAuth, detectionId);
   for (const id of outcome.created) await deleteEvent(ownerAuth, id);
-  const coord = draft.event_coords;
-  const date = (draft.event_date || draft.detected_post_at || "").slice(0, 10);
+  const coord = detection.event_coords;
+  const date = (detection.event_date || detection.detected_post_at || "").slice(0, 10);
   if (!coord || !date) {
     console.warn(
       "  wipeTweetDuplicatesAs: missing coords/date on tweet, skipping"
@@ -383,24 +383,24 @@ const RECORDING_TWEET_URL =
   for (const url of TWEETS) {
     console.log(`→ ${url}`);
     const outcome = await importPost(auth, url);
-    const draftId = firstDraftId(outcome);
-    if (!draftId) {
-      console.warn(`  no draft: ${outcome.reason?.message || "post produced none"}`);
+    const detectionId = firstDetectionId(outcome);
+    if (!detectionId) {
+      console.warn(`  no detection: ${outcome.reason?.message || "post produced none"}`);
       continue;
     }
-    const draft = await readEvent(auth, draftId);
-    const title = titleFromTweetText(proofText(draft.proof), "Unplaced footage");
+    const detection = await readEvent(auth, detectionId);
+    const title = titleFromTweetText(proofText(detection.proof), "Unplaced footage");
     console.log(`  title: ${title.slice(0, 60)}${title.length > 60 ? "…" : ""}`);
-    console.log(`  media: ${draft.media.length}`);
+    console.log(`  media: ${detection.media.length}`);
 
     // One source file per event, so this picks a single attachment.
-    // Prefer the draft's VIDEOS — a request is the analyst's source
+    // Prefer the detection's VIDEOS — a request is the analyst's source
     // footage that nobody's placed yet; the images are usually the
     // geolocator's annotated satellite stills, which contradict the
     // "unplaced footage" premise. Images stay as the fallback so one
     // unreadable object doesn't drop the request entirely.
-    const videos = draft.media.filter((m) => m.media_type === "video");
-    const candidates = [...videos, ...draft.media.filter((m) => m.media_type === "image")];
+    const videos = detection.media.filter((m) => m.media_type === "video");
+    const candidates = [...videos, ...detection.media.filter((m) => m.media_type === "image")];
     let mediaFile = null;
     for (const m of candidates) {
       try {
@@ -419,17 +419,17 @@ const RECORDING_TWEET_URL =
     }
 
     // The source's own post instant. The backend requires it: a source is
-    // a post, and a post always has a time. The draft carries the source's
+    // a post, and a post always has a time. The detection carries the source's
     // instant when the chase resolved one, else the analyst's own.
-    const sourcePostedAt = draft.source_posted_at || draft.detected_post_at;
+    const sourcePostedAt = detection.source_posted_at || detection.detected_post_at;
     if (!sourcePostedAt) {
-      console.warn("  draft carries no post instant, skipping request");
+      console.warn("  detection carries no post instant, skipping request");
       continue;
     }
 
     const request = await createRequest(auth, {
       title,
-      sourceUrl: draft.source_url || draft.detected_from_url || url,
+      sourceUrl: detection.source_url || detection.detected_from_url || url,
       sourcePostedAt,
       tagIds,
       conflictIds,
@@ -437,8 +437,8 @@ const RECORDING_TWEET_URL =
     });
     console.log(`  ✓ ${request.id}`);
 
-    // The drafts were the read path, not the promo state: the seeded
-    // requests are what the recording shows, and a machine draft beside
+    // The detections were the read path, not the promo state: the seeded
+    // requests are what the recording shows, and a machine detection beside
     // them would put an unreviewed row on the map.
     for (const id of outcome.created) await deleteEvent(auth, id);
   }

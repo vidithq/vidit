@@ -21,7 +21,7 @@ import type { EventDetail } from "@/types";
 
 import DetectionsPage from "./page";
 
-function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
+function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   return {
     id: "d1",
     title: "Strike near Bakhmut",
@@ -72,7 +72,7 @@ function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
 
 function payload(overrides: Record<string, unknown> = {}) {
   return {
-    items: [draftFixture()],
+    items: [detectionFixture()],
     total: 1,
     page: 1,
     per_page: 10,
@@ -107,7 +107,7 @@ describe("DetectionsPage queue filter", () => {
   it("asks the server for the filtered queue instead of hiding loaded rows", () => {
     // The bug this replaces: the toggle filtered the ten rows on screen while
     // the pager cut pages server-side, so an analyst whose first page happened
-    // to hold ten incomplete drafts read "no ready drafts" over a queue that
+    // to hold ten incomplete detections read "no ready detections" over a queue that
     // held hundreds of them.
     useApiResource.mockReturnValue({ data: payload(), error: null });
     render(<DetectionsPage />);
@@ -181,7 +181,7 @@ describe("DetectionsPage queue filter", () => {
     render(<DetectionsPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Ready" }));
-    expect(screen.getByText("No ready drafts.")).toBeInTheDocument();
+    expect(screen.getByText("No ready detections.")).toBeInTheDocument();
     // The queue itself is not empty, so the import pitch stays away and the
     // toggle stays on screen to switch back with.
     expect(screen.queryByText("No detections to submit.")).not.toBeInTheDocument();

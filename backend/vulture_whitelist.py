@@ -45,7 +45,7 @@ deleted_events  # schemas/admin.py AdminPurgeDetectedResponse
 media_count  # schemas/admin.py
 pending_registrations_deleted  # schemas/admin.py
 analysts_notified  # schemas/admin.py AdminMaintenanceResponse
-drafts_pending  # schemas/admin.py AdminMaintenanceResponse
+detections_pending  # schemas/admin.py AdminMaintenanceResponse
 digest_send_failures  # schemas/admin.py AdminMaintenanceResponse
 archived_source  # schemas/event.py EventRead
 archived_secondary_sources  # schemas/event.py EventRead

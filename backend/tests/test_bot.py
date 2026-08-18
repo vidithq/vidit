@@ -1,4 +1,4 @@
-"""Integration tests for the bot pipeline: a mention becomes a detected draft.
+"""Integration tests for the bot pipeline: a mention becomes a detection.
 
 Every X surface is mocked: syndication bodies through one ``MockTransport``
 (dispatched by tweet id), the paid mentions read and reply write through
@@ -284,7 +284,7 @@ async def _run(db, mention_ids, seen_params=None, posted=None, liked=None, reply
     return outcome, seen_params, posted, liked
 
 
-async def test_a_tagged_post_creates_a_draft(db, linked_owner):
+async def test_a_tagged_post_creates_a_detection(db, linked_owner):
     outcome, _, posted, liked = await _run(db, [TAGGED_ID])
 
     assert outcome.events_created == 1
@@ -336,7 +336,7 @@ async def test_a_tagged_post_creates_a_draft(db, linked_owner):
     assert "http" not in text and ".app" not in text and ".com" not in text
 
 
-async def test_the_two_post_field_format_lands_one_draft(db, linked_owner):
+async def test_the_two_post_field_format_lands_one_detection(db, linked_owner):
     # The coordinate on the analyst's post, the source link on their own reply
     # where the bot is tagged. The TikTok link is outside the chase vocabulary,
     # so it is stored link-only; provenance anchors on the parent.
@@ -365,9 +365,9 @@ async def test_the_two_post_field_format_lands_one_draft(db, linked_owner):
 
 async def test_tagging_either_post_shares_the_parent_idempotency_key(db, linked_owner):
     # detected_from_url anchors on the parent, so a second tag on the reply and
-    # a tag on the parent itself both collapse onto the first draft. Each of the
+    # a tag on the parent itself both collapse onto the first detection. Each of the
     # two later tags reads a different slice of the thread, so it overwrites the
-    # draft rather than matching it unchanged: an answered tag, ledgered
+    # detection rather than matching it unchanged: an answered tag, ledgered
     # ``updated``, not the silent ``skipped``.
     outcome, _, posted, _ = await _run(
         db, [TWO_POST_TAGGED_ID, TWO_POST_TAGGED_TWICE_ID, TWO_POST_PARENT_ID]
@@ -378,9 +378,9 @@ async def test_tagging_either_post_shares_the_parent_idempotency_key(db, linked_
     assert outcome.skipped == 0
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 1
     assert [p["text"].splitlines()[0].split(" · ")[0] for p in posted] == [
-        "✅ 1 geolocation draft saved",
-        "✅ 1 geolocation draft updated",
-        "✅ 1 geolocation draft updated",
+        "✅ 1 detection saved",
+        "✅ 1 detection updated",
+        "✅ 1 detection updated",
     ]
 
 
@@ -484,7 +484,7 @@ async def test_poll_overlap_recovers_mention_dropped_by_webhook(db, linked_owner
 
 async def test_unlinked_handle_records_no_account_and_creates_nothing(db):
     # No Vidit account carries HANDLE: the mention is ledgered and that is
-    # all. No user row minted, no draft, no reply, no like.
+    # all. No user row minted, no detection, no reply, no like.
     outcome, _, posted, liked = await _run(db, [TAGGED_ID])
 
     assert outcome.no_account == 1
@@ -500,7 +500,7 @@ async def test_unlinked_handle_records_no_account_and_creates_nothing(db):
 
 
 async def test_deactivated_linked_owner_records_no_account(db, linked_owner):
-    # A suspended account must not accrue drafts or billed gestures.
+    # A suspended account must not accrue detections or billed gestures.
     linked_owner.is_active = False
     db.commit()
 
@@ -512,12 +512,12 @@ async def test_deactivated_linked_owner_records_no_account(db, linked_owner):
     assert liked == []
 
 
-async def test_a_persist_that_raised_on_every_draft_answers_the_analyst(
+async def test_a_persist_that_raised_on_every_detection_answers_the_analyst(
     db, linked_owner, monkeypatch
 ):
     """The verdict a linked analyst used to get in silence.
 
-    A post the engine read fine, whose every draft raised mid-persist, ledgers
+    A post the engine read fine, whose every detection raised mid-persist, ledgers
     ``failed`` so an operator can retry it by deleting the row. The paste
     returns that verdict and the archive counts it, so the bot answers too:
     there is no code to name, which is exactly the reply's unexpected case, and
@@ -589,11 +589,11 @@ async def test_failure_reply_loop_guard_on_replies_to_the_bot(db, linked_owner):
 
 
 @pytest.mark.parametrize("cap", ["_MAX_REPLIES_PER_HOUR", "_MAX_REPLIES_PER_AUTHOR_PER_HOUR"])
-async def test_reply_budget_cap_skips_reply_but_draft_still_lands(
+async def test_reply_budget_cap_skips_reply_but_detection_still_lands(
     db, linked_owner, monkeypatch, cap
 ):
     # Either cap spent, in total or on this one author: detection is unbilled,
-    # so the draft still lands and only the gesture is skipped.
+    # so the detection still lands and only the gesture is skipped.
     import app.services.bot as bot_service
 
     monkeypatch.setattr(bot_service, cap, 0)
@@ -727,10 +727,10 @@ def test_compose_reply_is_linkless_and_carries_the_warnings():
     event_id = str(uuid.uuid4())
     text = compose_reply(
         event_id,
-        drafts=1,
+        detections=1,
         warnings=[SOURCE_FOOTAGE_MISSING, SOURCE_DATE_UNKNOWN, DUPLICATE_MEDIA],
     )
-    assert text.startswith("✅ 1 geolocation draft saved")
+    assert text.startswith("✅ 1 detection saved")
     assert event_id[:8] in text
     assert event_id not in text  # the ref is shortened
     assert "No footage from the source" in text
@@ -743,7 +743,7 @@ def test_compose_reply_is_linkless_and_carries_the_warnings():
     assert text.endswith("Review from your profile")
     assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
     # No warning raised, no ⚠ line: the composer decides nothing itself.
-    clean = compose_reply(event_id, drafts=1, warnings=[])
+    clean = compose_reply(event_id, detections=1, warnings=[])
     assert "⚠" not in clean
 
 
@@ -751,8 +751,8 @@ def test_compose_reply_carries_one_line_per_warning_and_stays_in_the_cap():
     """One ⚠ line per raised code, in the table's order, and the heaviest reply
     the pipeline can compose still fits X's cap.
 
-    Heaviest is four codes: ``persist_drafts`` drops the footage and date
-    warnings on a draft that already carries the empty-source pair, the two
+    Heaviest is four codes: ``persist_detections`` drops the footage and date
+    warnings on a detection that already carries the empty-source pair, the two
     halves of that pair never co-occur, and the two footage codes are the two
     answers to one question, so no pass raises the whole vocabulary. Both
     footage codes are composed here, since the fetch-failed sentence is the
@@ -766,15 +766,15 @@ def test_compose_reply_carries_one_line_per_warning_and_stays_in_the_cap():
             SOURCE_DATE_UNKNOWN,
             DUPLICATE_MEDIA,
         ]
-        text = compose_reply(event_id, drafts=3, warnings=heaviest)
-        assert text.startswith("✅ 3 geolocation drafts saved")
+        text = compose_reply(event_id, detections=3, warnings=heaviest)
+        assert text.startswith("✅ 3 detections saved")
         assert [line for line in text.splitlines() if line.startswith("⚠")] == [
             f"⚠ {WARNING_MESSAGES[code]}" for code in heaviest
         ]
         assert text.endswith("Review from your profile")
         assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
 
-    ambiguous = compose_reply(event_id, drafts=2, warnings=[SOURCE_AMBIGUOUS, DUPLICATE_MEDIA])
+    ambiguous = compose_reply(event_id, detections=2, warnings=[SOURCE_AMBIGUOUS, DUPLICATE_MEDIA])
     assert "Several possible sources" in ambiguous
     assert "No footage from the source" not in ambiguous and "post date" not in ambiguous
     assert reply_weighted_len(ambiguous) <= REPLY_MAX_WEIGHTED_LEN

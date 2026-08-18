@@ -5,7 +5,7 @@ import { cn } from "@/lib/cn";
 /**
  * A locked URL field's value, rendered as the link it already is.
  *
- * The value is inherited (a request's source URL, an imported draft's
+ * The value is inherited (a request's source URL, an imported detection's
  * provenance post) and stays non-editable, but it is still a URL a reviewer
  * needs to open, and an `<input readOnly>` holds text rather than markup. So
  * the field renders as an anchor instead, wearing `LOCKED_FIELD`, the same box

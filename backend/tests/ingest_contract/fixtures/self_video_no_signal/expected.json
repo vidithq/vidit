@@ -1,5 +1,5 @@
 {
-  "description": "The analyst's own video plus a coordinate, no quote and no link. Nothing can fill the source slot and the proof document embeds images only, so the video is promoted to source media; source_url stays null (a promotion of media is never a deduction of a source URL) and the draft warns source_missing.",
+  "description": "The analyst's own video plus a coordinate, no quote and no link. Nothing can fill the source slot and the proof document embeds images only, so the video is promoted to source media; source_url stays null (a promotion of media is never a deduction of a source URL) and the detection warns source_missing.",
   "coords": [
     [
       48.9217,

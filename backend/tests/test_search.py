@@ -196,7 +196,7 @@ def test_search_matches_geolocation_by_title(db, caller):
 
 def test_search_proof_only_event_surfaces_proof_image_thumbnail(db, caller):
     """An event with no source media but a proof image (archive imports, bot
-    drafts) surfaces the proof image as its card thumbnail; a proof VIDEO is
+    detections) surfaces the proof image as its card thumbnail; a proof VIDEO is
     never picked, so the video-only sibling ships an empty media list."""
     token = _unique_token()
     proof_only = Event(

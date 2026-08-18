@@ -4,7 +4,7 @@ Every card and preview surface (events list, profile events, timeline,
 search hits, map pin hover, detections queue) shows one thumbnail per
 event. The order: the first ``source`` media, else the first ``proof``
 IMAGE. Many real events carry only a proof image (archive-imported
-detections, bot-created drafts), and without the fallback those cards
+detections, bot-created detections), and without the fallback those cards
 render the "no media" box despite holding a perfectly showable image.
 Proof images already render publicly on the event detail page, so the
 fallback is presentation only. A proof VIDEO is never picked: the proof

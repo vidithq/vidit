@@ -1,4 +1,4 @@
-"""``import-from-tweet``: paste your own X post, get the drafts it produced."""
+"""``import-from-tweet``: paste your own X post, get the detections it produced."""
 
 import asyncio
 import logging
@@ -34,7 +34,7 @@ router = APIRouter()
 # The sentence for a refusal the copy table does not word, which the code test
 # makes unreachable while it passes. The page renders what it is given, so the
 # fallback belongs here rather than as a second table on the page.
-_UNNAMED_REFUSAL = "That post produced no draft."
+_UNNAMED_REFUSAL = "That post produced no detection."
 
 
 def _refuse(status_code: int, code: str, message: str) -> NoReturn:
@@ -43,8 +43,8 @@ def _refuse(status_code: int, code: str, message: str) -> NoReturn:
 
 
 # Declared ``def``, so FastAPI runs the whole handler in its threadpool. The
-# import is one long blocking stretch (the syndication fetch, then the per-draft
-# queries, commits and image re-encodes of ``persist_drafts``), and on the event
+# import is one long blocking stretch (the syndication fetch, then the per-detection
+# queries, commits and image re-encodes of ``persist_detections``), and on the event
 # loop it would hold every other in-flight request behind it. ``asyncio.run``
 # gives that stretch its own loop inside the worker thread, which is the shape
 # the bot's cron and the archive worker already run under. Kept out of the
@@ -57,12 +57,12 @@ def import_from_tweet(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Import the caller's own X post as ``detected`` drafts.
+    """Import the caller's own X post as detections.
 
     The paste runs the same engine and the same write path as the bot and the
     archive backfill (``detection.import_pasted_post``), so one post yields one
-    draft per coordinate it carries, owned by the caller. A second paste of the
-    same post overwrites the open draft instead of duplicating it.
+    detection per coordinate it carries, owned by the caller. A second paste of the
+    same post overwrites the open detection instead of duplicating it.
 
     Auth-only, and own posts only: the post's author must be the handle linked
     to the caller's account. Per-IP 30/minute bounds what one caller can spend

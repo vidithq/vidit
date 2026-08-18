@@ -92,26 +92,26 @@ def expected_for_path(typology: str, path: str) -> dict[str, Any]:
 def assert_resolution_matches(typology: str, path: str, resolution: Resolution) -> None:
     """Assert one entry's resolution answers the typology's expectation.
 
-    The shared assertion every consumer runs: one draft per coordinate, and
-    every draft carrying the title, source, mirrors, warnings and media split
+    The shared assertion every consumer runs: one detection per coordinate, and
+    every detection carrying the title, source, mirrors, warnings and media split
     the expectation names. A ``paths.<path>.reason`` override pins the refusal
     that entry reports.
     """
     block = load_expected(typology).get("paths", {}).get(path, {})
     expected = expected_for_path(typology, path)
 
-    assert len(resolution.drafts) == len(expected["coords"]), typology
+    assert len(resolution.detections) == len(expected["coords"]), typology
     if "reason" in block:
         assert resolution.reason == block["reason"], typology
-    for draft in resolution.drafts:
-        assert draft.title == expected["title"], typology
-        assert draft.source_url == expected["source_url"], typology
-        assert draft.secondary_source_urls == expected["secondary_source_urls"], typology
-        assert draft.warnings == expected["warnings"], typology
-        assert [[m.kind, m.origin] for m in draft.source_media] == [
+    for detection in resolution.detections:
+        assert detection.title == expected["title"], typology
+        assert detection.source_url == expected["source_url"], typology
+        assert detection.secondary_source_urls == expected["secondary_source_urls"], typology
+        assert detection.warnings == expected["warnings"], typology
+        assert [[m.kind, m.origin] for m in detection.source_media] == [
             list(pair) for pair in expected["source_media"]
         ], typology
-        assert [[m.kind, m.origin] for m in draft.proof_media] == [
+        assert [[m.kind, m.origin] for m in detection.proof_media] == [
             list(pair) for pair in expected["proof_media"]
         ], typology
 

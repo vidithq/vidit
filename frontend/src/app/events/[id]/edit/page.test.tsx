@@ -77,7 +77,7 @@ const CURATED_TAGS: Tag[] = [
   { id: "t-drone", name: "Drone", category: "capture_source" },
 ];
 
-function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
+function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   return {
     id: "d1",
     title: "Strike near Bakhmut",
@@ -126,11 +126,11 @@ function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   };
 }
 
-/** The queue this draft is being walked through: itself, then two more. */
+/** The queue this detection is being walked through: itself, then two more. */
 let queueItems: EventDetail[] = [];
 
 function resource(path: string) {
-  if (path.startsWith("/events/d1")) return draftFixture();
+  if (path.startsWith("/events/d1")) return detectionFixture();
   if (path.startsWith("/events/detections"))
     return { items: queueItems, total: queueItems.length, page: 1, per_page: 100 };
   if (path === "/tags?curated=true") return CURATED_TAGS;
@@ -148,14 +148,14 @@ function fillTheFloor() {
 
 /** Fill the floor, then submit: the first click arms the button in place, the
  *  second one writes. */
-async function submitDraft() {
+async function submitDetection() {
   fillTheFloor();
   fireEvent.click(screen.getByRole("button", { name: "Submit" }));
   fireEvent.click(await screen.findByRole("button", { name: "Confirm submit" }));
 }
 
-/** Reject the draft on screen, through its confirm-with-reason panel. */
-function rejectDraft(reason: string) {
+/** Reject the detection on screen, through its confirm-with-reason panel. */
+function rejectDetection(reason: string) {
   fireEvent.click(screen.getByRole("button", { name: "Reject" }));
   fireEvent.change(screen.getByLabelText(/Reject reason/), {
     target: { value: reason },
@@ -167,16 +167,16 @@ beforeEach(() => {
   push.mockReset();
   geolocateMock.mockReset();
   closeMock.mockReset();
-  geolocateMock.mockResolvedValue(draftFixture({ status: "geolocated" }));
+  geolocateMock.mockResolvedValue(detectionFixture({ status: "geolocated" }));
   queryParam = null;
   queueItems = [
-    draftFixture(),
-    draftFixture({ id: "d2", title: "Second" }),
-    draftFixture({ id: "d3", title: "Third" }),
+    detectionFixture(),
+    detectionFixture({ id: "d2", title: "Second" }),
+    detectionFixture({ id: "d3", title: "Third" }),
   ];
 });
 
-describe("the draft edit surface", () => {
+describe("the detection edit surface", () => {
   it("renders the form under a bare title, with Submit alone at the foot", () => {
     render(<EditEventPage />);
 
@@ -201,12 +201,12 @@ describe("the draft edit surface", () => {
     expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
   });
 
-  it("rejects the draft behind its reason panel", async () => {
-    closeMock.mockResolvedValue(draftFixture({ status: "closed" }));
+  it("rejects the detection behind its reason panel", async () => {
+    closeMock.mockResolvedValue(detectionFixture({ status: "closed" }));
     render(<EditEventPage />);
 
-    rejectDraft("Not a strike.");
-    // Off a review pass, a disposed draft leaves for the queue list.
+    rejectDetection("Not a strike.");
+    // Off a review pass, a disposed detection leaves for the queue list.
     await waitFor(() =>
       expect(push).toHaveBeenCalledWith("/profile/ana/detections")
     );
@@ -214,13 +214,13 @@ describe("the draft edit surface", () => {
 
   it("carries no queue position or Skip when it is not a review pass", () => {
     render(<EditEventPage />);
-    expect(screen.queryByText(/Draft \d+ of/)).toBeNull();
+    expect(screen.queryByText(/Detection \d+ of/)).toBeNull();
     expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
   });
 
   it("returns to the queue list after a submit made outside a pass", async () => {
     render(<EditEventPage />);
-    await submitDraft();
+    await submitDetection();
     await waitFor(() => expect(geolocateMock).toHaveBeenCalledTimes(1));
     await waitFor(() =>
       expect(push).toHaveBeenCalledWith("/profile/ana/detections")
@@ -236,25 +236,25 @@ describe("a review pass over the queue", () => {
   it("is the same form, proof editor included, plus its position", async () => {
     render(<EditEventPage />);
 
-    expect(screen.getByText("Draft 1 of 3")).toBeInTheDocument();
+    expect(screen.getByText("Detection 1 of 3")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /Title/ })).toHaveValue(
       "Strike near Bakhmut"
     );
     expect(await screen.findByTestId("proof-editor")).toBeInTheDocument();
   });
 
-  it("skips to the next draft's own URL, flag kept", () => {
+  it("skips to the next detection's own URL, flag kept", () => {
     render(<EditEventPage />);
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     expect(geolocateMock).not.toHaveBeenCalled();
-    // A real address per draft: a reload keeps the place, and Back steps back
-    // one draft.
+    // A real address per detection: a reload keeps the place, and Back steps back
+    // one detection.
     expect(push).toHaveBeenCalledWith("/events/d2/edit?queue=1");
   });
 
-  it("hands over to the next draft after a submit", async () => {
+  it("hands over to the next detection after a submit", async () => {
     render(<EditEventPage />);
-    await submitDraft();
+    await submitDetection();
 
     await waitFor(() => expect(geolocateMock).toHaveBeenCalledTimes(1));
     expect(geolocateMock.mock.calls[0][0]).toBe("d1");
@@ -263,11 +263,11 @@ describe("a review pass over the queue", () => {
     );
   });
 
-  it("hands over to the next draft after a rejection", async () => {
-    closeMock.mockResolvedValue(draftFixture({ status: "closed" }));
+  it("hands over to the next detection after a rejection", async () => {
+    closeMock.mockResolvedValue(detectionFixture({ status: "closed" }));
     render(<EditEventPage />);
 
-    rejectDraft("Duplicate of an earlier draft.");
+    rejectDetection("Duplicate of an earlier detection.");
     await waitFor(() =>
       expect(push).toHaveBeenCalledWith("/events/d2/edit?queue=1")
     );
@@ -275,32 +275,32 @@ describe("a review pass over the queue", () => {
 
   it("starts where the queue row was clicked", () => {
     queueItems = [
-      draftFixture({ id: "d0", title: "Earlier" }),
-      draftFixture(),
-      draftFixture({ id: "d2", title: "Second" }),
+      detectionFixture({ id: "d0", title: "Earlier" }),
+      detectionFixture(),
+      detectionFixture({ id: "d2", title: "Second" }),
     ];
     render(<EditEventPage />);
     // A row deep in the queue opens at its own position and walks on from
     // there, rather than restarting the pass at the head.
-    expect(screen.getByText("Draft 2 of 3")).toBeInTheDocument();
+    expect(screen.getByText("Detection 2 of 3")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     expect(push).toHaveBeenCalledWith("/events/d2/edit?queue=1");
   });
 
-  it("ends the pass on the queue list once this was the last draft", () => {
-    queueItems = [draftFixture()];
+  it("ends the pass on the queue list once this was the last detection", () => {
+    queueItems = [detectionFixture()];
     render(<EditEventPage />);
-    expect(screen.getByText("Draft 1 of 1")).toBeInTheDocument();
+    expect(screen.getByText("Detection 1 of 1")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     expect(push).toHaveBeenCalledWith("/profile/ana/detections");
   });
 
-  it("drops the position for a draft the queue no longer holds", () => {
-    queueItems = [draftFixture({ id: "d9", title: "Someone else's turn" })];
+  it("drops the position for a detection the queue no longer holds", () => {
+    queueItems = [detectionFixture({ id: "d9", title: "Someone else's turn" })];
     render(<EditEventPage />);
     // Published or rejected in another tab: the flag is stale, so the page is
     // a plain edit again rather than claiming a position it doesn't have.
-    expect(screen.queryByText(/Draft \d+ of/)).toBeNull();
+    expect(screen.queryByText(/Detection \d+ of/)).toBeNull();
     expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
   });
 });

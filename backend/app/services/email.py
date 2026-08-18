@@ -177,7 +177,7 @@ def password_changed_email(*, to: str) -> Email:
 def detections_link(username: str) -> str:
     """The absolute URL of an analyst's own Detections queue.
 
-    One home for the address every draft-related message points at: the import
+    One home for the address every detection-related message points at: the import
     completion mail and the completion digest both send an analyst to the same
     page.
     """
@@ -199,21 +199,21 @@ def archive_import_complete_email(
     # callouts. Only the headline is unconditional.
     lines = [f"  {created} new detection{'s' if created != 1 else ''} created"]
     if updated:
-        lines.append(f"  {updated} existing draft{'s' if updated != 1 else ''} updated")
+        lines.append(f"  {updated} existing detection{'s' if updated != 1 else ''} updated")
     if skipped:
         lines.append(f"  {skipped} left as {'they are' if skipped != 1 else 'it is'} (skipped)")
     if failed:
         lines.append(f"  {failed} could not be imported")
-    # The warnings say what review has to answer on the drafts this import
+    # The warnings say what review has to answer on the detections this import
     # created or updated, so they cut across two of the four buckets and sit
     # under their own heading rather than beside disjoint counts.
     raised = warnings or {}
     # One line per warning the import raised, in the shared table's order and
     # in its words: the bot's reply and the import panel say the same sentence
     # for the same code (``tweet_ingest.WARNING_MESSAGES``). What the email adds
-    # is the count, of drafts rather than of posts.
+    # is the count, of detections rather than of posts.
     flagged = [
-        f"  {raised[code]} draft{'s' if raised[code] != 1 else ''}: {message}"
+        f"  {raised[code]} detection{'s' if raised[code] != 1 else ''}: {message}"
         for code, message in WARNING_MESSAGES.items()
         if raised.get(code)
     ]
@@ -228,7 +228,7 @@ def archive_import_complete_email(
             f"{counts}\n"
             f"{review}"
             "\n"
-            "Each detection is a draft attributed to you; review them and\n"
+            "Each detection is attributed to you; review them and\n"
             "geolocate the ones you vouch for:\n"
             "\n"
             f"  {detections_link}\n"
@@ -255,19 +255,19 @@ def archive_import_failed_email(*, to: str) -> Email:
 
 
 def completion_digest_email(*, to: str, count: int, link: str) -> Email:
-    """The nudge on drafts still awaiting completion.
+    """The nudge on detections still awaiting completion.
 
     One message per analyst, a count and the way back to their queue. It stays
-    this thin on purpose: which drafts are worth publishing is a judgment made
+    this thin on purpose: which detections are worth publishing is a judgment made
     in the queue, so listing titles here would only be a second, staler copy of
     the page the link opens.
     """
     plural = "s" if count != 1 else ""
     return Email(
         to=to,
-        subject=f"{count} Vidit draft{plural} awaiting completion",
+        subject=f"{count} Vidit detection{plural} awaiting completion",
         text=(
-            f"You have {count} imported draft{plural} that hasn't been published\n"
+            f"You have {count} imported detection{plural} that hasn't been published\n"
             "yet. Each one is waiting on the two calls only you can make: which\n"
             "conflict it belongs to, and what the footage was shot with.\n"
             "\n"

@@ -150,13 +150,13 @@ describe("redirect-only routes", () => {
     skipBackRecord();
     navigate("/events/d1/edit");
 
-    // Back from the draft goes to the queue, not onto the doorway that would
-    // redirect straight back to the draft.
+    // Back from the detection goes to the queue, not onto the doorway that would
+    // redirect straight back to the detection.
     smartBack(router, "/profile/ana/detections");
     expect(current).toBe("/profile/ana/detections");
   });
 
-  it("unwinds a walk of drafts entered through the doorway", () => {
+  it("unwinds a walk of detections entered through the doorway", () => {
     navigate("/profile/ana/detections");
     navigate("/profile/ana/detections/review");
     skipBackRecord();

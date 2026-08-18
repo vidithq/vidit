@@ -34,7 +34,7 @@ function outcome(overrides: Partial<TweetImportOutcome> = {}): TweetImportOutcom
 
 function paste() {
   fireEvent.change(screen.getByPlaceholderText(/x\.com/), { target: { value: POST_URL } });
-  fireEvent.click(screen.getByRole("button", { name: "Create the draft" }));
+  fireEvent.click(screen.getByRole("button", { name: "Create the detection" }));
 }
 
 describe("ImportPostPanel", () => {
@@ -43,7 +43,7 @@ describe("ImportPostPanel", () => {
     vi.mocked(importFromPost).mockReset();
   });
 
-  it("opens the review of the draft a clean run created", async () => {
+  it("opens the review of the detection a clean run created", async () => {
     vi.mocked(importFromPost).mockResolvedValue(outcome({ created: ["d1"] }));
     render(<ImportPostPanel />);
 
@@ -61,7 +61,7 @@ describe("ImportPostPanel", () => {
       outcome({
         created: ["d1", "d2"],
         warnings: [
-          { code: "several_coordinates", message: "Several coordinates, one draft each" },
+          { code: "several_coordinates", message: "Several coordinates, one detection each" },
           { code: "source_missing", message: "No source found. Add one at review" },
         ],
       })
@@ -70,10 +70,10 @@ describe("ImportPostPanel", () => {
 
     paste();
 
-    expect(await screen.findByText("2 drafts created")).toBeInTheDocument();
-    expect(screen.getByText("Several coordinates, one draft each")).toBeInTheDocument();
+    expect(await screen.findByText("2 detections created")).toBeInTheDocument();
+    expect(screen.getByText("Several coordinates, one detection each")).toBeInTheDocument();
     expect(screen.getByText("No source found. Add one at review")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Review the draft" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Review the detection" })).toHaveAttribute(
       "href",
       "/events/d1/edit?queue=1"
     );
@@ -90,7 +90,7 @@ describe("ImportPostPanel", () => {
 
     const banner = await screen.findByText("No coordinate in the post");
     expect(banner).toHaveClass(...FORM_ERROR_BANNER.split(" "));
-    expect(screen.queryByRole("link", { name: "Review the draft" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Review the detection" })).toBeNull();
   });
 
   it("reads a post nothing could be stored from as a failure too", async () => {
@@ -113,11 +113,11 @@ describe("ImportPostPanel", () => {
 
     const banner = await screen.findByText("1 left as it is");
     expect(banner).toHaveClass(...FORM_SUCCESS_BANNER.split(" "));
-    expect(screen.queryByRole("link", { name: "Review the draft" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Review the detection" })).toBeNull();
     expect(push).not.toHaveBeenCalled();
   });
 
-  it("opens the draft a re-import overwrote", async () => {
+  it("opens the detection a re-import overwrote", async () => {
     vi.mocked(importFromPost).mockResolvedValue(
       outcome({
         updated: ["d4"],
@@ -130,7 +130,7 @@ describe("ImportPostPanel", () => {
     paste();
 
     expect(await screen.findByText("1 updated · 1 left as it is")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Review the draft" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Review the detection" })).toHaveAttribute(
       "href",
       "/events/d4/edit?queue=1"
     );
@@ -142,7 +142,7 @@ describe("ImportPostPanel", () => {
 
     paste();
 
-    expect(await screen.findByText(/produced no draft/)).toBeInTheDocument();
+    expect(await screen.findByText(/produced no detection/)).toBeInTheDocument();
   });
 
   it("renders a refused post's message as the API worded it", async () => {

@@ -2,7 +2,7 @@
 
 The import queue's bulk publish. What these lock in is the property the batch
 lives or dies on: it is the SAME evidence floor as the single-row geolocate,
-applied one transaction per row, so a mixed selection publishes the drafts that
+applied one transaction per row, so a mixed selection publishes the detections that
 clear it and leaves the others exactly as they were, each with its reason.
 """
 
@@ -16,7 +16,7 @@ from tests.events._helpers import _make_geo, client
 
 _URL = "/api/v1/events/batch-complete"
 
-# A draft's proof as the import leaves it: prose plus the annotation image the
+# A detection's proof as the import leaves it: prose plus the annotation image the
 # thread carried. Already-uploaded URLs count towards the proof-image floor
 # exactly like the submit form's ``placeholder://`` srcs.
 _PROOF_WITH_IMAGE = {
@@ -32,8 +32,8 @@ _PROOF_TEXT_ONLY = {
 }
 
 
-def _draft(db, author, *, proof: dict | None = None, **kwargs) -> Event:
-    """A machine draft as the archive import leaves it: coordinates, a source,
+def _detection(db, author, *, proof: dict | None = None, **kwargs) -> Event:
+    """A machine detection as the archive import leaves it: coordinates, a source,
     its footage, and an annotated proof body. Tagless: the conflict and the
     capture source are exactly what the batch supplies."""
     geo = _make_geo(
@@ -65,21 +65,23 @@ def _by_id(payload: dict) -> dict[str, dict]:
 
 
 def test_batch_complete_requires_authentication(db, author, conflict, capture_source_tag):
-    draft = _draft(db, author)
-    response = client.post(_URL, json=_body(conflict, [(draft, capture_source_tag.id)]))
+    detection = _detection(db, author)
+    response = client.post(_URL, json=_body(conflict, [(detection, capture_source_tag.id)]))
     assert response.status_code == 401
 
 
-def test_batch_complete_publishes_a_ready_draft(db, author, conflict, capture_source_tag, free_tag):
+def test_batch_complete_publishes_a_ready_detection(
+    db, author, conflict, capture_source_tag, free_tag
+):
     """The whole promotion: state, stamp, the conflict set once, the picked
     capture source, and the durable geolocator credit. Tags the import already
     put on the row survive."""
-    draft = _draft(db, author, tags=[free_tag])
+    detection = _detection(db, author, tags=[free_tag])
 
     response = client.post(
         _URL,
         headers=login_as(client, author),
-        json=_body(conflict, [(draft, capture_source_tag.id)]),
+        json=_body(conflict, [(detection, capture_source_tag.id)]),
     )
     assert response.status_code == 200, response.text
     body = response.json()
@@ -87,19 +89,19 @@ def test_batch_complete_publishes_a_ready_draft(db, author, conflict, capture_so
         "published": 1,
         "failed": 0,
         "rows": [
-            {"event_id": str(draft.id), "published": True, "code": None, "message": None},
+            {"event_id": str(detection.id), "published": True, "code": None, "message": None},
         ],
     }
 
     db.expire_all()
-    row = db.query(Event).filter(Event.id == draft.id).one()
+    row = db.query(Event).filter(Event.id == detection.id).one()
     assert row.status == STATUS_GEOLOCATED
     assert row.geolocated_at is not None
     assert [c.id for c in row.conflicts] == [conflict.id]
     assert {t.id for t in row.tags} == {capture_source_tag.id, free_tag.id}
     credit = (
         db.query(EventGeolocator)
-        .filter(EventGeolocator.event_id == draft.id, EventGeolocator.user_id == author.id)
+        .filter(EventGeolocator.event_id == detection.id, EventGeolocator.user_id == author.id)
         .first()
     )
     assert credit is not None
@@ -116,17 +118,17 @@ def test_batch_complete_replaces_an_imported_capture_source(
     db.add(imported)
     db.commit()
     imported_id = imported.id
-    draft = _draft(db, author, tags=[imported])
+    detection = _detection(db, author, tags=[imported])
 
     response = client.post(
         _URL,
         headers=login_as(client, author),
-        json=_body(conflict, [(draft, capture_source_tag.id)]),
+        json=_body(conflict, [(detection, capture_source_tag.id)]),
     )
     assert response.status_code == 200, response.text
 
     db.expire_all()
-    row = db.query(Event).filter(Event.id == draft.id).one()
+    row = db.query(Event).filter(Event.id == detection.id).one()
     assert {t.id for t in row.tags} == {capture_source_tag.id}
     row.tags = []
     db.commit()
@@ -136,11 +138,11 @@ def test_batch_complete_replaces_an_imported_capture_source(
 
 def test_batch_complete_publishes_what_clears_the_floor(db, author, conflict, capture_source_tag):
     """The mixed selection: the ready rows publish, the one missing its proof
-    image stays a draft carrying its reason, and neither outcome touches the
+    image stays a detection carrying its reason, and neither outcome touches the
     other."""
-    ready_one = _draft(db, author)
-    ready_two = _draft(db, author)
-    imageless = _draft(db, author, proof=_PROOF_TEXT_ONLY)
+    ready_one = _detection(db, author)
+    ready_two = _detection(db, author)
+    imageless = _detection(db, author, proof=_PROOF_TEXT_ONLY)
 
     response = client.post(
         _URL,
@@ -177,7 +179,7 @@ def test_batch_complete_publishes_what_clears_the_floor(db, author, conflict, ca
     }
     assert statuses[str(ready_one.id)] == STATUS_GEOLOCATED
     assert statuses[str(ready_two.id)] == STATUS_GEOLOCATED
-    # The failed row is untouched: still a draft, still tagless.
+    # The failed row is untouched: still a detection, still tagless.
     assert statuses[str(imageless.id)] == STATUS_DETECTED
     untouched = db.query(Event).filter(Event.id == imageless.id).one()
     assert untouched.tags == []
@@ -187,11 +189,11 @@ def test_batch_complete_publishes_what_clears_the_floor(db, author, conflict, ca
 def test_batch_complete_reports_each_floor_miss_against_its_row(
     db, author, conflict, capture_source_tag, free_tag
 ):
-    """One code per way a draft can miss the floor, each landing on its own row
+    """One code per way a detection can miss the floor, each landing on its own row
     while the rest of the selection is unaffected."""
-    no_media = _draft(db, author, with_media=False)
-    no_source = _draft(db, author, source_url=None)
-    wrong_tag = _draft(db, author)
+    no_media = _detection(db, author, with_media=False)
+    no_source = _detection(db, author, source_url=None)
+    wrong_tag = _detection(db, author)
     already_published = _make_geo(db, author=author)
     gone = uuid.uuid4()
 
@@ -228,14 +230,14 @@ def test_batch_complete_reports_each_floor_miss_against_its_row(
     assert codes[str(gone)] == "event_not_found"
 
 
-def test_batch_complete_reports_a_pointless_draft_as_coordinates_required(
+def test_batch_complete_reports_a_pointless_detection_as_coordinates_required(
     db, author, conflict, capture_source_tag
 ):
-    """A draft the import could not place fails on absent coordinates, not
+    """A detection the import could not place fails on absent coordinates, not
     malformed ones: the code is the ``*_required`` shape every other floor leg
-    uses, so a client reads "this draft is missing a piece" rather than "the
+    uses, so a client reads "this detection is missing a piece" rather than "the
     client sent a bad number"."""
-    pointless = _draft(db, author)
+    pointless = _detection(db, author)
     pointless.event_coords = None
     db.commit()
 
@@ -253,27 +255,29 @@ def test_batch_complete_reports_a_pointless_draft_as_coordinates_required(
     assert db.query(Event).filter(Event.id == pointless.id).one().status == STATUS_DETECTED
 
 
-def test_batch_complete_rejects_a_draft_listed_twice(db, author, conflict, capture_source_tag):
-    """One row per draft. The second occurrence could only ever fail (the first
-    published the row), which would report a state error against a draft that
+def test_batch_complete_rejects_a_detection_listed_twice(db, author, conflict, capture_source_tag):
+    """One row per detection. The second occurrence could only ever fail (the first
+    published the row), which would report a state error against a detection that
     did publish and inflate ``failed``; the shape is rejected instead."""
-    draft = _draft(db, author)
+    detection = _detection(db, author)
 
     response = client.post(
         _URL,
         headers=login_as(client, author),
-        json=_body(conflict, [(draft, capture_source_tag.id), (draft, capture_source_tag.id)]),
+        json=_body(
+            conflict, [(detection, capture_source_tag.id), (detection, capture_source_tag.id)]
+        ),
     )
     assert response.status_code == 422
 
     db.expire_all()
-    assert db.query(Event).filter(Event.id == draft.id).one().status == STATUS_DETECTED
+    assert db.query(Event).filter(Event.id == detection.id).one().status == STATUS_DETECTED
 
 
 def test_batch_complete_rejects_a_selection_without_a_conflict(db, author, capture_source_tag):
     """No conflict means no row could ever clear the floor, so the call fails
     whole rather than reporting the same miss N times."""
-    draft = _draft(db, author)
+    detection = _detection(db, author)
     headers = login_as(client, author)
 
     empty = client.post(
@@ -282,7 +286,7 @@ def test_batch_complete_rejects_a_selection_without_a_conflict(db, author, captu
         json={
             "conflict_ids": [],
             "rows": [
-                {"event_id": str(draft.id), "capture_source_tag_id": str(capture_source_tag.id)}
+                {"event_id": str(detection.id), "capture_source_tag_id": str(capture_source_tag.id)}
             ],
         },
     )
@@ -294,7 +298,7 @@ def test_batch_complete_rejects_a_selection_without_a_conflict(db, author, captu
         json={
             "conflict_ids": [str(uuid.uuid4())],
             "rows": [
-                {"event_id": str(draft.id), "capture_source_tag_id": str(capture_source_tag.id)}
+                {"event_id": str(detection.id), "capture_source_tag_id": str(capture_source_tag.id)}
             ],
         },
     )
@@ -302,16 +306,16 @@ def test_batch_complete_rejects_a_selection_without_a_conflict(db, author, captu
     assert unknown.json()["detail"]["code"] == "tag_requirements_not_met"
 
     db.expire_all()
-    assert db.query(Event).filter(Event.id == draft.id).one().status == STATUS_DETECTED
+    assert db.query(Event).filter(Event.id == detection.id).one().status == STATUS_DETECTED
 
 
-def test_batch_complete_refuses_another_analysts_draft_before_publishing_any(
+def test_batch_complete_refuses_another_analysts_detection_before_publishing_any(
     db, author, second_user, conflict, capture_source_tag
 ):
     """Ownership fails the whole call, and it fails it BEFORE the first commit:
-    a selection reaching for someone else's draft publishes nothing at all."""
-    mine = _draft(db, author)
-    theirs = _draft(db, second_user)
+    a selection reaching for someone else's detection publishes nothing at all."""
+    mine = _detection(db, author)
+    theirs = _detection(db, second_user)
 
     response = client.post(
         _URL,

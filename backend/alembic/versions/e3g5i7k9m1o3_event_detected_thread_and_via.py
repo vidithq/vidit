@@ -6,16 +6,16 @@ Create Date: 2026-08-18 10:00:00.000000
 
 Two columns the three ingest entries need to agree.
 
-``detected_thread_tweet_ids`` holds every post id of the thread a draft was read
+``detected_thread_tweet_ids`` holds every post id of the thread a detection was read
 from, the anchor included. The archive stitches a self-thread A→B→C whole and
-anchors the draft on A, while a bot tag or a paste on C reads one hop and
+anchors the detection on A, while a bot tag or a paste on C reads one hop and
 anchors on B, so a match on the anchor alone filed one geolocation as two
-drafts. The re-import matches on an overlap between the incoming thread's ids
+detections. The re-import matches on an overlap between the incoming thread's ids
 and the stored ones, which holds in both directions. Existing rows are
 backfilled with their anchor id alone, which is exactly what they were matched
 on before.
 
-``detected_via`` records which entry produced a draft (``bot`` / ``paste`` /
+``detected_via`` records which entry produced a detection (``bot`` / ``paste`` /
 ``archive``), stamped at creation. Existing rows stay NULL: the entry was never
 recorded, and NULL says so rather than guessing one.
 """
@@ -42,7 +42,7 @@ def backfill_thread_ids_sql(table: str) -> str:
     ``tests/test_ingest_migrations.py``: a row that came out with an empty
     array rather than NULL, or with a NULL element inside the array, would
     match nothing on the overlap leg and split one geolocation across two
-    drafts.
+    detections.
     """
     return f"""
         UPDATE {table}

@@ -49,7 +49,7 @@ export type Conflict = components["schemas"]["ConflictRead"];
  *  request). */
 export type EventStatus = components["schemas"]["EventRead"]["status"];
 
-/** Which entry produced a machine draft: the bot, a pasted URL, or an archive
+/** Which entry produced a machine detection: the bot, a pasted URL, or an archive
  *  backfill. Generated, so a fourth entry reaches every reader through the
  *  drift gate. Null on a row imported before the column existed. */
 export type DetectedVia = NonNullable<components["schemas"]["EventRead"]["detected_via"]>;
@@ -92,9 +92,9 @@ export function filterPointsByStatus(points: MapPoint[], statuses: string[]): Ma
 /**
  * What one pasted X post did: `POST /events/import-from-tweet`. The ids the
  * engine created, updated and left alone, in the order it produced them, so
- * the page opens the first draft it gets. `warnings` are the engine's codes
+ * the page opens the first detection it gets. `warnings` are the engine's codes
  * for what review still has to answer; `reason` names the refusal when the
- * post produced no draft at all.
+ * post produced no detection at all.
  */
 export type TweetImportOutcome = components["schemas"]["TweetImportRead"];
 

@@ -252,7 +252,7 @@ export function OnboardingPanel() {
         <p className="text-xs text-neutral-500 mt-0.5">
           Every code is single-use (one code, one analyst), so each row tracks
           one analyst&apos;s journey: archives imported, bot detections, live
-          drafts, geolocations, last login. Mint, share via a trusted channel,
+          detections, geolocations, last login. Mint, share via a trusted channel,
           then manage the code and the account from the row.
         </p>
       </header>

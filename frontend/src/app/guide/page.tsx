@@ -56,9 +56,9 @@ const STEPS: NumberedStep[] = [
         </Link>
         : every located event is a pin you can open. Each event carries a
         status, so you always know what you are reading. Geolocated means a
-        person placed it and stands behind it. Detected is a machine-imported
-        draft, flagged as machine-detected everywhere until its owner reviews
-        and publishes it. Requested is footage nobody has placed yet.{" "}
+        person placed it and stands behind it. Detected is a detection the
+        machine imported, flagged as machine-read everywhere until its owner
+        reviews and publishes it. Requested is footage nobody has placed yet.{" "}
         <Link href="/search" className={TEXT_LINK}>
           Search
         </Link>{" "}
@@ -124,7 +124,7 @@ const STEPS: NumberedStep[] = [
           </li>
           <li>
             Your X archive: upload the official export and every geolocation you
-            already published is backfilled as drafts you review and vouch for,
+            already published is backfilled as detections you review and vouch for,
             no manual re-entry (the{" "}
             <Link href="/import#archive" className={TEXT_LINK}>
               import guide
@@ -133,7 +133,7 @@ const STEPS: NumberedStep[] = [
           </li>
           <li>
             The bot: tag @ViditBot under a geolocation post on X and it lands
-            here as a structured draft waiting in your queue (the{" "}
+            here as a structured detection waiting in your queue (the{" "}
             <Link href="/import#bot" className={TEXT_LINK}>
               import guide
             </Link>{" "}

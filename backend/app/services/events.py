@@ -92,7 +92,7 @@ class InvalidCoordinatesError(EventError):
 class CoordinatesRequiredError(EventError):
     """The transition requires coordinates and the row carries none.
 
-    A machine ``detected`` draft may be born without a point (the import found
+    A machine detection may be born without a point (the import found
     no location in the thread), so the requirement bites at the promotion, the
     same shape as :class:`SourceUrlRequiredError`. Maps to 400.
     """
@@ -115,7 +115,7 @@ class ProofImageRequiredError(EventError):
 class SourceUrlRequiredError(EventError):
     """The geolocate promotion requires a source URL.
 
-    A machine ``detected`` draft may be born without one (the imported tweet
+    A machine detection may be born without one (the imported tweet
     declared no source), so the requirement bites at the transition: a
     ``geolocated`` row always carries its footage source (the same invariant
     ``ck_events_source_url_status`` pins at the DB). Maps to 400.
@@ -308,15 +308,15 @@ _PROOF_IMAGE_JSONPATH = '$.** ? (@.type == "image" && @.attrs.src.type() == "str
 # The queue filter values ``GET /events/detections`` accepts, ``all`` being no
 # narrowing at all. Sibling of ``event_filters.VIEWS``: the router validates
 # against it and answers 422 on anything else.
-DRAFT_READINESS = frozenset({"all", "ready", "incomplete"})
+DETECTION_READINESS = frozenset({"all", "ready", "incomplete"})
 
 
-def draft_ready_predicate() -> ColumnElement[bool]:
-    """The publish floor of :func:`_publish_draft`, as one SQL predicate.
+def detection_ready_predicate() -> ColumnElement[bool]:
+    """The publish floor of :func:`_publish_detection`, as one SQL predicate.
 
-    A ``detected`` draft is *ready* when everything the analyst cannot supply
+    A detection is *ready* when everything the analyst cannot supply
     from the review form's two picks is already on the row, leg for leg the
-    checks :func:`_publish_draft` runs before it flips the status:
+    checks :func:`_publish_detection` runs before it flips the status:
 
     1. a non-blank ``source_url``, there a ``strip()`` test, here non-NULL and
        holding a non-space character;
@@ -326,7 +326,7 @@ def draft_ready_predicate() -> ColumnElement[bool]:
     4. :func:`_require_proof_image`, here :data:`_PROOF_IMAGE_JSONPATH`.
 
     The two remaining floor legs (a conflict, a ``capture_source`` tag) are the
-    judgment the review supplies per row, so a draft missing them is still
+    judgment the review supplies per row, so a detection missing them is still
     ready in this sense. That is the same line ``batchCompletionBlockers``
     (``frontend/src/lib/events.ts``) draws, and the three implementations are
     held to one verdict by ``tests/events/test_detections_readiness.py``.
@@ -342,7 +342,7 @@ def draft_ready_predicate() -> ColumnElement[bool]:
         Event.source_url.isnot(None),
         Event.source_url.regexp_match("[^[:space:]]"),
         Event.event_coords.isnot(None),
-        # ``.any()`` lowers to EXISTS, so a draft with several attachments is
+        # ``.any()`` lowers to EXISTS, so a detection with several attachments is
         # not row-multiplied into the count.
         Event.media.any(Media.role == "source"),
         func.jsonb_path_exists(Event.proof, _PROOF_IMAGE_JSONPATH),
@@ -651,7 +651,7 @@ async def geolocate(
 
     Permissions differ by the source state:
 
-    * ``detected``: a machine draft, owner-only: ``current_user`` must be its
+    * ``detected``: a machine detection, owner-only: ``current_user`` must be its
       ``owner_id`` (403 otherwise). It stays the owner.
     * ``requested``: an open call anyone may answer: ``owner_id`` (the
       edit-rights owner) transfers to ``current_user``, the fulfiller.
@@ -667,7 +667,7 @@ async def geolocate(
 
     The evidence floor a direct create meets is enforced here, before any S3
     work, since a request / machine detection is born incomplete: a non-blank
-    source URL (a ``detected`` draft may be born without one), exactly one
+    source URL (a detection may be born without one), exactly one
     source media (kept or new), at least one proof image in the final proof
     body, a conflict, and the curated ``capture_source`` tag.
 
@@ -711,7 +711,7 @@ async def geolocate(
     keep_requester_source_url = geo.status == STATUS_REQUESTED
 
     # The source floor at promotion: a ``geolocated`` row always carries its
-    # footage source. A ``detected`` draft may be born source-less, so the form
+    # footage source. A detection may be born source-less, so the form
     # value (required but possibly blank) must be a real URL here; a requested
     # fulfilment keeps the requester's value, non-NULL by
     # ``ck_events_source_url_status``, checked all the same.
@@ -820,19 +820,19 @@ async def geolocate(
 # The one per-row code that is not a floor verdict: a database failure on that
 # row, caught so it cannot take the rest of the batch down with it. Published as
 # part of the contract (``docs/api.md``) because a client has to be able to tell
-# "this draft is incomplete" from "retry this draft".
+# "this detection is incomplete" from "retry this detection".
 ROW_INTERNAL_ERROR_CODE = "internal_error"
 
 
 @dataclass(frozen=True)
-class DraftCompletion:
+class DetectionCompletion:
     """One row's outcome in a batch completion.
 
     ``code`` is ``None`` on a published row and the failing
     :class:`EventError`'s stable code otherwise (or
     :data:`ROW_INTERNAL_ERROR_CODE` on a database failure), with ``message`` the
     human sentence the queue renders next to that row. A failed row is
-    untouched: it stays a ``detected`` draft its owner can finish by hand.
+    untouched: it stays a detection its owner can finish by hand.
     """
 
     event_id: uuid.UUID
@@ -844,7 +844,7 @@ def _assert_owns_all(db: Session, *, event_ids: list[uuid.UUID], current_user: U
     """403 the whole call if any targeted row belongs to someone else.
 
     Run before the first row commits, so a batch that reaches for another
-    analyst's draft publishes nothing. Ownership is the one condition treated
+    analyst's detection publishes nothing. Ownership is the one condition treated
     this way: the ids come from the caller's own queue, so a foreign one is a
     broken client rather than a row-level data problem, and the per-row results
     stay about the evidence floor. A row that no longer exists is NOT an
@@ -858,7 +858,7 @@ def _assert_owns_all(db: Session, *, event_ids: list[uuid.UUID], current_user: U
         ensure_owner(row, current_user)
 
 
-def _publish_draft(
+def _publish_detection(
     db: Session,
     *,
     event_id: uuid.UUID,
@@ -866,7 +866,7 @@ def _publish_draft(
     capture_source_tag: Tag | None,
     conflicts: list[Conflict],
 ) -> None:
-    """Promote one ``detected`` draft to ``geolocated`` on the evidence it
+    """Promote one detection to ``geolocated`` on the evidence it
     already carries plus the two judgment calls the batch supplies.
 
     The completion counterpart of :func:`geolocate`: no field edits, no uploads,
@@ -878,11 +878,11 @@ def _publish_draft(
     the point: a batch must not be a second, looser door to ``geolocated``.
 
     Locked with ``with_for_update()`` + ``populate_existing()`` like
-    :func:`geolocate`, so a batch racing a hand-submit of the same draft
+    :func:`geolocate`, so a batch racing a hand-submit of the same detection
     serializes and the loser sees the state error. Commits on success.
 
     The floor below is also what the detections queue filters on, projected
-    into SQL by :func:`draft_ready_predicate`: change a leg here and change it
+    into SQL by :func:`detection_ready_predicate`: change a leg here and change it
     there.
 
     Raises the typed floor errors, :class:`EventStateError` off ``detected``,
@@ -892,7 +892,7 @@ def _publish_draft(
     """
     geo = (
         db.query(Event)
-        # A withheld draft is frozen for its owner (same as the single-row
+        # A withheld detection is frozen for its owner (same as the single-row
         # :func:`geolocate`, which resolves through ``_resolve_live_event``):
         # while an admin holds a row down, its owner does not get to move it on
         # to a published state. Not an archival guarantee, since the queue
@@ -903,19 +903,19 @@ def _publish_draft(
         .first()
     )
     if geo is None:
-        raise EventNotFoundError("This draft no longer exists")
-    # Re-checked here, not only in ``complete_drafts``: the helper owns the
+        raise EventNotFoundError("This detection no longer exists")
+    # Re-checked here, not only in ``complete_detections``: the helper owns the
     # whole promotion, so it must be safe to call from a future entry point.
     ensure_owner(geo, current_user)
     if geo.status != STATUS_DETECTED:
-        raise EventStateError("Only a detected draft can be completed in a batch")
+        raise EventStateError("Only a detection can be completed in a batch")
 
     # The floor, in the order that puts the cheapest read first. Each miss is a
     # row the analyst has to open by hand, so the message names what to fix.
     if geo.source_url is None or not geo.source_url.strip():
         raise SourceUrlRequiredError("A source URL is required to geolocate an event")
     if geo.event_coords is None:
-        raise CoordinatesRequiredError("This draft carries no coordinates")
+        raise CoordinatesRequiredError("This detection carries no coordinates")
     _require_submission_media(any(m.role == "source" for m in geo.media))
     # The proof-image leg: satisfied already when the import carried annotation
     # media, and the reason a row drops out of the batch when it did not.
@@ -924,7 +924,7 @@ def _publish_draft(
         raise TagRequirementsError("A capture source tag is required")
 
     # The batch sets exactly one capture source per row, so an imported one is
-    # replaced rather than added to; every other tag the draft carries survives.
+    # replaced rather than added to; every other tag the detection carries survives.
     effective_tags = [t for t in geo.tags if t.category != "capture_source"]
     effective_tags.append(capture_source_tag)
     _require_submission_floor(effective_tags, conflicts)
@@ -941,25 +941,25 @@ def _publish_draft(
     db.refresh(geo)
 
 
-def complete_drafts(
+def complete_detections(
     db: Session,
     *,
     current_user: User,
     conflict_ids: list[uuid.UUID],
     rows: list[tuple[uuid.UUID, uuid.UUID]],
-) -> list[DraftCompletion]:
-    """Publish a selection of ``detected`` drafts in one call, row by row.
+) -> list[DetectionCompletion]:
+    """Publish a selection of detections in one call, row by row.
 
     The batch shape the import queue needs: an import is usually dominated by
     one conflict, so ``conflict_ids`` is set once for the whole selection, while
-    the capture source varies draft to draft and rides per row (``rows`` is
+    the capture source varies detection to detection and rides per row (``rows`` is
     ordered ``(event_id, capture_source_tag_id)`` pairs). Everything else the
     floor demands is already on the row, which is what makes publishing an
-    import cost one dropdown per draft instead of a form.
+    import cost one dropdown per detection instead of a form.
 
-    One transaction PER ROW, deliberately: a draft that fails the floor rolls
-    back alone and stays a draft, and the rest of the selection still publishes.
-    The result list mirrors ``rows`` order, one :class:`DraftCompletion` each.
+    One transaction PER ROW, deliberately: a detection that fails the floor rolls
+    back alone and stays a detection, and the rest of the selection still publishes.
+    The result list mirrors ``rows`` order, one :class:`DetectionCompletion` each.
 
     Two conditions fail the whole call instead, both before anything commits: an
     empty / unresolvable ``conflict_ids`` (:class:`TagRequirementsError`, since
@@ -979,11 +979,11 @@ def complete_drafts(
     # floor, not the call.
     tags_by_id = {tag.id: tag for tag in _resolve_tags(db, list({tag_id for _, tag_id in rows}))}
 
-    outcomes: list[DraftCompletion] = []
+    outcomes: list[DetectionCompletion] = []
     published = 0
     for event_id, tag_id in rows:
         try:
-            _publish_draft(
+            _publish_detection(
                 db,
                 event_id=event_id,
                 current_user=current_user,
@@ -996,7 +996,7 @@ def complete_drafts(
         # floor miss.
         except EvidenceIntakeError as exc:
             db.rollback()
-            outcomes.append(DraftCompletion(event_id=event_id, code=exc.code, message=str(exc)))
+            outcomes.append(DetectionCompletion(event_id=event_id, code=exc.code, message=str(exc)))
             continue
         # Per-row isolation has to cover the unexpected too. A database failure
         # escaping here would 500 the whole call and throw away the verdicts of
@@ -1006,15 +1006,15 @@ def complete_drafts(
             db.rollback()
             logger.exception("batch completion failed on event %s", event_id)
             outcomes.append(
-                DraftCompletion(
+                DetectionCompletion(
                     event_id=event_id,
                     code=ROW_INTERNAL_ERROR_CODE,
-                    message="This draft could not be published; try it again.",
+                    message="This detection could not be published; try it again.",
                 )
             )
             continue
         published += 1
-        outcomes.append(DraftCompletion(event_id=event_id))
+        outcomes.append(DetectionCompletion(event_id=event_id))
 
     if published:
         points_cache.invalidate()
@@ -1025,7 +1025,7 @@ def close(db: Session, *, geo: Event, current_user: User, close_reason: str) -> 
     """Close an event: withdraw a request or reject a detection, in one verb.
 
     Owner-only. The row stays publicly visible (transparency: the queue tried
-    and didn't produce a geolocation, or a machine draft was judged wrong).
+    and didn't produce a geolocation, or a machine detection was judged wrong).
     ``before_closed_status`` records which state it left so the badge, the
     requested-view routing, and detection re-import can tell the two apart. A
     closed detection is re-importable (see ``detection._disposition``);

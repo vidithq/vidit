@@ -2,7 +2,7 @@
 
 ``alembic upgrade`` exercises the schema half on every test run; the backfills
 are what a fresh database never touches, because there is nothing to move. They
-are the half that decides whether the drafts an analyst already holds keep
+are the half that decides whether the detections an analyst already holds keep
 matching after the migration, so each revision's statement is table-parameterised
 and run here against a scratch table in the pre-migration shape.
 """
@@ -90,7 +90,7 @@ def _tweet_ids(db, table: str, ids: dict[str, uuid.UUID]) -> dict[str, int | Non
 
 def test_the_tweet_id_backfill_reads_every_spelling_of_one_post(db, events_table):
     """One post spells its URL several ways, and the id is what keeps the
-    spellings on one draft, so each of them has to parse."""
+    spellings on one detection, so each of them has to parse."""
     migration = _load_migration("d2f4h6j8l0n2_event_detected_from_tweet_id")
     ids = _insert_urls(
         db,

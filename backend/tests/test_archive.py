@@ -14,7 +14,7 @@ from pathlib import Path
 import httpx
 
 from app.services.tweet_ingest import (
-    Draft,
+    Detection,
     ParsedMedia,
     TweetRecord,
     archive_media_fetcher,
@@ -28,10 +28,10 @@ from tests._fixtures import write_archive_js
 ARCHIVE = Path(__file__).parent / "data" / "synthetic_archive"
 
 
-def _draft(records: list[TweetRecord]) -> Draft:
-    """The single draft a one-coordinate thread resolves to."""
-    [draft] = resolve_threads([records]).drafts
-    return draft
+def _detection(records: list[TweetRecord]) -> Detection:
+    """The single detection a one-coordinate thread resolves to."""
+    [detection] = resolve_threads([records]).detections
+    return detection
 
 
 def _chased(archive: Path, *, handle: str) -> list[TweetRecord]:
@@ -60,17 +60,17 @@ def test_read_tweets_parses_records():
 
 def test_stitch_and_resolve_over_archive():
     records = read_tweets(ARCHIVE, handle="ana")
-    drafts = resolve_threads(stitch(records)).drafts
+    detections = resolve_threads(stitch(records)).detections
     # 1001(1) + thread 2001/2002(1) + 3001 DMS(1) + 4001 hemi(1) + 5001(0)
     # + 6001 multi-coord(2) + 7001 retweet, dropped(0) + 8001(0) = 6.
-    assert len(drafts) == 6
-    # The self-thread draft carries the head's media (as proof: the thread
+    assert len(detections) == 6
+    # The self-thread detection carries the head's media (as proof: the thread
     # declares no source) + the head permalink, even though the coordinate
     # lived in the reply.
-    thread_draft = next(d for d in drafts if d.detected_from_url.endswith("/2001"))
-    assert thread_draft.source_url is None
-    assert thread_draft.source_media == []
-    assert [m.remote_url for m in thread_draft.proof_media] == ["tweets_media/2001-BBB2.jpg"]
+    thread_detection = next(d for d in detections if d.detected_from_url.endswith("/2001"))
+    assert thread_detection.source_url is None
+    assert thread_detection.source_media == []
+    assert [m.remote_url for m in thread_detection.proof_media] == ["tweets_media/2001-BBB2.jpg"]
 
 
 async def test_archive_media_fetcher_reads_present_and_misses_absent():
@@ -192,8 +192,8 @@ def test_read_tweets_drops_retweets(tmp_path):
     records = read_tweets(archive, handle="ana")
     assert [r.tweet_id for r in records] == ["9002"]
     # Nothing downstream ever sees the retweet's coordinate.
-    drafts = resolve_threads(stitch(records)).drafts
-    assert [d.detected_from_url for d in drafts] == ["https://x.com/ana/status/9002"]
+    detections = resolve_threads(stitch(records)).detections
+    assert [d.detected_from_url for d in detections] == ["https://x.com/ana/status/9002"]
 
 
 def test_several_third_party_status_links_are_ambiguous_no_chase(tmp_path, monkeypatch):
@@ -345,9 +345,9 @@ def test_a_sole_telegram_link_is_chased_beside_the_posts_own_media(tmp_path, mon
     monkeypatch.setattr(telegram_mod, "chase", fake_chase)
     [record] = _chased(archive, handle="ana")
     assert chased == ["https://t.me/chan/42"]
-    draft = _draft([record])
-    assert draft.source_url == "https://t.me/chan/42"
-    assert "t.co" not in draft.proof_text
+    detection = _detection([record])
+    assert detection.source_url == "https://t.me/chan/42"
+    assert "t.co" not in detection.proof_text
 
 
 def test_a_link_written_inside_prose_is_a_candidate(tmp_path):
@@ -361,7 +361,7 @@ def test_a_link_written_inside_prose_is_a_candidate(tmp_path):
         "https://t.co/ownPhoto",
     )
     [record] = read_tweets(archive, handle="ana")
-    assert _draft([record]).source_url == "https://www.instagram.com/reel/FAKEREEL01/"
+    assert _detection([record]).source_url == "https://www.instagram.com/reel/FAKEREEL01/"
 
 
 def _cdn_client_factory(handler):
@@ -404,7 +404,7 @@ async def test_fetch_cdn_media_returns_within_cap(monkeypatch):
 
 
 async def test_fetch_cdn_media_retries_a_throttled_cdn(monkeypatch, retry_sleeps):
-    """The footage is the point of the draft, so a CDN refusing to serve right
+    """The footage is the point of the detection, so a CDN refusing to serve right
     now is sat out on the package's one schedule (``tweet_ingest.retry``) rather
     than persisted as a media-incomplete row."""
     import app.services.tweet_ingest.archive as archive_mod
@@ -425,7 +425,7 @@ async def test_fetch_cdn_media_retries_a_throttled_cdn(monkeypatch, retry_sleeps
 
 
 async def test_fetch_cdn_media_degrades_once_the_retries_are_spent(monkeypatch, retry_sleeps):
-    """Fail-soft is unchanged past the schedule: the draft lands
+    """Fail-soft is unchanged past the schedule: the detection lands
     media-incomplete, and the warning on it is what names the unreachable
     source."""
     import app.services.tweet_ingest.archive as archive_mod

@@ -756,7 +756,7 @@ async function findPinCandidates(page, mode = "base") {
 
 // ─── hero event for the map beat ─────────────────────────────────────────
 //
-// The map beat opens a REAL geolocation: one draft from the maintainer's
+// The map beat opens a REAL geolocation: one detection from the maintainer's
 // real archive, promoted at setup through the same geolocate endpoint the
 // UI uses. Its id + title persist in out/hero.json so re-runs reuse it.
 
@@ -851,7 +851,7 @@ function handleFromSourceUrl(url) {
   return m ? m[1].toLowerCase() : null;
 }
 
-// Close open drafts. With `onlyHandle`, only drafts whose source tweet
+// Close open detections. With `onlyHandle`, only detections whose source tweet
 // belongs to that handle close (the maintainer's own posts, so the on-camera
 // import re-creates them fresh) and the seeded field survives; without it,
 // everything closes. Spared rows keep pages non-empty, so this collects a
@@ -901,17 +901,17 @@ async function seedBigArchive(auth) {
   await importArchiveViaApi(auth, BIG_ARCHIVE_SOURCE, "the full analyst export");
 }
 
-// Promote one rich real draft (media + coordinate + source) to `geolocated`
+// Promote one rich real detection (media + coordinate + source) to `geolocated`
 // through the same endpoint the edit form uses, filling the human's part
-// (conflict, capture source, a proof image when the draft has none).
-async function promoteHeroDraft(auth) {
+// (conflict, capture source, a proof image when the detection has none).
+async function promoteHeroDetection(auth) {
   const list = await api(auth, "GET", "/events/detections?page=1&per_page=50");
   const ranked = list.items
     .filter((it) => it.event_coords && it.media && it.media.length > 0)
     .sort((a, b) => (b.media?.length ?? 0) - (a.media?.length ?? 0));
-  const draft = ranked[0];
-  if (!draft) throw new Error("no promotable draft found in the real archive import");
-  const detail = await api(auth, "GET", `/events/${draft.id}`);
+  const detection = ranked[0];
+  if (!detection) throw new Error("no promotable detection found in the real archive import");
+  const detail = await api(auth, "GET", `/events/${detection.id}`);
   const [tags, conflicts] = await Promise.all([
     api(auth, "GET", "/tags?curated=true"),
     api(auth, "GET", "/conflicts"),
@@ -957,7 +957,7 @@ async function promoteHeroDraft(auth) {
       JSON.stringify([...new Set([...(detail.tags || []).map((t) => t.id), capture.id])])
     );
   }
-  const res = await fetch(`${API}/events/${draft.id}/geolocate`, {
+  const res = await fetch(`${API}/events/${detection.id}/geolocate`, {
     method: "POST",
     headers: { cookie: auth.cookieHeader, "X-CSRF-Token": auth.csrf },
     body: fd,
@@ -979,7 +979,7 @@ async function findHeroEvent(auth) {
 }
 
 // Residue sweep (dev DB, off camera). Every recorded run closes the
-// re-imported drafts and publishes one event, so closed/geolocated copies
+// re-imported detections and publishes one event, so closed/geolocated copies
 // accumulate (500+ observed) and outrank the fresh publish in the profile's
 // Recent submissions (event_date desc, top 5). Soft-delete everything but
 // the hero before a take. Direct SQL because the admin delete endpoint is
@@ -1028,16 +1028,16 @@ function clearHeroNeighborhood(hero) {
 }
 
 // Idempotent real-data setup: a promoted hero exists, the field is seeded
-// with the full analyst export, and only the maintainer's own drafts close
+// with the full analyst export, and only the maintainer's own detections close
 // before the take so the on-camera import re-creates them fresh (closed
 // detections are re-importable) while the seeded field stays live.
 async function setupRealData(auth) {
   let hero = await findHeroEvent(auth);
   if (!hero) {
     const closed = await closeOpenDetections(auth);
-    if (closed) console.log(`  closed ${closed} leftover drafts`);
+    if (closed) console.log(`  closed ${closed} leftover detections`);
     await importArchiveViaApi(auth, ensureRealArchive(), "the maintainer archive");
-    hero = await promoteHeroDraft(auth);
+    hero = await promoteHeroDetection(auth);
   } else {
     console.log("→ hero event already promoted");
   }
@@ -1047,7 +1047,7 @@ async function setupRealData(auth) {
     throw new Error("hero has no source handle; refusing to close the whole seeded field");
   }
   const closed = await closeOpenDetections(auth, heroHandle);
-  if (closed) console.log(`  closed ${closed} maintainer drafts (recreated on camera)`);
+  if (closed) console.log(`  closed ${closed} maintainer detections (recreated on camera)`);
   sweepResidues(hero.id);
   clearHeroNeighborhood(hero);
   return hero;
@@ -1096,7 +1096,7 @@ async function locateHeroPin(page, hero, expected) {
 //
 // The whole in-app demo is ONE recorded take: map (camera eases, pin,
 // proofs) → sidemenu Submit → bulk import (Finder pick) → live scan →
-// queue → open the promote-ready draft → the human's part on camera
+// queue → open the promote-ready detection → the human's part on camera
 // (conflict + capture source) → review scroll → submit → back to the map,
 // Author-filtered to the analyst, one fresh detection opened. One take
 // means every beat junction in the comp is a cut
@@ -1167,7 +1167,7 @@ async function pickPromoteTarget(auth, hero) {
     (b.event_date || "").localeCompare(a.event_date || "")
   );
   if (byDateDesc.length === 0) {
-    throw new Error("no promote-ready draft (run after a fresh archive import)");
+    throw new Error("no promote-ready detection (run after a fresh archive import)");
   }
   for (const cand of byDateDesc.slice(0, 12)) {
     const detail = await api(auth, "GET", `/events/${cand.id}`);
@@ -1503,16 +1503,16 @@ async function clipDemo(auth, hero, zipPath) {
       await wait(400);
     }
 
-    console.log("→ open the target draft");
-    rec.mark("draftApproach");
+    console.log("→ open the target detection");
+    rec.mark("detectionApproach");
     await smoothScrollIntoView(page, card, 1300);
     await wait(450);
     await glideClickStretchedCard(page, card, target.id);
     await page.waitForURL(new RegExp(`/events/${target.id}/edit`), { timeout: 30000, waitUntil: "domcontentloaded" });
     await page.waitForSelector("text=Submit detection", { timeout: 25000 });
     await page.waitForSelector('input[aria-label="Search conflicts"]', { timeout: 15000 });
-    rec.mark("draftOpen");
-    await wait(1800); // the draft's top: title + real media
+    rec.mark("detectionOpen");
+    await wait(1800); // the detection's top: title + real media
 
     // ── the human's part, ON CAMERA: conflict + capture source ───────────
     console.log("→ fill the conflict (on camera)");
@@ -1540,7 +1540,7 @@ async function clipDemo(auth, hero, zipPath) {
     await wait(650);
 
     if (target.needsProof) {
-      // Fallback human part: the draft came without a proof image; add the
+      // Fallback human part: the detection came without a proof image; add the
       // satellite proof through the real "+ Image" input. The comp's fill
       // window ends at capturePick, so this lands off the final cut while
       // the proof image itself shows during the review scroll.
@@ -1672,7 +1672,7 @@ async function clipDemo(auth, hero, zipPath) {
     }
     if (!openedDetected) throw new Error("no detected pin opened a panel");
     rec.mark("detectedOpen");
-    await wait(3400); // the draft's panel: real media, the analyst's byline
+    await wait(3400); // the detection's panel: real media, the analyst's byline
   });
 }
 
@@ -1743,7 +1743,7 @@ async function clipBotEmbed() {
   // Real-data setup: promoted hero + empty open queue (see setupRealData).
   // The queue-clearing half only matters when a take that needs a clean
   // field (map) or that re-imports (import) is being recorded; a partial
-  // run of queue/promote alone must keep the existing drafts.
+  // run of queue/promote alone must keep the existing detections.
   const needsCleanField = which.includes("demo");
   const hero = needsCleanField
     ? await setupRealData(auth)

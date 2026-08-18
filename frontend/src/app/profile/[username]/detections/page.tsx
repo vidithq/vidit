@@ -19,7 +19,7 @@ import {
   type PaginatedEventDetails,
 } from "@/lib/events";
 
-/** The queue's one filter: everything, the drafts that only need the two human
+/** The queue's one filter: everything, the detections that only need the two human
  *  choices, or the ones still missing evidence. It is a query the server
  *  answers over the whole queue, so what the page reports is the queue and not
  *  the ten rows that happen to be loaded. */
@@ -32,8 +32,8 @@ const FILTERS: { value: DetectionReadiness; label: string }[] = [
 /** The empty line per filter, naming the set that came back empty. */
 const NOTHING_HERE: Record<DetectionReadiness, string> = {
   all: "No detections to submit.",
-  ready: "No ready drafts.",
-  incomplete: "No incomplete drafts.",
+  ready: "No ready detections.",
+  incomplete: "No incomplete detections.",
 };
 
 export default function DetectionsPage() {
@@ -133,8 +133,8 @@ export default function DetectionsPage() {
           <EmptyState variant="boxed">{NOTHING_HERE[filter]}</EmptyState>
         ) : (
           <div className="space-y-2">
-            {data.items.map((draft) => (
-              <DetectionQueueRow key={draft.id} draft={draft} />
+            {data.items.map((detection) => (
+              <DetectionQueueRow key={detection.id} detection={detection} />
             ))}
           </div>
         )}
@@ -171,7 +171,7 @@ export default function DetectionsPage() {
     <PageShell
       back
       title="Detections"
-      subtitle="Machine drafts awaiting a pass. Open a row to work on it, or review them one after another on the same form."
+      subtitle="Detections awaiting a pass. Open a row to work on it, or review them one after another on the same form."
       actions={
         data && data.ready_total + data.incomplete_total > 0 ? (
           <Link href={reviewHref} className={buttonClasses("primary")}>

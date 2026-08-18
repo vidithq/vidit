@@ -157,7 +157,7 @@ function generate() {
     if (tg) {
       // Off-platform footage: the geoloc tweet links a Telegram post. The
       // analyst's own attachment stays annotation (proof), the link is the
-      // declared source. These drafts have no source-media thumbnail, which
+      // declared source. These detections have no source-media thumbnail, which
       // is the realistic shape for Telegram-sourced work.
       const id = mintId();
       entries.push({
@@ -173,7 +173,7 @@ function generate() {
       });
     } else {
       // The dominant real pattern: quote your own footage post, add the
-      // coordinate. The quoted post's media becomes the draft's SOURCE media
+      // coordinate. The quoted post's media becomes the detection's SOURCE media
       // (thumbnail on the queue card), its timestamp the source_posted_at.
       const footageId = mintId();
       const geolocId = mintId();

@@ -141,7 +141,7 @@ def test_source_url_status_check_rejects_requested_without_source_url(db, author
 
 
 def test_source_url_status_check_allows_detected_without_source_url(db, author):
-    """The positive case the contract exists for: a machine ``detected`` draft
+    """The positive case the contract exists for: a machine detection
     whose imported tweet declared no source persists with a NULL ``source_url``
     (and a NULL ``source_posted_at``), partial by definition."""
     ok = _bare_event(

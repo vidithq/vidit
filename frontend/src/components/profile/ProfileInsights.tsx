@@ -37,8 +37,8 @@ function ChartNote({ children }: { children: ReactNode }) {
  * `Geolocated` under a second name.
  *
  * One population feeds every block: the analyst's live events in the three
- * worked statuses, drafts included. A chart drawn on published work alone
- * beside tiles counting drafts would print two answers to one question with
+ * worked statuses, detections included. A chart drawn on published work alone
+ * beside tiles counting detections would print two answers to one question with
  * nothing on the page to explain the gap, so the backend serves one set. Each
  * note says what its own block makes of that set, because the blocks do not
  * all count events: `Media` counts the media hanging off them, and the month
@@ -84,7 +84,7 @@ export function ProfileInsights({ username }: { username: string }) {
         <ChartNote>
           The tiles below describe one set of {stats.total_events}{" "}
           {stats.total_events === 1 ? "event" : "events"}: this analyst&apos;s
-          geolocations, machine drafts and closed rows.
+          geolocations, machine detections and closed rows.
         </ChartNote>
       </div>
 

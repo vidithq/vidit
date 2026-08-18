@@ -20,7 +20,7 @@ import { DROP_INS, RECORDED } from "./clips-manifest";
 //   1. The map: camera dezoom, back in, drag pan, open an event,
 //      scroll its proofs.
 //   2. Sidemenu → /submit, bulk archive import (Finder pick), live scan.
-//   3. The redirect lands on the queue; open the promote-ready draft.
+//   3. The redirect lands on the queue; open the promote-ready detection.
 //   4. Fill conflict + capture source, review scroll, submit, the
 //      published detail via the profile.
 //   5. The @viditbot on-ramp (X only; fades to the outro).
@@ -138,10 +138,10 @@ const BEATS: Beat[] = [
       // Open on the freshly landed queue (the import beat ended on the CTA
       // click, so the junction IS the page swap).
       win("demo", D("queueRedirect", 80) + 0.05, D("queueRedirect", 80) + 2.4),
-      // Eased scroll to the promote-ready draft, open it, its top breathes.
+      // Eased scroll to the promote-ready detection, open it, its top breathes.
       // The target sits on queue page 1 (pickPromoteTarget prefers it), so
       // this cut lands on the same list, not a paginated-away page.
-      win("demo", D("draftApproach", 85) - 0.4, D("draftOpen", 90) + 1.7),
+      win("demo", D("detectionApproach", 85) - 0.4, D("detectionOpen", 90) + 1.7),
     ],
     caption: {
       eyebrow: "Detections",
@@ -154,7 +154,7 @@ const BEATS: Beat[] = [
       // The human's part, on camera: type the conflict, pick it, click the
       // capture-source chip. One continuous window.
       win("demo", D("conflictFocus", 95) - 0.3, D("capturePick", 102) + 1.0),
-      // The eased review scroll down the whole draft.
+      // The eased review scroll down the whole detection.
       win("demo", D("reviewScroll", 106) - 0.2, D("reviewScroll", 106) + 4.3),
       // Submit → Confirm & submit → the queue again, one row lighter.
       win("demo", D("submit", 113) - 0.5, D("published", 117) + 1.4),
@@ -182,7 +182,7 @@ const BEATS: Beat[] = [
       // Collapse the filter panel (on camera), then the camera ease onto
       // the filtered work — one continuous shot.
       win("demo", D("filtersClose", 131.5) - 0.2, D("workEase", 133) + 2.6),
-      // Approach a detected pin, its draft panel opens and holds.
+      // Approach a detected pin, its detection panel opens and holds.
       win("demo", D("detectedApproach", 135) - 0.2, D("detectedOpen", 137) + 3.2),
     ],
     caption: {

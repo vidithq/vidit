@@ -6,7 +6,7 @@ endpoint against ``LocalStorage``, standing in for S3's POST policy), and the
 JSON ``POST /import-archive`` verifies the staged object and returns a
 ``queued`` job (202); the worker (``services/archive_jobs``) claims it and
 drives the real backfill (extract guard → read_tweets → stitch →
-resolve_threads → persist_drafts). Tests drain the queue inline with
+resolve_threads → persist_detections). Tests drain the queue inline with
 ``run_once``, so the whole
 seam runs synchronously. The happy-path tweet carries a coordinate but no
 media, so a ``detected`` row lands with zero S3 work.
@@ -348,7 +348,7 @@ def test_worker_fails_job_whose_staged_object_vanished(db, author, sent_emails):
 
 def test_worker_fails_a_job_whose_owner_was_deactivated(db, author, sent_emails):
     """The archive twin of the bot's ``no_account`` rule: a suspended account
-    accrues no drafts. The bot reads ``detection.linked_owner`` (live and
+    accrues no detections. The bot reads ``detection.linked_owner`` (live and
     active) and the paste goes through ``get_current_user``; the worker gate is
     the third spelling of the same requirement, and a job queued before the
     suspension lands ``failed`` rather than importing under it."""

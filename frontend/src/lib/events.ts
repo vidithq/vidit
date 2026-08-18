@@ -60,7 +60,7 @@ export const MAX_SECONDARY_SOURCE_LINKS = 10;
  *  load faster. */
 const DETECTIONS_PER_PAGE = 10;
 
-/** How many drafts one review session loads at once. The backend caps a list
+/** How many detections one review session loads at once. The backend caps a list
  *  response at 100 rows whatever `per_page` asks for, so this is the whole
  *  queue for any realistic import; a longer queue is reviewed one batch at a
  *  time. Loaded once per session and stepped through locally, so a published
@@ -68,14 +68,14 @@ const DETECTIONS_PER_PAGE = 10;
 const DETECTIONS_REVIEW_QUEUE = 100;
 
 /** The queue filter `GET /events/detections` accepts: the whole queue, the
- *  drafts that clear the publish floor, or the ones that don't. Hand-written
+ *  detections that clear the publish floor, or the ones that don't. Hand-written
  *  rather than generated for the same reason as `EventView`: the router takes
  *  `readiness` as a plain `str` so it can hand-build its 422, and codegen
- *  carries no union for it. Mirrors `services/events.DRAFT_READINESS`. */
+ *  carries no union for it. Mirrors `services/events.DETECTION_READINESS`. */
 export type DetectionReadiness = "all" | "ready" | "incomplete";
 
 /** Shape of `GET /events/detections`: full-detail items (media + tags) so
- *  the queue renders the evidence and names what each draft is missing without
+ *  the queue renders the evidence and names what each detection is missing without
  *  a per-row round-trip. Mirrors the backend `PaginatedEventDetails`.
  *
  *  `total` counts the set `readiness` selected, so the page arithmetic
@@ -105,13 +105,13 @@ export function detectionsReviewPath(): string {
 }
 
 /** Marks an edit URL as one step of a review pass over the detections queue.
- *  The edit page reads it to decide whether to place the draft in the queue;
+ *  The edit page reads it to decide whether to place the detection in the queue;
  *  every hop of a pass carries it, so the walk survives a reload and the
  *  browser's Back. */
 export const QUEUE_PARAM = "queue";
 
-/** The owner's edit surface for one draft, optionally inside a review pass. */
-export function draftEditPath(id: string, inQueue = false): string {
+/** The owner's edit surface for one detection, optionally inside a review pass. */
+export function detectionEditPath(id: string, inQueue = false): string {
   return `/events/${id}/edit${inQueue ? `?${QUEUE_PARAM}=1` : ""}`;
 }
 
@@ -258,7 +258,7 @@ function appendSharedEventFields(
 ): void {
   fd.append("title", input.title);
   // Always sent, never conditional: the geolocate path posts the whole state,
-  // so an omitted field would clear a flag the draft already carried.
+  // so an omitted field would clear a flag the detection already carried.
   fd.append("is_graphic", String(input.is_graphic ?? false));
   fd.append("source_url", input.source_url);
   // The archived copy of that source, when the analyst made one on the form.
@@ -420,7 +420,7 @@ export function createEventRequest(input: EventRequestInput): Promise<EventDetai
 
 /**
  * Import one of your own X posts: `POST /events/import-from-tweet` runs the
- * detection engine over it and answers with the drafts it created, updated or
+ * detection engine over it and answers with the detections it created, updated or
  * left alone, plus the warnings review has to answer.
  */
 export function importFromPost(url: string): Promise<TweetImportOutcome> {
@@ -599,11 +599,11 @@ export async function awaitImportJob(
 }
 
 /**
- * What stops one `detected` draft from publishing, as human labels. Empty means
+ * What stops one detection from publishing, as human labels. Empty means
  * the row carries the whole evidence floor and only needs the two human choices
  * (conflict, capture source) to publish: the "ready" state the queue badges.
  *
- * Mirrors the server floor in `services/events._publish_draft`, and only that:
+ * Mirrors the server floor in `services/events._publish_detection`, and only that:
  * it judges evidence the machine either found or didn't, so the form-level
  * requirements a submit adds (a title, the source post time) are not part of
  * it. Computed on the queue payload the detections list already carries, so the
@@ -612,13 +612,13 @@ export async function awaitImportJob(
  *
  * The review flow judges its live, edited state against the fuller
  * `missingEventFields` (the geolocate floor it publishes through). The two
- * agree on which drafts are publishable: a source-less draft carries neither
+ * agree on which detections are publishable: a source-less detection carries neither
  * `source_url` nor `source_posted_at`, and the title a review always carries.
  *
- * Same rule, third expression: `services/events.draft_ready_predicate` is the
+ * Same rule, third expression: `services/events.detection_ready_predicate` is the
  * SQL the queue's `readiness` filter pages on. The queue labels each row from
  * here and asks the server which rows to show, so the two must agree. Both are
- * held to one table of draft shapes: `backend/tests/events/_readiness_cases.py`
+ * held to one table of detection shapes: `backend/tests/events/_readiness_cases.py`
  * on the server side, its mirror in `events.test.ts` here.
  */
 export function batchCompletionBlockers(geo: {

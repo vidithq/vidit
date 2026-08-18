@@ -236,7 +236,7 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
     # The same liveness the two live entries require of an import's owner
     # (``detection.linked_owner``, which the bot and the paste both read): a
     # soft-deleted or deactivated account's work is hidden or suspended, so a
-    # job queued before the suspension must not land drafts under it.
+    # job queued before the suspension must not land detections under it.
     owner = db.get(User, job.owner_id)
     if owner is None or owner.deleted_at is not None or not owner.is_active:
         _finish(db, job, status="failed", error="owner gone")
@@ -279,7 +279,7 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
             archive_zip.extract_allowlisted(zip_path, archive_dir)
 
             def stamp_progress(done: int, total: int) -> None:
-                # Fires between per-row transactions (see persist_drafts),
+                # Fires between per-row transactions (see persist_detections),
                 # so the commit here never splits one. Batched: an UPDATE per
                 # PROGRESS_EVERY rows plus the boundaries.
                 if done == total or done == 1 or done % PROGRESS_EVERY == 0:

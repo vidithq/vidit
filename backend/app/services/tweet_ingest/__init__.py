@@ -9,7 +9,7 @@ Single-responsibility bricks behind one import surface:
 * ``extract``: pure text core (coordinates, title, proof body), reused by
   every path.
 * ``stitch``: recombine records into threads (union-find on reply edges).
-* ``resolve``: the engine, threads to one ``Draft`` per coordinate plus the
+* ``resolve``: the engine, threads to one ``Detection`` per coordinate plus the
   reason a thread produced none.
 * ``syndication``: X I/O (fetch + token + cache, payload mappers).
 * ``chase``: the one chase step (``chase_thread``), one module per technology
@@ -64,7 +64,7 @@ from .resolve import (
     SOURCE_FOOTAGE_MISSING,
     SOURCE_MISSING,
     WARNING_MESSAGES,
-    Draft,
+    Detection,
     Resolution,
     resolve_threads,
     sole_refusal,
@@ -86,7 +86,7 @@ __all__ = [
     "SOURCE_MISSING",
     "WARNING_MESSAGES",
     "AcquiredThread",
-    "Draft",
+    "Detection",
     "InvalidTweetUrl",
     "ParsedCoord",
     "ParsedMedia",

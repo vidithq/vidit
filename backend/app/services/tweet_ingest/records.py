@@ -171,7 +171,7 @@ class TweetRecord:
 # * ``no_target``: this chaser does not serve the target's host, so it fetched
 #   nothing at all.
 #
-# Only ``transient_failure`` changes what the analyst is told: it is a draft to
+# Only ``transient_failure`` changes what the analyst is told: it is a detection to
 # import again later rather than a source with no footage. The other three read
 # the same way downstream, and are distinct so the class is named where it is
 # known instead of being re-derived from an empty result.

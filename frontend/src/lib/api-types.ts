@@ -169,9 +169,9 @@ export interface paths {
         put?: never;
         /**
          * Maintenance Send Completion Digests
-         * @description Email every analyst holding unpublished ``detected`` drafts.
+         * @description Email every analyst holding unpublished detections.
          *
-         *     One message per analyst: how many drafts wait, and the link back to their
+         *     One message per analyst: how many detections wait, and the link back to their
          *     own Detections queue, where the batch completion publishes them. The nudge
          *     behind the import: the completion mail scrolls away, the backlog does not.
          *     Runs on a click like the reapers above, one provider round-trip per
@@ -312,7 +312,7 @@ export interface paths {
         post?: never;
         /**
          * Purge Detected Events Admin
-         * @description Hard-delete every `detected` draft the user owns (rows + S3 media),
+         * @description Hard-delete every detection the user owns (rows + S3 media),
          *     keeping the account and everything else they authored. The
          *     broken-archive repair.
          */
@@ -636,22 +636,22 @@ export interface paths {
         put?: never;
         /**
          * Batch Complete Events
-         * @description Publish the selected ``detected`` drafts: ``detected`` → ``geolocated``.
+         * @description Publish the selected detections: ``detected`` → ``geolocated``.
          *
-         *     JSON, not multipart: nothing uploads here. The drafts keep the evidence the
+         *     JSON, not multipart: nothing uploads here. The detections keep the evidence the
          *     import gave them, and the call supplies only the conflict set (once, for the
          *     whole selection) and one ``capture_source`` tag per row.
          *
          *     Each row commits on its own, so a mixed selection publishes what it can: a
-         *     draft that fails the floor (no proof image, no source media, no
-         *     coordinates, no source URL) rolls back alone and stays a draft with its
+         *     detection that fails the floor (no proof image, no source media, no
+         *     coordinates, no source URL) rolls back alone and stays a detection with its
          *     reason in ``rows[]``. Publishing a row credits the caller as its
          *     geolocator, exactly as the single-row transition does.
          *
          *     Two conditions reject the whole call, before anything is published: no
          *     resolvable conflict (400, since no row could clear the floor) and a
-         *     targeted draft owned by another analyst (403). Rows are owner-only, so
-         *     there is no fulfil-someone-else's-draft path here.
+         *     targeted detection owned by another analyst (403). Rows are owner-only, so
+         *     there is no fulfil-someone-else's-detection path here.
          */
         post: operations["batch_complete_events_api_v1_events_batch_complete_post"];
         delete?: never;
@@ -675,18 +675,18 @@ export interface paths {
          *     "Detections" queue behind ``/profile/{username}/detections`` where a
          *     ``detected`` row becomes ``geolocated`` over time. Returns full
          *     ``EventRead`` (media + tags) so the queue shows the evidence and names, per
-         *     row, what a draft is still missing with no per-row round-trip. Ordered by
+         *     row, what a detection is still missing with no per-row round-trip. Ordered by
          *     ``created_at DESC, id DESC``: the latest import is the first thing to
          *     triage.
          *
-         *     ``readiness`` narrows the queue server-side to the drafts that clear the
+         *     ``readiness`` narrows the queue server-side to the detections that clear the
          *     publish floor (``ready``) or to those that don't (``incomplete``), ``all``
          *     being the whole queue; anything else is a 422, as ``view`` is on
-         *     :func:`list_events`. The floor is :func:`draft_ready_predicate`, the SQL
-         *     projection of the one ``services.events._publish_draft`` enforces. Filtering
+         *     :func:`list_events`. The floor is :func:`detection_ready_predicate`, the SQL
+         *     projection of the one ``services.events._publish_detection`` enforces. Filtering
          *     here rather than over the loaded page is the point: the queue pages at 10
          *     rows over imports of several hundred, so a page-local filter answers about
-         *     ten drafts while the analyst reads it as an answer about the queue.
+         *     ten detections while the analyst reads it as an answer about the queue.
          *
          *     ``total`` counts the filtered set, so the page arithmetic describes what is
          *     being walked; ``ready_total`` and ``incomplete_total`` always count the
@@ -791,12 +791,12 @@ export interface paths {
         put?: never;
         /**
          * Import From Tweet
-         * @description Import the caller's own X post as ``detected`` drafts.
+         * @description Import the caller's own X post as detections.
          *
          *     The paste runs the same engine and the same write path as the bot and the
          *     archive backfill (``detection.import_pasted_post``), so one post yields one
-         *     draft per coordinate it carries, owned by the caller. A second paste of the
-         *     same post overwrites the open draft instead of duplicating it.
+         *     detection per coordinate it carries, owned by the caller. A second paste of the
+         *     same post overwrites the open detection instead of duplicating it.
          *
          *     Auth-only, and own posts only: the post's author must be the handle linked
          *     to the caller's account. Per-IP 30/minute bounds what one caller can spend
@@ -1020,7 +1020,7 @@ export interface paths {
          *     ``remove_media_ids`` dropped), and on
          *     success the row is written and frozen as ``geolocated``, with the caller
          *     credited as a geolocator. Only ``detected_from_url`` (provenance) and
-         *     ``status`` carry no field. A ``detected`` draft is owner-only (403
+         *     ``status`` carry no field. A detection is owner-only (403
          *     otherwise); a ``requested`` event is answerable by anyone, and the
          *     fulfiller becomes its owner (``requested_by`` keeps the original poster).
          *     Blocked until the evidence floor is met (one source media, a proof image,
@@ -1274,13 +1274,13 @@ export interface paths {
          *
          *     Published, not merely visible: :func:`published_events` narrows to
          *     ``geolocated``, so the portfolio carries only rows the analyst vouched
-         *     for. Machine drafts and the rows they rejected are theirs to work, not
-         *     theirs to be credited with; the owner reaches the drafts through their
+         *     for. Machine detections and the rows they rejected are theirs to work, not
+         *     theirs to be credited with; the owner reaches the detections through their
          *     detections queue instead. The filter is applied to the count and to the
          *     rows alike, so a page of the feed and its ``total`` agree, and
          *     ``geolocations_count`` on the profile payload counts the same set, so the
          *     share card's headline agrees with both. The whole body of live
-         *     work, drafts included, is ``total_events`` on
+         *     work, detections included, is ``total_events`` on
          *     :func:`get_user_stats`.
          *
          *     Offset-paged rather than cursor-paged: the ordering the profile reads by
@@ -1417,9 +1417,9 @@ export interface components {
          *     A machine detection is a row imported from X, ``detected_from_url`` set
          *     (the archive backfill / the bot); a human submit always carries NULL there.
          *
-         *     Reject-rate: of every machine detection, the fraction dismissed while still
-         *     a draft, whichever door they left through. A machine detection counts as a
-         *     reject if either an owner closed it straight out of ``detected``
+         *     Reject-rate: of every machine detection, the fraction dismissed before it
+         *     was published, whichever door they left through. A machine detection counts
+         *     as a reject if either an owner closed it straight out of ``detected``
          *     (``status = 'closed'`` with ``before_closed_status = 'detected'``) or an
          *     admin soft-deleted it while it was still ``detected``
          *     (``deleted_at IS NOT NULL`` with ``status = 'detected'``). A detection the
@@ -1434,12 +1434,12 @@ export interface components {
          *
          *     Two counting edges the metric accepts, both favouring over-counting
          *     dismissals over under-counting them: an owner hard-delete
-         *     (``DELETE /events/{id}`` on an own draft) removes the row from both counts
+         *     (``DELETE /events/{id}`` on an own detection) removes the row from both counts
          *     entirely; an account-departure cascade soft-delete counts that account's
-         *     pending drafts as rejects.
+         *     pending detections as rejects.
          *
          *     The ``pending_*`` counts profile the live ``detected`` queue (awaiting
-         *     review, ``deleted_at IS NULL``, machine rows only): how many drafts are
+         *     review, ``deleted_at IS NULL``, machine rows only): how many detections are
          *     missing a piece the geolocate floor will demand, so a low-quality
          *     extraction run is visible before an analyst opens the queue.
          */
@@ -1625,10 +1625,10 @@ export interface components {
         AdminMaintenanceResponse: {
             /** Analysts Notified */
             analysts_notified?: number | null;
+            /** Detections Pending */
+            detections_pending?: number | null;
             /** Digest Send Failures */
             digest_send_failures?: number | null;
-            /** Drafts Pending */
-            drafts_pending?: number | null;
             /** Expired */
             expired?: number | null;
             /** Old Consumed */
@@ -1652,7 +1652,7 @@ export interface components {
          * AdminPurgeDetectedResponse
          * @description Response for `DELETE /admin/users/{id}/detected-events`.
          *
-         *     The broken-archive repair: every ``detected`` draft the user owns is
+         *     The broken-archive repair: every detection the user owns is
          *     hard-deleted (rows + S3 media), the account itself untouched. The counts
          *     are the copy-pasteable record of what was swept.
          */
@@ -1755,7 +1755,7 @@ export interface components {
          *     ``status`` walks ``queued`` → ``running`` → ``done`` | ``failed``. The
          *     counts are the assemble outcome, final once ``done`` (zero until then):
          *     ``created`` is new ``detected`` rows; ``updated`` an open ``detected``
-         *     draft the import overwrote with a newer parse; ``skipped`` a detection the
+         *     detection the import overwrote with a newer parse; ``skipped`` a detection the
          *     import left alone, either because the row it matched is not one to touch
          *     or because that row was already up to date; ``failed`` a detection that
          *     raised mid-persist and was rolled back (the others still land). ``error``
@@ -1885,7 +1885,7 @@ export interface components {
         };
         /**
          * BatchCompletionRowCreate
-         * @description One draft in a batch completion: which row, and the capture source its
+         * @description One detection in a batch completion: which row, and the capture source its
          *     analyst picked for it.
          */
         BatchCompletionRowCreate: {
@@ -1902,7 +1902,7 @@ export interface components {
         };
         /**
          * BatchCompletionRowRead
-         * @description One row's outcome. ``code`` / ``message`` are NULL when the draft
+         * @description One row's outcome. ``code`` / ``message`` are NULL when the detection
          *     published; otherwise they carry the same stable error code the single-row
          *     geolocate would have answered with, so the queue can render the reason
          *     against that row.
@@ -2431,7 +2431,7 @@ export interface components {
          *     Mirrors ``PaginatedEvents`` but carries ``EventRead`` items
          *     (media + tags + provenance) rather than the lightweight ``EventList``
          *     card: the Detections queue needs the media to judge a detection and the
-         *     tags + conflicts to name what a draft is still missing without a per-row
+         *     tags + conflicts to name what a detection is still missing without a per-row
          *     round-trip.
          *
          *     ``total`` counts the set the ``readiness`` filter selected, so the page
@@ -2712,21 +2712,21 @@ export interface components {
          * TweetImportRead
          * @description What one pasted post did, in the order the engine produced it.
          *
-         *     One coordinate makes one draft, so a thread carrying several lands several
-         *     ids. ``created`` holds the new drafts, ``updated`` the open drafts a
+         *     One coordinate makes one detection, so a thread carrying several lands several
+         *     ids. ``created`` holds the new detections, ``updated`` the open detections a
          *     re-import overwrote, and ``skipped`` the rows the import must not touch
          *     (published, closed, withheld) or found already up to date. The caller opens
          *     the first id it gets.
          *
-         *     ``warnings`` carries what review still has to answer on the drafts of this
+         *     ``warnings`` carries what review still has to answer on the detections of this
          *     post, never a refusal. Three codes say what the engine could not settle from
          *     the post (``several_coordinates``, ``source_ambiguous``, ``source_missing``)
-         *     and four what the drafts ended up with (``source_footage_missing``,
+         *     and four what the detections ended up with (``source_footage_missing``,
          *     ``source_fetch_failed``, ``source_date_unknown``, ``duplicate_media``); the
          *     fetch-failed one is the source that could not be read this time, so the same
          *     import later may well fill it. ``reason`` is the refusal when
-         *     the post produced no draft at all (``coords_missing``, ``coords_invalid``),
-         *     and null whenever drafts were produced. ``failed`` counts the detections that
+         *     the post produced no detection at all (``coords_missing``, ``coords_invalid``),
+         *     and null whenever detections were produced. ``failed`` counts the detections that
          *     raised mid-persist.
          */
         TweetImportRead: {
@@ -2761,7 +2761,7 @@ export interface components {
          *     ``geolocations_count`` counts the analyst's published geolocations, the
          *     same set ``GET /users/{username}/events`` serves, so the profile's share
          *     card and the feed on the page print one number. For the whole body of
-         *     live work, drafts included, read ``total_events`` on
+         *     live work, detections included, read ``total_events`` on
          *     :class:`UserStatsRead`.
          */
         UserProfile: {
@@ -2837,7 +2837,7 @@ export interface components {
          *     One population throughout: the analyst's live events (``deleted_at IS
          *     NULL``, ``hidden_at IS NULL``) in the three worked statuses, ``geolocated``
          *     + ``detected`` + ``closed``. That set is ``total_events``, and every other
-         *     field here describes it, drafts included. An open ``requested`` call for
+         *     field here describes it, detections included. An open ``requested`` call for
          *     help is not documented work and takes part in no aggregate.
          *
          *     ``source_hosts`` breaks the same set down by the host of ``source_url``,

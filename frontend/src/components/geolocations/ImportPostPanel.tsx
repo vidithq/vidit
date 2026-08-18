@@ -11,14 +11,14 @@ import { FORM_ERROR_BANNER, FORM_SUCCESS_BANNER } from "@/components/ui/form-sty
 import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useMutation } from "@/hooks/useMutation";
-import { draftEditPath, importFromPost } from "@/lib/events";
+import { detectionEditPath, importFromPost } from "@/lib/events";
 import type { TweetImportOutcome } from "@/types";
 
 /** The finished run in one line: what landed, what moved, what was left alone. */
 function outcomeSummary(outcome: TweetImportOutcome): string {
   const parts: string[] = [];
   if (outcome.created.length > 0) {
-    parts.push(`${outcome.created.length} draft${outcome.created.length === 1 ? "" : "s"} created`);
+    parts.push(`${outcome.created.length} detection${outcome.created.length === 1 ? "" : "s"} created`);
   }
   if (outcome.updated.length > 0) {
     parts.push(`${outcome.updated.length} updated`);
@@ -31,12 +31,12 @@ function outcomeSummary(outcome: TweetImportOutcome): string {
   return parts.join(" · ");
 }
 
-/** The draft the page opens: the first one created, else the first one the
+/** The detection the page opens: the first one created, else the first one the
  *  re-import overwrote. Never a skipped row: the import left those alone
  *  precisely because they are not its to edit (published, closed or withheld),
  *  so opening one on a review link would offer an edit that cannot land.
  *  Undefined when the run wrote nothing. */
-function firstDraftId(outcome: TweetImportOutcome): string | undefined {
+function firstDetectionId(outcome: TweetImportOutcome): string | undefined {
   return [...outcome.created, ...outcome.updated][0];
 }
 
@@ -55,19 +55,19 @@ function outcomeLine(outcome: TweetImportOutcome): string {
   if (outcome.failed > 0) {
     return "That post couldn't be stored. Try again in a minute.";
   }
-  return outcome.reason?.message ?? "That post produced no draft. Fill the form yourself instead.";
+  return outcome.reason?.message ?? "That post produced no detection. Fill the form yourself instead.";
 }
 
 /**
  * The "From an X post" entry: paste a link to one of your own posts and the
- * detection engine reads it into `detected` drafts, the same drafts the bot and
- * the archive backfill create. Own posts only, so the API compares the post's
+ * detection engine reads it into detections, the same rows the bot and the
+ * archive backfill create. Own posts only, so the API compares the post's
  * author against the X account linked to your profile and answers
  * `not_your_post` otherwise; that message is rendered as-is.
  *
- * A clean run goes straight to the draft's review. A run with something to say
+ * A clean run goes straight to the detection's review. A run with something to say
  * (warnings, a refusal, a post the import left as it is) stays here and says it,
- * with the review one click away when there is a draft to open, so nothing the
+ * with the review one click away when there is a detection to open, so nothing the
  * engine raised is lost in a redirect.
  *
  * The sentence for a warning or a refusal arrives with its code: the bot's
@@ -84,16 +84,16 @@ export function ImportPostPanel() {
   const { run, loading, error } = useMutation(importFromPost, {
     onSuccess: (result) => {
       refreshDetectionCount();
-      const draftId = firstDraftId(result);
-      if (draftId !== undefined && result.warnings.length === 0 && result.created.length > 0) {
-        router.push(draftEditPath(draftId, true));
+      const detectionId = firstDetectionId(result);
+      if (detectionId !== undefined && result.warnings.length === 0 && result.created.length > 0) {
+        router.push(detectionEditPath(detectionId, true));
         return;
       }
       setOutcome(result);
     },
   });
 
-  const draftId = outcome === null ? undefined : firstDraftId(outcome);
+  const detectionId = outcome === null ? undefined : firstDetectionId(outcome);
   const warnings = outcome?.warnings ?? [];
 
   return (
@@ -108,7 +108,7 @@ export function ImportPostPanel() {
     >
       <div className="space-y-1.5">
         <p className="text-sm text-neutral-200">
-          Paste one of your own X posts. Its coordinates, source and media become a draft
+          Paste one of your own X posts. Its coordinates, source and media become a detection
           you review. <FieldHelp concept="section_import" />{" "}
           <Link href="/import#paste" className={TEXT_LINK}>
             Import guide
@@ -128,7 +128,7 @@ export function ImportPostPanel() {
             disabled={loading || !url.trim()}
             className="whitespace-nowrap"
           >
-            {loading ? "Reading…" : "Create the draft"}
+            {loading ? "Reading…" : "Create the detection"}
           </Button>
         </div>
       </div>
@@ -150,9 +150,9 @@ export function ImportPostPanel() {
               ))}
             </ul>
           )}
-          {draftId !== undefined && (
-            <Link href={draftEditPath(draftId, true)} className={buttonClasses("primary")}>
-              Review the draft
+          {detectionId !== undefined && (
+            <Link href={detectionEditPath(detectionId, true)} className={buttonClasses("primary")}>
+              Review the detection
             </Link>
           )}
         </div>

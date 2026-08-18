@@ -238,7 +238,7 @@ DERIVATIVE_JPEG_QUALITY = 80
 # What :func:`make_jpeg_derivative` emits, whatever the source was, and what the
 # PUT that stores a derivative declares. Machine-imported photos are re-encoded
 # to this same type at ingest (``tweet_ingest.records.PHOTO_CONTENT_TYPE``), so
-# a draft's original and its derivatives read as one format everywhere.
+# a detection's original and its derivatives read as one format everywhere.
 DERIVATIVE_CONTENT_TYPE = "image/jpeg"
 
 

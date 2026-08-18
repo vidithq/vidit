@@ -349,7 +349,7 @@ describe("EventDetailBody", () => {
   });
 
   it("shows a dash on the Source posted row when the instant is unknown", () => {
-    // A machine `detected` draft whose source is an undated footage link
+    // A machine detection whose source is an undated footage link
     // (or has no source at all) leaves source_posted_at null.
     render(
       <EventDetailBody
@@ -362,7 +362,7 @@ describe("EventDetailBody", () => {
   });
 
   it("shows the muted 'To confirm' label on the Source row when no source is declared", () => {
-    // A machine `detected` draft is partial by definition: its tweet may
+    // A machine detection is partial by definition: its tweet may
     // declare no source at all.
     render(
       <EventDetailBody
@@ -460,7 +460,7 @@ describe("EventDetailBody", () => {
     ).toBeInTheDocument();
   });
 
-  it("offers a draft's owner the same action, publication being no longer the trigger", () => {
+  it("offers a detection's owner the same action, publication being no longer the trigger", () => {
     asOwner(() =>
       render(
         <EventDetailBody
@@ -476,7 +476,7 @@ describe("EventDetailBody", () => {
     expect(screen.getByRole("button", { name: "Archive the source" })).toBeInTheDocument();
   });
 
-  it("shows no archival affordance on a draft that declares no source", () => {
+  it("shows no archival affordance on a detection that declares no source", () => {
     asOwner(() =>
       render(
         <EventDetailBody

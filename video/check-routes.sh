@@ -14,7 +14,7 @@
 # and `GET /events?view=requested`), the two frontend routes that are now
 # redirect stubs (`/geolocations/new` and `/requests/new`, both `/submit`), and
 # the removed tweet-media proxy (`GET /events/import-from-tweet/media`: the
-# paste creates drafts now, so media comes off the draft's `storage_url`).
+# paste creates detections now, so media comes off the detection's `storage_url`).
 #
 # Comments are stripped before the scan, so prose may name an old route while
 # code may not.

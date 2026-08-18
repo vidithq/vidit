@@ -323,7 +323,7 @@ const MockTweet: React.FC<{ bodyWidth: number; bodyHeight: number }> = ({
               whiteSpace: "pre-line",
             }}
           >
-            {"Vidit: 1 geolocation draft saved · ref 94183d44\nReview it from your profile (link in bio)."}
+            {"Vidit: 1 detection saved · ref 94183d44\nReview it from your profile (link in bio)."}
           </div>
           <ActionBar />
         </div>

@@ -423,7 +423,7 @@ def test_reply_carries_in_reply_to_user_id(db):
 # ── Queue drain through the shared pipeline ────────────────────────────────
 
 
-async def test_drain_creates_draft_and_replies(db, linked_owner):
+async def test_drain_creates_detection_and_replies(db, linked_owner):
     _post_payload(
         {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(COORD_ID)]}
     )

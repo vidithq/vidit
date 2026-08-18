@@ -9,7 +9,7 @@ from app.database import Base
 
 # What one mention did with a tagged tweet. ``created``: at least one
 # ``detected`` row landed. ``updated``: no row was created, and the newer parse
-# overwrote at least one open draft the analyst already held, which is an answer
+# overwrote at least one open detection the analyst already held, which is an answer
 # to the tag and earns the success reply just as a creation does.
 # ``no_detection``: the thread yielded no coordinate,
 # which a linked author gets the failure reply for (unless the tagged tweet is

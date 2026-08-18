@@ -50,8 +50,8 @@ def test_the_bot_reads_the_same_authors_parent() -> None:
     resolution = _resolution(typology)
 
     assert resolution.reason is None
-    [draft] = resolution.drafts
-    assert draft.coordinate.lat == pytest.approx(expected["coords"][0][0])
-    assert draft.coordinate.lng == pytest.approx(expected["coords"][0][1])
-    assert draft.detected_from_url.endswith(f"/status/{expected['head_tweet_id']}")
-    assert draft.source_url == expected["source_url"]
+    [detection] = resolution.detections
+    assert detection.coordinate.lat == pytest.approx(expected["coords"][0][0])
+    assert detection.coordinate.lng == pytest.approx(expected["coords"][0][1])
+    assert detection.detected_from_url.endswith(f"/status/{expected['head_tweet_id']}")
+    assert detection.source_url == expected["source_url"]

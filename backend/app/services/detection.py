@@ -1,17 +1,17 @@
-"""Persist machine detections: a ``Resolution``'s drafts become ``detected`` rows.
+"""Persist machine detections: a ``Resolution``'s detections become ``detected`` rows.
 
-:func:`persist_drafts` is the one write path, and every entry runs it over what
-``tweet_ingest.resolve_threads`` handed back: the bot over the thread it
+:func:`persist_detections` is the one write path, and every entry runs it over
+what ``tweet_ingest.resolve_threads`` handed back: the bot over the thread it
 acquired, :func:`import_pasted_post` over the post an analyst pasted,
 :func:`backfill_from_archive` over every stitched self-thread of an export. It
-turns each ``Draft`` into an ``Event`` row owned by the importer, with media
+turns each ``Detection`` into an ``Event`` row owned by the importer, with media
 through the evidence pipeline and idempotency on ``(the thread's post ids OR
-source_url, coordinate)``. The draft never reaches the ORM, which is what keeps
-the engine pure.
+source_url, coordinate)``. The ``Detection`` never reaches the ORM, which is
+what keeps the engine pure.
 
-A draft that matches a row the owner already holds resolves through
-:func:`_row_disposition`: an open ``detected`` draft is overwritten in place
-with the newer parse, and every other shape is left alone.
+A detection that matches a row the owner already holds resolves through
+:func:`_row_disposition`: an open ``detected`` row is overwritten in place with
+the newer parse, and every other shape is left alone.
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ from app.services.tweet_ingest import (
     SOURCE_FETCH_FAILED,
     SOURCE_FOOTAGE_MISSING,
     SOURCE_MISSING,
-    Draft,
+    Detection,
     ParsedMedia,
     Resolution,
     acquire_from_post,
@@ -94,22 +94,22 @@ class Outcome:
 
     The three verdicts carry event ids, in the order the engine produced them,
     so an entry that answers a single post (the paste, the bot's reply) can
-    point its caller at the draft it landed on, and an entry that counts a whole
+    point its caller at the detection it landed on, and an entry that counts a whole
     export reads ``len()``. Ids rather than ORM rows: an export resolves
-    thousands of drafts in one pass, no caller reads a column off these, and
+    thousands of detections in one pass, no caller reads a column off these, and
     holding the mapped objects for the whole pass would keep every one of them
     out of the session's weak identity map until the pass ends.
     """
 
     created: list[uuid.UUID] = field(default_factory=list)
-    # An open ``detected`` draft overwritten with a newer parse.
+    # An open detection overwritten with a newer parse.
     updated: list[uuid.UUID] = field(default_factory=list)
     # A matched row the import must not touch, or one already up to date.
     skipped: list[uuid.UUID] = field(default_factory=list)
-    failed: int = 0  # a draft raised mid-persist and was skipped
+    failed: int = 0  # a detection raised mid-persist and was skipped
     # What review has to answer on the rows this pass wrote, counted over the
     # created and updated rows alone: the engine's warnings and the write path's
-    # both. A pass that wrote nothing reports none, since there is no draft to
+    # both. A pass that wrote nothing reports none, since there is no detection to
     # go and look at. One home, so the bot's reply, the archive's outcome email
     # and the paste's response read the same numbers.
     warnings: dict[str, int] = field(default_factory=dict)
@@ -151,7 +151,7 @@ def _row_disposition(row: Event) -> Verdict:
        status: the rule ``routers/events/_common.resolve_live_event`` states
        for every analyst-facing verb, applied here as well.
     3. Published work (``geolocated``) is never touched by a machine.
-    4. An open ``detected`` draft is machine-authored working state that no
+    4. An open detection is machine-authored working state that no
        analyst-facing path can edit in place (every field write is welded to
        the ``geolocated`` promotion), so a newer parse overwrites it.
     5. A ``closed`` row was judged and thrown out. A rejected detection stays
@@ -171,11 +171,11 @@ def _row_disposition(row: Event) -> Verdict:
     return "skip"
 
 
-def _disposition(db: Session, owner: User, draft: Draft) -> tuple[Verdict, Event | None]:
+def _disposition(db: Session, owner: User, detection: Detection) -> tuple[Verdict, Event | None]:
     """Verdict for one detection, with the row it applies to when there is one.
 
     Scoped to ``owner``: a detection only dedups against the backfiller's own
-    rows. Among those, looks at every row the draft's provenance or its
+    rows. Among those, looks at every row the detection's provenance or its
     ``source_url`` matches, whatever state that row is in, and matches the
     coordinate to ``_COORD_PLACES``. Each match is read by
     :func:`_row_disposition`; a single ``skip`` among them wins, since a row the
@@ -187,7 +187,7 @@ def _disposition(db: Session, owner: User, draft: Draft) -> tuple[Verdict, Event
     ``/i/web/status/`` form). Not the anchor alone, because the entries anchor
     differently on one self-thread: an export stitches A→B→C whole and anchors on
     A, while a bot tag or a paste on C reads one hop and anchors on B, so one
-    geolocation imported through two entries would land as two drafts. The rows
+    geolocation imported through two entries would land as two detections. The rows
     whose thread shares a post with the incoming one are the match, an array
     overlap, which holds whichever entry ran first. The anchor equality stays for
     the rows written before the array existed.
@@ -195,19 +195,19 @@ def _disposition(db: Session, owner: User, draft: Draft) -> tuple[Verdict, Event
     The ``source_url`` leg catches the delete-and-repost duplicate: the analyst
     posts the same geolocation twice (a typo fix, an X repost), the bot is
     tagged on both, and the two provenance posts differ while the footage source
-    and coordinate are identical. A source-less draft keeps the provenance-only
+    and coordinate are identical. A source-less detection keeps the provenance-only
     match: NULL declares nothing, so it can't collide.
 
     A ``skip`` carries the row that earned it, so a caller answering one post
-    can still name the draft its detection landed on. Only ``create`` has no row.
+    can still name the row its detection landed on. Only ``create`` has no row.
     """
     legs = []
-    if draft.detected_from_tweet_id is not None:
-        legs.append(Event.detected_from_tweet_id == draft.detected_from_tweet_id)
-    if draft.thread_tweet_ids:
-        legs.append(Event.detected_thread_tweet_ids.overlap(list(draft.thread_tweet_ids)))
-    if draft.source_url is not None:
-        legs.append(Event.source_url == draft.source_url)
+    if detection.detected_from_tweet_id is not None:
+        legs.append(Event.detected_from_tweet_id == detection.detected_from_tweet_id)
+    if detection.thread_tweet_ids:
+        legs.append(Event.detected_thread_tweet_ids.overlap(list(detection.thread_tweet_ids)))
+    if detection.source_url is not None:
+        legs.append(Event.source_url == detection.source_url)
     if not legs:
         # No post id and no source: the detection declares nothing an existing
         # row could be recognised by, so it can only be new.
@@ -218,7 +218,7 @@ def _disposition(db: Session, owner: User, draft: Draft) -> tuple[Verdict, Event
             Event.owner_id == owner.id,
             or_(*legs),
         )
-        # Deterministic pick when several drafts hold the pair: the oldest one.
+        # Deterministic pick when several detections hold the pair: the oldest one.
         .order_by(Event.created_at, Event.id)
         .all()
     )
@@ -230,7 +230,7 @@ def _disposition(db: Session, owner: User, draft: Draft) -> tuple[Verdict, Event
         # re-import for this owner.
         if row.event_coords is None:
             continue
-        if not _same_coordinate(row, draft):
+        if not _same_coordinate(row, detection):
             continue
         if _row_disposition(row) == "skip":
             return "skip", row
@@ -241,12 +241,12 @@ def _disposition(db: Session, owner: User, draft: Draft) -> tuple[Verdict, Event
     return "upsert", open_row
 
 
-def _same_coordinate(row: Event, draft: Draft) -> bool:
+def _same_coordinate(row: Event, detection: Detection) -> bool:
     """Whether ``row`` sits on the detection's coordinate, to ``_COORD_PLACES``."""
     lat, lng = _projected(row)
-    return round(lat, _COORD_PLACES) == round(draft.coordinate.lat, _COORD_PLACES) and round(
+    return round(lat, _COORD_PLACES) == round(detection.coordinate.lat, _COORD_PLACES) and round(
         lng, _COORD_PLACES
-    ) == round(draft.coordinate.lng, _COORD_PLACES)
+    ) == round(detection.coordinate.lng, _COORD_PLACES)
 
 
 async def _prepared_media(
@@ -295,8 +295,8 @@ class _ResolvedMedia:
 
 
 @dataclass(frozen=True)
-class _DraftMedia:
-    """What one draft's media resolved to, and whether any of it went missing.
+class _DetectionMedia:
+    """What one detection's media resolved to, and whether any of it went missing.
 
     ``complete`` is False when the post declares media the fetch could not
     turn into bytes: a source slot nothing filled, or a proof image that came
@@ -311,8 +311,8 @@ class _DraftMedia:
 
 
 async def _resolve_media(
-    draft: Draft, fetch_media: MediaFetcher, media_cache: _MediaCache
-) -> _DraftMedia:
+    detection: Detection, fetch_media: MediaFetcher, media_cache: _MediaCache
+) -> _DetectionMedia:
     """The media a detection wants stored, in the order the row should hold it.
 
     The footage in the source slot, capped at one
@@ -325,7 +325,7 @@ async def _resolve_media(
     """
     resolved: list[_ResolvedMedia] = []
     source_filled = False
-    for parsed in draft.source_media:
+    for parsed in detection.source_media:
         prepared = await _prepared_media(parsed, fetch_media, media_cache)
         if prepared is None:
             continue
@@ -334,8 +334,8 @@ async def _resolve_media(
         break
     # A declared source whose every candidate came back short: the slot the post
     # asks for is empty, so the resolution is short of what the post carries.
-    missing = bool(draft.source_media) and not source_filled
-    for parsed in draft.proof_media:
+    missing = bool(detection.source_media) and not source_filled
+    for parsed in detection.proof_media:
         # Invariant: every proof row is referenced by the proof doc, and only
         # image nodes go into it, so a non-image proof media would be an
         # orphaned, unreadable blob. Skip it rather than persist bytes the read
@@ -347,7 +347,7 @@ async def _resolve_media(
             missing = True
             continue
         resolved.append(_ResolvedMedia("proof", prepared, content_sha256(prepared.cleaned)))
-    return _DraftMedia(resolved, not missing)
+    return _DetectionMedia(resolved, not missing)
 
 
 async def _store_media(
@@ -386,14 +386,14 @@ async def _store_media(
     return proof_image_urls
 
 
-def _proof_doc(draft: Draft, proof_image_urls: list[str]) -> dict[str, Any]:
+def _proof_doc(detection: Detection, proof_image_urls: list[str]) -> dict[str, Any]:
     """The row's proof document: the post's cleaned text, then its proof images.
 
     Proof images travel inside the proof JSON as image nodes (that is how the
     read surfaces them, unlike source media in ``media``), so the document and
     the ``role=proof`` rows are written from one place and cannot drift.
     """
-    doc = tiptap_doc_from_text(draft.proof_text)
+    doc = tiptap_doc_from_text(detection.proof_text)
     if proof_image_urls:
         content = list(doc.get("content", []))
         content.extend({"type": "image", "attrs": {"src": url}} for url in proof_image_urls)
@@ -414,52 +414,54 @@ async def _persist_one(
     db: Session,
     *,
     owner: User,
-    draft: Draft,
+    detection: Detection,
     via: DetectedVia,
     fetch_media: MediaFetcher,
     media_cache: _MediaCache,
 ) -> Event:
-    resolved = (await _resolve_media(draft, fetch_media, media_cache)).items
+    resolved = (await _resolve_media(detection, fetch_media, media_cache)).items
     uploaded_keys: list[str] = []
     try:
         geo = Event(
             owner_id=owner.id,
-            title=draft.title,
-            event_coords=from_shape(Point(draft.coordinate.lng, draft.coordinate.lat), srid=4326),
+            title=detection.title,
+            event_coords=from_shape(
+                Point(detection.coordinate.lng, detection.coordinate.lat), srid=4326
+            ),
             # The declared footage source (the quoted tweet or an off-platform
             # link), distinct from the ``detected_from_url`` provenance link.
-            # NULL when the tweet declared none: a ``detected`` draft is partial
+            # NULL when the tweet declared none: a detection is partial
             # by definition; the geolocate promotion requires the source.
-            source_url=draft.source_url,
-            proof=_proof_doc(draft, []),
-            event_date=draft.event_date,
-            source_posted_at=draft.source_posted_at,
-            detected_post_at=draft.detected_post_at,
+            source_url=detection.source_url,
+            proof=_proof_doc(detection, []),
+            event_date=detection.event_date,
+            source_posted_at=detection.source_posted_at,
+            detected_post_at=detection.detected_post_at,
             status=STATUS_DETECTED,
             detected_at=datetime.now(UTC),
-            detected_from_tweet_id=draft.detected_from_tweet_id,
-            detected_from_url=draft.detected_from_url,
-            # Provenance, written once: the thread the draft came from and the
+            detected_from_tweet_id=detection.detected_from_tweet_id,
+            detected_from_url=detection.detected_from_url,
+            # Provenance, written once: the thread the detection came from and the
             # entry that read it. A re-import through another entry moves
             # neither (see :func:`_apply_import_fields`).
-            detected_thread_tweet_ids=list(draft.thread_tweet_ids) or None,
+            detected_thread_tweet_ids=list(detection.thread_tweet_ids) or None,
             detected_via=via,
         )
         # The mirrors the post also linked. Already normalized + capped by the
         # resolution, so no second pass here.
-        geo.source_links = build_source_link_rows(draft.secondary_source_urls)
+        geo.source_links = build_source_link_rows(detection.secondary_source_urls)
         db.add(geo)
         db.flush()  # populate geo.id for media keys + the Media FK
 
         proof_image_urls = await _store_media(db, geo, resolved, uploaded_keys)
         if proof_image_urls:
-            geo.proof = _proof_doc(draft, proof_image_urls)  # reassign flags the JSONB dirty
+            geo.proof = _proof_doc(detection, proof_image_urls)  # reassign flags the JSONB dirty
         db.commit()
     except Exception:
         # Explicit rollback before the sweep so an autoflush in a downstream
         # handler can't resurrect the half-added Media rows.
         db.rollback()
-        sweep_keys(uploaded_keys, context=f"detection persist {draft.detected_from_url}")
+        sweep_keys(uploaded_keys, context=f"detection persist {detection.detected_from_url}")
         raise
     # No post-commit refresh: a refresh failure here would misclassify an
     # already-durable row as failed. The geo's attributes lazy-load from the
@@ -467,7 +469,7 @@ async def _persist_one(
     #
     # No source archival here: a detected row is unpublished working state and
     # Save Page Now is public and timestamped. The links are enqueued when the
-    # analyst publishes the draft (``events.geolocate``).
+    # analyst publishes the detection (``events.geolocate``).
     return geo
 
 
@@ -486,7 +488,7 @@ def _media_unchanged(stored: list[Media], resolved: list[_ResolvedMedia]) -> boo
     )
 
 
-def _apply_import_fields(db: Session, row: Event, draft: Draft) -> tuple[bool, bool]:
+def _apply_import_fields(db: Session, row: Event, detection: Detection) -> tuple[bool, bool]:
     """Write the scalar state the import owns onto ``row``.
 
     Returns ``(changed, source_url_changed)``. Every field is compared before it
@@ -496,29 +498,31 @@ def _apply_import_fields(db: Session, row: Event, draft: Draft) -> tuple[bool, b
     four provenance columns (``detected_from_tweet_id``, ``detected_from_url``,
     ``detected_thread_tweet_ids``, ``detected_via``) are not the import's to
     move: the row keeps its identity, its place in the queue, the thread it was
-    read from and the entry that first read it. A bot tag over a draft the
-    archive created therefore updates the draft and still reads ``archive``,
+    read from and the entry that first read it. A bot tag over a detection the
+    archive created therefore updates the detection and still reads ``archive``,
     which is what happened.
     """
     changed = False
-    if _projected(row) != (draft.coordinate.lat, draft.coordinate.lng):
-        row.event_coords = from_shape(Point(draft.coordinate.lng, draft.coordinate.lat), srid=4326)
+    if _projected(row) != (detection.coordinate.lat, detection.coordinate.lng):
+        row.event_coords = from_shape(
+            Point(detection.coordinate.lng, detection.coordinate.lat), srid=4326
+        )
         changed = True
     for name, value in (
-        ("title", draft.title),
-        ("event_date", draft.event_date),
-        ("source_posted_at", draft.source_posted_at),
-        ("detected_post_at", draft.detected_post_at),
+        ("title", detection.title),
+        ("event_date", detection.event_date),
+        ("source_posted_at", detection.source_posted_at),
+        ("detected_post_at", detection.detected_post_at),
     ):
         if getattr(row, name) != value:
             setattr(row, name, value)
             changed = True
-    source_url_changed = row.source_url != draft.source_url
+    source_url_changed = row.source_url != detection.source_url
     if source_url_changed:
-        row.source_url = draft.source_url
+        row.source_url = detection.source_url
         changed = True
-    if [link.url for link in row.source_links] != draft.secondary_source_urls:
-        replace_source_links(db, row, draft.secondary_source_urls)
+    if [link.url for link in row.source_links] != detection.secondary_source_urls:
+        replace_source_links(db, row, detection.secondary_source_urls)
         changed = True
     return changed, source_url_changed
 
@@ -533,11 +537,11 @@ async def _upsert_one(
     db: Session,
     *,
     row: Event,
-    draft: Draft,
+    detection: Detection,
     fetch_media: MediaFetcher,
     media_cache: _MediaCache,
 ) -> bool:
-    """Overwrite an open draft's import-owned state; ``True`` when anything moved.
+    """Overwrite an open detection's import-owned state; ``True`` when anything moved.
 
     What the import owns it rewrites: the title, the coordinate, the event
     date, the source URL and its mirrors, both post instants, the proof
@@ -558,7 +562,7 @@ async def _upsert_one(
     short list would delete the stored rows and sweep their objects for a
     failure that clears on its own.
     """
-    media_resolution = await _resolve_media(draft, fetch_media, media_cache)
+    media_resolution = await _resolve_media(detection, fetch_media, media_cache)
     resolved = media_resolution.items
     # Re-read the row under a lock and re-run the matrix on it, the same guard
     # ``events.geolocate`` takes: the disposition was decided on an unlocked
@@ -577,7 +581,7 @@ async def _upsert_one(
         logger.warning(
             "Keeping stored media on %s: the re-import resolved none of %s",
             row.id,
-            draft.detected_from_url,
+            detection.detected_from_url,
         )
         reuse_media = True
     else:
@@ -591,7 +595,7 @@ async def _upsert_one(
     uploaded_keys: list[str] = []
     replaced_keys: list[str] = []
     try:
-        changed, source_url_changed = _apply_import_fields(db, row, draft)
+        changed, source_url_changed = _apply_import_fields(db, row, detection)
         if source_url_changed:
             # Before the new proof lands, matching ``events.geolocate``: the
             # reconcile reads the links the row carries at that moment.
@@ -608,7 +612,7 @@ async def _upsert_one(
             db.flush()
             proof_image_urls = await _store_media(db, row, resolved, uploaded_keys)
             changed = True
-        doc = _proof_doc(draft, proof_image_urls)
+        doc = _proof_doc(detection, proof_image_urls)
         if row.proof != doc:
             row.proof = doc
             changed = True
@@ -622,7 +626,7 @@ async def _upsert_one(
         db.commit()
     except Exception:
         db.rollback()
-        sweep_keys(uploaded_keys, context=f"detection upsert {draft.detected_from_url}")
+        sweep_keys(uploaded_keys, context=f"detection upsert {detection.detected_from_url}")
         raise
     sweep_keys(replaced_keys, context=f"detection upsert {row.id} replaced media")
     return True
@@ -644,7 +648,7 @@ def _rows_without_footage(db: Session, ids: list[uuid.UUID]) -> set[uuid.UUID]:
     """The rows carrying no ``role=source`` media.
 
     Read off the durable rows rather than off what the fetch resolved, so the
-    warning says what the analyst will actually find on the draft.
+    warning says what the analyst will actually find on the detection.
     """
     stored: set[uuid.UUID] = set()
     for chunk in _id_chunks(ids):
@@ -662,7 +666,7 @@ def _rows_with_duplicate_media(db: Session, ids: list[uuid.UUID]) -> set[uuid.UU
 
     Exact ``Media.sha256`` equality; perceptual near-duplicate matching is a
     separate feature. The pass's own rows are excluded from the comparison, so a
-    thread's several coordinate drafts, which share one media, never flag each
+    thread's several coordinate detections, which share one media, never flag each
     other.
     """
     mine: list[tuple[uuid.UUID, str]] = []
@@ -691,22 +695,22 @@ def _rows_with_duplicate_media(db: Session, ids: list[uuid.UUID]) -> set[uuid.UU
     return {event_id for event_id, sha in mine if sha in elsewhere}
 
 
-def _engine_warnings(persisted: list[tuple[uuid.UUID, Draft]]) -> dict[str, int]:
-    """The engine's warnings, counted over the drafts that produced a row.
+def _engine_warnings(persisted: list[tuple[uuid.UUID, Detection]]) -> dict[str, int]:
+    """The engine's warnings, counted over the detections that produced a row.
 
-    ``Resolution.warnings`` counts every draft the engine read. The rows the
+    ``Resolution.warnings`` counts every detection the engine read. The rows the
     pass wrote are the denominator the analyst can act on: a re-import that
-    overwrote nothing leaves no draft to go and look at, so it must not report
+    overwrote nothing leaves no detection to go and look at, so it must not report
     a source to pick or a coordinate to split.
     """
     counts: dict[str, int] = {}
-    for _event_id, draft in persisted:
-        for code in draft.warnings:
+    for _event_id, detection in persisted:
+        for code in detection.warnings:
             counts[code] = counts.get(code, 0) + 1
     return counts
 
 
-def _write_warnings(db: Session, persisted: list[tuple[uuid.UUID, Draft]]) -> dict[str, int]:
+def _write_warnings(db: Session, persisted: list[tuple[uuid.UUID, Detection]]) -> dict[str, int]:
     """The warnings only the write path can raise, counted per row it wrote.
 
     The engine says what it could not settle from the post; these say what the
@@ -717,29 +721,29 @@ def _write_warnings(db: Session, persisted: list[tuple[uuid.UUID, Draft]]) -> di
     read as warnings beside the engine's and are counted the same way.
 
     A footage-less row whose chase failed on an upstream that would not answer
-    (``Draft.source_fetch_failed``, the retry schedule already spent) raises
+    (``Detection.source_fetch_failed``, the retry schedule already spent) raises
     ``SOURCE_FETCH_FAILED`` instead: the footage may well exist, so importing the
     post again later is a repair, which it is not for a source that simply
     carries none.
 
-    The footage and date warnings are dropped on a row whose draft already
+    The footage and date warnings are dropped on a row whose detection already
     carries ``SOURCE_MISSING`` or ``SOURCE_AMBIGUOUS``: an empty source slot
     already says why there is neither footage nor date.
     """
     counts: dict[str, int] = {}
     if not persisted:
         return counts
-    ids = [event_id for event_id, _draft in persisted]
+    ids = [event_id for event_id, _detection in persisted]
     footage_less = _rows_without_footage(db, ids)
     duplicated = _rows_with_duplicate_media(db, ids)
-    for event_id, draft in persisted:
+    for event_id, detection in persisted:
         raised: list[str] = []
-        if not set(draft.warnings) & {SOURCE_MISSING, SOURCE_AMBIGUOUS}:
+        if not set(detection.warnings) & {SOURCE_MISSING, SOURCE_AMBIGUOUS}:
             if event_id in footage_less:
                 raised.append(
-                    SOURCE_FETCH_FAILED if draft.source_fetch_failed else SOURCE_FOOTAGE_MISSING
+                    SOURCE_FETCH_FAILED if detection.source_fetch_failed else SOURCE_FOOTAGE_MISSING
                 )
-            if draft.source_posted_at is None:
+            if detection.source_posted_at is None:
                 raised.append(SOURCE_DATE_UNKNOWN)
         if event_id in duplicated:
             raised.append(DUPLICATE_MEDIA)
@@ -748,7 +752,7 @@ def _write_warnings(db: Session, persisted: list[tuple[uuid.UUID, Draft]]) -> di
     return counts
 
 
-async def persist_drafts(
+async def persist_detections(
     db: Session,
     *,
     owner: User,
@@ -757,7 +761,7 @@ async def persist_drafts(
     fetch_media: MediaFetcher,
     on_progress: Callable[[int, int], None] | None = None,
 ) -> Outcome:
-    """Persist each of the resolution's drafts as a ``detected`` ``Event``
+    """Persist each of the resolution's detections as a ``detected`` ``Event``
     owned by ``owner``.
 
     The one write path, and every entry runs it over what
@@ -770,17 +774,17 @@ async def persist_drafts(
     (``events.detected_via``). An upsert leaves it where it was: it says which
     entry first read the post, not which one last touched the row.
 
-    A draft is matched on its provenance (the thread's post ids) or its
+    A detection is matched on its provenance (the thread's post ids) or its
     ``source_url``, plus the coordinate, across states, then dispatched by the
-    disposition matrix (see :func:`_row_disposition`): an open ``detected`` draft
+    disposition matrix (see :func:`_row_disposition`): an open detection
     takes the newer parse in place, every other match is left untouched, and only
-    an unmatched draft creates a row. A second pass over the same export
+    an unmatched detection creates a row. A second pass over the same export
     therefore writes nothing at all and counts as ``skipped``, not ``updated``,
     and so does the same thread arriving through another entry.
 
-    Each draft commits in its own transaction so one failure neither loses the
+    Each detection commits in its own transaction so one failure neither loses the
     others nor strands S3 objects: a raise is caught, counted in
-    ``outcome.failed``, rolled back, and the loop moves on. A draft may carry no
+    ``outcome.failed``, rolled back, and the loop moves on. A detection may carry no
     media, since a ``detected`` row can be media-incomplete until its owner
     completes it before validating.
 
@@ -789,31 +793,31 @@ async def persist_drafts(
     count per refusal code. A caller that resolved a single thread reads
     ``outcome.reason`` for the one code to name back.
 
-    ``on_progress(done, total)`` fires after every handled draft (skips and
+    ``on_progress(done, total)`` fires after every handled detection (skips and
     failures included: the analyst-facing meaning is "position in the scan").
     The resolution is already complete, so the total is exact from the first
     call. Called between per-row transactions, so a callback that commits on the
     same session never splits one.
     """
-    drafts = resolution.drafts
+    detections = resolution.detections
     outcome = Outcome(refusals=resolution.refusals)
-    # The id of every row this pass wrote, with the draft it was written from,
+    # The id of every row this pass wrote, with the detection it was written from,
     # so the write path's own warnings can be read off both at the end.
-    persisted: list[tuple[uuid.UUID, Draft]] = []
+    persisted: list[tuple[uuid.UUID, Detection]] = []
     # Media cache scoped to the current thread: the engine emits a thread's
-    # coordinate drafts contiguously sharing one ``detected_from_url`` + media,
+    # coordinate detections contiguously sharing one ``detected_from_url`` + media,
     # so resetting on a URL change bounds the cached bytes to one thread.
     cache_url: str | None = None
     media_cache: _MediaCache = {}
-    total = len(drafts)
+    total = len(detections)
     if on_progress is not None:
-        # Announce the exact total up front (0 / N), so even a draft-less
+        # Announce the exact total up front (0 / N), so even a detection-less
         # archive stamps it and the caller's display leaves the estimate.
         on_progress(0, total)
-    for index, draft in enumerate(drafts, start=1):
-        if draft.detected_from_url != cache_url:
-            cache_url, media_cache = draft.detected_from_url, {}
-        verdict, matched = _disposition(db, owner, draft)
+    for index, detection in enumerate(detections, start=1):
+        if detection.detected_from_url != cache_url:
+            cache_url, media_cache = detection.detected_from_url, {}
+        verdict, matched = _disposition(db, owner, detection)
         if verdict == "skip":
             if matched is not None:  # always: a skip names the row it protects
                 outcome.skipped.append(matched.id)
@@ -822,18 +826,18 @@ async def persist_drafts(
                 changed = await _upsert_one(
                     db,
                     row=matched,
-                    draft=draft,
+                    detection=detection,
                     fetch_media=fetch_media,
                     media_cache=media_cache,
                 )
             except Exception:
-                logger.exception("Detection upsert failed for %s", draft.detected_from_url)
+                logger.exception("Detection upsert failed for %s", detection.detected_from_url)
                 db.rollback()
                 outcome.failed += 1
             else:
                 if changed:
                     outcome.updated.append(matched.id)
-                    persisted.append((matched.id, draft))
+                    persisted.append((matched.id, detection))
                 else:
                     outcome.skipped.append(matched.id)
         else:
@@ -841,18 +845,18 @@ async def persist_drafts(
                 geo = await _persist_one(
                     db,
                     owner=owner,
-                    draft=draft,
+                    detection=detection,
                     via=via,
                     fetch_media=fetch_media,
                     media_cache=media_cache,
                 )
             except Exception:
-                logger.exception("Detection persist failed for %s", draft.detected_from_url)
+                logger.exception("Detection persist failed for %s", detection.detected_from_url)
                 db.rollback()
                 outcome.failed += 1
             else:
                 outcome.created.append(geo.id)
-                persisted.append((geo.id, draft))
+                persisted.append((geo.id, detection))
         if on_progress is not None:
             on_progress(index, total)
     for counts in (_engine_warnings(persisted), _write_warnings(db, persisted)):
@@ -880,7 +884,7 @@ def linked_owner(db: Session, handle: str) -> User | None:
     An import never mints users: attribution requires an existing account whose
     handle was linked (invite-bound at registration, or the admin PATCH). A
     soft-deleted or deactivated account does not count, since its work is hidden
-    or suspended, so new drafts and billed replies must not land under it.
+    or suspended, so new detections and billed replies must not land under it.
     """
     return (
         db.query(User)
@@ -951,7 +955,7 @@ async def import_pasted_post(
             "the X account linked to your Vidit profile."
         )
     acquired = await asyncio.to_thread(acquire_from_post, post, client=client)
-    return await persist_drafts(
+    return await persist_detections(
         db,
         owner=owner,
         resolution=resolve_threads([acquired.records]),
@@ -972,7 +976,7 @@ async def backfill_from_archive(
 
     Reads ``owner``'s X export under ``archive_dir`` (``tweets.js`` +
     ``tweets_media/``), rebuilds self-threads, resolves them all, then hands the
-    resolution to :func:`persist_drafts`, the same write path the bot and the
+    resolution to :func:`persist_detections`, the same write path the bot and the
     paste run. Rows are owned by ``owner``, the account whose verified handle
     the archive belongs to, and a thread the engine refuses is counted in
     ``outcome.refusals`` under the same code the bot names back.
@@ -995,7 +999,7 @@ async def backfill_from_archive(
     threads = stitch(read_tweets(archive_dir, handle=handle))
     if chase:
         threads = [chase_thread(thread) for thread in threads]
-    return await persist_drafts(
+    return await persist_detections(
         db,
         owner=owner,
         resolution=resolve_threads(threads),

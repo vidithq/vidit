@@ -25,9 +25,9 @@ from app.database import Base
 # Lifecycle status — the merged request + geolocation event lifecycle.
 #   ``requested``   an open call to geolocate (a request for help); may
 #                   carry an approximate coordinate guess.
-#   ``detected``    a machine draft (archive import / the bot); public on every
+#   ``detected``    a machine detection (archive import / the bot); public on every
 #                   read surface but clearly marked, may or may not carry a
-#                   location (a coord-less draft is a media-only detection).
+#                   location (a coord-less one carries media alone).
 #   ``geolocated``  a person vouched for it and froze it (yesterday's geolocation
 #                   ``submitted`` + a fulfilled request); always has a location.
 #   ``closed``      withdrawn (a ``requested`` event the owner dropped) or
@@ -48,8 +48,8 @@ STATUS_CLOSED: EventStatus = "closed"
 # and lets re-import treat a closed detection as re-importable.
 BeforeClosedStatus = Literal["requested", "detected"]
 
-# Which of the three ingest entries produced a machine draft. Stamped once, by
-# ``detection.persist_drafts``, from a value each entry passes; NULL on a human
+# Which of the three ingest entries produced a machine detection. Stamped once, by
+# ``detection.persist_detections``, from a value each entry passes; NULL on a human
 # submit and on every row written before the column existed. The value domain is
 # pinned at the database by ``ck_events_detected_via_valid``; keep the two in
 # step. Read-only on the wire, like the other provenance fields.
@@ -166,7 +166,7 @@ class Event(Base):
     capture_source_coords = mapped_column(
         Geometry("POINT", srid=4326, spatial_index=False), nullable=True
     )
-    # The declared footage source. Nullable: a machine ``detected`` draft may
+    # The declared footage source. Nullable: a machine detection may
     # carry none (the imported tweet neither quoted nor linked footage); the
     # ``requested`` and ``geolocated`` states always have one, enforced by
     # ``ck_events_source_url_status`` and required again at the geolocate
@@ -218,19 +218,19 @@ class Event(Base):
     # (``tweet_ingest.urls.canonical_tweet_url``) and what an analyst opens.
     detected_from_tweet_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     detected_from_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Every post id of the thread the draft was read from, the anchor included.
+    # Every post id of the thread the detection was read from, the anchor included.
     # The re-import match reads it so the three entries land on one row for one
     # geolocation: an archive stitches a self-thread A→B→C whole and anchors on
     # A, while a bot tag or a paste on C reads one hop and anchors on B, so
-    # matching the anchor alone would file one geolocation as two drafts. Written
+    # matching the anchor alone would file one geolocation as two detections. Written
     # once, at creation: it is provenance, not import-owned state. NULL for human
     # submits; rows written before the column carry their anchor id alone.
     detected_thread_tweet_ids: Mapped[list[int] | None] = mapped_column(
         ARRAY(BigInteger), nullable=True
     )
-    # Which entry produced this draft (see ``DetectedVia``). Stamped at creation
+    # Which entry produced this detection (see ``DetectedVia``). Stamped at creation
     # and never moved: a re-import through another entry does not rewrite where
-    # the draft first came from. NULL for human submits and for rows that predate
+    # the detection first came from. NULL for human submits and for rows that predate
     # the column.
     detected_via: Mapped[DetectedVia | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -306,7 +306,7 @@ class Event(Base):
         ),
         # A requested or geolocated event always has a source URL (a request is
         # a call to geolocate someone's footage; a geolocated row is vouched
-        # evidence). A ``detected`` draft may carry none, the promotion to
+        # evidence). A detection may carry none, the promotion to
         # ``geolocated`` requires it; ``closed`` keeps whatever it had.
         CheckConstraint(
             "status NOT IN ('requested', 'geolocated') OR source_url IS NOT NULL",
@@ -345,7 +345,7 @@ class Event(Base):
             name="ck_events_status_valid",
         ),
         # Same reason as the status domain above, for the entry that produced a
-        # machine draft. NULL is in-domain: a human submit names no entry, and
+        # machine detection. NULL is in-domain: a human submit names no entry, and
         # neither does a row written before the column. Mirror of
         # ``DetectedVia``; keep the two in step.
         CheckConstraint(
@@ -365,7 +365,7 @@ class Event(Base):
             postgresql_where=text("detected_from_tweet_id IS NOT NULL"),
         ),
         # Backs the other leg of the same match, "does this incoming thread share
-        # a post with a draft I already hold": an array overlap, which reads off
+        # a post with a detection I already hold": an array overlap, which reads off
         # a GIN index. Partial on the populated cohort for the same reason.
         Index(
             "ix_events_detected_thread_tweet_ids",

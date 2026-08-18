@@ -282,7 +282,7 @@ def test_non_200_yields_none() -> None:
 
 def test_a_throttled_embed_is_retried_and_named_transient(retry_sleeps) -> None:
     """Telegram refusing to serve right now is the one failure worth a second
-    attempt, and what comes back says so, since the draft it lands on tells the
+    attempt, and what comes back says so, since the detection it lands on tells the
     analyst to import again later rather than that the source has no footage."""
     calls: list[httpx.Request] = []
 

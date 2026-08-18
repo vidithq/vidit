@@ -83,7 +83,7 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
         Event.owner_id == user_id,
         Event.status.in_(COUNTED_STATUSES),
         # ``closed`` covers two different rows. Off ``detected`` it is a
-        # machine draft the analyst threw out, a judgement they made, so it is
+        # machine detection the analyst threw out, a judgement they made, so it is
         # documented work. Off ``requested`` it is a call for help they
         # withdrew, and a ``requested`` row takes part in no aggregate here, so
         # its retired form must not either. ``is_distinct_from`` rather than

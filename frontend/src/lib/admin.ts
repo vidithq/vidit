@@ -94,7 +94,7 @@ export function deleteUser(
 export type AdminPurgeDetectedResponse =
   components["schemas"]["AdminPurgeDetectedResponse"];
 
-/** Hard-delete every `detected` draft the user owns, keeping the account.
+/** Hard-delete every detection the user owns, keeping the account.
  *  The broken-archive repair. */
 export function purgeDetectedEvents(
   id: string
@@ -178,7 +178,7 @@ export function reapPendingRegistrations(): Promise<MaintenanceResponse> {
   );
 }
 
-/** Email every analyst holding unpublished `detected` drafts: one message with
+/** Email every analyst holding unpublished detections: one message with
  *  the count and a link to their own Detections queue. */
 export function sendCompletionDigests(): Promise<MaintenanceResponse> {
   return apiFetch<MaintenanceResponse>(

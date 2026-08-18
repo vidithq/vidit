@@ -1,5 +1,5 @@
 {
-  "description": "Community-thread annotation style: a coordinate and annotation photos, no quote and no link. The engine declares no source (url null, date null, no source media) and warns source_missing; both photos are proof. This is the honest partial detected draft.",
+  "description": "Community-thread annotation style: a coordinate and annotation photos, no quote and no link. The engine declares no source (url null, date null, no source media) and warns source_missing; both photos are proof. This is the honest partial detection.",
   "coords": [
     [
       50.0045,

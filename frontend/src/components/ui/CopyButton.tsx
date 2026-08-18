@@ -50,7 +50,7 @@ export function CopyButton({
   /** Orthogonal extras (an armed-state ring, spacing). */
   className?: string;
   /** Gate for a call site that must approve the write first (the event share
-   *  row arms a draft link on the first click). Return `false` to swallow the
+   *  row arms a detection link on the first click). Return `false` to swallow the
    *  click, `true` to let the copy proceed. */
   beforeCopy?: () => boolean;
 }) {

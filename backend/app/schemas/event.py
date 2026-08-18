@@ -53,7 +53,7 @@ class ArchiveImportJobRead(BaseModel):
     ``status`` walks ``queued`` → ``running`` → ``done`` | ``failed``. The
     counts are the assemble outcome, final once ``done`` (zero until then):
     ``created`` is new ``detected`` rows; ``updated`` an open ``detected``
-    draft the import overwrote with a newer parse; ``skipped`` a detection the
+    detection the import overwrote with a newer parse; ``skipped`` a detection the
     import left alone, either because the row it matched is not one to touch
     or because that row was already up to date; ``failed`` a detection that
     raised mid-persist and was rolled back (the others still land). ``error``
@@ -135,7 +135,7 @@ class EventCloseRequest(BaseModel):
 # the service layer.
 DETECTIONS_MAX_PER_PAGE = 100
 
-# How many drafts one batch completion may carry: a full page of the queue, so
+# How many detections one batch completion may carry: a full page of the queue, so
 # whatever the analyst can see they can publish in one call, and no client can
 # ask for an unbounded loop of row-level transactions.
 MAX_COMPLETION_ROWS = DETECTIONS_MAX_PER_PAGE
@@ -146,7 +146,7 @@ MAX_COMPLETION_CONFLICTS = 10
 
 
 class BatchCompletionRowCreate(BaseModel):
-    """One draft in a batch completion: which row, and the capture source its
+    """One detection in a batch completion: which row, and the capture source its
     analyst picked for it."""
 
     event_id: uuid.UUID
@@ -168,11 +168,11 @@ class BatchCompletionCreate(BaseModel):
     def _reject_duplicate_events(
         cls, rows: list[BatchCompletionRowCreate]
     ) -> list[BatchCompletionRowCreate]:
-        """One row per draft: a repeated ``event_id`` is a 422, not a retry.
+        """One row per detection: a repeated ``event_id`` is a 422, not a retry.
 
-        The second occurrence can only fail (the first published the draft, so
+        The second occurrence can only fail (the first published the detection, so
         the row is no longer ``detected``), which would inflate ``failed`` and
-        report a state error against a draft that did publish. A client sending
+        report a state error against a detection that did publish. A client sending
         the same id twice is asking two different things of one row anyway,
         since each occurrence carries its own capture source.
         """
@@ -185,7 +185,7 @@ class BatchCompletionCreate(BaseModel):
 
 
 class BatchCompletionRowRead(BaseModel):
-    """One row's outcome. ``code`` / ``message`` are NULL when the draft
+    """One row's outcome. ``code`` / ``message`` are NULL when the detection
     published; otherwise they carry the same stable error code the single-row
     geolocate would have answered with, so the queue can render the reason
     against that row."""
@@ -216,7 +216,7 @@ class EventRead(BaseModel):
     event_coords: CoordsRead | None
     # The camera point: where the footage was shot from. Always optional.
     capture_source_coords: CoordsRead | None
-    # The declared footage source. NULL only on a machine ``detected`` draft
+    # The declared footage source. NULL only on a machine detection
     # (the imported tweet declared none); ``requested`` / ``geolocated`` rows
     # always carry one (``ck_events_source_url_status``). Required-nullable
     # like ``event_coords``: the key is always serialised.
@@ -268,7 +268,7 @@ class EventRead(BaseModel):
     # The post a machine detection was imported from, a provenance link
     # distinct from ``source_url`` (footage origin). NULL for human submits.
     detected_from_url: str | None
-    # Which of the three ingest entries produced the draft: ``bot``, ``paste``
+    # Which of the three ingest entries produced the detection: ``bot``, ``paste``
     # or ``archive``. Read-only, stamped at creation and never moved, so a
     # re-import through another entry does not rewrite it. NULL for human
     # submits and for machine rows that predate the column.
@@ -340,7 +340,7 @@ class PaginatedEventDetails(BaseModel):
     Mirrors ``PaginatedEvents`` but carries ``EventRead`` items
     (media + tags + provenance) rather than the lightweight ``EventList``
     card: the Detections queue needs the media to judge a detection and the
-    tags + conflicts to name what a draft is still missing without a per-row
+    tags + conflicts to name what a detection is still missing without a per-row
     round-trip.
 
     ``total`` counts the set the ``readiness`` filter selected, so the page

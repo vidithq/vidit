@@ -3,7 +3,7 @@
 An import spends its fetches on unauthenticated public endpoints: X's
 syndication backend, Telegram's public embed, the CDNs the media sit on. All
 three throttle and all three wobble, and a single attempt turns a two-second
-outage into a draft with no footage, or into a refusal the analyst reads as
+outage into a detection with no footage, or into a refusal the analyst reads as
 "that post is gone".
 
 One schedule, one home, three callers (:func:`syndication.fetch_syndication`,

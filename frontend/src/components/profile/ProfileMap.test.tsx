@@ -33,21 +33,21 @@ const point = (id: string, detected: 0 | 1): MapPoint => [
 ];
 
 describe("ProfileMap", () => {
-  it("maps the drafts beside the submissions and counts each in its own words", () => {
+  it("maps the detections beside the submissions and counts each in its own words", () => {
     useApiResource.mockReturnValue({
       data: [point("a", 0), point("b", 0), point("c", 1)],
     });
 
     render(<ProfileMap username="ana" />);
 
-    // The whole set frames the camera, drafts included.
+    // The whole set frames the camera, detections included.
     expect(screen.getByTestId("map")).toHaveAttribute("data-points", "3");
     // The Insights card below splits its own status counts under these two
     // names, so the two numbers on the page can't contradict each other.
     expect(screen.getByText("2 geolocated, 1 detected on the map")).toBeInTheDocument();
   });
 
-  it("names only the published work when the analyst has no drafts on the map", () => {
+  it("names only the published work when the analyst has no detections on the map", () => {
     useApiResource.mockReturnValue({ data: [point("a", 0)] });
 
     render(<ProfileMap username="ana" />);

@@ -1,5 +1,5 @@
 {
-  "description": "Two quotes in one thread: the analyst quotes a statement post carrying no media, then replies to themselves quoting the footage post that carries the video, with the coordinate in the reply. Two quoted posts are two candidates, so the source slot stays empty, both quoted statuses land as secondary links and the draft warns source_ambiguous. The footage post's video stays out of the source slot, which no longer names it; the analyst's own photo is the proof media. Hand-built rather than recorded from a live post: replace it with a recording when one is captured.",
+  "description": "Two quotes in one thread: the analyst quotes a statement post carrying no media, then replies to themselves quoting the footage post that carries the video, with the coordinate in the reply. Two quoted posts are two candidates, so the source slot stays empty, both quoted statuses land as secondary links and the detection warns source_ambiguous. The footage post's video stays out of the source slot, which no longer names it; the analyst's own photo is the proof media. Hand-built rather than recorded from a live post: replace it with a recording when one is captured.",
   "head_tweet_id": "9600000000000000001",
   "coords": [
     [

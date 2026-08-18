@@ -1,4 +1,4 @@
-"""The @ViditBot pipeline — a tag on X becomes a ``detected`` draft + a reply.
+"""The @ViditBot pipeline — a tag on X becomes a detection + a reply.
 
 An analyst tags the bot on the tweet that carries the coordinate. Two paths
 feed the same per-mention pipeline (:func:`process_single_mention`):
@@ -17,7 +17,7 @@ nothing about the grammar lives here. Acquisition is
 :func:`tweet_ingest.acquire_thread`, shared with the paste: the tagged post plus
 the same author's post it replies to, one hop and no further, with the one chase
 step run over the pair. ``tweet_ingest.resolve_threads`` then reads that thread
-and ``detection.persist_drafts`` writes what it read, owned by the account
+and ``detection.persist_detections`` writes what it read, owned by the account
 ``detection.linked_owner`` maps the tagged author's handle to, read once per
 mention (the bot never mints users: an unknown handle is ledgered
 ``no_account`` and produces nothing). The mention then lands in the
@@ -32,7 +32,7 @@ dropped is still re-read even after a newer one advanced the ledger.
 Response model: the reply is the only gesture (a like at worker pickup,
 seconds before the reply, would signal nothing the reply does not, and it
 was the most expensive call of the mention). Replies open with the ✅/❌
-verdict. A draft the tag created, or the newer parse overwrote, earns the
+verdict. A detection the tag created, or the newer parse overwrote, earns the
 in-thread success reply (event ref + warnings); a linked author whose tag
 produced nothing gets a failure reply carrying the diagnosis, unless the
 tagged tweet is itself a reply to the bot (the loop guard: a courtesy answer
@@ -65,7 +65,7 @@ from app.config import settings
 from app.models.bot_mention import BotMention, BotMentionOutcome
 from app.models.bot_webhook_event import BotWebhookEvent
 from app.models.user import User
-from app.services.detection import Outcome, linked_owner, persist_drafts
+from app.services.detection import Outcome, linked_owner, persist_detections
 from app.services.tweet_ingest import (
     POST_UNREADABLE,
     REFUSAL_MESSAGES,
@@ -136,7 +136,7 @@ def _within_reply_cap(text: str) -> str:
 # Billed-spend ceilings on the write side. The mention surface is public: any
 # stranger can tag the bot on a coordinate tweet, and each posted reply is
 # billed. The window posts at most this many replies (success + failure), in
-# total and per author; past a ceiling the draft still lands (detection is
+# total and per author; past a ceiling the detection still lands (detecting is
 # unbilled) but the reply is skipped and logged: a flood burns nothing but
 # its own posting effort. The window is wall-clock (the trailing hour, read
 # from the ledger), not per pass: the worker drains every few seconds, so a
@@ -211,7 +211,7 @@ class BotRunOutcome:
     mentions_seen: int = 0
     already_handled: int = 0
     events_created: int = 0
-    # Mentions whose whole answer was overwriting an open draft: no row created,
+    # Mentions whose whole answer was overwriting an open detection: no row created,
     # at least one updated. Counted apart from ``events_created`` so a pass over
     # re-tagged posts does not read as an idle one.
     events_updated: int = 0
@@ -246,19 +246,19 @@ def acquire_tagged_thread(
 
 
 # The ref shown in the success reply: the UUID's first block, enough to
-# eyeball the draft in the Detections queue; the full 36 chars would eat a
+# eyeball the detection in the Detections queue; the full 36 chars would eat a
 # third of the reply for no extra identification value there.
 _REPLY_REF_CHARS = 8
 
 
 def compose_reply(
-    created_id: str, *, drafts: int, warnings: Iterable[str], updated: bool = False
+    created_id: str, *, detections: int, warnings: Iterable[str], updated: bool = False
 ) -> str:
-    """The in-thread reply for a mention that wrote its drafts.
+    """The in-thread reply for a mention that wrote its detections.
 
     ``updated`` swaps the verb for the pass that created nothing and overwrote
-    an open draft with a newer parse: the analyst is told what happened to the
-    draft they already hold rather than that a second one was saved.
+    an open detection with a newer parse: the analyst is told what happened to the
+    detection they already hold rather than that a second one was saved.
 
     Opens with the at-a-glance ✅ (the ❌ twin lives in
     :func:`compose_failure_reply`). Linkless by contract: a bare event ref
@@ -271,12 +271,12 @@ def compose_reply(
     read in its order. The reply owns the glyph and the length discipline, never
     the sentence: the same sentence reaches the archive's outcome email and the
     import panel, so the three surfaces cannot describe one code differently.
-    Which warnings a draft carries is the engine's and the write path's answer
-    (``detection.persist_drafts``), not the reply's.
+    Which warnings a detection carries is the engine's and the write path's answer
+    (``detection.persist_detections``), not the reply's.
     """
-    plural = "s" if drafts > 1 else ""
+    plural = "s" if detections > 1 else ""
     verb = "updated" if updated else "saved"
-    lines = [f"✅ {drafts} geolocation draft{plural} {verb} · ref {created_id[:_REPLY_REF_CHARS]}"]
+    lines = [f"✅ {detections} detection{plural} {verb} · ref {created_id[:_REPLY_REF_CHARS]}"]
     raised = set(warnings)
     lines.extend(f"⚠ {message}" for code, message in WARNING_MESSAGES.items() if code in raised)
     lines.append("Review from your profile")
@@ -309,7 +309,7 @@ def compose_failure_reply(reason: str | None = None, *, mention_id: str) -> str:
     ref = f" (m{mention_id[-5:]})"
     diagnosis = REFUSAL_MESSAGES.get(reason or "")
     # No code to name: the engine refused nothing, the write path raised on
-    # every draft. Not the analyst's format to fix, so route them to the
+    # every detection. Not the analyst's format to fix, so route them to the
     # maintainers instead of reciting a lesson.
     warning = f"⚠ {diagnosis}" if diagnosis else f"⚠ Unexpected case. Reach out to {_ADMIN_CONTACT}"
     return _within_reply_cap("\n".join([head, warning, f"Guide in bio{ref}"]))
@@ -400,12 +400,12 @@ async def _process_mention(
         # The engine runs here too, writing nothing: a mention from an unknown
         # handle whose post carries no coordinate ledgers ``no_detection``, so
         # ``no_account`` isolates the mentions where a link would actually have
-        # produced a draft.
+        # produced a detection.
         resolution = resolve_threads([acquired.records])
-        if resolution.drafts:
+        if resolution.detections:
             return "no_account", 0, None, None
         return "no_detection", 0, None, resolution.reason
-    assembled = await persist_drafts(
+    assembled = await persist_detections(
         db,
         owner=owner,
         resolution=resolve_threads([acquired.records]),
@@ -425,13 +425,13 @@ async def _process_mention(
         reply_id = _post_reply_failsoft(mention, _success_reply(assembled), client=x_write_client)
     else:
         logger.warning(
-            "Reply budget reached; draft written without reply for mention %s",
+            "Reply budget reached; detection written without reply for mention %s",
             mention.tweet_id,
         )
     if assembled.created:
         return "created", len(assembled.created), reply_id, None
     # A tag on a post the analyst already imported, edited since: the newer
-    # parse landed on the open draft. The tag was answered, so it earns the
+    # parse landed on the open detection. The tag was answered, so it earns the
     # success reply and its own ledger verdict rather than the silent
     # ``skipped`` a tag that moved nothing gets.
     return "updated", 0, reply_id, None
@@ -440,24 +440,24 @@ async def _process_mention(
 def _success_reply(assembled: Outcome) -> str:
     """The composed ✅ reply for one mention's outcome.
 
-    The ref reads the first row the pass wrote, the created drafts first: a
+    The ref reads the first row the pass wrote, the created detections first: a
     thread carrying several coordinates lands several, and the
     ``several_coordinates`` warning is what tells the analyst so. A pass that
-    created nothing and overwrote an open draft names that draft instead, and
+    created nothing and overwrote an open detection names that row instead, and
     says it updated rather than saved.
     """
     written = assembled.created or assembled.updated
     return compose_reply(
         str(written[0]),
-        drafts=len(written),
+        detections=len(written),
         warnings=assembled.warnings,
         updated=not assembled.created,
     )
 
 
 # The verdicts a linked author gets an answer for when their tag produced no
-# draft. ``no_detection`` is the engine's refusal, named back by code;
-# ``failed`` is the write path raising on every draft, which names no code and
+# detection. ``no_detection`` is the engine's refusal, named back by code;
+# ``failed`` is the write path raising on every detection, which names no code and
 # reads as the reply's unexpected case. A tag that answers neither either wrote
 # a row (``created`` / ``updated``, both the ✅ reply) or deduplicated onto a row
 # it moved nothing on (``skipped``, which is not a failure to report), and an
@@ -498,7 +498,7 @@ async def process_single_mention(
             outcome.already_handled += 1
             return "already_handled"
         return "self"
-    # The one handle-to-account read of the mention: the account every draft is
+    # The one handle-to-account read of the mention: the account every detection is
     # attributed to, and the failure-reply gate, since an unlinked author stays
     # fully silent whatever the tweet yields.
     owner = linked_owner(db, mention.author_handle)

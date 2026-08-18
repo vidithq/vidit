@@ -17,7 +17,7 @@ interface ShareButtonsProps {
   eventDate: string | null;
   lat: number | null;
   lng: number | null;
-  /** A `detected` row is a machine draft its owner can still edit, so a shared
+  /** A `detected` row is a machine detection its owner can still edit, so a shared
    *  link's content may change. Surfaced as a caveat next to the share row. */
   status: EventStatus;
 }
@@ -31,7 +31,7 @@ export default function ShareButtons({
   lng,
   status,
 }: ShareButtonsProps) {
-  // A `detected` link points at an editable draft, so sharing it asks for a
+  // A `detected` link points at an editable detection, so sharing it asks for a
   // confirming re-click first (mirrors the review queue's two-click delete).
   // `armed` is which action is awaiting that re-click; it auto-disarms.
   // Held here rather than on `useConfirmAction` because the copy half is a
@@ -72,7 +72,7 @@ export default function ShareButtons({
         : []),
     ].join("\n");
 
-  // Gate handed to `<CopyButton>`: a draft link arms on the first click and
+  // Gate handed to `<CopyButton>`: a detection link arms on the first click and
   // only the second one reaches the clipboard write.
   const onCopy = () => {
     if (needsConfirm && armed !== "copy") {
@@ -99,7 +99,7 @@ export default function ShareButtons({
 
   return (
     <div className="flex items-center gap-1.5">
-      {/* A detection is an editable draft, so a share/copy arms on the first
+      {/* A detection is still editable, so a share/copy arms on the first
           click; this neutral nudge (site DA, not a warning colour) asks for the
           confirming re-click. `role="status"` makes it the armed state's
           announcement too, so neither button has to rename itself. */}
@@ -114,7 +114,7 @@ export default function ShareButtons({
         label="Copy link"
         beforeCopy={onCopy}
         className={armed === "copy" ? ARMED_RING : ""}
-        title={armed === "copy" ? "Click again to copy this draft link" : undefined}
+        title={armed === "copy" ? "Click again to copy this detection link" : undefined}
       />
       <Button
         icon
@@ -122,7 +122,7 @@ export default function ShareButtons({
         onClick={onShareX}
         className={armed === "share" ? ARMED_RING : ""}
         aria-label="Share on X"
-        title={armed === "share" ? "Click again to share this draft" : "Share on X"}
+        title={armed === "share" ? "Click again to share this detection" : "Share on X"}
       >
         <XGlyph size={14} />
       </Button>

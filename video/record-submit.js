@@ -272,11 +272,11 @@ async function slowScrollToBottom(page, durationMs = 2200) {
 // Pre-fetch a VIDEO file from one of the analyst's tweets, saved to
 // `video/.cache/` so the recording's `setInputFiles` call is instant.
 // Tries the dedicated request tweet first; falls back to a sibling tweet
-// (`TWEET_URL`) if the primary produces no video draft — X CDN behaviour
+// (`TWEET_URL`) if the primary produces no video detection — X CDN behaviour
 // is unreliable.
 //
-// The import creates `detected` drafts and answers their ids, so the
-// bytes come off the draft's stored media rather than from a CDN proxy.
+// The import creates detections and answers their ids, so the
+// bytes come off the detection's stored media rather than from a CDN proxy.
 // It reads the caller's OWN posts only, so `auth` must be the account
 // whose linked X handle authored those tweets (see planning/next.md →
 // "Give the promo pipeline its own user bootstrap").
@@ -307,12 +307,12 @@ async function prepareRequestUpload(auth) {
         },
         body: JSON.stringify({ url }),
       }).then((r) => r.json());
-      const draftId = [...(imp.created || []), ...(imp.updated || []), ...(imp.skipped || [])][0];
-      if (!draftId) continue;
-      const draft = await fetch(`${API}/events/${draftId}`, {
+      const detectionId = [...(imp.created || []), ...(imp.updated || []), ...(imp.skipped || [])][0];
+      if (!detectionId) continue;
+      const detection = await fetch(`${API}/events/${detectionId}`, {
         headers: { cookie: auth.cookieHeader },
       }).then((r) => r.json());
-      const video = (draft.media || []).find((m) => m.media_type === "video");
+      const video = (detection.media || []).find((m) => m.media_type === "video");
       if (!video) continue;
       const res = await fetch(video.storage_url);
       if (!res.ok) continue;

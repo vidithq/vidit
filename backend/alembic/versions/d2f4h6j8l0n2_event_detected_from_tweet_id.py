@@ -4,10 +4,10 @@ Revision ID: d2f4h6j8l0n2
 Revises: c1e3g5i7k9m1
 Create Date: 2026-08-17 10:00:00.000000
 
-The post a machine draft was detected from is identified by its id, not by a
+The post a machine detection came from is identified by its id, not by a
 URL: one post spells the same URL several ways (``x.com`` or ``twitter.com``,
 the handle in any case, the handle-less ``/i/web/status/`` form), and two
-spellings of one post must not split one geolocation across two drafts.
+spellings of one post must not split one geolocation across two detections.
 
 ``detected_from_tweet_id`` holds that id and ``detected_from_url`` stays as the
 display value. The backfill reads the id out of the URL already stored: every

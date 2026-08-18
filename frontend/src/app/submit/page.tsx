@@ -45,7 +45,7 @@ import { ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel
 
 // Three entry paths, picked at the top: they differ only in where the work
 // starts from. `single` is one event by hand, `xpost` reads one of your own X
-// posts into a draft you review, `bulk` is the archive on-ramp that backfills
+// posts into a detection you review, `bulk` is the archive on-ramp that backfills
 // many. There is no geolocation vs request pick on the form: the analyst fills
 // what they have and the two publish actions unlock from the content (a placed
 // coordinate plus evidence publishes a geolocation, the bare footage posts a
@@ -454,7 +454,7 @@ function SubmitForm() {
   const pageTitle = lockedFromRequest ? "Geolocate a request" : "Submit";
 
   // Both import entries swap the one-event form out for their own panel: each
-  // writes drafts server-side and leaves through the review queue, so the form
+  // writes detections server-side and leaves through the review queue, so the form
   // below has nothing to do until the analyst comes back to it.
   const showBulk = canImport && mode === "bulk";
   const showXPost = canImport && mode === "xpost";

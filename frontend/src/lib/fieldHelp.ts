@@ -54,7 +54,7 @@ export const FIELD_HELP = {
     label: "What is the event time?",
   },
   source_posted_at: {
-    text: "When the source posted the media (the Telegram / X post date and time, UTC). Required to publish; a machine-detected draft can still have it blank when the source's post time wasn't resolved, and you fill it in before submitting. Not when the event happened, nor when you submitted it here.",
+    text: "When the source posted the media (the Telegram / X post date and time, UTC). Required to publish; a detection can still have it blank when the source's post time wasn't resolved, and you fill it in before submitting. Not when the event happened, nor when you submitted it here.",
     label: "What is the source post time?",
   },
   added: {
@@ -83,7 +83,7 @@ export const FIELD_HELP = {
     label: "What goes in Location?",
   },
   section_import: {
-    text: "Vidit reads one of your own X posts into a draft you review before publishing; the import guide states what it reads.",
+    text: "Vidit reads one of your own X posts into a detection you review before publishing; the import guide states what it reads.",
     label: "What does importing do?",
   },
   section_details: {
@@ -100,7 +100,7 @@ export const FIELD_HELP = {
   },
   // Detections queue: the filter over the page.
   detection_queue_filter: {
-    text: "Ready: the import left the draft with every piece of evidence a publish needs, so a review adds the conflict and the capture source, then publishes it. Incomplete: the import left a required piece missing (the source URL, the coordinates, the source media, or a proof image), so it needs a manual pass on the form before it can be published.",
+    text: "Ready: the import left the detection with every piece of evidence a publish needs, so a review adds the conflict and the capture source, then publishes it. Incomplete: the import left a required piece missing (the source URL, the coordinates, the source media, or a proof image), so it needs a manual pass on the form before it can be published.",
     label: "What does this filter select?",
   },
   // Detection submit action, spelled out here.
