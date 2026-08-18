@@ -67,6 +67,16 @@ describe("CoordinateInputs", () => {
     ).toBeInTheDocument();
   });
 
+  // The pair sits in the input row's third column, so the link is the icon
+  // shape: its name comes from the label, not from text that would widen the
+  // cell at the fields' expense.
+  it("names the map link on the icon itself, beside the fields", () => {
+    render(<CoordinateInputs {...baseProps} lat="48.015883" lng="37.802411" />);
+    const link = screen.getByRole("link", { name: "View on Maps" });
+    expect(link).toHaveTextContent("");
+    expect(link).toHaveAttribute("title", "View on Maps");
+  });
+
   it("hides both while the pair is half-typed or out of bounds", () => {
     const { rerender } = render(<CoordinateInputs {...baseProps} lat="48.01" />);
     expect(screen.queryByRole("link", { name: /View on Maps/ })).toBeNull();

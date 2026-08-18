@@ -26,9 +26,11 @@ import type { EventDetail } from "@/types";
  * (`docs/design.md` → *Page chrome*):
  *
  * 1. **Utilities**, far right, icon-compact: the share pair plus the report
- *    flag. On every surface, because reading an event and passing it on or
- *    flagging it needs no standing in the row. The event page opens the row
- *    with the version history, a read like the others.
+ *    flag, on every reading surface, because reading an event and passing it on
+ *    or flagging it needs no standing in the row. The event page opens the row
+ *    with the version history, a read like the others. The edit form carries
+ *    none: sharing or reporting a draft one is in the middle of writing acts on
+ *    a record that is not the one on screen.
  * 2. **The flow action**, at most one, filled: what this surface exists to move
  *    forward. Only an open request carries one (geolocate it).
  * 3. **Owner management**: the controls only the author holds, and each
@@ -51,11 +53,11 @@ import type { EventDetail } from "@/types";
 /** Which surface is asking, which is what selects the tiers. */
 export type ActionSurface = "event" | "request" | "panel" | "edit";
 
-// The grammar itself. Utilities are unconditional, so only the gated tiers are
-// listed: a surface with none (the map panel, the detection confirmation form,
-// whose own flow action is the form's bottom submit) renders the utilities
-// alone. The event page has no flow action (a published geolocation is finished
-// work) but does carry the correction its author makes.
+// The grammar itself, one flag per tier per surface. The map panel renders the
+// utilities alone; the edit form renders nothing at all here, since its own flow
+// action is the form's bottom submit and its utilities would act on a record the
+// reader is currently rewriting. The event page has no flow action (a published
+// geolocation is finished work) but does carry the correction its author makes.
 //
 // Owner management is two entries, not one, because the surfaces claim
 // different halves of it: `revise` is correcting a published geolocation, which
@@ -67,12 +69,18 @@ export type ActionSurface = "event" | "request" | "panel" | "edit";
 // the map panel and the forms show one version by construction.
 const TIERS: Record<
   ActionSurface,
-  { flow: boolean; revise: boolean; dispose: boolean; history: boolean }
+  {
+    flow: boolean;
+    revise: boolean;
+    dispose: boolean;
+    history: boolean;
+    utilities: boolean;
+  }
 > = {
-  event: { flow: false, revise: true, dispose: false, history: true },
-  request: { flow: true, revise: false, dispose: true, history: false },
-  panel: { flow: false, revise: false, dispose: false, history: false },
-  edit: { flow: false, revise: false, dispose: false, history: false },
+  event:   { flow: false, revise: true,  dispose: false, history: true,  utilities: true },
+  request: { flow: true,  revise: false, dispose: true,  history: false, utilities: true },
+  panel:   { flow: false, revise: false, dispose: false, history: false, utilities: true },
+  edit:    { flow: false, revise: false, dispose: false, history: false, utilities: false },
 };
 
 // Ties the menu entry to the panel it opens two levels down the tree, which
@@ -175,12 +183,22 @@ export function useEventActions({
     }
   }
 
+  // A surface whose every tier is off, or off for this row, gets nothing rather
+  // than an empty row: the wrapper is itself an item in the host's own cluster,
+  // so an empty one prints a gap beside the controls the host adds of its own
+  // (the edit form's queue position, Skip and Reject).
+  const rowIsEmpty =
+    !tiers.utilities &&
+    !(tiers.flow && isOpenRequest) &&
+    !canRevise &&
+    ownerItems.length === 0;
+
   return {
     error,
     // `flex-wrap` plus `justify-end`: the row is wider than a phone, so it
     // breaks into stacked right-aligned lines instead of pushing the header
     // sideways (PageShell caps the cluster at the header width).
-    actions: (
+    actions: rowIsEmpty ? null : (
       <div className="flex flex-wrap items-center justify-end gap-1.5">
         {tiers.flow && isOpenRequest && (
           <Link
@@ -207,34 +225,38 @@ export function useEventActions({
         <OverflowMenu items={ownerItems} />
         {/* The utilities tier, one unit so it stays together when the row
             wraps: the history (event page only), the share pair, then the
-            report flag, in that order. */}
-        <div className="flex items-center gap-1.5">
-          {/* The way into the record's history, first in the row. Public like
-              the history itself: a corrected record is only auditable if any
-              reader can walk the corrections, so it is not the owner's
-              control. A published row is the only one with versions to walk,
-              since every other state is edited in place. */}
-          {tiers.history && event.status === "geolocated" && (
-            <Link
-              href={eventHistoryHref(event.id)}
-              className={buttonClasses("ghost", { icon: true })}
-              aria-label="Version history"
-              title="Version history"
-            >
-              <History size={14} />
-            </Link>
-          )}
-          <ShareButtons
-            id={event.id}
-            title={event.title}
-            author={event.owner.username}
-            eventDate={event.event_date}
-            lat={event.event_coords?.lat ?? null}
-            lng={event.event_coords?.lng ?? null}
-            status={event.status}
-          />
-          {report.trigger}
-        </div>
+            report flag, in that order. Reading surfaces only: a form carries
+            the controls that finish the edit, not the ones that pass the
+            record on. */}
+        {tiers.utilities && (
+          <div className="flex items-center gap-1.5">
+            {/* The way into the record's history, first in the row. Public like
+                the history itself: a corrected record is only auditable if any
+                reader can walk the corrections, so it is not the owner's
+                control. A published row is the only one with versions to walk,
+                since every other state is edited in place. */}
+            {tiers.history && event.status === "geolocated" && (
+              <Link
+                href={eventHistoryHref(event.id)}
+                className={buttonClasses("ghost", { icon: true })}
+                aria-label="Version history"
+                title="Version history"
+              >
+                <History size={14} />
+              </Link>
+            )}
+            <ShareButtons
+              id={event.id}
+              title={event.title}
+              author={event.owner.username}
+              eventDate={event.event_date}
+              lat={event.event_coords?.lat ?? null}
+              lng={event.event_coords?.lng ?? null}
+              status={event.status}
+            />
+            {report.trigger}
+          </div>
+        )}
       </div>
     ),
     // Both panels open directly under the header, where the triggers that

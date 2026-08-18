@@ -399,12 +399,12 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="ARMED_RING" usage="The armed half of a two-click confirm on a control that stays put: a ring plus a neutral plate, so the button reads as changed without moving or resizing anything. Applied via className over any variant, paired with useConfirmAction (which owns the arming, the timeout, and the Escape / outside-click exits) and a label that says what the next click does. Every armed control that is not the loud red point of no return uses it: the event share row's detection-link pair, the detection form's Submit. DANGER_CONFIRM is the destructive counterpart.">
+          <Item name="ARMED_RING" usage="The armed half of a two-click confirm on a control that stays put: a ring plus a neutral plate, so the button reads as changed without moving or resizing anything. Applied via className over any variant, paired with useConfirmAction (which owns the arming, the timeout, and the Escape / outside-click exits) and a label that says what the next click does. Every armed control that is not the loud red point of no return uses it: the event share row's detection link, the detection form's Submit. DANGER_CONFIRM is the destructive counterpart.">
             <div className="flex items-center gap-3">
               <Button variant="primary" className={ARMED_RING}>
                 Confirm submit
               </Button>
-              <Button icon variant="ghost" className={ARMED_RING} aria-label="Copy link">
+              <Button icon variant="ghost" className={ARMED_RING} aria-label="Copy coordinates">
                 <Copy size={15} />
               </Button>
             </div>
@@ -445,9 +445,9 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<CopyButton>" usage="The one copy-to-clipboard control: a square ghost icon button whose resting glyph flips to a check for the flash window (useCopyToClipboard). Used by the event share row and the profile's Discord account. `value` is a getter so the call site can read window at click time; `icon` swaps the resting glyph where the value names itself better than a copy mark does (the check is fixed); `beforeCopy` gates the write (the share row arms a detection link on the first click); the accessible name stays constant and the copied state is announced by a sibling live region.">
+          <Item name="<CopyButton>" usage="The one copy-to-clipboard control: a square ghost icon button whose resting glyph flips to a check for the flash window (useCopyToClipboard). Used by the coordinate actions and the profile's Discord account. `value` is a getter so the call site can read window at click time; `icon` swaps the resting glyph where the value names itself better than a copy mark does (the check is fixed); `beforeCopy` gates the write for a call site that must approve it first; the accessible name stays constant and the copied state is announced by a sibling live region.">
             <div className="flex items-center gap-2">
-              <CopyButton value={() => "https://vidit.app/events/demo"} label="Copy event link" />
+              <CopyButton value={() => "48.015883, 37.802411"} label="Copy coordinates" copiedLabel="Coordinates copied" />
               <CopyButton icon={DiscordGlyph} value={() => "a-handle"} label="Copy Discord username: a-handle" copiedLabel="Discord username copied" />
             </div>
           </Item>

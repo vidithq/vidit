@@ -107,9 +107,11 @@ export function EventEditForm({
   // itself after a revision (`redirectTo`, which the page sets per surface).
   const finish = queue?.onAdvance ?? (() => router.push(redirectTo));
 
-  // The utilities tier only: this surface's flow action is the form's own
-  // Submit, at the bottom where the fields it applies end. The header still
-  // shares and reports the detection like every other detail surface.
+  // No tier at all on this surface: the flow action is the form's own Submit, at
+  // the bottom where the fields it applies end, and sharing or reporting a row
+  // one is in the middle of rewriting acts on a record that is not the one on
+  // screen. The call stays because the grammar decides that, not the form
+  // (`useEventActions`), and it hands back the slot the panels land in.
   const { actions, panels } = useEventActions({ event: geo, surface: "edit" });
 
   // Reject the detection: the confirm step is the inline `CloseEventForm` (a
@@ -355,10 +357,9 @@ export function EventEditForm({
       actions={
         // Everything that disposes of this detection rather than filling it in,
         // in the header's own cluster: the position and the way past it during
-        // a review pass, then Reject, then the utilities. Submit is the only
-        // action left at the foot of the fields. A published event has none of
-        // those verbs (it is neither skippable nor rejectable), so the cluster
-        // is the utilities alone.
+        // a review pass, then Reject. Submit is the only action left at the foot
+        // of the fields. A published event has none of those verbs (it is
+        // neither skippable nor rejectable), so its header carries no cluster.
         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
           {queue && (
             <>

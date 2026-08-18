@@ -127,12 +127,45 @@ describe("owner management is scoped to the surface that owns the verb", () => {
     expect(ownerMenuItems()).toEqual(["Delete this request"]);
   });
 
-  it("gives the map panel and the edit form the utilities alone", () => {
-    for (const surface of ["panel", "edit"] as const) {
+  it("gives the map panel the utilities alone", () => {
+    render(<Harness status="geolocated" surface="panel" />);
+    expect(ownerMenuItems()).toEqual([]);
+    expect(screen.getByRole("button", { name: "Share on X" })).toBeInTheDocument();
+  });
+});
+
+describe("utilities are the reading surfaces' tier", () => {
+  // Passing an event on and flagging it are reads, so every surface that shows
+  // a record to read carries them.
+  it.each<ActionSurface>(["event", "request", "panel"])(
+    "carries the X share and the report flag on the %s surface",
+    (surface) => {
+      render(<Harness status="geolocated" surface={surface} />);
+      expect(screen.getByRole("button", { name: "Share on X" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Report" })).toBeInTheDocument();
+    }
+  );
+
+  // The form is where a record is rewritten, so sharing or reporting it there
+  // would act on something other than what is on screen.
+  it("carries none on the edit surface, and no row at all", () => {
+    const { container } = render(<Harness status="geolocated" surface="edit" />);
+    expect(screen.queryByRole("button", { name: "Share on X" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Report" })).toBeNull();
+    expect(ownerMenuItems()).toEqual([]);
+    // Not merely empty: an empty wrapper is still a flex item, and the form
+    // adds its own controls (the queue position, Skip, Reject) to that cluster.
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  // The link is in the address bar the reader is already looking at; the
+  // coordinates, which are not, keep their own copy control.
+  it("offers no copy-link control anywhere", () => {
+    for (const surface of ["event", "request", "panel"] as const) {
       const { unmount } = render(
         <Harness status="geolocated" surface={surface} />
       );
-      expect(ownerMenuItems()).toEqual([]);
+      expect(screen.queryByRole("button", { name: "Copy link" })).toBeNull();
       unmount();
     }
   });
