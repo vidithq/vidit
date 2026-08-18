@@ -149,15 +149,6 @@ export default function ImportGuidePage() {
         <h2 className={SECTION}>What the detection carries</h2>
         <ul className={LIST}>
           <li>
-            <span className="text-neutral-100">Coordinate formats.</span>{" "}
-            Decimal pairs (48.012345, 37.802411), decimal degrees with a
-            hemisphere letter (33.1°N 35.5°E, N48.0123 E37.8024), DMS
-            (48°00&apos;45&quot;N 37°48&apos;08&quot;E) and Google Maps @lat,lng
-            links all read. Position does not matter: a coordinate inside a
-            sentence reads like one alone on its line. Coordinates are read from
-            text only, so one that appears only inside an image is not read.
-          </li>
-          <li>
             <span className="text-neutral-100">Source URL.</span> Every link
             your thread carries is a candidate, whatever the platform. Three are
             never candidates, because none points at footage: a link back to
@@ -184,19 +175,6 @@ export default function ImportGuidePage() {
             link expanded back, and your photos as proof images. You edit it at
             review.
           </li>
-          <li>
-            <span className="text-neutral-100">
-              One detection per coordinate.
-            </span>{" "}
-            A post carrying several coordinates makes one detection each,
-            sharing every other field.
-          </li>
-          <li>
-            <span className="text-neutral-100">Importing twice.</span> Importing
-            the same geolocation again reuses the first detection instead of
-            duplicating it. A detection you already published or rejected stays
-            as it is, so re-running an import is always safe.
-          </li>
         </ul>
         <p className={NOTE}>
           A detection is on the map from the moment it lands, marked as a
@@ -204,6 +182,13 @@ export default function ImportGuidePage() {
           detections queue. Review it, correct the event date, then publish it
           as a geolocation. Rejecting it removes it. Only you turn your
           detection into a geolocation.
+        </p>
+        <p className={NOTE}>
+          A post carrying several coordinates makes one detection each, sharing
+          every other field. Importing the same geolocation again reuses the
+          first detection instead of duplicating it, and a detection you already
+          published or rejected stays as it is, so re-running an import is
+          always safe.
         </p>
         <h2 className={SECTION}>Three ways in</h2>
         <div className="grid gap-4 sm:grid-cols-3">
