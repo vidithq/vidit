@@ -109,12 +109,12 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     outcome = await backfill_from_archive(db, owner=owner, archive_dir=archive)
 
     # One row per coordinate-bearing typology, two for multi_coord, none for
-    # no_coord: 8 single + 2 (multi) + 0 = 10.
-    assert len(outcome.created) == 10
+    # no_coord: 9 single + 2 (multi) + 0 = 11.
+    assert len(outcome.created) == 11
     assert len(outcome.skipped) == 0 and outcome.failed == 0
 
     rows = db.query(Event).filter(Event.owner_id == owner.id).all()
-    assert len(rows) == 10
+    assert len(rows) == 11
     assert all(r.status == STATUS_DETECTED for r in rows)
     assert all(r.proof and r.proof["content"] for r in rows)
 
@@ -156,6 +156,7 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
         "telegram_link": "https://t.me/somechannel/12345",
         "youtube_link": "https://www.youtube.com/watch?v=FAKEVIDEO01",
         "x_status_link": "https://x.com/source_gull/status/8500000000000000002",
+        "marker_lines": "https://x.com/warfootage/status/1783000000000000002",
     }
     for typology, url in link_expected.items():
         [row] = _rows_for(db, owner, typology)
@@ -199,8 +200,8 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     assert _media_roles(db, tg) == {"proof": 2}
     assert _proof_image_count(tg) == 2
 
-    # youtube_link + x_status_link (no chase): 1 proof image each.
-    for typology in ["youtube_link", "x_status_link"]:
+    # youtube_link + x_status_link + marker_lines (no chase): 1 proof image each.
+    for typology in ["youtube_link", "x_status_link", "marker_lines"]:
         [row] = _rows_for(db, owner, typology)
         assert _media_roles(db, row) == {"proof": 1}, typology
         assert _proof_image_count(row) == 1, typology
@@ -215,7 +216,7 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
 
     # Re-running the same archive is a no-op (idempotent on permalink + coord).
     again = await backfill_from_archive(db, owner=owner, archive_dir=archive)
-    assert again.created == [] and len(again.skipped) == 10
+    assert again.created == [] and len(again.skipped) == 11
 
 
 async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, monkeypatch):

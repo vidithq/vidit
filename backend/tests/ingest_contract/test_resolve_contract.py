@@ -70,6 +70,18 @@ def test_typology_resolves_to_expected(typology: str, tmp_path: Path) -> None:
             assert draft.event_date == date.fromisoformat(expected_date)
 
 
+def test_marker_lines_reach_the_proof_as_typed(tmp_path: Path) -> None:
+    """The ``T:`` / ``C:`` / ``S:`` convention: the markers are the analyst's own
+    words, so nothing strips them. The proof keeps the whole marker block, the
+    ``C:`` coordinate line included, with the ``S:`` shortlink expanded back to
+    the status it points at. The bot tag is the one thing that goes, being
+    addressing rather than content. The title the same block derives is pinned
+    by the parametrized contract above."""
+    typology = "marker_lines"
+    draft = _draft(loader.thread_for(typology, tmp_path))
+    assert draft.proof_text == loader.load_expected(typology)["proof_text"]
+
+
 def test_x_status_link_chase_fills_source_from_chased_tweet(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -855,6 +855,35 @@ async def test_unusable_media_is_skipped_and_detection_still_persists(db, owner)
     assert db.query(Media).filter(Media.event_id == geo.id).count() == 0
 
 
+async def test_over_cap_media_is_skipped_and_detection_still_persists(db, owner, monkeypatch):
+    # The other half of the unusable-media surface: bytes that decode fine but
+    # sit over ``max_image_size``. The size guard is the same ``ValueError`` the
+    # undecodable image raises, so the draft lands media-incomplete rather than
+    # failing, on both roles at once. The empty source slot is then reported as
+    # ``source_footage_missing``: the source photo was the one dropped, and the
+    # source date came back, so that is the only warning the row earns.
+    monkeypatch.setattr(settings, "max_image_size", len(TINY_JPEG) - 1)
+
+    async def over_cap_fetcher(_parsed: ParsedMedia) -> tuple[bytes, str]:
+        return TINY_JPEG, "image/jpeg"
+
+    draft = _draft(
+        source_url="https://t.me/chan/42",
+        source_posted_at=datetime(2025, 11, 11, 8, 0, tzinfo=UTC),
+        media=[_img()],
+        # A second URL, since the fetch + prepare cache keys on it: one shared
+        # URL would make this a single media in two roles.
+        proof_media=[ParsedMedia(kind="image", remote_url="https://pbs.twimg.com/media/y.jpg")],
+    )
+    outcome = await _persist(db, owner=owner, drafts=[draft], fetch_media=over_cap_fetcher)
+
+    assert len(outcome.created) == 1 and outcome.failed == 0
+    assert outcome.warnings == {SOURCE_FOOTAGE_MISSING: 1}
+    row = _row(db, outcome.created[0])
+    assert db.query(Media).filter(Media.event_id == row.id).count() == 0
+    assert not [node for node in row.proof["content"] if node.get("type") == "image"]
+
+
 async def test_failed_detection_is_isolated_not_lost(db, owner, monkeypatch):
     # One detection raising mid-persist is caught, counted, rolled back — the
     # others still land, and no partial row survives.

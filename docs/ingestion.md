@@ -201,7 +201,7 @@ Each row is one input shape and the outcome the engine produces for it. The thre
 | Google Maps `@lat,lng` link carrying the only coordinate | 1 draft |
 | Coordinate out of bounds and nothing else | `0`, coordinate out of bounds (`coords_invalid`) |
 | Coordinate only in the quoted post (`quote_coord_in_quoted`) | `0`, no coordinate (`coords_missing`) |
-| `T:` / `C:` / `S:` marker lines | 1 draft, the markers kept as text |
+| `T:` / `C:` / `S:` marker lines (`marker_lines`) | 1 draft, the markers kept as text |
 | `Source:` line naming one of two links | 1 draft, source empty, two mirrors |
 | Two links, no `Source:` line | 1 draft, source empty, two mirrors |
 | Sole link off the chase vocabulary (TikTok, Instagram, an article) | 1 draft, source is the link |

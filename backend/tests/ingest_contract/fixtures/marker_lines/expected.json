@@ -1,0 +1,23 @@
+{
+  "description": "The T: / C: / S: marker convention some analysts type. The markers are the analyst's own words, so nothing strips them: the coordinate is read out of the C: line, the S: link is the sole candidate and becomes the source, and the title is the first line verbatim, its T: marker included. No fixture serves the linked status, so the chase degrades to link-only: no source date and no source media, and the OP photo stays proof. The bot tag on its own line is addressing rather than content, so it leaves the proof.",
+  "coords": [
+    [
+      48.123456,
+      37.654321
+    ]
+  ],
+  "source_url": "https://x.com/warfootage/status/1783000000000000002",
+  "secondary_source_urls": [],
+  "source_posted_at": null,
+  "event_date": "2026-03-18",
+  "title": "T: Strike on the depot",
+  "proof_text": "T: Strike on the depot\nC: 48.123456, 37.654321\nS: https://x.com/warfootage/status/1783000000000000002",
+  "source_media": [],
+  "proof_media": [
+    [
+      "image",
+      "op"
+    ]
+  ],
+  "warnings": []
+}
