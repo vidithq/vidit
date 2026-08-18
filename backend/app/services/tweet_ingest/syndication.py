@@ -40,8 +40,14 @@ from typing import Any, Literal
 
 import httpx
 
-from .errors import TweetFetchFailed, TweetNotAccessible, TweetUpstreamBusy
+from .errors import (
+    TweetFetchFailed,
+    TweetNotAccessible,
+    TweetUpstreamBusy,
+    TweetUpstreamUnreachable,
+)
 from .records import MediaKind, ParsedMedia
+from .retry import parse_retry_after, retrying
 from .urls import T_CO_HOST_RE, hostname, is_trusted_media_url
 
 # ── Syndication fetch ─────────────────────────────────────────────────────
@@ -168,13 +174,30 @@ def fetch_syndication(tweet_id: str, *, client: httpx.Client | None = None) -> d
       (a ``TweetTombstone`` body) tweets.
     * ``TweetUpstreamBusy`` on a 429 or an X 5xx, the throttled / wobbling
       upstream the route answers ``503``.
-    * ``TweetFetchFailed`` on timeout, any other non-2xx, or a body we can't
-      use (unparseable, non-object, empty, unknown ``__typename``).
+    * ``TweetUpstreamUnreachable`` on a timeout or a transport error, and
+      ``TweetFetchFailed`` on any other non-2xx or a body we can't use
+      (unparseable, non-object, empty, unknown ``__typename``).
+
+    A throttled or unreachable upstream is retried on the package's one
+    schedule (:mod:`tweet_ingest.retry`) before it comes back; the failures a
+    retry cannot fix are raised on the first attempt. The cache sits outside
+    the retried round trip, so a hit still costs nothing and only a body worth
+    keeping is stored.
     """
     cached = _cache_get(tweet_id)
     if cached is not None:
         return cached
+    body = retrying(lambda: _read_syndication(tweet_id, client=client), what=f"tweet {tweet_id}")
+    _cache_put(tweet_id, body)
+    return body
 
+
+def _read_syndication(tweet_id: str, *, client: httpx.Client | None) -> dict[str, Any]:
+    """One round trip to the syndication endpoint, mapped to a body or a raise.
+
+    The unit :func:`fetch_syndication` retries: everything about a single
+    attempt, and nothing about the cache, so a retry cannot half-fill it.
+    """
     params = {
         "id": tweet_id,
         "token": _syndication_token(tweet_id),
@@ -189,15 +212,19 @@ def fetch_syndication(tweet_id: str, *, client: httpx.Client | None = None) -> d
         else:
             resp = client.get(_SYNDICATION_ENDPOINT, params=params, headers=headers)
     except httpx.HTTPError as exc:
-        raise TweetFetchFailed(f"transport error: {exc}") from exc
+        raise TweetUpstreamUnreachable(f"transport error: {exc}") from exc
 
     if resp.status_code == 404:
         raise TweetNotAccessible("Tweet not accessible")
     # Throttling and an X-side wobble are their own failure, ahead of the
     # catch-all below: the budget is unauthenticated and shared, so a 429 is an
-    # expected outcome that says "retry", not "the payload changed shape".
+    # expected outcome that says "retry", not "the payload changed shape". The
+    # ``Retry-After`` X sends with it is the delay the retry policy honours.
     if resp.status_code == 429 or resp.status_code >= 500:
-        raise TweetUpstreamBusy(f"upstream returned {resp.status_code}")
+        raise TweetUpstreamBusy(
+            f"upstream returned {resp.status_code}",
+            retry_after=parse_retry_after(resp.headers.get("Retry-After")),
+        )
     if resp.status_code >= 300:
         raise TweetFetchFailed(f"upstream returned {resp.status_code}")
 
@@ -221,9 +248,10 @@ def fetch_syndication(tweet_id: str, *, client: httpx.Client | None = None) -> d
     # A tombstone is a 200 carrying no tweet: X answers this for a tweet only
     # readable behind a login (age-restricted, withheld in a jurisdiction). The
     # ``tombstone`` object may be empty or carry a human string under
-    # ``tombstone.text.text``, so only ``__typename`` is trusted. Raised before
-    # ``_cache_put`` on purpose: the restriction can be lifted upstream, and a
-    # cached tombstone would keep answering "not readable" for an hour after.
+    # ``tombstone.text.text``, so only ``__typename`` is trusted. A raise never
+    # reaches ``_cache_put`` on purpose: the restriction can be lifted upstream,
+    # and a cached tombstone would keep answering "not readable" for an hour
+    # after.
     if typename == "TweetTombstone":
         raise TweetNotAccessible(
             "Post not readable without an X login (age-restricted or withheld)"
@@ -238,7 +266,6 @@ def fetch_syndication(tweet_id: str, *, client: httpx.Client | None = None) -> d
     if isinstance(typename, str) and typename != "Tweet":
         raise TweetFetchFailed(f"upstream returned __typename {typename!r}, not a tweet")
 
-    _cache_put(tweet_id, body)
     return body
 
 

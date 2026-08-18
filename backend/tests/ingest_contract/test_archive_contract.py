@@ -282,6 +282,7 @@ async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: 
     """
     import app.services.tweet_ingest.archive as archive_mod
     import app.services.tweet_ingest.chase.telegram as telegram_mod
+    from app.services.tweet_ingest.records import ChaseResult
 
     body = loader.load_body("telegram_link")
     archive = tmp_path / "tg_archive"
@@ -293,7 +294,7 @@ async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: 
 
     def fake_chase(target: str, *, client: Any = None) -> Any:
         assert target == "https://t.me/somechannel/12345"
-        return embed
+        return ChaseResult(outcome="chased", post=embed)
 
     async def fake_cdn(parsed: ParsedMedia) -> tuple[bytes, str]:
         return loader.TINY_MP4, parsed.content_type
@@ -368,7 +369,7 @@ async def test_reimport_fills_a_draft_an_earlier_run_left_bare(db, owner, tmp_pa
     """
     import app.services.tweet_ingest.archive as archive_mod
     import app.services.tweet_ingest.chase.telegram as telegram_mod
-    from app.services.tweet_ingest.records import ChasedPost
+    from app.services.tweet_ingest.records import ChasedPost, ChaseResult
 
     handle = owner.x_handle
     tweet_id = "8400000000000000042"
@@ -377,16 +378,19 @@ async def test_reimport_fills_a_draft_an_earlier_run_left_bare(db, owner, tmp_pa
 
     def fake_chase(target: str, *, client: Any = None) -> Any:
         assert target == "https://t.me/somechannel/12345"
-        return ChasedPost(
-            url=target,
-            posted_at="2026-03-04T09:00:00+00:00",
-            media=[
-                ParsedMedia(
-                    kind="video",
-                    remote_url="https://cdn4.cdn-telegram.org/file/v.mp4",
-                    origin="quote",
-                )
-            ],
+        return ChaseResult(
+            outcome="chased",
+            post=ChasedPost(
+                url=target,
+                posted_at="2026-03-04T09:00:00+00:00",
+                media=[
+                    ParsedMedia(
+                        kind="video",
+                        remote_url="https://cdn4.cdn-telegram.org/file/v.mp4",
+                        origin="quote",
+                    )
+                ],
+            ),
         )
 
     async def fake_cdn(parsed: ParsedMedia) -> tuple[bytes, str]:

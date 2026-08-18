@@ -244,11 +244,14 @@ def test_a_chased_status_that_turns_out_to_be_the_analysts_own_is_dropped():
 
 def test_the_sole_telegram_candidate_is_chased_into_the_telegram_slot(monkeypatch):
     import app.services.tweet_ingest.chase.telegram as telegram_mod
-    from app.services.tweet_ingest.records import ChasedPost
+    from app.services.tweet_ingest.records import ChasedPost, ChaseResult
 
-    def fake_chase(target: str, *, client=None) -> ChasedPost:
+    def fake_chase(target: str, *, client=None) -> ChaseResult:
         assert target == _TG_URL
-        return ChasedPost(url=target, posted_at="2026-03-04T09:00:00+00:00")
+        return ChaseResult(
+            outcome="chased",
+            post=ChasedPost(url=target, posted_at="2026-03-04T09:00:00+00:00"),
+        )
 
     monkeypatch.setattr(telegram_mod, "chase", fake_chase)
     with _client({_POST_ID: _linking_body(_TG_URL)}) as client:
@@ -256,6 +259,35 @@ def test_the_sole_telegram_candidate_is_chased_into_the_telegram_slot(monkeypatc
     [record] = acquired.records
     assert record.telegram is not None
     assert record.telegram.posted_at == "2026-03-04T09:00:00+00:00"
+
+
+@pytest.mark.parametrize(
+    "outcome,expected",
+    [("transient_failure", True), ("not_accessible", False), ("no_target", False)],
+)
+def test_a_chase_that_found_nothing_reports_its_class_to_the_resolution(
+    monkeypatch, outcome, expected
+):
+    """The chase is fail-soft, so a failure never reaches the analyst as an
+    error. The class of it still travels, on the record that declared the
+    target: only a transient one is worth importing again later, and the
+    resolution is what turns that into the draft's warning."""
+    import app.services.tweet_ingest.chase.telegram as telegram_mod
+    from app.services.tweet_ingest import resolve_threads
+    from app.services.tweet_ingest.records import ChaseResult
+
+    monkeypatch.setattr(
+        telegram_mod, "chase", lambda target, *, client=None: ChaseResult(outcome=outcome)
+    )
+    with _client({_POST_ID: _linking_body(_TG_URL)}) as client:
+        acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
+    [record] = acquired.records
+    assert record.telegram is None
+    assert (record.chase_outcome == "transient_failure") is expected
+
+    [draft] = resolve_threads([acquired.records]).drafts
+    assert draft.source_url == _TG_URL
+    assert draft.source_fetch_failed is expected
 
 
 def test_nothing_is_chased_when_the_candidates_are_ambiguous(monkeypatch):

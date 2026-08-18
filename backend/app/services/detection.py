@@ -53,6 +53,7 @@ from app.services.tweet_ingest import (
     DUPLICATE_MEDIA,
     SOURCE_AMBIGUOUS,
     SOURCE_DATE_UNKNOWN,
+    SOURCE_FETCH_FAILED,
     SOURCE_FOOTAGE_MISSING,
     SOURCE_MISSING,
     Draft,
@@ -708,16 +709,22 @@ def _engine_warnings(persisted: list[tuple[uuid.UUID, Draft]]) -> dict[str, int]
 def _write_warnings(db: Session, persisted: list[tuple[uuid.UUID, Draft]]) -> dict[str, int]:
     """The warnings only the write path can raise, counted per row it wrote.
 
-    The engine says what it could not settle from the post; these three say what
-    the row ended up with: no footage was stored from the declared source (a
+    The engine says what it could not settle from the post; these say what the
+    row ended up with: no footage was stored from the declared source (a
     link-only source, a media-less or restricted source post, or a fetch that
     came back short), the source's post date came back unknown, and the row's
-    media is already on Vidit. Review is the repair for all three, so they read
-    as warnings beside the engine's and are counted the same way.
+    media is already on Vidit. Review is the repair for all of them, so they
+    read as warnings beside the engine's and are counted the same way.
 
-    The first two are dropped on a row whose draft already carries
-    ``SOURCE_MISSING`` or ``SOURCE_AMBIGUOUS``: an empty source slot already
-    says why there is neither footage nor date.
+    A footage-less row whose chase failed on an upstream that would not answer
+    (``Draft.source_fetch_failed``, the retry schedule already spent) raises
+    ``SOURCE_FETCH_FAILED`` instead: the footage may well exist, so importing the
+    post again later is a repair, which it is not for a source that simply
+    carries none.
+
+    The footage and date warnings are dropped on a row whose draft already
+    carries ``SOURCE_MISSING`` or ``SOURCE_AMBIGUOUS``: an empty source slot
+    already says why there is neither footage nor date.
     """
     counts: dict[str, int] = {}
     if not persisted:
@@ -729,7 +736,9 @@ def _write_warnings(db: Session, persisted: list[tuple[uuid.UUID, Draft]]) -> di
         raised: list[str] = []
         if not set(draft.warnings) & {SOURCE_MISSING, SOURCE_AMBIGUOUS}:
             if event_id in footage_less:
-                raised.append(SOURCE_FOOTAGE_MISSING)
+                raised.append(
+                    SOURCE_FETCH_FAILED if draft.source_fetch_failed else SOURCE_FOOTAGE_MISSING
+                )
             if draft.source_posted_at is None:
                 raised.append(SOURCE_DATE_UNKNOWN)
         if event_id in duplicated:

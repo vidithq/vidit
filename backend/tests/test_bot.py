@@ -39,6 +39,7 @@ from app.services.tweet_ingest import (
     SEVERAL_COORDINATES,
     SOURCE_AMBIGUOUS,
     SOURCE_DATE_UNKNOWN,
+    SOURCE_FETCH_FAILED,
     SOURCE_FOOTAGE_MISSING,
     WARNING_MESSAGES,
 )
@@ -876,24 +877,28 @@ def test_compose_reply_carries_one_line_per_warning_and_stays_in_the_cap():
     """One ⚠ line per raised code, in the table's order, and the heaviest reply
     the pipeline can compose still fits X's cap.
 
-    Heaviest is the four below: ``persist_drafts`` drops the footage and date
-    warnings on a draft that already carries the empty-source pair, and the two
-    halves of that pair never co-occur, so no pass raises all six codes.
+    Heaviest is four codes: ``persist_drafts`` drops the footage and date
+    warnings on a draft that already carries the empty-source pair, the two
+    halves of that pair never co-occur, and the two footage codes are the two
+    answers to one question, so no pass raises the whole vocabulary. Both
+    footage codes are composed here, since the fetch-failed sentence is the
+    longer of the two and is what the cap has to hold.
     """
     event_id = str(uuid.uuid4())
-    heaviest = [
-        SEVERAL_COORDINATES,
-        SOURCE_FOOTAGE_MISSING,
-        SOURCE_DATE_UNKNOWN,
-        DUPLICATE_MEDIA,
-    ]
-    text = compose_reply(event_id, drafts=3, warnings=heaviest)
-    assert text.startswith("✅ 3 geolocation drafts saved")
-    assert [line for line in text.splitlines() if line.startswith("⚠")] == [
-        f"⚠ {WARNING_MESSAGES[code]}" for code in heaviest
-    ]
-    assert text.endswith("Review from your profile")
-    assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
+    for footage in (SOURCE_FOOTAGE_MISSING, SOURCE_FETCH_FAILED):
+        heaviest = [
+            SEVERAL_COORDINATES,
+            footage,
+            SOURCE_DATE_UNKNOWN,
+            DUPLICATE_MEDIA,
+        ]
+        text = compose_reply(event_id, drafts=3, warnings=heaviest)
+        assert text.startswith("✅ 3 geolocation drafts saved")
+        assert [line for line in text.splitlines() if line.startswith("⚠")] == [
+            f"⚠ {WARNING_MESSAGES[code]}" for code in heaviest
+        ]
+        assert text.endswith("Review from your profile")
+        assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
 
     ambiguous = compose_reply(event_id, drafts=2, warnings=[SOURCE_AMBIGUOUS, DUPLICATE_MEDIA])
     assert "Several possible sources" in ambiguous

@@ -31,6 +31,7 @@ from app.services.storage import get_storage
 from app.services.tweet_ingest import (
     DUPLICATE_MEDIA,
     SOURCE_DATE_UNKNOWN,
+    SOURCE_FETCH_FAILED,
     SOURCE_FOOTAGE_MISSING,
     SOURCE_MISSING,
     Draft,
@@ -137,6 +138,7 @@ def _draft(
     proof_media: list[ParsedMedia] | None = None,
     source_url: str | None = None,
     source_posted_at: datetime | None = None,
+    source_fetch_failed: bool = False,
     secondary_source_urls: list[str] | None = None,
     title: str = "Strike at Bakhmut",
     proof_text: str = "Strike at Bakhmut\nGeolocated by analyst",
@@ -165,6 +167,7 @@ def _draft(
         secondary_source_urls=secondary_source_urls or [],
         source_media=media or [],
         proof_media=proof_media or [],
+        source_fetch_failed=source_fetch_failed,
     )
 
 
@@ -941,6 +944,22 @@ async def test_a_sourced_draft_that_stored_no_footage_warns(db, owner):
     outcome = await _persist(db, owner=owner, drafts=[draft], fetch_media=_missing_fetcher)
     assert len(outcome.created) == 1
     assert outcome.warnings == {SOURCE_FOOTAGE_MISSING: 1, SOURCE_DATE_UNKNOWN: 1}
+
+
+async def test_a_source_the_chase_could_not_reach_warns_that_it_may_come_back(db, owner):
+    """A footage-less row whose chase died on an upstream that would not answer
+    reads differently to one whose source simply carries no footage: the same
+    import later may well fill it, so the warning says to run it again rather
+    than to go and find the footage by hand."""
+    draft = _draft(
+        source_url="https://t.me/chan/42",
+        media=[_img()],
+        source_posted_at=None,
+        source_fetch_failed=True,
+    )
+    outcome = await _persist(db, owner=owner, drafts=[draft], fetch_media=_missing_fetcher)
+    assert len(outcome.created) == 1
+    assert outcome.warnings == {SOURCE_FETCH_FAILED: 1, SOURCE_DATE_UNKNOWN: 1}
 
 
 async def test_a_draft_with_footage_and_a_source_date_warns_about_neither(db, owner):

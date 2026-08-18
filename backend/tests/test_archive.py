@@ -522,7 +522,7 @@ def test_a_sole_telegram_link_is_chased_beside_the_posts_own_media(tmp_path, mon
     neither a candidate nor proof content, and the Telegram chase runs on the
     one real link."""
     import app.services.tweet_ingest.chase.telegram as telegram_mod
-    from app.services.tweet_ingest.records import ChasedPost
+    from app.services.tweet_ingest.records import ChasedPost, ChaseResult
 
     archive = tmp_path / "arc"
     archive.mkdir()
@@ -537,7 +537,10 @@ def test_a_sole_telegram_link_is_chased_beside_the_posts_own_media(tmp_path, mon
 
     def fake_chase(target, *, client=None):
         chased.append(target)
-        return ChasedPost(url=target, posted_at="2025-11-11T08:00:00+00:00")
+        return ChaseResult(
+            outcome="chased",
+            post=ChasedPost(url=target, posted_at="2025-11-11T08:00:00+00:00"),
+        )
 
     monkeypatch.setattr(telegram_mod, "chase", fake_chase)
     [record] = _chased(archive, handle="ana")
@@ -642,6 +645,41 @@ async def test_fetch_cdn_media_returns_within_cap(monkeypatch):
     )
     parsed = ParsedMedia(kind="video", remote_url="https://video.twimg.com/ok.mp4")
     assert await archive_mod.fetch_cdn_media(parsed) == (b"tiny-mp4-bytes", "video/mp4")
+
+
+async def test_fetch_cdn_media_retries_a_throttled_cdn(monkeypatch, retry_sleeps):
+    """The footage is the point of the draft, so a CDN refusing to serve right
+    now is sat out on the package's one schedule (``tweet_ingest.retry``) rather
+    than persisted as a media-incomplete row."""
+    import app.services.tweet_ingest.archive as archive_mod
+    from app.services.tweet_ingest import retry
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, content=b"tiny-mp4-bytes") if seen[1:] else httpx.Response(503)
+
+    monkeypatch.setattr(httpx, "AsyncClient", _cdn_client_factory(handler))
+    parsed = ParsedMedia(kind="video", remote_url="https://video.twimg.com/ok.mp4")
+
+    assert await archive_mod.fetch_cdn_media(parsed) == (b"tiny-mp4-bytes", "video/mp4")
+    assert len(seen) == 2
+    assert retry_sleeps == [retry.BACKOFF_S[0]]
+
+
+async def test_fetch_cdn_media_degrades_once_the_retries_are_spent(monkeypatch, retry_sleeps):
+    """Fail-soft is unchanged past the schedule: the draft lands
+    media-incomplete, and the warning on it is what names the unreachable
+    source."""
+    import app.services.tweet_ingest.archive as archive_mod
+    from app.services.tweet_ingest import retry
+
+    monkeypatch.setattr(httpx, "AsyncClient", _cdn_client_factory(lambda _req: httpx.Response(503)))
+    parsed = ParsedMedia(kind="video", remote_url="https://video.twimg.com/ok.mp4")
+
+    assert await archive_mod.fetch_cdn_media(parsed) is None
+    assert retry_sleeps == list(retry.BACKOFF_S)
 
 
 async def test_archive_media_fetcher_rejects_path_traversal(tmp_path):

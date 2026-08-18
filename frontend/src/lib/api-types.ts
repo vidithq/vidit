@@ -2721,8 +2721,10 @@ export interface components {
          *     ``warnings`` carries what review still has to answer on the drafts of this
          *     post, never a refusal. Three codes say what the engine could not settle from
          *     the post (``several_coordinates``, ``source_ambiguous``, ``source_missing``)
-         *     and three what the drafts ended up with (``source_footage_missing``,
-         *     ``source_date_unknown``, ``duplicate_media``). ``reason`` is the refusal when
+         *     and four what the drafts ended up with (``source_footage_missing``,
+         *     ``source_fetch_failed``, ``source_date_unknown``, ``duplicate_media``); the
+         *     fetch-failed one is the source that could not be read this time, so the same
+         *     import later may well fill it. ``reason`` is the refusal when
          *     the post produced no draft at all (``coords_missing``, ``coords_invalid``),
          *     and null whenever drafts were produced. ``failed`` counts the detections that
          *     raised mid-persist.

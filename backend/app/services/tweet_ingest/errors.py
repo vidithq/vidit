@@ -49,8 +49,27 @@ class TweetUpstreamBusy(TweetFetchFailed):
     apart from the ``502`` that means the payload drifted under us. Both stay
     5xx, so both keep reaching Sentry, as two issues instead of one bucket.
 
+    ``retry_after`` is the delay the upstream asked for in its ``Retry-After``
+    header, in seconds, ``None`` when it sent none or sent a date instead. The
+    retry policy (:mod:`tweet_ingest.retry`) reads it; nothing else does.
+
     A subclass of ``TweetFetchFailed`` on purpose: every fail-soft caller
     (``acquire._self_reply_parent``, the chasers under ``chase/``) keeps
     degrading exactly as before, and only a caller that wants the distinction
     catches this class first.
+    """
+
+    def __init__(self, message: str, *, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+class TweetUpstreamUnreachable(TweetFetchFailed):
+    """The request got no answer at all: a timeout, or a transport error.
+
+    Its own class next to :class:`TweetUpstreamBusy` so the retry policy can
+    name the two failures worth a second attempt without also catching the ones
+    a retry cannot fix (a payload that drifted, a body that will not parse).
+    A subclass of ``TweetFetchFailed``, so routes keep answering ``502`` and
+    every fail-soft caller keeps degrading as before.
     """

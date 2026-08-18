@@ -17,6 +17,8 @@ Single-responsibility bricks behind one import surface:
 * ``acquire``: the live acquisition, a tweet id plus the same author's post it
   replies to, which is the thread the bot and the paste both resolve.
 * ``archive``: the export reader (pure disk), plus the CDN media fetchers.
+* ``retry``: the one retry schedule every outgoing fetch above shares, for the
+  half of a failure a second attempt can clear.
 
 The four pure modules (``records``, ``extract``, ``stitch``, ``resolve``) read
 no I/O module, which ``tests/test_ingest_boundaries.py`` states. Callers import
@@ -58,6 +60,7 @@ from .resolve import (
     SEVERAL_COORDINATES,
     SOURCE_AMBIGUOUS,
     SOURCE_DATE_UNKNOWN,
+    SOURCE_FETCH_FAILED,
     SOURCE_FOOTAGE_MISSING,
     SOURCE_MISSING,
     WARNING_MESSAGES,
@@ -78,6 +81,7 @@ __all__ = [
     "SEVERAL_COORDINATES",
     "SOURCE_AMBIGUOUS",
     "SOURCE_DATE_UNKNOWN",
+    "SOURCE_FETCH_FAILED",
     "SOURCE_FOOTAGE_MISSING",
     "SOURCE_MISSING",
     "WARNING_MESSAGES",

@@ -5,7 +5,8 @@ live entries, the archive reader for backfill) and what ``stitch`` consumes.
 The unit is a normalized record, not a bare id, so the archive's inline reply
 edges and media survive into the pipeline, which syndication cannot expose.
 ``ChasedPost`` is its off-thread twin: the footage post a chase resolved,
-whichever technology served it.
+whichever technology served it, and ``ChaseResult`` is what a chaser answers
+with, so a chase that resolved nothing still says why.
 """
 
 from __future__ import annotations
@@ -150,6 +151,31 @@ class TweetRecord:
     telegram: TelegramFootage | None = None
     # The URLs the post links in its text (``entities.urls``).
     external_sources: list[SourceLink] = field(default_factory=list)
+    # Why the chase of the target this record declared came back with no
+    # footage, stamped by ``chase.chase_thread``. ``None`` on every record that
+    # declared no target, and on the one whose chase succeeded, where the
+    # footage itself is the answer. This is how the chase reports a failure it
+    # swallowed to the resolution, which is pure and fetches nothing: a
+    # ``transient_failure`` is the difference between "there is no footage" and
+    # "we could not read it right now" (``resolve.SOURCE_FETCH_FAILED``).
+    chase_outcome: ChaseOutcome | None = None
+
+
+# What one chase came back with, whichever technology answered:
+#
+# * ``chased``: the footage post, on the result's ``post``;
+# * ``not_accessible``: the upstream answered and there is nothing to take (the
+#   post is gone, restricted, or its payload is one no chaser can read);
+# * ``transient_failure``: the upstream throttled us or never answered, after
+#   the retry schedule (``tweet_ingest.retry``) was spent on it;
+# * ``no_target``: this chaser does not serve the target's host, so it fetched
+#   nothing at all.
+#
+# Only ``transient_failure`` changes what the analyst is told: it is a draft to
+# import again later rather than a source with no footage. The other three read
+# the same way downstream, and are distinct so the class is named where it is
+# known instead of being re-derived from an empty result.
+ChaseOutcome = Literal["chased", "not_accessible", "transient_failure", "no_target"]
 
 
 @dataclass(frozen=True)
@@ -174,3 +200,17 @@ class ChasedPost:
     author: str | None = None
     text: str = ""
     status_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ChaseResult:
+    """The footage a chaser found, or why it found none.
+
+    What every chaser under ``chase/`` returns, so a caller reads one answer
+    whether the chase landed or not. ``post`` is set exactly when ``outcome`` is
+    ``"chased"``; the three other outcomes carry no post and are the class of
+    the failure (:data:`ChaseOutcome`).
+    """
+
+    outcome: ChaseOutcome
+    post: ChasedPost | None = None

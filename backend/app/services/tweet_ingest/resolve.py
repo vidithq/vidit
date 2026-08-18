@@ -63,13 +63,14 @@ POST_UNREADABLE = "post_unreadable"
 
 # What a created draft still needs from its owner. Warnings, not refusals: the
 # draft lands either way and review is where they are answered. The first three
-# are what the engine could not settle from the post; the last three are what
-# the row ended up with, so ``detection.persist_drafts`` raises them once the
-# write is done. One home for the vocabulary, whichever half raises a code.
+# are what the engine could not settle from the post; the last four are what the
+# row ended up with, so ``detection.persist_drafts`` raises them once the write
+# is done. One home for the vocabulary, whichever half raises a code.
 SOURCE_AMBIGUOUS = "source_ambiguous"  # several candidate links, source left empty
 SOURCE_MISSING = "source_missing"  # no candidate link and no quote
 SEVERAL_COORDINATES = "several_coordinates"  # one thread, several drafts
 SOURCE_FOOTAGE_MISSING = "source_footage_missing"  # a declared source, no footage stored
+SOURCE_FETCH_FAILED = "source_fetch_failed"  # the source could not be read, retries spent
 SOURCE_DATE_UNKNOWN = "source_date_unknown"  # the source's post date came back unknown
 DUPLICATE_MEDIA = "duplicate_media"  # the row's media is already on another event
 
@@ -90,6 +91,7 @@ WARNING_MESSAGES: dict[str, str] = {
     SOURCE_AMBIGUOUS: "Several possible sources. Pick one at review",
     SOURCE_MISSING: "No source found. Add one at review",
     SOURCE_FOOTAGE_MISSING: "No footage from the source. Add it at review",
+    SOURCE_FETCH_FAILED: "Source unreachable. Import again later or add the footage",
     SOURCE_DATE_UNKNOWN: "The source's post date is unknown. Check it at review",
     DUPLICATE_MEDIA: "Media already on Vidit. Possible duplicate",
 }
@@ -446,6 +448,14 @@ class Draft:
     # Footage (role=source, capped at one) vs the analyst's annotation (role=proof).
     source_media: list[ParsedMedia] = field(default_factory=list)
     proof_media: list[ParsedMedia] = field(default_factory=list)
+    # Whether the thread's chase came back with nothing because the upstream
+    # would not answer, the retry schedule already spent (a chaser's
+    # ``transient_failure``). It says why the source slot is footage-less, so
+    # the write path can raise ``SOURCE_FETCH_FAILED`` instead of
+    # ``SOURCE_FOOTAGE_MISSING``: one is worth importing again later, the other
+    # is not. False on every thread that chased nothing, chased successfully, or
+    # was refused for good.
+    source_fetch_failed: bool = False
     # What this draft still needs from its owner (the ``*_MISSING`` /
     # ``*_AMBIGUOUS`` / ``SEVERAL_COORDINATES`` constants above). Every draft of
     # one thread carries the same list; the entry surfaces it its own way (the
@@ -606,6 +616,7 @@ def _thread_drafts(thread: list[TweetRecord]) -> tuple[list[Draft], str | None]:
             secondary_source_urls=secondary_source_urls,
             source_media=source_media,
             proof_media=proof_media,
+            source_fetch_failed=any(post.chase_outcome == "transient_failure" for post in posts),
             warnings=warnings,
         )
         for coord in scan.coords

@@ -5,16 +5,19 @@ to turn a bare link into the footage behind it (its date, its media, and for an
 X status its author and text). One module per technology serves one host
 family, all with the same signature:
 
-    chase(target, *, client) -> ChasedPost | None
+    chase(target, *, client) -> ChaseResult
 
 :func:`chase_thread` is the one chase step, and every entry runs it once its
 records are built. It reads what the thread declares, picks at most one target
 and hands it to :func:`chase_post`, which asks each chaser in turn. A chaser
-recognises its own host and answers ``None`` for everything else, so no caller
-names a technology: :func:`apply_chase` places whatever comes back.
+recognises its own host and answers ``no_target`` for everything else, so no
+caller names a technology: :func:`apply_chase` places whatever comes back.
 
 Every chase is fail-soft: an unreachable post, a refusing upstream or an
 unparseable payload reads as "no footage", never as a failure of the import.
+The class of the failure still travels (``records.ChaseOutcome``), stamped on
+the record that declared the target, because a source nobody could read right
+now is a different thing to tell the analyst than a source with no footage.
 """
 
 from __future__ import annotations
@@ -23,23 +26,24 @@ import dataclasses
 
 import httpx
 
-from ..records import ChasedPost, QuotedTweet, TelegramFootage, TweetRecord
+from ..records import ChasedPost, ChaseResult, QuotedTweet, TelegramFootage, TweetRecord
 from ..resolve import sole_candidate
 from . import telegram, x
 
 __all__ = ["apply_chase", "chase_post", "chase_thread"]
 
 
-def chase_post(target: str, *, client: httpx.Client | None = None) -> ChasedPost | None:
+def chase_post(target: str, *, client: httpx.Client | None = None) -> ChaseResult:
     """The footage post ``target`` names, chased by the module serving its host.
 
     ``target`` is the URL a post linked, or a bare X status id (which is all an
-    export holds for a quote). ``None`` when no technology here serves the
-    target or the chase came back empty. ``client`` is for tests (a
+    export holds for a quote). Each chaser answers ``no_target`` for a host it
+    does not serve, which is what hands the target to the next one; the last
+    answer stands when none of them serves it. ``client`` is for tests (a
     ``MockTransport``); production passes ``None``.
     """
     chased = x.chase(target, client=client)
-    if chased is not None:
+    if chased.outcome != "no_target":
         return chased
     return telegram.chase(target, client=client)
 
@@ -99,7 +103,9 @@ def chase_thread(
     A thread that already carries a quote chases nothing, since a quote outranks
     every link at resolution; nor does an ambiguous thread, whose source slot
     stays empty for review. Fail-soft: a chase that yields nothing leaves the
-    records as they were.
+    records as they were, bar the class of the failure, which is stamped on the
+    record that declared the target (``TweetRecord.chase_outcome``) so the
+    resolution can tell an unreadable source from a source with no footage.
     """
     if any(record.quoted is not None for record in records):
         return records
@@ -110,9 +116,15 @@ def chase_thread(
     target = quoted_id if quoted_id is not None else sole_candidate(records)
     if target is None:
         return records
-    chased = chase_post(target, client=client)
+    result = chase_post(target, client=client)
+    chased = result.post
     if chased is None:
-        return records
+        return [
+            dataclasses.replace(record, chase_outcome=result.outcome)
+            if _declares(record, target)
+            else record
+            for record in records
+        ]
     own_handle = records[0].handle.lower() if records else ""
     if quoted_id is None and (chased.author or "").lower() == own_handle:
         # A link to the analyst's own post that slipped the URL-level own-handle
