@@ -4,41 +4,47 @@ One detection engine, three entries. The bot, the pasted-tweet import and the ar
 
 ```mermaid
 flowchart TB
-  subgraph entries [Three entries]
-    direction LR
-    bot["Bot: a tag on X<br/>(webhook or hourly poll)"]
-    paste["Paste: a post URL<br/>on /submit"]
-    archive["Archive: an X export<br/>uploaded, worker job"]
-  end
-  subgraph acquire [Acquisition]
-    direction LR
-    onehop["One hop: the post plus<br/>the same-author post it replies to<br/>(syndication, free)"]
-    stitch["Read the export,<br/>drop retweets,<br/>stitch self-threads"]
-    chase["Chase the sole source candidate<br/>(X status, Telegram embed)<br/>with retries"]
-  end
-  subgraph engine [One engine]
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#0f7b7a,stroke:#0f7b7a,color:#ffffff
+
+  subgraph botlane [Bot]
     direction TB
-    resolve["resolve_threads(threads)<br/>pure: no network, no database"]
-    resolution["Resolution: one Draft per coordinate<br/>plus warnings and refusals"]
-    persist["persist_drafts(owner, resolution)<br/>re-import match, media fetch, write"]
-    rows[("detected rows<br/>public, attributed to the owner")]
+    b1["Delivery: webhook queue<br/>or hourly poll"]:::spec
+    b2["Ledger, reply budget,<br/>linked account"]:::spec
+    b3["In-thread reply:<br/>ref plus warnings"]:::spec
   end
-  subgraph feedback [What the analyst gets]
-    direction LR
-    reply["Bot: in-thread reply<br/>ref plus warnings"]
-    page["Paste: draft ids and warnings,<br/>review opens"]
-    email["Archive: outcome email<br/>counts plus warnings"]
+  subgraph pastelane [Paste]
+    direction TB
+    p1["POST /events/import-from-tweet<br/>rate limit, typed errors"]:::spec
+    p2["Own post only:<br/>author is the linked handle"]:::spec
+    p3["Response: draft ids,<br/>warnings, review opens"]:::spec
   end
-  bot --> onehop
-  paste --> onehop
-  archive --> stitch
-  onehop --> chase
-  stitch --> chase
-  chase --> resolve
-  resolve --> resolution --> persist --> rows
-  persist --> reply
-  persist --> page
-  persist --> email
+  subgraph archivelane [Archive]
+    direction TB
+    a1["Browser strip, presigned upload,<br/>job queue, worker"]:::spec
+    a2["Read the export, drop retweets,<br/>stitch self-threads"]:::spec
+    a3["Outcome email:<br/>counts plus warnings"]:::spec
+  end
+
+  subgraph acquire [Shared acquisition]
+    direction TB
+    hop["One hop: the post plus the<br/>same-author post it replies to"]:::shared
+    chase["Chase the sole source candidate<br/>(X status, Telegram embed), retries"]:::shared
+  end
+  subgraph engine [Shared engine]
+    direction TB
+    resolve["resolve_threads: pure,<br/>one Draft per coordinate,<br/>warnings and refusals"]:::shared
+    persist["persist_drafts: re-import match,<br/>media, write, six warnings"]:::shared
+    rows[("detected rows")]:::shared
+  end
+
+  b1 --> b2 --> hop
+  p1 --> p2 --> hop
+  a1 --> a2 --> chase
+  hop --> chase --> resolve --> persist --> rows
+  persist --> b3
+  persist --> p3
+  persist --> a3
 ```
 
 - The engine is [`resolve_threads`](../backend/app/services/tweet_ingest/resolve.py) (threads in, one `Draft` per coordinate out, plus warnings and refusals, no I/O) and [`detection.persist_drafts`](../backend/app/services/detection.py) (the one write path from a draft to a `detected` row).
