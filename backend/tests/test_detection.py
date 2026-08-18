@@ -118,6 +118,15 @@ async def _persist(
     )
 
 
+def _row(db, event_id) -> Event:
+    """The stored row behind an id the outcome named.
+
+    ``Outcome`` carries ids rather than mapped rows (see ``services/detection``),
+    so a test reading a column re-reads the row it wrote.
+    """
+    return db.query(Event).filter(Event.id == event_id).one()
+
+
 def _draft(
     *,
     lat: float = 48.5,
@@ -170,7 +179,7 @@ async def test_assemble_injects_proof_images_into_proof_doc(db, owner):
 
     draft = _draft(proof_media=[_img(), _img()])
     outcome = await _persist(db, owner=owner, drafts=[draft], fetch_media=_image_fetcher)
-    geo = outcome.created[0]
+    geo = _row(db, outcome.created[0])
     image_nodes = [n for n in geo.proof["content"] if n.get("type") == "image"]
     assert len(image_nodes) == 2
     assert all(str(n["attrs"]["src"]).startswith("http") for n in image_nodes)
@@ -186,7 +195,7 @@ async def test_proof_video_is_skipped_not_orphaned(db, owner):
     outcome = await _persist(
         db, owner=owner, drafts=[_draft(proof_media=[video])], fetch_media=_image_fetcher
     )
-    geo = outcome.created[0]
+    geo = _row(db, outcome.created[0])
     assert db.query(Media).filter(Media.event_id == geo.id).count() == 0
     assert [n for n in geo.proof["content"] if n.get("type") == "image"] == []
 
@@ -198,7 +207,7 @@ async def test_proof_image_kept_when_mixed_with_video(db, owner):
     outcome = await _persist(
         db, owner=owner, drafts=[_draft(proof_media=[_img(), video])], fetch_media=_image_fetcher
     )
-    geo = outcome.created[0]
+    geo = _row(db, outcome.created[0])
     proof_rows = db.query(Media).filter(Media.event_id == geo.id, Media.role == "proof").all()
     assert len(proof_rows) == 1 and proof_rows[0].media_type == "image"
     assert len([n for n in geo.proof["content"] if n.get("type") == "image"]) == 1
@@ -240,7 +249,7 @@ async def test_assemble_prefills_secondary_source_links(db, owner):
         secondary_source_urls=["https://t.me/channel/11", "https://www.youtube.com/watch?v=M1"],
     )
     outcome = await _persist(db, owner=owner, drafts=[sourced], fetch_media=_image_fetcher)
-    geo = outcome.created[0]
+    geo = _row(db, outcome.created[0])
     assert [(link.position, link.url) for link in geo.source_links] == [
         (0, "https://t.me/channel/11"),
         (1, "https://www.youtube.com/watch?v=M1"),
@@ -262,7 +271,7 @@ async def test_two_fetchable_source_media_caps_at_one_role_source_row(db, owner)
     outcome = await _persist(db, owner=owner, drafts=[sourced], fetch_media=_both_fetcher)
     assert len(outcome.created) == 1 and outcome.failed == 0
 
-    geo = outcome.created[0]
+    geo = _row(db, outcome.created[0])
     source_rows = db.query(Media).filter(Media.event_id == geo.id, Media.role == "source").all()
     assert len(source_rows) == 1
     assert source_rows[0].media_type == "image"  # the first entry (photo) wins
@@ -501,8 +510,8 @@ async def test_the_entry_that_produced_a_draft_is_stamped_on_the_row(db, owner, 
         fetch_media=_missing_fetcher,
         via=via,
     )
-    [row] = outcome.created
-    assert row.detected_via == via
+    [row_id] = outcome.created
+    assert _row(db, row_id).detected_via == via
 
 
 async def test_geolocated_pair_is_skipped(db, owner):
@@ -570,6 +579,119 @@ async def test_detected_draft_is_upserted_in_place(db, owner):
     assert row.proof["content"][0]["content"][0]["text"] == "Depot hit, Shebekino"
     media = db.query(Media).filter(Media.event_id == row.id).all()
     assert [m.role for m in media] == ["source"]
+
+
+async def test_a_re_import_whose_fetch_comes_back_short_keeps_the_stored_media(db, owner):
+    """A CDN answering nothing is not the post losing its media.
+
+    Every fetch failure used to resolve to an empty media list, which the upsert
+    read as "the post has no media any more": it deleted every ``Media`` row and
+    swept the objects, for an outage that clears on its own.
+    """
+    await _persist(
+        db,
+        owner=owner,
+        drafts=[_draft(media=[_img()], proof_media=[_img()])],
+        fetch_media=_image_fetcher,
+    )
+    stored = db.query(Event).filter(Event.owner_id == owner.id).one()
+    before = {(m.role, m.storage_url, m.sha256) for m in stored.media}
+    keys = {get_storage().key_from_url(url) for _role, url, _sha in before}
+    assert len(before) == 2
+
+    outcome = await _persist(
+        db,
+        owner=owner,
+        # Same post, same coordinate, a newer title: the write path has
+        # something to update, and the fetcher answers nothing for the media.
+        drafts=[_draft(media=[_img()], proof_media=[_img()], title="Corrected wording")],
+        fetch_media=_missing_fetcher,
+    )
+    assert len(outcome.updated) == 1
+
+    db.expire_all()
+    row = db.query(Event).filter(Event.owner_id == owner.id).one()
+    assert row.title == "Corrected wording"
+    assert {(m.role, m.storage_url, m.sha256) for m in row.media} == before
+    for key in keys:
+        assert key is not None and get_storage().get_bytes(key)
+    # The proof document still points at the image that is still stored.
+    assert [n["attrs"]["src"] for n in row.proof["content"] if n.get("type") == "image"] == [
+        url for role, url, _sha in sorted(before) if role == "proof"
+    ]
+
+
+async def test_a_re_import_that_only_loses_its_media_moves_nothing(db, owner):
+    """The same, with nothing else to write: the row is left exactly as it is
+    and the pass counts it skipped rather than updated."""
+    await _persist(db, owner=owner, drafts=[_draft(media=[_img()])], fetch_media=_image_fetcher)
+    db.expire_all()
+    stored = db.query(Event).filter(Event.owner_id == owner.id).one()
+    updated_at = stored.updated_at
+
+    outcome = await _persist(
+        db, owner=owner, drafts=[_draft(media=[_img()])], fetch_media=_missing_fetcher
+    )
+    assert outcome.updated == [] and outcome.skipped == [stored.id]
+
+    db.expire_all()
+    row = db.query(Event).filter(Event.owner_id == owner.id).one()
+    assert row.updated_at == updated_at
+    assert [m.role for m in row.media] == ["source"]
+
+
+async def test_a_pass_that_wrote_nothing_reports_no_warnings(db, owner):
+    """Warnings are what review has to answer on the rows the pass wrote.
+
+    A draft whose match is a published row is left alone, so there is no draft
+    to go and look at and nothing to warn about.
+    """
+    published = Event(
+        owner_id=owner.id,
+        title="Human submit",
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://example.com/footage",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        event_date=date(2025, 11, 12),
+        status=STATUS_GEOLOCATED,
+        geolocated_at=datetime.now(UTC),
+        detected_from_tweet_id=1,
+        detected_from_url="https://x.com/own/status/1",
+    )
+    db.add(published)
+    db.commit()
+
+    outcome = await _persist(db, owner=owner, drafts=[_draft()], fetch_media=_missing_fetcher)
+
+    assert len(outcome.skipped) == 1 and outcome.created == [] and outcome.updated == []
+    assert outcome.warnings == {}
+
+
+async def test_the_warnings_count_the_rows_the_pass_wrote(db, owner):
+    """Two drafts, one already published: only the one that landed is counted."""
+    published = Event(
+        owner_id=owner.id,
+        title="Human submit",
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://example.com/footage",
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        status=STATUS_GEOLOCATED,
+        geolocated_at=datetime.now(UTC),
+        detected_from_tweet_id=1,
+        detected_from_url="https://x.com/own/status/1",
+    )
+    db.add(published)
+    db.commit()
+
+    outcome = await _persist(
+        db,
+        owner=owner,
+        drafts=[_draft(), _draft(lat=50.0, lng=30.0, url="https://x.com/own/status/2")],
+        fetch_media=_missing_fetcher,
+    )
+
+    assert len(outcome.created) == 1 and len(outcome.skipped) == 1
+    assert outcome.warnings == {SOURCE_FOOTAGE_MISSING: 1, SOURCE_DATE_UNKNOWN: 1}
 
 
 async def test_upsert_replaces_source_media_and_sweeps_the_old_objects(db, owner):
@@ -757,7 +879,7 @@ async def test_thread_media_fetched_and_prepared_once_across_coordinates(db, own
     outcome = await _persist(db, owner=owner, drafts=detections, fetch_media=counting_fetcher)
     assert len(outcome.created) == 2
     assert calls["n"] == 1  # fetched once, shared across both coordinate rows
-    geo_ids = [g.id for g in outcome.created]
+    geo_ids = outcome.created
     assert db.query(Media).filter(Media.event_id.in_(geo_ids)).count() == 2
 
 

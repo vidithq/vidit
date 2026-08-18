@@ -405,7 +405,7 @@ async def test_reimport_fills_a_draft_an_earlier_run_left_bare(db, owner, tmp_pa
         fetch_media=archive_media_fetcher(archive),
     )
     assert len(stale.created) == 1
-    stale_row = stale.created[0]
+    stale_row = db.query(Event).filter(Event.id == stale.created[0]).one()
     stale_id, stale_created_at = stale_row.id, stale_row.created_at
     assert stale_row.source_url is None
     assert stale_row.source_links == []

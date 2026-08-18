@@ -30,6 +30,8 @@ OTHER_AUTHOR_ID = "1940000000000000004"
 TOMBSTONE_ID = "1940000000000000005"
 BUSY_ID = "1940000000000000006"
 DRIFT_ID = "1940000000000000007"
+OTHER_AUTHOR_REPLY_ID = "1940000000000000008"
+OTHER_AUTHOR_PARENT_ID = "1940000000000000009"
 
 BODIES: dict[str, dict] = {
     COORD_ID: {
@@ -53,6 +55,19 @@ BODIES: dict[str, dict] = {
     OTHER_AUTHOR_ID: {
         "id_str": OTHER_AUTHOR_ID,
         "created_at": "2026-04-02T13:00:00.000Z",
+        "user": {"screen_name": "someone_else"},
+        "text": "Strike on the depot\n48.123456, 37.654321",
+    },
+    OTHER_AUTHOR_REPLY_ID: {
+        "id_str": OTHER_AUTHOR_REPLY_ID,
+        "created_at": "2026-04-02T14:00:00.000Z",
+        "user": {"screen_name": "someone_else"},
+        "text": "Source below",
+        "in_reply_to_status_id_str": OTHER_AUTHOR_PARENT_ID,
+    },
+    OTHER_AUTHOR_PARENT_ID: {
+        "id_str": OTHER_AUTHOR_PARENT_ID,
+        "created_at": "2026-04-02T13:30:00.000Z",
         "user": {"screen_name": "someone_else"},
         "text": "Strike on the depot\n48.123456, 37.654321",
     },
@@ -209,6 +224,21 @@ def test_someone_elses_post_is_refused(db, linked_author):
     assert _drafts(db, linked_author) == []
 
 
+def test_a_strangers_post_is_refused_before_the_parent_hop(db, linked_author, _mock_syndication):
+    """The own-post check runs on the pasted post alone.
+
+    The parent hop and the chase each read a post the pasted URL only points at,
+    on the shared syndication budget, so a linked account must not be able to
+    drive them by pasting a stranger's thread.
+    """
+    response = _post(linked_author, OTHER_AUTHOR_REPLY_ID, handle="someone_else")
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "not_your_post"
+    assert _mock_syndication == [OTHER_AUTHOR_REPLY_ID]  # the parent was never read
+    assert _drafts(db, linked_author) == []
+
+
 def test_an_account_with_no_linked_handle_is_refused_before_the_fetch(author, _mock_syndication):
     response = _post(author, COORD_ID)
 
@@ -230,11 +260,14 @@ def test_a_url_that_names_no_post_is_a_400(linked_author):
 
 def test_a_post_x_will_not_serve_is_a_404(linked_author):
     """A post readable only behind an X login answers a ``TweetTombstone``
-    body: a 404 the analyst can act on, not a 502 that pages an operator."""
+    body: a 404 the analyst can act on, not a 502 that pages an operator. It
+    carries the bot's code and the bot's sentence for the same case."""
     response = _post(linked_author, TOMBSTONE_ID)
 
     assert response.status_code == 404, response.text
-    assert response.json()["detail"]["code"] == "post_not_accessible"
+    detail = response.json()["detail"]
+    assert detail["code"] == "post_unreadable"
+    assert detail["message"] == REFUSAL_MESSAGES["post_unreadable"]
 
 
 def test_a_throttled_upstream_is_a_503(linked_author):

@@ -22,7 +22,7 @@ import httpx
 from .chase import chase_thread
 from .errors import TweetImportError
 from .records import QuotedTweet, SourceLink, TweetRecord
-from .syndication import _extract_media, extract_source_links, fetch_syndication
+from .syndication import extract_media, extract_source_links, fetch_syndication
 from .urls import normalise_tweet_url
 
 
@@ -53,7 +53,7 @@ def _quoted_record(body: dict[str, Any]) -> QuotedTweet | None:
         handle=handle,
         text=raw_text if isinstance(raw_text, str) else "",
         created_at=raw_created if isinstance(raw_created, str) else "",
-        media=list(_extract_media(qt, origin="quote")),
+        media=list(extract_media(qt, origin="quote")),
     )
 
 
@@ -86,7 +86,7 @@ def record_by_id(tweet_id: str, *, handle: str, client: httpx.Client | None = No
         handle=author,
         text=text if isinstance(text, str) else "",
         created_at=created_at if isinstance(created_at, str) else "",
-        media=list(_extract_media(body, origin="op")),
+        media=list(extract_media(body, origin="op")),
         in_reply_to_status_id=(in_reply_to_status if isinstance(in_reply_to_status, str) else None),
         quoted=_quoted_record(body),
         quoted_status_id=_quoted_status_id(body),
@@ -129,6 +129,20 @@ def _self_reply_parent(
     return parent
 
 
+def acquire_from_post(post: TweetRecord, *, client: httpx.Client | None = None) -> AcquiredThread:
+    """The rest of the one hop over a post already read: the same author's
+    parent, then the chase.
+
+    Split from :func:`acquire_thread` so a caller holding an ownership rule can
+    settle it on ``post`` alone, before this spends anything further. Both legs
+    are fail-soft: a parent that will not fetch reads as no parent, and a
+    footage link that will not chase reads as no footage.
+    """
+    parent = _self_reply_parent(post, client=client)
+    records = chase_thread([parent, post] if parent is not None else [post], client=client)
+    return AcquiredThread(records=records, post=post)
+
+
 def acquire_thread(
     tweet_id: str, *, handle: str, client: httpx.Client | None = None
 ) -> AcquiredThread:
@@ -145,19 +159,28 @@ def acquire_thread(
     :func:`record_by_id`. The post itself raises what ``fetch_syndication``
     raises; the parent leg and the chase are fail-soft.
     """
-    post = record_by_id(tweet_id, handle=handle, client=client)
-    parent = _self_reply_parent(post, client=client)
-    records = chase_thread([parent, post] if parent is not None else [post], client=client)
-    return AcquiredThread(records=records, post=post)
+    return acquire_from_post(record_by_id(tweet_id, handle=handle, client=client), client=client)
+
+
+def read_pasted_post(url: str, *, client: httpx.Client | None = None) -> TweetRecord:
+    """The post a pasted URL names, read alone.
+
+    The URL is parsed once here (:func:`urls.normalise_tweet_url`, which raises
+    ``InvalidTweetUrl``) and one syndication call reads the post. The rest of
+    the hop is :func:`acquire_from_post`, so the paste can check whose post it
+    is before it fetches anything the URL merely points at.
+    """
+    normalised = normalise_tweet_url(url)
+    return record_by_id(normalised.tweet_id, handle=normalised.handle, client=client)
 
 
 def acquire_pasted_thread(url: str, *, client: httpx.Client | None = None) -> AcquiredThread:
     """The thread behind a pasted post URL.
 
     The paste's twin of the bot's ``acquire_tagged_thread``: the URL is parsed
-    once here (:func:`urls.normalise_tweet_url`, which raises
-    ``InvalidTweetUrl``), then the shared one hop reads the post and, when it
-    replies to one of its own author's posts, that parent.
+    once, the post is read, then the shared one hop adds the same author's post
+    it replies to. ``detection.import_pasted_post`` runs the two halves itself,
+    with the own-post check between them; this composition is what the paste's
+    contract test reads.
     """
-    normalised = normalise_tweet_url(url)
-    return acquire_thread(normalised.tweet_id, handle=normalised.handle, client=client)
+    return acquire_from_post(read_pasted_post(url, client=client), client=client)

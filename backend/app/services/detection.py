@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -58,10 +58,11 @@ from app.services.tweet_ingest import (
     Draft,
     ParsedMedia,
     Resolution,
-    acquire_pasted_thread,
+    acquire_from_post,
     archive_media_fetcher,
     chase_thread,
     fetch_cdn_media,
+    read_pasted_post,
     read_tweets,
     resolve_threads,
     sole_refusal,
@@ -90,23 +91,29 @@ _COORD_PLACES = 6
 class Outcome:
     """What one import pass did, row by row.
 
-    The three verdicts carry the rows themselves, in the order the engine
-    produced them, so an entry that answers a single post (the paste) can point
-    its caller at the draft it landed on, and an entry that counts a whole
-    export reads ``len()``.
+    The three verdicts carry event ids, in the order the engine produced them,
+    so an entry that answers a single post (the paste, the bot's reply) can
+    point its caller at the draft it landed on, and an entry that counts a whole
+    export reads ``len()``. Ids rather than ORM rows: an export resolves
+    thousands of drafts in one pass, no caller reads a column off these, and
+    holding the mapped objects for the whole pass would keep every one of them
+    out of the session's weak identity map until the pass ends.
     """
 
-    created: list[Event] = field(default_factory=list)
+    created: list[uuid.UUID] = field(default_factory=list)
     # An open ``detected`` draft overwritten with a newer parse.
-    updated: list[Event] = field(default_factory=list)
+    updated: list[uuid.UUID] = field(default_factory=list)
     # A matched row the import must not touch, or one already up to date.
-    skipped: list[Event] = field(default_factory=list)
+    skipped: list[uuid.UUID] = field(default_factory=list)
     failed: int = 0  # a draft raised mid-persist and was skipped
-    # The resolution's counts, carried through: how many drafts carried each
-    # warning, and how many threads the engine refused under each code. One
-    # home for both, so the bot's reply and the archive's outcome email read the
-    # same numbers.
+    # What review has to answer on the rows this pass wrote, counted over the
+    # created and updated rows alone: the engine's warnings and the write path's
+    # both. A pass that wrote nothing reports none, since there is no draft to
+    # go and look at. One home, so the bot's reply, the archive's outcome email
+    # and the paste's response read the same numbers.
     warnings: dict[str, int] = field(default_factory=dict)
+    # How many threads the engine refused under each code, as the resolution
+    # counted them.
     refusals: dict[str, int] = field(default_factory=dict)
 
     @property
@@ -286,36 +293,60 @@ class _ResolvedMedia:
     sha256: str
 
 
+@dataclass(frozen=True)
+class _DraftMedia:
+    """What one draft's media resolved to, and whether any of it went missing.
+
+    ``complete`` is False when the post declares media the fetch could not
+    turn into bytes: a source slot nothing filled, or a proof image that came
+    back short. The create path stores ``items`` either way, since a detection
+    persists media-incomplete rather than failing. The upsert reads
+    ``complete``, because a short list there is indistinguishable from "the
+    post lost its media" and would delete what the row already holds.
+    """
+
+    items: list[_ResolvedMedia]
+    complete: bool
+
+
 async def _resolve_media(
     draft: Draft, fetch_media: MediaFetcher, media_cache: _MediaCache
-) -> list[_ResolvedMedia]:
+) -> _DraftMedia:
     """The media a detection wants stored, in the order the row should hold it.
 
     The footage in the source slot, capped at one
     (``uq_media_source_per_event``): the first source media that fetches and
     prepares cleanly. Then the analyst's annotation (role=proof), several per
-    event, no cap. Anything that fetches short or prepares badly drops out: a
-    detection persists media-incomplete rather than failing.
+    event, no cap. Anything that fetches short or prepares badly drops out and
+    the result is marked incomplete: a detection persists media-incomplete
+    rather than failing, and a re-import reads the mark before it replaces
+    anything.
     """
     resolved: list[_ResolvedMedia] = []
+    source_filled = False
     for parsed in draft.source_media:
         prepared = await _prepared_media(parsed, fetch_media, media_cache)
         if prepared is None:
             continue
         resolved.append(_ResolvedMedia("source", prepared, content_sha256(prepared.cleaned)))
+        source_filled = True
         break
+    # A declared source whose every candidate came back short: the slot the post
+    # asks for is empty, so the resolution is short of what the post carries.
+    missing = bool(draft.source_media) and not source_filled
     for parsed in draft.proof_media:
         # Invariant: every proof row is referenced by the proof doc, and only
         # image nodes go into it, so a non-image proof media would be an
         # orphaned, unreadable blob. Skip it rather than persist bytes the read
-        # can never surface.
+        # can never surface. Not a miss: nothing could ever store it.
         if parsed.kind != "image":
             continue
         prepared = await _prepared_media(parsed, fetch_media, media_cache)
         if prepared is None:
+            missing = True
             continue
         resolved.append(_ResolvedMedia("proof", prepared, content_sha256(prepared.cleaned)))
-    return resolved
+    return _DraftMedia(resolved, not missing)
 
 
 async def _store_media(
@@ -387,7 +418,7 @@ async def _persist_one(
     fetch_media: MediaFetcher,
     media_cache: _MediaCache,
 ) -> Event:
-    resolved = await _resolve_media(draft, fetch_media, media_cache)
+    resolved = (await _resolve_media(draft, fetch_media, media_cache)).items
     uploaded_keys: list[str] = []
     try:
         geo = Event(
@@ -519,8 +550,15 @@ async def _upsert_one(
     (:func:`storage.sweep_keys`): media the upsert replaced is dropped from S3
     only once the transaction that dropped its rows has landed, and media the
     upsert uploaded is swept when that transaction fails instead.
+
+    Media the fetch could not resolve leaves the row's media untouched. A CDN
+    that answers nothing for a minute produces the same empty resolution as a
+    post whose media is gone, and the two must not read alike: replacing on the
+    short list would delete the stored rows and sweep their objects for a
+    failure that clears on its own.
     """
-    resolved = await _resolve_media(draft, fetch_media, media_cache)
+    media_resolution = await _resolve_media(draft, fetch_media, media_cache)
+    resolved = media_resolution.items
     # Re-read the row under a lock and re-run the matrix on it, the same guard
     # ``events.geolocate`` takes: the disposition was decided on an unlocked
     # read, and the owner may have published, rejected or been taken down
@@ -530,13 +568,25 @@ async def _upsert_one(
         db.rollback()  # drop the lock; a scan of unchanged rows must not hoard them
         return False
     stored = list(row.media)
-    reuse_media = _media_unchanged(stored, resolved)
-    if reuse_media:
-        # Defence for the one shape the equality above cannot see: proof rows
-        # whose image nodes are missing from the document. Rewriting the text
-        # around them would strand the rows, so replace instead.
-        image_nodes = _proof_image_nodes(row.proof)
-        reuse_media = len(image_nodes) == sum(1 for item in resolved if item.role == "proof")
+    if stored and not media_resolution.complete:
+        # Keep what the row holds: the fetch came back short of what the post
+        # declares, so there is nothing here that could tell an outage from a
+        # deletion. The other fields still update, and a pass that moves
+        # nothing else counts the row skipped.
+        logger.warning(
+            "Keeping stored media on %s: the re-import resolved none of %s",
+            row.id,
+            draft.detected_from_url,
+        )
+        reuse_media = True
+    else:
+        reuse_media = _media_unchanged(stored, resolved)
+        if reuse_media:
+            # Defence for the one shape the equality above cannot see: proof
+            # rows whose image nodes are missing from the document. Rewriting
+            # the text around them would strand the rows, so replace instead.
+            image_nodes = _proof_image_nodes(row.proof)
+            reuse_media = len(image_nodes) == sum(1 for item in resolved if item.role == "proof")
     uploaded_keys: list[str] = []
     replaced_keys: list[str] = []
     try:
@@ -577,23 +627,36 @@ async def _upsert_one(
     return True
 
 
-def _rows_without_footage(db: Session, rows: list[Event]) -> set[uuid.UUID]:
-    """The rows carrying no ``role=source`` media, in one query.
+# How many ids one ``IN (...)`` list carries. An export writes thousands of rows
+# in a pass, and a single bind list that long is what makes a planner give up on
+# the index and what some drivers refuse outright. Chunking keeps the two
+# post-pass queries flat in the number of rows the pass wrote.
+_ID_CHUNK = 500
+
+
+def _id_chunks(ids: list[uuid.UUID]) -> Iterator[list[uuid.UUID]]:
+    for start in range(0, len(ids), _ID_CHUNK):
+        yield ids[start : start + _ID_CHUNK]
+
+
+def _rows_without_footage(db: Session, ids: list[uuid.UUID]) -> set[uuid.UUID]:
+    """The rows carrying no ``role=source`` media.
 
     Read off the durable rows rather than off what the fetch resolved, so the
     warning says what the analyst will actually find on the draft.
     """
-    ids = [row.id for row in rows]
-    stored = {
-        event_id
-        for (event_id,) in db.query(Media.event_id).filter(
-            Media.event_id.in_(ids), Media.role == "source"
+    stored: set[uuid.UUID] = set()
+    for chunk in _id_chunks(ids):
+        stored.update(
+            event_id
+            for (event_id,) in db.query(Media.event_id).filter(
+                Media.event_id.in_(chunk), Media.role == "source"
+            )
         )
-    }
     return set(ids) - stored
 
 
-def _rows_with_duplicate_media(db: Session, rows: list[Event]) -> set[uuid.UUID]:
+def _rows_with_duplicate_media(db: Session, ids: list[uuid.UUID]) -> set[uuid.UUID]:
     """The rows whose media already exists on an event outside this pass.
 
     Exact ``Media.sha256`` equality; perceptual near-duplicate matching is a
@@ -601,24 +664,48 @@ def _rows_with_duplicate_media(db: Session, rows: list[Event]) -> set[uuid.UUID]
     thread's several coordinate drafts, which share one media, never flag each
     other.
     """
-    ids = [row.id for row in rows]
-    mine = (
-        db.query(Media.event_id, Media.sha256)
-        .filter(Media.event_id.in_(ids), Media.sha256.isnot(None))
-        .all()
-    )
+    mine: list[tuple[uuid.UUID, str]] = []
+    for chunk in _id_chunks(ids):
+        mine.extend(
+            (event_id, sha)
+            for event_id, sha in db.query(Media.event_id, Media.sha256).filter(
+                Media.event_id.in_(chunk), Media.sha256.isnot(None)
+            )
+            if sha is not None  # narrowing: the filter above already excludes NULL
+        )
     if not mine:
         return set()
-    elsewhere = {
-        sha
-        for (sha,) in db.query(Media.sha256).filter(
-            Media.sha256.in_([sha for _event_id, sha in mine]), Media.event_id.notin_(ids)
-        )
-    }
+    own = set(ids)
+    shas = sorted({sha for _event_id, sha in mine})
+    # The pass's own rows are dropped in Python rather than through a ``NOT IN``
+    # over every id it wrote: that exclusion list is the whole pass, which is the
+    # bind list the chunking exists to avoid.
+    elsewhere: set[str] = set()
+    for start in range(0, len(shas), _ID_CHUNK):
+        for sha, event_id in db.query(Media.sha256, Media.event_id).filter(
+            Media.sha256.in_(shas[start : start + _ID_CHUNK])
+        ):
+            if event_id not in own:
+                elsewhere.add(sha)
     return {event_id for event_id, sha in mine if sha in elsewhere}
 
 
-def _write_warnings(db: Session, persisted: list[tuple[Event, Draft]]) -> dict[str, int]:
+def _engine_warnings(persisted: list[tuple[uuid.UUID, Draft]]) -> dict[str, int]:
+    """The engine's warnings, counted over the drafts that produced a row.
+
+    ``Resolution.warnings`` counts every draft the engine read. The rows the
+    pass wrote are the denominator the analyst can act on: a re-import that
+    overwrote nothing leaves no draft to go and look at, so it must not report
+    a source to pick or a coordinate to split.
+    """
+    counts: dict[str, int] = {}
+    for _event_id, draft in persisted:
+        for code in draft.warnings:
+            counts[code] = counts.get(code, 0) + 1
+    return counts
+
+
+def _write_warnings(db: Session, persisted: list[tuple[uuid.UUID, Draft]]) -> dict[str, int]:
     """The warnings only the write path can raise, counted per row it wrote.
 
     The engine says what it could not settle from the post; these three say what
@@ -635,17 +722,17 @@ def _write_warnings(db: Session, persisted: list[tuple[Event, Draft]]) -> dict[s
     counts: dict[str, int] = {}
     if not persisted:
         return counts
-    rows = [row for row, _draft in persisted]
-    footage_less = _rows_without_footage(db, rows)
-    duplicated = _rows_with_duplicate_media(db, rows)
-    for row, draft in persisted:
+    ids = [event_id for event_id, _draft in persisted]
+    footage_less = _rows_without_footage(db, ids)
+    duplicated = _rows_with_duplicate_media(db, ids)
+    for event_id, draft in persisted:
         raised: list[str] = []
         if not set(draft.warnings) & {SOURCE_MISSING, SOURCE_AMBIGUOUS}:
-            if row.id in footage_less:
+            if event_id in footage_less:
                 raised.append(SOURCE_FOOTAGE_MISSING)
             if draft.source_posted_at is None:
                 raised.append(SOURCE_DATE_UNKNOWN)
-        if row.id in duplicated:
+        if event_id in duplicated:
             raised.append(DUPLICATE_MEDIA)
         for code in raised:
             counts[code] = counts.get(code, 0) + 1
@@ -688,9 +775,10 @@ async def persist_drafts(
     media, since a ``detected`` row can be media-incomplete until its owner
     completes it before validating.
 
-    The outcome carries the created, updated and skipped rows, the resolution's
-    warning counts and its one count per refusal code. A caller that resolved a
-    single thread reads ``outcome.reason`` for the one code to name back.
+    The outcome carries the created, updated and skipped ids, the warnings
+    review has to answer on the rows the pass wrote, and the resolution's one
+    count per refusal code. A caller that resolved a single thread reads
+    ``outcome.reason`` for the one code to name back.
 
     ``on_progress(done, total)`` fires after every handled draft (skips and
     failures included: the analyst-facing meaning is "position in the scan").
@@ -699,10 +787,10 @@ async def persist_drafts(
     same session never splits one.
     """
     drafts = resolution.drafts
-    outcome = Outcome(warnings=dict(resolution.warnings), refusals=resolution.refusals)
-    # Every row this pass wrote, with the draft it was written from, so the
-    # write path's own warnings can be read off both at the end.
-    persisted: list[tuple[Event, Draft]] = []
+    outcome = Outcome(refusals=resolution.refusals)
+    # The id of every row this pass wrote, with the draft it was written from,
+    # so the write path's own warnings can be read off both at the end.
+    persisted: list[tuple[uuid.UUID, Draft]] = []
     # Media cache scoped to the current thread: the engine emits a thread's
     # coordinate drafts contiguously sharing one ``detected_from_url`` + media,
     # so resetting on a URL change bounds the cached bytes to one thread.
@@ -719,7 +807,7 @@ async def persist_drafts(
         verdict, matched = _disposition(db, owner, draft)
         if verdict == "skip":
             if matched is not None:  # always: a skip names the row it protects
-                outcome.skipped.append(matched)
+                outcome.skipped.append(matched.id)
         elif matched is not None:  # ``upsert``: the verdict carries its row
             try:
                 changed = await _upsert_one(
@@ -735,10 +823,10 @@ async def persist_drafts(
                 outcome.failed += 1
             else:
                 if changed:
-                    outcome.updated.append(matched)
-                    persisted.append((matched, draft))
+                    outcome.updated.append(matched.id)
+                    persisted.append((matched.id, draft))
                 else:
-                    outcome.skipped.append(matched)
+                    outcome.skipped.append(matched.id)
         else:
             try:
                 geo = await _persist_one(
@@ -754,12 +842,13 @@ async def persist_drafts(
                 db.rollback()
                 outcome.failed += 1
             else:
-                outcome.created.append(geo)
-                persisted.append((geo, draft))
+                outcome.created.append(geo.id)
+                persisted.append((geo.id, draft))
         if on_progress is not None:
             on_progress(index, total)
-    for code, count in _write_warnings(db, persisted).items():
-        outcome.warnings[code] = outcome.warnings.get(code, 0) + count
+    for counts in (_engine_warnings(persisted), _write_warnings(db, persisted)):
+        for code, count in counts.items():
+            outcome.warnings[code] = outcome.warnings.get(code, 0) + count
     if outcome.created or outcome.updated:
         # A ``detected`` row is public from the moment it lands, so ``/points``
         # must not keep serving a map without it for the cache's TTL. Once for
@@ -822,6 +911,11 @@ async def import_pasted_post(
     fetch when the account has none, so an unlinked caller never spends the
     shared syndication budget.
 
+    The pasted post is read alone and its author checked before the rest of the
+    hop runs: the parent leg and the chase each fetch a post the pasted URL only
+    points at, so a linked account pasting a stranger's post would otherwise
+    drive syndication reads of third-party posts on the shared budget.
+
     Raises what the acquisition raises (``InvalidTweetUrl`` on a URL that names
     no post, ``TweetNotAccessible`` when X serves nothing, ``TweetFetchFailed``
     / ``TweetUpstreamBusy`` on an unusable upstream). The optional ``client`` is
@@ -835,13 +929,19 @@ async def import_pasted_post(
         )
     # The acquisition is blocking network I/O; a thread keeps the event loop
     # serving siblings while X answers.
-    acquired = await asyncio.to_thread(acquire_pasted_thread, url, client=client)
-    author = acquired.post.handle
-    if linked_owner(db, author) is not owner:
+    post = await asyncio.to_thread(read_pasted_post, url, client=client)
+    author = post.handle
+    matched = linked_owner(db, author)
+    # Compared by id, not by object identity: the caller's ``owner`` and the row
+    # the handle maps to are the same account whether or not they are the same
+    # instance, and an identity test would refuse a valid paste the day the two
+    # arrive from different sessions or an expired one.
+    if matched is None or matched.id != owner.id:
         raise NotYourPost(
             f"That post is by @{author}. The import only reads posts from @{linked}, "
             "the X account linked to your Vidit profile."
         )
+    acquired = await asyncio.to_thread(acquire_from_post, post, client=client)
     return await persist_drafts(
         db,
         owner=owner,

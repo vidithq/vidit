@@ -27,7 +27,13 @@ cycle.
 
 from __future__ import annotations
 
-from .acquire import AcquiredThread, acquire_pasted_thread, acquire_thread
+from .acquire import (
+    AcquiredThread,
+    acquire_from_post,
+    acquire_pasted_thread,
+    acquire_thread,
+    read_pasted_post,
+)
 from .archive import archive_media_fetcher, fetch_cdn_media, read_tweets
 from .chase import chase_thread
 from .errors import (
@@ -85,6 +91,7 @@ __all__ = [
     "TweetNotAccessible",
     "TweetRecord",
     "TweetUpstreamBusy",
+    "acquire_from_post",
     "acquire_pasted_thread",
     "acquire_thread",
     "archive_media_fetcher",
@@ -95,6 +102,7 @@ __all__ = [
     "fetch_cdn_media",
     "is_trusted_media_url",
     "normalise_tweet_url",
+    "read_pasted_post",
     "read_tweets",
     "resolve_threads",
     "sole_refusal",

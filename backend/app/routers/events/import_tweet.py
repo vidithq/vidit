@@ -1,5 +1,6 @@
 """``import-from-tweet``: paste your own X post, get the drafts it produced."""
 
+import asyncio
 import logging
 from typing import NoReturn
 
@@ -18,6 +19,7 @@ from app.schemas.tweet_import import ImportNote, TweetImportRead, TweetImportReq
 from app.services.detection import NotYourPost, import_pasted_post
 from app.services.storage import scrub_log
 from app.services.tweet_ingest import (
+    POST_UNREADABLE,
     REFUSAL_MESSAGES,
     WARNING_MESSAGES,
     InvalidTweetUrl,
@@ -40,9 +42,16 @@ def _refuse(status_code: int, code: str, message: str) -> NoReturn:
     raise HTTPException(status_code=status_code, detail={"code": code, "message": message})
 
 
+# Declared ``def``, so FastAPI runs the whole handler in its threadpool. The
+# import is one long blocking stretch (the syndication fetch, then the per-draft
+# queries, commits and image re-encodes of ``persist_drafts``), and on the event
+# loop it would hold every other in-flight request behind it. ``asyncio.run``
+# gives that stretch its own loop inside the worker thread, which is the shape
+# the bot's cron and the archive worker already run under. Kept out of the
+# docstring: the docstring is the endpoint's OpenAPI description.
 @router.post("/import-from-tweet", response_model=TweetImportRead)
 @limiter.limit("30/minute")
-async def import_from_tweet(
+def import_from_tweet(
     request: Request,
     body: TweetImportRequest,
     current_user: User = Depends(get_current_user),
@@ -60,13 +69,17 @@ async def import_from_tweet(
     of the shared, finite syndication budget.
     """
     try:
-        outcome = await import_pasted_post(db, owner=current_user, url=body.url)
+        outcome = asyncio.run(import_pasted_post(db, owner=current_user, url=body.url))
     except NotYourPost as exc:
         _refuse(400, exc.code, str(exc))
     except InvalidTweetUrl as exc:
         _refuse(400, "invalid_tweet_url", str(exc))
-    except TweetNotAccessible as exc:
-        _refuse(404, "post_not_accessible", str(exc))
+    except TweetNotAccessible:
+        # The bot's verdict for the same case, in the same words: X serves the
+        # post to no unauthenticated reader (deleted, protected, age-restricted,
+        # withheld). One code and one sentence across the entries, read off the
+        # shared table rather than composed from the exception's own message.
+        _refuse(404, POST_UNREADABLE, REFUSAL_MESSAGES[POST_UNREADABLE])
     except TweetUpstreamBusy as exc:
         # Ahead of ``TweetFetchFailed`` (its base class): X throttling us reads
         # as a temporary refusal the analyst can wait out, so it earns a truthful
@@ -88,9 +101,9 @@ async def import_from_tweet(
     # what it is handed instead of keeping a fourth copy of the wording. The
     # warnings keep the table's order, which is the order every surface reads.
     return TweetImportRead(
-        created=[event.id for event in outcome.created],
-        updated=[event.id for event in outcome.updated],
-        skipped=[event.id for event in outcome.skipped],
+        created=outcome.created,
+        updated=outcome.updated,
+        skipped=outcome.skipped,
         warnings=[
             ImportNote(code=code, message=message)
             for code, message in WARNING_MESSAGES.items()
