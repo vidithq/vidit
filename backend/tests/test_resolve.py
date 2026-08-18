@@ -224,6 +224,26 @@ def test_a_quote_outranks_a_candidate_link():
     assert posted == "2024-12-31T09:00:00Z"
 
 
+def test_two_records_quoting_one_post_are_one_candidate():
+    # A thread that repeats its quote (the analyst quote-tweets the same footage
+    # twice) names one post, so the slot fills as a single quote would.
+    quoted = QuotedTweet(tweet_id="222", handle="src", text="", created_at="2024-12-31T09:00:00Z")
+    url, posted = resolve_source(
+        [_rec(tweet_id="1", quoted=quoted), _rec(tweet_id="2", quoted=quoted)]
+    )
+    assert url == "https://x.com/src/status/222"
+    assert posted == "2024-12-31T09:00:00Z"
+
+
+def test_two_records_quoting_two_posts_leave_the_source_empty():
+    # The same ambiguity as two candidate links: the engine will not pick, so
+    # review does.
+    first = QuotedTweet(tweet_id="222", handle="src_a", text="", created_at="2024-12-31T09:00:00Z")
+    second = QuotedTweet(tweet_id="333", handle="src_b", text="", created_at="2025-01-02T10:00:00Z")
+    thread = [_rec(tweet_id="1", quoted=first), _rec(tweet_id="2", quoted=second)]
+    assert resolve_source(thread) == (None, None)
+
+
 def test_source_none_when_no_quote_and_no_link():
     # The head's own post is provenance (detected_from_url), never a deduced
     # self-source.
@@ -306,6 +326,53 @@ def test_split_media_quoted_is_source_op_is_proof():
     source, proof = split_media([_rec(media=[_media("image", "op")], quoted=quoted)])
     assert [m.kind for m in source] == ["video"]
     assert [m.kind for m in proof] == ["image"]
+
+
+def test_split_media_takes_the_footage_of_the_quoted_post_the_source_names():
+    # The bug this rules out: the source names one quoted post and the source
+    # slot holds another's video. Two quoted posts leave the source empty, so
+    # the source media is empty too and neither video is filed under a post the
+    # draft does not name; the analyst's own photo is still the annotation.
+    first = QuotedTweet(
+        tweet_id="222",
+        handle="src_a",
+        text="",
+        created_at="",
+        media=[_media("video", "quote")],
+    )
+    second = QuotedTweet(
+        tweet_id="333",
+        handle="src_b",
+        text="",
+        created_at="",
+        media=[_media("video", "quote")],
+    )
+    thread = [
+        _rec(tweet_id="1", quoted=first),
+        _rec(tweet_id="2", media=[_media("image", "op")], quoted=second),
+    ]
+    source, proof = split_media(thread)
+    assert source == []
+    assert [m.kind for m in proof] == ["image"]
+
+
+def test_two_quoted_posts_land_as_mirrors_and_warn_ambiguous():
+    # The whole draft: no source, both quoted statuses kept for review, and the
+    # warning that says why the slot is empty.
+    first = QuotedTweet(tweet_id="222", handle="src_a", text="", created_at="")
+    second = QuotedTweet(tweet_id="333", handle="src_b", text="", created_at="")
+    draft = _draft(
+        [
+            _rec(tweet_id="1", text="Geolocated 48.012345, 37.802411", quoted=first),
+            _rec(tweet_id="2", quoted=second),
+        ]
+    )
+    assert draft.source_url is None
+    assert draft.secondary_source_urls == [
+        "https://x.com/src_a/status/222",
+        "https://x.com/src_b/status/333",
+    ]
+    assert draft.warnings == [SOURCE_AMBIGUOUS]
 
 
 def test_split_media_own_photo_is_proof_without_quote():

@@ -38,6 +38,7 @@ from .extract import (
 )
 from .records import (
     ParsedMedia,
+    QuotedTweet,
     TelegramFootage,
     TweetRecord,
     expand_shortlinks,
@@ -227,13 +228,45 @@ def source_candidates(urls: Iterable[str], *, owner_handle: str) -> list[str]:
     return candidates
 
 
+def quoted_posts(thread: list[TweetRecord]) -> list[QuotedTweet]:
+    """The distinct posts ``thread`` quotes, in thread order, deduped on post id.
+
+    Two records quoting one post name one candidate; two records quoting two
+    different posts name two, which is the ambiguity :func:`sole_quote` refuses
+    to pick between.
+    """
+    posts: list[QuotedTweet] = []
+    seen: set[str] = set()
+    for record in thread:
+        quoted = record.quoted
+        if quoted is None or quoted.tweet_id in seen:
+            continue
+        seen.add(quoted.tweet_id)
+        posts.append(quoted)
+    return posts
+
+
+def sole_quote(thread: list[TweetRecord]) -> QuotedTweet | None:
+    """The one post ``thread`` quotes, ``None`` when it quotes none or several.
+
+    The one rule :func:`resolve_source` and :func:`split_media` both read, so a
+    draft cannot name one post as its source and store another post's footage.
+    """
+    posts = quoted_posts(thread)
+    return posts[0] if len(posts) == 1 else None
+
+
 def thread_candidates(thread: list[TweetRecord]) -> list[str]:
-    """The thread's source candidates (:func:`source_candidates` over every
-    record's links, under the thread head's handle)."""
-    return source_candidates(
-        [link.url for record in thread for link in record.external_sources],
-        owner_handle=thread[0].handle if thread else "",
-    )
+    """The thread's source candidates: the posts it quotes, then the links it
+    carries, through :func:`source_candidates` under the thread head's handle.
+
+    A quoted post is a candidate the analyst declared by quoting rather than by
+    linking. X writes the quoted permalink into the links too, so the two
+    spellings collapse on :func:`link_identity` and one quote is one candidate.
+    """
+    quoted = [canonical_tweet_url(post.tweet_id, post.handle) for post in quoted_posts(thread)]
+    links = [link.url for record in thread for link in record.external_sources]
+    return source_candidates(quoted + links, owner_handle=thread[0].handle if thread else "")
 
 
 def sole_candidate(thread: list[TweetRecord]) -> str | None:
@@ -292,23 +325,24 @@ def resolve_source(thread: list[TweetRecord]) -> tuple[str | None, str | None]:
 
     A quote outranks links: the analyst quote-tweeted the footage, so the quoted
     tweet is the source and its date comes free. That includes a status the
-    acquisition chased into the quote slot on the analyst's behalf. Failing a
-    quote, the thread's one source candidate is the source
-    (:func:`sole_candidate`); a link whose post was chased carries its date,
-    every other link is stored link-only.
+    acquisition chased into the quote slot on the analyst's behalf. The thread's
+    one quoted post takes the slot (:func:`sole_quote`); records quoting two
+    different posts are as ambiguous as two candidate links and are answered the
+    same way, with the slot left empty and both quoted statuses landing in the
+    mirrors for review to pick from. Failing a quote, the thread's one source
+    candidate is the source (:func:`sole_candidate`); a link whose post was
+    chased carries its date, every other link is stored link-only.
 
     No other signal counts. A thread that neither quotes nor links anything has
     declared no source, so both halves are ``None``; the thread head's own post is
     provenance (``detected_from_tweet_id`` and the URL built from it), never the
     source.
     """
-    for record in thread:
-        if record.quoted is not None:
-            quoted = record.quoted
-            return (
-                canonical_tweet_url(quoted.tweet_id, quoted.handle),
-                quoted.created_at or None,
-            )
+    quote = sole_quote(thread)
+    if quote is not None:
+        return canonical_tweet_url(quote.tweet_id, quote.handle), quote.created_at or None
+    if quoted_posts(thread):
+        return None, None
     link = sole_candidate(thread)
     if link is not None:
         footage = _chased_footage(thread, link)
@@ -319,10 +353,11 @@ def resolve_source(thread: list[TweetRecord]) -> tuple[str | None, str | None]:
 def split_media(thread: list[TweetRecord]) -> tuple[list[ParsedMedia], list[ParsedMedia]]:
     """``(source_media, proof_media)``.
 
-    Footage (``source``) vs the analyst's annotation (``proof``): a quoted
-    tweet's media is the footage, so it is the only media that lands in the
-    source slot. When there is no quote but the resolved source is a link whose
-    post was chased and served footage, that footage is the source media
+    Footage (``source``) vs the analyst's annotation (``proof``): the footage is
+    the media of the post :func:`resolve_source` named, so a quoted tweet's media
+    is the only media that lands in the source slot, and it is the media of that
+    same quoted post. When there is no quote but the resolved source is a link
+    whose post was chased and served footage, that footage is the source media
     instead (a chase that served none leaves the slot empty).
 
     With the source slot still empty after both, the thread's first own video
@@ -333,13 +368,16 @@ def split_media(thread: list[TweetRecord]) -> tuple[list[ParsedMedia], list[Pars
     absolute precedence even when it carried no media at all.
     """
     own_media = [media for record in thread for media in record.media]
-    if any(record.quoted is not None for record in thread):
+    if quoted_posts(thread):
         # A quote takes precedence as the source (even when it carried no media),
         # so its media is the only footage; a Telegram link is never consulted.
-        quoted_media = [
-            media for record in thread if record.quoted is not None for media in record.quoted.media
-        ]
-        return quoted_media, own_media
+        # Records quoting two different posts leave the source empty, and the
+        # slot stays empty with them: storing one quoted post's video under a
+        # draft that names the other post as its source is the mismatch this
+        # reads ``sole_quote`` to avoid. The unnamed post's media is not the
+        # analyst's own, so it is dropped rather than filed as annotation.
+        quote = sole_quote(thread)
+        return (list(quote.media) if quote is not None else []), own_media
     link = sole_candidate(thread)
     if link is not None:
         footage = _chased_footage(thread, link)
