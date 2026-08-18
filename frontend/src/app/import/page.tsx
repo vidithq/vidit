@@ -94,22 +94,32 @@ const EXPORT_STEPS: NumberedStep[] = [
 // says when to use that entry, not what it does; the section says that. The
 // glyphs are the ones the Submit page's mode control uses for the same entries
 // (X glyph for a post, Archive for the export) and the landing's for the bot.
+const GLYPH = {
+  archive: <Archive size={13} strokeWidth={1.8} />,
+  paste: <XGlyph size={12} />,
+  bot: <AtSign size={13} strokeWidth={1.8} />,
+};
+
+// A section heading carrying its entry's glyph, so the chooser tile and the
+// section it scrolls to read as the same thing.
+const ENTRY_HEADING = `inline-flex items-center gap-1.5 ${SECTION}`;
+
 const ENTRIES = [
   {
     href: "#archive",
-    icon: <Archive size={13} strokeWidth={1.8} />,
+    icon: GLYPH.archive,
     title: "Upload your X archive",
     when: "Your whole history, once.",
   },
   {
     href: "#paste",
-    icon: <XGlyph size={12} />,
+    icon: GLYPH.paste,
     title: "Paste a post URL",
     when: "One post, no public trace.",
   },
   {
     href: "#bot",
-    icon: <AtSign size={13} strokeWidth={1.8} />,
+    icon: GLYPH.bot,
     title: "Tag @ViditBot on X",
     when: "Every day, from your feed.",
   },
@@ -157,7 +167,8 @@ export default function ImportGuidePage() {
       </Card>
 
       <Card as="section">
-        <h2 id="archive" className={SECTION}>
+        <h2 id="archive" className={ENTRY_HEADING}>
+          {GLYPH.archive}
           Upload your X archive
         </h2>
         <p className={BODY}>
@@ -191,7 +202,8 @@ export default function ImportGuidePage() {
       </Card>
 
       <Card as="section">
-        <h2 id="paste" className={SECTION}>
+        <h2 id="paste" className={ENTRY_HEADING}>
+          {GLYPH.paste}
           Paste a post URL on Vidit
         </h2>
         <p className={BODY}>
@@ -216,7 +228,8 @@ export default function ImportGuidePage() {
       </Card>
 
       <Card as="section">
-        <h2 id="bot" className={SECTION}>
+        <h2 id="bot" className={ENTRY_HEADING}>
+          {GLYPH.bot}
           Tag @ViditBot on X
         </h2>
         <p className={BODY}>
