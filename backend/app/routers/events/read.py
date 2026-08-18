@@ -46,6 +46,7 @@ from app.services.events import DETECTION_READINESS, detection_ready_predicate
 from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_cursor,
+    encode_cursor,
     keyset_before,
     next_link,
     page_size,
@@ -307,7 +308,7 @@ def list_events(
     ids = [key.id for key in keys]
     if has_next:
         last = keys[-1]
-        response.headers["Link"] = next_link(request, last.created_at, last.id)
+        response.headers["Link"] = next_link(request, encode_cursor(last.created_at, last.id))
 
     # Step 2: load full objects + coordinates in one query
     rows = (

@@ -38,7 +38,6 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models.event import Event, EventRevision
 from app.models.user import User
-from app.services.pagination import keyset_before
 from app.services.sanitize import extract_image_srcs
 
 
@@ -164,18 +163,19 @@ def list_revisions(
     event_id: uuid.UUID,
     *,
     limit: int,
-    cursor: tuple[datetime, uuid.UUID] | None = None,
+    cursor: int | None = None,
 ) -> list[EventRevision]:
     """One page of the event's superseded versions, newest first.
 
     Over-fetches by one row, so the caller can tell whether a next page exists
     (``services/pagination.take_page``) without a second query.
 
-    Ordered by ``created_at DESC, id DESC``, the shared keyset the cursor
-    encodes. On an append-only per-event history that IS ``revision_no``
-    descending: every version is filed under the event's row lock, so a higher
-    number is always a later timestamp. The editor is eager-loaded, since the
-    history renders one byline per row.
+    Ordered by ``revision_no DESC``, which is also what the cursor keys on
+    (``services/pagination.encode_ordinal_cursor``). The number is unique per
+    event and taken under the event's row lock, so it totally orders the history
+    on its own: no tiebreaker column, and no dependence on ``created_at``, which
+    the application clock sets and which therefore skews between instances. The
+    editor is eager-loaded, since the history renders one byline per row.
     """
     query = (
         db.query(EventRevision)
@@ -183,12 +183,8 @@ def list_revisions(
         .filter(EventRevision.event_id == event_id)
     )
     if cursor is not None:
-        query = query.filter(keyset_before(EventRevision.created_at, EventRevision.id, cursor))
-    return (
-        query.order_by(EventRevision.created_at.desc(), EventRevision.id.desc())
-        .limit(limit + 1)
-        .all()
-    )
+        query = query.filter(EventRevision.revision_no < cursor)
+    return query.order_by(EventRevision.revision_no.desc()).limit(limit + 1).all()
 
 
 def get_revision(db: Session, *, event_id: uuid.UUID, revision_no: int) -> EventRevision | None:

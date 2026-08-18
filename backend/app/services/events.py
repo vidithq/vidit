@@ -865,7 +865,9 @@ async def revise(
     ``source_posted_at`` is optional, matching what publication accepts: a
     detection whose source post time was never resolved publishes through
     :func:`_publish_detection` with the column NULL, so an edit of that row must
-    be able to leave it NULL rather than be forced to invent an instant.
+    be able to leave it NULL rather than be forced to invent an instant. ``None``
+    therefore means "keep what the row holds": an owner who blanks the input
+    leaves the stored instant alone, and only a parsed value replaces it.
 
     ``is_graphic`` ratchets exactly as on :func:`geolocate`: a posted false
     leaves an already-flagged event flagged, and only ``PATCH
@@ -935,7 +937,12 @@ async def revise(
         geo.capture_source_coords = capture_point
         geo.event_date = event_date
         geo.event_time = event_time
-        geo.source_posted_at = source_posted_at
+        # None means keep, never clear. The form posts the whole state and an
+        # empty datetime input arrives indistinguishable from an absent field,
+        # so assigning unconditionally wiped the stored instant of a published
+        # record on an edit that never touched it.
+        if source_posted_at is not None:
+            geo.source_posted_at = source_posted_at
         geo.is_graphic = geo.is_graphic or is_graphic
         geo.tags = effective_tags
         geo.conflicts = effective_conflicts

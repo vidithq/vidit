@@ -69,6 +69,10 @@ def _safe_image_src(value: Any, *, allow_placeholders: bool = False) -> str | No
 
     ``allow_placeholders`` additionally admits ``placeholder://<filename>``
     srcs, intake-time only, never persisted (see ``PROOF_PLACEHOLDER_PREFIX``).
+
+    This decides where an image may live, not whose it is. Whether a stored
+    image belongs to the event whose body carries it is an intake question, and
+    ``services/evidence_intake._reject_foreign_proof_srcs`` answers it.
     """
     if not isinstance(value, str):
         return None

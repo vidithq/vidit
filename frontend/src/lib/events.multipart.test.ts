@@ -5,6 +5,7 @@ import {
   createEventRequest,
   geolocateEvent,
   parseCaptureCoords,
+  reviseEvent,
   type EventCreateInput,
 } from "./events";
 import { apiFetch } from "./api";
@@ -149,6 +150,23 @@ describe("createEvent multipart", () => {
     const body = lastBody();
     expect(body.get("capture_source_lat")).toBe("50.1");
     expect(body.get("capture_source_lng")).toBe("30.2");
+  });
+});
+
+describe("reviseEvent multipart", () => {
+  it("omits a blank source_posted_at so the published instant survives", async () => {
+    // The server reads an absent field as "keep": posting "" would ask it to
+    // tell a blanked field from an untouched one, and a correction to the title
+    // would wipe the instant the record was vouched with.
+    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
+    await reviseEvent("e1", { ...createInput, source_posted_at: "" });
+    expect(lastBody().has("source_posted_at")).toBe(false);
+  });
+
+  it("posts a source_posted_at the editor filled in", async () => {
+    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
+    await reviseEvent("e1", { ...createInput, source_posted_at: "2026-02-03T04:05" });
+    expect(lastBody().get("source_posted_at")).toBe("2026-02-03T04:05");
   });
 });
 

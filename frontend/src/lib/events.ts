@@ -214,7 +214,9 @@ export interface EventEditInput {
   event_date?: string;
   /** Optional ISO `HH:MM`; empty / omitted clears it. */
   event_time?: string;
-  /** ISO datetime (`YYYY-MM-DDTHH:MM`, UTC). Required: a post always has a time. */
+  /** ISO datetime (`YYYY-MM-DDTHH:MM`, UTC). Required on the publish paths: a
+   *  post always has a time. Left empty on `reviseEvent` the field is not
+   *  posted at all, and the published row keeps the instant it holds. */
   source_posted_at: string;
   proof?: Record<string, unknown> | null;
   /** Replaces the tag set wholesale. */
@@ -285,7 +287,13 @@ function appendSharedEventFields(
     fd.append("capture_source_lng", String(input.capture_source_lng));
   }
   if (input.event_time) fd.append("event_time", input.event_time);
-  fd.append("source_posted_at", input.source_posted_at);
+  // Omitted rather than posted empty: on `revise` an absent value keeps the
+  // instant the published row holds, so posting "" would ask the server to tell
+  // "blanked" from "untouched" on a field the form always renders. The publish
+  // paths require the field and reject a submit that leaves it out.
+  if (input.source_posted_at) {
+    fd.append("source_posted_at", input.source_posted_at);
+  }
   if (input.proof) fd.append("proof", JSON.stringify(input.proof));
   if (input.tag_ids && input.tag_ids.length > 0) {
     fd.append("tag_ids", JSON.stringify(input.tag_ids));

@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import threading
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -66,6 +66,10 @@ def admin_user(db):
 # body can reference an already-uploaded URL the way an edit form does.
 STORED_PROOF_URL = "http://localhost:8000/local-storage/proof/u/stored.jpg"
 
+# A second stored image, on the same host, standing in for one that belongs to
+# somebody else's event.
+OTHER_EVENT_PROOF_URL = "http://localhost:8000/local-storage/proof/u/other-event.jpg"
+
 
 def _proof_doc(src: str) -> dict:
     return {
@@ -77,7 +81,7 @@ def _proof_doc(src: str) -> dict:
     }
 
 
-def _published(db, author, conflict, capture_source_tag, **kwargs):
+def _published(db, author, conflict, capture_source_tag, *, proof_url=STORED_PROOF_URL, **kwargs):
     """A ``geolocated`` row carrying the whole published floor.
 
     One source media, one stored proof image referenced by the proof body, the
@@ -89,7 +93,7 @@ def _published(db, author, conflict, capture_source_tag, **kwargs):
         author=author,
         status=STATUS_GEOLOCATED,
         with_media=True,
-        proof=_proof_doc(STORED_PROOF_URL),
+        proof=_proof_doc(proof_url),
         tags=[capture_source_tag],
         conflicts=[conflict],
         **kwargs,
@@ -98,7 +102,7 @@ def _published(db, author, conflict, capture_source_tag, **kwargs):
         Media(
             event_id=geo.id,
             role="proof",
-            storage_url=STORED_PROOF_URL,
+            storage_url=proof_url,
             media_type="image",
         )
     )
@@ -382,7 +386,8 @@ def test_revise_accepts_a_row_with_no_source_post_time(db, author, conflict, cap
 
     db.expire_all()
     assert db.get(Event, geo.id).source_posted_at is None
-    # An empty string reads the same as an absent field.
+    # An empty string reads the same as an absent field, and a NULL row stays
+    # NULL through it.
     assert (
         _revise(
             geo.id, author, data=_form(conflict, capture_source_tag, source_posted_at="")
@@ -391,6 +396,45 @@ def test_revise_accepts_a_row_with_no_source_post_time(db, author, conflict, cap
     )
     db.expire_all()
     assert db.get(Event, geo.id).source_posted_at is None
+
+
+def test_a_blank_source_post_time_keeps_the_stored_one(db, author, conflict, capture_source_tag):
+    """Blank means keep, never clear.
+
+    The form posts the whole state and the field is always rendered, so an empty
+    datetime input reaches the service indistinguishable from an absent one.
+    Clearing on that would let an edit of the title silently drop the instant a
+    published record was vouched with.
+    """
+    geo = _published(db, author, conflict, capture_source_tag)
+    stored = db.get(Event, geo.id).source_posted_at
+    assert stored is not None
+
+    assert (
+        _revise(
+            geo.id, author, data=_form(conflict, capture_source_tag, source_posted_at="")
+        ).status_code
+        == 200
+    )
+    db.expire_all()
+    assert db.get(Event, geo.id).source_posted_at == stored
+
+    # An omitted field reads the same way.
+    form = _form(conflict, capture_source_tag)
+    del form["source_posted_at"]
+    assert _revise(geo.id, author, data=form).status_code == 200
+    db.expire_all()
+    assert db.get(Event, geo.id).source_posted_at == stored
+
+    # A posted value replaces it.
+    response = _revise(
+        geo.id,
+        author,
+        data=_form(conflict, capture_source_tag, source_posted_at="2026-06-07T08:09"),
+    )
+    assert response.status_code == 200, response.text
+    db.expire_all()
+    assert db.get(Event, geo.id).source_posted_at == datetime(2026, 6, 7, 8, 9, tzinfo=UTC)
 
 
 # ── What a snapshot claims, and what that keeps alive ─────────────────────
@@ -437,14 +481,14 @@ def test_snapshot_lists_only_the_images_that_version_displayed(
     assert db.query(Media).filter(Media.event_id == geo.id, Media.role == "proof").count() == 2
 
 
-def test_proof_image_cap_counts_the_rows_the_write_keeps(
+def test_proof_image_cap_counts_what_the_new_body_displays(
     db, author, conflict, capture_source_tag, monkeypatch
 ):
-    """The ceiling is on the event's footprint, not on one request.
+    """The ceiling is on the post-write body, not on one request.
 
-    One kept proof row plus one upload is two images on a one-image cap, so the
-    write is refused before anything reaches S3. Counting the batch alone would
-    have let the event grow past the ceiling one upload at a time.
+    One image the body keeps plus one upload is two images on a one-image cap,
+    so the write is refused before anything reaches S3. Counting the batch alone
+    would have let the event grow past the ceiling one upload at a time.
     """
     monkeypatch.setattr(settings, "max_proof_images_per_event", 1)
     geo = _published(db, author, conflict, capture_source_tag)
@@ -463,6 +507,72 @@ def test_proof_image_cap_counts_the_rows_the_write_keeps(
     db.expire_all()
     assert db.get(Event, geo.id).revision_no == 1
     assert db.query(Media).filter(Media.event_id == geo.id, Media.role == "proof").count() == 1
+
+
+def test_history_pinned_images_do_not_consume_the_cap(
+    db, author, conflict, capture_source_tag, monkeypatch
+):
+    """An image kept only so an old version renders is not charged to the owner.
+
+    Each edit here swaps the one image the body displays for a fresh upload, so
+    the body never shows more than one on a one-image cap. The superseded rows
+    stay on the event to keep the history renderable, and counting them would
+    make swapping an image spend the quota permanently, with nothing the owner
+    could free.
+    """
+    monkeypatch.setattr(settings, "max_proof_images_per_event", 1)
+    geo = _published(db, author, conflict, capture_source_tag)
+
+    for filename in ("proof-1.jpg", "proof-2.jpg"):
+        response = _revise(
+            geo.id,
+            author,
+            data=_form(conflict, capture_source_tag, proof=proof_form_field(filename)),
+            files=[proof_file_part(filename)],
+        )
+        assert response.status_code == 200, (filename, response.text)
+
+    db.expire_all()
+    assert db.get(Event, geo.id).revision_no == 3
+    # Three rows on a one-image cap: the current body displays one, the two
+    # versions behind it display the others.
+    assert db.query(Media).filter(Media.event_id == geo.id, Media.role == "proof").count() == 3
+
+
+def test_revise_rejects_a_proof_image_belonging_to_another_event(
+    db, author, second_user, conflict, capture_source_tag
+):
+    """A stored image is admitted by its host, but has to be this event's own.
+
+    Embedding another event's proof URL would put that event's owner in charge
+    of the file: their next revise or redact drops the row and sweeps the
+    object, and this body would render a hole.
+    """
+    foreign = _published(
+        db, second_user, conflict, capture_source_tag, proof_url=OTHER_EVENT_PROOF_URL
+    )
+    geo = _published(db, author, conflict, capture_source_tag)
+
+    response = _revise(
+        geo.id,
+        author,
+        data=_form(
+            conflict, capture_source_tag, proof=json.dumps(_proof_doc(OTHER_EVENT_PROOF_URL))
+        ),
+    )
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"]["code"] == "invalid_file"
+
+    db.expire_all()
+    assert db.get(Event, geo.id).revision_no == 1
+    assert db.query(EventRevision).filter(EventRevision.event_id == geo.id).count() == 0
+    # The other event still owns its image.
+    assert db.query(Media).filter(Media.event_id == foreign.id, Media.role == "proof").count() == 1
+
+    # The same body pointing at this event's own stored image is accepted.
+    assert _revise(geo.id, author, data=_form(conflict, capture_source_tag)).status_code == 200
+    db.expire_all()
+    assert db.get(Event, geo.id).revision_no == 2
 
 
 # ── Reading the history ───────────────────────────────────────────────────
@@ -494,6 +604,48 @@ def test_revisions_read_is_paged(db, author, conflict, capture_source_tag):
     assert [item["revision_no"] for item in second.json()["items"]] == [1]
     # The last page names no next one.
     assert "Link" not in second.headers
+
+
+def test_history_orders_on_the_revision_number_not_the_clock(
+    db, author, conflict, capture_source_tag
+):
+    """``created_at`` is the application's clock, so it skews between instances.
+
+    The list claims ``revision_no`` order, so it reads and pages on that number,
+    which one row lock assigns and which no clock can reorder. Version 2 is
+    stamped before version 1 here; the history is unmoved.
+    """
+    geo = _published(db, author, conflict, capture_source_tag, title="v1")
+    for title in ("v2", "v3", "v4"):
+        assert (
+            _revise(
+                geo.id, author, data=_form(conflict, capture_source_tag, title=title)
+            ).status_code
+            == 200
+        )
+
+    db.expire_all()
+    rows = {
+        r.revision_no: r for r in db.query(EventRevision).filter(EventRevision.event_id == geo.id)
+    }
+    rows[2].created_at = rows[1].created_at - timedelta(days=1)
+    db.commit()
+
+    first = client.get(f"/api/v1/events/{geo.id}/revisions?limit=2")
+    assert first.status_code == 200, first.text
+    assert [item["revision_no"] for item in first.json()["items"]] == [3, 2]
+
+    link = first.headers["Link"]
+    cursor = parse_qs(urlparse(link[1 : link.index(">")]).query)["cursor"][0]
+    second = client.get(f"/api/v1/events/{geo.id}/revisions?limit=2&cursor={cursor}")
+    assert second.status_code == 200, second.text
+    assert [item["revision_no"] for item in second.json()["items"]] == [1]
+
+
+def test_revisions_read_rejects_a_malformed_cursor(db, author, conflict, capture_source_tag):
+    """A cursor that does not decode to a version number is a 422, not a 500."""
+    geo = _published(db, author, conflict, capture_source_tag)
+    assert client.get(f"/api/v1/events/{geo.id}/revisions?cursor=not-a-cursor").status_code == 422
 
 
 def test_revisions_read_serves_a_withheld_row_to_an_admin_only(

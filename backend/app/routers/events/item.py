@@ -61,7 +61,8 @@ from app.services import revisions as revisions_service
 from app.services.evidence_intake import EvidenceIntakeError, collect_media_keys
 from app.services.pagination import (
     MAX_PAGE_SIZE,
-    decode_cursor,
+    decode_ordinal_cursor,
+    encode_ordinal_cursor,
     next_link,
     page_size,
     take_page,
@@ -359,7 +360,8 @@ async def revise_event(
     event_time: str | None = Form(None),
     # Optional, unlike on geolocate: a detection whose source post time was
     # never resolved publishes with the column NULL, so an edit of that row must
-    # be able to leave it NULL. Absent or empty keeps NULL, a value parses.
+    # be able to leave it NULL. Absent or empty keeps whatever the row holds
+    # (NULL included), a value replaces it.
     source_posted_at: str | None = Form(None),
     proof: str | None = Form(None),
     tag_ids: str | None = Form(None),
@@ -471,12 +473,12 @@ def list_event_revisions(
         db,
         geo.id,
         limit=size,
-        cursor=decode_cursor(cursor) if cursor is not None else None,
+        cursor=decode_ordinal_cursor(cursor) if cursor is not None else None,
     )
     rows, has_next = take_page(window, size)
     if has_next:
         last = rows[-1]
-        response.headers["Link"] = next_link(request, last.created_at, last.id)
+        response.headers["Link"] = next_link(request, encode_ordinal_cursor(last.revision_no))
     return EventRevisionList(
         items=[build_revision_read(row) for row in rows],
         total=revisions_service.count_revisions(db, geo.id),

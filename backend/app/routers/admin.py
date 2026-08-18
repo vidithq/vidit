@@ -30,7 +30,13 @@ from app.services import admin as admin_service
 from app.services import maintenance as maintenance_service
 from app.services import registration as registration_service
 from app.services import reports as reports_service
-from app.services.pagination import MAX_PAGE_SIZE, decode_cursor, next_link, page_size
+from app.services.pagination import (
+    MAX_PAGE_SIZE,
+    decode_cursor,
+    encode_cursor,
+    next_link,
+    page_size,
+)
 
 router = APIRouter()
 
@@ -112,7 +118,7 @@ def list_invite_codes(
     )
     if has_next:
         last = rows[-1]
-        response.headers["Link"] = next_link(request, last.created_at, last.id)
+        response.headers["Link"] = next_link(request, encode_cursor(last.created_at, last.id))
     return admin_service.serialize_invite_codes(db, rows)
 
 

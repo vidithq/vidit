@@ -877,11 +877,11 @@ Gives an event a vouched location: transitions `requested` | `detected` → `geo
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required` (no proof image in the final body), `tag_requirements_not_met`, `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), a rejected file (`invalid_file` / `evidence_processing_failed`), no surviving source media (`media_required`), `proof_files_mismatch`, `source_url_required` (a detection with no declared source, geolocated with a blank `source_url` field), or a rejected `source_snapshot_url` (the `snapshot_*` codes of [`POST /events/{id}/archives`](#post-eventsidarchives)) |
+| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required` (no proof image in the final body), `tag_requirements_not_met`, `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), a rejected file or a proof src naming another event's image (`invalid_file` / `evidence_processing_failed`), no surviving source media (`media_required`), `proof_files_mismatch`, `source_url_required` (a detection with no declared source, geolocated with a blank `source_url` field), or a rejected `source_snapshot_url` (the `snapshot_*` codes of [`POST /events/{id}/archives`](#post-eventsidarchives)) |
 | 403 | You are not the owner of a detection (a `requested` event is answerable by anyone) |
 | 404 | Event not found (incl. soft-deleted) |
 | 409 | Row is not `requested` / `detected` (`invalid_state`; a published row is corrected through [`POST /events/{id}/revise`](#post-eventsidrevise)), or `source_media_conflict` (a concurrent edit raced past the one-source cap) |
-| 422 | Kept + new source media over one (`too_many_files`), more than `max_proof_images_per_event` proof files, or a single `secondary_source_urls` item over 2000 chars |
+| 422 | Kept + new source media over one (`too_many_files`), a proof body that would display more than `max_proof_images_per_event` images (its already-uploaded images plus the new files), or a single `secondary_source_urls` item over 2000 chars |
 
 ---
 
@@ -964,7 +964,7 @@ Correct a published event. Owner-only, and only while `geolocated`: the state a 
 | `secondary_source_urls` | string[] (repeated field) | Optional mirrors, same normalization and cap as [`POST /events`](#post-events). The submitted list replaces whatever the row held |
 | `event_date` | string (YYYY-MM-DD) | When the depicted event happened. Empty / omitted stores NULL (renders as *Unknown*) |
 | `event_time` | string (HH:MM) | Optional time-of-day for the event (UTC); empty / omitted clears it |
-| `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | When the source posted the media, a full instant (UTC). Optional: empty / omitted stores NULL, matching what publication accepts (a detection whose source post time was never resolved publishes with it NULL through [`POST /events/batch-complete`](#post-eventsbatch-complete)) |
+| `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | When the source posted the media, a full instant (UTC). Optional: empty / omitted keeps the instant the row holds, NULL included (a detection whose source post time was never resolved publishes with it NULL through [`POST /events/batch-complete`](#post-eventsbatch-complete)). Only a value replaces it, so an edit that leaves the field blank never clears a stored instant |
 | `proof` | JSON string | Tiptap document (sanitized); its `placeholder://` srcs resolve against `proof_files`, already-uploaded URLs pass through untouched |
 | `tag_ids` | JSON string (UUID[]) | Replaces the tag set wholesale |
 | `conflict_ids` | JSON string (UUID[]) | Replaces the event's [conflict](#conflicts) set wholesale |
@@ -976,18 +976,20 @@ The published evidence floor is re-checked against the post-edit state, so a cor
 
 **Media and history.** A proof image the new body no longer references is normally deleted, row and object. It is kept instead when a readable past version displays it, so that version stays renderable after the image left the current body. A version records the images its own proof body referenced, so an image no version ever displayed is not held alive by the history, and a [redacted](#post-admineventsidrevisionsrevision_noredact) version holds nothing alive at all.
 
-**Proof-image ceiling.** `max_proof_images_per_event` bounds what the event ends up carrying, not what one request sends: the proof rows this write keeps plus the files it adds. The check runs before anything reaches S3.
+**Proof-image ceiling.** `max_proof_images_per_event` bounds what the new proof body displays, not what one request sends: the already-uploaded images the body still references plus the files it adds. An image kept only because a past version displays it does not count, so swapping images across corrections never exhausts the ceiling. The check runs before anything reaches S3.
+
+**Image ownership.** An already-uploaded src in `proof` must be one of this event's own proof images. A URL naming another event's stored image is rejected (`invalid_file`): the owning event's next correction or [redaction](#post-admineventsidrevisionsrevision_noredact) deletes that file, so a body pointing at it would render a hole.
 
 **Response 200:** same shape as `GET /events/{id}`, with `revision_no` one higher.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `too_many_source_links`, `media_required` (the row carries no source media), a rejected file (`invalid_file` / `evidence_processing_failed`), `proof_files_mismatch`, or a rejected `source_snapshot_url` (the `snapshot_*` codes of [`POST /events/{id}/archives`](#post-eventsidarchives)) |
+| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `too_many_source_links`, `media_required` (the row carries no source media), a rejected file or a proof src naming another event's image (`invalid_file` / `evidence_processing_failed`), `proof_files_mismatch`, or a rejected `source_snapshot_url` (the `snapshot_*` codes of [`POST /events/{id}/archives`](#post-eventsidarchives)) |
 | 403 | You are not the owner |
 | 404 | Event not found (incl. soft-deleted) |
 | 409 | Row is not `geolocated` (`invalid_state`) |
-| 422 | `note` over 280 chars, a write that would leave the event over `max_proof_images_per_event` proof images (kept rows plus new files), or a single `secondary_source_urls` item over 2000 chars |
+| 422 | `note` over 280 chars, a proof body that would display more than `max_proof_images_per_event` images (its already-uploaded images plus the new files), or a single `secondary_source_urls` item over 2000 chars |
 
 ---
 
@@ -995,7 +997,7 @@ The published evidence floor is re-checked against the post-edit state, so a cor
 
 The event's superseded versions, newest first. Public, like the event itself: a corrected record is auditable only when its corrections are readable. The live row is the current version and is not listed here, so an event nobody has corrected answers with an empty list.
 
-Paged like every list endpoint: capped at 100 rows however large `limit` is, and a caller reading past the first page follows the `cursor` in the `Link: rel="next"` header. `total` is the whole history, not the page.
+Paged like every list endpoint: capped at 100 rows however large `limit` is, and a caller reading past the first page follows the `cursor` in the `Link: rel="next"` header. `total` is the whole history, not the page. Rows come back in `revision_no` order, which is also what the cursor keys on: the number is unique per event and taken under the event's row lock, so it orders the history without a tiebreaker.
 
 **Query parameters:**
 | Name | Type | Description |
@@ -1918,7 +1920,7 @@ One Account Activity delivery. The `x-twitter-webhooks-signature` header must ca
 
 ### Pagination
 
-**Every list response is capped at 100 rows**, whatever `limit` / `per_page` you request. Asking for more is clamped, not rejected: `?limit=500` answers 200 with 100 rows. Values that are not a usable page (below 1, non-numeric) return 422, and so does a malformed `cursor` (one that does not decode to a `(created_at, id)` pair). A cursor that decodes cleanly is honored whether or not the server minted it: it names a position in an ordering, carries no authorization, and every filter on the request still applies. The cap and the cursor live in [`services/pagination.py`](../backend/app/services/pagination.py).
+**Every list response is capped at 100 rows**, whatever `limit` / `per_page` you request. Asking for more is clamped, not rejected: `?limit=500` answers 200 with 100 rows. Values that are not a usable page (below 1, non-numeric) return 422, and so does a malformed `cursor` (one that does not decode to the position its list pages on). A cursor that decodes cleanly is honored whether or not the server minted it: it names a position in an ordering, carries no authorization, and every filter on the request still applies. The cap and the cursor live in [`services/pagination.py`](../backend/app/services/pagination.py).
 
 **Reading past the first page** means following a cursor. A capped response whose next page holds at least one row carries a `Link` header:
 
@@ -1926,9 +1928,9 @@ One Account Activity delivery. The `x-twitter-webhooks-signature` header must ca
 Link: <https://api.vidit.app/api/v1/events?view=requested&cursor=WyIyMDI2LTA4LTExVDA5OjE0OjIyKzAwOjAwIiwiOWY0…Il0>; rel="next"
 ```
 
-The URL carries the whole query the page was minted under, so a walk stays inside one filter set. No header means no further rows. The header is on the CORS `Access-Control-Expose-Headers` list, so a browser client can read it. The cursor is opaque: it encodes the `(created_at, id)` of the page's last row, and it's not a value you need to construct.
+The URL carries the whole query the page was minted under, so a walk stays inside one filter set. No header means no further rows. The header is on the CORS `Access-Control-Expose-Headers` list, so a browser client can read it. The cursor is opaque: it encodes the position of the page's last row in that list's ordering, and it's not a value you need to construct.
 
-Cursor-paged: [`GET /events`](#get-events) and `GET /admin/invite-codes`. Both order by `created_at DESC, id DESC`. That ordering is total and immutable, which is what makes a walk safe: rows inserted mid-walk land ahead of the cursor, on pages already served, so no row is served twice and none is skipped, the way an `OFFSET` walk does both when the set shifts under it.
+Cursor-paged: [`GET /events`](#get-events), `GET /admin/invite-codes` and [`GET /events/{id}/revisions`](#get-eventsidrevisions). The first two order by `created_at DESC, id DESC`; the revision history orders by `revision_no DESC`, a number unique per event. Either ordering is total and immutable, which is what makes a walk safe: rows inserted mid-walk land ahead of the cursor, on pages already served, so no row is served twice and none is skipped, the way an `OFFSET` walk does both when the set shifts under it.
 
 Endpoints that page return this envelope, `total` being the pre-cap match count:
 ```json
