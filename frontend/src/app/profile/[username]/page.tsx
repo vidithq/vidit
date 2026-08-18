@@ -8,7 +8,7 @@ import { useConfirmAction } from "@/hooks/useConfirmAction";
 import type { PublicProfile } from "@/lib/users";
 import { Button } from "@/components/ui/Button";
 import { BioField } from "@/components/profile/BioField";
-import { LinkedAccountsCard } from "@/components/profile/LinkedAccountsCard";
+import { LinkedAccountsFields } from "@/components/profile/LinkedAccounts";
 import {
   ProfileActions,
   ProfileHeaderEditFields,
@@ -83,20 +83,22 @@ export default function ProfilePage() {
 
   const isOwn = !!currentUser && profile.username === currentUser.username;
 
-  // Portfolio order: show the work, then explain the work, then say where to
-  // reach the person. Most probative first, most incidental last.
+  // Portfolio order: say who the analyst is and where to reach them, then show
+  // the work, then explain the work. Most probative first, most incidental
+  // last.
   //
   // The identity is one compact block and not a section: the handle titles the
   // page, the avatar sits beside it, and the bio plus the followers /
-  // following / member-since line are what follow it (`ProfileIdentity`), so a
-  // visitor is one scroll-free glance from evidence. Then the coverage map,
-  // which shows the work at its widest, and Insights directly under it, since
-  // the summary that interprets that map belongs beside it: the map says where,
-  // and the card says what kind, how much and when. Recent submissions follow,
-  // because a list that grows reads better last of the work blocks. Linked
-  // accounts land last of the public blocks: they are where to find the
-  // analyst elsewhere, which is worth nothing until the work has earned the
-  // click. Sign out sinks under all of it.
+  // following / member-since line follow it (`ProfileIdentity`). Where to reach
+  // the analyst is an action rather than a line of that block, so the
+  // linked-account icons ride the header action cluster right of the handle
+  // (`ProfileActions`), beside Follow on someone else's profile, which leaves a
+  // visitor one scroll-free glance from both the evidence and the analyst's
+  // other accounts. Then the coverage map, which shows the work at its widest,
+  // and Insights directly under it, since the summary that interprets that map
+  // belongs beside it: the map says where, and the card says what kind, how
+  // much and when. Recent submissions follow, because a list that grows reads
+  // better last of the work blocks. Sign out sinks under all of it.
   //
   // The detections entry is the exception to "work first": it is pending work
   // rather than an account control, so on the owner's own profile it stays
@@ -133,6 +135,8 @@ export default function ProfilePage() {
 
       <BioField edit={edit} />
 
+      <LinkedAccountsFields edit={edit} />
+
       {!edit.editing && (
         <>
           <ProfileMap username={profile.username} />
@@ -146,8 +150,6 @@ export default function ProfilePage() {
           />
         </>
       )}
-
-      <LinkedAccountsCard profile={profile} edit={edit} />
 
       {!edit.editing && isOwn && (
         <div className="pt-4 border-t border-neutral-800 flex justify-center">

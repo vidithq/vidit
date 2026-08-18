@@ -99,6 +99,22 @@ const SOCIAL_HANDLE_BASES: Record<"x" | "github", string> = {
   github: "https://github.com/",
 };
 
+/** Hosts other than the canonical one whose URLs still name a profile on the
+ *  platform. The canonical host is read off `SOCIAL_HANDLE_BASES` and the
+ *  `www.` form of either is folded in, so this lists only the true aliases. */
+const SOCIAL_HANDLE_ALIASES: Record<"x" | "github", readonly string[]> = {
+  x: ["twitter.com"],
+  github: [],
+};
+
+function isPlatformHost(platform: "x" | "github", host: string): boolean {
+  const bare = host.toLowerCase().replace(/^www\./, "");
+  return (
+    bare === new URL(SOCIAL_HANDLE_BASES[platform]).host ||
+    SOCIAL_HANDLE_ALIASES[platform].includes(bare)
+  );
+}
+
 const SOCIAL_HANDLE_PATTERN: Record<"x" | "github", RegExp> = {
   // 1–15 chars, alphanumeric + underscore — the platform rule, so a typo
   // like "@some user" doesn't auto-link to a nonsense URL.
@@ -138,4 +154,45 @@ export function resolveLinkHref(
     }
   }
   return null;
+}
+
+/**
+ * The text to print for a link value, which is not the text to click: the
+ * href stays whatever `resolveLinkHref` returns. A profile line reads as
+ * identity, and `https://x.com/LoLManya` spends a whole entry saying which
+ * platform the icon beside it already said.
+ *
+ *  - X / GitHub → the handle with an `@`, whether the analyst stored a full
+ *    profile URL on the platform's own host or a bare handle.
+ *  - Website → the URL without its scheme and without a trailing slash, so
+ *    `https://osintmethat.com/` reads `osintmethat.com` and a path is kept.
+ *  - Discord, and anything that fits none of the above → as stored, because
+ *    a value this cannot parse is one only its owner can vouch for.
+ */
+export function displayLinkValue(
+  platform: "x" | "discord" | "website" | "github",
+  value: string | null | undefined
+): string {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) return "";
+
+  const url = asHttpUrl(trimmed);
+
+  if (platform === "x" || platform === "github") {
+    if (url) {
+      const parsed = new URL(url);
+      const [segment] = parsed.pathname.split("/").filter(Boolean);
+      if (segment && isPlatformHost(platform, parsed.host)) return `@${segment}`;
+      return trimmed;
+    }
+    const handle = trimmed.replace(/^@/, "");
+    if (SOCIAL_HANDLE_PATTERN[platform].test(handle)) return `@${handle}`;
+    return trimmed;
+  }
+
+  if (platform === "website" && url) {
+    return url.replace(/^https?:\/\//i, "").replace(/\/$/, "");
+  }
+
+  return trimmed;
 }

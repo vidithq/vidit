@@ -19,7 +19,7 @@ export default function FollowButton({
 }: FollowButtonProps) {
   const [following, setFollowing] = useState(initialFollowing);
   const [loading, setLoading] = useState(false);
-  // Surfaced under the button on a failed follow/unfollow — otherwise the
+  // Surfaced under the button on a failed follow/unfollow: otherwise the
   // button silently re-enables in its old state and the click looks lost.
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();

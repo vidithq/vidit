@@ -1,18 +1,23 @@
 "use client";
 
+import type { ComponentType } from "react";
 import { Check, Copy } from "lucide-react";
 
 import { Button } from "./Button";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 
 /**
- * The one copy-to-clipboard control: a square ghost icon button whose copy
+ * The one copy-to-clipboard control: a square ghost icon button whose resting
  * glyph flips to a check for the flash window, on `useCopyToClipboard`.
  *
- * Every icon-shaped copy affordance is this component (the profile share link,
- * the event share row), so the gesture and its feedback can't drift. A call
- * site needing a different shape (the admin invite row copies a code from a
- * text button) composes `useCopyToClipboard` directly instead.
+ * Every icon-shaped copy affordance is this component (the event share row, the
+ * profile's Discord account), so the gesture and its feedback can't drift. A
+ * call site needing a different shape (the admin invite row copies a code from
+ * a text button) composes `useCopyToClipboard` directly instead.
+ *
+ * `icon` swaps the resting glyph where the value names itself better than a
+ * generic copy mark does (the Discord button carries the brand mark). The check
+ * is fixed: what confirms the write has to read the same everywhere.
  *
  * Accessibility: the button's name is static (`label`), because a name that
  * changes on click is re-announced as a new control. The "copied" feedback is
@@ -26,6 +31,7 @@ export function CopyButton({
   value,
   label,
   copiedLabel = "Link copied",
+  icon: Icon = Copy,
   title,
   className,
   beforeCopy,
@@ -34,6 +40,9 @@ export function CopyButton({
   value: () => string;
   /** The button's accessible name; stays constant across the copied flash. */
   label: string;
+  /** Resting glyph, any icon taking a pixel `size`: a lucide icon, or a brand
+   *  mark from [`BrandGlyphs`](./BrandGlyphs.tsx). Defaults to the copy mark. */
+  icon?: ComponentType<{ size?: number }>;
   /** Announced by the live region once the write lands. */
   copiedLabel?: string;
   /** Tooltip; defaults to `label`. A caller with its own states passes theirs. */
@@ -62,7 +71,7 @@ export function CopyButton({
         title={copied ? copiedLabel : (title ?? label)}
         className={className}
       >
-        {copied ? <Check size={15} /> : <Copy size={15} />}
+        {copied ? <Check size={15} /> : <Icon size={15} />}
       </Button>
       {/* Sibling, not a child: as the button's own name it would re-announce
           the control on every flip instead of reporting a status. */}

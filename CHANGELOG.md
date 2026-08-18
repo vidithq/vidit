@@ -8,7 +8,13 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-_Nothing yet._
+### Changed
+
+- **Linked accounts read as icon buttons in the profile's header action cluster** ([`frontend/src/components/profile/LinkedAccounts.tsx`](frontend/src/components/profile/LinkedAccounts.tsx), [`frontend/src/components/profile/ProfileHeader.tsx`](frontend/src/components/profile/ProfileHeader.tsx), [`frontend/src/app/profile/[username]/page.tsx`](frontend/src/app/profile/%5Busername%5D/page.tsx), [`frontend/src/lib/users.ts`](frontend/src/lib/users.ts), [`frontend/src/components/ui/CopyButton.tsx`](frontend/src/components/ui/CopyButton.tsx), [`docs/design.md`](docs/design.md#public-profile), [`planning/next.md`](planning/next.md)). The card under the portfolio becomes a row of square ghost icon buttons in the header action cluster, right of the handle, one per platform the profile carries, each the brand mark alone. Reaching the analyst is an action on the page rather than a line of the identity, so the icons sit where the event page keeps its share controls and the identity block stays the bio, the followers / following / member-since line and the owner's email. Follow keeps the far right of the cluster on someone else's profile, and the edit and save pair keeps it on your own. The account a button reaches is in its `title` and its accessible name (`X / Twitter: @LoLManya`), which prints `displayLinkValue` rather than the stored string: an X or GitHub value reads `@handle` whether it was stored as a profile URL or as a bare handle, and a website drops its scheme and trailing slash. A value `resolveLinkHref` resolves is an anchor wearing the button shape and opening in a new tab; Discord resolves to no URL and copies the username instead, so `<CopyButton>` gains an `icon` prop for its resting glyph, the check that confirms the write staying fixed; any other unresolved value renders nothing rather than a dead control. A visitor sees where to reach the analyst without scrolling, and the handles stay off screen, so the one that titles the page keeps it. Editing drops the icons from the cluster, since the links are the inputs below for the duration, and those inputs stay where they were, under the bio field.
+
+### Removed
+
+- **The copy-link control, from the public profile header** ([`frontend/src/components/profile/ProfileHeader.tsx`](frontend/src/components/profile/ProfileHeader.tsx), [`docs/design.md`](docs/design.md#public-profile), [`planning/next.md`](planning/next.md)). `CopyProfileLink` is gone: the linked-account icons take the action cluster, and a lone share button beside them and Follow reads as a fifth mark rather than as a control. Copying the profile URL is what the address bar already does. Sharing returns as a share row like the event page's once the profile has more than one thing to share, tracked in [`planning/next.md`](planning/next.md).
 
 ## v0.5.4, 2026-08-17
 
