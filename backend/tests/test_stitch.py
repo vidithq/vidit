@@ -58,8 +58,8 @@ def test_edge_pointing_outside_batch_is_ignored():
 
 
 def test_malformed_timestamp_does_not_hijack_the_head():
-    # An empty / non-ISO created_at must sort LAST, not become the head — detect
-    # anchors provenance + event_date on thread[0].
+    # An empty / non-ISO created_at must sort LAST, not become the head: the
+    # resolution anchors provenance + event_date on thread[0].
     records = [
         _rec("2", "", reply_to="1"),  # missing timestamp
         _rec("1", "2025-11-12T10:00:00Z"),  # the real head

@@ -1,10 +1,9 @@
 """Seed machine `detected` geolocations from the synthetic X archive.
 
-A dev/admin trigger (no analyst-facing UI — that ships with the onboarding
-flow). Runs the real backfill pipeline (acquire archive -> stitch -> detect ->
-assemble) over the committed synthetic archive, attributing the detections to a
-deterministic backfiller user so they render marked on the map. Idempotent:
-re-running skips what already exists.
+A local-dev trigger. Runs the real backfill pipeline (read the archive, stitch,
+resolve, persist) over the committed synthetic archive, attributing the
+detections to a deterministic backfiller user so they render marked on the map.
+Idempotent: re-running skips what already exists.
 """
 
 import asyncio

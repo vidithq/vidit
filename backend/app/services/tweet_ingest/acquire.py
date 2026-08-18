@@ -81,7 +81,6 @@ def record_by_id(tweet_id: str, *, handle: str, client: httpx.Client | None = No
     text = body.get("text")
     created_at = body.get("created_at")
     in_reply_to_status = body.get("in_reply_to_status_id_str")
-    in_reply_to_user = body.get("in_reply_to_user_id_str")
     return TweetRecord(
         tweet_id=tweet_id,
         handle=author,
@@ -89,7 +88,6 @@ def record_by_id(tweet_id: str, *, handle: str, client: httpx.Client | None = No
         created_at=created_at if isinstance(created_at, str) else "",
         media=list(_extract_media(body, origin="op")),
         in_reply_to_status_id=(in_reply_to_status if isinstance(in_reply_to_status, str) else None),
-        in_reply_to_user_id=in_reply_to_user if isinstance(in_reply_to_user, str) else None,
         quoted=_quoted_record(body),
         quoted_status_id=_quoted_status_id(body),
         external_sources=[SourceLink(url=u, shortlink=t) for u, t in extract_source_links(body)],
@@ -102,13 +100,12 @@ class AcquiredThread:
 
     ``records`` is the thread ``resolve_threads`` reads, parent first then the
     post, so the head is the earliest post and carries the provenance.
-    ``post`` is the record for the id the caller named, which the bot needs to
-    tell the tagged reply from the parent it relays.
+    ``post`` is the record for the id the caller named, which the paste reads
+    to check the post's author against the caller's linked handle.
     """
 
     records: list[TweetRecord]
     post: TweetRecord
-    parent: TweetRecord | None
 
 
 def _self_reply_parent(
@@ -151,7 +148,7 @@ def acquire_thread(
     post = record_by_id(tweet_id, handle=handle, client=client)
     parent = _self_reply_parent(post, client=client)
     records = chase_thread([parent, post] if parent is not None else [post], client=client)
-    return AcquiredThread(records=records, post=post, parent=parent)
+    return AcquiredThread(records=records, post=post)
 
 
 def acquire_pasted_thread(url: str, *, client: httpx.Client | None = None) -> AcquiredThread:

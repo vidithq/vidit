@@ -5,8 +5,9 @@ mints the key, the client POSTs the zip to the returned URL (the dev upload
 endpoint against ``LocalStorage``, standing in for S3's POST policy), and the
 JSON ``POST /import-archive`` verifies the staged object and returns a
 ``queued`` job (202); the worker (``services/archive_jobs``) claims it and
-drives the real backfill (extract guard → read_tweets → stitch → detect →
-assemble). Tests drain the queue inline with ``run_once``, so the whole
+drives the real backfill (extract guard → read_tweets → stitch →
+resolve_threads → persist_drafts). Tests drain the queue inline with
+``run_once``, so the whole
 seam runs synchronously. The happy-path tweet carries a coordinate but no
 media, so a ``detected`` row lands with zero S3 work.
 """

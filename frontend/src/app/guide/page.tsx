@@ -12,7 +12,7 @@ import { TEXT_LINK } from "@/components/ui/styles";
 // `PUBLIC_PREFIXES` in `proxy.ts`). This is where the platform's overall
 // loop is taught: the pages themselves carry no explanatory subtitles, so a
 // reader sizing up Vidit learns the whole cycle here and the two deeper
-// guides (`/methodology`, `/bot`) pick up from it. Linked from the about
+// guides (`/methodology`, `/import`) pick up from it. Linked from the about
 // page's Guides section and from the landing. Server component for SEO,
 // composed from the same PageShell + Card primitives as the methodology
 // guide.

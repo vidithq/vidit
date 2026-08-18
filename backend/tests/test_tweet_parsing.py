@@ -1,4 +1,4 @@
-"""Unit tests for the tweet-parsing service.
+"""Unit tests for the pure text and URL bricks, plus the syndication read.
 
 Scope: extractors + URL normalisation only. The route-level integration
 (auth, CSRF, 400/404/502 mapping) lives in ``tests/events/test_import.py``

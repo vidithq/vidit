@@ -39,10 +39,10 @@ _TWITTER_TIME_FMT = "%a %b %d %H:%M:%S %z %Y"
 
 
 def _to_iso(created_at: str) -> str:
-    """Normalize Twitter's ``created_at`` to ISO 8601 (what ``detect`` expects).
+    """Normalize Twitter's ``created_at`` to ISO 8601, the form a record carries.
 
     Falls back to the raw value if it's already ISO or otherwise unparseable:
-    ``detect`` degrades to the epoch date rather than raising.
+    the resolution degrades to the epoch date rather than raising.
     """
     try:
         return datetime.strptime(created_at, _TWITTER_TIME_FMT).isoformat()
@@ -185,7 +185,6 @@ def read_tweets(archive_dir: Path, *, handle: str) -> list[TweetRecord]:
                 created_at=_to_iso(created_at) if isinstance(created_at, str) else "",
                 media=_archive_media(tweet, tweet_id),
                 in_reply_to_status_id=_str_or_none(tweet.get("in_reply_to_status_id_str")),
-                in_reply_to_user_id=_str_or_none(tweet.get("in_reply_to_user_id_str")),
                 quoted=_archive_quoted(quoted_id, by_id, handle=handle),
                 quoted_status_id=quoted_id,
                 external_sources=[

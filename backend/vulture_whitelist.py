@@ -82,9 +82,6 @@ finished_at  # models/archive_import_job.py + schemas/event.py ArchiveImportJobR
 progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 
-# ── Dataclass fields set at construction, read via attribute access ───────────
-in_reply_to_user_id  # services/tweet_ingest/records.py TweetRecord
-
 # ── Test-only helper ──────────────────────────────────────────────────────────
 # Called from tests/, which the gate does not scan, so it reads as unused here.
 _cache_clear  # services/tweet_ingest/syndication.py

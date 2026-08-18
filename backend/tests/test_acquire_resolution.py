@@ -118,8 +118,6 @@ def test_acquire_thread_joins_the_same_authors_parent():
     # Parent first: the head anchors the provenance and the event date.
     assert [r.tweet_id for r in acquired.records] == [_PARENT_ID, _POST_ID]
     assert acquired.post.tweet_id == _POST_ID
-    assert acquired.parent is not None
-    assert acquired.parent.tweet_id == _PARENT_ID
 
 
 def test_acquire_thread_joins_the_parent_whatever_case_the_caller_spelled():
@@ -131,8 +129,7 @@ def test_acquire_thread_joins_the_parent_whatever_case_the_caller_spelled():
     }
     with _client(bodies) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
-    assert acquired.parent is not None
-    assert acquired.parent.tweet_id == _PARENT_ID
+    assert [r.tweet_id for r in acquired.records] == [_PARENT_ID, _POST_ID]
 
 
 def test_acquire_thread_reads_one_hop_only():
@@ -154,7 +151,6 @@ def test_acquire_thread_fetches_nothing_for_a_non_reply():
     seen: list[str] = []
     with _client(bodies, seen) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
-    assert acquired.parent is None
     assert acquired.records == [acquired.post]
     assert seen == [_POST_ID]
 
@@ -168,7 +164,6 @@ def test_acquire_thread_drops_another_authors_parent():
     }
     with _client(bodies) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
-    assert acquired.parent is None
     assert acquired.records == [acquired.post]
 
 
@@ -177,7 +172,6 @@ def test_acquire_thread_unreadable_parent_degrades_to_the_post_alone():
     bodies = {_POST_ID: _body(_POST_ID, handle="analyst", text="reply", reply_to=_PARENT_ID)}
     with _client(bodies) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
-    assert acquired.parent is None
     assert acquired.records == [acquired.post]
 
 

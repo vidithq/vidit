@@ -65,10 +65,6 @@ export const FIELD_HELP = {
     text: "Requested: an open call to geolocate this footage. Detected: machine output from a tweet, shown marked until its owner submits it. Geolocated: a person vouched for it (via the form, or by submitting a reviewed detection), not independently verified. Closed: the request was withdrawn, or the detection was rejected.",
     label: "What does the status mean?",
   },
-  request_status: {
-    text: "Requested: waiting for an analyst to geolocate it. Once someone does, it becomes a geolocation. Closed: the author withdrew it.",
-    label: "What does the status mean?",
-  },
   detected_from: {
     text: "The post this detection was imported from. Its provenance, kept distinct from Source (the footage origin).",
     label: "What is 'detected from'?",

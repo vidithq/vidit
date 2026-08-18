@@ -69,7 +69,8 @@ class QuotedTweet:
     In OSINT the analyst quote-tweets the footage and adds the coordinate, so
     the quoted tweet is usually the real source: its media is the footage and
     its ``created_at`` is the true source post time. Carried on the record so
-    ``detect`` / ``parse`` attribute the source without a second fetch.
+    ``resolve_source`` / ``split_media`` attribute the source without a second
+    fetch.
     """
 
     tweet_id: str
@@ -152,7 +153,6 @@ class TweetRecord:
     # maps when the payload carries it (the chain itself still takes one fetch
     # per parent, the bot's walk). ``stitch`` unions on them.
     in_reply_to_status_id: str | None = None
-    in_reply_to_user_id: str | None = None
     # The quoted tweet, resolved inline (syndication) or joined inside the
     # export (archive). The footage source in the common OSINT quote pattern.
     quoted: QuotedTweet | None = None

@@ -27,7 +27,7 @@ from ..records import ChasedPost, QuotedTweet, TelegramFootage, TweetRecord
 from ..resolve import sole_candidate
 from . import telegram, x
 
-__all__ = ["ChasedPost", "apply_chase", "chase_post", "chase_thread"]
+__all__ = ["apply_chase", "chase_post", "chase_thread"]
 
 
 def chase_post(target: str, *, client: httpx.Client | None = None) -> ChasedPost | None:

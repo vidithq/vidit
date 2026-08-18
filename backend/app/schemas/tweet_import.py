@@ -1,9 +1,9 @@
 """Tweet-import DTOs: the request and the outcome of ``import-from-tweet``.
 
 The paste runs the shared detection engine and writes drafts, so the response
-is the outcome of that run, not a form pre-fill. Kept separate from the core
-geolocation read/write schemas in ``event.py``: they are a self-contained
-sub-feature, consumed only by the import router.
+is the outcome of that run. Kept separate from the core geolocation read/write
+schemas in ``event.py``: they are a self-contained sub-feature, consumed only
+by the import router.
 """
 
 import uuid

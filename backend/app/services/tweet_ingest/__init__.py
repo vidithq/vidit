@@ -61,7 +61,6 @@ from .resolve import (
     sole_refusal,
 )
 from .stitch import stitch
-from .syndication import fetch_syndication
 from .urls import is_trusted_media_url, normalise_tweet_url
 
 __all__ = [
@@ -94,7 +93,6 @@ __all__ = [
     "derive_title",
     "extract_coords",
     "fetch_cdn_media",
-    "fetch_syndication",
     "is_trusted_media_url",
     "normalise_tweet_url",
     "read_tweets",

@@ -552,7 +552,7 @@ Step two: enqueue the staged archive for the backfill worker. The upload **is th
 
 Idempotent on the thread's post ids plus the coordinate (see [re-import](ingestion.md#re-import)), so a re-upload is a free catch-up and so is an export of posts the bot or the paste already imported. A detection with no recoverable media persists media-incomplete; you add media before submitting.
 
-A tweet that references its footage only through a linked status (`Source: x.com/.../status/...`) has that footage chased via syndication. An unreachable status still lands the tweet, without a source. A tweet whose footage is a Telegram post (`Source: t.me/<channel>/<id>`) has that post's public embed chased for its date and, when the embed serves it, its media. A sensitive post degrades to link and date.
+A thread whose sole source candidate is an X status has that footage chased via syndication. An unreachable status still lands the tweet, without a source. A sole `t.me/<channel>/<id>` candidate has that post's public embed chased for its date and, when the embed serves it, its media; a sensitive post degrades to link and date. Several candidates leave the source empty and chase nothing (see [`ingestion.md`](ingestion.md#the-contract)).
 
 **Request:** JSON. `upload_key` from the presign; `post_estimate` (optional, ≥ 1) is the browser strip's cosmetic volume hint for the queued display (the worker stamps the exact totals).
 ```json

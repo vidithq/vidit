@@ -719,11 +719,12 @@ export interface paths {
          * @description Enqueue the caller's staged X "Download your data" zip for the worker.
          *
          *     The upload is the consent: every row lands ``detected``, attributed to the
-         *     caller (no handle-ownership check in this version, see ``planning``). The
-         *     request verifies the staged object (the caller's own key, present, under
-         *     the size guard) and returns the ``queued`` job; the worker service runs
-         *     the import (extracting only the allowlisted entries) and emails the
-         *     outcome. Poll ``GET /events/import-archive/{job_id}`` for the counts.
+         *     caller, and the export's contents are not checked against the handle the
+         *     caller linked. The request verifies the staged object (the caller's own
+         *     key, present, under the size guard) and returns the ``queued`` job; the
+         *     worker service runs the import (extracting only the allowlisted entries)
+         *     and emails the outcome. Poll ``GET /events/import-archive/{job_id}`` for
+         *     the counts.
          */
         post: operations["import_archive_api_v1_events_import_archive_post"];
         delete?: never;

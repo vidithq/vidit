@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { Bot, ImageIcon, Play } from "lucide-react";
 
 // A fake X post, rendered in X's own dark card so a guide can show the shape of
-// a real post instead of describing it. Used by the two import guides (`/bot`
-// teaches what to write, `/archive` shows what an exported thread looked like);
+// a real post instead of describing it. Used by the import guide (`/import`),
+// which teaches what to write and what the bot answers;
 // the composition mirrors the promo video's BotBeat
 // (video/src/components/BotBeat.tsx). The analyst is a placeholder identity,
 // never a real account.

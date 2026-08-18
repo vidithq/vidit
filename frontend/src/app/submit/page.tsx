@@ -224,7 +224,7 @@ function SubmitForm() {
   }, [requestIdParam]);
 
   const lockedFromRequest = request !== null;
-  // Import (post pre-fill or bulk archive) is offered only on a fresh create,
+  // Import (a pasted post or a bulk archive) is offered only on a fresh create,
   // not while fulfilling someone else's request.
   const canImport = !lockedFromRequest;
 

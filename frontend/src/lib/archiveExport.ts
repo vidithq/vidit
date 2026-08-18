@@ -9,7 +9,7 @@ export const X_ARCHIVE_HELP =
 /**
  * Getting the export out of X, the part that happens on X's side and is the
  * same wherever it is taught: the import panel on `/submit` walks a signed-in
- * analyst through it, and the public `/archive` guide teaches it to a reader
+ * analyst through it, and the public `/import` guide teaches it to a reader
  * with no account yet. Each caller appends its own closing step, since where
  * the zip goes differs between the two.
  */

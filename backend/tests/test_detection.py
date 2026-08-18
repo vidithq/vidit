@@ -696,7 +696,7 @@ async def test_reimporting_the_same_detection_twice_writes_nothing(db, owner):
 
 
 async def test_backfill_from_archive_end_to_end(db, owner):
-    # Full chain: read the synthetic X export -> stitch -> detect -> assemble.
+    # Full chain: read the synthetic X export -> stitch -> resolve -> persist.
     outcome = await backfill_from_archive(db, owner=owner, archive_dir=ARCHIVE)
     assert len(outcome.created) == 6  # see test_archive for the per-tweet breakdown
 
