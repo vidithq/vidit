@@ -443,8 +443,11 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<CopyButton>" usage="The one copy-to-clipboard control: a square ghost icon button whose copy glyph flips to a check for the flash window (useCopyToClipboard). Used by the profile share control and the event share row. `value` is a getter so the call site can read window at click time; `beforeCopy` gates the write (the share row arms a draft link on the first click); the accessible name stays constant and the copied state is announced by a sibling live region.">
-            <CopyButton value={() => "https://vidit.app/profile/demo"} label="Copy profile link" />
+          <Item name="<CopyButton>" usage="The one copy-to-clipboard control: a square ghost icon button whose resting glyph flips to a check for the flash window (useCopyToClipboard). Used by the event share row and the profile's Discord account. `value` is a getter so the call site can read window at click time; `icon` swaps the resting glyph where the value names itself better than a copy mark does (the check is fixed); `beforeCopy` gates the write (the share row arms a draft link on the first click); the accessible name stays constant and the copied state is announced by a sibling live region.">
+            <div className="flex items-center gap-2">
+              <CopyButton value={() => "https://vidit.app/events/demo"} label="Copy event link" />
+              <CopyButton icon={DiscordGlyph} value={() => "a-handle"} label="Copy Discord username: a-handle" copiedLabel="Discord username copied" />
+            </div>
           </Item>
 
           <Item name="<OverflowMenu>" usage="The one overflow menu: a ghost ⋯ icon button opening a small anchored panel of actions, on usePinnedPopover (the FieldHelp machinery, click-only here since a menu holding a delete must not open under a passing pointer). It carries the management tier of a detail surface's action row, so the row keeps at most one flow action plus its icon utilities: the request page's Close and Delete sit in here. Items are {label, onClick, danger, disabled, controls}; the trigger is aria-haspopup=menu, the panel role=menu, each entry role=menuitem, and acting on one closes the menu. Renders nothing when the list is empty.">
@@ -836,7 +839,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="BrandGlyphs (XGlyph / GitHubGlyph / DiscordGlyph)" usage="The three third-party marks lucide doesn't ship, as inline SVG paths painting currentColor. `size` in px, so they sit with lucide icons at the same stop: the sidebar's community links, the submit form's 'From an X post' segment, the event share row.">
+          <Item name="BrandGlyphs (XGlyph / GitHubGlyph / DiscordGlyph)" usage="The three third-party marks lucide doesn't ship, as inline SVG paths painting currentColor. `size` in px, so they sit with lucide icons at the same stop: the sidebar's community links, the submit form's 'From an X post' segment, the event share row, the profile's linked-account buttons.">
             <span className="inline-flex items-center gap-3 text-neutral-400">
               <XGlyph />
               <GitHubGlyph />
@@ -1077,7 +1080,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LinkRow>" usage="Linked accounts (profile) + Stay in touch and Guides (About). The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph.">
+          <Item name="<LinkRow>" usage="Stay in touch and Guides (About). The profile's linked accounts are icon buttons instead, so this row is the About page's alone. The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph.">
             <div className="w-full max-w-md space-y-2">
               <LinkRow icon={AtSign} label="X / Twitter" value="@vidithq" href="https://x.com/vidithq" />
               <LinkRow icon={BookOpen} label="How Vidit works" value="/guide" href="/guide" external={false} />
