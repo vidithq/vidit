@@ -146,17 +146,25 @@ _GOOGLE_HOST_RE = re.compile(r"^(?:www\.|maps\.)?google\.[a-z0-9.\-]+$", re.IGNO
 def _is_coordinate_link(url: str) -> bool:
     """Whether ``url`` is a Google Maps link.
 
-    A maps link is where the coordinate came from, not where the footage lives,
-    and the coordinate extractors already read it (``extract._GMAPS_RE``). Both
-    the ``maps.`` subdomain and a ``/maps`` path on a Google host count, plus the
-    ``maps.app.goo.gl`` share form.
+    A maps link points at where the coordinate is, not at where the footage
+    lives, so it is never a source candidate. Both the ``maps.`` subdomain and a
+    ``/maps`` path on a Google host count, plus the two share forms: today's
+    ``maps.app.goo.gl`` and the legacy ``goo.gl/maps/`` one. The long form is
+    also what ``extract._GMAPS_RE`` reads a coordinate out of; a share link
+    carries no coordinate in its text, and excluding it here is what keeps it
+    out of the source slot either way.
     """
     host = hostname(url)
     if host == "maps.app.goo.gl":
         return True
+    path = urlparse(url).path.lower()
+    if host == "goo.gl":
+        # The legacy share form. The bare shortener serves every Google product,
+        # so only the ``/maps/`` prefix counts.
+        return path.startswith("/maps/")
     if _GOOGLE_HOST_RE.match(host) is None:
         return False
-    return host.startswith("maps.") or urlparse(url).path.lower().startswith("/maps")
+    return host.startswith("maps.") or path.startswith("/maps")
 
 
 # Query parameters that carry share / campaign provenance rather than the

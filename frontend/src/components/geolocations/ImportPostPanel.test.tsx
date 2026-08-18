@@ -11,6 +11,7 @@ vi.mock("@/lib/events", async (importOriginal) => ({
   importFromPost: vi.fn(),
 }));
 
+import { FORM_ERROR_BANNER, FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
 import { ApiError } from "@/lib/api";
 import { importFromPost } from "@/lib/events";
 import type { TweetImportOutcome } from "@/types";
@@ -79,7 +80,7 @@ describe("ImportPostPanel", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it("names the refusal when the post produced nothing", async () => {
+  it("names the refusal when the post produced nothing, as a failure", async () => {
     vi.mocked(importFromPost).mockResolvedValue(
       outcome({ reason: { code: "coords_missing", message: "No coordinate in the post" } })
     );
@@ -87,8 +88,52 @@ describe("ImportPostPanel", () => {
 
     paste();
 
-    expect(await screen.findByText("No coordinate in the post")).toBeInTheDocument();
+    const banner = await screen.findByText("No coordinate in the post");
+    expect(banner).toHaveClass(...FORM_ERROR_BANNER.split(" "));
     expect(screen.queryByRole("link", { name: "Review the draft" })).toBeNull();
+  });
+
+  it("reads a post nothing could be stored from as a failure too", async () => {
+    vi.mocked(importFromPost).mockResolvedValue(outcome({ failed: 2 }));
+    render(<ImportPostPanel />);
+
+    paste();
+
+    const banner = await screen.findByText(/couldn't be stored/);
+    expect(banner).toHaveClass(...FORM_ERROR_BANNER.split(" "));
+  });
+
+  it("says a matched row was left as it is, and offers no review link for it", async () => {
+    // A skipped row is one the import must not touch (published, closed,
+    // withheld), so the review link would open an edit that cannot land.
+    vi.mocked(importFromPost).mockResolvedValue(outcome({ skipped: ["d9"] }));
+    render(<ImportPostPanel />);
+
+    paste();
+
+    const banner = await screen.findByText("1 left as it is");
+    expect(banner).toHaveClass(...FORM_SUCCESS_BANNER.split(" "));
+    expect(screen.queryByRole("link", { name: "Review the draft" })).toBeNull();
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("opens the draft a re-import overwrote", async () => {
+    vi.mocked(importFromPost).mockResolvedValue(
+      outcome({
+        updated: ["d4"],
+        skipped: ["d9"],
+        warnings: [{ code: "source_missing", message: "No source found. Add one at review" }],
+      })
+    );
+    render(<ImportPostPanel />);
+
+    paste();
+
+    expect(await screen.findByText("1 updated · 1 left as it is")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Review the draft" })).toHaveAttribute(
+      "href",
+      "/events/d4/edit?queue=1"
+    );
   });
 
   it("falls back to its own line when the run named no refusal at all", async () => {

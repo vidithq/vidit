@@ -35,19 +35,29 @@ _THREAD_INDEX = "ix_events_detected_thread_tweet_ids"
 _VIA_CHECK = "ck_events_detected_via_valid"
 
 
+def backfill_thread_ids_sql(table: str) -> str:
+    """The statement that seeds each row's thread with its own anchor id.
+
+    Table-parameterised so the data mapping runs against a scratch table in
+    ``tests/test_ingest_migrations.py``: a row that came out with an empty
+    array rather than NULL, or with a NULL element inside the array, would
+    match nothing on the overlap leg and split one geolocation across two
+    drafts.
+    """
+    return f"""
+        UPDATE {table}
+        SET detected_thread_tweet_ids = ARRAY[detected_from_tweet_id]
+        WHERE detected_from_tweet_id IS NOT NULL
+        """
+
+
 def upgrade() -> None:
     op.add_column(
         "events",
         sa.Column("detected_thread_tweet_ids", postgresql.ARRAY(sa.BigInteger()), nullable=True),
     )
     op.add_column("events", sa.Column("detected_via", sa.String(length=20), nullable=True))
-    op.execute(
-        """
-        UPDATE events
-        SET detected_thread_tweet_ids = ARRAY[detected_from_tweet_id]
-        WHERE detected_from_tweet_id IS NOT NULL
-        """
-    )
+    op.execute(backfill_thread_ids_sql("events"))
     op.create_index(
         _THREAD_INDEX,
         "events",

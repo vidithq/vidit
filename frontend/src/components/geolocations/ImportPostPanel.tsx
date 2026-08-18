@@ -24,15 +24,28 @@ function outcomeSummary(outcome: TweetImportOutcome): string {
     parts.push(`${outcome.updated.length} updated`);
   }
   if (outcome.skipped.length > 0) {
-    parts.push(`${outcome.skipped.length} already imported`);
+    parts.push(
+      `${outcome.skipped.length} left as ${outcome.skipped.length === 1 ? "it is" : "they are"}`
+    );
   }
   return parts.join(" · ");
 }
 
 /** The draft the page opens: the first one created, else the first one the
- *  re-import touched. Undefined when the post produced nothing. */
+ *  re-import overwrote. Never a skipped row: the import left those alone
+ *  precisely because they are not its to edit (published, closed or withheld),
+ *  so opening one on a review link would offer an edit that cannot land.
+ *  Undefined when the run wrote nothing. */
 function firstDraftId(outcome: TweetImportOutcome): string | undefined {
-  return [...outcome.created, ...outcome.updated, ...outcome.skipped][0];
+  return [...outcome.created, ...outcome.updated][0];
+}
+
+/** Whether the run wrote or matched anything at all. False is the failure
+ *  shape: a refusal, or a post nothing could be stored from. */
+function wroteSomething(outcome: TweetImportOutcome): boolean {
+  return (
+    outcome.created.length > 0 || outcome.updated.length > 0 || outcome.skipped.length > 0
+  );
 }
 
 /** The one line a finished run says: what it wrote, else why it wrote nothing. */
@@ -53,8 +66,9 @@ function outcomeLine(outcome: TweetImportOutcome): string {
  * `not_your_post` otherwise; that message is rendered as-is.
  *
  * A clean run goes straight to the draft's review. A run with something to say
- * (warnings, a refusal, an already-imported post) stays here and says it, with
- * the review one click away, so nothing the engine raised is lost in a redirect.
+ * (warnings, a refusal, a post the import left as it is) stays here and says it,
+ * with the review one click away when there is a draft to open, so nothing the
+ * engine raised is lost in a redirect.
  *
  * The sentence for a warning or a refusal arrives with its code: the bot's
  * in-thread reply and the archive's outcome email read the same backend table,
@@ -123,7 +137,12 @@ export function ImportPostPanel() {
 
       {outcome && (
         <div className="space-y-3">
-          <div className={FORM_SUCCESS_BANNER}>{outcomeLine(outcome)}</div>
+          {/* A refusal and a post nothing could be stored from are failures,
+              so they read as one: the success banner over "no coordinate in
+              the post" told an analyst their paste had worked. */}
+          <div className={wroteSomething(outcome) ? FORM_SUCCESS_BANNER : FORM_ERROR_BANNER}>
+            {outcomeLine(outcome)}
+          </div>
           {warnings.length > 0 && (
             <ul className={`space-y-1 rounded-md p-3 text-xs ${WARNING_CALLOUT}`}>
               {warnings.map((warning) => (

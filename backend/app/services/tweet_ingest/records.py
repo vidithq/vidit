@@ -158,11 +158,14 @@ class ChasedPost:
 
     The common return of every chaser under ``chase/``, so the one chase step
     asks for a target's footage without naming a technology.
-    ``url`` is the target as the post wrote it, which is what matches the
-    chase back onto the link the analyst declared. ``author``, ``text`` and
-    ``status_id`` are filled only where the technology models them: an X status
-    carries all three, a Telegram post carries none, and ``chase.apply_chase``
-    reads ``status_id`` to pick the record slot the result belongs in.
+    ``url`` is where the footage was found: the Telegram chaser echoes the
+    target as the post wrote it, and the X chaser answers the canonical status
+    URL it resolved (``urls.canonical_tweet_url``), since a status is stored
+    under one spelling whichever one the analyst pasted. ``author``, ``text``
+    and ``status_id`` are filled only where the technology models them: an X
+    status carries all three, a Telegram post carries none, and
+    ``chase.apply_chase`` reads ``status_id`` to pick the record slot the result
+    belongs in.
     """
 
     url: str

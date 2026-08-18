@@ -204,9 +204,9 @@ def archive_import_complete_email(
         lines.append(f"  {skipped} left as {'they are' if skipped != 1 else 'it is'} (skipped)")
     if failed:
         lines.append(f"  {failed} could not be imported")
-    # The warnings cut across those four buckets: they say what review has to
-    # answer on the drafts the engine read, so they sit under their own heading
-    # rather than beside disjoint counts.
+    # The warnings say what review has to answer on the drafts this import
+    # created or updated, so they cut across two of the four buckets and sit
+    # under their own heading rather than beside disjoint counts.
     raised = warnings or {}
     # One line per warning the import raised, in the shared table's order and
     # in its words: the bot's reply and the import panel say the same sentence

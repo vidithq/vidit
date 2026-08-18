@@ -304,7 +304,7 @@ def _cdn_media(kind: MediaKind, url: str, origin: Literal["op", "quote"]) -> Par
     return ParsedMedia(kind=kind, remote_url=url, origin=origin)
 
 
-def _extract_media(
+def extract_media(
     syndication: dict[str, Any],
     *,
     origin: Literal["op", "quote"] = "op",
@@ -313,6 +313,10 @@ def _extract_media(
 
     ``mediaDetails`` is primary, since it carries videos too; the older
     ``photos`` is the image-only fallback some shapes serve instead.
+
+    Public because two modules outside this one read a syndication body: the
+    acquisition (:mod:`acquire`) for the post and its inline quote, and the X
+    chaser (:mod:`chase.x`) for the post a footage link names.
     """
     details = syndication.get("mediaDetails")
     media = [

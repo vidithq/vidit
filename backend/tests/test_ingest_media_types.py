@@ -23,7 +23,7 @@ from app.services.tweet_ingest.records import (
     VIDEO_CONTENT_TYPE,
     ParsedMedia,
 )
-from app.services.tweet_ingest.syndication import _extract_media
+from app.services.tweet_ingest.syndication import extract_media
 
 
 def test_an_imported_photo_is_stored_as_the_derivative_format() -> None:
@@ -85,7 +85,7 @@ def test_a_png_reads_the_same_off_the_export_and_off_syndication(tmp_path: Path)
 
     [record] = read_tweets(archive, handle="ana")
     [from_export] = record.media
-    [from_syndication] = _extract_media(
+    [from_syndication] = extract_media(
         {"mediaDetails": [{"type": "photo", "media_url_https": url}]}
     )
 

@@ -8,17 +8,23 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
 # What one mention did with a tagged tweet. ``created``: at least one
-# ``detected`` row landed. ``no_detection``: the thread yielded no coordinate,
+# ``detected`` row landed. ``updated``: no row was created, and the newer parse
+# overwrote at least one open draft the analyst already held, which is an answer
+# to the tag and earns the success reply just as a creation does.
+# ``no_detection``: the thread yielded no coordinate,
 # which a linked author gets the failure reply for (unless the tagged tweet is
 # itself a reply to the bot, the loop guard in ``services/bot``).
 # ``no_account``: no live Vidit account carries the tagged author's
 # ``x_handle`` (admin-linked), so nothing was created and no reply posted.
-# ``skipped``: every detection deduped against an existing row.
+# ``skipped``: every detection deduped against an existing row and moved
+# nothing on it.
 # ``self``: the bot's own post surfaced in its mentions timeline (recorded so
 # the ``since_id`` cursor advances past it instead of re-billing it every
 # pull). ``failed``: processing raised (captured to Sentry; delete the row to
 # retry that mention on the next run).
-BotMentionOutcome = Literal["created", "no_detection", "no_account", "skipped", "self", "failed"]
+BotMentionOutcome = Literal[
+    "created", "updated", "no_detection", "no_account", "skipped", "self", "failed"
+]
 
 
 class BotMention(Base):

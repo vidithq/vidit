@@ -32,11 +32,12 @@ dropped is still re-read even after a newer one advanced the ledger.
 Response model: the reply is the only gesture (a like at worker pickup,
 seconds before the reply, would signal nothing the reply does not, and it
 was the most expensive call of the mention). Replies open with the ✅/❌
-verdict. A created draft earns the in-thread success reply (event ref +
-warnings); a linked author whose tag produced nothing gets a failure reply
-carrying the diagnosis, unless the tagged tweet is itself a reply to
-the bot (the loop guard: a courtesy answer to the bot's own reply
-auto-mentions the bot and must not earn another reply). An unlinked author
+verdict. A draft the tag created, or the newer parse overwrote, earns the
+in-thread success reply (event ref + warnings); a linked author whose tag
+produced nothing gets a failure reply carrying the diagnosis, unless the
+tagged tweet is itself a reply to the bot (the loop guard: a courtesy answer
+to the bot's own reply auto-mentions the bot and must not earn another
+reply). An unlinked author
 stays fully silent (``no_account``). All reply text is linkless by contract
 (a URL 13x's the per-post price; the clickable link lives in the bot bio)
 and unique per mention (X 403s duplicate content); the composers own both
@@ -210,6 +211,10 @@ class BotRunOutcome:
     mentions_seen: int = 0
     already_handled: int = 0
     events_created: int = 0
+    # Mentions whose whole answer was overwriting an open draft: no row created,
+    # at least one updated. Counted apart from ``events_created`` so a pass over
+    # re-tagged posts does not read as an idle one.
+    events_updated: int = 0
     replies_posted: int = 0
     no_detection: int = 0
     no_account: int = 0
@@ -230,9 +235,12 @@ def acquire_tagged_thread(
 
     Raises ``TweetNotAccessible`` when X serves nothing for the tagged post.
 
-    The handle is case-folded: the permalink is the ``(detected_from_url,
-    coordinate)`` idempotency anchor, and it must not drift between the mention
-    payload's spelling of the handle and the syndication screen name.
+    The handle is case-folded before it goes in. It is the fallback the record
+    keeps when the syndication body carries no screen name, and it is what every
+    provenance permalink is written from and what the own-status exclusion
+    compares a link against, so the mention payload's spelling of the handle
+    must not reach a record as typed. The idempotency anchor itself is the post
+    id (``events.detected_from_tweet_id``), which no spelling can move.
     """
     return acquire_thread(tweet_id, handle=author_handle.lower(), client=client)
 
@@ -243,8 +251,14 @@ def acquire_tagged_thread(
 _REPLY_REF_CHARS = 8
 
 
-def compose_reply(created_id: str, *, drafts: int, warnings: Iterable[str]) -> str:
-    """The in-thread reply for a mention that created its drafts.
+def compose_reply(
+    created_id: str, *, drafts: int, warnings: Iterable[str], updated: bool = False
+) -> str:
+    """The in-thread reply for a mention that wrote its drafts.
+
+    ``updated`` swaps the verb for the pass that created nothing and overwrote
+    an open draft with a newer parse: the analyst is told what happened to the
+    draft they already hold rather than that a second one was saved.
 
     Opens with the at-a-glance ✅ (the ❌ twin lives in
     :func:`compose_failure_reply`). Linkless by contract: a bare event ref
@@ -261,7 +275,8 @@ def compose_reply(created_id: str, *, drafts: int, warnings: Iterable[str]) -> s
     (``detection.persist_drafts``), not the reply's.
     """
     plural = "s" if drafts > 1 else ""
-    lines = [f"✅ {drafts} geolocation draft{plural} saved · ref {created_id[:_REPLY_REF_CHARS]}"]
+    verb = "updated" if updated else "saved"
+    lines = [f"✅ {drafts} geolocation draft{plural} {verb} · ref {created_id[:_REPLY_REF_CHARS]}"]
     raised = set(warnings)
     lines.extend(f"⚠ {message}" for code, message in WARNING_MESSAGES.items() if code in raised)
     lines.append("Review from your profile")
@@ -399,7 +414,7 @@ async def _process_mention(
     )
     if assembled.reason is not None:
         return "no_detection", 0, None, assembled.reason
-    if not assembled.created:
+    if not assembled.created and not assembled.updated:
         # ``skipped`` is the dedup verdict; a persist that raised on every
         # detection is a transient failure, and ``failed`` keeps it on the
         # operator's retry path (delete the ledger row) instead of burying it
@@ -410,33 +425,43 @@ async def _process_mention(
         reply_id = _post_reply_failsoft(mention, _success_reply(assembled), client=x_write_client)
     else:
         logger.warning(
-            "Reply budget reached; draft created without reply for mention %s",
+            "Reply budget reached; draft written without reply for mention %s",
             mention.tweet_id,
         )
-    return "created", len(assembled.created), reply_id, None
+    if assembled.created:
+        return "created", len(assembled.created), reply_id, None
+    # A tag on a post the analyst already imported, edited since: the newer
+    # parse landed on the open draft. The tag was answered, so it earns the
+    # success reply and its own ledger verdict rather than the silent
+    # ``skipped`` a tag that moved nothing gets.
+    return "updated", 0, reply_id, None
 
 
 def _success_reply(assembled: Outcome) -> str:
     """The composed ✅ reply for one mention's outcome.
 
-    The ref reads the first created draft; a thread carrying several coordinates
-    lands several, and the ``several_coordinates`` warning is what tells the
-    analyst so.
+    The ref reads the first row the pass wrote, the created drafts first: a
+    thread carrying several coordinates lands several, and the
+    ``several_coordinates`` warning is what tells the analyst so. A pass that
+    created nothing and overwrote an open draft names that draft instead, and
+    says it updated rather than saved.
     """
+    written = assembled.created or assembled.updated
     return compose_reply(
-        str(assembled.created[0].id),
-        drafts=len(assembled.created),
+        str(written[0]),
+        drafts=len(written),
         warnings=assembled.warnings,
+        updated=not assembled.created,
     )
 
 
 # The verdicts a linked author gets an answer for when their tag produced no
 # draft. ``no_detection`` is the engine's refusal, named back by code;
 # ``failed`` is the write path raising on every draft, which names no code and
-# reads as the reply's unexpected case. A tag that answers neither either
-# created (the ✅ reply) or deduplicated onto a row the analyst already holds
-# (``skipped``, which is not a failure to report), and an unlinked author stays
-# fully silent whatever the tweet yielded.
+# reads as the reply's unexpected case. A tag that answers neither either wrote
+# a row (``created`` / ``updated``, both the ✅ reply) or deduplicated onto a row
+# it moved nothing on (``skipped``, which is not a failure to report), and an
+# unlinked author stays fully silent whatever the tweet yielded.
 _ANSWERED_VERDICTS = ("no_detection", "failed")
 
 
@@ -523,7 +548,9 @@ async def process_single_mention(
     if reply_id is not None:
         budget.note_reply(mention.author_handle)
         outcome.replies_posted += 1
-    if verdict == "no_detection":
+    if verdict == "updated":
+        outcome.events_updated += 1
+    elif verdict == "no_detection":
         outcome.no_detection += 1
     elif verdict == "no_account":
         outcome.no_account += 1

@@ -210,10 +210,19 @@ def test_the_own_status_exclusion_is_case_insensitive():
 def test_a_google_maps_link_is_excluded():
     for url in (
         "https://maps.app.goo.gl/x",
+        # The legacy share form, still all over older posts.
+        "https://goo.gl/maps/aBcDeF12345",
         "https://www.google.com/maps/@48.012345,37.802411,15z",
         "https://maps.google.com/?q=48.012345,37.802411",
     ):
         assert resolve_source([_rec(external_sources=[SourceLink(url=url)])]) == (None, None)
+
+
+def test_a_goo_gl_link_outside_maps_stays_a_candidate():
+    # The bare shortener serves every Google product, so only the ``/maps/``
+    # prefix says "this points at a coordinate rather than at footage".
+    url = "https://goo.gl/photos/aBcDeF12345"
+    assert resolve_source([_rec(external_sources=[SourceLink(url=url)])]) == (url, None)
 
 
 def test_a_quote_outranks_a_candidate_link():

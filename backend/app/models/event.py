@@ -362,7 +362,7 @@ class Event(Base):
             "ix_events_owner_detected_from_tweet_id",
             "owner_id",
             "detected_from_tweet_id",
-            postgresql_where="detected_from_tweet_id IS NOT NULL",
+            postgresql_where=text("detected_from_tweet_id IS NOT NULL"),
         ),
         # Backs the other leg of the same match, "does this incoming thread share
         # a post with a draft I already hold": an array overlap, which reads off
@@ -371,14 +371,14 @@ class Event(Base):
             "ix_events_detected_thread_tweet_ids",
             "detected_thread_tweet_ids",
             postgresql_using="gin",
-            postgresql_where="detected_thread_tweet_ids IS NOT NULL",
+            postgresql_where=text("detected_thread_tweet_ids IS NOT NULL"),
         ),
         # Backs the admin machine-detection cohort scans, which count the rows
         # carrying a provenance link at all.
         Index(
             "ix_events_detected_from_url",
             "detected_from_url",
-            postgresql_where="detected_from_url IS NOT NULL",
+            postgresql_where=text("detected_from_url IS NOT NULL"),
         ),
         # Serves the hot profile read (``GET /users/{username}/events`` filters
         # ``owner_id``) and the admin GDPR delete's owned-event enumeration. Both

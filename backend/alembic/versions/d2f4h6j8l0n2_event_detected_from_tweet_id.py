@@ -34,22 +34,33 @@ _INDEX = "ix_events_owner_detected_from_tweet_id"
 _STATUS_ID_RE = "/status/([0-9]{1,19})(?:[/?#]|$)"
 
 
-def upgrade() -> None:
-    op.add_column("events", sa.Column("detected_from_tweet_id", sa.BigInteger(), nullable=True))
-    op.execute(
-        f"""
-        UPDATE events AS e
+def backfill_tweet_id_sql(table: str) -> str:
+    """The statement that reads each stored provenance URL's status id.
+
+    Table-parameterised so the data mapping runs against a scratch table in
+    ``tests/test_ingest_migrations.py`` rather than only through
+    ``alembic upgrade``: a pattern that misses ``twitter.com`` or the
+    handle-less ``/i/web/status/`` form would otherwise leave those rows
+    matching on their source URL alone, unfalsifiably until production rows
+    moved.
+    """
+    return f"""
+        UPDATE {table} AS e
         SET detected_from_tweet_id = parsed.tweet_id::bigint
         FROM (
             SELECT id, substring(detected_from_url from '{_STATUS_ID_RE}') AS tweet_id
-            FROM events
+            FROM {table}
             WHERE detected_from_url IS NOT NULL
         ) AS parsed
         WHERE e.id = parsed.id
           AND parsed.tweet_id IS NOT NULL
           AND parsed.tweet_id::numeric <= 9223372036854775807
         """
-    )
+
+
+def upgrade() -> None:
+    op.add_column("events", sa.Column("detected_from_tweet_id", sa.BigInteger(), nullable=True))
+    op.execute(backfill_tweet_id_sql("events"))
     op.create_index(
         _INDEX,
         "events",

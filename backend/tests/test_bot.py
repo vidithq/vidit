@@ -444,14 +444,23 @@ async def test_the_two_post_field_format_lands_one_draft(db, linked_owner):
 
 async def test_tagging_either_post_shares_the_parent_idempotency_key(db, linked_owner):
     # detected_from_url anchors on the parent, so a second tag on the reply and
-    # a tag on the parent itself both collapse onto the first draft.
-    outcome, _, _, _ = await _run(
+    # a tag on the parent itself both collapse onto the first draft. Each of the
+    # two later tags reads a different slice of the thread, so it overwrites the
+    # draft rather than matching it unchanged: an answered tag, ledgered
+    # ``updated``, not the silent ``skipped``.
+    outcome, _, posted, _ = await _run(
         db, [TWO_POST_TAGGED_ID, TWO_POST_TAGGED_TWICE_ID, TWO_POST_PARENT_ID]
     )
 
     assert outcome.events_created == 1
-    assert outcome.skipped == 2
+    assert outcome.events_updated == 2
+    assert outcome.skipped == 0
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 1
+    assert [p["text"].splitlines()[0].split(" · ")[0] for p in posted] == [
+        "✅ 1 geolocation draft saved",
+        "✅ 1 geolocation draft updated",
+        "✅ 1 geolocation draft updated",
+    ]
 
 
 async def test_a_tag_under_a_foreign_parent_reads_only_the_tag(db, linked_owner):

@@ -49,6 +49,11 @@ export type Conflict = components["schemas"]["ConflictRead"];
  *  request). */
 export type EventStatus = components["schemas"]["EventRead"]["status"];
 
+/** Which entry produced a machine draft: the bot, a pasted URL, or an archive
+ *  backfill. Generated, so a fourth entry reaches every reader through the
+ *  drift gate. Null on a row imported before the column existed. */
+export type DetectedVia = NonNullable<components["schemas"]["EventRead"]["detected_via"]>;
+
 /** Compact point from /events/points:
  *  [id, lat, lng, event_date, added_date, detected]. ``event_date`` and
  *  ``added_date`` (the created_at day) are ISO ``YYYY-MM-DD`` strings;

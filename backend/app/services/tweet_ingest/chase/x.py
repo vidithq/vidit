@@ -12,7 +12,7 @@ import httpx
 
 from ..errors import TweetFetchFailed, TweetNotAccessible
 from ..records import ChasedPost
-from ..syndication import _extract_media, fetch_syndication
+from ..syndication import extract_media, fetch_syndication
 from ..urls import canonical_tweet_url, x_status_id
 
 
@@ -24,7 +24,10 @@ def chase(target: str, *, client: httpx.Client | None = None) -> ChasedPost | No
     when X will not serve it, or when the payload carries no author, since an
     authorless post cannot be attributed and so is not footage anyone declared.
     """
-    status_id = target if target.isdigit() else x_status_id(target)
+    # ``isascii`` with ``isdigit``: the latter is True for every Unicode decimal
+    # digit, so an Arabic-Indic or fullwidth string would pass as a status id and
+    # go into the syndication URL as something X cannot read.
+    status_id = target if target.isascii() and target.isdigit() else x_status_id(target)
     if status_id is None:
         return None
     try:
@@ -40,7 +43,7 @@ def chase(target: str, *, client: httpx.Client | None = None) -> ChasedPost | No
     return ChasedPost(
         url=canonical_tweet_url(status_id, handle),
         posted_at=created_at if isinstance(created_at, str) and created_at else None,
-        media=list(_extract_media(body, origin="quote")),
+        media=list(extract_media(body, origin="quote")),
         author=handle,
         text=text if isinstance(text, str) else "",
         status_id=status_id,

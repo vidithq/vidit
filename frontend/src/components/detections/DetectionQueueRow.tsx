@@ -6,7 +6,7 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 import { TAPPABLE_HOVER } from "@/components/ui/styles";
 import { batchCompletionBlockers, draftEditPath } from "@/lib/events";
 import { formatDate } from "@/lib/format";
-import type { EventDetail } from "@/types";
+import type { DetectedVia, EventDetail } from "@/types";
 
 /**
  * The badge text for a draft still short of the evidence floor. One missing
@@ -25,8 +25,10 @@ function missingLabel(blockers: string[]): string {
  *  the date and the source host, in the same secondary text: the three entries
  *  read one engine, so this answers "how did this reach me", not "how good is
  *  it". A draft imported before the column existed carries no value and the
- *  segment is simply absent, like a missing event date. */
-const ENTRY_LABELS: Record<string, string> = {
+ *  segment is simply absent, like a missing event date. Keyed on the generated
+ *  `detected_via` union, so a fourth entry added on the backend fails type-check
+ *  here instead of rendering a blank segment. */
+const ENTRY_LABELS: Record<DetectedVia, string> = {
   bot: "Tagged the bot",
   paste: "Pasted",
   archive: "From your archive",
@@ -85,7 +87,7 @@ export function DetectionQueueRow({ draft }: { draft: EventDetail }) {
               {draft.event_date ? formatDate(draft.event_date) : "No event date"}
             </span>
             <SourceLabel variant="inline" url={draft.source_url} />
-            {draft.detected_via !== null && ENTRY_LABELS[draft.detected_via] !== undefined && (
+            {draft.detected_via !== null && draft.detected_via !== undefined && (
               <span>{ENTRY_LABELS[draft.detected_via]}</span>
             )}
           </div>
