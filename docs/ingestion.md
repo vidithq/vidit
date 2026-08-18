@@ -3,49 +3,47 @@
 One detection engine, three entries. The bot, the pasted-tweet import and the archive backfill read the same grammar, resolve through the same core and write through the same path, so a fix on one reaches all three. This page states the engine once, then what each entry adds.
 
 ```mermaid
-flowchart TB
+flowchart LR
   classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
   classDef shared fill:#0f7b7a,stroke:#0f7b7a,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#0b5c5b,color:#ffffff
 
-  subgraph botlane [Bot]
-    direction TB
-    b1["Delivery: webhook queue<br/>or hourly poll"]:::spec
-    b2["Ledger, reply budget,<br/>linked account"]:::spec
-    b3["In-thread reply:<br/>ref plus warnings"]:::spec
+  subgraph paste [Paste: a post URL on /submit]
+    direction LR
+    p1["POST /events/import-from-tweet<br/>rate limit, typed errors"]:::spec --> p2["Own post only<br/>author is the linked handle"]:::spec
   end
-  subgraph pastelane [Paste]
-    direction TB
-    p1["POST /events/import-from-tweet<br/>rate limit, typed errors"]:::spec
-    p2["Own post only:<br/>author is the linked handle"]:::spec
-    p3["Response: draft ids,<br/>warnings, review opens"]:::spec
+  subgraph bot [Bot: a tag on X]
+    direction LR
+    b1["Delivery<br/>webhook queue or hourly poll"]:::spec --> b2["Linked account<br/>ledger, reply budget"]:::spec
   end
-  subgraph archivelane [Archive]
-    direction TB
-    a1["Browser strip, presigned upload,<br/>job queue, worker"]:::spec
-    a2["Read the export, drop retweets,<br/>stitch self-threads"]:::spec
-    a3["Outcome email:<br/>counts plus warnings"]:::spec
+  subgraph archive [Archive: an X export]
+    direction LR
+    a1["Upload<br/>browser strip, presigned S3, job queue"]:::spec --> a2["Read the export<br/>drop retweets, stitch self-threads"]:::spec
   end
 
-  subgraph acquire [Shared acquisition]
-    direction TB
-    hop["One hop: the post plus the<br/>same-author post it replies to"]:::shared
-    chase["Chase the sole source candidate<br/>(X status, Telegram embed), retries"]:::shared
-  end
-  subgraph engine [Shared engine]
-    direction TB
-    resolve["resolve_threads: pure,<br/>one Draft per coordinate,<br/>warnings and refusals"]:::shared
-    persist["persist_drafts: re-import match,<br/>media, write, six warnings"]:::shared
-    rows[("detected rows")]:::shared
+  hop["One hop<br/>the post plus the same-author<br/>post it replies to"]:::shared
+  chase["Chase the sole source candidate<br/>X status or Telegram embed, retries"]:::shared
+  resolve["resolve_threads<br/>pure: one Draft per coordinate,<br/>warnings and refusals"]:::shared
+  persist["persist_drafts<br/>re-import match, media, write"]:::shared
+  rows[("detected rows")]:::store
+
+  subgraph feedback [What the analyst gets]
+    direction LR
+    f1["Bot: in-thread reply<br/>ref plus warnings"]:::spec
+    f2["Paste: draft ids and warnings,<br/>review opens"]:::spec
+    f3["Archive: outcome email<br/>counts plus warnings"]:::spec
   end
 
-  b1 --> b2 --> hop
-  p1 --> p2 --> hop
-  a1 --> a2 --> chase
+  p2 --> hop
+  b2 --> hop
+  a2 --> chase
   hop --> chase --> resolve --> persist --> rows
-  persist --> b3
-  persist --> p3
-  persist --> a3
+  persist --> f1
+  persist --> f2
+  persist --> f3
 ```
+
+Bordered boxes: specific to one entry. Filled boxes: shared by every entry.
 
 - The engine is [`resolve_threads`](../backend/app/services/tweet_ingest/resolve.py) (threads in, one `Draft` per coordinate out, plus warnings and refusals, no I/O) and [`detection.persist_drafts`](../backend/app/services/detection.py) (the one write path from a draft to a `detected` row).
 - What the engine reads is [the contract](#the-contract), and the [grammar table](#grammar-table) pins it shape by shape.
