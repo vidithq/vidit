@@ -158,8 +158,8 @@ export default function ImportGuidePage() {
             text only, so one that appears only inside an image is not read.
           </li>
           <li>
-            <span className="text-neutral-100">Source.</span> Every link your
-            thread carries is a candidate, whatever the platform. Three are
+            <span className="text-neutral-100">Source URL.</span> Every link
+            your thread carries is a candidate, whatever the platform. Three are
             never candidates, because none points at footage: a link back to
             your own post, an X link naming no post, and a Google Maps link. A
             quote of the source post, or a single candidate link, becomes the
@@ -167,10 +167,10 @@ export default function ImportGuidePage() {
             source empty and land as secondary links you pick from at review.
           </li>
           <li>
-            <span className="text-neutral-100">Media.</span> A quoted
+            <span className="text-neutral-100">Source media.</span> A quoted
             post&apos;s media is the footage. With no quote, the source
             post&apos;s media fills the slot, then your thread&apos;s first own
-            video; your photos stay proof.
+            video.
           </li>
           <li>
             <span className="text-neutral-100">Title.</span> The first line that
@@ -181,7 +181,8 @@ export default function ImportGuidePage() {
           <li>
             <span className="text-neutral-100">Proof.</span> Your thread&apos;s
             text as you wrote it, coordinate line included, with each shortened
-            link expanded back. You edit it at review.
+            link expanded back, and your photos as proof images. You edit it at
+            review.
           </li>
           <li>
             <span className="text-neutral-100">
