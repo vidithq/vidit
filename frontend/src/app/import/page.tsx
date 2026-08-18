@@ -25,11 +25,11 @@ import { ARCHIVE_EXPORT_STEPS, X_ARCHIVE_HELP } from "@/lib/archiveExport";
 // `docs/ingestion.md` holds the mechanism; this page is its reader-facing
 // projection.
 //
-// Order is orientation, then action, then reference: one common card (what
-// Vidit reads, the two conditions, a chooser linking the three entry sections),
-// then the entries in the order a reader picks them (archive for a whole
-// history, paste for a single post, bot for a daily feed), and the field list a
-// reader consults rather than reads closes the page.
+// Order is the common block, then the entries: one card holds what Vidit
+// reads, the two conditions, the fields a detection carries and a chooser
+// linking the three entry sections; the entries follow in the order a reader
+// picks them (archive for a whole history, paste for a single post, bot for a
+// daily feed).
 //
 // Anchors are contract: `/bot` and `/archive` redirect to `#bot` and
 // `#archive`, the bot's X bio points at `/bot`, and the import panels link to
@@ -145,6 +145,64 @@ export default function ImportGuidePage() {
           count. It carries a coordinate: anywhere in its text, or in the text
           of your own post it directly replies to. A coordinate that appears
           only in a post you quote does not count.
+        </p>
+        <h2 className={SECTION}>What the detection carries</h2>
+        <ul className={LIST}>
+          <li>
+            <span className="text-neutral-100">Coordinate formats.</span>{" "}
+            Decimal pairs (48.012345, 37.802411), decimal degrees with a
+            hemisphere letter (33.1°N 35.5°E, N48.0123 E37.8024), DMS
+            (48°00&apos;45&quot;N 37°48&apos;08&quot;E) and Google Maps @lat,lng
+            links all read. Position does not matter: a coordinate inside a
+            sentence reads like one alone on its line. Coordinates are read from
+            text only, so one that appears only inside an image is not read.
+          </li>
+          <li>
+            <span className="text-neutral-100">Source.</span> Every link your
+            thread carries is a candidate, whatever the platform. Three are
+            never candidates, because none points at footage: a link back to
+            your own post, an X link naming no post, and a Google Maps link. A
+            quote of the source post, or a single candidate link, becomes the
+            source, and a quote outranks links. Several candidates leave the
+            source empty and land as secondary links you pick from at review.
+          </li>
+          <li>
+            <span className="text-neutral-100">Media.</span> A quoted
+            post&apos;s media is the footage. With no quote, the source
+            post&apos;s media fills the slot, then your thread&apos;s first own
+            video; your photos stay proof.
+          </li>
+          <li>
+            <span className="text-neutral-100">Title.</span> The first line that
+            carries text beyond coordinates and links, taken as written and cut
+            at 120 characters. No line qualifying leaves the title empty, and
+            you type one at review.
+          </li>
+          <li>
+            <span className="text-neutral-100">Proof.</span> Your thread&apos;s
+            text as you wrote it, coordinate line included, with each shortened
+            link expanded back. You edit it at review.
+          </li>
+          <li>
+            <span className="text-neutral-100">
+              One detection per coordinate.
+            </span>{" "}
+            A post carrying several coordinates makes one detection each,
+            sharing every other field.
+          </li>
+          <li>
+            <span className="text-neutral-100">Importing twice.</span> Importing
+            the same geolocation again reuses the first detection instead of
+            duplicating it. A detection you already published or rejected stays
+            as it is, so re-running an import is always safe.
+          </li>
+        </ul>
+        <p className={NOTE}>
+          A detection is on the map from the moment it lands, marked as a
+          machine detection and attributed to your account, and it waits in your
+          detections queue. Review it, correct the event date, then publish it
+          as a geolocation. Rejecting it removes it. Only you turn your
+          detection into a geolocation.
         </p>
         <h2 className={SECTION}>Three ways in</h2>
         <div className="grid gap-4 sm:grid-cols-3">
@@ -284,67 +342,6 @@ export default function ImportGuidePage() {
             {"✅ 1 detection saved · ref 94183d44\nReview from your profile"}
           </MockPost>
         </div>
-      </Card>
-
-      <Card as="section">
-        <h2 className={SECTION}>What the detection carries</h2>
-        <ul className={LIST}>
-          <li>
-            <span className="text-neutral-100">Coordinate formats.</span>{" "}
-            Decimal pairs (48.012345, 37.802411), decimal degrees with a
-            hemisphere letter (33.1°N 35.5°E, N48.0123 E37.8024), DMS
-            (48°00&apos;45&quot;N 37°48&apos;08&quot;E) and Google Maps @lat,lng
-            links all read. Position does not matter: a coordinate inside a
-            sentence reads like one alone on its line. Coordinates are read from
-            text only, so one that appears only inside an image is not read.
-          </li>
-          <li>
-            <span className="text-neutral-100">Source.</span> Every link your
-            thread carries is a candidate, whatever the platform. Three are
-            never candidates, because none points at footage: a link back to
-            your own post, an X link naming no post, and a Google Maps link. A
-            quote of the source post, or a single candidate link, becomes the
-            source, and a quote outranks links. Several candidates leave the
-            source empty and land as secondary links you pick from at review.
-          </li>
-          <li>
-            <span className="text-neutral-100">Media.</span> A quoted
-            post&apos;s media is the footage. With no quote, the source
-            post&apos;s media fills the slot, then your thread&apos;s first own
-            video; your photos stay proof.
-          </li>
-          <li>
-            <span className="text-neutral-100">Title.</span> The first line that
-            carries text beyond coordinates and links, taken as written and cut
-            at 120 characters. No line qualifying leaves the title empty, and
-            you type one at review.
-          </li>
-          <li>
-            <span className="text-neutral-100">Proof.</span> Your thread&apos;s
-            text as you wrote it, coordinate line included, with each shortened
-            link expanded back. You edit it at review.
-          </li>
-          <li>
-            <span className="text-neutral-100">
-              One detection per coordinate.
-            </span>{" "}
-            A post carrying several coordinates makes one detection each,
-            sharing every other field.
-          </li>
-          <li>
-            <span className="text-neutral-100">Importing twice.</span> Importing
-            the same geolocation again reuses the first detection instead of
-            duplicating it. A detection you already published or rejected stays
-            as it is, so re-running an import is always safe.
-          </li>
-        </ul>
-        <p className={NOTE}>
-          A detection is on the map from the moment it lands, marked as a
-          machine detection and attributed to your account, and it waits in your
-          detections queue. Review it, correct the event date, then publish it
-          as a geolocation. Rejecting it removes it. Only you turn your
-          detection into a geolocation.
-        </p>
       </Card>
     </PageShell>
   );
