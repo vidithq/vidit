@@ -2,6 +2,45 @@
 
 One detection engine, three entries. The bot, the pasted-tweet import and the archive backfill read the same grammar, resolve through the same core and write through the same path, so a fix on one reaches all three. This page states the engine once, then what each entry adds.
 
+```mermaid
+flowchart TB
+  subgraph entries [Three entries]
+    direction LR
+    bot["Bot: a tag on X<br/>(webhook or hourly poll)"]
+    paste["Paste: a post URL<br/>on /submit"]
+    archive["Archive: an X export<br/>uploaded, worker job"]
+  end
+  subgraph acquire [Acquisition]
+    direction LR
+    onehop["One hop: the post plus<br/>the same-author post it replies to<br/>(syndication, free)"]
+    stitch["Read the export,<br/>drop retweets,<br/>stitch self-threads"]
+    chase["Chase the sole source candidate<br/>(X status, Telegram embed)<br/>with retries"]
+  end
+  subgraph engine [One engine]
+    direction TB
+    resolve["resolve_threads(threads)<br/>pure: no network, no database"]
+    resolution["Resolution: one Draft per coordinate<br/>plus warnings and refusals"]
+    persist["persist_drafts(owner, resolution)<br/>re-import match, media fetch, write"]
+    rows[("detected rows<br/>public, attributed to the owner")]
+  end
+  subgraph feedback [What the analyst gets]
+    direction LR
+    reply["Bot: in-thread reply<br/>ref plus warnings"]
+    page["Paste: draft ids and warnings,<br/>review opens"]
+    email["Archive: outcome email<br/>counts plus warnings"]
+  end
+  bot --> onehop
+  paste --> onehop
+  archive --> stitch
+  onehop --> chase
+  stitch --> chase
+  chase --> resolve
+  resolve --> resolution --> persist --> rows
+  persist --> reply
+  persist --> page
+  persist --> email
+```
+
 - The engine is [`resolve_threads`](../backend/app/services/tweet_ingest/resolve.py) (threads in, one `Draft` per coordinate out, plus warnings and refusals, no I/O) and [`detection.persist_drafts`](../backend/app/services/detection.py) (the one write path from a draft to a `detected` row).
 - What the engine reads is [the contract](#the-contract), and the [grammar table](#grammar-table) pins it shape by shape.
 - The entries are [the bot](#the-bot), [the pasted-tweet import](#the-pasted-tweet-import) and [the archive backfill](#archive-formats).
