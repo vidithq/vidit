@@ -152,6 +152,58 @@ def _match_proof_files(
     return pairs
 
 
+def _kept_proof_srcs(db: Session, event: Event, final_doc: dict[str, Any] | None) -> set[str]:
+    """Every proof-image URL this event must keep after the write lands.
+
+    Two legs: what ``final_doc`` (the post-write proof body) references, and
+    what the event's readable snapshots display. A proof image a past version
+    still shows is kept, row and object, even once the current body drops it:
+    history has to stay renderable, and the snapshots are the only thing
+    pointing at that URL by then. Placeholder srcs resolve to uploads that have
+    not landed yet, so only real URLs participate.
+
+    The snapshot leg is asked only of a row that has a history at all (version 1
+    has no snapshot to protect), so the ordinary write pays no query.
+    """
+    kept = {s for s in extract_image_srcs(final_doc) if not s.startswith(PROOF_PLACEHOLDER_PREFIX)}
+    if event.revision_no > 1:
+        kept |= revisions.referenced_media_urls(db, event.id)
+    return kept
+
+
+def _drop_unreferenced_proof_media(db: Session, event: Event, kept_srcs: set[str]) -> list[str]:
+    """Delete the ``proof`` media rows outside ``kept_srcs``; return their keys.
+
+    Rows only, staged in the caller's transaction. The S3 objects are swept
+    after the commit lands, so a rolled-back write never orphans a file the
+    rows still point at.
+    """
+    storage = get_storage()
+    removed_keys: list[str] = []
+    for m in list(event.media):
+        if m.role != "proof" or m.storage_url in kept_srcs:
+            continue
+        key = storage.key_from_url(m.storage_url)
+        if key is not None:
+            removed_keys.append(key)
+        db.delete(m)
+    return removed_keys
+
+
+def prune_unreferenced_proof_media(db: Session, event: Event) -> list[str]:
+    """Drop the proof rows nothing renders any more; return their S3 keys.
+
+    The standalone form of the diff :func:`attach_evidence_and_commit` runs as
+    part of a write, for the one caller that changes what the history displays
+    without touching the event itself: redacting a version
+    (``services/revisions.redact``) can leave an image no readable version and
+    no current body points at.
+
+    Staged, not committed. The caller commits, then sweeps the returned keys.
+    """
+    return _drop_unreferenced_proof_media(db, event, _kept_proof_srcs(db, event, event.proof))
+
+
 def _rewrite_image_srcs(doc: dict[str, Any], mapping: dict[str, str]) -> None:
     """Swap image srcs per ``mapping``, in place, across the whole tree."""
 
@@ -195,7 +247,11 @@ async def attach_evidence_and_commit(
       src is rewritten to the public URL, and a ``Media(role='proof')`` row
       lands. Already-uploaded S3 URLs in the doc pass through untouched (the
       edit flow), and existing ``role='proof'`` rows whose URL no longer
-      appears in the final doc are deleted, their objects swept post-commit.
+      appears in the final doc, and that no readable snapshot displays, are
+      deleted, their objects swept post-commit.
+
+    ``max_proof_images_per_event`` is checked against what the event ends up
+    carrying (kept rows plus new uploads), before anything reaches S3.
 
     Every file is validated up front so a bad file can't strand its siblings
     in S3. The commit is inside the try, so a commit-time failure (FK
@@ -203,18 +259,13 @@ async def attach_evidence_and_commit(
     objects; an ``IntegrityError`` on ``uq_media_source_per_event`` surfaces
     as the 409-shaped :class:`SourceMediaConflictError`, not a 500.
 
-    Raises :class:`TooManyFilesError` (proof batch over
-    ``max_proof_images_per_event``), :class:`InvalidFileError` (a file fails
-    ``validate_file``, or a non-image in ``proof_files``),
+    Raises :class:`TooManyFilesError` (the event would end up over
+    ``max_proof_images_per_event`` proof images), :class:`InvalidFileError` (a
+    file fails ``validate_file``, or a non-image in ``proof_files``),
     :class:`ProofFilesMismatchError`, or
     :class:`EvidenceProcessingFailedError` (the uploader raises
     ``EvidenceProcessingError``).
     """
-    if len(proof_files) > settings.max_proof_images_per_event:
-        raise TooManyFilesError(
-            f"At most {settings.max_proof_images_per_event} proof images per event"
-        )
-
     # Validate every file before any upload — a 400 on file #3 shouldn't
     # strand files #1 and #2 in S3.
     source_types: list[str] = []
@@ -238,31 +289,29 @@ async def attach_evidence_and_commit(
     proof_pairs = _match_proof_files(proof_doc, proof_files)
 
     # Diff the kept proof rows against the FINAL doc (incoming when provided,
-    # else what the row already holds). Placeholder srcs resolve to new
-    # uploads, so only real URLs participate.
+    # else what the row already holds), plus what the history still displays.
     final_doc = proof_doc if proof_doc is not None else event.proof
-    kept_srcs = {
-        s for s in extract_image_srcs(final_doc) if not s.startswith(PROOF_PLACEHOLDER_PREFIX)
-    }
-    # A proof image a past version still shows is kept, row and object, even
-    # once the current body drops it: history has to stay renderable, and the
-    # snapshots are the only thing pointing at that URL by then. Asked only of a
-    # row that has a history at all (version 1 has no snapshot to protect), so
-    # the ordinary write pays no query.
-    if event.revision_no > 1:
-        kept_srcs |= revisions.referenced_media_urls(db, event.id)
-    storage = get_storage()
-    removed_proof_keys: list[str] = []
-    for m in list(event.media):
-        if m.role != "proof" or m.storage_url in kept_srcs:
-            continue
-        key = storage.key_from_url(m.storage_url)
-        if key is not None:
-            removed_proof_keys.append(key)
-        db.delete(m)
+    kept_srcs = _kept_proof_srcs(db, event, final_doc)
+
+    # The cap is on the event's footprint, not on one request: the rows that
+    # survive this write plus the files it adds. Counting the batch alone let an
+    # event grow past the ceiling a few images at a time, and let a revision
+    # stack uploads on top of the images its history pins.
+    kept_proof_rows = sum(
+        1 for m in event.media if m.role == "proof" and m.storage_url in kept_srcs
+    )
+    if kept_proof_rows + len(proof_files) > settings.max_proof_images_per_event:
+        raise TooManyFilesError(
+            f"At most {settings.max_proof_images_per_event} proof images per event; "
+            f"this event would carry {kept_proof_rows + len(proof_files)} "
+            f"({kept_proof_rows} kept, {len(proof_files)} new)"
+        )
+
+    removed_proof_keys = _drop_unreferenced_proof_media(db, event, kept_srcs)
     # Flush deletes before the inserts below (same discipline as the caller's
     # source swap) so a same-URL re-add can't collide mid-flush.
     db.flush()
+    storage = get_storage()
 
     # Track uploaded S3 keys so a mid-batch failure can sweep them on
     # rollback — otherwise file #1 lands, file #2 throws, the txn rolls

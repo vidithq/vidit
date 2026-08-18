@@ -10,7 +10,7 @@ All responses are JSON.
 
 **Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side effect: `login` on success, `failed_login` on any rejected login (with `user_id` set only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches, so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL because no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches, so the audit trail carries a rate-of-requests signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best effort inside a SAVEPOINT. An audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `x_handle_conflict`); every `POST /events/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `report_not_found`, `report_already_resolved`, `report_event_gone`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`. `POST /events/import-from-tweet` adds `invalid_tweet_url`, `not_your_post`, `post_unreadable`, `upstream_unreadable` and `upstream_busy`. `POST /events/{id}/archives` adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_original_mismatch` and `snapshot_not_a_snapshot_code`; the same codes answer a rejected `source_snapshot_url` on the three write paths, which run the same checks. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `revision_not_found`, `x_handle_conflict`); every `POST /events/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `report_not_found`, `report_already_resolved`, `report_event_gone`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`. `POST /events/import-from-tweet` adds `invalid_tweet_url`, `not_your_post`, `post_unreadable`, `upstream_unreadable` and `upstream_busy`. `POST /events/{id}/archives` adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_original_mismatch` and `snapshot_not_a_snapshot_code`; the same codes answer a rejected `source_snapshot_url` on the three write paths, which run the same checks. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
 ---
 
 ## Endpoints at a glance
@@ -83,6 +83,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/admin/reports` | 🛡️ | The moderation queue: open reports first, then newest first |
 | POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to the event |
 | PATCH | `/admin/events/{id}/moderation` | 🛡️ | Set an event's graphic flag / takedown directly, no report behind it |
+| POST | `/admin/events/{id}/revisions/{revision_no}/redact` | 🛡️ | Blank one filed version, keeping its number |
 | POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, pending regs) |
 | POST | `/admin/maintenance/send-completion-digests` | 🛡️ | Email each analyst the count of detections awaiting completion |
 
@@ -133,7 +134,7 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
-| `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` | 60/hour |
+| `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/revisions/{revision_no}/redact` | 60/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
 
 The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/reports` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: the POST verifies the HMAC signature over the raw body (one HMAC, cheaper than any limiter bookkeeping), and the GET only ever signs tokens matching X's URL-safe CRC shape, the charset gate that keeps the responder from being a signing oracle for forged webhook bodies.
@@ -949,7 +950,7 @@ The first six are the same stable codes the single-row geolocate answers with, a
 
 Correct a published event. Owner-only, and only while `geolocated`: the state a correction applies to is the vouched record, so before publication a row is edited through its own path ([`POST /events/{id}/geolocate`](#post-eventsidgeolocate) for a detection or a request). The write files the pre-edit state as a revision, applies your form, and moves the event to the next `revision_no`, all in one transaction under a row lock. Two concurrent revises therefore take their numbers in order rather than racing. **Multipart**, mirroring geolocate.
 
-**Editability contract.** After publication the **evidence anchor is immutable**: `source_url` and the source media are what the published claim rests on, so this endpoint declares no field for either, and sending one changes nothing. A wrong source is handled by [`POST /events/{id}/close`](#post-eventsidclose) plus a fresh submission, or by an admin. Everything else the publish form wrote is editable and versioned: the title, both coordinate sets, the event date and hour, the source post time, the graphic-content flag, the tags, the conflicts, the proof body with its inline images, and the secondary source links, which are mirrors rather than the evidence origin and sit outside the anchor.
+**Editability contract.** After publication the **evidence anchor is immutable**: `source_url` and the source media are what the published claim rests on, so this endpoint declares no field for either, and sending one changes nothing. A wrong source on a published event is an admin matter: [`POST /events/{id}/close`](#post-eventsidclose) rejects a `geolocated` row, so its owner has no path to the anchor. Everything else the publish form wrote is editable and versioned: the title, both coordinate sets, the event date and hour, the source post time, the graphic-content flag, the tags, the conflicts, the proof body with its inline images, and the secondary source links, which are mirrors rather than the evidence origin and sit outside the anchor.
 
 **Request body (`multipart/form-data`):**
 | Field | Type | Description |
@@ -963,7 +964,7 @@ Correct a published event. Owner-only, and only while `geolocated`: the state a 
 | `secondary_source_urls` | string[] (repeated field) | Optional mirrors, same normalization and cap as [`POST /events`](#post-events). The submitted list replaces whatever the row held |
 | `event_date` | string (YYYY-MM-DD) | When the depicted event happened. Empty / omitted stores NULL (renders as *Unknown*) |
 | `event_time` | string (HH:MM) | Optional time-of-day for the event (UTC); empty / omitted clears it |
-| `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | When the source posted the media, a full instant (UTC). Required |
+| `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | When the source posted the media, a full instant (UTC). Optional: empty / omitted stores NULL, matching what publication accepts (a detection whose source post time was never resolved publishes with it NULL through [`POST /events/batch-complete`](#post-eventsbatch-complete)) |
 | `proof` | JSON string | Tiptap document (sanitized); its `placeholder://` srcs resolve against `proof_files`, already-uploaded URLs pass through untouched |
 | `tag_ids` | JSON string (UUID[]) | Replaces the tag set wholesale |
 | `conflict_ids` | JSON string (UUID[]) | Replaces the event's [conflict](#conflicts) set wholesale |
@@ -973,7 +974,9 @@ Correct a published event. Owner-only, and only while `geolocated`: the state a 
 
 The published evidence floor is re-checked against the post-edit state, so a correction cannot drop the row below what publishing it required: a source media on the row, at least one proof image in the final proof body, one conflict, and one `capture_source` tag.
 
-**Media and history.** A proof image the new body no longer references is normally deleted, row and object. It is kept instead when any past version's snapshot points at it, so a version stays renderable after the image left the current body.
+**Media and history.** A proof image the new body no longer references is normally deleted, row and object. It is kept instead when a readable past version displays it, so that version stays renderable after the image left the current body. A version records the images its own proof body referenced, so an image no version ever displayed is not held alive by the history, and a [redacted](#post-admineventsidrevisionsrevision_noredact) version holds nothing alive at all.
+
+**Proof-image ceiling.** `max_proof_images_per_event` bounds what the event ends up carrying, not what one request sends: the proof rows this write keeps plus the files it adds. The check runs before anything reaches S3.
 
 **Response 200:** same shape as `GET /events/{id}`, with `revision_no` one higher.
 
@@ -984,7 +987,7 @@ The published evidence floor is re-checked against the post-edit state, so a cor
 | 403 | You are not the owner |
 | 404 | Event not found (incl. soft-deleted) |
 | 409 | Row is not `geolocated` (`invalid_state`) |
-| 422 | `note` over 280 chars, more than `max_proof_images_per_event` proof files, or a single `secondary_source_urls` item over 2000 chars |
+| 422 | `note` over 280 chars, a write that would leave the event over `max_proof_images_per_event` proof images (kept rows plus new files), or a single `secondary_source_urls` item over 2000 chars |
 
 ---
 
@@ -992,7 +995,13 @@ The published evidence floor is re-checked against the post-edit state, so a cor
 
 The event's superseded versions, newest first. Public, like the event itself: a corrected record is auditable only when its corrections are readable. The live row is the current version and is not listed here, so an event nobody has corrected answers with an empty list.
 
-Not paginated: an event carries a handful of versions, so the whole history is one response, capped at 200 rows.
+Paged like every list endpoint: capped at 100 rows however large `limit` is, and a caller reading past the first page follows the `cursor` in the `Link: rel="next"` header. `total` is the whole history, not the page.
+
+**Query parameters:**
+| Name | Type | Description |
+|------|------|-------------|
+| `limit` | int | Rows per page, clamped to 100. Default 100 |
+| `cursor` | string | Opaque cursor from a previous response's `Link: rel="next"` header |
 
 **Response 200:**
 ```json
@@ -1004,6 +1013,7 @@ Not paginated: an event carries a handful of versions, so the whole history is o
       "edited_by": { "id": "uuid", "username": "kalush" },
       "note": "Coordinates were off by a block.",
       "created_at": "2026-03-18T11:20:00Z",
+      "redacted": false,
       "snapshot": {
         "title": "Strike on depot, Donetsk",
         "event_coords": { "lat": 48.123, "lng": 37.456 },
@@ -1031,14 +1041,15 @@ Not paginated: an event carries a handful of versions, so the whole history is o
 }
 ```
 
-`revision_no` is the version the row **holds**, not the one that replaced it: an event whose `revision_no` is 3 answers with snapshots 2 and 1, and the live row is version 3. `edited_by` is the analyst whose edit superseded that version, `null` once their account is erased. `note` is their optional line about the edit, `null` when they left none. `created_at` is when the edit happened.
+`revision_no` is the version the row **holds**, not the one that replaced it: an event whose `revision_no` is 3 answers with snapshots 2 and 1, and the live row is version 3. `edited_by` is the analyst whose edit superseded that version, `null` once their account is erased. `note` is their optional line about the edit, `null` when they left none. `created_at` is when the edit happened. `redacted` is `true` on a version an admin blanked (see [`POST /admin/events/{id}/revisions/{revision_no}/redact`](#post-admineventsidrevisionsrevision_noredact)); such a row keeps its number, its `created_at` and its `edited_by`, and serves `{}` as its `snapshot` with `note` `null`.
 
 `snapshot` carries the editable fields as they stood. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `proof_media` carries enough to render the snapshot's images. The evidence anchor is absent by design: no edit can move `source_url` or the source media, so the live row is authoritative for both at every version.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 404 | Event not found, soft-deleted, or withheld |
+| 404 | Event not found, soft-deleted, or withheld (an admin still reads a withheld row's history, as they do the row itself) |
+| 422 | Malformed `cursor`, or `limit` below 1 |
 
 ---
 
@@ -1819,6 +1830,24 @@ Set an event's moderation state directly, with no report behind it. The one verb
 | Code | Case |
 |------|------|
 | 404 | `event_not_found`: unknown or soft-deleted event |
+
+Rate-limited to 60/hour.
+
+### `POST /admin/events/{id}/revisions/{revision_no}/redact` 🛡️
+
+Blank one filed version of an event's history. [`event_revisions`](data-model.md#event_revisions) is append-only and a version number is a public address, so a version carrying material the record must stop serving is blanked rather than removed: `snapshot` becomes `{}` and `note` becomes `null`, while the row, its `revision_no`, its `created_at` and its `edited_by` stay. [`GET /events/{id}/revisions`](#get-eventsidrevisions) keeps listing it with `redacted: true`, so `/vN` addressing never shifts and the history still shows that a version existed.
+
+A redacted version displays nothing, so it stops holding proof images alive: an image no readable version and no current proof body points at is deleted with the redaction, row and object. Audited via `admin_events` (`action = "event_revision_redacted"`).
+
+Idempotent: redacting an already-redacted version returns it unchanged and appends no audit row.
+
+**Response 200:** one revision, same shape as an item of [`GET /events/{id}/revisions`](#get-eventsidrevisions), with `redacted: true`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | Not an admin (the event's owner included: redaction is moderation, not an owner action) |
+| 404 | `geolocation_not_found`: unknown or soft-deleted event. `revision_not_found`: the event carries no version under that number |
 
 Rate-limited to 60/hour.
 

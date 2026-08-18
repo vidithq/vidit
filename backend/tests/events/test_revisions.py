@@ -17,9 +17,13 @@ from __future__ import annotations
 import json
 import threading
 import uuid
+from datetime import UTC, datetime
+from urllib.parse import parse_qs, urlparse
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app.config import settings
 from app.main import app
 from app.models.event import (
     STATUS_CLOSED,
@@ -30,6 +34,8 @@ from app.models.event import (
     EventRevision,
 )
 from app.models.media import Media
+from app.models.user import User
+from app.services.auth import hash_password
 from tests.conftest import login_as
 from tests.events._helpers import (
     _make_geo,
@@ -37,6 +43,24 @@ from tests.events._helpers import (
     proof_file_part,
     proof_form_field,
 )
+
+
+@pytest.fixture
+def admin_user(db):
+    user = User(
+        username=f"adm{uuid.uuid4().hex[:8]}",
+        email=f"adm-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("password123"),
+        is_admin=True,
+    )
+    db.add(user)
+    db.commit()
+    user_id = user.id
+    yield user
+    db.expire_all()
+    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+    db.commit()
+
 
 # A stored proof image, on the dev media host the sanitiser admits, so a proof
 # body can reference an already-uploaded URL the way an edit form does.
@@ -333,3 +357,270 @@ def test_concurrent_revisions_take_their_number_in_order(db, author, conflict, c
         .order_by(EventRevision.revision_no)
     ]
     assert numbers == [1, 2]
+
+
+# ── Optional source post time ─────────────────────────────────────────────
+
+
+def test_revise_accepts_a_row_with_no_source_post_time(db, author, conflict, capture_source_tag):
+    """A detection published without a resolved source post time is editable.
+
+    ``_publish_detection`` puts such a row on the map with ``source_posted_at``
+    NULL, so the correction path has to accept the same shape rather than force
+    its owner to invent an instant.
+    """
+    geo = _published(db, author, conflict, capture_source_tag)
+    geo.source_posted_at = None
+    db.commit()
+
+    form = _form(conflict, capture_source_tag)
+    del form["source_posted_at"]
+    response = _revise(geo.id, author, data=form)
+    assert response.status_code == 200, response.text
+    assert response.json()["source_posted_at"] is None
+    assert response.json()["revision_no"] == 2
+
+    db.expire_all()
+    assert db.get(Event, geo.id).source_posted_at is None
+    # An empty string reads the same as an absent field.
+    assert (
+        _revise(
+            geo.id, author, data=_form(conflict, capture_source_tag, source_posted_at="")
+        ).status_code
+        == 200
+    )
+    db.expire_all()
+    assert db.get(Event, geo.id).source_posted_at is None
+
+
+# ── What a snapshot claims, and what that keeps alive ─────────────────────
+
+
+def test_snapshot_lists_only_the_images_that_version_displayed(
+    db, author, conflict, capture_source_tag
+):
+    """``proof_media`` is the version's own body, not every proof row on the row.
+
+    Version 1 shows the stored image; version 2 replaces it with a fresh upload
+    and keeps the first row alive for version 1. Version 2's snapshot must
+    therefore claim the new image alone: claiming the old one too would both
+    misreport what that version showed and pin the image past the last version
+    that displayed it.
+    """
+    geo = _published(db, author, conflict, capture_source_tag)
+    assert (
+        _revise(
+            geo.id,
+            author,
+            data=_form(conflict, capture_source_tag, proof=proof_form_field()),
+            files=[proof_file_part()],
+        ).status_code
+        == 200
+    )
+    # A second edit that changes nothing about the images files version 2.
+    assert (
+        _revise(geo.id, author, data=_form(conflict, capture_source_tag, title="v3")).status_code
+        == 200
+    )
+
+    db.expire_all()
+    rows = {
+        r.revision_no: r for r in db.query(EventRevision).filter(EventRevision.event_id == geo.id)
+    }
+    assert [m["storage_url"] for m in rows[1].snapshot["proof_media"]] == [STORED_PROOF_URL]
+    # Version 2 displayed the uploaded image only, even though the row still
+    # carries the first one for version 1's sake.
+    v2_urls = [m["storage_url"] for m in rows[2].snapshot["proof_media"]]
+    assert STORED_PROOF_URL not in v2_urls
+    assert len(v2_urls) == 1
+    # Both rows are still there: version 1 displays one, version 2 the other.
+    assert db.query(Media).filter(Media.event_id == geo.id, Media.role == "proof").count() == 2
+
+
+def test_proof_image_cap_counts_the_rows_the_write_keeps(
+    db, author, conflict, capture_source_tag, monkeypatch
+):
+    """The ceiling is on the event's footprint, not on one request.
+
+    One kept proof row plus one upload is two images on a one-image cap, so the
+    write is refused before anything reaches S3. Counting the batch alone would
+    have let the event grow past the ceiling one upload at a time.
+    """
+    monkeypatch.setattr(settings, "max_proof_images_per_event", 1)
+    geo = _published(db, author, conflict, capture_source_tag)
+
+    doc = _proof_doc(STORED_PROOF_URL)
+    doc["content"].append({"type": "image", "attrs": {"src": "placeholder://proof-1.jpg"}})
+    response = _revise(
+        geo.id,
+        author,
+        data=_form(conflict, capture_source_tag, proof=json.dumps(doc)),
+        files=[proof_file_part()],
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"]["code"] == "too_many_files"
+
+    db.expire_all()
+    assert db.get(Event, geo.id).revision_no == 1
+    assert db.query(Media).filter(Media.event_id == geo.id, Media.role == "proof").count() == 1
+
+
+# ── Reading the history ───────────────────────────────────────────────────
+
+
+def test_revisions_read_is_paged(db, author, conflict, capture_source_tag):
+    """A long history walks the shared cursor, and ``total`` stays the whole set."""
+    geo = _published(db, author, conflict, capture_source_tag, title="v1")
+    for title in ("v2", "v3", "v4"):
+        assert (
+            _revise(
+                geo.id, author, data=_form(conflict, capture_source_tag, title=title)
+            ).status_code
+            == 200
+        )
+
+    first = client.get(f"/api/v1/events/{geo.id}/revisions?limit=2")
+    assert first.status_code == 200, first.text
+    body = first.json()
+    assert body["total"] == 3
+    assert [item["revision_no"] for item in body["items"]] == [3, 2]
+
+    link = first.headers["Link"]
+    assert link.endswith('; rel="next"')
+    cursor = parse_qs(urlparse(link[1 : link.index(">")]).query)["cursor"][0]
+
+    second = client.get(f"/api/v1/events/{geo.id}/revisions?limit=2&cursor={cursor}")
+    assert second.status_code == 200, second.text
+    assert [item["revision_no"] for item in second.json()["items"]] == [1]
+    # The last page names no next one.
+    assert "Link" not in second.headers
+
+
+def test_revisions_read_serves_a_withheld_row_to_an_admin_only(
+    db, author, admin_user, conflict, capture_source_tag
+):
+    """A takedown hides the history from everyone but an admin, who has to read
+    what was taken down in order to judge the report that took it down."""
+    geo = _published(db, author, conflict, capture_source_tag)
+    assert _revise(geo.id, author, data=_form(conflict, capture_source_tag)).status_code == 200
+    geo.hidden_at = datetime.now(UTC)
+    db.commit()
+
+    assert client.get(f"/api/v1/events/{geo.id}/revisions").status_code == 404
+    assert (
+        client.get(
+            f"/api/v1/events/{geo.id}/revisions", headers=login_as(client, author)
+        ).status_code
+        == 404
+    )
+    response = client.get(
+        f"/api/v1/events/{geo.id}/revisions", headers=login_as(client, admin_user)
+    )
+    assert response.status_code == 200, response.text
+    assert [item["revision_no"] for item in response.json()["items"]] == [1]
+
+
+# ── Redaction ─────────────────────────────────────────────────────────────
+
+
+def _redact(geo_id, revision_no, user):
+    return client.post(
+        f"/api/v1/admin/events/{geo_id}/revisions/{revision_no}/redact",
+        headers=login_as(client, user),
+    )
+
+
+def test_redact_is_admin_only(db, author, conflict, capture_source_tag):
+    """The owner cannot blank their own history; only an admin can."""
+    geo = _published(db, author, conflict, capture_source_tag)
+    assert _revise(geo.id, author, data=_form(conflict, capture_source_tag)).status_code == 200
+
+    assert _redact(geo.id, 1, author).status_code == 403
+    db.expire_all()
+    row = db.query(EventRevision).filter(EventRevision.event_id == geo.id).one()
+    assert row.redacted_at is None
+    assert row.snapshot != {}
+
+
+def test_redact_blanks_the_version_and_keeps_its_number(
+    db, author, admin_user, conflict, capture_source_tag
+):
+    """The content goes, the row and its address stay, and a second call is a
+    no-op rather than a second redaction."""
+    geo = _published(db, author, conflict, capture_source_tag, title="v1 title")
+    assert (
+        _revise(geo.id, author, data=_form(conflict, capture_source_tag, note="why")).status_code
+        == 200
+    )
+
+    response = _redact(geo.id, 1, admin_user)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["redacted"] is True
+    assert body["revision_no"] == 1
+    assert body["snapshot"] == {}
+    assert body["note"] is None
+    assert body["edited_by"]["username"] == author.username
+
+    db.expire_all()
+    row = db.query(EventRevision).filter(EventRevision.event_id == geo.id).one()
+    first_stamp = row.redacted_at
+    assert first_stamp is not None
+    assert row.redacted_by_id == admin_user.id
+
+    # Idempotent: the second call changes nothing.
+    assert _redact(geo.id, 1, admin_user).status_code == 200
+    db.expire_all()
+    assert db.query(EventRevision).filter(EventRevision.event_id == geo.id).one().redacted_at == (
+        first_stamp
+    )
+
+    # The history still lists the version, marked, so ``/vN`` never shifts.
+    listing = client.get(f"/api/v1/events/{geo.id}/revisions").json()
+    assert listing["total"] == 1
+    assert listing["items"][0]["revision_no"] == 1
+    assert listing["items"][0]["redacted"] is True
+    assert listing["items"][0]["snapshot"] == {}
+
+
+def test_redact_frees_the_image_only_that_version_displayed(
+    db, author, admin_user, conflict, capture_source_tag
+):
+    """A redacted version displays nothing, so the media floor stops holding its
+    images: the one no readable version and no current body points at goes."""
+    geo = _published(db, author, conflict, capture_source_tag)
+    # Version 2's body replaces the stored image; version 1's snapshot is the
+    # only thing still pointing at it.
+    assert (
+        _revise(
+            geo.id,
+            author,
+            data=_form(conflict, capture_source_tag, proof=proof_form_field()),
+            files=[proof_file_part()],
+        ).status_code
+        == 200
+    )
+    db.expire_all()
+    proof_urls = {
+        m.storage_url
+        for m in db.query(Media).filter(Media.event_id == geo.id, Media.role == "proof")
+    }
+    assert STORED_PROOF_URL in proof_urls
+    assert len(proof_urls) == 2
+
+    assert _redact(geo.id, 1, admin_user).status_code == 200
+
+    db.expire_all()
+    remaining = db.query(Media).filter(Media.event_id == geo.id, Media.role == "proof").all()
+    assert len(remaining) == 1
+    assert remaining[0].storage_url != STORED_PROOF_URL
+    # The image the current body still shows is untouched.
+    assert remaining[0].storage_url in json.dumps(db.get(Event, geo.id).proof)
+
+
+def test_redact_404s_an_unknown_version_or_event(
+    db, author, admin_user, conflict, capture_source_tag
+):
+    geo = _published(db, author, conflict, capture_source_tag)
+    assert _redact(geo.id, 1, admin_user).status_code == 404
+    assert _redact(uuid.uuid4(), 1, admin_user).status_code == 404

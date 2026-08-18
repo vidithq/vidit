@@ -185,11 +185,13 @@ export function deleteEvent(id: string): Promise<void> {
 /**
  * The generalized fulfil / submit transition: `POST /events/{id}/geolocate`,
  * multipart, mirroring create. Moves a `requested` (request fulfilment) or
- * `detected` event to `geolocated` (frozen); on a `requested` event the backend
- * transfers ownership to the geolocator. The form posts the whole state; the
- * server writes it atomically. New media ride in `files`; existing media are
- * dropped via `remove_media_ids`. Only `detected_from_url` (the provenance
- * anchor) and `status` carry no field.
+ * `detected` event to `geolocated`, which publishes it: the event becomes the
+ * vouched record, its evidence anchor is fixed, and every later change is a new
+ * version through `reviseEvent`. On a `requested` event the backend transfers
+ * ownership to the geolocator. The form posts the whole state; the server
+ * writes it atomically. New media ride in `files`; existing media are dropped
+ * via `remove_media_ids`. Only `detected_from_url` (the provenance anchor) and
+ * `status` carry no field.
  */
 export interface EventEditInput {
   title: string;
@@ -353,8 +355,9 @@ export const EDIT_NOTE_MAX_LEN = 280;
  * Correcting a published event: the geolocate form minus the evidence anchor.
  * `source_url`, the source media (`files`) and `remove_media_ids` are absent
  * because the endpoint declares none of them: past publication the anchor is
- * what the claim rests on, and a wrong source is handled by closing the event
- * and posting it again. Everything else stays editable and is versioned.
+ * what the claim rests on, and a wrong source on a published event is an admin
+ * matter (`close` rejects a `geolocated` row, so its owner has no path to it).
+ * Everything else stays editable and is versioned.
  */
 export type EventReviseInput = Omit<
   EventEditInput,
@@ -770,6 +773,13 @@ export interface EventFieldsOptions {
   requireMedia?: boolean;
   /** Require the conflict + capture-source tag floor. Default true. */
   requireTags?: boolean;
+  /** Require the source post time. Default true, which is what publishing
+   *  asks for (`POST /events/{id}/geolocate` declares the field required).
+   *  False on a revision: a detection whose source post time was never
+   *  resolved publishes through the batch completion with the column NULL, and
+   *  `POST /events/{id}/revise` takes the field as optional to match, so
+   *  flagging it here would block an edit the server accepts. */
+  requireSourcePostedAt?: boolean;
 }
 
 /**
@@ -784,7 +794,11 @@ export interface EventFieldsOptions {
  */
 export function missingEventFields(
   s: EventFieldsState,
-  { requireMedia = true, requireTags = true }: EventFieldsOptions = {}
+  {
+    requireMedia = true,
+    requireTags = true,
+    requireSourcePostedAt = true,
+  }: EventFieldsOptions = {}
 ): MissingField[] {
   // Same strict parse as the camera point (`cleanNumber`): a partially numeric
   // coordinate (`"48.85abc"`) reads as missing rather than silently truncating
@@ -797,7 +811,7 @@ export function missingEventFields(
   if (!s.title.trim()) missing.push({ key: "title", label: FIELD_LABELS.title });
   if (!coordsValid) missing.push({ key: "coordinates", label: FIELD_LABELS.coordinates });
   if (!s.sourceUrl.trim()) missing.push({ key: "source_url", label: FIELD_LABELS.source_url });
-  if (!s.sourcePostedAt) {
+  if (requireSourcePostedAt && !s.sourcePostedAt) {
     missing.push({ key: "source_posted_at", label: FIELD_LABELS.source_posted_at });
   }
   // Proof must exist *and* contain an image. "Proof" (none at all) and "Proof

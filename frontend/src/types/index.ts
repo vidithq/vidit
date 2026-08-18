@@ -45,8 +45,8 @@ export type Conflict = components["schemas"]["ConflictRead"];
  *  geolocate, the requested/request view) → ``detected`` (machine output,
  *  rendered marked everywhere until its owner submits it) → ``geolocated`` (a
  *  person vouched for it: via the form, or by submitting a reviewed detection;
- *  not an independent-verification claim, frozen) → ``closed`` (a withdrawn
- *  request). */
+ *  not an independent-verification claim; corrected from there on as new
+ *  versions) → ``closed`` (a withdrawn request). */
 export type EventStatus = components["schemas"]["EventRead"]["status"];
 
 /** Which entry produced a machine detection: the bot, a pasted URL, or an archive

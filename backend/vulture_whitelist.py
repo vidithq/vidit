@@ -84,6 +84,11 @@ period  # schemas/user.py ActivityBucket (wire field)
 finished_at  # models/archive_import_job.py + schemas/event.py ArchiveImportJobRead: written by the worker, read on the wire only
 progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
+redacted  # schemas/event.py EventRevisionRead (wire field, built in routers/events/_common.py)
+# Written by ``services/revisions.redact``, read by nothing in ``app/``: the
+# column is the row-level record of who redacted a version, and the readable
+# trail is the ``admin_events`` row the same write files.
+redacted_by_id  # models/event.py EventRevision
 
 # ── Test-only helper ──────────────────────────────────────────────────────────
 # Called from tests/, which the gate does not scan, so it reads as unused here.

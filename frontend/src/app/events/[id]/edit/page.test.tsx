@@ -208,7 +208,7 @@ describe("the detection edit surface", () => {
       screen.getByRole("heading", { name: "Submit detection" })
     ).toBeInTheDocument();
     // No description line under the title: the fields say what they are.
-    expect(screen.queryByText(/Submitting freezes the row/)).toBeNull();
+    expect(screen.queryByText(/Submitting publishes the event/)).toBeNull();
     // The flow action stands alone at the foot: no Cancel, and no Reject
     // beside it.
     const submit = screen.getByRole("button", { name: "Submit" });
@@ -356,7 +356,7 @@ describe("the submit confirm", () => {
     // A live region beside the button, not a renamed control: the reader hears
     // the state and what it costs, in the shape `<CopyButton>` already uses.
     const announcement = screen.getByText(
-      "Click again to submit. Submitting freezes the event."
+      "Click again to submit. Submitting publishes the event; later changes become versions."
     );
     expect(announcement).toHaveAttribute("role", "status");
     expect(announcement).toHaveAttribute("aria-live", "polite");
@@ -373,7 +373,9 @@ describe("the submit confirm", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(button).toHaveAccessibleName("Submit");
     expect(
-      screen.queryByText("Click again to submit. Submitting freezes the event.")
+      screen.queryByText(
+        "Click again to submit. Submitting publishes the event; later changes become versions."
+      )
     ).toBeNull();
   });
 
@@ -440,7 +442,8 @@ describe("revising a published geolocation", () => {
   it("saves on the click that made it, then lands on the event", async () => {
     render(<EditEventPage />);
 
-    // No arming step: a revision adds a version, it freezes nothing.
+    // No arming step: a revision adds a version, which is the ordinary way a
+    // published event changes.
     fireEvent.click(screen.getByRole("button", { name: "Save revision" }));
     await waitFor(() => expect(reviseMock).toHaveBeenCalledTimes(1));
     expect(geolocateMock).not.toHaveBeenCalled();

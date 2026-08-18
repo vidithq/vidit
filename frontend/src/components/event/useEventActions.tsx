@@ -31,9 +31,12 @@ import type { EventDetail } from "@/types";
  * 2. **The flow action**, at most one, filled: what this surface exists to move
  *    forward. Only an open request carries one (geolocate it).
  * 3. **Owner management**, behind one `⋯` `<OverflowMenu>`: the controls only
- *    the author holds. The request page carries closing and deleting it; the
- *    event page carries editing a published geolocation, which files a revision
- *    rather than overwriting the record.
+ *    the author holds, and each surface carries only its own. The request page
+ *    carries closing and deleting the request; the event page carries editing a
+ *    published geolocation, which files a revision rather than overwriting the
+ *    record. The two do not cross: `/events/{id}` serves a row of any status,
+ *    so an unscoped owner tier put "Close this request" on the page for a row
+ *    that is not a request at all.
  *
  * The hook returns nodes rather than rendering them, the shape `useReportEvent`
  * already uses, because the row and the panels its triggers open land in two
@@ -46,16 +49,26 @@ import type { EventDetail } from "@/types";
 /** Which surface is asking, which is what selects the tiers. */
 export type ActionSurface = "event" | "request" | "panel" | "edit";
 
-// The grammar itself. Utilities are unconditional, so only the two gated tiers
-// are listed: a surface with neither (the map panel, the detection confirmation
-// form, whose own flow action is the form's bottom submit) renders the
-// utilities alone. The event page has no flow action (a published geolocation
-// is finished work) but does carry owner management: its author corrects it.
-const TIERS: Record<ActionSurface, { flow: boolean; owner: boolean }> = {
-  event: { flow: false, owner: true },
-  request: { flow: true, owner: true },
-  panel: { flow: false, owner: false },
-  edit: { flow: false, owner: false },
+// The grammar itself. Utilities are unconditional, so only the gated tiers are
+// listed: a surface with none (the map panel, the detection confirmation form,
+// whose own flow action is the form's bottom submit) renders the utilities
+// alone. The event page has no flow action (a published geolocation is finished
+// work) but does carry the correction its author makes.
+//
+// Owner management is two entries, not one, because the surfaces claim
+// different halves of it: `revise` is correcting a published geolocation, which
+// only the event page offers, and `dispose` is withdrawing or deleting a
+// request, which only the request page offers. Each surface serves rows of
+// several statuses, so the split is what keeps a request's verbs off the event
+// page and back.
+const TIERS: Record<
+  ActionSurface,
+  { flow: boolean; revise: boolean; dispose: boolean }
+> = {
+  event: { flow: false, revise: true, dispose: false },
+  request: { flow: true, revise: false, dispose: true },
+  panel: { flow: false, revise: false, dispose: false },
+  edit: { flow: false, revise: false, dispose: false },
 };
 
 // Ties the menu entry to the panel it opens two levels down the tree, which
@@ -132,12 +145,12 @@ export function useEventActions({
     await deleteMutation.run();
   };
 
-  // Tier 3. Per state: the author edits a published geolocation, closes a
-  // request only while it is open, and deletes one that is open or already
-  // closed.
+  // Tier 3. Per surface, then per state: the author corrects a published
+  // geolocation on the event page, and on the request page closes a request
+  // only while it is open and deletes one that is open or already closed.
   const ownerItems: OverflowMenuItem[] = [];
-  if (tiers.owner && isAuthor) {
-    if (event.status === "geolocated") {
+  if (isAuthor) {
+    if (tiers.revise && event.status === "geolocated") {
       ownerItems.push({
         // "Edit" alone would read as an in-place rewrite. The record is
         // corrected by adding a version, and the entry says so.
@@ -146,7 +159,7 @@ export function useEventActions({
         disabled: pending,
       });
     }
-    if (isOpenRequest) {
+    if (tiers.dispose && isOpenRequest) {
       ownerItems.push({
         label: "Close this request",
         onClick: () => setClosing(true),
@@ -154,7 +167,7 @@ export function useEventActions({
         disabled: pending,
       });
     }
-    if (isOpenRequest || event.status === "closed") {
+    if (tiers.dispose && (isOpenRequest || event.status === "closed")) {
       ownerItems.push({
         label: "Delete this request",
         onClick: () => void handleDelete(),

@@ -1,20 +1,27 @@
-"""Version history for a published event: snapshot, read, and the media floor.
+"""Version history for a published event: snapshot, read, redact, media floor.
 
-``services/events.revise`` is the only writer. Before an edit touches the live
-row it calls :func:`snapshot`, which files the state the row carried up to that
-moment as an append-only ``event_revisions`` entry; the live row then takes the
-next ``revision_no``. History is therefore "the snapshots, then the current
-row", and the publication paths (``create_with_evidence``, ``geolocate``,
-``_publish_detection``) write no revision at all: version 1 is the published
-row itself.
+``services/events.revise`` is the only writer of new versions. Before an edit
+touches the live row it calls :func:`snapshot`, which files the state the row
+carried up to that moment as an append-only ``event_revisions`` entry; the live
+row then takes the next ``revision_no``. History is therefore "the snapshots,
+then the current row", and the publication paths (``create_with_evidence``,
+``geolocate``, ``_publish_detection``) write no revision at all: version 1 is
+the published row itself.
 
 :func:`referenced_media_urls` is the floor that keeps a snapshot renderable.
 Media files are not versioned, so the shared intake asks here before it drops a
 proof-media row whose image the current proof body no longer references: a row
-some snapshot points at stays, object included.
+some snapshot displayed stays, object included. A snapshot carries the images
+its own proof body referenced, nothing else, so an image no version ever
+displayed is not held alive by the history.
 
-This module depends on the models alone, so ``evidence_intake`` can read the
-floor without importing the event service that calls it.
+:func:`redact` is the one write a filed row takes: an admin blanks its content
+while the row and its number stay. A redacted snapshot contributes nothing to
+the floor above, so an image only it pointed at becomes deletable.
+
+Reads are paginated through the shared cursor vocabulary
+(``services/pagination``), so a long history walks the same way every other
+list does.
 """
 
 from __future__ import annotations
@@ -22,6 +29,7 @@ from __future__ import annotations
 import copy
 import json
 import uuid
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from geoalchemy2.shape import to_shape
@@ -30,11 +38,8 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models.event import Event, EventRevision
 from app.models.user import User
-
-# Largest history one read serves. An event accumulates a handful of versions
-# over its life, so the whole list fits one response and there is no cursor;
-# the cap is the defensive ceiling on a row that somehow grew pathological.
-MAX_REVISIONS = 200
+from app.services.pagination import keyset_before
+from app.services.sanitize import extract_image_srcs
 
 
 def _point(value: Any) -> dict[str, float] | None:
@@ -59,10 +64,15 @@ def build_snapshot(geo: Event) -> dict[str, Any]:
     it, and the live row is authoritative for it at every version.
 
     Tags and conflicts carry their names alongside their ids so a version stays
-    readable after a referential row is renamed or deleted. Proof media carry
-    enough to render the snapshot's images without a second read. ``proof`` is
+    readable after a referential row is renamed or deleted. ``proof`` is
     deep-copied so the stored document cannot alias the live row's JSONB.
+
+    ``proof_media`` carries the images THIS version's proof body references,
+    not every ``proof`` row the event holds: a row kept alive for an older
+    version is not part of this one, and claiming it here would both misreport
+    the version and pin the image forever.
     """
+    displayed = set(extract_image_srcs(geo.proof))
     return {
         "title": geo.title,
         "event_coords": _point(geo.event_coords),
@@ -85,7 +95,7 @@ def build_snapshot(geo: Event) -> dict[str, Any]:
                 "original_filename": m.original_filename,
             }
             for m in geo.media
-            if m.role == "proof"
+            if m.role == "proof" and m.storage_url in displayed
         ],
     }
 
@@ -109,16 +119,21 @@ def snapshot(db: Session, *, geo: Event, edited_by: User, note: str | None) -> E
 
 
 def referenced_media_urls(db: Session, event_id: uuid.UUID) -> set[str]:
-    """Every proof-image URL this event's snapshots point at.
+    """Every proof-image URL this event's readable snapshots display.
 
     The one query behind the media floor: a ``media`` row whose URL is in this
     set survives its removal from the current proof body, so a past version
     still renders. Reads only the ``proof_media`` fragment of each snapshot, not
     the proof documents.
+
+    Redacted versions are skipped. Their content is gone by design, so nothing
+    renders them and an image they alone pointed at is free to be deleted.
     """
     urls: set[str] = set()
-    for (fragment,) in db.query(EventRevision.snapshot["proof_media"]).filter(
-        EventRevision.event_id == event_id
+    for (fragment,) in (
+        db.query(EventRevision.snapshot["proof_media"])
+        .filter(EventRevision.event_id == event_id)
+        .filter(EventRevision.redacted_at.is_(None))
     ):
         # The driver normally hands back decoded JSON; a text round-trip is
         # decoded here so the floor can never silently read as "nothing is
@@ -134,18 +149,78 @@ def referenced_media_urls(db: Session, event_id: uuid.UUID) -> set[str]:
     return urls
 
 
-def list_revisions(db: Session, event_id: uuid.UUID) -> list[EventRevision]:
-    """The event's superseded versions, newest first.
+def count_revisions(db: Session, event_id: uuid.UUID) -> int:
+    """How many superseded versions the event carries, redacted rows included.
 
-    Newest first for the same reason every other list here is: the edit a reader
-    is asking about is almost always the last one. The editor is eager-loaded,
-    since the history renders one byline per row.
+    A redacted version keeps its number and its place in the list, so it counts
+    here exactly as any other: the total says how many versions preceded the
+    live row, which is a fact redaction does not change.
+    """
+    return db.query(EventRevision).filter(EventRevision.event_id == event_id).count()
+
+
+def list_revisions(
+    db: Session,
+    event_id: uuid.UUID,
+    *,
+    limit: int,
+    cursor: tuple[datetime, uuid.UUID] | None = None,
+) -> list[EventRevision]:
+    """One page of the event's superseded versions, newest first.
+
+    Over-fetches by one row, so the caller can tell whether a next page exists
+    (``services/pagination.take_page``) without a second query.
+
+    Ordered by ``created_at DESC, id DESC``, the shared keyset the cursor
+    encodes. On an append-only per-event history that IS ``revision_no``
+    descending: every version is filed under the event's row lock, so a higher
+    number is always a later timestamp. The editor is eager-loaded, since the
+    history renders one byline per row.
+    """
+    query = (
+        db.query(EventRevision)
+        .options(joinedload(EventRevision.edited_by))
+        .filter(EventRevision.event_id == event_id)
+    )
+    if cursor is not None:
+        query = query.filter(keyset_before(EventRevision.created_at, EventRevision.id, cursor))
+    return (
+        query.order_by(EventRevision.created_at.desc(), EventRevision.id.desc())
+        .limit(limit + 1)
+        .all()
+    )
+
+
+def get_revision(db: Session, *, event_id: uuid.UUID, revision_no: int) -> EventRevision | None:
+    """One version of one event by its number, or ``None``.
+
+    Reads on the unique ``(event_id, revision_no)`` pair, which is the address
+    ``/vN`` names.
     """
     return (
         db.query(EventRevision)
         .options(joinedload(EventRevision.edited_by))
-        .filter(EventRevision.event_id == event_id)
-        .order_by(EventRevision.revision_no.desc())
-        .limit(MAX_REVISIONS)
-        .all()
+        .filter(EventRevision.event_id == event_id, EventRevision.revision_no == revision_no)
+        .first()
     )
+
+
+def redact(db: Session, *, revision: EventRevision, actor_id: uuid.UUID) -> bool:
+    """Blank one filed version's content, keeping its number and its byline.
+
+    The snapshot and the editor's note go; ``revision_no``, ``created_at`` and
+    ``edited_by`` stay, so the history still shows that a version existed, who
+    superseded it and when, and ``/vN`` addressing never shifts.
+
+    Staged, not committed: the caller owns the transaction, which is also where
+    the images this version alone displayed are swept. Idempotent, and says so:
+    returns ``True`` when this call redacted the row, ``False`` when it was
+    already redacted and nothing changed.
+    """
+    if revision.redacted_at is not None:
+        return False
+    revision.redacted_at = datetime.now(UTC)
+    revision.redacted_by_id = actor_id
+    revision.snapshot = {}
+    revision.note = None
+    return True

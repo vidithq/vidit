@@ -154,7 +154,8 @@ def build_revision_read(row: EventRevision) -> EventRevisionRead:
     """Assemble one superseded version's wire shape.
 
     The snapshot travels as stored, so a version reads back exactly as it was
-    filed. A soft-deleted editor is dropped for the same reason
+    filed, and a redacted one reads back blank because that is what redaction
+    wrote. A soft-deleted editor is dropped for the same reason
     :func:`build_event_read` drops a soft-deleted requester or geolocator: a
     banned account must not surface as the byline of a still-live event.
     """
@@ -166,6 +167,7 @@ def build_revision_read(row: EventRevision) -> EventRevisionRead:
         note=row.note,
         created_at=row.created_at,
         snapshot=row.snapshot,
+        redacted=row.redacted_at is not None,
     )
 
 

@@ -10,7 +10,9 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     Request,
+    Response,
     UploadFile,
     status,
 )
@@ -33,6 +35,7 @@ from app.routers._forms import (
     parse_iso_datetime,
     parse_json_id_list,
     parse_optional_iso_date,
+    parse_optional_iso_datetime,
     parse_optional_iso_time,
     parse_optional_json_object,
 )
@@ -56,6 +59,13 @@ from app.services import permissions
 from app.services import reports as reports_service
 from app.services import revisions as revisions_service
 from app.services.evidence_intake import EvidenceIntakeError, collect_media_keys
+from app.services.pagination import (
+    MAX_PAGE_SIZE,
+    decode_cursor,
+    next_link,
+    page_size,
+    take_page,
+)
 from app.services.source_archive import SnapshotRejected
 from app.services.storage import (
     sweep_keys,
@@ -263,8 +273,9 @@ async def geolocate_event(
     form (title, coordinates, source URL, dates, the graphic-content flag,
     proof + its images, tags, and the source media: ``files`` added,
     ``remove_media_ids`` dropped), and on
-    success the row is written and frozen as ``geolocated``, with the caller
-    credited as a geolocator. Only ``detected_from_url`` (provenance) and
+    success the row is written and published as ``geolocated``, with the caller
+    credited as a geolocator; from there it is corrected through ``revise``,
+    which files each superseded version. Only ``detected_from_url`` (provenance) and
     ``status`` carry no field. A detection is owner-only (403
     otherwise); a ``requested`` event is answerable by anyone, and the
     fulfiller becomes its owner (``requested_by`` keeps the original poster).
@@ -346,7 +357,10 @@ async def revise_event(
     secondary_source_urls: list[SecondarySourceUrl] = Form([]),
     event_date: str | None = Form(None),
     event_time: str | None = Form(None),
-    source_posted_at: str = Form(...),
+    # Optional, unlike on geolocate: a detection whose source post time was
+    # never resolved publishes with the column NULL, so an edit of that row must
+    # be able to leave it NULL. Absent or empty keeps NULL, a value parses.
+    source_posted_at: str | None = Form(None),
     proof: str | None = Form(None),
     tag_ids: str | None = Form(None),
     conflict_ids: str | None = Form(None),
@@ -370,16 +384,19 @@ async def revise_event(
     ``revision_no``, in one transaction under a row lock.
 
     The evidence anchor is immutable: ``source_url`` and the source media take
-    no field, and a wrong source is handled by ``POST /events/{id}/close`` plus
-    a fresh submission, or by an admin. Everything else the publish form wrote
-    is editable and versioned, the secondary source links included. The
-    published evidence floor is re-checked on the post-edit state, so a revision
-    cannot drop the row below it. Soft-deleted rows read as 404.
+    no field. A published row is past ``POST /events/{id}/close``, so a wrong
+    source on one is an admin matter rather than an owner action. Everything
+    else the publish form wrote is editable and versioned, the secondary source
+    links included. The published evidence floor is re-checked on the post-edit
+    state, so a revision cannot drop the row below it. Soft-deleted rows read as
+    404.
     """
     proof_files = proof_files or []
     parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
     parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
-    parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
+    parsed_source_posted_at = parse_optional_iso_datetime(
+        source_posted_at, field="source_posted_at"
+    )
     proof_data = parse_optional_json_object(proof, field="proof")
     parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids", as_uuid=True)
     parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
@@ -421,20 +438,49 @@ async def revise_event(
 @limiter.limit("120/minute")
 def list_event_revisions(
     request: Request,
+    response: Response,
     geolocation_id: uuid.UUID,
+    limit: int = Query(MAX_PAGE_SIZE, ge=1),
+    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ):
     """The event's superseded versions, newest first.
 
     Public, like the event itself: a corrected record is only auditable if the
     corrections are readable. The live row is the current version and is not
     listed here, so an event nobody has revised answers with an empty list.
-    Soft-deleted and withheld rows read as 404, as they do everywhere else.
+    Soft-deleted rows read as 404; a withheld row does too for everyone but an
+    admin, who still needs to read what was taken down in order to judge the
+    report that took it down (the same branch ``GET /{id}`` takes).
+
+    Paged like every other list: capped at 100 rows however large ``limit`` is,
+    and a caller reading past the first page follows the ``cursor`` in the
+    ``Link: rel="next"`` header. ``total`` is the whole history, not the page.
     """
-    geo = resolve_live_event(db, geolocation_id)
-    rows = revisions_service.list_revisions(db, geo.id)
-    items = [build_revision_read(row) for row in rows]
-    return EventRevisionList(items=items, total=len(items))
+    admin_read = current_user is not None and current_user.is_admin
+    query = db.query(Event).filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
+    if not admin_read:
+        query = query.filter(Event.hidden_at.is_(None))
+    geo = query.first()
+    if geo is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    size = page_size(limit)
+    window = revisions_service.list_revisions(
+        db,
+        geo.id,
+        limit=size,
+        cursor=decode_cursor(cursor) if cursor is not None else None,
+    )
+    rows, has_next = take_page(window, size)
+    if has_next:
+        last = rows[-1]
+        response.headers["Link"] = next_link(request, last.created_at, last.id)
+    return EventRevisionList(
+        items=[build_revision_read(row) for row in rows],
+        total=revisions_service.count_revisions(db, geo.id),
+    )
 
 
 @router.post("/{geolocation_id}/close", response_model=EventRead)

@@ -74,6 +74,38 @@ export interface paths {
         patch: operations["set_event_moderation_api_v1_admin_events__geolocation_id__moderation_patch"];
         trace?: never;
     };
+    "/api/v1/admin/events/{geolocation_id}/revisions/{revision_no}/redact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redact Event Revision
+         * @description Blank one filed version of an event's history.
+         *
+         *     ``event_revisions`` is append-only and a version number is a public
+         *     address, so a version whose content the record must stop serving is blanked
+         *     rather than removed: the snapshot and the note go, the row, its
+         *     ``revision_no`` and its ``created_at`` stay, and
+         *     [`GET /events/{id}/revisions`] still lists it, marked ``redacted``. A
+         *     redacted version displays no images, so a proof image only it pointed at is
+         *     deleted with it.
+         *
+         *     Idempotent: redacting an already-redacted version changes nothing and
+         *     writes no audit row. 404 for an unknown or soft-deleted event, and for a
+         *     version the event does not carry.
+         */
+        post: operations["redact_event_revision_api_v1_admin_events__geolocation_id__revisions__revision_no__redact_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/invite-codes": {
         parameters: {
             query?: never;
@@ -1018,8 +1050,9 @@ export interface paths {
          *     form (title, coordinates, source URL, dates, the graphic-content flag,
          *     proof + its images, tags, and the source media: ``files`` added,
          *     ``remove_media_ids`` dropped), and on
-         *     success the row is written and frozen as ``geolocated``, with the caller
-         *     credited as a geolocator. Only ``detected_from_url`` (provenance) and
+         *     success the row is written and published as ``geolocated``, with the caller
+         *     credited as a geolocator; from there it is corrected through ``revise``,
+         *     which files each superseded version. Only ``detected_from_url`` (provenance) and
          *     ``status`` carry no field. A detection is owner-only (403
          *     otherwise); a ``requested`` event is answerable by anyone, and the
          *     fulfiller becomes its owner (``requested_by`` keeps the original poster).
@@ -1087,11 +1120,12 @@ export interface paths {
          *     ``revision_no``, in one transaction under a row lock.
          *
          *     The evidence anchor is immutable: ``source_url`` and the source media take
-         *     no field, and a wrong source is handled by ``POST /events/{id}/close`` plus
-         *     a fresh submission, or by an admin. Everything else the publish form wrote
-         *     is editable and versioned, the secondary source links included. The
-         *     published evidence floor is re-checked on the post-edit state, so a revision
-         *     cannot drop the row below it. Soft-deleted rows read as 404.
+         *     no field. A published row is past ``POST /events/{id}/close``, so a wrong
+         *     source on one is an admin matter rather than an owner action. Everything
+         *     else the publish form wrote is editable and versioned, the secondary source
+         *     links included. The published evidence floor is re-checked on the post-edit
+         *     state, so a revision cannot drop the row below it. Soft-deleted rows read as
+         *     404.
          */
         post: operations["revise_event_api_v1_events__geolocation_id__revise_post"];
         delete?: never;
@@ -1114,7 +1148,13 @@ export interface paths {
          *     Public, like the event itself: a corrected record is only auditable if the
          *     corrections are readable. The live row is the current version and is not
          *     listed here, so an event nobody has revised answers with an empty list.
-         *     Soft-deleted and withheld rows read as 404, as they do everywhere else.
+         *     Soft-deleted rows read as 404; a withheld row does too for everyone but an
+         *     admin, who still needs to read what was taken down in order to judge the
+         *     report that took it down (the same branch ``GET /{id}`` takes).
+         *
+         *     Paged like every other list: capped at 100 rows however large ``limit`` is,
+         *     and a caller reading past the first page follows the ``cursor`` in the
+         *     ``Link: rel="next"`` header. ``total`` is the whole history, not the page.
          */
         get: operations["list_event_revisions_api_v1_events__geolocation_id__revisions_get"];
         put?: never;
@@ -2141,7 +2181,7 @@ export interface components {
              */
             secondary_source_urls: string[];
             /** Source Posted At */
-            source_posted_at: string;
+            source_posted_at?: string | null;
             /** Source Snapshot Url */
             source_snapshot_url?: string | null;
             /** Tag Ids */
@@ -2441,11 +2481,10 @@ export interface components {
         };
         /**
          * EventRevisionList
-         * @description An event's history: every superseded version, newest first.
+         * @description An event's history: the superseded versions, newest first.
          *
-         *     Not paginated: an event carries a handful of versions, so the whole history
-         *     is one response. ``total`` counts the rows served, which is the whole set
-         *     below ``services/revisions.MAX_REVISIONS``.
+         *     Paged like every other list (``Link: rel="next"``, opaque cursor);
+         *     ``total`` is the whole history, not the page.
          */
         EventRevisionList: {
             /** Items */
@@ -2478,6 +2517,8 @@ export interface components {
             id: string;
             /** Note */
             note: string | null;
+            /** Redacted */
+            redacted: boolean;
             /** Revision No */
             revision_no: number;
             /** Snapshot */
@@ -3166,6 +3207,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminEventModerationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redact_event_revision_api_v1_admin_events__geolocation_id__revisions__revision_no__redact_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+                revision_no: number;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRevisionRead"];
                 };
             };
             /** @description Validation Error */
@@ -4566,12 +4641,18 @@ export interface operations {
     };
     list_event_revisions_api_v1_events__geolocation_id__revisions_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor from a Link: rel=next header */
+                cursor?: string | null;
+            };
             header?: never;
             path: {
                 geolocation_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {

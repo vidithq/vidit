@@ -108,8 +108,10 @@ erDiagram
         INTEGER revision_no "the version this row holds"
         UUID edited_by_id FK "nullable, who superseded it"
         TEXT note "nullable, capped at 280 chars by the schema"
-        JSONB snapshot "the editable fields as they stood"
+        JSONB snapshot "the editable fields as they stood, blank once redacted"
         TIMESTAMPTZ created_at "when the edit happened"
+        TIMESTAMPTZ redacted_at "nullable, when an admin blanked it"
+        UUID redacted_by_id FK "nullable, which admin did"
     }
 
     content_reports {
@@ -197,6 +199,7 @@ erDiagram
     events ||--o{ event_source_links : "event_id"
     events ||--o{ event_revisions : "event_id"
     users ||--o{ event_revisions : "edited_by_id"
+    users ||--o{ event_revisions : "redacted_by_id"
     events |o--o{ content_reports : "event_id"
     users ||--o{ content_reports : "reporter_user_id"
     users ||--o{ content_reports : "resolved_by"
@@ -445,6 +448,8 @@ One superseded version of a published event. Correcting a `geolocated` row must 
 
 Read it as "the snapshots, then the live row": an event at `revision_no` 3 carries rows 1 and 2 here, and the live row is version 3. Publication writes nothing here, so version 1 is the published row itself.
 
+Redaction is the one write a filed row takes, and it is still not a delete: an admin blanks `snapshot` and `note` in place and stamps `redacted_at` / `redacted_by_id`, so the row, its number and its byline stay. See [`POST /admin/events/{id}/revisions/{revision_no}/redact`](api.md#post-admineventsidrevisionsrevision_noredact).
+
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
@@ -452,14 +457,16 @@ Read it as "the snapshots, then the live row": an event at `revision_no` 3 carri
 | `revision_no` | `INTEGER` | NOT NULL. The version this row **holds**, not the one that replaced it. |
 | `edited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst whose edit superseded this version. NULL once that account is erased: an event legitimately outlives an editor who is not its owner. |
 | `note` | `TEXT` | nullable. The editor's own words about the edit. Bounded to 280 characters by the schema, not the column, which stays unbounded `TEXT`. |
-| `snapshot` | `JSONB` | NOT NULL. The editable fields as they stood: `title`, `event_coords`, `capture_source_coords`, `event_date`, `event_time`, `source_posted_at`, `is_graphic`, `secondary_source_urls`, `tags`, `conflicts`, `proof`, and `proof_media`. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. The evidence anchor (`source_url` and the `source` media) is absent, because no edit can move it, so the live row is authoritative for it at every version. |
+| `snapshot` | `JSONB` | NOT NULL. The editable fields as they stood: `title`, `event_coords`, `capture_source_coords`, `event_date`, `event_time`, `source_posted_at`, `is_graphic`, `secondary_source_urls`, `tags`, `conflicts`, `proof`, and `proof_media`. `proof_media` carries the images this version's own proof body referenced, not every `proof` row the event holds. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. The evidence anchor (`source_url` and the `source` media) is absent, because no edit can move it, so the live row is authoritative for it at every version. `{}` on a redacted version. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL. When the edit that superseded this version happened. |
+| `redacted_at` | `TIMESTAMPTZ` | nullable. When an admin blanked this version's content. NULL on every ordinary row. |
+| `redacted_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Which admin redacted it. NULL once that account is erased; the readable trail is the `admin_events` row the same write files. |
 
 **Unique constraint:** `uq_event_revisions_event_no` on `(event_id, revision_no)`. The writer takes the number off the locked event row, so a duplicate is a bug Postgres rejects rather than a second history entry for one version.
 
 There is no secondary index: the only read is "this event's history, by version", served by the unique constraint's leading `event_id`.
 
-**Media are not versioned.** A `media` row a snapshot's `proof_media` points at is never hard-deleted while that snapshot exists, so a past version stays renderable after the current proof body drops the image. The shared intake checks this before it deletes a proof row; see `services/revisions.referenced_media_urls`.
+**Media are not versioned.** A `media` row a readable snapshot's `proof_media` points at is never hard-deleted, so a past version stays renderable after the current proof body drops the image. The shared intake checks this before it deletes a proof row; see `services/revisions.referenced_media_urls`. A redacted version displays nothing, so it holds nothing alive: redacting the last version that showed an image deletes that image, row and object.
 
 ---
 
@@ -717,6 +724,9 @@ The table is read from both sides: an event's geolocators, and a user's geolocat
 
 ### Why full snapshots in `event_revisions` and not a per-field change log?
 A version has to be readable on its own: `/events/{id}/v2` renders the whole event as it stood, which a change log answers only by replaying every entry from the beginning. A snapshot answers it with one row, and the fields it stores are exactly the fields an edit can write, so a snapshot plus the live row is a complete history. The cost is bounded, because an event accumulates a handful of versions. What changed between two versions is a diff of adjacent snapshots, computed at read time.
+
+### Why redact a version in place instead of deleting the row?
+A version number is a public address: `/events/{id}/v2` has to keep meaning version 2 forever, and deleting row 2 would either shift every later number or leave a hole the history cannot explain. Blanking keeps the row, its number, its timestamp and its byline, so the record still says a version existed and who superseded it, while the content it carried is gone. It also gives the media floor a clean answer: a version that displays nothing holds no image alive.
 
 ### Why split `author_id` into `owner_id` + `event_geolocators`?
 Edit rights and credit are different facts. `owner_id` is a single mutable permission holder; it moves to the fulfiller on geolocate. `event_geolocators` is the durable, potentially collaborative record of who vouched for the location. Single-author read surfaces, profile, byline, search, stay on `owner_id` until a second-geolocator write path exists, and then re-home onto `event_geolocators`.

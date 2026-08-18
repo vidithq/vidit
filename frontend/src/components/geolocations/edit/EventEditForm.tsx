@@ -61,14 +61,16 @@ const ANCHOR_LOCK_NOTE = (
  * and source media, with new files staged and existing ones marked for removal)
  * and submits it, which applies the form and flips the row to `geolocated` in
  * one atomic multipart request. Only `detected_from_url` (provenance) is
- * immutable, and the write takes a confirm, since submitting freezes the row.
+ * immutable, and the write takes a confirm, since publishing makes the event
+ * public and fixes its source.
  *
  * **Save revision** (a `geolocated` row): the same fields, minus the evidence
  * anchor. `source_url` and the source media are what the published claim rests
  * on, so they render read-only and the endpoint declares no field for either;
  * everything else is editable, and the write files the version it supersedes
  * rather than overwriting it. An optional note travels with that version. No
- * confirm: a revision adds a version, it freezes nothing.
+ * confirm: a revision adds a version, which is the ordinary way a published
+ * event changes.
  *
  * Built like the create form throughout (same field bricks, same `MediaManager`
  * staging). State is seeded from props (the form mounts only after the row
@@ -238,7 +240,8 @@ export function EventEditForm({
     }
   );
 
-  // Submitting freezes the row, so it takes a second click. The button arms in
+  // Publishing is public and fixes the source, so it takes a second click. The
+  // button arms in
   // place rather than swapping itself for a confirm pair: the control the
   // reader is aiming at stays where it is, and the second click lands on the
   // same pixels as the first. It keeps focus, so Enter twice submits too.
@@ -283,7 +286,7 @@ export function EventEditForm({
     ),
   });
 
-  // Submit enforces the full floor (it freezes the row), then asks to confirm.
+  // Submit enforces the full floor (it publishes the row), then asks to confirm.
   // Submitting an incomplete detection surfaces the notice (every miss at once)
   // instead of entering the confirm step.
   const attemptSubmit = (e: React.FormEvent) => {
@@ -307,13 +310,18 @@ export function EventEditForm({
     const missing = missingEventFields(fieldsState(), {
       requireMedia: true,
       requireTags: true,
+      // A revision matches what `revise` accepts, which matches what publishing
+      // a detection accepts: a row whose source post time was never resolved is
+      // published with it blank, so an edit must not be blocked on filling it
+      // in. Submitting a detection still requires it, as `geolocate` does.
+      requireSourcePostedAt: !revising,
     });
     if (missing.length) {
       flagIncomplete(missing);
       return;
     }
-    // A revision adds a version and freezes nothing, so it writes on the click
-    // that made it. A submit freezes the row, so it arms the button and the
+    // A revision adds a version, so it writes on the click that made it. A
+    // submit publishes the row, so it arms the button and the
     // click after it writes; every check above runs on both clicks, so a form
     // that stopped being submittable between them says so instead of posting.
     if (revising) {
@@ -326,7 +334,8 @@ export function EventEditForm({
   // The one label the flow action wears, and the sentence the confirm step
   // announces. Kept together so the button, its sizer and the status region
   // can't name the write three different ways.
-  const CONFIRM_SENTENCE = "Click again to submit. Submitting freezes the event.";
+  const CONFIRM_SENTENCE =
+    "Click again to submit. Submitting publishes the event; later changes become versions.";
   const widestLabel = revising ? "Save revision" : "Confirm submit";
   const submitLabel = revising
     ? busy
@@ -531,8 +540,7 @@ export function EventEditForm({
             {/* What the second click costs is the button's `?`, which every
                 field on this form already carries, rather than a line of copy
                 that appears mid-gesture and pushes the button sideways. A
-                revision writes on the click that made it, so it has nothing to
-                warn about. */}
+                revision adds a version, so it has nothing to warn about. */}
             {!revising && <FieldHelp concept="action_submit" />}
           </span>
           {/* Sibling status region, the shape `<CopyButton>` uses: the armed

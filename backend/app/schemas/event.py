@@ -146,21 +146,26 @@ class EventRevisionRead(BaseModel):
     # erased, or when it was soft-deleted (the serializer drops it for the same
     # reason ``EventRead.requested_by`` does).
     edited_by: AuthorRef | None
-    # The editor's own words about the edit. NULL when they left none.
+    # The editor's own words about the edit. NULL when they left none, and on a
+    # redacted version, whose note is blanked with its snapshot.
     note: str | None
     # When the edit that superseded this version happened.
     created_at: datetime
+    # The editable fields as they stood, and ``{}`` on a redacted version.
     snapshot: dict[str, Any]
+    # Whether an admin blanked this version's content. The row and its number
+    # stay either way, so ``/vN`` addressing never shifts and the history still
+    # shows that a version existed.
+    redacted: bool
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class EventRevisionList(BaseModel):
-    """An event's history: every superseded version, newest first.
+    """An event's history: the superseded versions, newest first.
 
-    Not paginated: an event carries a handful of versions, so the whole history
-    is one response. ``total`` counts the rows served, which is the whole set
-    below ``services/revisions.MAX_REVISIONS``.
+    Paged like every other list (``Link: rel="next"``, opaque cursor);
+    ``total`` is the whole history, not the page.
     """
 
     items: list[EventRevisionRead]

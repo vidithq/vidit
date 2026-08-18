@@ -105,7 +105,7 @@ export const FIELD_HELP = {
   },
   // Why the two anchor fields are read-only once an event is published.
   evidence_anchor: {
-    text: "The source link and the source media are what the published geolocation rests on, so they can't be edited afterwards. Everything else is editable, and each edit is kept as a version. If the source itself is wrong, close the event with a reason and post it again.",
+    text: "The source link and the source media are what the published geolocation rests on, so they can't be edited afterwards. Everything else is editable, and each edit is kept as a version. If the source itself is wrong, contact an admin: a published event can't be closed, so correcting its source is theirs to do.",
     label: "Why can't I change the source?",
   },
   // What a revision note is for.
@@ -115,7 +115,7 @@ export const FIELD_HELP = {
   },
   // Detection submit action, spelled out here.
   action_submit: {
-    text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it). Submitting freezes the event, so it can no longer be edited. Give it a full read first, then click Submit twice to confirm.",
+    text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it). It becomes public, and from then on every change you make is kept as a new version, with the source fixed as it stands now. Give it a full read first, then click Submit twice to confirm.",
     label: "What does Submit do?",
   },
 } as const;

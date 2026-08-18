@@ -833,7 +833,7 @@ async def revise(
     secondary_source_urls: list[str],
     event_date: date | None,
     event_time: time | None,
-    source_posted_at: datetime,
+    source_posted_at: datetime | None,
     proof_data: dict | None,
     tag_ids: list,
     conflict_ids: list,
@@ -853,12 +853,19 @@ async def revise(
     lock :func:`close` and :func:`geolocate` take.
 
     **The evidence anchor is immutable.** ``source_url`` and the ``source``
-    media are what the published claim rests on, so this write accepts neither:
-    a wrong source is handled by :func:`close` and a fresh submission, or by an
-    admin. Everything else the publish form wrote is editable and versioned:
-    title, both coordinate sets, the event date and hour, the source post time,
-    the graphic-content flag, tags, conflicts, the proof body and its inline
-    images, and the secondary source links (mirrors, outside the anchor).
+    media are what the published claim rests on, so this write accepts neither.
+    A published row is past :func:`close` (that verb is the withdraw / reject
+    for a ``requested`` or ``detected`` row), so a wrong source on a published
+    event is an admin matter: the owner has no path to it. Everything else the
+    publish form wrote is editable and versioned: title, both coordinate sets,
+    the event date and hour, the source post time, the graphic-content flag,
+    tags, conflicts, the proof body and its inline images, and the secondary
+    source links (mirrors, outside the anchor).
+
+    ``source_posted_at`` is optional, matching what publication accepts: a
+    detection whose source post time was never resolved publishes through
+    :func:`_publish_detection` with the column NULL, so an edit of that row must
+    be able to leave it NULL rather than be forced to invent an instant.
 
     ``is_graphic`` ratchets exactly as on :func:`geolocate`: a posted false
     leaves an already-flagged event flagged, and only ``PATCH
@@ -874,8 +881,8 @@ async def revise(
     on the row, at least one proof image in the final proof body, a conflict,
     and the curated ``capture_source`` tag. Proof images ride in ``proof_files``
     and resolve against the doc's ``placeholder://`` srcs, exactly as on the
-    publish forms; an image the new body drops is deleted only if no snapshot
-    references it (see ``services/revisions.referenced_media_urls``).
+    publish forms; an image the new body drops is deleted only if no readable
+    version displays it (see ``services/revisions.referenced_media_urls``).
 
     Raises :class:`EventStateError` (409) off ``geolocated``, the 403 of
     ``ensure_owner`` for anyone but the owner,
@@ -914,7 +921,10 @@ async def revise(
     _require_submission_floor(effective_tags, effective_conflicts)
 
     # File the version this edit supersedes BEFORE any field moves: the snapshot
-    # reads the live collections, so it has to run against the pre-edit row.
+    # reads the live collections, so it has to run against the pre-edit row. It
+    # is also what protects that version's images from the intake's proof diff
+    # below, which is why it is staged first: the diff reads the snapshots, this
+    # one included, and keeps every image a readable version still displays.
     revisions.snapshot(db, geo=geo, edited_by=current_user, note=note)
 
     # Same autoflush suppression as ``geolocate``: the collection assignments

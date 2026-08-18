@@ -117,6 +117,12 @@ class EventRevision(Base):
     ``media`` row a snapshot points at is never hard-deleted while the snapshot
     exists (``services/evidence_intake.attach_evidence_and_commit`` reads
     ``services/revisions.referenced_media_urls`` before it drops a proof row).
+
+    Redaction is the one write a filed row takes. An admin blanks ``snapshot``
+    and ``note`` and stamps ``redacted_at`` / ``redacted_by_id``; the row and
+    its number stay, so ``/vN`` addressing never shifts and the history still
+    shows that a version existed. A redacted snapshot references no media, so
+    an image only it pointed at becomes deletable again.
     """
 
     __tablename__ = "event_revisions"
@@ -144,9 +150,21 @@ class EventRevision(Base):
         default=lambda: datetime.now(UTC),
         nullable=False,
     )
+    # When an admin blanked this version's content, and who did. NULL on every
+    # ordinary row: redaction is the moderation exit for a version that carries
+    # material the record must not keep serving.
+    redacted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # ``ondelete=SET NULL`` for the same reason as ``edited_by_id``: erasing the
+    # admin account must not fail on the FK, and the redaction itself stands.
+    redacted_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     event = relationship("Event", back_populates="revisions")
-    edited_by = relationship("User")
+    # Only the editor is a relationship: the redacting admin is recorded for the
+    # audit trail (``admin_events`` carries the act itself) and never rendered,
+    # so the column stands alone.
+    edited_by = relationship("User", foreign_keys=[edited_by_id])
 
     __table_args__ = (
         # One row per version of one event: the append-only writer takes the
