@@ -151,9 +151,9 @@ export default function ImportGuidePage() {
           </li>
           <li>
             <span className="text-neutral-100">Media.</span> A quoted
-            post&apos;s media is the footage, then a chased Telegram
-            post&apos;s, then your thread&apos;s first own video when the slot
-            is still empty; your photos stay proof.
+            post&apos;s media is the footage. With no quote, the source
+            post&apos;s media fills the slot, then your thread&apos;s first
+            own video; your photos stay proof.
           </li>
           <li>
             <span className="text-neutral-100">Title.</span> The first line

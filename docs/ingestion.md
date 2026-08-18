@@ -52,7 +52,7 @@ flowchart LR
     f1["`**compose_reply**
     bot: in-thread reply, ref plus warnings`"]:::spec
     f2["`**TweetImportRead**
-    paste: draft ids and warnings, review opens`"]:::spec
+    paste: draft ids and warnings; review opens on a clean run`"]:::spec
     f3["`**archive_import_complete_email**
     archive: counts plus warnings`"]:::spec
   end
@@ -122,7 +122,7 @@ Each derived field fills on a signal in that text, or stays empty:
 | Coordinate | Four extractors ([`extract.py`](../backend/app/services/tweet_ingest/extract.py)) run in the order below; position in the line does not matter and there is no cap. Several coordinates make several drafts and raise `several_coordinates`. |
 | `source_url` | Every link is a candidate whatever its host, minus three that point at no footage: a status link back to the analyst's own post, an X link naming no status, and a Google Maps link, which is where the coordinate came from. A quote is itself a candidate, so two quoted posts are two candidates. Several candidates raise `source_ambiguous` and all of them land in the [secondary source links](#secondary-source-links); none raises `source_missing`. |
 | `detected_from_url` | The thread's own permalink. Provenance, never the source. |
-| Source media | The media of the post the source names and nothing else, so another quoted post's media is dropped rather than filed as annotation. Photos are never promoted: the proof document embeds images only, so a video left in the annotation slot is dropped at persistence. |
+| Source media | The media of the post the source names and nothing else, so another quoted post's media is dropped rather than filed as annotation. One `role=source` media per event (`uq_media_source_per_event`); with no quote, the chased post's media fills the slot, else the thread's first own video. Photos are never promoted: the proof document embeds images only, so a video left in the annotation slot is dropped at persistence. |
 | Title | Cut at 120 characters on a word boundary. Nothing inside the qualifying line is stripped, so a hashtag, a mention, a link or a coordinate inside it stays. No line qualifying leaves it empty for review. |
 | Proof | The raw text minus two things: the `t.co` wrappers X appends for the post's own attached media, and the bot's `@handle` where it opens a line. |
 | Stored media | Photos re-encoded to `records.PHOTO_CONTENT_TYPE`, the format the display derivatives (`_hero`, `_thumb`) use, so no entry reads a photo's type off a payload field or a filename; videos stored as fetched, the mp4 variant every payload reader picks. `MAX_IMAGE_SIZE` and `MAX_VIDEO_SIZE` apply to the fetched bytes, before the re-encode, and over-cap media is skipped while the draft still lands. |
@@ -149,7 +149,7 @@ The host decides what gets *fetched*, never what gets *stored*: one module per t
 | Target | Chaser | Fills |
 |---|---|---|
 | An X status | Syndication ([`chase/x.py`](../backend/app/services/tweet_ingest/chase/x.py)) | The author, the post date, the media |
-| A public `t.me/<channel>/<id>` post | Its embed ([`chase/telegram.py`](../backend/app/services/tweet_ingest/chase/telegram.py)) | The post date, plus the media when the embed serves it; a sensitive post serves neither |
+| A public `t.me/<channel>/<id>` post | Its embed ([`chase/telegram.py`](../backend/app/services/tweet_ingest/chase/telegram.py)) | The post date, plus the media when the embed serves it; a sensitive post serves the date and no media |
 | Every other candidate | None | `source_url`, link-only |
 
 Every chase is fail-soft: a refusing upstream reads as "no footage", never as a failed import. Each chaser answers `chased`, `not_accessible`, `transient_failure` or `no_target`, and only the transient one changes what the analyst is told: `source_fetch_failed` instead of `source_footage_missing`.
@@ -275,7 +275,7 @@ The webhook is signature-verified ([`/webhooks/x`](api.md#webhooks)) and queues 
 
 The [`bot_mentions`](data-model.md#bot_mentions) ledger is written whatever the outcome, so whichever path sees a mention first records it and the other counts it as handled. A `failed` row retries only when an operator deletes it. A mention from a handle with no [linked account](#the-contract) is ledgered `no_account` and produces nothing: no user row, no draft, no reply; the tag itself is the consent for sync. When syndication refuses the tagged post outright, because it is deleted, protected, age-restricted or withheld, the mention lands `no_detection` and the failure reply names the restriction.
 
-**Response model.** The in-thread reply is the only gesture the bot makes: no like, no retweet. The caps are seeded from the ledger, so they hold across drain passes and worker restarts. Past a cap the draft still lands, since detection is unbilled, and only the reply is skipped and logged.
+**Response model.** The in-thread reply is the only gesture the bot makes: no like, no retweet. Replies are capped at 40 per trailing hour in total and 10 per author, and a reply weighs at most 280 characters in X's units (`bot.py`). The caps are seeded from the ledger, so they hold across drain passes and worker restarts. Past a cap the draft still lands, since detection is unbilled, and only the reply is skipped and logged.
 
 | Moment | Gesture | Condition |
 |---|---|---|
@@ -291,7 +291,7 @@ Deployment, the webhook runbook and the CRC operator notes: see [`engineering.md
 
 ## The pasted-tweet import
 
-An analyst pastes a post URL into the submit form and `POST /events/import-from-tweet` creates the drafts the post carries, one per coordinate, owned by the analyst. The response returns the created, updated and skipped ids plus the [warnings](#warnings) review has to answer, and the browser opens the first draft ([`api.md`](api.md#post-eventsimport-from-tweet)).
+An analyst pastes a post URL into the submit form and `POST /events/import-from-tweet` creates the drafts the post carries, one per coordinate, owned by the analyst. The response returns the created, updated and skipped ids plus the [warnings](#warnings) review has to answer; the browser opens the first created draft when the run raised no warning, and otherwise stays on the page and states what it raised ([`api.md`](api.md#post-eventsimport-from-tweet)).
 
 **Own posts only.** The post's author must resolve to the caller's own [linked account](#the-contract); anything else answers `not_your_post`, and a third party's footage goes through the plain submit form with a `source_url`. The check runs on the pasted post alone, before the rest of the hop, so neither the parent hop nor the chase spends the shared syndication budget on a post that is not the caller's. A post X serves to nobody answers `post_unreadable`.
 
@@ -418,7 +418,7 @@ The provenance leg is the thread's post IDs, not a URL and not the anchor alone.
 
 **What an update rewrites.** The row keeps its id, its owner, its `created_at` and `detected_at` stamps, its provenance (`detected_from_tweet_id`, `detected_from_url`, `detected_thread_tweet_ids` and `detected_via`) and its place in the review queue, so a bot tag landing on a draft the archive created updates it and still reads `archive`. The import overwrites what it owns: the title, the coordinate, the event date, `source_url`, the [secondary source links](data-model.md#event_source_links), `source_posted_at`, `detected_post_at`, the proof document, and the media. Every field edit is welded to the `geolocated` promotion, so an open draft carries no analyst work to lose. An [archived copy](archival.md) survives: if the update moves `source_url`, the copy is re-filed under another link the row still carries, or dropped when it carries none.
 
-**A short fetch keeps the stored media.** A media the fetch cannot turn into bytes leaves the resolution short of what the post declares, which reads exactly like a post whose media is gone, so the row's media stays as it stands; the other fields still update and the row counts `skipped`, not `updated`. Media compares by `Media.sha256`, so re-running the same export leaves `updated_at` where it was and creates no storage objects.
+**A short fetch keeps the stored media.** A media the fetch cannot turn into bytes leaves the resolution short of what the post declares, which reads exactly like a post whose media is gone, so the row's media stays as it stands; the other fields still update, and a pass that moves nothing else counts the row `skipped`. Media compares by `Media.sha256`, so re-running the same export leaves `updated_at` where it was and creates no storage objects.
 
 ## See also
 
