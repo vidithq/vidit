@@ -11,6 +11,7 @@ import { Intro } from "./components/Intro";
 import { OutroV04 } from "./components/OutroV04";
 import { VideoChrome } from "./components/VideoChrome";
 import { RECORDED } from "./clips-manifest";
+import { RELEASE } from "./build-version";
 
 // The v0.5 promo B, "import and review": the brand intro, then about 31
 // seconds windowed out of ONE continuous signed-in take (import-review.mp4:
@@ -123,7 +124,7 @@ const BEATS: Beat[] = [
     windows: [win("importDone", 21.82, 0.3, 2.4, SUBMIT_URL)],
     caption: {
       eyebrow: "Import it again tomorrow",
-      title: "It recognises the drafts it already made.",
+      title: "It recognises the detections it already made.",
     },
   },
   {
@@ -137,7 +138,7 @@ const BEATS: Beat[] = [
     ],
     caption: {
       eyebrow: "The queue",
-      title: "Every machine draft, and what each one still needs.",
+      title: "Every machine detection, and what each one still needs.",
     },
   },
   {
@@ -166,7 +167,7 @@ const BEATS: Beat[] = [
     ],
     caption: {
       eyebrow: "Submit",
-      title: "Two clicks to freeze it, and the next draft opens itself.",
+      title: "Two clicks to freeze it, and the next detection opens itself.",
     },
   },
   {
@@ -250,7 +251,7 @@ export const PromoV05B: React.FC = () => {
       <Background />
 
       <Sequence durationInFrames={INTRO_FRAMES}>
-        <Intro durationInFrames={INTRO_FRAMES} />
+        <Intro durationInFrames={INTRO_FRAMES} release={RELEASE} />
       </Sequence>
 
       {PLACED.map((beat, beatIndex) => {

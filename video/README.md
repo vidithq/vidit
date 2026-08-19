@@ -407,7 +407,7 @@ The beats, all windows of the one take:
 | 3 | Idempotence | The finished run and its outcome line. |
 | 4 | The queue | The queue on `All`, where `Ready to review` and `Missing: …` badges sit side by side, then the readiness filter with the server's whole-queue counts. |
 | 5 | The review pass | `Detection n of m`, the footage, the coordinates and the source, then the conflict typeahead and the capture source. |
-| 6 | Submit | The proof, both submit clicks, and the next draft opening on its own. |
+| 6 | Submit | The proof, both submit clicks, and the next detection opening on its own. |
 | 7 | The map | The camera easing onto the field the pass just worked. |
 | 8 | Closing card | `OutroV04`, shared with the other promos. |
 

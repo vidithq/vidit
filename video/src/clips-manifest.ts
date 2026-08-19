@@ -90,25 +90,25 @@ export const RECORDED: Record<string, RecordedClip> = {
   "import-review": {
     "src": "clips/import-review.mp4",
     "fps": 60,
-    "durationSec": 65.696,
+    "durationSec": 87.537,
     "marks": {
       "panel": 0,
-      "finderOpen": 5.135,
-      "finderPick": 8.611,
-      "filePicked": 11.156,
-      "importClick": 13.841,
-      "privacyHold": 15.311,
-      "importDone": 21.819,
-      "queueOpen": 24.994,
-      "filterReady": 27.595,
-      "draftOpen": 34.873,
-      "draftScroll": 36.873,
-      "tagFill": 40.938,
-      "submitClick": 50.548,
-      "nextDraft": 52.682,
-      "mapNav": 55.283,
-      "mapOpen": 59.491,
-      "mapEase": 60.691
+      "finderOpen": 5.133,
+      "finderPick": 8.604,
+      "filePicked": 9.183,
+      "importClick": 11.867,
+      "privacyHold": 13.343,
+      "importDone": 43.535,
+      "queueOpen": 46.749,
+      "filterReady": 49.351,
+      "draftOpen": 56.689,
+      "draftScroll": 58.689,
+      "tagFill": 62.761,
+      "submitClick": 72.447,
+      "nextDraft": 74.503,
+      "mapNav": 77.103,
+      "mapOpen": 81.326,
+      "mapEase": 82.526
     }
   }
 };

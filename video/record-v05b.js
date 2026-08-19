@@ -237,11 +237,10 @@ async function clipImportReview(auth) {
     await wait(300);
 
     const zipInput = page.locator('input[type="file"][accept*="zip"]').first();
-    await zipInput.setInputFiles({
-      name: zipName,
-      mimeType: "application/zip",
-      buffer: fs.readFileSync(ARCHIVE),
-    });
+    // By path, not by buffer: Playwright caps an in-memory payload at 50 MB
+    // and a real export is far past that. The name and size on camera come
+    // from the file itself.
+    await zipInput.setInputFiles(ARCHIVE);
     rec.mark("filePicked");
     await wait(1800); // the file card ("ready to import") breathes
 
