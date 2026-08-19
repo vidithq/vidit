@@ -133,16 +133,11 @@ def _within_reply_cap(text: str) -> str:
     return "".join(kept)
 
 
-# Billed-spend ceilings on the write side. The mention surface is public: any
-# stranger can tag the bot on a coordinate tweet, and each posted reply is
-# billed. The window posts at most this many replies (success + failure), in
-# total and per author; past a ceiling the detection still lands (detecting is
-# unbilled) but the reply is skipped and logged: a flood burns nothing but
-# its own posting effort. The window is wall-clock (the trailing hour, read
-# from the ledger), not per pass: the worker drains every few seconds, so a
-# per-pass budget would multiply the caps hundreds of times an hour.
-_MAX_REPLIES_PER_HOUR = 40
-_MAX_REPLIES_PER_AUTHOR_PER_HOUR = 10
+# The trailing window the billed-reply ceilings are counted over. The ceilings
+# themselves are ``settings.bot_max_replies_per_hour`` and
+# ``settings.bot_max_replies_per_author_per_hour`` (BOT_MAX_REPLIES_PER_HOUR /
+# BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR), which carry the rationale; the window
+# is wall-clock, read from the ledger, so it is not a per-pass budget.
 _GESTURE_WINDOW = timedelta(hours=1)
 
 # The reconciliation poll's cursor lookback, in snowflake id space (the
@@ -195,8 +190,9 @@ class GestureBudget:
 
     def reply_allowed(self, author_handle: str) -> bool:
         return (
-            self.replies_posted < _MAX_REPLIES_PER_HOUR
-            and self._replies_by_author.get(author_handle, 0) < _MAX_REPLIES_PER_AUTHOR_PER_HOUR
+            self.replies_posted < settings.bot_max_replies_per_hour
+            and self._replies_by_author.get(author_handle, 0)
+            < settings.bot_max_replies_per_author_per_hour
         )
 
     def note_reply(self, author_handle: str) -> None:

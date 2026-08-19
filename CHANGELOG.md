@@ -6,6 +6,12 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## Unreleased
+
+### Changed
+- **The landing demo video is click-to-play** ([`frontend/src/components/landing/DemoVideo.tsx`](frontend/src/components/landing/DemoVideo.tsx), [`docs/design.md`](docs/design.md#components)). The clip no longer autoplays: `preload="metadata"` paints the first frame as the poster, a tap on the frame or on the centered play control starts it, and the browser's native controls stay on from then on, so a phone can pause and scrub. An anonymous visit stops costing the whole 35 MB file.
+- **The bot's reply ceilings are settings** ([`backend/app/config.py`](backend/app/config.py), [`docs/ingestion.md`](docs/ingestion.md)). `BOT_MAX_REPLIES_PER_HOUR` (default 40) and `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR` (default 10) replace the hardcoded caps, so the billed-reply budget can be raised for a traffic spike without a code change.
+
 ## v0.5.6, 2026-08-19
 
 ### Added
