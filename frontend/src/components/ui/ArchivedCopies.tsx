@@ -3,14 +3,14 @@
 import { Archive, ArchiveRestore, ExternalLink } from "lucide-react";
 
 import type { ArchivedLink } from "@/types";
-import { Glyph } from "@/components/ui/Glyph";
+import { Button, buttonClasses } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
 interface ArchivedCopiesProps {
   /** The link's archived copy, or null while it has none. */
   copy: ArchivedLink | null;
   /** What the copy is of, folded into each accessible name ("the source",
-   *  "mirror 2, t.me"). A page carries several of these and every glyph in them
+   *  "mirror 2, t.me"). A page carries several of these and every mark in them
    *  looks alike, so each one is named for what it points at. Build a mirror's
    *  value with `mirrorDescription`, which keeps two mirrors on one host
    *  tellable apart. */
@@ -39,7 +39,7 @@ const PROVIDER_LABELS: Record<ArchivedLink["provider"], string> = {
 /**
  * The one mark for an archived copy, in every state and for every provider.
  *
- * lucide's `Archive` over its `History`: at the 13px this renders at, the box's
+ * lucide's `Archive` over its `History`: at the size this renders at, the box's
  * two blocks stay legible where a clock face and its arrow collapse into a
  * smudge, and a clock reads as "recent" or "version history" rather than "a
  * stored copy".
@@ -137,9 +137,9 @@ function archivable(url: string): string | null {
  * Sits next to the original rather than replacing it: the original stays the
  * primary link while it resolves, and the copy is one click away the day it
  * stops. One copy per link, from whichever service the analyst used, so the
- * affordance is a single glyph in exactly two states, and colour says which:
- * accent where a copy exists and the mark opens it, grey and inert where none
- * does, for every reader including the event's owner.
+ * affordance is a single ghost icon button in exactly two states, and colour
+ * says which: accent where a copy exists and the mark opens it, grey and inert
+ * where none does, for every reader including the event's owner.
  *
  * A read surface, not a write one. Recording a copy is an edit like any other:
  * the owner opens the archive mark in the edit form's URL field
@@ -147,45 +147,65 @@ function archivable(url: string): string | null {
  * (`ArchiveSnapshotField`), which files a version naming the change, where a
  * control here would write to the live row from a page nobody is editing.
  *
- * The glyph is a small mark with no label beside it, and it carries no `?` of
- * its own: the glyph's accessible name carries its own state for a screen
- * reader, and the row's field concept explains the mark to a sighted one, so a
- * page listing ten mirrors shows one explanation rather than ten. That is the
- * `source_url`, `secondary_source_urls` and `detected_from` tooltips, each of
- * which describes the archive mark on its own row.
+ * The control carries no label beside it and no `?` of its own: its accessible
+ * name carries its own state for a screen reader, and the row's field concept
+ * explains the mark to a sighted one, so a page listing ten mirrors shows one
+ * explanation rather than ten. That is the `source_url`,
+ * `secondary_source_urls` and `detected_from` tooltips, each of which describes
+ * the archive mark on its own row.
  *
  * `self-center` on the box: the rows it sits in align their text on the
- * baseline, and a 24px square hung off a baseline sits low against the link it
- * belongs to.
+ * baseline, and the icon button's square hung off a baseline sits low against
+ * the link it belongs to. The negative margin beside it takes the square back
+ * out of the line's height, so the control centres on the link's own line and a
+ * row carrying a mark stands as tall as a row without one; the hover plate
+ * overhangs into the row's padding, which is what a 32px control needs on a
+ * 20px line.
  *
  * One component for the primary source, the provenance link and every secondary
  * mirror, so the same fact cannot grow two affordances.
  */
 export function ArchivedCopies({ copy, describes }: ArchivedCopiesProps) {
   return (
-    <span className="ml-1 inline-flex shrink-0 items-center self-center align-middle">
+    <span className="ml-1 -my-1.5 inline-flex shrink-0 items-center self-center align-middle">
       {copy ? (
-        <ArchivedGlyph copy={copy} describes={describes} />
+        <ArchivedCopyLink copy={copy} describes={describes} />
       ) : (
-        <MissingGlyph describes={describes} />
+        <MissingCopyMark describes={describes} />
       )}
     </span>
   );
 }
 
 /** The copy that exists: the accent mark opening it, named for its service. */
-function ArchivedGlyph({ copy, describes }: { copy: ArchivedLink; describes: string }) {
+function ArchivedCopyLink({ copy, describes }: { copy: ArchivedLink; describes: string }) {
   // A provider the client does not know is still a stored copy, so it is named
   // generically rather than rendering as no copy at all.
   const provider: string | undefined = PROVIDER_LABELS[copy.provider];
   const label = provider ? `${provider} copy of ${describes}` : `Archived copy of ${describes}`;
-  return <Glyph icon={ArchiveMark} label={label} href={copy.url} />;
+  return (
+    <a
+      href={copy.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={label}
+      title={label}
+      className={buttonClasses("ghost", { icon: true })}
+    >
+      <ArchiveMark size={14} />
+    </a>
+  );
 }
 
-/** No copy, and nothing the viewer can do about it: the same mark, with neither
- *  a target nor an action, which is what paints it grey. */
-function MissingGlyph({ describes }: { describes: string }) {
-  return <Glyph icon={ArchiveMark} label={`No archived copy of ${describes}`} />;
+/** No copy, and nothing the viewer can do about it: the same mark on a disabled
+ *  button, which is what paints it grey and takes it out of the tab order. */
+function MissingCopyMark({ describes }: { describes: string }) {
+  const label = `No archived copy of ${describes}`;
+  return (
+    <Button icon variant="ghost" disabled aria-label={label} title={label}>
+      <ArchiveMark size={14} />
+    </Button>
+  );
 }
 
 /**
@@ -221,19 +241,22 @@ export function ArchiveAdornment({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const label = copy
+    ? `Replace the archived copy of ${describes}`
+    : `Archive ${describes}`;
   return (
     <>
-      {copy && <ArchivedGlyph copy={copy} describes={describes} />}
-      <Glyph
-        icon={ArchiveRestore}
-        label={
-          copy
-            ? `Replace the archived copy of ${describes}`
-            : `Archive ${describes}`
-        }
+      {copy && <ArchivedCopyLink copy={copy} describes={describes} />}
+      <Button
+        icon
+        variant="ghost"
         onClick={onToggle}
-        expanded={expanded}
-      />
+        aria-expanded={expanded}
+        aria-label={label}
+        title={label}
+      >
+        <ArchiveRestore size={14} />
+      </Button>
     </>
   );
 }
@@ -248,9 +271,9 @@ export function ArchiveAdornment({
  * analyst asked for it. The accepted hosts read off `SNAPSHOT_HOSTS`, so the
  * check and the instruction cannot drift.
  *
- * The trailing mark opens `https://web.archive.org/save/<link>` for the value
+ * The trailing control opens `https://web.archive.org/save/<link>` for the value
  * currently typed above, so archiving a corrected URL is a re-click rather than
- * a reload. It is the one state on a form where a mark goes grey: a link that
+ * a reload. It is the one state on a form where a control goes grey: a link that
  * does not parse has no page to open yet, and a dead door is worse than an
  * inert one.
  *
@@ -287,21 +310,44 @@ export function ArchiveSnapshotField({
         onChange={(e) => onChange(e.target.value)}
         placeholder={SNAPSHOT_PLACEHOLDER}
         invalid={invalid}
-        trailing={
-          <Glyph
-            icon={ExternalLink}
-            label={
-              target
-                ? `Open the ${SAVE_PAGE_LABEL} for ${describes}`
-                : `Fill in ${describes} to archive it`
-            }
-            href={target ? savePageUrl(target) : undefined}
-            active={target !== null}
-          />
-        }
+        trailing={<SavePageDoor target={target} describes={describes} />}
       />
       {invalid && <p className="text-xs text-red-400">{SNAPSHOT_HINT}</p>}
     </div>
+  );
+}
+
+/** The provider page for the link as currently typed, and the one control on a
+ *  form that goes grey: a link that does not parse has no page to open, so the
+ *  door becomes a disabled button naming what to fill in first. */
+function SavePageDoor({
+  target,
+  describes,
+}: {
+  /** The link to archive, or null while the field above holds nothing usable. */
+  target: string | null;
+  describes: string;
+}) {
+  if (!target) {
+    const label = `Fill in ${describes} to archive it`;
+    return (
+      <Button icon variant="ghost" disabled aria-label={label} title={label}>
+        <ExternalLink size={14} />
+      </Button>
+    );
+  }
+  const label = `Open the ${SAVE_PAGE_LABEL} for ${describes}`;
+  return (
+    <a
+      href={savePageUrl(target)}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={label}
+      title={label}
+      className={buttonClasses("ghost", { icon: true })}
+    >
+      <ExternalLink size={14} />
+    </a>
   );
 }
 

@@ -220,12 +220,12 @@ describe("DetailsFields", () => {
   it("leaves the door inert until the source URL is a usable one", () => {
     render(<DetailsFields {...baseProps} sourceUrl="t.me/c/1" />);
     fireEvent.click(screen.getByRole("button", { name: "Archive the source" }));
-    // The one state on a form where a mark is grey: a dead door is worse than
-    // an inert one, and the name says what to do first.
+    // The one state on a form where a control is grey: a dead door is worse
+    // than an inert one, and the name says what to do first.
     expect(screen.queryByRole("link", { name: /Wayback Machine/ })).toBeNull();
     expect(
-      screen.getByRole("img", { name: "Fill in the source to archive it" })
-    ).toBeInTheDocument();
+      screen.getByRole("button", { name: "Fill in the source to archive it" })
+    ).toBeDisabled();
   });
 
   it("prefills one provider page with the source URL as typed", () => {

@@ -85,10 +85,9 @@ import {
   ARMED_RING,
   WARNING_CALLOUT,
 } from "@/components/ui/styles";
-import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
+import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
 import { CoordinateActions } from "@/components/event/CoordinateActions";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
-import { Glyph } from "@/components/ui/Glyph";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
 import { ProofSection } from "@/components/ui/ProofSection";
@@ -427,7 +426,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Controls · buttons & pills" />
 
-          <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive or alerting, no grey button. `dangerGhost` is red at ghost weight, for a red control sitting in an icon row (the report flag). `icon` makes a square icon-only button; `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm. `disabled` drops the tone for neutral grey rather than fading it, so a button that refuses the click reads like every other inert control on the site (<Glyph> follows the same rule).">
+          <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive or alerting, no grey button. `dangerGhost` is red at ghost weight, for a red control sitting in an icon row (the report flag). `icon` makes a square icon-only button, the one icon control on the site; `buttonClasses` puts the same shape on a <Link> or an <a> that navigates; `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm. `disabled` drops the tone for neutral grey rather than fading it, so a button that refuses the click reads like every other inert control on the site.">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="primary">Primary</Button>
@@ -460,16 +459,33 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Glyph>" usage="The one compact glyph control: a 13px mark centred in a 24px rounded square, which is <Button> ghost at a smaller stop (the archived-copy mark beside a source link, the map and copy marks of <CoordinateActions>). Where a control owns the full box, that is <Button icon> at 32px. One of href (outbound, new tab) or onClick (an action here) makes it a control; neither is a mark that only states something. Colour is the state and the primitive enforces it: accent only when it renders something actionable, neutral grey otherwise (the two class strings are private to Glyph.tsx, so a call site reaches for the primitive rather than for a string), and an inactive glyph renders as an inert span whatever href or onClick it was handed, so nothing fires from a mark that reads as unavailable. One hover for every active glyph, link form and button form alike, and it is the ghost button's: the accent lightens and a tinted plate comes up under the mark, since a mark carrying no text cannot show TEXT_LINK's underline. An inert one takes no hover and no plate, because nothing there answers, and it holds the same 24px square, so a mark that lands or goes inert never moves the line it sits in. It is also the whole profile header row (the linked accounts and the owner's Edit profile), and the mark inside a field (<Input trailing>). It is also the copy control for a line of text, over useCopyToClipboard: the resting mark flips to a check for the flash window while the accessible name holds still and a sibling live region announces the write (<CoordinateActions>, the profile's Discord account). label is the whole name (aria-label + title, the bare name of an icon-only control, never an explanation: that is <FieldHelp>); title takes a tooltip that moves while the name holds still (a copy flash).">
+          <Item name="the icon control" usage="Every icon control on the site is the ghost icon button, at one size: a page-header cluster, the profile header row, the coordinates line, the archive mark beside a source link, a field's trailing adornment, all the same 32px square with the same hover plate. An action is <Button icon variant='ghost'>; navigation is buttonClasses('ghost', {icon: true}) on a <Link> or an <a>, so a control that navigates never nests a button inside an anchor; a control with nothing to act on is the disabled button, which paints itself neutral grey and leaves the tab order (an inert link becomes a disabled button, since a dead anchor is not a control). aria-label is the whole name, title repeats it, and only a tooltip that moves while the name holds still (a copy flash) may differ. Marks are 14px lucide or brand glyphs.">
             <div className="flex items-center gap-4 text-sm text-neutral-300">
-              <Variant label="href">
-                <Glyph icon={Archive} label="Wayback Machine copy of the source" href="#" />
+              <Variant label="action">
+                <Button icon variant="ghost" aria-label="Copy coordinates" title="Copy coordinates">
+                  <Copy size={14} />
+                </Button>
               </Variant>
-              <Variant label="onClick">
-                <Glyph icon={Copy} label="Copy coordinates" onClick={() => {}} />
+              <Variant label="navigation">
+                <a
+                  href="#"
+                  aria-label="Wayback Machine copy of the source"
+                  title="Wayback Machine copy of the source"
+                  className={buttonClasses("ghost", { icon: true })}
+                >
+                  <Archive size={14} />
+                </a>
               </Variant>
               <Variant label="inert">
-                <Glyph icon={ExternalLink} label="No map link until the coordinate pair is complete" active={false} href="#" />
+                <Button
+                  icon
+                  variant="ghost"
+                  disabled
+                  aria-label="No map link until the coordinate pair is complete"
+                  title="No map link until the coordinate pair is complete"
+                >
+                  <ExternalLink size={14} />
+                </Button>
               </Variant>
             </div>
           </Item>
@@ -582,7 +598,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Forms" />
 
-          <Item name="<Input> (+ FORM_INVALID_FIELD, FieldAdornment, TRAILING_ROOM)" usage="The one form field: variant (default / compact / locked) + invalid + icon + trailing. `<Input invalid>` is sugar over the FORM_INVALID_FIELD red-outline token; the same raw token flags non-input surfaces too (media dropzone, proof editor, section cards). `icon` overlays a leading icon at the leading edge, inert. `trailing` is the field's own action slot at the other edge, centred on the field's height and taking the pointer: the map and copy marks of a longitude field, the picker of a <DateTimeInput>, the archive mark of a URL field. Marks in it are <Glyph> (a 13px mark in a 24px ghost square), set a hair apart so two hover plates read as two controls, and the text padding grows by TRAILING_ROOM so a long value never runs under them. FieldAdornment + TRAILING_ROOM are exported for the one field that is not an input: <LockedUrl> renders a frozen value as an anchor and clears the same adornment by the same amount. Native props + className pass through.">
+          <Item name="<Input> (+ FORM_INVALID_FIELD, FieldAdornment, TRAILING_ROOM)" usage="The one form field: variant (default / compact / locked) + invalid + icon + trailing. `<Input invalid>` is sugar over the FORM_INVALID_FIELD red-outline token; the same raw token flags non-input surfaces too (media dropzone, proof editor, section cards). `icon` overlays a leading icon at the leading edge, inert. `trailing` is the field's own action slot at the other edge, centred on the field's height and taking the pointer: the map and copy marks of a longitude field, the picker of a <DateTimeInput>, the archive mark of a URL field. Each one is a ghost icon button, the site's one icon control, set a hair apart so two hover plates read as two controls; the field is one height across the three variants so that 32px square sits inside any of them with a 3px gutter, and the text padding grows by TRAILING_ROOM so a long value never runs under them. FieldAdornment + TRAILING_ROOM are exported for the one field that is not an input: <LockedUrl> renders a frozen value as an anchor and clears the same adornment by the same amount. Native props + className pass through.">
             <div className="w-full max-w-sm space-y-2">
               <Variant label="default">
                 <Input placeholder="Type here..." />
@@ -639,7 +655,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<DateTimeInput>" usage="A date, a time or an instant: the native control wearing the site's own mark. The browser draws its picker button in engine chrome at engine size, which on the dark field reads as a foreign element; the brick sets `.picker-glyph` (globals.css hides that button, Webkit/Chromium only) and puts an accent <Glyph> in the field's trailing slot instead, Calendar for anything picking a day and Clock for a time of day, opening the same native picker through showPicker() and falling back to focusing the field. One brick for the event date, the event time and the source post time, on the submit form and the edit form alike. It also owns `has-value`, the class globals.css mutes an empty field's dd/mm/yyyy placeholder off, so no call site derives it. A date field too narrow for an adornment (the search filters, the map scrubber) stays a bare Input of type date and keeps the native button.">
+          <Item name="<DateTimeInput>" usage="A date, a time or an instant: the native control wearing the site's own mark. The browser draws its picker button in engine chrome at engine size, which on the dark field reads as a foreign element; the brick sets `.picker-glyph` (globals.css hides that button, Webkit/Chromium only) and puts a ghost icon button in the field's trailing slot instead, Calendar for anything picking a day and Clock for a time of day, opening the same native picker through showPicker() and falling back to focusing the field. One brick for the event date, the event time and the source post time, on the submit form and the edit form alike. It also owns `has-value`, the class globals.css mutes an empty field's dd/mm/yyyy placeholder off, so no call site derives it. A date field too narrow for an adornment (the search filters, the map scrubber) stays a bare Input of type date and keeps the native button.">
             <div className="w-full max-w-sm space-y-2">
               <Variant label='type="date" (empty)'>
                 <DateTimeInput type="date" value="" onChange={() => {}} />
@@ -821,7 +837,7 @@ export default function PalettePage() {
 
           <Item
             name="<ArchivedCopies>"
-            usage="The archived copy beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One copy per link, from whichever service produced it, so the affordance is a single lucide glyph: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy, never in the shape. It is a <Glyph> in exactly two states, and colour says which: accent where a copy exists and the mark opens it, grey and inert where none does, for every reader including the event's owner. Recording a copy is an edit, so it happens on the forms through <ArchiveAdornment> + <ArchiveSnapshotField> and files a version; nothing here writes. The mark carries no `?` of its own: the row's field concept explains it (source_url, secondary_source_urls, detected_from), so an expanded list of ten mirrors shows one explanation rather than ten. It sits `self-center` because those rows align their text on the baseline, where a 24px box hangs low. Every glyph looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
+            usage="The archived copy beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One copy per link, from whichever service produced it, so the affordance is a single lucide mark: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy, never in the shape. It is one ghost icon button in exactly two states, and colour says which: accent where a copy exists and the mark opens it, grey and disabled where none does, for every reader including the event's owner. Recording a copy is an edit, so it happens on the forms through <ArchiveAdornment> + <ArchiveSnapshotField> and files a version; nothing here writes. The mark carries no `?` of its own: the row's field concept explains it (source_url, secondary_source_urls, detected_from), so an expanded list of ten mirrors shows one explanation rather than ten. It sits `self-center` because those rows align their text on the baseline, where the square hangs low. Every mark looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
           >
             <Variant label="a stored copy named for the Wayback Machine (primary source)">
               <span className="text-sm text-neutral-300">

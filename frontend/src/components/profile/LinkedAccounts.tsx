@@ -6,8 +6,8 @@ import { Check, Globe } from "lucide-react";
 import { displayLinkValue, resolveLinkHref, type PublicProfile } from "@/lib/users";
 import type { ExternalLinks } from "@/types";
 import { DiscordGlyph, GitHubGlyph, XGlyph } from "@/components/ui/BrandGlyphs";
+import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Glyph } from "@/components/ui/Glyph";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
@@ -104,8 +104,8 @@ export function LinkedAccountsFields({ edit }: { edit: ProfileEditState }) {
 }
 
 /**
- * Where to reach the analyst: one [`<Glyph>`](../ui/Glyph.tsx) per platform the
- * profile carries, the brand mark alone.
+ * Where to reach the analyst: one ghost icon button per platform the profile
+ * carries, the brand mark alone.
  *
  * It reads in the header action cluster, right of the handle, the same place
  * the event page keeps its share controls, so reaching the analyst is an action
@@ -118,11 +118,10 @@ export function LinkedAccountsFields({ edit }: { edit: ProfileEditState }) {
  * where a reader who wants the handle itself gets it: a bare mark says the
  * platform and nothing else.
  *
- * Bare marks and not icon buttons, and one shape across the whole row: these
- * are marks set in a line beside the handle, not an action row, and a square
- * box around each would outweigh the name the page is titled with. The row is
- * every glyph the header offers, the owner's Edit profile included, so a reader
- * meets one kind of control there instead of marks beside a button.
+ * One shape across the whole row, and it is the site's one icon control: the
+ * row is every icon control the header offers, the owner's Edit profile
+ * included, so a reader meets one kind of control there rather than marks of
+ * one size beside a button of another.
  *
  * The name prints `displayLinkValue`, not the stored string, so an X value reads
  * `@LoLManya` whether it was stored as a profile URL or as a bare handle.
@@ -163,7 +162,19 @@ export function LinkedAccountsLine({ profile }: { profile: PublicProfile }) {
 
         const href = resolveLinkHref(key, value);
         if (!href) return [];
-        return [<Glyph key={key} icon={Icon} label={name} href={href} />];
+        return [
+          <a
+            key={key}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={name}
+            title={name}
+            className={buttonClasses("ghost", { icon: true })}
+          >
+            <Icon size={14} />
+          </a>,
+        ];
       })}
     </>
   );
@@ -204,12 +215,15 @@ function CopyHandle({
 
   return (
     <>
-      <Glyph
-        icon={copied ? Check : Icon}
-        label={name}
-        title={copied ? copiedLabel : name}
+      <Button
+        icon
+        variant="ghost"
         onClick={() => void copy(value)}
-      />
+        aria-label={name}
+        title={copied ? copiedLabel : name}
+      >
+        {copied ? <Check size={14} /> : <Icon size={14} />}
+      </Button>
       <span className="sr-only" role="status" aria-live="polite">
         {copied ? copiedLabel : ""}
       </span>

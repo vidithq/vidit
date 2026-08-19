@@ -97,16 +97,16 @@ describe("ArchivedCopies", () => {
   it("shows a missing copy as an inert grey mark, for every viewer alike", () => {
     render(<ArchivedCopies {...props} copy={null} />);
     // The absence is shown rather than hidden, but nothing here acts on it.
-    const missing = screen.getByRole("img", {
-      name: "No archived copy of the source",
-    });
-    expect(missing).toHaveClass("text-neutral-600");
+    expect(
+      screen.getByRole("button", { name: "No archived copy of the source" })
+    ).toBeDisabled();
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
   // Colour is what says a mark can be clicked, so the two states cannot share
-  // one paint however alike they are drawn.
+  // one paint however alike they are drawn. Grey is the disabled button's own
+  // paint, the same neutral every refusing control on the site wears.
   it("paints the stored copy accent and the missing one grey", () => {
     const { unmount } = render(
       <ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback" }} />
@@ -118,8 +118,8 @@ describe("ArchivedCopies", () => {
 
     render(<ArchivedCopies {...props} copy={null} />);
     expect(
-      screen.getByRole("img", { name: "No archived copy of the source" })
-    ).toHaveClass("text-neutral-600");
+      screen.getByRole("button", { name: "No archived copy of the source" })
+    ).toHaveClass("disabled:text-neutral-600");
   });
 
   // The mark is explained by the row it sits on, not by a `?` of its own: an
@@ -131,8 +131,8 @@ describe("ArchivedCopies", () => {
     expect(screen.getAllByRole("link")).toHaveLength(1);
   });
 
-  // The row it rides aligns its text on the baseline, where a 24px box would
-  // otherwise hang low against the link it belongs to.
+  // The row it rides aligns its text on the baseline, where the icon button's
+  // square would otherwise hang low against the link it belongs to.
   it("centres its box on the line rather than hanging it off the baseline", () => {
     const { container } = render(<ArchivedCopies {...props} copy={null} />);
     expect(container.firstElementChild).toHaveClass("self-center");

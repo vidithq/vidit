@@ -34,6 +34,7 @@ vi.mock("@/lib/users", async (importOriginal) => ({
   getUserStats: vi.fn((username: string) => getUserStats(username)),
 }));
 
+import { buttonClasses } from "@/components/ui/Button";
 import type { PublicProfile, UserStats } from "@/lib/users";
 import type { EventListItem, MapPoint } from "@/types";
 
@@ -211,18 +212,16 @@ describe("public profile order", () => {
     mountProfile();
     await screen.findByText("Insights");
 
-    // One kind of control in the row: a box around any of them would outweigh
-    // the handle the page is titled with, and a boxed Edit beside four marks
-    // reads as a different tier of action than the tier it belongs to.
+    // One kind of control in the row, and it is the site's one icon control:
+    // the owner's Edit sits in the same ghost square as the accounts beside it,
+    // navigating or acting, rather than in a tier of its own.
     const marks = [
       screen.getByRole("link", { name: "X / Twitter: @ana_osint" }),
       screen.getByRole("link", { name: "Website: ana.example" }),
       screen.getByRole("button", { name: "Edit profile" }),
     ];
-    for (const mark of marks) {
-      expect(mark).toHaveClass("text-orange-400");
-      expect(mark.className).not.toMatch(/border|bg-neutral/);
-    }
+    const shape = buttonClasses("ghost", { icon: true });
+    for (const mark of marks) expect(mark.className).toBe(shape);
   });
 
   it("names each chart by what it counts, in words that need no tooltip", async () => {

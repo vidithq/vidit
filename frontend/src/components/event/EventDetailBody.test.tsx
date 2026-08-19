@@ -14,7 +14,7 @@ vi.mock("@/contexts/AuthContext", () => ({
 }));
 
 // The media gallery's alt text, which is the event title. Named because the
-// detail rows carry archive glyphs of their own, so a media assertion has to
+// detail rows carry archive marks of their own, so a media assertion has to
 // say which image it means.
 const TITLE = "Strike on ammunition depot";
 
@@ -409,7 +409,7 @@ describe("EventDetailBody", () => {
         variant="page"
       />
     );
-    // Named per service and per target, since every glyph on the page looks
+    // Named per service and per target, since every mark on the page looks
     // alike and a screen reader has nothing else to tell them apart by.
     expect(
       screen.getByRole("link", { name: "Wayback Machine copy of the source" })
@@ -438,7 +438,7 @@ describe("EventDetailBody", () => {
       "No archived copy of t.me",
       "No archived copy of the post it was detected from",
     ]) {
-      expect(screen.getByRole("img", { name })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name })).toBeDisabled();
     }
     expect(screen.queryByRole("textbox")).toBeNull();
   });
@@ -536,8 +536,8 @@ describe("EventDetailBody", () => {
     expect(archived).toHaveAttribute("rel", "noopener noreferrer");
     // The uncopied mirror says so rather than showing nothing.
     expect(
-      screen.getByRole("img", { name: "No archived copy of mirror 1, x.com" })
-    ).toBeInTheDocument();
+      screen.getByRole("button", { name: "No archived copy of mirror 1, x.com" })
+    ).toBeDisabled();
     // The mirror itself stays the primary link either way.
     expect(screen.getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
   });
@@ -556,7 +556,7 @@ describe("EventDetailBody", () => {
       />
     );
     // Named apart from the source: the provenance link is the analyst's own
-    // post, not the footage origin, and both rows carry the same glyph.
+    // post, not the footage origin, and both rows carry the same mark.
     expect(
       screen.getByRole("link", {
         name: "Wayback Machine copy of the post it was detected from",

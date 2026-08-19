@@ -67,10 +67,10 @@ describe("CoordinateInputs", () => {
     ).toBeInTheDocument();
   });
 
-  // The pair sits in the input row's third column, so both controls are bare
-  // glyphs: the name comes from the label, not from text that would widen the
-  // cell at the fields' expense.
-  it("names the map link on the glyph itself, beside the fields", () => {
+  // The pair rides inside the longitude field, so both controls are icon-only:
+  // the name comes from the label, not from text that would take width from the
+  // field they sit in.
+  it("names the map link on the control itself, beside the fields", () => {
     render(<CoordinateInputs {...baseProps} lat="48.015883" lng="37.802411" />);
     const link = screen.getByRole("link", { name: "View on Maps" });
     expect(link).toHaveTextContent("");
@@ -85,24 +85,22 @@ describe("CoordinateInputs", () => {
   ])("greys both while the pair is %s", (_case, lat, lng) => {
     render(<CoordinateInputs {...baseProps} lat={lat} lng={lng} />);
     // Not a link at all: there is nowhere to navigate without a point, so the
-    // mark stays as an inert image naming what is missing.
+    // map control is a disabled button naming what is missing.
     expect(screen.queryByRole("link", { name: "View on Maps" })).toBeNull();
     expect(
-      screen.getByRole("img", {
+      screen.getByRole("button", {
         name: "No map link until the coordinate pair is complete",
       })
-    ).toBeInTheDocument();
-    // The copy is inert too, rather than a button that would write an empty
-    // clipboard.
-    expect(screen.queryByRole("button", { name: "Copy coordinates" })).toBeNull();
-    expect(screen.getByRole("img", { name: "Copy coordinates" })).toHaveClass(
-      "text-neutral-600"
-    );
+    ).toBeDisabled();
+    // The copy refuses too, rather than writing an empty clipboard.
+    expect(
+      screen.getByRole("button", { name: "Copy coordinates" })
+    ).toBeDisabled();
   });
 
   it("enables both once the pair parses", () => {
     render(<CoordinateInputs {...baseProps} lat="48.015883" lng="37.802411" />);
-    expect(screen.queryByRole("img", { name: /No map link/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /No map link/ })).toBeNull();
     expect(
       screen.getByRole("button", { name: "Copy coordinates" })
     ).toBeEnabled();

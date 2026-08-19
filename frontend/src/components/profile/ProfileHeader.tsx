@@ -7,7 +7,6 @@ import type { PublicProfile } from "@/lib/users";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { FileManager } from "@/components/ui/FileManager";
-import { Glyph } from "@/components/ui/Glyph";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
 import FollowButton from "./FollowButton";
@@ -124,21 +123,21 @@ export function ProfileIdentity({
   );
 }
 
-/** The header action cluster: the glyph row (the linked accounts, then Edit
+/** The header action cluster: the icon row (the linked accounts, then Edit
  *  profile on your own profile), and Follow on someone else's or the save pair
  *  while editing.
  *
  *  Reaching the analyst is an action on the page rather than a line of the
  *  identity, so the marks sit where every other page keeps the controls that
  *  act on the thing the page is about, right of the title. One shape for the
- *  whole row: `<Glyph>` marks, the owner's Edit profile included, so the header
- *  offers one kind of control rather than four marks beside a button. Each mark
- *  is a 24px box carrying its own hover plate, so that box is what spaces the
- *  row and the marks sit a hair apart, close enough to read as one row of
- *  controls; the cluster's own `gap-2` separates the row from whatever button
- *  sits at the far right. The cluster wraps and right-aligns, the shape
- *  every page-level action cluster uses, so the marks and the button break onto
- *  separate lines on a phone instead of widening the header.
+ *  whole row: ghost icon buttons, the owner's Edit profile included, so the
+ *  header offers one kind of control rather than four marks beside a button.
+ *  The row's `gap-1.5` is the event page's action-cluster spacing, so two rows
+ *  of icon controls on two pages sit the same distance apart; the cluster's own
+ *  `gap-2` separates the row from whatever button sits at the far right. The
+ *  cluster wraps and right-aligns, the shape every page-level action cluster
+ *  uses, so the marks and the button break onto separate lines on a phone
+ *  instead of widening the header.
  *
  *  Editing drops the row: the links are the inputs below for the duration, and
  *  the page is already in the mode Edit profile would enter. */
@@ -154,10 +153,18 @@ export function ProfileActions({
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
       {!edit.editing && (
-        <div className="flex flex-wrap items-center gap-0.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <LinkedAccountsLine profile={profile} />
           {isOwn && (
-            <Glyph icon={Pencil} label="Edit profile" onClick={edit.startEditing} />
+            <Button
+              icon
+              variant="ghost"
+              onClick={edit.startEditing}
+              aria-label="Edit profile"
+              title="Edit profile"
+            >
+              <Pencil size={14} />
+            </Button>
           )}
         </div>
       )}

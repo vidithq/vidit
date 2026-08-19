@@ -2,9 +2,14 @@
 
 import { Check, Copy, ExternalLink } from "lucide-react";
 
-import { Glyph } from "@/components/ui/Glyph";
+import { Button, buttonClasses } from "@/components/ui/Button";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { formatCoordinates, mapsUrl } from "@/lib/coordinates";
+
+/** What the map control says while the pair cannot be opened. Its name carries
+ *  the state, since the mark itself only says "maps". */
+const NO_MAP_LINK = "No map link until the coordinate pair is complete";
+const MAP_LINK = "View on Maps";
 
 /**
  * The two things anyone does with a coordinate pair: check it against
@@ -14,24 +19,24 @@ import { formatCoordinates, mapsUrl } from "@/lib/coordinates";
  * What lands on the clipboard is the same 6-decimal rendering the page shows,
  * which pastes back into the inputs as a pair.
  *
- * Two `<Glyph>` marks, the shape every mark inside a field carries: a 13px mark
- * in a 24px ghost square, small enough not to outweigh the coordinate itself or
- * to take width from the field they ride in. They sit a hair apart, so the two
+ * Two ghost icon buttons, the one icon control on the site: the same square and
+ * the same hover plate the share row and the page-header clusters carry, so a
+ * control reads the same wherever it sits. They sit a hair apart, so the two
  * hover plates read as two controls rather than as one wide one.
  *
  * A null pair (a coordinate still being typed, or one out of bounds) keeps both
- * marks in place and grey rather than removing them: the actions occupy the
- * same width whether or not they can act, so the field they sit in never jumps,
- * and a grey mark says the point is not usable yet where a vanished one says
- * nothing at all. Grey is the state itself, not a dimmed accent, and the marks
- * are inert while they wear it: `<Glyph active={false}>` neither navigates nor
- * fires whatever it was handed.
+ * controls in place and disabled rather than removing them: they occupy the same
+ * width whether or not they can act, so the field they sit in never jumps, and a
+ * grey control says the point is not usable yet where a vanished one says
+ * nothing at all. `disabled` is what paints them grey, the same neutral every
+ * refusing control on the site wears, and the map link becomes a button in that
+ * state: there is nothing to navigate to, and a disabled anchor is not a thing.
  */
 export function CoordinateActions({
   lat,
   lng,
 }: {
-  /** Null while the pair is half-typed or out of bounds: both marks grey. */
+  /** Null while the pair is half-typed or out of bounds: both controls grey. */
   lat: number | null;
   lng: number | null;
 }) {
@@ -39,27 +44,33 @@ export function CoordinateActions({
 
   return (
     <span className="inline-flex items-center gap-0.5">
-      <Glyph
-        icon={ExternalLink}
-        label={
-          point
-            ? "View on Maps"
-            : "No map link until the coordinate pair is complete"
-        }
-        href={point ? mapsUrl(point.lat, point.lng) : undefined}
-        active={point !== null}
-      />
+      {point ? (
+        <a
+          href={mapsUrl(point.lat, point.lng)}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={MAP_LINK}
+          title={MAP_LINK}
+          className={buttonClasses("ghost", { icon: true })}
+        >
+          <ExternalLink size={14} />
+        </a>
+      ) : (
+        <Button icon variant="ghost" disabled aria-label={NO_MAP_LINK} title={NO_MAP_LINK}>
+          <ExternalLink size={14} />
+        </Button>
+      )}
       <CopyCoordinates point={point} />
     </span>
   );
 }
 
 /**
- * The pair on the clipboard, in the glyph shape.
+ * The pair on the clipboard, in the one icon-control shape.
  *
  * `useCopyToClipboard` owns the write and the flash timer, so every copy
  * gesture on the site is this one hook worn in whatever shape its surroundings
- * call for (the profile's Discord account is the same glyph shape; the admin
+ * call for (the profile's Discord account is the same icon button; the admin
  * invite row is a text button). What no shape may differ on is the
  * accessibility of the flash: the name is static, because a name that changes
  * on click is re-announced as a new control, and the confirmation lands in a
@@ -67,23 +78,27 @@ export function CoordinateActions({
  */
 function CopyCoordinates({ point }: { point: { lat: number; lng: number } | null }) {
   const { copied, copy } = useCopyToClipboard();
+  const label = "Copy coordinates";
   const copiedLabel = "Coordinates copied";
 
   return (
     <>
-      <Glyph
-        icon={copied ? Check : Copy}
-        label="Copy coordinates"
-        title={copied ? copiedLabel : "Copy coordinates"}
-        // Re-checked inside the handler rather than falling back to a made-up
-        // point: an inactive glyph never fires, and nothing here should be able
-        // to put a coordinate nobody typed on the clipboard.
+      <Button
+        icon
+        variant="ghost"
+        // Nothing to write while the pair is incomplete, and a control that
+        // cannot act is grey and inert rather than a button that copies a
+        // coordinate nobody typed.
+        disabled={point === null}
+        aria-label={label}
+        title={copied ? copiedLabel : label}
         onClick={() => {
           if (point) void copy(formatCoordinates(point.lat, point.lng));
         }}
-        active={point !== null}
-      />
-      {/* Sibling, not the glyph's own name: as the name it would re-announce
+      >
+        {copied ? <Check size={14} /> : <Copy size={14} />}
+      </Button>
+      {/* Sibling, not the button's own name: as the name it would re-announce
           the control on every flip instead of reporting a status. */}
       <span className="sr-only" role="status" aria-live="polite">
         {copied ? copiedLabel : ""}
