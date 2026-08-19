@@ -170,9 +170,9 @@ describe("public profile order", () => {
     mountProfile();
     await screen.findByText("Insights");
 
-    // Icon buttons, so the handle carrying the account is in the accessible
-    // name rather than on screen: a bare brand mark says the platform and
-    // nothing else, and a bare handle does not say which account it is.
+    // Bare marks, so the handle carrying the account is in the accessible
+    // name rather than on screen: a brand mark says the platform and nothing
+    // else, and a bare handle does not say which account it is.
     const x = screen.getByRole("link", { name: "X / Twitter: @ana_osint" });
     expect(x).toHaveAttribute("href", "https://x.com/ana_osint");
     expect(x.textContent).toBe("");
@@ -199,6 +199,30 @@ describe("public profile order", () => {
     expect(screen.getByRole("button", { name: "Follow" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /copy profile link/i })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit profile" })).toBeNull();
+  });
+
+  it("draws the whole header row as marks, the owner's edit control included", async () => {
+    useAuth.mockReturnValue({
+      user: { id: "u1", username: "ana", email: "ana@example.test" },
+      loading: false,
+      logout: vi.fn(),
+      refresh: vi.fn(),
+    });
+    mountProfile();
+    await screen.findByText("Insights");
+
+    // One kind of control in the row: a box around any of them would outweigh
+    // the handle the page is titled with, and a boxed Edit beside four marks
+    // reads as a different tier of action than the tier it belongs to.
+    const marks = [
+      screen.getByRole("link", { name: "X / Twitter: @ana_osint" }),
+      screen.getByRole("link", { name: "Website: ana.example" }),
+      screen.getByRole("button", { name: "Edit profile" }),
+    ];
+    for (const mark of marks) {
+      expect(mark).toHaveClass("text-orange-400");
+      expect(mark.className).not.toMatch(/border|bg-neutral/);
+    }
   });
 
   it("names each chart by what it counts, in words that need no tooltip", async () => {

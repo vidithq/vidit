@@ -39,6 +39,7 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
         variant="ghost"
         onClick={onClose}
         aria-label="Close detail panel"
+      title="Close detail panel"
         className="absolute top-3 right-3 z-10 text-lg"
       >
         &times;

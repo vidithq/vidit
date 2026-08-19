@@ -2,23 +2,30 @@
 
 import type { ComponentType } from "react";
 
-import { TEXT_LINK } from "./styles";
-
 /** The one size for an inline glyph. Small enough to sit inside a line of text
  *  without leading it, large enough that lucide's strokes stay legible. */
 const GLYPH_SIZE = 13;
 
 // The two colour states, private to this file: the primitive below is what
 // picks between them, so a call site reaches for `<Glyph>` rather than for a
-// class string. The accent is `TEXT_LINK`, the accent every clickable on the
-// site carries, so an acting mark and a link read as the same offer.
+// class string. Accent is the accent every clickable on the site carries, so an
+// acting mark and a link read as the same offer.
+//
+// One hover for every active glyph, link and button alike: the accent lightens.
+// `TEXT_LINK`'s own hover is an underline, which a mark carrying no text cannot
+// show, so a glyph would answer the pointer on a text link and stay dead on an
+// icon. Colour is the one channel it has, and it is the same rise whichever
+// element the mark renders as, so a reader cannot tell a navigating mark from
+// an acting one by how it answers.
 //
 // Grey here is a state, not a dimmed accent: a control is accent when it acts
 // and neutral grey when it cannot, so an inert glyph reads as inert instead of
-// as a faint version of a link. The same rule paints <Button>'s disabled state.
-// Size and spacing stay at the call site, since a glyph sits in whatever line
-// of text carries it.
-const ACTION_GLYPH = `${TEXT_LINK} inline-flex`;
+// as a faint version of a link. It takes no hover at all, since nothing there
+// answers. The same rule paints <Button>'s disabled state. Size and spacing
+// stay at the call site, since a glyph sits in whatever line of text carries
+// it.
+const ACTION_GLYPH =
+  "inline-flex text-orange-400 transition-colors hover:text-orange-300";
 const MUTED_GLYPH = "inline-flex text-neutral-600";
 
 /**
@@ -41,7 +48,9 @@ const MUTED_GLYPH = "inline-flex text-neutral-600";
  *
  * One of `href` (an outbound link, opened in a new tab) or `onClick` (an action
  * on this page) makes it a control; neither is a mark that only states
- * something, like a copy that does not exist.
+ * something, like a copy that does not exist. An active glyph answers the
+ * pointer the same way in both forms, by lightening its accent, so no mark on
+ * the site is a control that fails to react; an inert one takes no hover.
  *
  * The glyph carries no text, so `label` is its whole name: it lands on both
  * `aria-label` and `title`, which is the bare name of an icon-only control

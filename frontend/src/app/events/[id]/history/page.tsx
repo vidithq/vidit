@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import type { EventDetail, EventVersion, EventVersionList } from "@/types";
@@ -12,7 +11,6 @@ import { EventVersionRow } from "@/components/event/EventVersionRow";
 import { Button } from "@/components/ui/Button";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
-import { TEXT_LINK } from "@/components/ui/styles";
 
 /** The history read answers an envelope rather than a bare array, so the walk
  *  is told where its rows are. Module-level: `useCursorList` keys its fetches on
@@ -59,15 +57,10 @@ export default function EventHistoryPage() {
   const versions = eventVersions(geo, rows, hasMore);
 
   return (
-    <PageShell
-      back
-      title="Version history"
-      subtitle={
-        <Link href={`/events/${geo.id}`} className={TEXT_LINK}>
-          {geo.title}
-        </Link>
-      }
-    >
+    // The event's title names what the history is of, as plain text: the
+    // *Current* row below already links to the event, and a second way there in
+    // the header is one control the reader has to tell apart from it.
+    <PageShell back title="Version history" subtitle={geo.title}>
       {historyError && <div className={FORM_ERROR_BANNER}>{historyError}</div>}
 
       {loading ? (

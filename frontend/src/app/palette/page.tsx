@@ -409,7 +409,7 @@ export default function PalettePage() {
               <Button variant="primary" className={ARMED_RING}>
                 Confirm submit
               </Button>
-              <Button icon variant="ghost" className={ARMED_RING} aria-label="Copy coordinates">
+              <Button icon variant="ghost" className={ARMED_RING} aria-label="Copy coordinates" title="Copy coordinates">
                 <Copy size={15} />
               </Button>
             </div>
@@ -435,7 +435,7 @@ export default function PalettePage() {
                 <Button variant="ghost">Ghost</Button>
                 <Button variant="danger">Danger</Button>
                 <Button variant="dangerGhost">Danger ghost</Button>
-                <Button icon variant="ghost" aria-label="Locate">
+                <Button icon variant="ghost" aria-label="Locate" title="Locate">
                   <MapPin size={15} />
                 </Button>
               </div>
@@ -445,7 +445,7 @@ export default function PalettePage() {
                 <Button variant="secondary" disabled>Secondary</Button>
                 <Button variant="ghost" disabled>Ghost</Button>
                 <Button variant="danger" disabled>Danger</Button>
-                <Button icon variant="ghost" disabled aria-label="Locate">
+                <Button icon variant="ghost" disabled aria-label="Locate" title="Locate">
                   <MapPin size={15} />
                 </Button>
               </div>
@@ -460,7 +460,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Glyph>" usage="The one bare inline glyph: a 13px mark set in a line of text, with no button chrome (the archived-copy mark beside a source link, the map and copy marks of <CoordinateActions>). Where a control owns its own box instead, that is <Button icon>. One of href (outbound, new tab) or onClick (an action here) makes it a control; neither is a mark that only states something. Colour is the state and the primitive enforces it: accent only when it renders something actionable, neutral grey otherwise (the two class strings are private to Glyph.tsx, so a call site reaches for the primitive rather than for a string), and an inactive glyph renders as an inert span whatever href or onClick it was handed, so nothing fires from a mark that reads as unavailable. It is also the copy control for a line of text, over useCopyToClipboard: the resting mark flips to a check for the flash window while the accessible name holds still and a sibling live region announces the write (<CoordinateActions>, the profile's Discord account). label is the whole name (aria-label + title, the bare name of an icon-only control, never an explanation: that is <FieldHelp>); title takes a tooltip that moves while the name holds still (a copy flash).">
+          <Item name="<Glyph>" usage="The one bare inline glyph: a 13px mark set in a line of text, with no button chrome (the archived-copy mark beside a source link, the map and copy marks of <CoordinateActions>). Where a control owns its own box instead, that is <Button icon>. One of href (outbound, new tab) or onClick (an action here) makes it a control; neither is a mark that only states something. Colour is the state and the primitive enforces it: accent only when it renders something actionable, neutral grey otherwise (the two class strings are private to Glyph.tsx, so a call site reaches for the primitive rather than for a string), and an inactive glyph renders as an inert span whatever href or onClick it was handed, so nothing fires from a mark that reads as unavailable. One hover for every active glyph, link form and button form alike: the accent lightens, since a mark carrying no text cannot show TEXT_LINK's underline and colour is the one channel it has. An inert one takes no hover, because nothing there answers. It is also the whole profile header row (the linked accounts and the owner's Edit profile), and the mark inside a field (<Input trailing>). It is also the copy control for a line of text, over useCopyToClipboard: the resting mark flips to a check for the flash window while the accessible name holds still and a sibling live region announces the write (<CoordinateActions>, the profile's Discord account). label is the whole name (aria-label + title, the bare name of an icon-only control, never an explanation: that is <FieldHelp>); title takes a tooltip that moves while the name holds still (a copy flash).">
             <div className="flex items-center gap-4 text-sm text-neutral-300">
               <Variant label="href">
                 <Glyph icon={Archive} label="Wayback Machine copy of the source" href="#" />

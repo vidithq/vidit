@@ -151,6 +151,17 @@ describe("EventHistoryPage", () => {
     expect(screen.getByLabelText("Version 1").getAttribute("href")).toBe("/events/e1/v1");
   });
 
+  it("names the event in the header without a second way back to it", () => {
+    render(<EventHistoryPage />);
+    // The *Current* row already opens the event, so the subtitle states the
+    // title and nothing more: two controls onto one page is one the reader has
+    // to tell apart from the other.
+    expect(screen.getByText("Strike on a depot")).not.toBeInstanceOf(HTMLAnchorElement);
+    expect(
+      screen.getAllByRole("link").filter((a) => a.getAttribute("href") === "/events/e1")
+    ).toHaveLength(1);
+  });
+
   it("marks a redacted version and compares nothing against it", () => {
     walk.items = [
       version(2, {}, { redacted: true }),
