@@ -1,7 +1,7 @@
 """event version model
 
-Revision ID: f4h6j8l0n2p4
-Revises: e3g5i7k9m1o3
+Revision ID: h6j8l0n2p4r6
+Revises: f4h6j8l0n2p4
 Create Date: 2026-08-18 10:00:00.000000
 
 A published geolocation is corrected, not frozen, and a correction must not
@@ -26,8 +26,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "f4h6j8l0n2p4"
-down_revision: Union[str, None] = "e3g5i7k9m1o3"
+revision: str = "h6j8l0n2p4r6"
+down_revision: Union[str, None] = "f4h6j8l0n2p4"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

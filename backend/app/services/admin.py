@@ -137,10 +137,7 @@ def serialize_invite_codes(db: Session, invites: list[InviteCode]) -> list[Admin
         AdminInviteCodeRead(
             id=invite.id,
             code=invite.code,
-            max_uses=invite.max_uses,
-            use_count=invite.use_count,
             expires_at=invite.expires_at,
-            revoked_at=invite.revoked_at,
             created_at=invite.created_at,
             status=invite_code_status(invite),
             redeemer=redeemers.get(invite.used_by) if invite.used_by else None,
@@ -192,9 +189,8 @@ def create_invite_code(
 ) -> InviteCode:
     """Mint a single-use invite code, optionally bound to an X handle.
 
-    ``max_uses`` is locked to 1 so every code's audit trail (``used_by`` /
-    ``used_at``) names exactly one analyst. The column accepts higher
-    values; the admin API doesn't expose them.
+    Every code is single-use, so its audit trail (``used_by`` / ``used_at``)
+    names exactly one analyst.
 
     A bound ``x_handle`` (already normalized by the schema) is copied onto
     the account at redemption; minting against a handle a user already
@@ -205,7 +201,6 @@ def create_invite_code(
     expires_at = datetime.now(UTC) + timedelta(days=expires_in_days) if expires_in_days else None
     invite = InviteCode(
         code=generate_invite_code(),
-        max_uses=1,
         expires_at=expires_at,
         x_handle=x_handle,
     )

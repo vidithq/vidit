@@ -157,9 +157,7 @@ class Storage(Protocol):
     def public_url(self, key: str) -> str: ...
     def key_from_url(self, url: str) -> str | None: ...
     def delete_many(self, keys: list[str]) -> None: ...
-    def get_bytes(self, key: str) -> bytes: ...
     def get_to_path(self, key: str, dest: Path) -> None: ...
-    def put_bytes_sync(self, data: bytes, key: str, content_type: str) -> None: ...
     def presign_staging_upload(
         self, key: str, *, max_bytes: int, content_type: str
     ) -> PresignedUpload: ...
@@ -217,22 +215,6 @@ class LocalStorage:
                 except OSError:
                     break
                 parent = parent.parent
-
-    def get_bytes(self, key: str) -> bytes:
-        """Read the raw bytes at ``key``. Raises ``FileNotFoundError`` on
-        miss; callers handle.
-        """
-        return self._path(key).read_bytes()
-
-    def put_bytes_sync(self, data: bytes, key: str, content_type: str) -> None:
-        """Sync sibling of ``upload_bytes`` for callers that don't need the
-        sha256 / UploadResult shape.
-        """
-        # ``content_type`` accepted to match the protocol, but local-disk
-        # storage carries no MIME metadata — FastAPI's StaticFiles infers
-        # Content-Type from the extension on the localhost URL.
-        del content_type
-        self._path(key).write_bytes(data)
 
     def presign_staging_upload(
         self, key: str, *, max_bytes: int, content_type: str
@@ -353,31 +335,13 @@ class S3Storage:
         if all_errors:
             raise StorageDeleteError(all_errors)
 
-    def get_bytes(self, key: str) -> bytes:
-        """Read the raw bytes at ``key`` from S3. Raises whatever
-        ``get_object`` raises on miss (boto3 ``NoSuchKey`` / 404).
-        """
-        response = self.client.get_object(Bucket=self.bucket, Key=key)
-        return response["Body"].read()
-
     def get_to_path(self, key: str, dest: Path) -> None:
         """Stream the object at ``key`` to ``dest`` without buffering it in
         memory: the staged archive guard is 4 GB, far past what a worker
-        process can hold, so the whole-object ``get_bytes`` is off-limits for
-        staged zips.
+        process can hold, so a whole-object read is off the table for staged
+        zips, and this is the only way down from storage.
         """
         self.client.download_file(self.bucket, key, str(dest))
-
-    def put_bytes_sync(self, data: bytes, key: str, content_type: str) -> None:
-        """Sync sibling of ``upload_bytes`` for callers that don't need the
-        sha256 / UploadResult.
-        """
-        self.client.put_object(
-            Bucket=self.bucket,
-            Key=key,
-            Body=data,
-            ContentType=content_type,
-        )
 
     def presign_staging_upload(
         self, key: str, *, max_bytes: int, content_type: str

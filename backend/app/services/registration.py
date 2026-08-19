@@ -308,9 +308,9 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
     and maps it to a 409 instead of a 500.
 
     Invite consumption is atomic via ``consume_invite_code``'s
-    ``UPDATE ... WHERE use_count < max_uses RETURNING`` — a multi-use code
-    losing its last slot to a concurrent confirm returns False, and we roll
-    back the unflushed user insert and raise ``InvalidInviteError``.
+    ``UPDATE ... WHERE used_at IS NULL RETURNING``: a code redeemed by a
+    concurrent confirm returns False, and we roll back the unflushed user
+    insert and raise ``InvalidInviteError``.
 
     Returns the freshly-created ``User``. Caller commits.
     """
@@ -429,13 +429,13 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
                 user.x_handle = None
 
     if not consume_invite_code(db, invite, user.id):
-        # We checked ``use_count < max_uses`` above; reaching here means a
+        # We checked ``used_at IS NULL`` above; reaching here means a
         # concurrent confirm won the microseconds-wide window before this
         # atomic UPDATE. Roll back to discard the just-flushed user (can't
-        # commit without a consumed slot); the rollback restores the pending
-        # row, so the next click re-enters, hits the
-        # ``use_count >= max_uses`` branch, commits the DELETE, and frees the
-        # address with a clean error.
+        # commit against a code someone else redeemed); the rollback restores
+        # the pending row, so the next click re-enters, hits the already
+        # redeemed branch, commits the DELETE, and frees the address with a
+        # clean error.
         db.rollback()
         raise InvalidInviteError("Invite code has already been used.")
 

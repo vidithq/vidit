@@ -219,13 +219,14 @@ def test_geolocate_writes_fields_and_freezes(db, author, conflict, capture_sourc
     # Geolocate freezes it: a detected row becomes geolocated, stamped, and
     # the owner lands in the durable credit table.
     assert body["status"] == "geolocated"
-    assert body["geolocated_at"] is not None
     assert [g["username"] for g in body["geolocators"]] == [author.username]
 
     db.expire_all()
     refreshed = db.query(Event).filter(Event.id == geo.id).one()
     assert refreshed.title == "Completed title"
     assert refreshed.status == STATUS_GEOLOCATED
+    # The state-entry stamp is a column, not a wire field.
+    assert refreshed.geolocated_at is not None
 
 
 def test_geolocate_accepts_missing_event_date(db, author, conflict, capture_source_tag):

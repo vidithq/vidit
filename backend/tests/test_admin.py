@@ -25,7 +25,7 @@ from app.models.media import Media
 from app.models.user import User
 from app.services import storage as storage_module
 from app.services.auth import hash_password
-from tests._fixtures import TINY_JPEG
+from tests._fixtures import TINY_JPEG, store_bytes
 from tests.conftest import login_as
 
 client = TestClient(app)
@@ -123,12 +123,9 @@ def test_create_invite_code_persists_and_returns_active(admin_user, db):
     )
     assert response.status_code == 201
     body = response.json()
-    # Codes are single-use by policy — every code names exactly one analyst.
-    assert body["max_uses"] == 1
-    assert body["use_count"] == 0
+    # Codes are single-use by policy: every code names exactly one analyst.
     assert body["status"] == "active"
     assert body["expires_at"] is not None
-    assert body["revoked_at"] is None
     assert body["redeemer"] is None
 
     invite = db.query(InviteCode).filter(InviteCode.id == uuid.UUID(body["id"])).first()
@@ -153,18 +150,6 @@ def test_create_invite_code_writes_admin_event(admin_user, db):
     )
     assert event is not None
     assert event.target == {"invite_code_id": str(invite_id)}
-
-
-def test_create_invite_code_ignores_max_uses_in_body(admin_user, db):
-    # The schema doesn't accept ``max_uses``; it's silently ignored and the
-    # service still hardcodes 1.
-    response = client.post(
-        "/api/v1/admin/invite-codes",
-        json={"max_uses": 50},
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 201
-    assert response.json()["max_uses"] == 1
 
 
 def test_create_invite_code_binds_x_handle_stripped_and_lowercased(admin_user, db):
@@ -298,7 +283,6 @@ def test_revoke_invite_code_marks_revoked(admin_user):
     assert revoke_response.status_code == 200
     body = revoke_response.json()
     assert body["status"] == "revoked"
-    assert body["revoked_at"] is not None
 
 
 def test_revoke_invite_code_returns_404_for_unknown_id(admin_user):
@@ -316,8 +300,6 @@ def test_list_invite_codes_carries_redeemer_onboarding_stats(admin_user, regular
         code=f"code{uuid.uuid4().hex[:12]}",
         used_by=regular_user.id,
         used_at=datetime.now(UTC),
-        max_uses=1,
-        use_count=1,
     )
     job = ArchiveImportJob(
         owner_id=regular_user.id, zip_key=f"staging/{uuid.uuid4().hex}.zip", status="done"
@@ -817,7 +799,7 @@ def test_hard_delete_user_sweeps_their_avatar(admin_user, regular_user, db, monk
 
     storage = storage_module.get_storage()
     key = f"avatars/{regular_user.id}/{uuid.uuid4()}.jpg"
-    storage.put_bytes_sync(TINY_JPEG, key, "image/jpeg")
+    store_bytes(TINY_JPEG, key)
     stored = tmp_path / key
     assert stored.is_file()
 

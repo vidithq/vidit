@@ -36,7 +36,6 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     detected_from_url: null,
     detected_via: null,
     archived_detected_from: null,
-    detected_post_at: null,
     owner: {
       id: "u1",
       username: "ana",
@@ -66,10 +65,6 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
       ],
     },
     created_at: "2026-06-02T10:00:00Z",
-    updated_at: "2026-06-02T10:00:00Z",
-    requested_at: null,
-    detected_at: null,
-    geolocated_at: "2026-06-02T10:00:00Z",
     closed_at: null,
     media: [
       {

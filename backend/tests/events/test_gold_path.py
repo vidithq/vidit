@@ -229,7 +229,6 @@ def test_gold_path_register_import_geolocate_publish(
         assert geolocated.status_code == 200, geolocated.text
         body = geolocated.json()
         assert body["status"] == STATUS_GEOLOCATED
-        assert body["geolocated_at"] is not None
         assert [g["username"] for g in body["geolocators"]] == [handle]
 
         # Frozen: a second geolocate 409s.

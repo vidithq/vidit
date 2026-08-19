@@ -24,14 +24,24 @@
 # relationship's string order_by ("EventSourceLink.position").
 position  # app/models/event.py EventSourceLink
 original_filename  # app/models/media.py, and schemas/media.py
-processed_at  # app/models/bot_mention.py — audit stamp, written at insert only
-# Stamped by services/reports.resolve_report and read on the wire only (the
-# column, the ContentReportRead field, and the assignment all collapse here).
-resolved_by  # app/models/content_report.py + app/schemas/report.py
+processed_at  # app/models/bot_mention.py, audit stamp written at insert only
 # Set at construction in services/versions.file_version and read only through
 # the `edited_by` relationship the history serializer walks.
 edited_by_id  # app/models/event.py EventVersion
 email_verified_at  # app/models/user.py, audit stamp written at registration only
+
+# ── Write-only audit columns ──────────────────────────────────────────────────
+# Stamped by app code, queried by an operator over SQL. They carry no wire
+# field and no app read, so every mention collapses onto the column and its
+# assignment. The lifecycle stamps below are also what ties `events.status` to
+# its CHECK constraints, so the row cannot be reconstructed without them; see
+# docs/data-model.md.
+resolved_by  # app/models/content_report.py, stamped by services/reports.resolve_report
+updated_at  # app/models/event.py, SQLAlchemy ``onupdate`` stamp
+requested_at  # app/models/event.py, state-entry stamp
+detected_at  # app/models/event.py, state-entry stamp
+geolocated_at  # app/models/event.py, state-entry stamp
+finished_at  # app/models/archive_import_job.py, stamped by services/archive_jobs
 
 # ── ASGI middleware override ──────────────────────────────────────────────────
 # Starlette's BaseHTTPMiddleware calls dispatch(); it is never referenced by name.
@@ -81,7 +91,6 @@ no_source_count  # schemas/user.py UserStatsRead
 # keyword arguments for getattr / hasattr / %-format only, so a keyword name at
 # a call site is never a use. Every wire field above is here for that reason.
 period  # schemas/user.py ActivityBucket (wire field)
-finished_at  # models/archive_import_job.py + schemas/event.py ArchiveImportJobRead: written by the worker, read on the wire only
 progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 redacted  # schemas/event.py EventVersionRead (wire field, built in routers/events/_common.py)
@@ -93,8 +102,6 @@ redacted_by_id  # models/event.py EventVersion
 # ── Test-only helper ──────────────────────────────────────────────────────────
 # Called from tests/, which the gate does not scan, so it reads as unused here.
 _cache_clear  # services/tweet_ingest/syndication.py
-_.get_bytes  # services/storage.py, both backends
-_.put_bytes_sync  # services/storage.py, both backends
 
 # ── Starlette request-body cache, written by us, read by the framework ────────
 # The body-size middleware caches the streamed body onto ``request._body`` so

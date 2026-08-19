@@ -1,7 +1,7 @@
 """event version redaction
 
 Revision ID: g5i7k9m1o3q5
-Revises: f4h6j8l0n2p4
+Revises: h6j8l0n2p4r6
 Create Date: 2026-08-18 12:00:00.000000
 
 A filed version is append-only, so the only way to take material out of one is
@@ -23,7 +23,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "g5i7k9m1o3q5"
-down_revision: Union[str, None] = "f4h6j8l0n2p4"
+down_revision: Union[str, None] = "h6j8l0n2p4r6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

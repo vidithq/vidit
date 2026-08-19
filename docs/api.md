@@ -571,9 +571,7 @@ A thread whose sole source candidate is an X status has that footage chased via 
   "progress_total": null,
   "created": 0, "updated": 0, "skipped": 0, "failed": 0,
   "error": null,
-  "created_at": "2026-07-17T12:00:00Z",
-  "started_at": null,
-  "finished_at": null
+  "created_at": "2026-07-17T12:00:00Z"
 }
 ```
 
@@ -593,7 +591,7 @@ One archive-import job. Owner only: someone else's job ID reads as 404, indistin
 
 `status` walks `queued` → `running` → `done` | `failed`. `post_estimate` is a free zip-metadata volume hint stamped at enqueue (declared `tweets.js` size over a per-record average; a display hint, not a promise); once the worker's parse has the exact detection count it stamps `progress_total` and batches `progress_done` as rows land, the upload page's live "137 / 412". The counts are final once `done`, and every detection lands in exactly one of them: `created` is new `detected` rows; `updated` an open detection the import overwrote with a newer parse; `skipped` a detection whose matched row the import leaves alone (published, rejected, withheld, removed, or already up to date); `failed` a detection that raised mid-persist (the rest still land). The [re-import rule](ingestion.md#re-import) states which row gets which. A `failed` **job** keeps whatever landed before the failure (re-uploading skips it and continues); `error` is a terse operator-facing reason. Rate-limited to 60/min/IP.
 
-**Response 200:** the job payload above, counts and timestamps filled per status.
+**Response 200:** the job payload above, counts filled per status.
 
 ---
 
@@ -624,10 +622,6 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
   "event_time": "14:30:00",
   "source_posted_at": "2026-03-14T18:05:00Z",
   "created_at": "2026-03-16T09:42:00Z",
-  "updated_at": "2026-03-16T09:42:00Z",
-  "requested_at": null,
-  "detected_at": null,
-  "geolocated_at": "2026-03-16T09:42:00Z",
   "closed_at": null,
   "is_graphic": false,
   "status": "geolocated",
@@ -637,7 +631,6 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
   "detected_from_url": null,
   "detected_via": null,
   "archived_detected_from": null,
-  "detected_post_at": null,
   "owner": {
     "id": "uuid",
     "username": "kalush"
@@ -706,8 +699,7 @@ Report an event for moderation. Open to anonymous viewers: the people a piece of
   "reporter_user_id": null,
   "created_at": "2026-08-12T09:14:00Z",
   "resolved_at": null,
-  "resolution": null,
-  "resolved_by": null
+  "resolution": null
 }
 ```
 
@@ -1203,7 +1195,6 @@ Any active filter empties the users group: the filters are event predicates, and
 **Errors:**
 | Code | Case |
 |------|------|
-| 401 | Unauthenticated |
 | 422 | `type` outside the allowed set, or `limit` outside [1, 50] |
 
 ---
@@ -1585,17 +1576,14 @@ Mint a new invite code. Audited via `admin_events` (`action = "invite_created"`)
 }
 ```
 
-`max_uses` is server-fixed at `1` and is not accepted in the request body. `expires_in_days` is optional (omit / `null` for "never expires"), max `365`. `x_handle` is optional: it binds the code to an X handle, normalized like `PATCH /admin/users/{id}/x-handle` (single leading `@` stripped, lowercased, `^[a-z0-9_]{1,15}$`); redemption copies it onto the new account as its bot-attribution link (fail-soft: if the handle got linked elsewhere meanwhile, the account is still created without it).
+Every code is single-use. `expires_in_days` is optional (omit / `null` for "never expires"), max `365`. `x_handle` is optional: it binds the code to an X handle, normalized like `PATCH /admin/users/{id}/x-handle` (single leading `@` stripped, lowercased, `^[a-z0-9_]{1,15}$`); redemption copies it onto the new account as its bot-attribution link (fail-soft: if the handle got linked elsewhere meanwhile, the account is still created without it).
 
 **Response 201:**
 ```json
 {
   "id": "8e67f0…",
   "code": "abc123xyz",
-  "max_uses": 1,
-  "use_count": 0,
   "expires_at": "2026-05-23T10:00:00Z",
-  "revoked_at": null,
   "created_at": "2026-05-09T10:00:00Z",
   "status": "active",
   "redeemer": null,
@@ -1604,7 +1592,7 @@ Mint a new invite code. Audited via `admin_events` (`action = "invite_created"`)
 }
 ```
 
-`status` is one of `active | exhausted | revoked | expired`, computed at read time. `redeemer` is the first consumer with their onboarding stats (see the list endpoint); `null` until the code is used.
+`status` is one of `active | exhausted | revoked | expired`, computed at read time. `redeemer` is the account that redeemed the code, with its onboarding stats (see the list endpoint); `null` until the code is used.
 
 **Response 409:** `x_handle` already linked to a user (`{"code": "x_handle_conflict", …}`).
 
@@ -1612,7 +1600,7 @@ Mint a new invite code. Audited via `admin_events` (`action = "invite_created"`)
 
 ### `GET /admin/invite-codes` 🛡️
 
-List invite codes (newest first), including exhausted / revoked / expired ones. Feeds the admin onboarding table: each used code nests its `redeemer`, the first consumer with acting fields plus read-side onboarding counters, batched in one grouped aggregate per source table (no per-row queries).
+List invite codes (newest first), including exhausted / revoked / expired ones. Feeds the admin onboarding table: each used code nests its `redeemer`, the redeeming account with acting fields plus read-side onboarding counters, batched in one grouped aggregate per source table (no per-row queries).
 
 Capped and cursor-paged like the catalog lists (the table is append-only, one row per invite ever issued).
 
@@ -1628,8 +1616,8 @@ Capped and cursor-paged like the catalog lists (the table is append-only, one ro
 ```json
 [
   {
-    "id": "…", "code": "…", "status": "exhausted", "max_uses": 1, "use_count": 1,
-    "expires_at": null, "revoked_at": null, "created_at": "…", "used_at": "…", "x_handle": "osint_hawk",
+    "id": "…", "code": "…", "status": "exhausted",
+    "expires_at": null, "created_at": "…", "used_at": "…", "x_handle": "osint_hawk",
     "redeemer": {
       "user_id": "…",
       "username": "osint_hawk",
@@ -1776,8 +1764,7 @@ The moderation queue: open reports first, then newest first within each group. R
       "reporter_user_id": null,
       "created_at": "2026-08-12T09:14:00Z",
       "resolved_at": null,
-      "resolution": null,
-      "resolved_by": null
+      "resolution": null
     }
   ],
   "total": 1,
@@ -1786,7 +1773,7 @@ The moderation queue: open reports first, then newest first within each group. R
 }
 ```
 
-`resolved_at` / `resolution` / `resolved_by` are all `null` while a report is open and all set once it is resolved, so `resolved_at is null` is the open test on the wire too. `event_id` is `null` when the reported event was hard-deleted after the report was filed: the report outlives it, and the admin panel renders those rows as *Event deleted* with `dismissed` as the only verdict on offer.
+`resolved_at` and `resolution` are both `null` while a report is open and both set once it is resolved, so `resolved_at is null` is the open test on the wire too. The admin who resolved it is recorded on the row and in `admin_events`, not on the wire. `event_id` is `null` when the reported event was hard-deleted after the report was filed: the report outlives it, and the admin panel renders those rows as *Event deleted* with `dismissed` as the only verdict on offer.
 
 ### `POST /admin/reports/{id}/resolve` 🛡️
 
@@ -1799,7 +1786,7 @@ Close one report with a verdict, applying it to the reported event. Reports are 
 
 `resolution` is one of `marked_graphic` (sets the event's `is_graphic` over the author's declaration), `hidden` (withholds the event from every public read, stamping `hidden_at`), or `dismissed` (closes the report, event untouched).
 
-**Response 200:** the resolved `ContentReportRead` (same shape as the queue item above, now carrying `resolved_at` / `resolution` / `resolved_by`).
+**Response 200:** the resolved `ContentReportRead` (same shape as the queue item above, now carrying `resolved_at` / `resolution`).
 
 **Errors:**
 | Code | Case |
