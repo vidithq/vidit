@@ -3,7 +3,12 @@
 import type { ReactNode } from "react";
 
 import type { ArchivedLink } from "@/types";
-import { ArchiveSourceField } from "@/components/ui/ArchivedCopies";
+import {
+  ArchiveMirrorField,
+  ArchiveSourceField,
+  mirrorDescription,
+} from "@/components/ui/ArchivedCopies";
+import { safeHostname } from "@/lib/format";
 import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { LinkListInput } from "@/components/ui/LinkListInput";
@@ -32,6 +37,15 @@ interface DetailsFieldsProps {
    *  the primary source it has no locked mode here. */
   secondarySourceUrls: string[];
   setSecondarySourceUrls: (v: string[]) => void;
+  /** One archived-copy paste per mirror, index-aligned with the list above and
+   *  posted as `secondary_snapshot_urls`. A mirror rots like the primary, so
+   *  every declared link carries the same optional field. */
+  secondarySnapshotUrls: string[];
+  setSecondarySnapshotUrls: (v: string[]) => void;
+  /** The copies the event already carries, keyed by the link each covers
+   *  (`archivedCopies`). Keyed rather than positional because the rows are
+   *  edited: a mirror shows the copy recorded for the URL it holds now. */
+  archivedCopies?: ReadonlyMap<string, ArchivedLink>;
   eventDate: string;
   setEventDate: (v: string) => void;
   /** Optional event time-of-day ("HH:MM", UTC). */
@@ -80,6 +94,9 @@ export function DetailsFields({
   archivedSource = null,
   secondarySourceUrls,
   setSecondarySourceUrls,
+  secondarySnapshotUrls,
+  setSecondarySnapshotUrls,
+  archivedCopies,
   eventDate,
   setEventDate,
   eventTime,
@@ -203,7 +220,10 @@ export function DetailsFields({
       {/* The mirrors sit under the primary they mirror. Never required, so no
           invalid state and no readiness entry: an empty list is a complete
           form. A `span` label, not a `label`: the rows are a list, and each
-          input carries its own accessible name. */}
+          input carries its own accessible name.
+
+          Each row carries the same archival brick as the Source URL above it,
+          because a mirror rots the same way. */}
       <div className="space-y-1.5">
         <span className={FORM_LABEL}>
           Secondary sources <FieldHelp concept="secondary_source_urls" />
@@ -214,6 +234,27 @@ export function DetailsFields({
           max={MAX_SECONDARY_SOURCE_LINKS}
           itemLabel="Secondary source"
           placeholder="https://x.com/user/status/12345"
+          companion={{
+            values: secondarySnapshotUrls,
+            onChange: setSecondarySnapshotUrls,
+            render: ({ index, url, value, onChange }) => (
+              <ArchiveMirrorField
+                url={url}
+                describes={mirrorDescription(
+                  safeHostname(url),
+                  index,
+                  secondarySourceUrls.length
+                )}
+                value={value}
+                onChange={onChange}
+                copy={archivedCopies?.get(url.trim()) ?? null}
+                // The sentence naming the other accepted hosts is said once
+                // for the list, on the first row, where it describes a real
+                // input rather than floating over the section.
+                hint={index === 0}
+              />
+            ),
+          }}
         />
       </div>
 

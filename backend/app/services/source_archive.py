@@ -4,10 +4,11 @@ A source tweet gets deleted and an account gets suspended, which destroys
 exactly the evidence the catalog promises to preserve. An archived copy is what
 keeps a dead original readable, and the analyst is who makes it: they open the
 provider's own submit page from their own browser and paste the snapshot URL
-back. Two paths take that paste. The submit and edit forms carry it as
-``source_snapshot_url`` beside the source URL it archives, so the copy is made
-while the source is in front of the analyst and lands in the same transaction
-as the event; ``POST /events/{event_id}/archives`` takes it afterwards, for any
+back. Two paths take that paste. The submit and edit forms carry one field per
+link they declare, ``source_snapshot_url`` beside the source URL and one
+``secondary_snapshot_urls`` entry beside each mirror, so the copies are made
+while the links are in front of the analyst and land in the same transaction as
+the event; ``POST /events/{event_id}/archives`` takes it afterwards, for any
 link a live event carries.
 
 The capture is not attempted server side. Roughly nine in ten sources here are
@@ -344,6 +345,39 @@ def stage_source_snapshot(db: Session, *, event: Event, snapshot_url: str) -> No
     )
 
 
+def stage_secondary_snapshots(db: Session, *, event: Event, snapshots: dict[str, str]) -> None:
+    """Stage the copies of the mirrors a write path carried beside them.
+
+    The mirror twin of :func:`stage_source_snapshot`: a mirror rots exactly as
+    the primary does, so the submit and edit forms carry one archived-copy field
+    per secondary source link and the pastes land in the same write, filed under
+    origin ``secondary_source``.
+
+    ``snapshots`` maps a mirror URL to the snapshot posted beside it
+    (``services/events.pair_secondary_snapshots`` builds it from the two aligned
+    form lists). Keyed by the link rather than by position, because
+    normalization drops blank, duplicate and primary-equal entries, so a
+    position would name a different mirror after the drop. The walk reads the
+    links the event now carries, so a snapshot posted beside a mirror the write
+    dropped is dropped with it.
+
+    Call it once ``event.source_links`` holds the submitted list and before the
+    caller's commit. Each paste runs the same :func:`validate_snapshot` against
+    the mirror it claims to archive, so a snapshot of another page raises the
+    same :class:`SnapshotRejected` codes here as anywhere else.
+    """
+    for link in event.source_links:
+        snapshot = snapshots.get(link.url)
+        if snapshot:
+            stage_snapshot(
+                db,
+                event=event,
+                original_url=link.url,
+                origin="secondary_source",
+                snapshot_url=snapshot,
+            )
+
+
 def reconcile_source_archive(db: Session, *, event: Event) -> None:
     """Keep the copy filed as the declared source matching ``source_url``.
 
@@ -461,6 +495,7 @@ __all__ = [
     "origin_of",
     "reconcile_source_archive",
     "record_snapshot",
+    "stage_secondary_snapshots",
     "stage_snapshot",
     "stage_source_snapshot",
     "validate_snapshot",

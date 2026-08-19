@@ -249,6 +249,9 @@ async def geolocate_event(
     # the row held, on a requested fulfilment too: unlike ``source_url`` these
     # carry no requester protection (see the service docstring).
     secondary_source_urls: list[SecondarySourceUrl] = Form([]),
+    # The archived copy of each mirror, aligned with the list above by position
+    # and blank where that mirror was not archived.
+    secondary_snapshot_urls: list[SecondarySourceUrl] = Form([]),
     # Optional, mirroring create: the footage doesn't always establish when the
     # depicted event happened; NULL reads as "Unknown".
     event_date: str | None = Form(None),
@@ -285,11 +288,12 @@ async def geolocate_event(
     a conflict, and the ``capture_source`` tag, 400 otherwise). Off
     ``requested`` / ``detected`` → 409. Soft-deleted rows read as 404.
 
-    ``source_snapshot_url`` records the archived source in the same write, on
-    the terms ``POST /events/{id}/archives`` applies (a paste that is not a
-    snapshot of the stored source URL is a 400, and nothing is written). An
-    edit that changes the source URL and pastes no new snapshot leaves the
-    event with no archived source rather than the old one's copy.
+    ``source_snapshot_url`` records the archived source in the same write and
+    ``secondary_snapshot_urls`` records one copy per mirror, on the terms ``POST
+    /events/{id}/archives`` applies (a paste that is not a snapshot of the link
+    it sits beside is a 400, and nothing is written). An edit that changes the
+    source URL and pastes no new snapshot leaves the event with no archived
+    source rather than the old one's copy.
     """
     files = files or []
     proof_files = proof_files or []
@@ -317,6 +321,7 @@ async def geolocate_event(
             source_url=source_url,
             source_snapshot_url=source_snapshot_url,
             secondary_source_urls=secondary_source_urls,
+            secondary_snapshot_urls=secondary_snapshot_urls,
             event_date=parsed_event_date,
             event_time=parsed_event_time,
             source_posted_at=parsed_source_posted_at,
@@ -355,8 +360,10 @@ async def revise_event(
     # ``POST /events/{id}/archives``.
     source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
     # The mirrors, repeated once per link. Outside the anchor, so the submitted
-    # list replaces whatever the row held.
+    # list replaces whatever the row held; the archived copy of each rides
+    # beside it, aligned by position.
     secondary_source_urls: list[SecondarySourceUrl] = Form([]),
+    secondary_snapshot_urls: list[SecondarySourceUrl] = Form([]),
     event_date: str | None = Form(None),
     event_time: str | None = Form(None),
     # Optional, unlike on geolocate: a detection whose source post time was
@@ -419,6 +426,7 @@ async def revise_event(
             capture_source_lng=capture_source_lng,
             source_snapshot_url=source_snapshot_url,
             secondary_source_urls=secondary_source_urls,
+            secondary_snapshot_urls=secondary_snapshot_urls,
             event_date=parsed_event_date,
             event_time=parsed_event_time,
             source_posted_at=parsed_source_posted_at,

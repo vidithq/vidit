@@ -210,6 +210,11 @@ export interface EventEditInput {
   /** Optional mirrors of the same media, in the order the analyst listed them.
    *  Blank entries are dropped at assembly; the server normalizes the rest. */
   secondary_source_urls?: string[];
+  /** Optional snapshot of each mirror, index-aligned with the list above and
+   *  blank where that mirror was not archived. A mirror rots like the primary,
+   *  so every declared link carries its own archived-copy field; a snapshot
+   *  that isn't one of the mirror it sits beside fails the whole submit. */
+  secondary_snapshot_urls?: string[];
   /** Optional ISO `YYYY-MM-DD`; omitted when the footage doesn't establish
    *  the date (reads as "Unknown"). */
   event_date?: string;
@@ -253,6 +258,7 @@ function appendSharedEventFields(
     source_url?: string;
     source_snapshot_url?: string;
     secondary_source_urls?: string[];
+    secondary_snapshot_urls?: string[];
     source_posted_at: string;
     proof?: Record<string, unknown> | null;
     capture_source_lat?: number;
@@ -273,14 +279,22 @@ function appendSharedEventFields(
   if (input.source_snapshot_url?.trim()) {
     fd.append("source_snapshot_url", input.source_snapshot_url.trim());
   }
-  // One append per link: the backend reads `secondary_source_urls` as a
-  // repeated form field, not a JSON blob (unlike the id lists below, whose
-  // items are opaque uuids). A row the analyst left blank is dropped here so an
-  // untouched field never posts an empty entry.
-  for (const url of input.secondary_source_urls ?? []) {
+  // One append per link, plus the archived copy pasted beside it: the backend
+  // reads `secondary_source_urls` and `secondary_snapshot_urls` as repeated
+  // form fields, not JSON blobs (unlike the id lists below, whose items are
+  // opaque uuids), and pairs them by position. A row the analyst left blank is
+  // dropped here so an untouched field never posts an empty entry, and its
+  // snapshot goes with it, which is what keeps the two lists aligned across
+  // the drop. The copy entry is posted even when empty, so position i on the
+  // wire always names mirror i.
+  const mirrors = input.secondary_source_urls ?? [];
+  const mirrorCopies = input.secondary_snapshot_urls ?? [];
+  mirrors.forEach((url, index) => {
     const trimmed = url.trim();
-    if (trimmed) fd.append("secondary_source_urls", trimmed);
-  }
+    if (!trimmed) return;
+    fd.append("secondary_source_urls", trimmed);
+    fd.append("secondary_snapshot_urls", (mirrorCopies[index] ?? "").trim());
+  });
   // Both-or-neither: only send the camera point when both halves are present,
   // matching the backend `_optional_point` contract (a lone half is a 400).
   if (input.capture_source_lat !== undefined && input.capture_source_lng !== undefined) {
@@ -478,9 +492,9 @@ const asList = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]
  *
  *  The read shape spreads them across three fields (the source, the provenance
  *  link, and one entry per mirror index-aligned with `secondary_source_urls`);
- *  this is the one walk that gathers them, so the version overlay and the
- *  changed-field list read the same set. */
-function archivedCopies(view: EventDetail): Map<string, ArchivedLink> {
+ *  this is the one walk that gathers them, so the version overlay, the
+ *  changed-field list and the edit form read the same set. */
+export function archivedCopies(view: EventDetail): Map<string, ArchivedLink> {
   const copies = new Map<string, ArchivedLink>();
   const add = (url: string | null, copy: ArchivedLink | null | undefined) => {
     if (url && copy) copies.set(url, copy);
@@ -822,6 +836,9 @@ export interface EventRequestInput {
   source_snapshot_url?: string;
   /** Optional mirrors, same contract as a geolocation's (see `EventEditInput`). */
   secondary_source_urls?: string[];
+  /** Optional snapshot of each mirror, index-aligned with the list above, same
+   *  contract as a geolocation's. */
+  secondary_snapshot_urls?: string[];
   /** In-progress proof (Tiptap JSON), mirroring a geolocation's `proof`. */
   proof?: Record<string, unknown> | null;
   /** Optional approximate guess: both halves or neither. */

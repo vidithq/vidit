@@ -19,6 +19,8 @@ const baseProps = {
   setSourcePostedAt: () => {},
   sourceSnapshotUrl: "",
   setSourceSnapshotUrl: () => {},
+  secondarySnapshotUrls: [] as string[],
+  setSecondarySnapshotUrls: () => {},
   isGraphic: false,
   setIsGraphic: () => {},
   sourceUrlLocked: false,
@@ -318,6 +320,71 @@ describe("DetailsFields", () => {
   it("shows no existing copy on a fresh submit", () => {
     render(<DetailsFields {...baseProps} sourceUrl="https://t.me/c/1" />);
     expect(screen.queryByText(/paste another to replace it/)).toBeNull();
+  });
+
+  // ── the same affordance under every mirror ────────────────────────────
+
+  it("gives every secondary source its own archived-copy field", () => {
+    const setSecondarySnapshotUrls = vi.fn();
+    render(
+      <DetailsFields
+        {...baseProps}
+        secondarySourceUrls={["https://t.me/c/2", "https://t.me/c/3"]}
+        secondarySnapshotUrls={["", ""]}
+        setSecondarySnapshotUrls={setSecondarySnapshotUrls}
+      />
+    );
+    // Named for the mirror each covers, so two rows on one host stay tellable
+    // apart in the accessible names.
+    expect(
+      screen.getByLabelText("Archived copy of mirror 1, t.me")
+    ).toBeInTheDocument();
+    const second = screen.getByLabelText("Archived copy of mirror 2, t.me");
+    fireEvent.change(second, { target: { value: "https://archive.ph/abcde" } });
+    expect(setSecondarySnapshotUrls).toHaveBeenCalledWith([
+      "",
+      "https://archive.ph/abcde",
+    ]);
+  });
+
+  it("prefills the provider page with the mirror, not the source", () => {
+    render(
+      <DetailsFields
+        {...baseProps}
+        sourceUrl="https://t.me/c/1"
+        secondarySourceUrls={["https://t.me/c/2"]}
+        secondarySnapshotUrls={[""]}
+      />
+    );
+    expect(
+      screen
+        .getAllByRole("link", { name: "Open Wayback Machine" })
+        .map((link) => link.getAttribute("href"))
+    ).toEqual([
+      "https://web.archive.org/save/https://t.me/c/1",
+      "https://web.archive.org/save/https://t.me/c/2",
+    ]);
+  });
+
+  it("shows the copy a mirror already carries", () => {
+    render(
+      <DetailsFields
+        {...baseProps}
+        secondarySourceUrls={["https://t.me/c/2"]}
+        secondarySnapshotUrls={[""]}
+        archivedCopies={
+          new Map([
+            [
+              "https://t.me/c/2",
+              { url: "https://archive.ph/abcde", provider: "archive_today" },
+            ],
+          ])
+        }
+      />
+    );
+    expect(
+      screen.getByRole("link", { name: "archive.today copy of t.me" })
+    ).toHaveAttribute("href", "https://archive.ph/abcde");
   });
 
   it("keeps the secondary sources editable while the primary is locked", () => {

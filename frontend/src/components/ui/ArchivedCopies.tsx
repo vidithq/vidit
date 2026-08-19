@@ -152,7 +152,21 @@ function archivable(url: string): string | null {
  *  A null `url` is a source field holding nothing archivable yet: the link is
  *  replaced by what to do first, and the sentence stays, so the three accepted
  *  hosts are readable in every state rather than only once a link exists. */
-function SavePageLink({ url, hintId }: { url: string | null; hintId?: string }) {
+function SavePageLink({
+  url,
+  noun,
+  hintId,
+  hint = true,
+}: {
+  url: string | null;
+  /** What the link above is called, so the empty state names the field to fill
+   *  ("the source URL", "the mirror URL"). */
+  noun: string;
+  hintId?: string;
+  /** False inside a list, where the sentence is said once for the whole list
+   *  rather than on every row. */
+  hint?: boolean;
+}) {
   return (
     <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
       {url ? (
@@ -166,12 +180,14 @@ function SavePageLink({ url, hintId }: { url: string | null; hintId?: string }) 
         </a>
       ) : (
         <span className="text-neutral-500">
-          Fill in the source URL above to archive it.
+          Fill in the {noun} URL above to archive it.
         </span>
       )}
-      <span id={hintId} className="text-neutral-500">
-        {OTHER_PROVIDERS_HINT}
-      </span>
+      {hint && (
+        <span id={hintId} className="text-neutral-500">
+          {OTHER_PROVIDERS_HINT}
+        </span>
+      )}
     </span>
   );
 }
@@ -228,23 +244,97 @@ function MissingGlyph({ describes }: { describes: string }) {
 }
 
 /**
- * The archival affordance on the submit and edit forms: archive the source you
- * just typed, paste the snapshot, publish both together.
+ * The archival brick every link on a form is archived through: the copy it
+ * already carries, the provider page prefilled with it, the paste field, and
+ * the refusal under that field.
  *
- * The same provider link and paste field as the popover on a live event, minus
- * its mutation: nothing is written until the form is submitted, so the value
- * travels with the event as `source_snapshot_url` and lands in the same write.
- * That is what lets an analyst archive a source while it is still in front of
- * them, rather than after the event exists.
+ * One brick so the source and each mirror archive the same way. Nothing is
+ * written here: the value travels with the form and lands in the same write as
+ * the event, which is what lets a link be archived while it is still in front
+ * of the analyst rather than after the event exists.
  *
  * Optional, and shaped to read that way: no required marker, no readiness
- * entry, and while the source field holds nothing usable the link is replaced
- * by one line saying what to do first, so an empty source URL never presents a
- * dead link. The sentence naming the other accepted hosts sits beside both, and
- * describes the paste field, so an analyst who archives at archive.today reads
- * the contract before typing a source at all. The link recomputes from the
- * current field value, so archiving a corrected URL is a re-click, not a
- * reload.
+ * entry, and while the link above holds nothing usable the provider link is
+ * replaced by one line saying what to fill in first, so an empty field never
+ * presents a dead link. The provider link recomputes from the current value, so
+ * archiving a corrected URL is a re-click, not a reload.
+ */
+function ArchivePasteField({
+  link,
+  noun,
+  describes,
+  value,
+  onChange,
+  copy,
+  inputId,
+  ariaLabel,
+  hintId,
+  hint = true,
+}: {
+  /** The link this field archives, as currently typed above it. */
+  link: string;
+  /** What that link is called, for the empty state and the existing-copy line
+   *  ("source", "mirror"). */
+  noun: string;
+  /** What the copy is of, for the glyph's accessible name ("the source",
+   *  "mirror 2, t.me"). */
+  describes: string;
+  /** The pasted snapshot URL, posted with the form. */
+  value: string;
+  onChange: (value: string) => void;
+  /** The copy the link already carries, on the edit form. */
+  copy: ArchivedLink | null;
+  /** Set where an outer `<label>` names the input; otherwise pass `ariaLabel`. */
+  inputId?: string;
+  ariaLabel?: string;
+  /** The element describing the input, when the caller renders the hosts
+   *  sentence itself. */
+  hintId?: string;
+  /** False inside a list, where the hosts sentence is said once for the whole
+   *  list rather than on every row. */
+  hint?: boolean;
+}) {
+  const target = archivable(link);
+  const pasted = value.trim();
+  // Flagged only once something is typed: an empty field is the ordinary state
+  // of an optional one, not a mistake.
+  const invalid = pasted !== "" && !isSnapshotUrl(pasted);
+
+  return (
+    <>
+      {copy && (
+        <p className="flex items-center gap-1.5 text-xs text-neutral-400">
+          This {noun} has a copy
+          <ArchivedGlyph copy={copy} describes={describes} />
+          <span className="text-neutral-500">paste another to replace it.</span>
+        </p>
+      )}
+      <SavePageLink url={target} noun={noun} hintId={hintId} hint={hint} />
+      <Input
+        id={inputId}
+        aria-label={ariaLabel}
+        type="url"
+        variant="compact"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={SNAPSHOT_PLACEHOLDER}
+        invalid={invalid}
+        aria-describedby={hintId}
+      />
+      {invalid && <p className="text-xs text-red-400">{SNAPSHOT_HINT}</p>}
+    </>
+  );
+}
+
+/**
+ * The archival affordance under the Source URL input on the submit and edit
+ * forms: archive the source you just typed, paste the snapshot, publish both
+ * together.
+ *
+ * `ArchivePasteField` under its own label, with the sentence naming the other
+ * accepted hosts wired to the input, so an analyst who archives at
+ * archive.today reads the contract before typing a source at all. The value
+ * travels with the form as `source_snapshot_url`.
  *
  * `copy` is the copy the event already carries (the edit form): it renders as
  * the same accent glyph the detail page shows, and the field below it replaces
@@ -268,11 +358,6 @@ export function ArchiveSourceField({
   // The hosts the field takes are the paste field's own description, so a
   // screen reader hears them on focus rather than only where the sentence sits.
   const hintId = useId();
-  const target = archivable(sourceUrl);
-  const pasted = value.trim();
-  // Flagged only once something is typed: an empty field is the ordinary state
-  // of an optional one, not a mistake.
-  const invalid = pasted !== "" && !isSnapshotUrl(pasted);
 
   return (
     <div className="space-y-1.5">
@@ -282,25 +367,66 @@ export function ArchiveSourceField({
           optional
         </span>
       </label>
-      {copy && (
-        <p className="flex items-center gap-1.5 text-xs text-neutral-400">
-          This source has a copy
-          <ArchivedGlyph copy={copy} describes={PRIMARY_SOURCE_DESCRIPTION} />
-          <span className="text-neutral-500">paste another to replace it.</span>
-        </p>
-      )}
-      <SavePageLink url={target} hintId={hintId} />
-      <Input
-        id={fieldId}
-        type="url"
-        variant="compact"
+      <ArchivePasteField
+        link={sourceUrl}
+        noun="source"
+        describes={PRIMARY_SOURCE_DESCRIPTION}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={SNAPSHOT_PLACEHOLDER}
-        invalid={invalid}
-        aria-describedby={hintId}
+        onChange={onChange}
+        copy={copy}
+        inputId={fieldId}
+        hintId={hintId}
       />
-      {invalid && <p className="text-xs text-red-400">{SNAPSHOT_HINT}</p>}
+    </div>
+  );
+}
+
+/**
+ * The same affordance under one secondary source row: archive that mirror,
+ * paste the snapshot, publish it with the rest of the form.
+ *
+ * A mirror rots exactly as the primary does, so every link the form declares
+ * gets the same brick rather than the source alone. The value posts as this
+ * row's `secondary_snapshot_urls` entry, aligned with the link above it.
+ *
+ * What the row drops is the chrome a list cannot afford ten times over: no
+ * label of its own (the input carries its name, like the link input above it),
+ * and no hosts sentence, which one row of the list carries for all of them.
+ * What it keeps is the whole contract: the prefilled provider link, the
+ * pre-submit host check, and the copy this mirror already carries.
+ */
+export function ArchiveMirrorField({
+  url,
+  describes,
+  value,
+  onChange,
+  copy = null,
+  hint = false,
+}: {
+  /** The mirror's current value in the row above, which is what gets archived. */
+  url: string;
+  /** What the copy is of, from `mirrorDescription`, so two mirrors on one host
+   *  stay tellable apart in the accessible names. */
+  describes: string;
+  value: string;
+  onChange: (value: string) => void;
+  /** The copy the event already carries for this mirror. */
+  copy?: ArchivedLink | null;
+  /** True on the one row that carries the hosts sentence for the whole list. */
+  hint?: boolean;
+}) {
+  return (
+    <div className="space-y-1 pl-1">
+      <ArchivePasteField
+        link={url}
+        noun="mirror"
+        describes={describes}
+        value={value}
+        onChange={onChange}
+        copy={copy}
+        ariaLabel={`Archived copy of ${describes}`}
+        hint={hint}
+      />
     </div>
   );
 }

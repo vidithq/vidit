@@ -198,6 +198,61 @@ def test_an_edit_that_archives_the_source_files_one_version_holding_the_new_copy
     assert rows[0].snapshot["archives"] == []
 
 
+def test_revise_files_one_version_for_a_mirror_copy(db, author, conflict, capture_source_tag):
+    """A mirror's copy rides the edit exactly as the source's does: one write,
+    one version, and the copy lands in the version that write produces."""
+    mirror = "https://t.me/channel/424242"
+    geo = _published(db, author, conflict, capture_source_tag, secondary_source_urls=[mirror])
+    wayback = f"https://web.archive.org/web/20260811120000/{mirror}"
+
+    response = _revise(
+        geo.id,
+        author,
+        data=_form(
+            conflict,
+            capture_source_tag,
+            secondary_source_urls=[mirror],
+            secondary_snapshot_urls=[wayback],
+        ),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["revision_no"] == 2
+    assert response.json()["archived_secondary_sources"] == [
+        {"url": wayback, "provider": "wayback"}
+    ]
+
+    db.expire_all()
+    rows = db.query(EventRevision).filter(EventRevision.event_id == geo.id).all()
+    assert len(rows) == 1
+    assert rows[0].snapshot["archives"] == []
+
+
+def test_revise_refuses_a_mirror_snapshot_of_another_link(db, author, conflict, capture_source_tag):
+    """A paste that archives a different page is a 400, and the edit it rode
+    with files no version."""
+    mirror = "https://t.me/channel/424242"
+    geo = _published(db, author, conflict, capture_source_tag, secondary_source_urls=[mirror])
+
+    response = _revise(
+        geo.id,
+        author,
+        data=_form(
+            conflict,
+            capture_source_tag,
+            secondary_source_urls=[mirror],
+            secondary_snapshot_urls=[
+                f"https://web.archive.org/web/20260811120000/{geo.source_url}"
+            ],
+        ),
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "snapshot_original_mismatch"
+
+    db.expire_all()
+    assert db.query(EventRevision).filter(EventRevision.event_id == geo.id).count() == 0
+    assert db.get(Event, geo.id).revision_no == 1
+
+
 def test_a_version_holds_the_archived_copies_the_record_carried(
     db, author, conflict, capture_source_tag
 ):

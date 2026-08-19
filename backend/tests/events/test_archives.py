@@ -2,9 +2,10 @@
 
 Three halves of one contract, tested through HTTP because that is where they
 meet: the owner records a copy of one of their event's links through ``POST
-/events/{event_id}/archives`` or carries it with the write that stores the
-source (``source_snapshot_url`` on create and geolocate), and every read of
-that event serialises the copy beside the link it archives.
+/events/{event_id}/archives`` or carries it with the write that stores the link
+(``source_snapshot_url`` for the source and ``secondary_snapshot_urls`` for the
+mirrors, on create and geolocate), and every read of that event serialises the
+copy beside the link it archives.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from tests.events._helpers import _make_geo, client, proof_file_part, proof_form
 
 SOURCE = "https://x.com/analyst/status/424242"
 MIRROR = "https://t.me/channel/424242"
+SECOND_MIRROR = "https://rumble.com/v-424242"
 DETECTED_FROM = "https://x.com/analyst/status/909090"
 CAPTURE_TS = "20260811120000"
 WAYBACK = f"https://web.archive.org/web/{CAPTURE_TS}/{SOURCE}"
@@ -488,6 +490,132 @@ def test_a_fulfilment_archives_the_requesters_source(
     assert response.status_code == 200, response.text
     assert response.json()["source_url"] == SOURCE
     assert response.json()["archived_source"] == {"url": WAYBACK, "provider": "wayback"}
+
+
+# ── the copies the mirrors carry ───────────────────────────────────────
+
+
+def test_create_stores_a_copy_of_each_mirror_posted_beside_it(
+    db, author, conflict, capture_source_tag
+):
+    """A mirror rots like the primary, so the form archives it too: one paste
+    field per mirror, posted aligned with the link it covers."""
+    response = _create(
+        author,
+        conflict,
+        capture_source_tag,
+        secondary_source_urls=[MIRROR, SECOND_MIRROR],
+        secondary_snapshot_urls=["", _wayback_of(SECOND_MIRROR)],
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["archived_secondary_sources"] == [
+        None,
+        {"url": _wayback_of(SECOND_MIRROR), "provider": "wayback"},
+    ]
+
+    row = _copy(db, uuid.UUID(response.json()["id"]), SECOND_MIRROR)
+    assert row.origin == "secondary_source"
+
+
+def test_a_blank_mirror_row_does_not_shift_the_copies(db, author, conflict, capture_source_tag):
+    """The pairing happens on the posted lists, before normalization drops the
+    blank rows: a copy stays on the mirror it was pasted under rather than
+    sliding onto its neighbour."""
+    response = _create(
+        author,
+        conflict,
+        capture_source_tag,
+        secondary_source_urls=["", MIRROR],
+        secondary_snapshot_urls=["", _wayback_of(MIRROR)],
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["secondary_source_urls"] == [MIRROR]
+    assert body["archived_secondary_sources"] == [
+        {"url": _wayback_of(MIRROR), "provider": "wayback"}
+    ]
+
+
+def test_create_refuses_a_mirror_snapshot_of_another_link(db, author, conflict, capture_source_tag):
+    """Every paste is checked against the link it sits beside, so a snapshot of
+    the primary pasted under a mirror is the same 400 as anywhere else, and the
+    event it rode with is never created."""
+    title = f"archival-{uuid.uuid4().hex[:8]}"
+    response = _create(
+        author,
+        conflict,
+        capture_source_tag,
+        title=title,
+        secondary_source_urls=[MIRROR],
+        secondary_snapshot_urls=[WAYBACK],
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "snapshot_original_mismatch"
+    assert db.query(Event).filter(Event.title == title).one_or_none() is None
+
+
+def test_a_request_keeps_the_mirror_copy_its_poster_made(db, author):
+    """The one form posts either shape, mirrors and their copies included."""
+    response = client.post(
+        "/api/v1/events/requests",
+        headers=login_as(client, author),
+        data={
+            "title": "Help geolocate",
+            "source_url": SOURCE,
+            "source_posted_at": "2026-05-01T12:00",
+            "secondary_source_urls": [MIRROR],
+            "secondary_snapshot_urls": [_wayback_of(MIRROR)],
+        },
+        files=[("file", ("tiny.jpg", TINY_JPEG, "image/jpeg"))],
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["archived_secondary_sources"] == [
+        {"url": _wayback_of(MIRROR), "provider": "wayback"}
+    ]
+
+
+def test_geolocate_stores_the_mirror_copies_posted_with_the_form(
+    db, author, conflict, capture_source_tag
+):
+    geo = _make_geo(db, author=author, status=STATUS_DETECTED, source_url=SOURCE, with_media=True)
+
+    response = _geolocate(
+        geo.id,
+        author,
+        conflict,
+        capture_source_tag,
+        secondary_source_urls=[MIRROR],
+        secondary_snapshot_urls=[ARCHIVE_TODAY],
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["archived_secondary_sources"] == [
+        {"url": ARCHIVE_TODAY, "provider": "archive_today"}
+    ]
+
+    db.expire_all()
+    assert _copy(db, geo.id, MIRROR).origin == "secondary_source"
+
+
+def test_a_snapshot_beside_a_dropped_mirror_is_dropped_with_it(
+    db, author, conflict, capture_source_tag
+):
+    """A mirror equal to the primary is normalized away, so nothing is left for
+    its copy to be filed against and no row is written."""
+    geo = _make_geo(db, author=author, status=STATUS_DETECTED, source_url=SOURCE, with_media=True)
+
+    response = _geolocate(
+        geo.id,
+        author,
+        conflict,
+        capture_source_tag,
+        secondary_source_urls=[SOURCE],
+        secondary_snapshot_urls=[WAYBACK],
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["secondary_source_urls"] == []
+
+    db.expire_all()
+    assert _copies(db, geo.id) == []
 
 
 # ── a changed source URL never keeps the old copy ──────────────────────

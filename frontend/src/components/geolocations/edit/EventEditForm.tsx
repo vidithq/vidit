@@ -31,6 +31,7 @@ import { useMutation } from "@/hooks/useMutation";
 import { Input } from "@/components/ui/Input";
 import { cleanNumber } from "@/lib/coordinates";
 import {
+  archivedCopies,
   EDIT_NOTE_MAX_LEN,
   geolocateEvent,
   missingEventFields,
@@ -151,6 +152,12 @@ export function EventEditForm({
   const [secondarySourceUrls, setSecondarySourceUrls] = useState<string[]>(
     geo.secondary_source_urls
   );
+  // One paste per mirror, empty for the same reason the source's is: the value
+  // is what to write, and the copy a mirror already holds shows on its row.
+  // `LinkListInput` keeps the two lists aligned through adds and removals.
+  const [secondarySnapshotUrls, setSecondarySnapshotUrls] = useState<string[]>(
+    geo.secondary_source_urls.map(() => "")
+  );
   const [eventDate, setEventDate] = useState(geo.event_date ?? "");
   const [eventTime, setEventTime] = useState(geo.event_time?.slice(0, 5) ?? "");
   const [sourcePostedAt, setSourcePostedAt] = useState(
@@ -206,6 +213,7 @@ export function EventEditForm({
     ...parseCaptureCoords(captureLat, captureLng),
     source_snapshot_url: sourceSnapshotUrl,
     secondary_source_urls: secondarySourceUrls,
+    secondary_snapshot_urls: secondarySnapshotUrls,
     event_date: eventDate || undefined,
     event_time: eventTime || undefined,
     source_posted_at: sourcePostedAt,
@@ -303,9 +311,14 @@ export function EventEditForm({
       submitMutation.setError(taxonomy.blockedMessage);
       return;
     }
-    // A snapshot that cannot be one is caught before the upload; the field
-    // flags itself red and the banner says what a snapshot link looks like.
-    if (sourceSnapshotUrl.trim() && !isSnapshotUrl(sourceSnapshotUrl)) {
+    // A snapshot that cannot be one, on the source or on any mirror, is caught
+    // before the upload; the field flags itself red and the banner says what a
+    // snapshot link looks like.
+    if (
+      [sourceSnapshotUrl, ...secondarySnapshotUrls].some(
+        (pasted) => pasted.trim() && !isSnapshotUrl(pasted)
+      )
+    ) {
       submitMutation.setError(SNAPSHOT_HINT);
       return;
     }
@@ -452,6 +465,9 @@ export function EventEditForm({
           archivedSource={geo.archived_source}
           secondarySourceUrls={secondarySourceUrls}
           setSecondarySourceUrls={setSecondarySourceUrls}
+          secondarySnapshotUrls={secondarySnapshotUrls}
+          setSecondarySnapshotUrls={setSecondarySnapshotUrls}
+          archivedCopies={archivedCopies(geo)}
           eventDate={eventDate}
           setEventDate={setEventDate}
           eventTime={eventTime}

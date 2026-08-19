@@ -219,6 +219,28 @@ def truncate_secondary_source_urls(urls: list[str], source_url: str | None) -> l
     return _clean_secondary_source_urls(urls, source_url)[:MAX_SECONDARY_SOURCE_LINKS]
 
 
+def pair_secondary_snapshots(urls: list[str], snapshots: list[str]) -> dict[str, str]:
+    """Map each submitted mirror to the archived copy posted beside it.
+
+    The forms post two aligned repeated fields, ``secondary_source_urls`` and
+    ``secondary_snapshot_urls``, one entry each per row, blank where the analyst
+    archived nothing. Position is how they arrive and the link is how they are
+    stored, so the pairing happens here, on the raw lists, before
+    :func:`normalize_secondary_source_urls` drops the blank, duplicate and
+    primary-equal rows that would shift every later index.
+
+    A short or absent snapshot list pairs what it covers and leaves the rest
+    unarchived, so a client that posts no copies posts nothing extra. The first
+    entry wins on a repeated mirror, matching the one the normalization keeps.
+    """
+    paired: dict[str, str] = {}
+    for url, snapshot in zip(urls, snapshots, strict=False):
+        link, copy = url.strip(), snapshot.strip()
+        if link and copy:
+            paired.setdefault(link, copy)
+    return paired
+
+
 def build_source_link_rows(urls: list[str]) -> list[EventSourceLink]:
     """The ordered child rows for an event's secondary links: one home so
     ``position`` is always the list index."""
@@ -396,6 +418,7 @@ async def create_with_evidence(
     file: UploadFile,
     proof_files: list[UploadFile],
     source_snapshot_url: str | None = None,
+    secondary_snapshot_urls: list[str] | None = None,
 ) -> Event:
     """Create a ``geolocated`` event row + its evidence (a direct geolocate).
 
@@ -412,8 +435,9 @@ async def create_with_evidence(
     (the camera point) are optional, both-or-neither.
 
     ``source_snapshot_url`` is the archived copy of ``source_url`` the analyst
-    made while filling the form: optional, checked by
-    ``services/source_archive`` and stored as the event's archived source in
+    made while filling the form, and ``secondary_snapshot_urls`` carries the
+    same per mirror, aligned with ``secondary_source_urls``: optional, checked
+    by ``services/source_archive`` and stored as the event's archived copies in
     this same transaction, so a rejected paste (:class:`SnapshotRejected`,
     raised before any upload) creates no event.
 
@@ -438,6 +462,10 @@ async def create_with_evidence(
     """
     validate_coordinates(lat, lng)
     capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
+    # Paired off the raw list, before normalization renumbers it.
+    mirror_snapshots = pair_secondary_snapshots(
+        secondary_source_urls, secondary_snapshot_urls or []
+    )
     secondary_links = normalize_secondary_source_urls(secondary_source_urls, source_url)
 
     # Every event needs its footage: exactly one source file.
@@ -477,11 +505,13 @@ async def create_with_evidence(
     # row so the owner-among-geolocators invariant lives in one place.
     _credit_geolocator(db, geo, current_user)
 
-    # The copy of the source the analyst archived while filling the form. The
-    # row needs the event's id, so it is staged after the flush, and still
-    # before the first upload: a rejected paste costs no S3 round-trip.
+    # The copies the analyst archived while filling the form, the source's and
+    # the mirrors'. The rows need the event's id, so they are staged after the
+    # flush, and still before the first upload: a rejected paste costs no S3
+    # round-trip.
     if source_snapshot_url:
         source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
+    source_archive.stage_secondary_snapshots(db, event=geo, snapshots=mirror_snapshots)
 
     await attach_evidence_and_commit(
         db,
@@ -518,6 +548,7 @@ async def create_request(
     file: UploadFile,
     proof_files: list[UploadFile],
     source_snapshot_url: str | None = None,
+    secondary_snapshot_urls: list[str] | None = None,
 ) -> Event:
     """Create a ``requested`` event row + its source media (an open call).
 
@@ -538,10 +569,11 @@ async def create_request(
     geolocate path. Unlike a geolocation there is no proof-image floor, so a
     blank request stays imageless.
 
-    ``source_snapshot_url`` is the archived copy of ``source_url``, on the same
-    terms as :func:`create_with_evidence`: the poster archives the source while
-    filling the one form that posts either shape, so the paste is kept whichever
-    button they press.
+    ``source_snapshot_url`` and ``secondary_snapshot_urls`` are the archived
+    copies of the declared links, on the same terms as
+    :func:`create_with_evidence`: the poster archives them while filling the one
+    form that posts either shape, so the pastes are kept whichever button they
+    press.
 
     Failure modes: :class:`InvalidCoordinatesError` on a bad / half-typed
     guess, :class:`MediaRequiredError` with no file,
@@ -552,6 +584,9 @@ async def create_request(
     """
     guess_point = _optional_point(lat, lng, field="event_coords")
     capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
+    mirror_snapshots = pair_secondary_snapshots(
+        secondary_source_urls, secondary_snapshot_urls or []
+    )
     secondary_links = normalize_secondary_source_urls(secondary_source_urls, source_url)
 
     _require_submission_media(file is not None)
@@ -592,6 +627,7 @@ async def create_request(
     # before the first upload.
     if source_snapshot_url:
         source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
+    source_archive.stage_secondary_snapshots(db, event=geo, snapshots=mirror_snapshots)
 
     await attach_evidence_and_commit(
         db,
@@ -629,6 +665,7 @@ async def geolocate(
     files: list[UploadFile],
     proof_files: list[UploadFile],
     source_snapshot_url: str | None = None,
+    secondary_snapshot_urls: list[str] | None = None,
 ) -> Event:
     """Transition a ``requested`` or ``detected`` event to ``geolocated``.
 
@@ -680,8 +717,9 @@ async def geolocate(
     mirrors, not the evidence origin, so a fulfiller correcting them is an
     edit, not a rewrite of the requester's claim.
 
-    ``source_snapshot_url`` is the archived copy of the stored source URL, same
-    field the submit form carries: optional, checked by
+    ``source_snapshot_url`` is the archived copy of the stored source URL and
+    ``secondary_snapshot_urls`` carries one per submitted mirror, the same
+    fields the submit form carries: optional, checked by
     ``services/source_archive``, and stored in this transaction. Whether or not
     the form carries one, ``reconcile_source_archive`` runs, so an edit that
     changes the source URL never leaves a copy of the old one filed as the
@@ -724,6 +762,9 @@ async def geolocate(
 
     validate_coordinates(lat, lng)
     capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
+    mirror_snapshots = pair_secondary_snapshots(
+        secondary_source_urls, secondary_snapshot_urls or []
+    )
     # Normalized against the source URL that will actually be stored, so a
     # fulfiller who repeats the requester's anchor among the mirrors has it
     # dropped rather than stored twice.
@@ -795,12 +836,15 @@ async def geolocate(
 
     # The archived source follows the source URL this write stores: a copy of a
     # URL that is no longer the source is re-filed or dropped, and the paste the
-    # form carried fills the slot. Both run before the upload, so a rejected
-    # paste costs no S3 round-trip, and inside this transaction, so a failure
-    # takes them back with everything else.
+    # form carried fills the slot. The mirrors' copies file against the links
+    # ``replace_source_links`` just wrote, so a snapshot posted beside a mirror
+    # this write dropped is dropped with it. All of it runs before the upload,
+    # so a rejected paste costs no S3 round-trip, and inside this transaction,
+    # so a failure takes it back with everything else.
     source_archive.reconcile_source_archive(db, event=geo)
     if source_snapshot_url:
         source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
+    source_archive.stage_secondary_snapshots(db, event=geo, snapshots=mirror_snapshots)
 
     # Upload new files + commit everything atomically; rollback-sweeps the new
     # uploads on failure. Empty ``files`` still commits the field + removal edits.
@@ -841,6 +885,7 @@ async def revise(
     proof_files: list[UploadFile],
     note: str | None = None,
     source_snapshot_url: str | None = None,
+    secondary_snapshot_urls: list[str] | None = None,
 ) -> Event:
     """Correct a published event, filing the superseded state as a revision.
 
@@ -876,7 +921,9 @@ async def revise(
     ``source_snapshot_url`` records the archived copy of the event's stored
     source URL, the same slot ``POST /events/{id}/archives`` fills and on the
     same checks. It archives the anchor rather than changing it, so it is
-    accepted here.
+    accepted here. ``secondary_snapshot_urls`` does the same per submitted
+    mirror. Both are staged after the version this edit supersedes is filed, so
+    one call files one revision whose new version carries the copies.
 
     The evidence floor a publication met is re-checked against the post-edit
     state, so an edit cannot drop a published row below it: a ``source`` media
@@ -906,6 +953,9 @@ async def revise(
 
     validate_coordinates(lat, lng)
     capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
+    mirror_snapshots = pair_secondary_snapshots(
+        secondary_source_urls, secondary_snapshot_urls or []
+    )
     # Normalized against the stored anchor, which this write cannot change, so a
     # mirror equal to the source URL is dropped rather than stored twice.
     secondary_links = normalize_secondary_source_urls(secondary_source_urls, geo.source_url)
@@ -951,11 +1001,14 @@ async def revise(
 
     replace_source_links(db, geo, secondary_links)
 
-    # The archived copy of the anchor, filed in this same transaction. No
+    # The archived copies of the anchor and of the submitted mirrors, filed in
+    # this same transaction and after ``file_version`` above, so they land in
+    # the version this edit produces rather than in the one it supersedes. No
     # ``reconcile_source_archive``: the source URL cannot move here, so a stored
     # copy can never come to describe a link the event no longer carries.
     if source_snapshot_url:
         source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
+    source_archive.stage_secondary_snapshots(db, event=geo, snapshots=mirror_snapshots)
 
     # No source files: the anchor is immutable, so the intake only uploads the
     # proof body's new images and commits everything atomically.

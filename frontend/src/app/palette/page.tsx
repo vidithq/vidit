@@ -66,6 +66,7 @@ import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import {
+  ArchiveMirrorField,
   ArchiveSourceField,
   ArchivedCopies,
   DETECTED_FROM_DESCRIPTION,
@@ -101,6 +102,7 @@ import {
 } from "@/components/ui/form-styles";
 import { Input, Select } from "@/components/ui/Input";
 import { LinkListInput } from "@/components/ui/LinkListInput";
+import { safeHostname } from "@/lib/format";
 
 /**
  * Living style guide: every reusable primitive, its variants, and a one-line
@@ -337,6 +339,7 @@ export default function PalettePage() {
   const [tpSelected, setTpSelected] = useState<string[]>([]);
   const [tpConflictSel, setTpConflictSel] = useState<string[]>([]);
   const [links, setLinks] = useState<string[]>(["https://t.me/channel/12345"]);
+  const [linkCopies, setLinkCopies] = useState<string[]>([""]);
 
   return (
     <PageShell
@@ -655,7 +658,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: the submit / edit forms' Secondary sources. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly.">
+          <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: the submit / edit forms' Secondary sources. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly. `companion` gives every row a second value the list keeps index-aligned through adds and removals, rendered under it: on the source forms that is <ArchiveMirrorField>, so a mirror is archived where it is typed.">
             <div className="w-full max-w-sm space-y-4">
               <Variant label="editable (max 3 here)">
                 <LinkListInput
@@ -664,6 +667,32 @@ export default function PalettePage() {
                   max={3}
                   itemLabel="Secondary source"
                   placeholder="https://x.com/user/status/12345"
+                />
+              </Variant>
+              <Variant label="with a companion field per row">
+                <LinkListInput
+                  values={links}
+                  onChange={setLinks}
+                  max={3}
+                  itemLabel="Secondary source"
+                  placeholder="https://x.com/user/status/12345"
+                  companion={{
+                    values: linkCopies,
+                    onChange: setLinkCopies,
+                    render: ({ index, url, value, onChange }) => (
+                      <ArchiveMirrorField
+                        url={url}
+                        describes={mirrorDescription(
+                          safeHostname(url),
+                          index,
+                          links.length
+                        )}
+                        value={value}
+                        onChange={onChange}
+                        hint={index === 0}
+                      />
+                    ),
+                  }}
                 />
               </Variant>
             </div>
@@ -834,6 +863,38 @@ export default function PalettePage() {
             <Variant label="the event already carries a copy (edit form)">
               <ArchiveSourceField
                 sourceUrl="https://t.me/channel/12345"
+                value=""
+                onChange={() => {}}
+                copy={{ url: "https://archive.ph/abcde", provider: "archive_today" }}
+              />
+            </Variant>
+          </Item>
+
+          <Item
+            name="<ArchiveMirrorField>"
+            usage="The same brick under one Secondary sources row: a mirror rots like the primary, so every link the form declares carries an archived-copy field. The paste posts as this row's `secondary_snapshot_urls` entry, aligned with the link above it. It drops what a list cannot afford ten times over (no label of its own, and `hint` puts the accepted-hosts sentence on one row only) and keeps the whole contract: the prefilled provider link recomputed from the row's current value, the isSnapshotUrl check before the upload, and `copy` for the copy that mirror already carries. Rendered through <LinkListInput>'s `companion`, which is what keeps the pastes aligned with the links across an add or a removal."
+          >
+            <Variant label="a mirror is typed, and the row carries the hosts sentence">
+              <ArchiveMirrorField
+                url="https://t.me/channel/12345"
+                describes={mirrorDescription("t.me", 0, 2)}
+                value=""
+                onChange={() => {}}
+                hint
+              />
+            </Variant>
+            <Variant label="a later row: the same field, without the sentence">
+              <ArchiveMirrorField
+                url="https://rumble.com/v-mirror"
+                describes={mirrorDescription("rumble.com", 1, 2)}
+                value=""
+                onChange={() => {}}
+              />
+            </Variant>
+            <Variant label="the mirror already carries a copy (edit form)">
+              <ArchiveMirrorField
+                url="https://t.me/channel/12345"
+                describes={mirrorDescription("t.me", 0, 1)}
                 value=""
                 onChange={() => {}}
                 copy={{ url: "https://archive.ph/abcde", provider: "archive_today" }}

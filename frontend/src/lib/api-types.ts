@@ -646,8 +646,9 @@ export interface paths {
          *     ``services/events.create_with_evidence``.
          *
          *     ``source_snapshot_url`` records the event's archived source in the same
-         *     write: the same checks ``POST /events/{id}/archives`` runs, so a paste that
-         *     is not a snapshot of ``source_url`` is a 400 carrying the failing check's
+         *     write, and ``secondary_snapshot_urls`` records one copy per mirror: the same
+         *     checks ``POST /events/{id}/archives`` runs, so a paste that is not a
+         *     snapshot of the link it sits beside is a 400 carrying the failing check's
          *     code, and no event is created.
          */
         post: operations["create_event_api_v1_events_post"];
@@ -1065,11 +1066,12 @@ export interface paths {
          *     a conflict, and the ``capture_source`` tag, 400 otherwise). Off
          *     ``requested`` / ``detected`` → 409. Soft-deleted rows read as 404.
          *
-         *     ``source_snapshot_url`` records the archived source in the same write, on
-         *     the terms ``POST /events/{id}/archives`` applies (a paste that is not a
-         *     snapshot of the stored source URL is a 400, and nothing is written). An
-         *     edit that changes the source URL and pastes no new snapshot leaves the
-         *     event with no archived source rather than the old one's copy.
+         *     ``source_snapshot_url`` records the archived source in the same write and
+         *     ``secondary_snapshot_urls`` records one copy per mirror, on the terms ``POST
+         *     /events/{id}/archives`` applies (a paste that is not a snapshot of the link
+         *     it sits beside is a 400, and nothing is written). An edit that changes the
+         *     source URL and pastes no new snapshot leaves the event with no archived
+         *     source rather than the old one's copy.
          */
         post: operations["geolocate_event_api_v1_events__geolocation_id__geolocate_post"];
         delete?: never;
@@ -2080,6 +2082,11 @@ export interface components {
             /** Proof Files */
             proof_files?: string[] | null;
             /**
+             * Secondary Snapshot Urls
+             * @default []
+             */
+            secondary_snapshot_urls: string[];
+            /**
              * Secondary Source Urls
              * @default []
              */
@@ -2122,6 +2129,11 @@ export interface components {
             proof?: string | null;
             /** Proof Files */
             proof_files?: string[] | null;
+            /**
+             * Secondary Snapshot Urls
+             * @default []
+             */
+            secondary_snapshot_urls: string[];
             /**
              * Secondary Source Urls
              * @default []
@@ -2168,6 +2180,11 @@ export interface components {
             /** Remove Media Ids */
             remove_media_ids?: string | null;
             /**
+             * Secondary Snapshot Urls
+             * @default []
+             */
+            secondary_snapshot_urls: string[];
+            /**
              * Secondary Source Urls
              * @default []
              */
@@ -2210,6 +2227,11 @@ export interface components {
             proof?: string | null;
             /** Proof Files */
             proof_files?: string[] | null;
+            /**
+             * Secondary Snapshot Urls
+             * @default []
+             */
+            secondary_snapshot_urls: string[];
             /**
              * Secondary Source Urls
              * @default []

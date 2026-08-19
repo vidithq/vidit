@@ -102,6 +102,44 @@ describe("createEvent multipart", () => {
     expect(lastBody().has("secondary_source_urls")).toBe(false);
   });
 
+  it("posts one archived-copy entry per surviving mirror, aligned with it", async () => {
+    await createEvent({
+      ...createInput,
+      secondary_source_urls: ["https://t.me/c/3", "https://x.com/u/status/2"],
+      secondary_snapshot_urls: ["", "  https://archive.ph/abcde  "],
+    });
+    const body = lastBody();
+    expect(body.getAll("secondary_source_urls")).toEqual([
+      "https://t.me/c/3",
+      "https://x.com/u/status/2",
+    ]);
+    // Blank where that mirror was not archived, so position i on the wire
+    // names mirror i whatever the analyst filled in.
+    expect(body.getAll("secondary_snapshot_urls")).toEqual([
+      "",
+      "https://archive.ph/abcde",
+    ]);
+  });
+
+  it("drops a blank mirror row together with its copy", async () => {
+    await createEvent({
+      ...createInput,
+      secondary_source_urls: ["   ", "https://t.me/c/3"],
+      secondary_snapshot_urls: ["https://archive.ph/orphan", "https://archive.ph/abcde"],
+    });
+    const body = lastBody();
+    expect(body.getAll("secondary_source_urls")).toEqual(["https://t.me/c/3"]);
+    expect(body.getAll("secondary_snapshot_urls")).toEqual(["https://archive.ph/abcde"]);
+  });
+
+  it("sends a blank copy entry per mirror when none were pasted", async () => {
+    await createEvent({
+      ...createInput,
+      secondary_source_urls: ["https://t.me/c/3"],
+    });
+    expect(lastBody().getAll("secondary_snapshot_urls")).toEqual([""]);
+  });
+
   it("posts the archived copy of the source when one was pasted", async () => {
     await createEvent({
       ...createInput,
@@ -167,6 +205,18 @@ describe("reviseEvent multipart", () => {
     mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
     await reviseEvent("e1", { ...createInput, source_posted_at: "2026-02-03T04:05" });
     expect(lastBody().get("source_posted_at")).toBe("2026-02-03T04:05");
+  });
+
+  it("carries a mirror's archived copy, so one edit files one revision", async () => {
+    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
+    await reviseEvent("e1", {
+      ...createInput,
+      secondary_source_urls: ["https://t.me/c/3"],
+      secondary_snapshot_urls: ["https://archive.ph/abcde"],
+    });
+    expect(lastBody().getAll("secondary_snapshot_urls")).toEqual([
+      "https://archive.ph/abcde",
+    ]);
   });
 });
 
