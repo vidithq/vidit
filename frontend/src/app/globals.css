@@ -254,6 +254,20 @@ input[type='datetime-local']:not(.has-value)::-webkit-datetime-edit {
   color: var(--color-neutral-600);
 }
 
+/* The browser's own picker button, hidden on the fields that carry the site's
+   own: it is drawn in the engine's chrome at the engine's size, which on the
+   dark field reads as a foreign mark beside the accent glyphs every other field
+   wears. `<DateTimeInput>` sets `.picker-glyph`, puts an accent <Glyph> in the
+   field's trailing slot and opens the same native picker through
+   `showPicker()`; a bare date input elsewhere (the search filters, the map
+   scrubber, both too narrow for an adornment) keeps the native button. Only
+   Webkit/Chromium expose the button as a pseudo-element; Gecko draws it inside
+   the widget with no selector reaching it, so there the two marks sit side by
+   side. */
+input.picker-glyph::-webkit-calendar-picker-indicator {
+  display: none;
+}
+
 /* Offset MapLibre controls past the sidebar on full-screen map only */
 .map-fullscreen .maplibregl-ctrl-bottom-left {
   left: 60px !important;

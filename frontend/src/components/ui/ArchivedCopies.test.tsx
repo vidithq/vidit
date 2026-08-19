@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ArchivedCopies,
-  ArchiveSourceField,
+  ArchiveSnapshotField,
   isSnapshotUrl,
   PRIMARY_SOURCE_DESCRIPTION,
   SNAPSHOT_HINT,
@@ -172,7 +172,12 @@ describe("the pasted snapshot, whichever service produced it", () => {
 
     // The form field: no refusal, and no hint saying it is one.
     render(
-      <ArchiveSourceField sourceUrl={SOURCE} value={snapshot} onChange={() => {}} />
+      <ArchiveSnapshotField
+        link={SOURCE}
+        describes={PRIMARY_SOURCE_DESCRIPTION}
+        value={snapshot}
+        onChange={() => {}}
+      />
     );
     expect(screen.queryByText(SNAPSHOT_HINT)).toBeNull();
   });
@@ -180,8 +185,9 @@ describe("the pasted snapshot, whichever service produced it", () => {
   it("is refused when its host archives nothing", () => {
     expect(isSnapshotUrl("https://example.test/not-an-archive")).toBe(false);
     render(
-      <ArchiveSourceField
-        sourceUrl={SOURCE}
+      <ArchiveSnapshotField
+        link={SOURCE}
+        describes={PRIMARY_SOURCE_DESCRIPTION}
         value="https://example.test/not-an-archive"
         onChange={() => {}}
       />

@@ -66,9 +66,9 @@ import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import {
-  ArchiveMirrorField,
-  ArchiveSourceField,
+  ArchiveAdornment,
   ArchivedCopies,
+  ArchiveSnapshotField,
   DETECTED_FROM_DESCRIPTION,
   PRIMARY_SOURCE_DESCRIPTION,
   mirrorDescription,
@@ -86,6 +86,8 @@ import {
   WARNING_CALLOUT,
 } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
+import { CoordinateActions } from "@/components/event/CoordinateActions";
+import { DateTimeInput } from "@/components/ui/DateTimeInput";
 import { Glyph } from "@/components/ui/Glyph";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
@@ -580,13 +582,20 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Forms" />
 
-          <Item name="<Input> (+ FORM_INVALID_FIELD)" usage="The one form field: variant (default / compact / locked) + invalid + icon. `<Input invalid>` is sugar over the FORM_INVALID_FIELD red-outline token; the same raw token flags non-input surfaces too (media dropzone, proof editor, section cards). `icon` overlays a leading icon (the search box). Native props + className pass through.">
+          <Item name="<Input> (+ FORM_INVALID_FIELD, FieldAdornment, TRAILING_ROOM)" usage="The one form field: variant (default / compact / locked) + invalid + icon + trailing. `<Input invalid>` is sugar over the FORM_INVALID_FIELD red-outline token; the same raw token flags non-input surfaces too (media dropzone, proof editor, section cards). `icon` overlays a leading icon at the leading edge, inert. `trailing` is the field's own action slot at the other edge, centred on the field's height and taking the pointer: the map and copy marks of a longitude field, the picker of a <DateTimeInput>, the archive mark of a URL field. Marks in it are <Glyph> (13px), and the text padding grows by TRAILING_ROOM so a long value never runs under them. FieldAdornment + TRAILING_ROOM are exported for the one field that is not an input: <LockedUrl> renders a frozen value as an anchor and clears the same adornment by the same amount. Native props + className pass through.">
             <div className="w-full max-w-sm space-y-2">
               <Variant label="default">
                 <Input placeholder="Type here..." />
               </Variant>
               <Variant label="icon (search box)">
                 <Input icon={<SearchIcon size={14} />} type="search" placeholder="Search…" />
+              </Variant>
+              <Variant label="trailing (the field's own actions)">
+                <Input
+                  placeholder="48.015883"
+                  className="font-mono"
+                  trailing={<CoordinateActions lat={48.015883} lng={37.802411} />}
+                />
               </Variant>
               <Variant label='variant="compact" (admin rows)'>
                 <Input variant="compact" placeholder="Compact" />
@@ -630,7 +639,28 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: the submit / edit forms' Secondary sources. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly. `companion` gives every row a second value the list keeps index-aligned through adds and removals, rendered under it: on the source forms that is <ArchiveMirrorField>, so a mirror is archived where it is typed.">
+          <Item name="<DateTimeInput>" usage="A date, a time or an instant: the native control wearing the site's own mark. The browser draws its picker button in engine chrome at engine size, which on the dark field reads as a foreign element; the brick sets `.picker-glyph` (globals.css hides that button, Webkit/Chromium only) and puts an accent <Glyph> in the field's trailing slot instead, Calendar for anything picking a day and Clock for a time of day, opening the same native picker through showPicker() and falling back to focusing the field. One brick for the event date, the event time and the source post time, on the submit form and the edit form alike. It also owns `has-value`, the class globals.css mutes an empty field's dd/mm/yyyy placeholder off, so no call site derives it. A date field too narrow for an adornment (the search filters, the map scrubber) stays a bare Input of type date and keeps the native button.">
+            <div className="w-full max-w-sm space-y-2">
+              <Variant label='type="date" (empty)'>
+                <DateTimeInput type="date" value="" onChange={() => {}} />
+              </Variant>
+              <Variant label='type="time"'>
+                <DateTimeInput type="time" value="14:30" onChange={() => {}} />
+              </Variant>
+              <Variant label='type="datetime-local"'>
+                <DateTimeInput
+                  type="datetime-local"
+                  value="2026-06-01T14:30"
+                  onChange={() => {}}
+                />
+              </Variant>
+              <Variant label="invalid (a required field left blank)">
+                <DateTimeInput type="date" value="" invalid onChange={() => {}} />
+              </Variant>
+            </div>
+          </Item>
+
+          <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: the submit / edit forms' Secondary sources. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly. `companion` gives every row a second value plus a mark inside the row's URL field (`trailing`) and a line under it (`render`), all three kept index-aligned through adds and removals: on the source forms that is the <ArchiveAdornment> / <ArchiveSnapshotField> pair, so a mirror is archived where it is typed. The list owns which rows are expanded for the same reason it owns the values, and a row seeded with a companion value opens showing it.">
             <div className="w-full max-w-sm space-y-4">
               <Variant label="editable (max 3 here)">
                 <LinkListInput
@@ -651,9 +681,21 @@ export default function PalettePage() {
                   companion={{
                     values: linkCopies,
                     onChange: setLinkCopies,
+                    trailing: ({ index, url, expanded, toggle }) => (
+                      <ArchiveAdornment
+                        describes={mirrorDescription(
+                          safeHostname(url),
+                          index,
+                          links.length
+                        )}
+                        copy={null}
+                        expanded={expanded}
+                        onToggle={toggle}
+                      />
+                    ),
                     render: ({ index, url, value, onChange }) => (
-                      <ArchiveMirrorField
-                        url={url}
+                      <ArchiveSnapshotField
+                        link={url}
                         describes={mirrorDescription(
                           safeHostname(url),
                           index,
@@ -661,7 +703,6 @@ export default function PalettePage() {
                         )}
                         value={value}
                         onChange={onChange}
-                        hint={index === 0}
                       />
                     ),
                   }}
@@ -780,7 +821,7 @@ export default function PalettePage() {
 
           <Item
             name="<ArchivedCopies>"
-            usage="The archived copy beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One copy per link, from whichever service produced it, so the affordance is a single lucide glyph: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy, never in the shape. It is a <Glyph> in exactly two states, and colour says which: accent where a copy exists and the mark opens it, grey and inert where none does, for every reader including the event's owner. Recording a copy is an edit, so it happens in the edit form's <ArchiveSourceField> and files a version; nothing here writes. The affordance closes on a <FieldHelp> `?` (archived_copies); help={false} drops it where a caller renders a list of them and hoists one `?` to the section (the Secondary sources list). Every glyph looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
+            usage="The archived copy beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One copy per link, from whichever service produced it, so the affordance is a single lucide glyph: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy, never in the shape. It is a <Glyph> in exactly two states, and colour says which: accent where a copy exists and the mark opens it, grey and inert where none does, for every reader including the event's owner. Recording a copy is an edit, so it happens on the forms through <ArchiveAdornment> + <ArchiveSnapshotField> and files a version; nothing here writes. The affordance closes on a <FieldHelp> `?` (archived_copies); help={false} drops it where a caller renders a list of them and hoists one `?` to the section (the Secondary sources list). Every glyph looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
           >
             <Variant label="a stored copy named for the Wayback Machine (primary source)">
               <span className="text-sm text-neutral-300">
@@ -812,66 +853,81 @@ export default function PalettePage() {
           </Item>
 
           <Item
-            name="<ArchiveSourceField>"
-            usage="The same archival affordance as a form field, sitting under the Source URL input on the submit and edit forms (inside <DetailsFields>). Nothing is written on its own: the pasted snapshot travels with the form as `source_snapshot_url` and lands in the same write as the event, which is what lets a source be archived before the event exists. Optional by construction (an `optional` marker, no readiness entry, no red outline until something unusable is typed). The one provider link recomputes from the current Source URL value and is replaced by one line while it holds nothing usable, with the sentence naming the other accepted hosts beside it in both states (and wired to the paste field through aria-describedby); `copy` renders the copy an event already carries, above the field that replaces it. isSnapshotUrl / SNAPSHOT_HINT are its client-side check (https + the three archive hosts) and the one sentence explaining it, reused by the forms to refuse a publish before the upload."
+            name="<ArchiveAdornment>"
+            usage="The archive mark a link on a form carries, inside the URL field itself (<Input trailing>, or <LockedUrl trailing> where the value is frozen). One mark per link, where the link is typed, so archiving is not a block under the field. On a form it is never grey: whatever state the link is in there is something to do with it. No copy yet is the ArchiveRestore mark, which opens the paste line under the field; a link that already has one carries the Archive mark opening the stored copy (the same mark and name the event page shows) with ArchiveRestore beside it, since one link holds one copy and a wrong paste has to be replaceable. Every name folds in `describes`, because a form carries several of these and they look alike. Nothing is written here: the paste travels with the form."
           >
-            <Variant label="a source URL is typed: one provider link, one paste field">
-              <ArchiveSourceField
-                sourceUrl="https://t.me/channel/12345"
-                value=""
-                onChange={() => {}}
-              />
+            <Variant label="no copy yet: the mark opens the paste line">
+              <div className="w-full max-w-sm">
+                <Input
+                  type="url"
+                  defaultValue="https://t.me/channel/12345"
+                  trailing={
+                    <ArchiveAdornment
+                      describes={PRIMARY_SOURCE_DESCRIPTION}
+                      copy={null}
+                      expanded={false}
+                      onToggle={() => {}}
+                    />
+                  }
+                />
+              </div>
             </Variant>
-            <Variant label="no usable source URL yet">
-              <ArchiveSourceField sourceUrl="" value="" onChange={() => {}} />
-            </Variant>
-            <Variant label="a paste that cannot be a snapshot">
-              <ArchiveSourceField
-                sourceUrl="https://t.me/channel/12345"
-                value="https://example.com/not-an-archive"
-                onChange={() => {}}
-              />
-            </Variant>
-            <Variant label="the event already carries a copy (edit form)">
-              <ArchiveSourceField
-                sourceUrl="https://t.me/channel/12345"
-                value=""
-                onChange={() => {}}
-                copy={{ url: "https://archive.ph/abcde", provider: "archive_today" }}
-              />
+            <Variant label="a copy exists: it opens, and the second mark replaces it">
+              <div className="w-full max-w-sm">
+                <Input
+                  type="url"
+                  defaultValue="https://t.me/channel/12345"
+                  trailing={
+                    <ArchiveAdornment
+                      describes={PRIMARY_SOURCE_DESCRIPTION}
+                      copy={{ url: "https://archive.ph/abcde", provider: "archive_today" }}
+                      expanded={false}
+                      onToggle={() => {}}
+                    />
+                  }
+                />
+              </div>
             </Variant>
           </Item>
 
           <Item
-            name="<ArchiveMirrorField>"
-            usage="The same brick under one Secondary sources row: a mirror rots like the primary, so every link the form declares carries an archived-copy field. The paste posts as this row's `secondary_snapshot_urls` entry, aligned with the link above it. It drops what a list cannot afford ten times over (no label of its own, and `hint` puts the accepted-hosts sentence on one row only) and keeps the whole contract: the prefilled provider link recomputed from the row's current value, the isSnapshotUrl check before the upload, and `copy` for the copy that mirror already carries. Rendered through <LinkListInput>'s `companion`, which is what keeps the pastes aligned with the links across an add or a removal."
+            name="<ArchiveSnapshotField>"
+            usage="The line the mark opens, directly under the URL field it archives: one field and nothing else. No label, no optional marker, no sentence, because the placeholder states the whole contract and reads the accepted hosts off SNAPSHOT_HOSTS. The trailing mark opens web.archive.org/save/<link> for the value currently typed above, so archiving a corrected URL is a re-click; it is the one place on a form a mark goes grey, since a link that does not parse has no page to open. isSnapshotUrl / SNAPSHOT_HINT are the client-side check (https + the three archive hosts) and the one sentence explaining it, reused by the forms to refuse a publish before the upload. Nothing is written here: the paste travels with the form as `source_snapshot_url` or as this row's `secondary_snapshot_urls` entry."
           >
-            <Variant label="a mirror is typed, and the row carries the hosts sentence">
-              <ArchiveMirrorField
-                url="https://t.me/channel/12345"
-                describes={mirrorDescription("t.me", 0, 2)}
-                value=""
-                onChange={() => {}}
-                hint
-              />
-            </Variant>
-            <Variant label="a later row: the same field, without the sentence">
-              <ArchiveMirrorField
-                url="https://rumble.com/v-mirror"
-                describes={mirrorDescription("rumble.com", 1, 2)}
-                value=""
-                onChange={() => {}}
-              />
-            </Variant>
-            <Variant label="the mirror already carries a copy (edit form)">
-              <ArchiveMirrorField
-                url="https://t.me/channel/12345"
-                describes={mirrorDescription("t.me", 0, 1)}
-                value=""
-                onChange={() => {}}
-                copy={{ url: "https://archive.ph/abcde", provider: "archive_today" }}
-              />
-            </Variant>
+            <div className="w-full max-w-sm space-y-2">
+              <Variant label="a link is typed: the door is live">
+                <ArchiveSnapshotField
+                  link="https://t.me/channel/12345"
+                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  value=""
+                  onChange={() => {}}
+                />
+              </Variant>
+              <Variant label="no usable link yet: the door is inert">
+                <ArchiveSnapshotField
+                  link=""
+                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  value=""
+                  onChange={() => {}}
+                />
+              </Variant>
+              <Variant label="a paste that cannot be a snapshot">
+                <ArchiveSnapshotField
+                  link="https://t.me/channel/12345"
+                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  value="https://example.com/not-an-archive"
+                  onChange={() => {}}
+                />
+              </Variant>
+              <Variant label="one mirror's line">
+                <ArchiveSnapshotField
+                  link="https://rumble.com/v-mirror"
+                  describes={mirrorDescription("rumble.com", 1, 2)}
+                  value=""
+                  onChange={() => {}}
+                />
+              </Variant>
+            </div>
           </Item>
 
           <Item name="<Dot>" usage="The orange notification dot: the rail's identity row, the profile's detections entry, the map filter panel's in-flight pulse. Position / ring / size via className.">

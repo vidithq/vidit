@@ -38,7 +38,7 @@ export const FIELD_HELP = {
     label: "What are secondary sources?",
   },
   archived_copies: {
-    text: "An archived copy of a source link, so the evidence survives the original being deleted. You make it yourself: on your own events, edit the event and paste the snapshot into its Archived copy field, which opens the Wayback Machine with the link filled in. A snapshot you took at archive.ph or archive.today is accepted in the same field. Orange means a copy exists and opens it; grey means none yet.",
+    text: "An archived copy of a source link, so the evidence survives the original being deleted. You make it yourself: on your own events, edit the event, click the archive mark inside the link's field and paste the snapshot into the line it opens, which offers the Wayback Machine with the link filled in and accepts a snapshot you took at archive.ph or archive.today. Here on the event, orange means a copy exists and opens it; grey means none yet.",
     label: "What are the archived copies?",
   },
   source_media: {

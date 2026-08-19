@@ -52,12 +52,11 @@ export function CoordinateInputs({
   const pair = coordinatePair(lat, lng);
 
   return (
-    // Three columns from `sm` up: the two fields, then the actions on the same
-    // row, so checking a coordinate against imagery is a move to the right
-    // rather than a jump to a line of its own. Below `sm` the third cell spans
-    // the pair and wraps under it, where a third column would squeeze the
-    // fields down to a few characters.
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-[1fr_1fr_auto]">
+    // Two columns at every width: the pair's own actions ride inside the
+    // longitude field as its trailing adornment, so checking a coordinate
+    // against imagery costs neither a third column that squeezes the fields on
+    // a phone nor a line of its own under them.
+    <div className="grid grid-cols-2 gap-4">
       <div className="space-y-1.5">
         <label
           htmlFor={latId}
@@ -94,27 +93,13 @@ export function CoordinateInputs({
           placeholder="37.802411"
           className="font-mono"
           invalid={invalid}
+          // Always mounted, greyed until the pair parses: the adornment holds
+          // one width, so nothing shifts the moment the second half of a
+          // coordinate is typed.
+          trailing={
+            <CoordinateActions lat={pair?.lat ?? null} lng={pair?.lng ?? null} />
+          }
         />
-      </div>
-
-      <div className="col-span-2 flex flex-col sm:col-span-1">
-        {/* An empty label line, so the actions land level with the inputs
-            rather than with the words above them. Only from `sm` up: below it
-            the cell sits under the pair, with no label row to clear. */}
-        <span aria-hidden className={`hidden sm:block ${FORM_LABEL}`}>
-          &nbsp;
-        </span>
-        {/* `flex-1` + `items-center` against a cell the grid stretches to the
-            field's height, which is what centres the marks on the inputs
-            without either side naming a pixel height. The glyphs carry no
-            button box of their own, so the cell adds the gap that used to come
-            from the buttons' padding and keeps them off the longitude field. */}
-        <div className="flex flex-1 items-center justify-end sm:pl-2">
-          {/* Always mounted, greyed until the pair parses: the cell holds one
-              width, so the row does not jump the moment the second half of a
-              coordinate is typed. */}
-          <CoordinateActions lat={pair?.lat ?? null} lng={pair?.lng ?? null} />
-        </div>
       </div>
     </div>
   );

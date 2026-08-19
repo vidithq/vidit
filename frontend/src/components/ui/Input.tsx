@@ -1,6 +1,7 @@
 import type {
   InputHTMLAttributes,
   ReactNode,
+  Ref,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
@@ -49,26 +50,78 @@ interface FieldProps {
   invalid?: boolean;
 }
 
+// The room a `trailing` adornment is given: the field's own right padding
+// (`px-3`, 12px) plus the width of the two `<Glyph>` marks the widest adornment
+// carries (13px each with a 6px gap). Typed text stops here, so a value long
+// enough to reach the edge runs under nothing. One figure for every adornment:
+// a per-call-site padding is how two fields wearing the same mark end up with
+// the text stopping in two different places. Exported for the one field that
+// is not an `<input>`: `<LockedUrl>` renders its frozen value as an anchor and
+// has to clear the same adornment by the same amount.
+export const TRAILING_ROOM = "pr-11";
+
+/** The adornment itself, positioned against a `relative` field box: centred on
+ *  the field's height whatever height it takes, and taking the pointer, since
+ *  what sits in it are controls. Shared with `<LockedUrl>` for the same reason
+ *  `TRAILING_ROOM` is. */
+export function FieldAdornment({ children }: { children: ReactNode }) {
+  return (
+    <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1.5">
+      {children}
+    </span>
+  );
+}
+
+/**
+ * The one form field.
+ *
+ * `icon` overlays a mark at the leading edge (the search glass); `trailing`
+ * overlays content at the trailing edge, vertically centred on the field
+ * whatever height it takes. A trailing adornment is where a field's own actions
+ * live: the map and copy marks of the longitude field, the picker of a date
+ * field, the archive mark of a URL field. Glyphs inside a field are
+ * [`<Glyph>`](./Glyph.tsx), so an in-field control reads as the same offer as
+ * every other inline mark on the site.
+ *
+ * Unlike `icon`, `trailing` takes the pointer: the marks in it are controls.
+ */
 export function Input({
   variant = "default",
   invalid = false,
   icon,
+  trailing,
   className = "",
   ...props
 }: FieldProps & {
   /** Leading icon (e.g. a search glass), overlaid inside the field. */
   icon?: ReactNode;
+  /** Content overlaid inside the field at its right edge, centred on the
+   *  field's height. The field's text padding grows to clear it. */
+  trailing?: ReactNode;
+  ref?: Ref<HTMLInputElement>;
 } & InputHTMLAttributes<HTMLInputElement>) {
-  if (icon) {
+  if (icon || trailing) {
     return (
-      <div className="relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none">
-          {icon}
-        </span>
+      // `w-full`, so an adorned field fills its parent exactly as a bare one
+      // does: the recipe's own `w-full` lands on the input, which a wrapper
+      // sized by its content would then cap. A caller that needs another width
+      // sizes the parent, as `<LinkListInput>`'s rows do.
+      <div className="relative w-full">
+        {icon && (
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none">
+            {icon}
+          </span>
+        )}
         <input
-          className={cn(fieldClass(variant, invalid, ""), "pl-9", className)}
+          className={cn(
+            fieldClass(variant, invalid, ""),
+            icon && "pl-9",
+            trailing && TRAILING_ROOM,
+            className,
+          )}
           {...props}
         />
+        {trailing && <FieldAdornment>{trailing}</FieldAdornment>}
       </div>
     );
   }

@@ -1,14 +1,16 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import type { ArchivedLink } from "@/types";
 import {
-  ArchiveMirrorField,
-  ArchiveSourceField,
+  ArchiveAdornment,
+  ArchiveSnapshotField,
   mirrorDescription,
+  PRIMARY_SOURCE_DESCRIPTION,
 } from "@/components/ui/ArchivedCopies";
 import { safeHostname } from "@/lib/format";
+import { DateTimeInput } from "@/components/ui/DateTimeInput";
 import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { LinkListInput } from "@/components/ui/LinkListInput";
@@ -115,6 +117,27 @@ export function DetailsFields({
   // A fulfilment can reach here before the request's source has loaded, so the
   // link mode needs a value, not just the locked flag.
   const sourceUrlAsLink = sourceUrlLocked && sourceUrl !== "";
+
+  // The source's paste line opens on the mark, and starts open where a value is
+  // already staged: a seeded snapshot nothing displays is one nobody can
+  // correct. The mirrors' equivalent lives in `LinkListInput`, which is what
+  // keeps a row's open line aligned with its link across an add or a removal.
+  const [sourceArchiveOpen, setSourceArchiveOpen] = useState(
+    sourceSnapshotUrl !== ""
+  );
+  const sourceArchiveMark = (
+    <ArchiveAdornment
+      describes={PRIMARY_SOURCE_DESCRIPTION}
+      copy={archivedSource}
+      expanded={sourceArchiveOpen}
+      onToggle={() => setSourceArchiveOpen((open) => !open)}
+    />
+  );
+
+  // One mirror's name, said the same way in the mark and in the line under it.
+  const describeMirror = (index: number, url: string) =>
+    mirrorDescription(safeHostname(url), index, secondarySourceUrls.length);
+
   // One label, worn by whichever element ends up carrying it.
   const sourceUrlLabel = (
     <>
@@ -134,24 +157,22 @@ export function DetailsFields({
           <label htmlFor="event_date" className={FORM_LABEL}>
             Event date <FieldHelp concept="event_date" />
           </label>
-          <Input
+          <DateTimeInput
             id="event_date"
             type="date"
             value={eventDate}
             onChange={(e) => setEventDate(e.target.value)}
-            className={eventDate ? "has-value" : ""}
           />
         </div>
         <div className="space-y-1.5">
           <label htmlFor="event_time" className={FORM_LABEL}>
             Event time <FieldHelp concept="event_time" />
           </label>
-          <Input
+          <DateTimeInput
             id="event_time"
             type="time"
             value={eventTime}
             onChange={(e) => setEventTime(e.target.value)}
-            className={eventTime ? "has-value" : ""}
           />
         </div>
       </div>
@@ -163,14 +184,13 @@ export function DetailsFields({
         >
           Source posted (UTC) <FieldHelp concept="source_posted_at" />
         </label>
-        <Input
+        <DateTimeInput
           id="source_posted_at"
           type="datetime-local"
           required
           value={sourcePostedAt}
           onChange={(e) => setSourcePostedAt(e.target.value)}
           invalid={sourcePostedAtInvalid}
-          className={sourcePostedAt ? "has-value" : ""}
         />
       </div>
 
@@ -191,7 +211,7 @@ export function DetailsFields({
           </label>
         )}
         {sourceUrlAsLink ? (
-          <LockedUrl href={sourceUrl} />
+          <LockedUrl href={sourceUrl} trailing={sourceArchiveMark} />
         ) : (
           <Input
             variant={sourceUrlLocked ? "locked" : "default"}
@@ -203,19 +223,23 @@ export function DetailsFields({
             onChange={(e) => setSourceUrl?.(e.target.value)}
             placeholder="https://t.me/channel/12345"
             invalid={sourceUrlInvalid}
+            trailing={sourceArchiveMark}
+          />
+        )}
+        {/* Archival rides the field holding the link it archives, on the form
+            where that link is typed: a source is most archivable while the
+            analyst still has it open. The paste line opens under the field, so
+            the copy and the link it covers read as one thing. Optional, and
+            never part of a publish floor. */}
+        {sourceArchiveOpen && (
+          <ArchiveSnapshotField
+            link={sourceUrl}
+            describes={PRIMARY_SOURCE_DESCRIPTION}
+            value={sourceSnapshotUrl}
+            onChange={setSourceSnapshotUrl}
           />
         )}
       </div>
-
-      {/* Archival sits under the link it archives, on the form where the link
-          is typed: a source is most archivable while the analyst still has it
-          open. Optional, and never part of a publish floor. */}
-      <ArchiveSourceField
-        sourceUrl={sourceUrl}
-        value={sourceSnapshotUrl}
-        onChange={setSourceSnapshotUrl}
-        copy={archivedSource}
-      />
 
       {/* The mirrors sit under the primary they mirror. Never required, so no
           invalid state and no readiness entry: an empty list is a complete
@@ -237,21 +261,20 @@ export function DetailsFields({
           companion={{
             values: secondarySnapshotUrls,
             onChange: setSecondarySnapshotUrls,
+            trailing: ({ index, url, expanded, toggle }) => (
+              <ArchiveAdornment
+                describes={describeMirror(index, url)}
+                copy={archivedCopies?.get(url.trim()) ?? null}
+                expanded={expanded}
+                onToggle={toggle}
+              />
+            ),
             render: ({ index, url, value, onChange }) => (
-              <ArchiveMirrorField
-                url={url}
-                describes={mirrorDescription(
-                  safeHostname(url),
-                  index,
-                  secondarySourceUrls.length
-                )}
+              <ArchiveSnapshotField
+                link={url}
+                describes={describeMirror(index, url)}
                 value={value}
                 onChange={onChange}
-                copy={archivedCopies?.get(url.trim()) ?? null}
-                // The sentence naming the other accepted hosts is said once
-                // for the list, on the first row, where it describes a real
-                // input rather than floating over the section.
-                hint={index === 0}
               />
             ),
           }}

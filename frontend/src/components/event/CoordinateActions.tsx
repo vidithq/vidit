@@ -9,18 +9,18 @@ import { formatCoordinates, mapsUrl } from "@/lib/coordinates";
 /**
  * The two things anyone does with a coordinate pair: check it against
  * satellite imagery, or take it away. One home and one shape, so the entry
- * control (`CoordinateInputs`, in the third column of every latitude /
- * longitude row) and the event detail page's coordinates row can't drift apart.
+ * control (`CoordinateInputs`, where it is the longitude field's trailing
+ * adornment) and the event detail page's coordinates row can't drift apart.
  * What lands on the clipboard is the same 6-decimal rendering the page shows,
  * which pastes back into the inputs as a pair.
  *
- * Two `<Glyph>` marks, the shape the archived-copy mark carries beside a source
- * link: 13px, set in the line they act on, with no button box to outweigh the
- * coordinate itself or to take width from the fields they sit beside.
+ * Two `<Glyph>` marks, the shape every mark inside a field carries: 13px, set
+ * in the line they act on, with no button box to outweigh the coordinate itself
+ * or to take width from the field they ride in.
  *
  * A null pair (a coordinate still being typed, or one out of bounds) keeps both
  * marks in place and grey rather than removing them: the actions occupy the
- * same width whether or not they can act, so the row they sit in never jumps,
+ * same width whether or not they can act, so the field they sit in never jumps,
  * and a grey mark says the point is not usable yet where a vanished one says
  * nothing at all. Grey is the state itself, not a dimmed accent, and the marks
  * are inert while they wear it: `<Glyph active={false}>` neither navigates nor
