@@ -151,9 +151,9 @@ def apply_author_filter(query: SAQuery, author: str) -> SAQuery:
     """Join the owner and match the username exactly (case-insensitive).
 
     Exact, not substring: the filter means "this analyst's work", and the
-    surfaces pick the value from real usernames (the author typeahead, a
-    profile's "Show more"), so ``?author=ana`` must not sweep in every
-    handle containing "ana". Callers gate ``author`` through
+    surfaces pick the value from real usernames (the author typeahead, the
+    profile's links into search: every Insights tile and "Show more"), so
+    ``?author=ana`` must not sweep in every handle containing "ana". Callers gate ``author`` through
     :data:`AUTHOR_FILTER_PATTERN` (a ``Query(pattern=...)``).
     """
     return query.join(Event.owner).filter(func.lower(User.username) == author.lower())

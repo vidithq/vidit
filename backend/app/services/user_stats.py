@@ -35,8 +35,8 @@ from app.schemas.user import ActivityBucket, TagCount, UserStatsRead
 from app.services.event_filters import visible_events
 from app.services.sanitize import normalised_host
 
-# The statuses that are documented work. The three the card splits by, and the
-# three ``total_events`` sums.
+# The statuses that are documented work. The three the payload splits into its
+# own counts, and the three ``total_events`` sums.
 COUNTED_STATUSES = (STATUS_GEOLOCATED, STATUS_DETECTED, STATUS_CLOSED)
 
 # The activity grid draws one row per calendar year, twelve month cells wide.
@@ -47,9 +47,9 @@ COUNTED_STATUSES = (STATUS_GEOLOCATED, STATUS_DETECTED, STATUS_CLOSED)
 # and the row labels say which years are on screen.
 MAX_ACTIVITY_YEARS = 10
 
-# The profile shows the head of each distribution, not the full tail. One
+# The payload carries the head of each distribution, not the full tail. One
 # ceiling for all three lists (conflicts, capture sources, source hosts), so
-# the card has a single rule for how much of a tail it prints.
+# there is a single rule for how much of a tail a client can read.
 TOP_N = 5
 
 

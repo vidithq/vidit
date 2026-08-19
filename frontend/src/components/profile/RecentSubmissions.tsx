@@ -7,6 +7,7 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { buttonClasses } from "@/components/ui/Button";
+import { profileSearchHref } from "@/lib/search";
 import type { PublicProfile } from "@/lib/users";
 import type { components } from "@/lib/api-types";
 import type { EventListItem } from "@/types";
@@ -57,9 +58,10 @@ export function RecentSubmissions({
           // work the block above does: search's located group otherwise
           // widens to machine detections. The value is in the panel's own
           // vocabulary, so it lands as a removable chip a reader can drop to
-          // widen the view deliberately.
+          // widen the view deliberately. Same builder as the Insights tiles
+          // above, so the profile has one shape of link into search.
           <Link
-            href={`/search?type=event&author=${encodeURIComponent(profile.username)}&status=geolocated`}
+            href={profileSearchHref(profile.username, { status: "geolocated" })}
             className={buttonClasses("secondary", {
               className: "shrink-0 whitespace-nowrap",
             })}
