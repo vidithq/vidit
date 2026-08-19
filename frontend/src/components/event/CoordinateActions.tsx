@@ -56,13 +56,13 @@ export function CoordinateActions({
 /**
  * The pair on the clipboard, in the glyph shape.
  *
- * `<CopyButton>` is the same gesture in the square icon-button shape of an
- * action row; here the mark belongs to a line of text, so the two share the
- * hook that owns the write and the flash timer rather than one shape carrying
- * both. What they must not differ on is the accessibility of the flash, and
- * they don't: the name is static, because a name that changes on click is
- * re-announced as a new control, and the confirmation lands in a sibling live
- * region instead. Only the tooltip and the mark itself flip.
+ * `useCopyToClipboard` owns the write and the flash timer, so every copy
+ * gesture on the site is this one hook worn in whatever shape its surroundings
+ * call for (the profile's Discord account is the same glyph shape; the admin
+ * invite row is a text button). What no shape may differ on is the
+ * accessibility of the flash: the name is static, because a name that changes
+ * on click is re-announced as a new control, and the confirmation lands in a
+ * sibling live region instead. Only the tooltip and the mark itself flip.
  */
 function CopyCoordinates({ point }: { point: { lat: number; lng: number } | null }) {
   const { copied, copy } = useCopyToClipboard();

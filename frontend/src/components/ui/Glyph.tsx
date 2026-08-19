@@ -2,11 +2,24 @@
 
 import type { ComponentType } from "react";
 
-import { ACTION_GLYPH, MUTED_GLYPH } from "./styles";
+import { TEXT_LINK } from "./styles";
 
 /** The one size for an inline glyph. Small enough to sit inside a line of text
  *  without leading it, large enough that lucide's strokes stay legible. */
 const GLYPH_SIZE = 13;
+
+// The two colour states, private to this file: the primitive below is what
+// picks between them, so a call site reaches for `<Glyph>` rather than for a
+// class string. The accent is `TEXT_LINK`, the accent every clickable on the
+// site carries, so an acting mark and a link read as the same offer.
+//
+// Grey here is a state, not a dimmed accent: a control is accent when it acts
+// and neutral grey when it cannot, so an inert glyph reads as inert instead of
+// as a faint version of a link. The same rule paints <Button>'s disabled state.
+// Size and spacing stay at the call site, since a glyph sits in whatever line
+// of text carries it.
+const ACTION_GLYPH = `${TEXT_LINK} inline-flex`;
+const MUTED_GLYPH = "inline-flex text-neutral-600";
 
 /**
  * The one bare inline glyph: a 13px mark set in a line of text, with no button
@@ -19,9 +32,8 @@ const GLYPH_SIZE = 13;
  * from it. Where a control does own its own box, that is `<Button icon>`.
  *
  * Colour is the state, and the primitive is what makes that true: it paints
- * `ACTION_GLYPH` accent only when it renders something a reader can act on, and
- * `MUTED_GLYPH` grey otherwise, so a glyph cannot be accent and inert or grey
- * and clickable. `active` is the call site's half of that (a map link with no
+ * accent only when it renders something a reader can act on, and neutral grey
+ * otherwise, so a glyph cannot be accent and inert or grey and clickable. `active` is the call site's half of that (a map link with no
  * coordinate pair to open, a copy with nothing to write), and the primitive
  * covers the rest: an inactive glyph renders as an inert `<span>` whatever
  * `href` or `onClick` it was handed, so nothing navigates or fires from a mark

@@ -560,7 +560,7 @@ export function EventEditForm({
                 revision adds a version, so it has nothing to warn about. */}
             {!revising && <FieldHelp concept="action_submit" />}
           </span>
-          {/* Sibling status region, the shape `<CopyButton>` uses: the armed
+          {/* Sibling status region, the shape every copy control uses: the armed
               state is reported once, as a status, so a reader who cannot see
               the ring hears what the next click will do. */}
           <span className="sr-only" role="status" aria-live="polite">

@@ -52,20 +52,6 @@ export const TAPPABLE_HOVER = "hover:border-orange-500/40 transition-colors";
 // empty-state CTAs). Size / weight stay at the call site.
 export const TEXT_LINK = "text-orange-400 hover:underline";
 
-// The two states of an inline glyph: a bare 13px mark set in a line of text,
-// with no button chrome around it (the archive mark beside a source link, the
-// coordinate row's map and copy actions). `ACTION_GLYPH` is the mark that acts,
-// carrying the accent every clickable carries; `MUTED_GLYPH` is the same mark
-// where the reader cannot act on it, in neutral grey.
-//
-// Grey here is a state, not a dimmed accent: a control is accent when it acts
-// and neutral grey when it cannot, so an inert glyph reads as inert instead of
-// as a faint version of a link. The same rule paints <Button>'s disabled state.
-// Size and spacing stay at the call site, since a glyph sits in whatever line
-// of text carries it.
-export const ACTION_GLYPH = `${TEXT_LINK} inline-flex`;
-export const MUTED_GLYPH = "inline-flex text-neutral-600";
-
 // Backdrop for an icon control floating over media (a tile's download, the
 // lightbox's expand and close). Media is arbitrary pixels, so a bare glyph can
 // land on anything; the translucent dark plate plus blur keeps it readable over

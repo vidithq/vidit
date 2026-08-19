@@ -86,7 +86,6 @@ import {
   WARNING_CALLOUT,
 } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
-import { CopyButton } from "@/components/ui/CopyButton";
 import { Glyph } from "@/components/ui/Glyph";
 import { OverflowMenu } from "@/components/ui/OverflowMenu";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
@@ -384,15 +383,6 @@ export default function PalettePage() {
             </a>
           </Item>
 
-          <Item name="ACTION_GLYPH / MUTED_GLYPH" usage="The two colour states of a bare inline glyph, accent where it acts and neutral grey where it cannot. <Glyph> is their one consumer and picks between them off what it renders, so a call site reaches for the primitive rather than these strings. Grey is the state, not a dimmed accent, which is the same rule <Button> follows when it is disabled.">
-            <div className="flex items-center gap-3 text-sm text-neutral-300">
-              <span>Acts</span>
-              <Glyph icon={ExternalLink} label="View on Maps" href="#" />
-              <span className="ml-3">Cannot act</span>
-              <Glyph icon={ExternalLink} label="No map link until the coordinate pair is complete" active={false} href="#" />
-            </div>
-          </Item>
-
           <Item name="TAPPABLE_HOVER" usage="A whole card / section is one click target: accent border on hover. Pair `group` + `group-hover:text-orange-400` so the title takes the accent too.">
             <div className="w-full max-w-md space-y-2">
               <Variant label="compact row">
@@ -436,7 +426,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Controls · buttons & pills" />
 
-          <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive or alerting, no grey button. `dangerGhost` is red at ghost weight, for a red control sitting in an icon row (the report flag). `icon` makes a square icon-only button; `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm. `disabled` drops the tone for neutral grey rather than fading it, so a button that refuses the click reads like every other inert control on the site (ACTION_GLYPH / MUTED_GLYPH follow the same rule).">
+          <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive or alerting, no grey button. `dangerGhost` is red at ghost weight, for a red control sitting in an icon row (the report flag). `icon` makes a square icon-only button; `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm. `disabled` drops the tone for neutral grey rather than fading it, so a button that refuses the click reads like every other inert control on the site (<Glyph> follows the same rule).">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="primary">Primary</Button>
@@ -469,7 +459,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Glyph>" usage="The one bare inline glyph: a 13px mark set in a line of text, with no button chrome (the archived-copy mark beside a source link, the map and copy marks of <CoordinateActions>). Where a control owns its own box instead, that is <Button icon>. One of href (outbound, new tab) or onClick (an action here) makes it a control; neither is a mark that only states something. Colour is the state and the primitive enforces it: ACTION_GLYPH accent only when it renders something actionable, MUTED_GLYPH grey otherwise, and an inactive glyph renders as an inert span whatever href or onClick it was handed, so nothing fires from a mark that reads as unavailable. label is the whole name (aria-label + title, the bare name of an icon-only control, never an explanation: that is <FieldHelp>); title takes a tooltip that moves while the name holds still (a copy flash).">
+          <Item name="<Glyph>" usage="The one bare inline glyph: a 13px mark set in a line of text, with no button chrome (the archived-copy mark beside a source link, the map and copy marks of <CoordinateActions>). Where a control owns its own box instead, that is <Button icon>. One of href (outbound, new tab) or onClick (an action here) makes it a control; neither is a mark that only states something. Colour is the state and the primitive enforces it: accent only when it renders something actionable, neutral grey otherwise (the two class strings are private to Glyph.tsx, so a call site reaches for the primitive rather than for a string), and an inactive glyph renders as an inert span whatever href or onClick it was handed, so nothing fires from a mark that reads as unavailable. It is also the copy control for a line of text, over useCopyToClipboard: the resting mark flips to a check for the flash window while the accessible name holds still and a sibling live region announces the write (<CoordinateActions>, the profile's Discord account). label is the whole name (aria-label + title, the bare name of an icon-only control, never an explanation: that is <FieldHelp>); title takes a tooltip that moves while the name holds still (a copy flash).">
             <div className="flex items-center gap-4 text-sm text-neutral-300">
               <Variant label="href">
                 <Glyph icon={Archive} label="Wayback Machine copy of the source" href="#" />
@@ -480,14 +470,6 @@ export default function PalettePage() {
               <Variant label="inert">
                 <Glyph icon={ExternalLink} label="No map link until the coordinate pair is complete" active={false} href="#" />
               </Variant>
-            </div>
-          </Item>
-
-          <Item name="<CopyButton>" usage="The one copy-to-clipboard control in the square ghost icon-button shape of an action row (the event share row, the profile's Discord account): a resting glyph that flips to a check for the flash window (useCopyToClipboard). `value` is a getter so the call site can read window at click time; `icon` swaps the resting glyph where the value names itself better than a copy mark does (the check is fixed); `beforeCopy` gates the write for a call site that must approve it first; `disabled` greys it for a value that does not exist yet; the accessible name stays constant and the copied state is announced by a sibling live region. A line of text carrying the copy inside it composes <Glyph> over the same hook instead, which is what <CoordinateActions> does.">
-            <div className="flex items-center gap-2">
-              <CopyButton value={() => "48.015883, 37.802411"} label="Copy coordinates" copiedLabel="Coordinates copied" />
-              <CopyButton icon={DiscordGlyph} value={() => "a-handle"} label="Copy Discord username: a-handle" copiedLabel="Discord username copied" />
-              <CopyButton value={() => ""} label="Copy coordinates" disabled />
             </div>
           </Item>
 

@@ -354,7 +354,7 @@ describe("the submit confirm", () => {
   it("announces the armed state and what the next click costs", () => {
     armSubmit();
     // A live region beside the button, not a renamed control: the reader hears
-    // the state and what it costs, in the shape `<CopyButton>` already uses.
+    // the state and what it costs, in the shape every copy control uses.
     const announcement = screen.getByText(
       "Click again to submit. Submitting publishes the event; later changes become versions."
     );

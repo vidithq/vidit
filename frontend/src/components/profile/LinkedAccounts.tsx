@@ -1,16 +1,17 @@
 "use client";
 
 import type { ComponentType } from "react";
-import { Globe } from "lucide-react";
+import { Check, Globe } from "lucide-react";
 
 import { displayLinkValue, resolveLinkHref, type PublicProfile } from "@/lib/users";
 import type { ExternalLinks } from "@/types";
 import { DiscordGlyph, GitHubGlyph, XGlyph } from "@/components/ui/BrandGlyphs";
 import { buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { CopyButton } from "@/components/ui/CopyButton";
+import { Glyph } from "@/components/ui/Glyph";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_LABEL } from "@/components/ui/form-styles";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import type { ProfileEditState } from "./useProfileEdit";
 
 /** The platforms a profile can link, in reading order. One source for both the
@@ -121,11 +122,12 @@ export function LinkedAccountsFields({ edit }: { edit: ProfileEditState }) {
  * The name prints `displayLinkValue`, not the stored string, so an X value reads
  * `@LoLManya` whether it was stored as a profile URL or as a bare handle.
  *
- * The platform's `action` decides the control. `copy` is a `<CopyButton>`
- * carrying the brand mark, which is Discord: the platform publishes no profile
- * URL for a username, so handing it over is the one thing a reader can do with
- * it. `link` is an anchor carrying the button shape, the pattern for a
- * navigation control that looks like a button, opening in a new tab.
+ * The platform's `action` decides the control. `copy` is `<CopyHandle>`, the
+ * brand mark over `useCopyToClipboard`, which is Discord: the platform
+ * publishes no profile URL for a username, so handing it over is the one thing
+ * a reader can do with it. `link` is an anchor carrying the button shape, the
+ * pattern for a navigation control that looks like a button, opening in a new
+ * tab.
  *
  * A `link` platform whose value `resolveLinkHref` refuses renders nothing: a
  * button that goes nowhere is a dead control. The backend validates these
@@ -148,13 +150,7 @@ export function LinkedAccountsLine({ profile }: { profile: PublicProfile }) {
 
     if (action === "copy") {
       return [
-        <CopyButton
-          key={key}
-          icon={Icon}
-          value={() => value}
-          label={`Copy ${label} username: ${shown}`}
-          copiedLabel={`${label} username copied`}
-        />,
+        <CopyHandle key={key} Icon={Icon} label={label} shown={shown} value={value} />,
       ];
     }
 
@@ -178,4 +174,52 @@ export function LinkedAccountsLine({ profile }: { profile: PublicProfile }) {
   if (buttons.length === 0) return null;
 
   return <div className="flex flex-wrap items-center gap-1">{buttons}</div>;
+}
+
+/**
+ * The account a reader can only take away: the brand mark, flipping to a check
+ * for the flash window.
+ *
+ * The gesture and its feedback are `useCopyToClipboard`, the one home for the
+ * clipboard write and the flash timer, worn here the way `<CoordinateActions>`
+ * wears it: a `<Glyph>` mark rather than a boxed control. The resting mark
+ * stays the platform's own, since this row is brand marks and a generic copy
+ * mark would say less than the one it replaced; only the flash is fixed,
+ * because what confirms a write reads the same everywhere.
+ *
+ * The accessible name is static and names the handle, and the confirmation
+ * lands in a sibling live region: a name that changes on click is re-announced
+ * as a new control. Only the tooltip and the mark flip.
+ */
+function CopyHandle({
+  Icon,
+  label,
+  shown,
+  value,
+}: {
+  Icon: ComponentType<{ size?: number }>;
+  /** The platform's name, for both the action name and the confirmation. */
+  label: string;
+  /** The handle as a reader reads it (`displayLinkValue`). */
+  shown: string;
+  /** What lands on the clipboard: the stored value. */
+  value: string;
+}) {
+  const { copied, copy } = useCopyToClipboard();
+  const name = `Copy ${label} username: ${shown}`;
+  const copiedLabel = `${label} username copied`;
+
+  return (
+    <>
+      <Glyph
+        icon={copied ? Check : Icon}
+        label={name}
+        title={copied ? copiedLabel : name}
+        onClick={() => void copy(value)}
+      />
+      <span className="sr-only" role="status" aria-live="polite">
+        {copied ? copiedLabel : ""}
+      </span>
+    </>
+  );
 }
