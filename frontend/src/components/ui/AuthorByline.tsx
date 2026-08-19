@@ -11,12 +11,19 @@ import { cn } from "@/lib/cn";
  * sets both); `size` scales the gap for the dense panel header; `avatar` leads
  * with the author's profile picture where the byline is the page's author
  * signature (the detail-page slots).
+ *
+ * `link={false}` is the same assembly without its anchor, for a slot that is
+ * itself one click: a row covered by a stretched link cannot hold a second
+ * link, which a mouse would reach and a keyboard would announce as a separate
+ * stop. The handle stays readable and the profile is one tap away from
+ * wherever that row leads.
  */
 export function AuthorByline({
   author,
   prefix = true,
   size = "sm",
   avatar = false,
+  link = true,
   className = "",
 }: {
   author: {
@@ -31,6 +38,10 @@ export function AuthorByline({
   /** Lead with the author's avatar (initial fallback). Implies no "by "
    *  prefix: picture + handle already read as a signature. */
   avatar?: boolean;
+  /** Link the handle to the profile. Off inside a row that is already one
+   *  click (a history row's stretched link), where a nested anchor is a
+   *  target the mouse and the keyboard disagree about. */
+  link?: boolean;
   className?: string;
 }) {
   return (
@@ -50,9 +61,13 @@ export function AuthorByline({
         />
       )}
       {prefix && !avatar && <>by </>}
-      <Link href={`/profile/${author.username}`} className={TEXT_LINK}>
-        {author.username}
-      </Link>
+      {link ? (
+        <Link href={`/profile/${author.username}`} className={TEXT_LINK}>
+          {author.username}
+        </Link>
+      ) : (
+        <span>{author.username}</span>
+      )}
     </span>
   );
 }

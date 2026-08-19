@@ -804,7 +804,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AuthorByline>" usage="The 'by @user' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots.">
+          <Item name="<AuthorByline>" usage="The 'by @user' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots. link=false drops the anchor for a slot that is already one click (a version-history row under its stretched link), where a nested link is a target the mouse and the keyboard disagree about.">
             <Variant label="avatar (detail-page signature)">
               <span className="text-sm text-neutral-400">
                 <AuthorByline author={MOCK_DETAIL.owner} avatar />
@@ -818,6 +818,11 @@ export default function PalettePage() {
             <Variant label='size="xs" (panel header)'>
               <span className="text-xs text-neutral-400">
                 <AuthorByline author={MOCK_DETAIL.owner} size="xs" />
+              </span>
+            </Variant>
+            <Variant label="link={false} (inside a row-wide link)">
+              <span className="text-xs text-neutral-400">
+                <AuthorByline author={MOCK_DETAIL.owner} prefix={false} link={false} />
               </span>
             </Variant>
           </Item>

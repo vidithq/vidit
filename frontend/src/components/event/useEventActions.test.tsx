@@ -168,6 +168,34 @@ describe("utilities are the detail pages' tier", () => {
     }
   );
 
+  // The history is a read like the two beside it, public like the record: a
+  // corrected record is auditable only where any reader can walk the
+  // corrections. It is on the event page and nowhere else, because that is the
+  // one surface serving the record whose versions it lists.
+  it("opens the version history from the event surface of a published row", () => {
+    render(<Harness status="geolocated" surface="event" />);
+    expect(screen.getByRole("link", { name: "Version history" })).toHaveAttribute(
+      "href",
+      "/events/e1/history"
+    );
+  });
+
+  it.each<EventStatus>(["requested", "detected", "closed"])(
+    "offers no version history for a %s row, which has no versions to walk",
+    (status) => {
+      render(<Harness status={status} surface="event" />);
+      expect(screen.queryByRole("link", { name: "Version history" })).toBeNull();
+    }
+  );
+
+  it.each<ActionSurface>(["request", "edit", "panel"])(
+    "carries no version history on the %s surface",
+    (surface) => {
+      render(<Harness status="geolocated" surface={surface} />);
+      expect(screen.queryByRole("link", { name: "Version history" })).toBeNull();
+    }
+  );
+
   // The link is in the address bar the reader is already looking at; the
   // coordinates, which are not, keep their own copy control.
   it("offers no copy-link control anywhere", () => {

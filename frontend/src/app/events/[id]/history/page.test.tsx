@@ -144,6 +144,19 @@ describe("EventHistoryPage", () => {
     expect(within(row(1)).queryByText("coordinates were off")).toBeNull();
   });
 
+  it("leaves the editor's handle unlinked under the row's own link", () => {
+    render(<EventHistoryPage />);
+    // The row is one click. A profile anchor under the stretched link is a
+    // target the mouse reaches by z-order and the keyboard reaches as a
+    // separate stop, so the two would disagree about what the row does.
+    expect(within(row(3)).getByText("bob").closest("a")).toBeNull();
+    expect(
+      within(row(3))
+        .getAllByRole("link")
+        .map((a) => a.getAttribute("href"))
+    ).toEqual(["/events/e1"]);
+  });
+
   it("sends the current version to the canonical page and the rest to their own", () => {
     render(<EventHistoryPage />);
     expect(screen.getByLabelText("Version 3").getAttribute("href")).toBe("/events/e1");

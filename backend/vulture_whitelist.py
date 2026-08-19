@@ -28,8 +28,8 @@ processed_at  # app/models/bot_mention.py — audit stamp, written at insert onl
 # Stamped by services/reports.resolve_report and read on the wire only (the
 # column, the ContentReportRead field, and the assignment all collapse here).
 resolved_by  # app/models/content_report.py + app/schemas/report.py
-# Set at construction in services/versions.snapshot and read only through the
-# `edited_by` relationship the history serializer walks.
+# Set at construction in services/versions.file_version and read only through
+# the `edited_by` relationship the history serializer walks.
 edited_by_id  # app/models/event.py EventVersion
 email_verified_at  # app/models/user.py, audit stamp written at registration only
 
@@ -85,7 +85,7 @@ finished_at  # models/archive_import_job.py + schemas/event.py ArchiveImportJobR
 progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 redacted  # schemas/event.py EventVersionRead (wire field, built in routers/events/_common.py)
-# Written by ``services/versions.redact``, read by nothing in ``app/``: the
+# Written by ``services/versions.redact_version``, read by nothing in ``app/``: the
 # column is the row-level record of who redacted a version, and the readable
 # trail is the ``admin_events`` row the same write files.
 redacted_by_id  # models/event.py EventVersion

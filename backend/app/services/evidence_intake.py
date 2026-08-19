@@ -170,7 +170,12 @@ def _history_pinned_srcs(db: Session, event: Event) -> set[str]:
     at that URL by then.
 
     Asked only of a row that has a history at all (version 1 has no snapshot to
-    protect), so the ordinary write pays no query.
+    protect), so the ordinary write pays no query. The precondition is that
+    ``services/versions.file_version`` has already bumped ``version_no`` and
+    staged this write's own snapshot before the intake runs: the count is what
+    decides whether the query happens, and the snapshot the edit just filed is
+    among the rows it reads, which is what keeps an image the superseded version
+    still displays from being swept by the same write.
     """
     if event.version_no <= 1:
         return set()
@@ -184,15 +189,22 @@ def _reject_foreign_proof_srcs(event: Event, displayed_srcs: set[str]) -> None:
     (``services/sanitize._safe_image_src``), which says where a URL lives, not
     whose it is. Ownership is decided here: an src this storage layer wrote
     (``key_from_url`` resolves it to a key) has to be one of THIS event's own
-    ``proof`` rows. Without the check, event B could embed event A's proof image,
+    media rows. Without the check, event B could embed event A's proof image,
     and A's next edit or redact would then sweep the object out from under B.
+
+    Both roles count as own. A proof body legitimately cites the event's own
+    source image (a frame of the footage being located, annotated in place), and
+    that object is only ever deleted with the event that owns it, so refusing it
+    would reject a body naming nothing but its own evidence. Only the ``proof``
+    rows are diffed against the body below, so a cited source row is never swept
+    for going unreferenced.
 
     Srcs the storage layer did not write (relative paths, a dev deployment's
     external https) resolve to no key and no row of any event, so they are left
     to the sanitiser.
     """
     storage = get_storage()
-    own = {m.storage_url for m in event.media if m.role == "proof"}
+    own = {m.storage_url for m in event.media}
     foreign = sorted(
         src for src in displayed_srcs if src not in own and storage.key_from_url(src) is not None
     )
@@ -282,9 +294,12 @@ async def attach_evidence_and_commit(
       name one of this event's own proof images (see
       :func:`_reject_foreign_proof_srcs`).
 
-    ``max_proof_images_per_event`` is checked against what the final proof body
-    displays (its already-uploaded images plus the new uploads), before anything
-    reaches S3.
+    ``max_proof_images_per_event`` is checked twice, both times before anything
+    reaches S3: once on ``proof_files`` alone, ahead of the per-file validation
+    loop, since a batch already over the ceiling cannot pass whatever the body
+    keeps and should not cost a decode per file; then on what the final proof
+    body displays (its already-uploaded images plus the new uploads), which is
+    the check that actually bounds the event.
 
     Every file is validated up front so a bad file can't strand its siblings
     in S3. The commit is inside the try, so a commit-time failure (FK
@@ -300,6 +315,16 @@ async def attach_evidence_and_commit(
     :class:`EvidenceProcessingFailedError` (the uploader raises
     ``EvidenceProcessingError``).
     """
+    # The batch's own size first, before a single file is read. One request
+    # carrying more proof images than an event may ever display cannot pass the
+    # event-wide check below whatever the body keeps, so it is answered without
+    # spending a decode per file on a payload that is already over.
+    if len(proof_files) > settings.max_proof_images_per_event:
+        raise TooManyFilesError(
+            f"At most {settings.max_proof_images_per_event} proof images per event; "
+            f"this request carries {len(proof_files)}"
+        )
+
     # Validate every file before any upload — a 400 on file #3 shouldn't
     # strand files #1 and #2 in S3.
     source_types: list[str] = []

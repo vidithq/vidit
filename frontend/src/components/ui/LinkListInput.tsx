@@ -90,13 +90,24 @@ export function LinkListInput({
   // Every mutation goes through one call, so the three arrays cannot move
   // apart: a removal that dropped a URL and kept its copy would file that copy
   // against the next mirror down.
+  //
+  // The companion is republished only when it actually moved. Typing in a URL
+  // field moves that array alone, and handing the caller a fresh companion array
+  // on every keystroke would give it a new identity per character, which every
+  // memo and effect keyed on it reads as a change.
   const setRows = (
     nextValues: string[],
     nextCompanion: string[],
     nextExpanded: boolean[]
   ) => {
     onChange(nextValues);
-    companion?.onChange(nextCompanion);
+    if (
+      companion &&
+      (nextCompanion.length !== companionValues.length ||
+        nextCompanion.some((value, i) => value !== companionValues[i]))
+    ) {
+      companion.onChange(nextCompanion);
+    }
     setExpanded(nextExpanded);
   };
   const expandedNow = values.map((_, i) => isExpanded(i));

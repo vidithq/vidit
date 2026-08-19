@@ -67,10 +67,12 @@ export function EventVersionRow({
         )}
         <div className="flex flex-wrap items-center gap-x-3 text-[11px] text-neutral-500">
           {version.editor && (
-            // Under the stretched link like the rest of the row: the handle is
-            // one tap away on the version page, and a link inside a link is
-            // not a click a reader can aim at.
-            <AuthorByline author={version.editor} prefix={false} />
+            // Unlinked: the row is one click, and an anchor under the stretched
+            // link is a target the mouse reaches by z-order while the keyboard
+            // reaches it as a separate stop, so the two diverge on what the row
+            // does. The handle stays readable, and the profile is one tap away
+            // from the version this row opens.
+            <AuthorByline author={version.editor} prefix={false} link={false} />
           )}
           {/* Dropped, like the byline beside it, when the row that carries the
               edit's date could not be read: the metadata line states what is
