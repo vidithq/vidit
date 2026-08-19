@@ -7,16 +7,17 @@ import {
   AtSign,
   BookOpen,
   Bot,
+  Camera,
   Check,
   Circle,
   Copy,
   Download,
   ExternalLink,
-  Film,
   Mail,
   MapPin,
   MessageCircle,
   Search as SearchIcon,
+  Swords,
   Upload,
 } from "lucide-react";
 
@@ -1015,13 +1016,13 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<StatTile> / <StatGrid>" usage="KPI tiles: the profile's Insights row, admin metric grids">
+          <Item name="<StatTile> / <StatGrid>" usage="KPI tiles: the profile's Insights row, admin metric grids. `href` turns the whole tile into one click target on the view the figure was read off (TAPPABLE_HOVER plus a focus-visible ring, and the value takes the accent with it); without it the tile is inert paint, which is what a figure with nothing behind it should look like. `small` shrinks the value for a name rather than a count. The first two below are linked, the third is linked and small, the fourth is the inert fallback.">
             <div className="w-full max-w-xl">
               <StatGrid>
-                <StatTile icon={MapPin} label="Geolocated" value={42} />
-                <StatTile icon={Bot} label="Detected" value={128} />
-                <StatTile icon={Archive} label="Closed" value={37} />
-                <StatTile icon={Film} label="Media" value={96} />
+                <StatTile icon={MapPin} label="Geolocated" value={42} href="/search?type=event&status=geolocated" />
+                <StatTile icon={Bot} label="Detected" value={128} href="/search?type=event&status=detected" />
+                <StatTile icon={Swords} label="Top conflict" small value="Russo-Ukrainian War" href="/search?type=event&conflict=Russo-Ukrainian+War" />
+                <StatTile icon={Camera} label="Top capture source" small value="None" />
               </StatGrid>
             </div>
           </Item>

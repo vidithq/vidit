@@ -1330,7 +1330,7 @@ Public profile of an analyst.
 
 ### `GET /users/{username}/stats`
 
-Aggregated shape of an analyst's work. Pure aggregation over existing columns; drives the profile's insights section (status split, media volume, top theatres, capture lens, source hosts, activity over time).
+Aggregated shape of an analyst's work. Pure aggregation over existing columns; drives the profile's insights section (see [`design.md`](design.md#public-profile)), which tiles `geolocated_count`, `detected_count` and the head of `top_conflicts` and `capture_sources`, then draws `source_hosts` and `activity`. `closed_count` reads in the tiles' population line, and `media_count` is read by the profile share card.
 
 **Response 200:**
 ```json
@@ -1351,7 +1351,7 @@ Aggregated shape of an analyst's work. Pure aggregation over existing columns; d
 
 Every field describes one population: the analyst's visible events (`deleted_at IS NULL`, `hidden_at IS NULL`) in the three worked statuses, `geolocated` + `detected` + `closed`. That set is `total_events`, and it includes detections. A `requested` row is an open call for help rather than documented work, so it takes part in no aggregate here.
 
-`top_conflicts` and `capture_sources` are capped at 5, ordered by count desc then name.
+`top_conflicts` and `capture_sources` are capped at 5, ordered by count desc then name, so the first entry is the leader a client can name without reading the rest. Both are empty for an analyst whose events carry no conflict or no `capture_source` tag.
 
 `source_hosts` breaks the same set down by the host of `source_url`, folded to lower case with a leading `www.` removed, so `www.tiktok.com` and `tiktok.com` are one entry. Capped at 5 and ordered by count desc then host; `other_hosts_count` carries every event on a host past the fifth, and `no_source_count` the events whose `source_url` is null or names no readable host (a machine detection whose post declared no source). The five counts plus those two totals add up to `total_events`.
 

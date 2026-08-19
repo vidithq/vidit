@@ -47,6 +47,28 @@ export function search(opts: {
 }
 
 /**
+ * A `/search` URL scoped to one analyst's events: the profile's single entry
+ * point into the filtered catalogue, shared by the Insights tiles and
+ * `RecentSubmissions`' *Show more* so the two cannot drift.
+ *
+ * `type=event` because every filter here is an event predicate, and the search
+ * page reads the type back rather than guessing. `author` is an exact username
+ * match server-side (`services/event_filters.apply_author_filter`), so the
+ * handle travels verbatim. `filters` takes the URL vocabulary the search page
+ * parses (`status`, `conflict`, `capture_source`, ...), one value per key,
+ * which is what a link off a single figure carries; the panel on the page
+ * widens it from there.
+ */
+export function profileSearchHref(
+  username: string,
+  filters: Record<string, string> = {},
+): string {
+  const params = new URLSearchParams({ type: "event", author: username });
+  for (const [key, value] of Object.entries(filters)) params.set(key, value);
+  return `/search?${params.toString()}`;
+}
+
+/**
  * The `?author=` charset gate, mirroring the backend's
  * `AUTHOR_FILTER_PATTERN` (`services/event_filters.py`): the single frontend
  * source for "is this a committable author value". Anything else would 422
