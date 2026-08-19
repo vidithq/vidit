@@ -11,6 +11,7 @@ import {
   Circle,
   Copy,
   Download,
+  ExternalLink,
   Film,
   Mail,
   MapPin,
@@ -85,6 +86,7 @@ import {
 } from "@/components/ui/styles";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { Glyph } from "@/components/ui/Glyph";
 import { OverflowMenu } from "@/components/ui/OverflowMenu";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
@@ -379,6 +381,15 @@ export default function PalettePage() {
             </a>
           </Item>
 
+          <Item name="ACTION_GLYPH / MUTED_GLYPH" usage="The two colour states of a bare inline glyph, accent where it acts and neutral grey where it cannot. <Glyph> is their one consumer and picks between them off what it renders, so a call site reaches for the primitive rather than these strings. Grey is the state, not a dimmed accent, which is the same rule <Button> follows when it is disabled.">
+            <div className="flex items-center gap-3 text-sm text-neutral-300">
+              <span>Acts</span>
+              <Glyph icon={ExternalLink} label="View on Maps" href="#" />
+              <span className="ml-3">Cannot act</span>
+              <Glyph icon={ExternalLink} label="No map link until the coordinate pair is complete" active={false} href="#" />
+            </div>
+          </Item>
+
           <Item name="TAPPABLE_HOVER" usage="A whole card / section is one click target: accent border on hover. Pair `group` + `group-hover:text-orange-400` so the title takes the accent too.">
             <div className="w-full max-w-md space-y-2">
               <Variant label="compact row">
@@ -422,7 +433,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Controls · buttons & pills" />
 
-          <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive or alerting, no grey button. `dangerGhost` is red at ghost weight, for a red control sitting in an icon row (the report flag). `icon` makes a square icon-only button; `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm.">
+          <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive or alerting, no grey button. `dangerGhost` is red at ghost weight, for a red control sitting in an icon row (the report flag). `icon` makes a square icon-only button; `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm. `disabled` drops the tone for neutral grey rather than fading it, so a button that refuses the click reads like every other inert control on the site (ACTION_GLYPH / MUTED_GLYPH follow the same rule).">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="primary">Primary</Button>
@@ -431,6 +442,16 @@ export default function PalettePage() {
                 <Button variant="danger">Danger</Button>
                 <Button variant="dangerGhost">Danger ghost</Button>
                 <Button icon variant="ghost" aria-label="Locate">
+                  <MapPin size={15} />
+                </Button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="text-[11px] text-neutral-600 self-center">disabled:</span>
+                <Button variant="primary" disabled>Primary</Button>
+                <Button variant="secondary" disabled>Secondary</Button>
+                <Button variant="ghost" disabled>Ghost</Button>
+                <Button variant="danger" disabled>Danger</Button>
+                <Button icon variant="ghost" disabled aria-label="Locate">
                   <MapPin size={15} />
                 </Button>
               </div>
@@ -445,7 +466,21 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<CopyButton>" usage="The one copy-to-clipboard control: a square ghost icon button whose resting glyph flips to a check for the flash window (useCopyToClipboard). Used by the coordinate actions and the profile's Discord account. `value` is a getter so the call site can read window at click time; `icon` swaps the resting glyph where the value names itself better than a copy mark does (the check is fixed); `beforeCopy` gates the write for a call site that must approve it first; `disabled` greys it for a value that does not exist yet (the coordinate actions hold their width while the pair is half-typed); the accessible name stays constant and the copied state is announced by a sibling live region.">
+          <Item name="<Glyph>" usage="The one bare inline glyph: a 13px mark set in a line of text, with no button chrome (the archived-copy mark beside a source link, the map and copy marks of <CoordinateActions>). Where a control owns its own box instead, that is <Button icon>. One of href (outbound, new tab) or onClick (an action here) makes it a control; neither is a mark that only states something. Colour is the state and the primitive enforces it: ACTION_GLYPH accent only when it renders something actionable, MUTED_GLYPH grey otherwise, and an inactive glyph renders as an inert span whatever href or onClick it was handed, so nothing fires from a mark that reads as unavailable. label is the whole name (aria-label + title, the bare name of an icon-only control, never an explanation: that is <FieldHelp>); title takes a tooltip that moves while the name holds still (a copy flash).">
+            <div className="flex items-center gap-4 text-sm text-neutral-300">
+              <Variant label="href">
+                <Glyph icon={Archive} label="Wayback Machine copy of the source" href="#" />
+              </Variant>
+              <Variant label="onClick">
+                <Glyph icon={Copy} label="Copy coordinates" onClick={() => {}} />
+              </Variant>
+              <Variant label="inert">
+                <Glyph icon={ExternalLink} label="No map link until the coordinate pair is complete" active={false} href="#" />
+              </Variant>
+            </div>
+          </Item>
+
+          <Item name="<CopyButton>" usage="The one copy-to-clipboard control in the square ghost icon-button shape of an action row (the event share row, the profile's Discord account): a resting glyph that flips to a check for the flash window (useCopyToClipboard). `value` is a getter so the call site can read window at click time; `icon` swaps the resting glyph where the value names itself better than a copy mark does (the check is fixed); `beforeCopy` gates the write for a call site that must approve it first; `disabled` greys it for a value that does not exist yet; the accessible name stays constant and the copied state is announced by a sibling live region. A line of text carrying the copy inside it composes <Glyph> over the same hook instead, which is what <CoordinateActions> does.">
             <div className="flex items-center gap-2">
               <CopyButton value={() => "48.015883, 37.802411"} label="Copy coordinates" copiedLabel="Coordinates copied" />
               <CopyButton icon={DiscordGlyph} value={() => "a-handle"} label="Copy Discord username: a-handle" copiedLabel="Discord username copied" />
@@ -744,7 +779,7 @@ export default function PalettePage() {
 
           <Item
             name="<ArchivedCopies>"
-            usage="The archived copy beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One copy per link, from whichever service produced it, so the affordance is a single lucide glyph: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy and in the text of the prefill link, never in the shape. Accent and clickable once a copy exists. With no copy the glyph is grey: inert for a reader, and for the event's owner (canArchive) a disclosure that opens one submit page prefilled with the link (the Wayback Machine, whose replay URL the server can check against the link it claims to archive) plus one field to paste the snapshot back, which flips the glyph in place. One door, not one accepted provider: the field takes a snapshot from web.archive.org, archive.ph or archive.today alike, and the line beside the link says so. The affordance closes on a <FieldHelp> `?` (archived_copies); help={false} drops it where a caller renders a list of them and hoists one `?` to the section (the Secondary sources list). Every glyph looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
+            usage="The archived copy beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One copy per link, from whichever service produced it, so the affordance is a single lucide glyph: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy, never in the shape. It is a <Glyph> in exactly two states, and colour says which: accent where a copy exists and the mark opens it, grey and inert where none does, for every reader including the event's owner. Recording a copy is an edit, so it happens in the edit form's <ArchiveSourceField> and files a revision; nothing here writes. The affordance closes on a <FieldHelp> `?` (archived_copies); help={false} drops it where a caller renders a list of them and hoists one `?` to the section (the Secondary sources list). Every glyph looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
           >
             <Variant label="a stored copy named for the Wayback Machine (primary source)">
               <span className="text-sm text-neutral-300">
@@ -754,10 +789,7 @@ export default function PalettePage() {
                     url: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
                     provider: "wayback",
                   }}
-                  url="https://t.me/channel/12345"
-                  eventId="demo"
                   describes={PRIMARY_SOURCE_DESCRIPTION}
-                  canArchive={false}
                 />
               </span>
             </Variant>
@@ -766,35 +798,14 @@ export default function PalettePage() {
                 t.me
                 <ArchivedCopies
                   copy={{ url: "https://archive.ph/abcde", provider: "archive_today" }}
-                  url="https://t.me/mirror/1"
-                  eventId="demo"
                   describes={mirrorDescription("t.me", 1, 2)}
-                  canArchive={false}
                 />
               </span>
             </Variant>
-            <Variant label="no copy yet, seen by a reader (inert)">
-              <span className="text-sm text-neutral-300">
-                t.me
-                <ArchivedCopies
-                  copy={null}
-                  url="https://t.me/channel/12345"
-                  eventId="demo"
-                  describes={PRIMARY_SOURCE_DESCRIPTION}
-                  canArchive={false}
-                />
-              </span>
-            </Variant>
-            <Variant label="no copy yet, seen by the owner (opens the provider + paste field)">
+            <Variant label="no copy yet: grey and inert, for every reader">
               <span className="text-sm text-neutral-300">
                 x.com
-                <ArchivedCopies
-                  copy={null}
-                  url="https://x.com/analyst/status/1234567890"
-                  eventId="demo"
-                  describes={DETECTED_FROM_DESCRIPTION}
-                  canArchive
-                />
+                <ArchivedCopies copy={null} describes={DETECTED_FROM_DESCRIPTION} />
               </span>
             </Variant>
           </Item>

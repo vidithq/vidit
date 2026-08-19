@@ -91,7 +91,7 @@ export default function EventVersionPage() {
     >
       <EventVersionBanner eventId={geo.id} version={version} total={geo.revision_no} />
       {version.view ? (
-        <EventPageBody geo={version.view} readOnly />
+        <EventPageBody geo={version.view} />
       ) : (
         <EmptyState>
           An administrator redacted this version, so its content is no longer

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
 import type { ArchivedLink, EventDetail } from "@/types";
-import { useAuth } from "@/contexts/AuthContext";
 import { formatDate, formatInstant, safeHostname } from "@/lib/format";
 import { formatCoordinates } from "@/lib/coordinates";
 import { conflictLabel } from "@/lib/conflicts";
@@ -51,12 +50,6 @@ interface EventDetailBodyProps {
   /** Extra DetailRows appended to the Details section, where the request view
    *  slots its "Closed" row. */
   detailExtras?: ReactNode;
-  /** Render the body with no affordance that writes to the record, whoever is
-   *  looking. A filed version is read at `/events/{id}/vN` and acted on at
-   *  `/events/{id}`, so its owner is offered nothing here: the endpoints behind
-   *  these controls take the live row, and the links a past version shows are
-   *  not always the ones that row still carries. */
-  readOnly?: boolean;
 }
 
 /**
@@ -69,19 +62,13 @@ export function EventDetailBody({
   variant,
   children,
   detailExtras,
-  readOnly = false,
 }: EventDetailBodyProps) {
   const compact = variant === "panel";
   return (
     <>
       <MediaBlock geo={geo} compact={compact} />
       {children}
-      <DetailRows
-        geo={geo}
-        compact={compact}
-        detailExtras={detailExtras}
-        readOnly={readOnly}
-      />
+      <DetailRows geo={geo} compact={compact} detailExtras={detailExtras} />
       <ProofBlock geo={geo} compact={compact} />
     </>
   );
@@ -118,25 +105,16 @@ function DetailRows({
   geo,
   compact,
   detailExtras,
-  readOnly,
 }: {
   geo: EventDetailBodyData;
   compact: boolean;
   detailExtras?: ReactNode;
-  readOnly: boolean;
 }) {
-  const { user } = useAuth();
-  const viewerId = user?.id;
   // Conflicts (their own referential) and curated capture-source tags get
   // their own labelled rows so they read as structured facts, not free-form
   // chips lost in one row.
   const captureTags = geo.tags.filter((t) => t.category === "capture_source");
   const freeTags = geo.tags.filter((t) => t.category === "free");
-  // Archiving a link is the owner's own act, so the affordance is offered to
-  // exactly the analyst the endpoint would accept it from. A detection is included:
-  // archival is no longer tied to publication, and a detection's source rots while
-  // it waits. A read-only render offers it to nobody, the owner included.
-  const canArchive = !readOnly && viewerId === geo.owner.id;
   const sourceMaxWidth = compact ? "max-w-[200px]" : "max-w-[300px]";
   const sourceClass = compact ? "ml-4" : "text-sm ml-4";
   const tagRow = (name: string, tags: EventDetailBodyData["tags"], concept?: Concept) =>
@@ -211,10 +189,7 @@ function DetailRows({
           {geo.source_url && (
             <ArchivedCopies
               copy={geo.archived_source}
-              url={geo.source_url}
-              eventId={geo.id}
               describes={PRIMARY_SOURCE_DESCRIPTION}
-              canArchive={canArchive}
             />
           )}
         </span>
@@ -226,8 +201,6 @@ function DetailRows({
         <SecondarySourcesRow
           urls={geo.secondary_source_urls}
           archived={geo.archived_secondary_sources}
-          eventId={geo.id}
-          canArchive={canArchive}
           compact={compact}
           maxWidthClass={sourceMaxWidth}
         />
@@ -250,10 +223,7 @@ function DetailRows({
                 the provenance of the claim, and it rots the same way. */}
             <ArchivedCopies
               copy={geo.archived_detected_from}
-              url={geo.detected_from_url}
-              eventId={geo.id}
               describes={DETECTED_FROM_DESCRIPTION}
-              canArchive={canArchive}
             />
           </span>
         </DetailRow>
@@ -353,15 +323,11 @@ function DetailRows({
 function SecondarySourcesRow({
   urls,
   archived,
-  eventId,
-  canArchive,
   compact,
   maxWidthClass,
 }: {
   urls: string[];
   archived: (ArchivedLink | null)[];
-  eventId: string;
-  canArchive: boolean;
   compact: boolean;
   maxWidthClass: string;
 }) {
@@ -416,10 +382,7 @@ function SecondarySourcesRow({
                   URL with no host to show). */}
               <ArchivedCopies
                 copy={archived[index] ?? null}
-                url={url}
-                eventId={eventId}
                 describes={mirrorDescription(safeHostname(url), index, urls.length)}
-                canArchive={canArchive}
                 help={false}
               />
             </span>

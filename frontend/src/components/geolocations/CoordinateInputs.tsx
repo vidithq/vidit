@@ -105,9 +105,11 @@ export function CoordinateInputs({
           &nbsp;
         </span>
         {/* `flex-1` + `items-center` against a cell the grid stretches to the
-            field's height, which is what centres the buttons on the inputs
-            without either side naming a pixel height. */}
-        <div className="flex flex-1 items-center justify-end">
+            field's height, which is what centres the marks on the inputs
+            without either side naming a pixel height. The glyphs carry no
+            button box of their own, so the cell adds the gap that used to come
+            from the buttons' padding and keeps them off the longitude field. */}
+        <div className="flex flex-1 items-center justify-end sm:pl-2">
           {/* Always mounted, greyed until the pair parses: the cell holds one
               width, so the row does not jump the moment the second half of a
               coordinate is typed. */}

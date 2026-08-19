@@ -67,10 +67,10 @@ describe("CoordinateInputs", () => {
     ).toBeInTheDocument();
   });
 
-  // The pair sits in the input row's third column, so both controls are the
-  // icon shape: the name comes from the label, not from text that would widen
-  // the cell at the fields' expense.
-  it("names the map link on the icon itself, beside the fields", () => {
+  // The pair sits in the input row's third column, so both controls are bare
+  // glyphs: the name comes from the label, not from text that would widen the
+  // cell at the fields' expense.
+  it("names the map link on the glyph itself, beside the fields", () => {
     render(<CoordinateInputs {...baseProps} lat="48.015883" lng="37.802411" />);
     const link = screen.getByRole("link", { name: "View on Maps" });
     expect(link).toHaveTextContent("");
@@ -82,19 +82,27 @@ describe("CoordinateInputs", () => {
   it.each([
     ["half-typed", "48.01", ""],
     ["out of bounds", "91", "37.8"],
-  ])("disables both while the pair is %s", (_case, lat, lng) => {
+  ])("greys both while the pair is %s", (_case, lat, lng) => {
     render(<CoordinateInputs {...baseProps} lat={lat} lng={lng} />);
-    // Not a link at all: there is nowhere to navigate without a point.
+    // Not a link at all: there is nowhere to navigate without a point, so the
+    // mark stays as an inert image naming what is missing.
     expect(screen.queryByRole("link", { name: "View on Maps" })).toBeNull();
-    expect(screen.getByRole("button", { name: "View on Maps" })).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "Copy coordinates" })
-    ).toBeDisabled();
+      screen.getByRole("img", {
+        name: "No map link until the coordinate pair is complete",
+      })
+    ).toBeInTheDocument();
+    // The copy is inert too, rather than a button that would write an empty
+    // clipboard.
+    expect(screen.queryByRole("button", { name: "Copy coordinates" })).toBeNull();
+    expect(screen.getByRole("img", { name: "Copy coordinates" })).toHaveClass(
+      "text-neutral-600"
+    );
   });
 
   it("enables both once the pair parses", () => {
     render(<CoordinateInputs {...baseProps} lat="48.015883" lng="37.802411" />);
-    expect(screen.queryByRole("button", { name: "View on Maps" })).toBeNull();
+    expect(screen.queryByRole("img", { name: /No map link/ })).toBeNull();
     expect(
       screen.getByRole("button", { name: "Copy coordinates" })
     ).toBeEnabled();

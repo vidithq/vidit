@@ -1,39 +1,24 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId } from "react";
 import { Archive } from "lucide-react";
 
 import type { ArchivedLink } from "@/types";
-import { recordArchivedCopy } from "@/lib/events";
-import { useMutation } from "@/hooks/useMutation";
-import { Button } from "@/components/ui/Button";
 import { FieldHelp } from "@/components/ui/FieldHelp";
+import { Glyph } from "@/components/ui/Glyph";
 import { Input } from "@/components/ui/Input";
-import {
-  FORM_ERROR_BANNER,
-  FORM_LABEL,
-  FORM_LABEL_COMPACT,
-} from "@/components/ui/form-styles";
+import { FORM_LABEL } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 interface ArchivedCopiesProps {
   /** The link's archived copy, or null while it has none. */
   copy: ArchivedLink | null;
-  /** The link itself: what the provider pages are prefilled with, and what the
-   *  recorded copy is filed under. */
-  url: string;
-  /** Which event the link belongs to. The write endpoint is per event. */
-  eventId: string;
   /** What the copy is of, folded into each accessible name ("the source",
    *  "mirror 2, t.me"). A page carries several of these and every glyph in them
    *  looks alike, so each one is named for what it points at. Build a mirror's
    *  value with `mirrorDescription`, which keeps two mirrors on one host
    *  tellable apart. */
   describes: string;
-  /** Whether the viewer may record a copy, which is exactly whether they own
-   *  the event. False leaves the glyph inert: a reader sees that no copy exists
-   *  without being offered an action the server would refuse. */
-  canArchive: boolean;
   /** Set false where a caller renders several of these in one list and hoists
    *  the `?` to the section instead, so the explanation appears once rather
    *  than on every row (the Secondary sources list). */
@@ -192,21 +177,19 @@ function SavePageLink({ url, hintId }: { url: string | null; hintId?: string }) 
 }
 
 /**
- * The archived copy beside an outbound source link, and the way its owner makes
- * one.
+ * The archived copy beside an outbound source link.
  *
  * Sits next to the original rather than replacing it: the original stays the
  * primary link while it resolves, and the copy is one click away the day it
  * stops. One copy per link, from whichever service the analyst used, so the
- * affordance is a single glyph: accent and clickable once a copy exists, grey
- * while none does.
+ * affordance is a single glyph in exactly two states, and colour says which:
+ * accent where a copy exists and the mark opens it, grey and inert where none
+ * does, for every reader including the event's owner.
  *
- * Archiving is an act the analyst performs, not something the server attempts.
- * Every service refuses or throttles server-side submissions of exactly the
- * hosts this catalog cites, and all of them work from a browser, so the grey
- * glyph opens one provider page prefilled with the link and takes the snapshot
- * URL back in one field, from whichever host the analyst used. A viewer who
- * does not own the event sees the grey glyph inert.
+ * A read surface, not a write one. Recording a copy is an edit like any other:
+ * the owner pastes the snapshot into the edit form's archived-copy field
+ * (`ArchiveSourceField`), which files a revision naming the change, where a
+ * control here would write to the live row from a page nobody is editing.
  *
  * The glyph is a small mark with no label beside it, so the affordance closes
  * on a `?`: the glyph's accessible name carries its own state for a screen
@@ -216,34 +199,11 @@ function SavePageLink({ url, hintId }: { url: string | null; hintId?: string }) 
  * One component for the primary source, the provenance link and every secondary
  * mirror, so the same fact cannot grow two affordances.
  */
-export function ArchivedCopies({
-  copy,
-  url,
-  eventId,
-  describes,
-  canArchive,
-  help = true,
-}: ArchivedCopiesProps) {
-  // What the paste recorded, which outranks the payload the page was rendered
-  // with: the copy has to appear the moment it is saved, and the page's own
-  // data is a fetch old by then.
-  const [recorded, setRecorded] = useState<ArchivedLink | null>(null);
-  const [open, setOpen] = useState(false);
-  const current = recorded ?? copy;
-
+export function ArchivedCopies({ copy, describes, help = true }: ArchivedCopiesProps) {
   return (
     <span className="ml-2 inline-flex shrink-0 items-center gap-1 align-middle">
-      {current ? (
-        <ArchivedGlyph copy={current} describes={describes} />
-      ) : canArchive ? (
-        <ArchiveAction
-          url={url}
-          eventId={eventId}
-          describes={describes}
-          open={open}
-          setOpen={setOpen}
-          onRecorded={setRecorded}
-        />
+      {copy ? (
+        <ArchivedGlyph copy={copy} describes={describes} />
       ) : (
         <MissingGlyph describes={describes} />
       )}
@@ -258,103 +218,13 @@ function ArchivedGlyph({ copy, describes }: { copy: ArchivedLink; describes: str
   // generically rather than rendering as no copy at all.
   const provider: string | undefined = PROVIDER_LABELS[copy.provider];
   const label = provider ? `${provider} copy of ${describes}` : `Archived copy of ${describes}`;
-  return (
-    <a
-      href={copy.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label={label}
-      className={`${TEXT_LINK} inline-flex`}
-    >
-      <ArchiveMark size={13} aria-hidden />
-    </a>
-  );
+  return <Glyph icon={ArchiveMark} label={label} href={copy.url} />;
 }
 
-/** No copy, and nothing the viewer can do about it. */
+/** No copy, and nothing the viewer can do about it: the same mark, with neither
+ *  a target nor an action, which is what paints it grey. */
 function MissingGlyph({ describes }: { describes: string }) {
-  return (
-    <span
-      role="img"
-      aria-label={`No archived copy of ${describes}`}
-      className="inline-flex text-neutral-600"
-    >
-      <ArchiveMark size={13} aria-hidden />
-    </span>
-  );
-}
-
-/**
- * The owner's path from no copy to one: open the provider, paste what it gives
- * back.
- *
- * Collapsed to the same grey glyph a reader sees, so an unarchived link reads
- * identically whoever is looking at it until they ask for the action. Expanded,
- * the provider link carries the URL already filled in, so the analyst never
- * copies it by hand, and the field under it is where the snapshot returns, from
- * that provider or from any other allowed host.
- */
-function ArchiveAction({
-  url,
-  eventId,
-  describes,
-  open,
-  setOpen,
-  onRecorded,
-}: {
-  url: string;
-  eventId: string;
-  describes: string;
-  open: boolean;
-  setOpen: (open: boolean) => void;
-  onRecorded: (copy: ArchivedLink) => void;
-}) {
-  const [snapshot, setSnapshot] = useState("");
-  // Generated rather than derived from the URL: several of these sit on one
-  // page, and a link is not a legal id.
-  const fieldId = useId();
-  const save = useMutation(recordArchivedCopy, {
-    fallback: "Could not save that link.",
-    onSuccess: onRecorded,
-  });
-
-  return (
-    <span className="relative inline-flex">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        aria-label={`Archive ${describes}`}
-        className="inline-flex text-neutral-600 hover:text-neutral-300 transition-colors"
-      >
-        <ArchiveMark size={13} aria-hidden />
-      </button>
-      {open && (
-        <span className="absolute right-0 top-5 z-20 flex w-64 flex-col gap-2 rounded-md border border-neutral-800 bg-neutral-900 p-3 text-left shadow-lg">
-          <span className={FORM_LABEL_COMPACT}>Archive it yourself</span>
-          <SavePageLink url={url} />
-          <label className={FORM_LABEL_COMPACT} htmlFor={fieldId}>
-            Paste the snapshot link
-          </label>
-          <Input
-            id={fieldId}
-            variant="compact"
-            value={snapshot}
-            onChange={(e) => setSnapshot(e.target.value)}
-            placeholder={SNAPSHOT_PLACEHOLDER}
-          />
-          {save.error && <span className={FORM_ERROR_BANNER}>{save.error}</span>}
-          <Button
-            variant="secondary"
-            disabled={save.loading || !snapshot.trim()}
-            onClick={() => void save.run(eventId, url, snapshot.trim())}
-          >
-            {save.loading ? "Saving…" : "Save"}
-          </Button>
-        </span>
-      )}
-    </span>
-  );
+  return <Glyph icon={ArchiveMark} label={`No archived copy of ${describes}`} />;
 }
 
 /**

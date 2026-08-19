@@ -5,8 +5,8 @@ import { cleanNumber, inBounds } from "./coordinates";
 import { proofHasImage, proofImageSrcs } from "./proof";
 import type {
   ArchiveImportJob,
-  ArchivedLink,
   ArchiveImportPresign,
+  ArchivedLink,
   EventDetail,
   EventRevision,
   EventStatus,
@@ -454,6 +454,7 @@ const VERSION_FIELD_LABELS = {
   conflicts: "Conflict",
   tags: "Tags",
   secondary_source_urls: "Secondary sources",
+  archives: "Archived copies",
   proof: "Proof",
   proof_images: "Proof images",
   is_graphic: "Graphic flag",
@@ -473,6 +474,49 @@ const asCoords = (value: unknown): EventDetail["event_coords"] => {
 
 const asList = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
 
+/** The archived copies an event view carries, keyed by the link each covers.
+ *
+ *  The read shape spreads them across three fields (the source, the provenance
+ *  link, and one entry per mirror index-aligned with `secondary_source_urls`);
+ *  this is the one walk that gathers them, so the version overlay and the
+ *  changed-field list read the same set. */
+function archivedCopies(view: EventDetail): Map<string, ArchivedLink> {
+  const copies = new Map<string, ArchivedLink>();
+  const add = (url: string | null, copy: ArchivedLink | null | undefined) => {
+    if (url && copy) copies.set(url, copy);
+  };
+  add(view.source_url, view.archived_source);
+  add(view.detected_from_url, view.archived_detected_from);
+  view.secondary_source_urls.forEach((url, index) =>
+    add(url, view.archived_secondary_sources[index])
+  );
+  return copies;
+}
+
+/** The archived copies one filed version held, keyed by the link each covers.
+ *
+ *  `services/revisions.build_snapshot` files them, so a version renders the
+ *  copies as they stood rather than today's. A snapshot with no `archives` key
+ *  states nothing about them (a version filed before they were versioned, or a
+ *  redacted one), so the live row's copies stand in: claiming the record had
+ *  none would print an archival that never happened as a change. */
+function snapshotArchivedCopies(
+  snapshot: EventRevision["snapshot"],
+  current: EventDetail
+): Map<string, ArchivedLink> {
+  if (!Array.isArray(snapshot.archives)) return archivedCopies(current);
+  const copies = new Map<string, ArchivedLink>();
+  for (const entry of asList<Record<string, unknown>>(snapshot.archives)) {
+    const original = asNullableString(entry?.original_url);
+    const url = asNullableString(entry?.snapshot_url);
+    const provider = entry?.provider;
+    if (original && url && (provider === "wayback" || provider === "archive_today")) {
+      copies.set(original, { url, provider });
+    }
+  }
+  return copies;
+}
+
 /**
  * One filed version as the shape every event surface already renders.
  *
@@ -482,13 +526,13 @@ const asList = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]
  * from the current row, which is authoritative for them at every version.
  * `revision_no` is the version being read, so the page prints which one it is.
  *
- * Two overlays are rebuilt rather than copied. The archived copies of the
- * secondary sources are index-aligned with the links they cover, so each of
- * this version's links takes the copy recorded for that same URL rather than
- * whatever sits at its position in the current list. A conflict is stored on
- * the snapshot as its id and name alone, so the referential row is used when
- * the id still resolves and the stored name stands in when it does not, which
- * is what keeps a version readable after a conflict is renamed or deleted.
+ * Two overlays are rebuilt rather than copied. The archived copies are the ones
+ * this version held, and they are spread back over the three fields that carry
+ * them by the link each covers rather than by position, so a mirror takes the
+ * copy recorded for its own URL. A conflict is stored on the snapshot as its id
+ * and name alone, so the referential row is used when the id still resolves and
+ * the stored name stands in when it does not, which is what keeps a version
+ * readable after a conflict is renamed or deleted.
  *
  * The snapshot arrives untyped (the backend declares it as a JSON object), so
  * every field is read defensively: a redacted version, whose snapshot is `{}`,
@@ -500,17 +544,14 @@ export function snapshotToEventView(
   revision: EventRevision
 ): EventDetail {
   const snapshot = revision.snapshot;
-  const archivedByUrl = new Map(
-    current.secondary_source_urls.map((url, index) => [
-      url,
-      current.archived_secondary_sources[index] ?? null,
-    ])
-  );
+  const archivedByUrl = snapshotArchivedCopies(snapshot, current);
   const conflictsById = new Map(current.conflicts.map((c) => [c.id, c]));
   const secondarySourceUrls = asList<string>(snapshot.secondary_source_urls);
   return {
     ...current,
     revision_no: revision.revision_no,
+    archived_source: archivedByUrl.get(current.source_url ?? "") ?? null,
+    archived_detected_from: archivedByUrl.get(current.detected_from_url ?? "") ?? null,
     title: asString(snapshot.title, current.title),
     event_coords: asCoords(snapshot.event_coords),
     capture_source_coords: asCoords(snapshot.capture_source_coords),
@@ -563,6 +604,12 @@ const sameList = (a: readonly string[], b: readonly string[]): boolean =>
 const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
   sameList([...a].sort(), [...b].sort());
 
+/** One version's archived copies as comparable pairs: which link, which
+ *  snapshot. The provider is inferred from the snapshot's host, so the pair is
+ *  the whole fact; the set is unordered, since the copies are keyed by link. */
+const archivedPairs = (view: EventDetail): string[] =>
+  [...archivedCopies(view)].map(([original, copy]) => `${original} ${copy.url}`);
+
 /**
  * The versioned fields that differ between one version and the one before it,
  * as the labels a history row prints ("Title, Coordinates, Proof").
@@ -576,7 +623,10 @@ const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
  * sets, the relationship being unordered. `proof_images` is the set
  * of images the proof body displays, which moves with the body and is named
  * separately because swapping one image is the edit a reader most wants to see
- * announced.
+ * announced. The archived copies compare as the set of (link, snapshot) pairs
+ * the version carries, which is what the reader sees beside each link, so
+ * recording a copy is announced as *Archived copies* the way any other
+ * correction is announced.
  */
 export function changedFields(version: EventDetail, previous: EventDetail): string[] {
   const ids = (rows: readonly { id: string }[]) => rows.map((row) => row.id);
@@ -607,6 +657,10 @@ export function changedFields(version: EventDetail, previous: EventDetail): stri
   flag(
     VERSION_FIELD_LABELS.secondary_source_urls,
     !sameList(version.secondary_source_urls, previous.secondary_source_urls)
+  );
+  flag(
+    VERSION_FIELD_LABELS.archives,
+    !sameSet(archivedPairs(version), archivedPairs(previous))
   );
   flag(
     VERSION_FIELD_LABELS.proof,
@@ -1208,23 +1262,3 @@ export function missingEventRequestFields(s: {
   return missing;
 }
 
-/**
- * Record the archived copy of one of an event's links: `POST
- * /events/{id}/archives` (owner-only).
- *
- * `originalUrl` has to be one of the links the event carries (its source, a
- * secondary source, the post it was detected from, or a proof citation), and
- * `snapshotUrl` an `https` URL on one of the three archive hosts the server
- * accepts. A second call for the same link replaces the copy rather than
- * adding one, which is how a wrong paste is corrected.
- */
-export function recordArchivedCopy(
-  eventId: string,
-  originalUrl: string,
-  snapshotUrl: string
-): Promise<ArchivedLink> {
-  return apiFetch<ArchivedLink>(`/events/${eventId}/archives`, {
-    method: "POST",
-    body: JSON.stringify({ original_url: originalUrl, snapshot_url: snapshotUrl }),
-  });
-}

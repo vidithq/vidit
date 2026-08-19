@@ -1095,7 +1095,7 @@ Close an event: withdraw a `requested` row or reject a detection, owner-only, in
 
 ### `POST /events/{id}/archives` 🔒
 
-Record the archived copy of one of the event's links, owner-only. The capture is not attempted server side: the event page opens the provider's own submit page in the analyst's browser, prefilled with the link, and this is where the snapshot URL it produced comes back (see [`archival.md`](archival.md) for why).
+Record the archived copy of one of the event's links, owner-only. The capture is not attempted server side: the analyst opens the provider's own submit page in their browser, prefilled with the link, and this is where the snapshot URL it produced comes back (see [`archival.md`](archival.md) for why).
 
 This is the path for an event that already exists, and for any link it carries. A copy of the source made while the event is being written travels with that write instead, as `source_snapshot_url` on [`POST /events`](#post-events), [`POST /events/requests`](#post-eventsrequests) and [`POST /events/{id}/geolocate`](#post-eventsidgeolocate). Both run the same checks and fill the same slot.
 

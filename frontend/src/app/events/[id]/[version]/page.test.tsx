@@ -6,8 +6,8 @@ import type { EventDetail, EventRevision } from "@/types";
 // The map canvas needs WebGL, which jsdom has none of.
 vi.mock("@/components/map/Map", () => ({ default: () => <div data-testid="map" /> }));
 
-// A signed-out reader by default; one test signs the record's owner in, since
-// the owner is the viewer the body would otherwise offer its write affordance.
+// A signed-out reader: the page chrome reads the viewer off the auth context,
+// and a version page offers no control whoever is looking.
 const viewer: { id: string | null } = { id: null };
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: viewer.id ? { id: viewer.id } : null }),
@@ -148,15 +148,6 @@ describe("EventVersionPage", () => {
     const banner = screen.getByText(/Version 1 of 3/);
     expect(banner.textContent).toContain("published by");
     expect(banner.textContent).toContain("ana");
-  });
-
-  it("offers the owner no write affordance on a past version", () => {
-    // The source has no archived copy, so the live page would offer its owner
-    // the archive action here. A version is read, not acted on: the action
-    // posts against the current row, whose links this version's need not be.
-    viewer.id = OWNER.id;
-    render(<EventVersionPage />);
-    expect(screen.queryByRole("button", { name: /^Archive / })).toBeNull();
   });
 
   it("serves a redacted version as its banner and a notice, with no content", () => {

@@ -6,22 +6,12 @@ import { FIELD_HELP } from "@/lib/fieldHelp";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { EventDetail } from "@/types";
 
-// Who is looking decides whether the archive affordance is offered, and the
-// body reads that off the auth context. The default is a signed-out reader;
-// `asOwner` is the one test that needs the owner's view.
-const viewer: { id: string | null } = { id: null };
+// The body writes nothing, so who is looking changes none of it: the owner's
+// own view is asserted below through the same render every reader gets.
+const OWNER_ID = "u1";
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: viewer.id ? { id: viewer.id } : null }),
+  useAuth: () => ({ user: { id: OWNER_ID } }),
 }));
-
-function asOwner<T>(run: () => T): T {
-  viewer.id = "u1";
-  try {
-    return run();
-  } finally {
-    viewer.id = null;
-  }
-}
 
 // The media gallery's alt text, which is the event title. Named because the
 // detail rows carry archive glyphs of their own, so a media assertion has to
@@ -428,71 +418,45 @@ describe("EventDetailBody", () => {
     expect(screen.getByRole("link", { name: "t.me" })).toBeInTheDocument();
   });
 
-  it("shows a reader that no copy exists, without offering them the action", () => {
-    render(<EventDetailBody geo={geoFixture()} variant="page" />);
-    expect(
-      screen.getByRole("img", { name: "No archived copy of the source" })
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /^Archive / })
-    ).not.toBeInTheDocument();
-  });
-
-  it("offers the owner the archive action on every unarchived link row", () => {
-    asOwner(() =>
-      render(
-        <EventDetailBody
-          geo={geoFixture({
-            detected_from_url: "https://x.com/ana/status/123",
-            secondary_source_urls: ["https://t.me/mirror/1"],
-            archived_secondary_sources: [null],
-          })}
-          variant="page"
-        />
-      )
+  // Every unarchived link row states the absence and offers nothing, the
+  // event's own owner included: recording a copy is an edit, filed through the
+  // edit form, so no detail surface writes one.
+  it("states a missing copy on every link row, offering no action to anyone", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          detected_from_url: "https://x.com/ana/status/123",
+          secondary_source_urls: ["https://t.me/mirror/1"],
+          archived_secondary_sources: [null],
+        })}
+        variant="page"
+      />
     );
     fireEvent.click(screen.getByRole("button", { name: /1 more source/ }));
-    expect(screen.getByRole("button", { name: "Archive the source" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Archive t.me" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
-        name: "Archive the post it was detected from",
-      })
-    ).toBeInTheDocument();
-  });
-
-  it("offers a detection's owner the same action, publication being no longer the trigger", () => {
-    asOwner(() =>
-      render(
-        <EventDetailBody
-          geo={geoFixture({
-            status: "detected",
-            detected_at: "2026-06-02T09:00:00Z",
-            geolocated_at: null,
-          })}
-          variant="page"
-        />
-      )
-    );
-    expect(screen.getByRole("button", { name: "Archive the source" })).toBeInTheDocument();
+    for (const name of [
+      "No archived copy of the source",
+      "No archived copy of t.me",
+      "No archived copy of the post it was detected from",
+    ]) {
+      expect(screen.getByRole("img", { name })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 
   it("shows no archival affordance on a detection that declares no source", () => {
-    asOwner(() =>
-      render(
-        <EventDetailBody
-          geo={geoFixture({
-            status: "detected",
-            detected_at: "2026-06-02T09:00:00Z",
-            geolocated_at: null,
-            source_url: null,
-          })}
-          variant="page"
-        />
-      )
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          status: "detected",
+          detected_at: "2026-06-02T09:00:00Z",
+          geolocated_at: null,
+          source_url: null,
+        })}
+        variant="page"
+      />
     );
-    // There is no link to archive, so the affordance would be about nothing.
-    expect(screen.queryByRole("button", { name: /^Archive / })).not.toBeInTheDocument();
+    // There is no link, so the mark would be about nothing.
+    expect(screen.queryByRole("img", { name: /archived copy/ })).not.toBeInTheDocument();
   });
 
   it("omits the Secondary sources row when the event declares no mirror", () => {
