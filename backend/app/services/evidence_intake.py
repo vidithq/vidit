@@ -29,7 +29,8 @@ for both shared and type-specific failures.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from collections.abc import Iterable, Mapping
+from typing import Any, cast
 
 from fastapi import UploadFile
 from sqlalchemy.exc import IntegrityError
@@ -182,7 +183,25 @@ def _history_pinned_srcs(db: Session, event: Event) -> set[str]:
     return versions.referenced_media_urls(db, event.id)
 
 
-def _reject_foreign_proof_srcs(event: Event, displayed_srcs: set[str]) -> None:
+def _history_pinned_source_srcs(db: Session, event: Event) -> set[str]:
+    """The source-media URLs this event's readable snapshots render.
+
+    The source twin of :func:`_history_pinned_srcs`, and it exists because an
+    anchor swap deletes the row it replaces: from then on the snapshots are the
+    only thing naming that object, while the object itself stays (see
+    ``services/versions.referenced_source_media``). Version 1 has no snapshot,
+    so the ordinary write pays no query.
+    """
+    if event.version_no <= 1:
+        return set()
+    return {
+        url
+        for entry in versions.referenced_source_media(db, event.id)
+        if isinstance(url := entry.get("storage_url"), str)
+    }
+
+
+def _reject_foreign_proof_srcs(db: Session, event: Event, displayed_srcs: set[str]) -> None:
     """Refuse a proof body that displays another event's stored image.
 
     The sanitiser checks that an image src points at the media host
@@ -199,12 +218,19 @@ def _reject_foreign_proof_srcs(event: Event, displayed_srcs: set[str]) -> None:
     rows are diffed against the body below, so a cited source row is never swept
     for going unreferenced.
 
+    A superseded source counts as own too. The swap that replaced it deleted its
+    row, so the live collection no longer names it, while the object is still
+    there and the proof body citing it still renders; reading ownership off the
+    rows alone would 400 every later write of a body that cites the frame the
+    event was located from. :func:`_history_pinned_source_srcs` is the second
+    leg, and it is the same set the sweeps hold that object alive by.
+
     Srcs the storage layer did not write (relative paths, a dev deployment's
     external https) resolve to no key and no row of any event, so they are left
     to the sanitiser.
     """
     storage = get_storage()
-    own = {m.storage_url for m in event.media}
+    own = {m.storage_url for m in event.media} | _history_pinned_source_srcs(db, event)
     foreign = sorted(
         src for src in displayed_srcs if src not in own and storage.key_from_url(src) is not None
     )
@@ -212,27 +238,38 @@ def _reject_foreign_proof_srcs(event: Event, displayed_srcs: set[str]) -> None:
         raise InvalidFileError("A proof image belongs to another event: " + ", ".join(foreign))
 
 
-def _drop_unreferenced_proof_media(db: Session, event: Event, kept_srcs: set[str]) -> list[str]:
-    """Delete the ``proof`` media rows outside ``kept_srcs``; return their keys.
+def _drop_unreferenced_proof_media(
+    db: Session, event: Event, kept_srcs: set[str]
+) -> tuple[list[str], int]:
+    """Delete the ``proof`` media rows outside ``kept_srcs``.
+
+    Returns ``(keys, dropped)``: the S3 keys the deletion orphans, and how many
+    rows it deleted. The two are not the same number, which is why both are
+    reported: a row whose ``storage_url`` this storage layer did not write
+    resolves to no key at all, so counting the keys would under-report the media
+    an audit entry says a write freed.
 
     Rows only, staged in the caller's transaction. The S3 objects are swept
     after the commit lands, so a rolled-back write never orphans a file the
     rows still point at.
     """
-    storage = get_storage()
     removed_keys: list[str] = []
+    dropped = 0
     for m in list(event.media):
         if m.role != "proof" or m.storage_url in kept_srcs:
             continue
-        key = storage.key_from_url(m.storage_url)
-        if key is not None:
-            removed_keys.append(key)
+        removed_keys += _object_keys(
+            m.storage_url, role=m.role, media_type=m.media_type, label=f"Media row {m.id}"
+        )
+        dropped += 1
         db.delete(m)
-    return removed_keys
+    return removed_keys, dropped
 
 
-def prune_unreferenced_proof_media(db: Session, event: Event) -> list[str]:
-    """Drop the proof rows nothing renders any more; return their S3 keys.
+def prune_unreferenced_proof_media(db: Session, event: Event) -> tuple[list[str], int]:
+    """Drop the proof rows nothing renders any more.
+
+    Returns the ``(keys, dropped)`` pair of :func:`_drop_unreferenced_proof_media`.
 
     The standalone form of the diff :func:`attach_evidence_and_commit` runs as
     part of a write, for the one caller that changes what the history displays
@@ -351,7 +388,7 @@ async def attach_evidence_and_commit(
     # else what the row already holds), plus what the history still displays.
     final_doc = proof_doc if proof_doc is not None else event.proof
     displayed_srcs = _displayed_proof_srcs(final_doc)
-    _reject_foreign_proof_srcs(event, displayed_srcs)
+    _reject_foreign_proof_srcs(db, event, displayed_srcs)
     kept_srcs = displayed_srcs | _history_pinned_srcs(db, event)
 
     # The cap is on what the new body displays, not on one request: the images
@@ -371,7 +408,7 @@ async def attach_evidence_and_commit(
             f"({displayed_proof_rows} already uploaded, {len(proof_files)} new)"
         )
 
-    removed_proof_keys = _drop_unreferenced_proof_media(db, event, kept_srcs)
+    removed_proof_keys, _dropped_proof_rows = _drop_unreferenced_proof_media(db, event, kept_srcs)
     # Flush deletes before the inserts below (same discipline as the caller's
     # source swap) so a same-URL re-add can't collide mid-flush.
     db.flush()
@@ -456,28 +493,101 @@ async def attach_evidence_and_commit(
     sweep_keys(removed_proof_keys, context=f"{sweep_context} (removed proof images)")
 
 
+def _object_keys(storage_url: str, *, role: str, media_type: str, label: str) -> list[str]:
+    """Every S3 key one media's storage URL owns, derivatives included.
+
+    Hero / thumb JPEG derivatives exist only for ``source`` images (proof
+    uploads and videos skip them). A foreign URL (nothing this storage layer
+    wrote) resolves to no key: it is logged and skipped rather than failing the
+    delete. ``label`` names the thing in that log line, since the caller may
+    hold a row or a version's snapshot fragment.
+    """
+    key = get_storage().key_from_url(storage_url)
+    if key is None:
+        logger.warning("%s has unrecognised storage_url %s, skipping S3 delete", label, storage_url)
+        return []
+    if role != "source" or media_type != "image":
+        return [key]
+    return [key, derivative_key(key, "hero"), derivative_key(key, "thumb")]
+
+
 def collect_media_keys(media_rows: list[Media]) -> list[str]:
     """S3 keys for a set of ``Media`` rows, derivatives included.
 
-    The shared "what does deleting these rows orphan on S3" resolver used by
-    the owner DELETE and by the admin GDPR erasures. Hero / thumb JPEG
-    derivatives exist only for ``source`` images (proof uploads and videos
-    skip them). Foreign URLs (nothing this storage layer wrote) resolve to no
-    key: they are logged and skipped rather than failing the delete.
+    The shared "what does deleting these rows orphan on S3" resolver used by the
+    admin hard delete and by the admin GDPR erasures.
     """
-    storage = get_storage()
-    keys: list[str] = []
-    for m in media_rows:
-        key = storage.key_from_url(m.storage_url)
-        if key is None:
-            logger.warning(
-                "Media row %s has unrecognised storage_url %s, skipping S3 delete",
-                m.id,
-                m.storage_url,
-            )
-            continue
-        keys.append(key)
-        if m.role == "source" and m.media_type == "image":
-            keys.append(derivative_key(key, "hero"))
-            keys.append(derivative_key(key, "thumb"))
-    return keys
+    return [
+        key
+        for m in media_rows
+        for key in _object_keys(
+            m.storage_url, role=m.role, media_type=m.media_type, label=f"Media row {m.id}"
+        )
+    ]
+
+
+def collect_snapshot_media_keys(entries: Iterable[Mapping[str, Any]]) -> list[str]:
+    """S3 keys for a set of snapshot media fragments, derivatives included.
+
+    The row-less twin of :func:`collect_media_keys`, for the media a version
+    describes and the database no longer holds: an anchor swap deletes the
+    ``source`` row it replaces (an event carries at most one), so from then on
+    the snapshot is the only thing that resolves those objects. An entry missing
+    either field it needs resolves to no key, the way a foreign URL does.
+    """
+    return [
+        key
+        for entry in entries
+        if isinstance(entry.get("storage_url"), str)
+        for key in _object_keys(
+            cast(str, entry["storage_url"]),
+            role=str(entry.get("role", "source")),
+            media_type=str(entry.get("media_type", "")),
+            label=f"Version media {entry.get('id')}",
+        )
+    ]
+
+
+def collect_event_media_keys(db: Session, event: Event) -> list[str]:
+    """Every S3 key deleting this event orphans: its media, and its history's.
+
+    What the delete paths sweep. The rows are the live evidence; the snapshots
+    add the source objects a correction superseded, which outlive their row so
+    that ``/vN`` keeps rendering the footage that version rested on and which
+    nothing points at once the event is gone. Deduplicated, since a version
+    filed before any swap names the media the row still carries.
+    """
+    keys = collect_media_keys(list(event.media))
+    keys += collect_snapshot_media_keys(versions.referenced_source_media(db, event.id))
+    return list(dict.fromkeys(keys))
+
+
+def orphaned_source_media(
+    db: Session, event: Event, *, dropped: Iterable[Mapping[str, Any]]
+) -> list[Mapping[str, Any]]:
+    """The superseded source media nothing renders any more.
+
+    The source leg of what a redaction frees, beside
+    :func:`prune_unreferenced_proof_media`. ``dropped`` is the ``source_media``
+    fragment of the snapshot that just stopped being readable; an entry survives
+    while another readable version names it, the live row still carries it, or
+    the published proof body displays it, and is returned for sweeping
+    otherwise. Call it after the redaction is flushed, so the blanked row is out
+    of the history this reads. The caller resolves the objects through
+    :func:`collect_snapshot_media_keys`, since the rows themselves went with the
+    correction that replaced them.
+
+    The proof-body leg is the third keep and it is not redundant: a proof
+    legitimately cites the frame the event was located from, and the swap that
+    superseded that source deleted its row, so once the last version naming it is
+    redacted nothing but the live body points at the object. Sweeping it there
+    would blank an image the published record still renders.
+    """
+    kept = {m.storage_url for m in event.media}
+    kept |= _displayed_proof_srcs(event.proof)
+    kept |= {
+        url
+        for entry in versions.referenced_source_media(db, event.id)
+        if isinstance(url := entry.get("storage_url"), str)
+    }
+    return [entry for entry in dropped if entry.get("storage_url") not in kept]

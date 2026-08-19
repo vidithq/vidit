@@ -228,7 +228,7 @@ The `self_thread` fixture ships export entries rather than syndication bodies, s
 
 A machine-produced event starts in the `detected` status and may lack a `source_url`, a source media item, or a location. Which entry produced it is recorded as `detected_via` (`bot`, `paste` or `archive`), stamped once at creation and read-only on the wire.
 
-A `detected` row is **public on every read surface from the moment it lands**, badged as a machine detection and attributed to the importing account (see the `EventStatus` block in [`event.py`](../backend/app/models/event.py)). Review gates the vouching, not the visibility. The owner either completes the detection and promotes it to `geolocated`, or rejects it, which closes the row (`before_closed_status = 'detected'`) and takes it off the read surfaces. `services/events.geolocate` rejects the promotion with `source_url_required` (400) when no `source_url` is set, matching the `ck_events_source_url_status` CHECK constraint (see [`data-model.md`](data-model.md#events)).
+A `detected` row is **public on every read surface from the moment it lands**, badged as a machine detection and attributed to the importing account (see the `EventStatus` block in [`event.py`](../backend/app/models/event.py)). Review gates the vouching, not the visibility. The owner either completes the detection and promotes it to `geolocated`, or rejects it, which closes the row (`before_closed_status = 'detected'`) and takes it off the map while keeping it in the located catalog as an audit row. `services/events.geolocate` rejects the promotion with `source_url_required` (400) when no `source_url` is set, matching the `ck_events_source_url_status` CHECK constraint (see [`data-model.md`](data-model.md#events)).
 
 ## The bot
 
@@ -403,6 +403,8 @@ flowchart LR
 
 The coordinate compares to six decimal places, the rounding the extraction dedups on. The source URL leg collapses the delete-and-repost shape: two provenance posts declaring the same footage at the same coordinate are one detection.
 
+The source URL leg reads the version history as well as the live column. The owner of a published row can correct its [evidence anchor](api.md#post-eventsidversions), and the version that edit files is what still carries the URL the row was imported under, so a re-import of the original post matches the row it already produced instead of creating a second one beside it. A [redacted](api.md#post-admineventsidversionsversion_noredact) version carries no URL, so it matches nothing.
+
 The provenance leg is the thread's post IDs, not a URL and not the anchor alone. Not a URL, because one post spells the same URL several ways (`x.com` or `twitter.com`, the handle in any case, the handle-less `/i/web/status/` form), which would split one geolocation across two detections; `detected_from_url` stays as the display value, written from the ID at the engine's exit. Not the anchor alone, because the entries anchor differently on one thread: in a 3-post self-thread A→B→C carrying the coordinate in C, the archive anchors on A while a bot tag or a paste on C reads [one hop](#the-contract) and anchors on B. Each row therefore stores every post ID of the thread it was read from (`events.detected_thread_tweet_ids`), and a detection matches when the incoming thread's IDs intersect a stored set; a row carrying none matches on its anchor ID alone.
 
 [`detection._row_disposition`](../backend/app/services/detection.py) holds the matrix, and each row states why:
@@ -413,7 +415,7 @@ The provenance leg is the thread's post IDs, not a URL and not the anchor alone.
 | Withheld (`hidden_at`) | Skipped, whatever its status. A takedown freezes the row for its owner too. |
 | `geolocated` | Skipped. A machine never overwrites published work. |
 | `detected` | Updated in place. |
-| `closed` | Skipped. A rejected detection stays rejected, so nobody rejects the same post twice. |
+| `closed` | Skipped, whichever state it left. A rejected detection stays rejected, so nobody rejects the same post twice; a withdrawn request is not the import's to reopen; and a retraction is published work its owner took back, so the published-work rule above keeps holding after the close. |
 | No match | A new `detected` row. |
 
 **What an update rewrites.** The row keeps its id, its owner, its `created_at` and `detected_at` stamps, its provenance (`detected_from_tweet_id`, `detected_from_url`, `detected_thread_tweet_ids` and `detected_via`) and its place in the review queue, so a bot tag landing on a detection the archive created updates it and still reads `archive`. The import overwrites what it owns: the title, the coordinate, the event date, `source_url`, the [secondary source links](data-model.md#event_source_links), `source_posted_at`, `detected_post_at`, the proof document, and the media. Every field edit is welded to the `geolocated` promotion, so an open detection carries no analyst work to lose. An [archived copy](archival.md) survives: if the update moves `source_url`, the copy is re-filed under another link the row still carries, or dropped when it carries none.

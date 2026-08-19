@@ -28,11 +28,17 @@ from typing import Any, Literal, cast
 import httpx
 from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import Point
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.cache import points_cache
-from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, DetectedVia, Event
+from app.models.event import (
+    STATUS_DETECTED,
+    STATUS_GEOLOCATED,
+    DetectedVia,
+    Event,
+    EventVersion,
+)
 from app.models.media import Media, MediaRole
 from app.models.user import User
 from app.services.events import build_source_link_rows, replace_source_links
@@ -154,9 +160,12 @@ def _row_disposition(row: Event) -> Verdict:
     4. An open detection is machine-authored working state that no
        analyst-facing path can edit in place (every field write is welded to
        the ``geolocated`` promotion), so a newer parse overwrites it.
-    5. A ``closed`` row was judged and thrown out. A rejected detection stays
-       rejected so nobody rejects the same post twice, and a withdrawn request
-       is not the import's to reopen.
+    5. A ``closed`` row was judged and thrown out, whichever state it left. A
+       rejected detection stays rejected so nobody rejects the same post twice,
+       a withdrawn request is not the import's to reopen, and a retraction
+       (``closed`` off ``geolocated``) is published work its author took back,
+       so rule 3 keeps holding after the retraction: no machine writes to a row
+       a person published.
     6. Anything else live (a ``requested`` event matched through its source
        URL) belongs to a human flow: leave it alone.
     """
@@ -198,6 +207,14 @@ def _disposition(db: Session, owner: User, detection: Detection) -> tuple[Verdic
     and coordinate are identical. A source-less detection keeps the provenance-only
     match: NULL declares nothing, so it can't collide.
 
+    That leg reads the history as well as the live column. The owner of a
+    published row can correct its evidence anchor, and the version filed by that
+    edit is what still carries the URL the row was imported under; matching the
+    live column alone would let a re-import of a hand-submitted post that has
+    since been corrected land as a fresh ``detected`` duplicate of the row it
+    already produced. A redacted version's snapshot is blank, so it names no URL
+    and matches nothing.
+
     A ``skip`` carries the row that earned it, so a caller answering one post
     can still name the row its detection landed on. Only ``create`` has no row.
     """
@@ -208,6 +225,13 @@ def _disposition(db: Session, owner: User, detection: Detection) -> tuple[Verdic
         legs.append(Event.detected_thread_tweet_ids.overlap(list(detection.thread_tweet_ids)))
     if detection.source_url is not None:
         legs.append(Event.source_url == detection.source_url)
+        legs.append(
+            Event.id.in_(
+                select(EventVersion.event_id).where(
+                    EventVersion.snapshot["source_url"].astext == detection.source_url
+                )
+            )
+        )
     if not legs:
         # No post id and no source: the detection declares nothing an existing
         # row could be recognised by, so it can only be new.

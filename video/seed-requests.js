@@ -108,12 +108,19 @@ async function readEvent(auth, id) {
   return res.json();
 }
 
-async function deleteEvent(auth, id) {
-  const res = await fetch(`${API}/events/${id}`, {
+// Remove one row for good. `DELETE /admin/events/{id}?hard=true` is the only
+// delete the API offers: an owner closes a row rather than deleting it, so a
+// seed that wants the row gone entirely needs admin auth and the hard mode.
+// Returns whether the row is gone, which is what stops the paging wipes below
+// from spinning on a row that refuses to go.
+async function hardDeleteEvent(adminAuth, id) {
+  const res = await fetch(`${API}/admin/events/${id}?hard=true`, {
     method: "DELETE",
-    headers: { cookie: auth.cookieHeader, "X-CSRF-Token": auth.csrf },
+    headers: { cookie: adminAuth.cookieHeader, "X-CSRF-Token": adminAuth.csrf },
   });
-  if (!res.ok && res.status !== 404) console.warn(`  skip delete ${id}: ${res.status}`);
+  if (res.ok || res.status === 404) return true;
+  console.warn(`  skip delete ${id}: ${res.status}`);
+  return false;
 }
 
 // A detection's media is already stored, so the bytes come from the media host
@@ -232,11 +239,12 @@ async function createRequest(
   return res.json();
 }
 
-// Cleanup helpers. The public `DELETE /events/{id}` enforces author-only
-// access (admins can not delete other users' rows through the public
-// endpoint), so per-user wipes still need that user's own auth. Only the
-// cross-author tweet-duplicate wipe routes through the admin-only
-// `DELETE /admin/events/{id}`, which bypasses `ensure_author`.
+// Cleanup helpers. Every delete here is `DELETE /admin/events/{id}?hard=true`,
+// the one route that removes a row: an owner's only dismissal is the close,
+// which keeps the row readable, and a closed row on the map is exactly what a
+// promo seed must not leave behind. The per-user wipes still read through the
+// user's own auth, since the listing is author-filtered, and hand the ids to
+// the admin auth to delete.
 
 // One page of a lifecycle view, author-filtered server-side. `view`
 // selects the queue: `requested` is the open-call board (ex `/requests`),
@@ -252,10 +260,11 @@ async function listMine(auth, username, view) {
   return res.json();
 }
 
-// Delete every row of one view authored by the caller. Re-lists after each
-// page so a set larger than the 100-row cap drains fully; stops when a
-// pass deletes nothing so an undeletable row can't spin the loop.
-async function wipeUserView(auth, view, label) {
+// Delete every row of one view authored by `auth`: that account scopes the
+// listing, `adminAuth` performs the deletes. Re-lists after each page so a set
+// larger than the 100-row cap drains fully; stops when a pass deletes nothing
+// so an undeletable row can't spin the loop.
+async function wipeUserView(auth, adminAuth, view, label) {
   const me = await fetch(`${API}/auth/me`, {
     headers: { cookie: auth.cookieHeader },
   }).then((r) => r.json());
@@ -265,12 +274,7 @@ async function wipeUserView(auth, view, label) {
     if (!page.length) break;
     let deleted = 0;
     for (const row of page) {
-      const res = await fetch(`${API}/events/${row.id}`, {
-        method: "DELETE",
-        headers: { cookie: auth.cookieHeader, "X-CSRF-Token": auth.csrf },
-      });
-      if (res.ok) deleted++;
-      else if (res.status !== 409) console.warn(`  skip ${row.id}: ${res.status}`);
+      if (await hardDeleteEvent(adminAuth, row.id)) deleted++;
     }
     total += deleted;
     if (!deleted) break;
@@ -278,18 +282,17 @@ async function wipeUserView(auth, view, label) {
   if (total) console.log(`✓ wiped ${total} prior ${label} for ${me.username}`);
 }
 
-const wipeUserRequests = (auth) => wipeUserView(auth, "requested", "request(s)");
-const wipeUserGeolocations = (auth) =>
-  wipeUserView(auth, "located", "geolocation(s)");
+const wipeUserRequests = (auth, adminAuth) =>
+  wipeUserView(auth, adminAuth, "requested", "request(s)");
+const wipeUserGeolocations = (auth, adminAuth) =>
+  wipeUserView(auth, adminAuth, "located", "geolocation(s)");
 
 // Wipe every event that the recording's tweet would resolve to as
 // "possibly related" — same heuristic the submit form uses
-// (`/events/possible-duplicates`). Routes the deletes through the
-// `DELETE /admin/events/{id}` endpoint so cross-author rows
-// (e.g. an old admin@vidit.app submission of the same tweet) actually
-// get cleaned up; the public DELETE would 403 on those and the wipe
-// would silently no-op, leaving the duplicate-warning card to fire on
-// every re-record.
+// (`/events/possible-duplicates`). The deletes need admin auth: the rows
+// can belong to anyone (e.g. an old admin@vidit.app submission of the same
+// tweet), and leaving one behind fires the duplicate-warning card on every
+// re-record.
 //
 // The coordinate and the date come from the detection the import creates, so
 // the import itself runs under `ownerAuth`, the account whose linked X
@@ -310,7 +313,7 @@ async function wipeTweetDuplicatesAs(adminAuth, ownerAuth, tweetUrl) {
     return;
   }
   const detection = await readEvent(ownerAuth, detectionId);
-  for (const id of outcome.created) await deleteEvent(ownerAuth, id);
+  for (const id of outcome.created) await hardDeleteEvent(adminAuth, id);
   const coord = detection.event_coords;
   const date = (detection.event_date || detection.detected_post_at || "").slice(0, 10);
   if (!coord || !date) {
@@ -324,18 +327,7 @@ async function wipeTweetDuplicatesAs(adminAuth, ownerAuth, tweetUrl) {
     { headers: { cookie: adminAuth.cookieHeader } }
   ).then((r) => r.json());
   if (!dups.length) return;
-  for (const g of dups) {
-    const res = await fetch(`${API}/admin/events/${g.id}?hard=true`, {
-      method: "DELETE",
-      headers: {
-        cookie: adminAuth.cookieHeader,
-        "X-CSRF-Token": adminAuth.csrf,
-      },
-    });
-    if (!res.ok && res.status !== 409) {
-      console.warn(`  skip dup ${g.id}: ${res.status}`);
-    }
-  }
+  for (const g of dups) await hardDeleteEvent(adminAuth, g.id);
   console.log(`✓ wiped ${dups.length} prior tweet-duplicate(s)`);
 }
 
@@ -346,12 +338,10 @@ const RECORDING_TWEET_URL =
   "https://x.com/geo27752/status/2060086984513626223";
 
 (async () => {
-  // Admin login handles the only wipe that needs cross-author reach:
-  // possible-duplicate events near the recording's tweet, where
-  // prior runs sometimes left rows authored by `admin@vidit.app`
-  // itself. Per-user logins below handle each user's own rows via the
-  // public DELETE (admin can't reach those without going through the
-  // soft-delete admin path, which leaves orphan `deleted_at` rows).
+  // Admin login carries every delete this seed makes: the API's only delete is
+  // the admin one, and hard mode is what leaves nothing behind. The per-user
+  // logins below still list each user's own rows, which is what scopes a wipe
+  // to that user.
   const admin = await mintAuth("admin@vidit.app", "admin");
   // The recording's tweet is the analyst's own post, so the import that
   // answers "where and when" runs under that account.
@@ -364,13 +354,13 @@ const RECORDING_TWEET_URL =
   // The recording logs in as `analyst`, so `demo-analyst` owns the seeded
   // requests.
   const author = await mintAuth("demo-analyst@vidit.app", "demo-analyst");
-  await wipeUserRequests(author);
+  await wipeUserRequests(author, admin);
 
   // The recording's `analyst` also posts a request + a geolocation
   // during the live "Post request" / "Submit geolocation" beats. Wipe
   // any prior copies from earlier recordings so they don't linger.
-  await wipeUserRequests(recorder);
-  await wipeUserGeolocations(recorder);
+  await wipeUserRequests(recorder, admin);
+  await wipeUserGeolocations(recorder, admin);
 
   const auth = author; // reuse the rest of this script unchanged
   // Conflict + capture-source — neither is part of the request floor, but
@@ -440,7 +430,7 @@ const RECORDING_TWEET_URL =
     // The detections were the read path, not the promo state: the seeded
     // requests are what the recording shows, and a machine detection beside
     // them would put an unreviewed row on the map.
-    for (const id of outcome.created) await deleteEvent(auth, id);
+    for (const id of outcome.created) await hardDeleteEvent(admin, id);
   }
 
   console.log("done");

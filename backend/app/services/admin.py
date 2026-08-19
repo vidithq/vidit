@@ -27,7 +27,13 @@ from app.schemas.admin import (
 )
 from app.services import versions
 from app.services.auth import bump_token_version, generate_invite_code, invite_code_status
-from app.services.evidence_intake import collect_media_keys, prune_unreferenced_proof_media
+from app.services.evidence_intake import (
+    collect_event_media_keys,
+    collect_media_keys,
+    collect_snapshot_media_keys,
+    orphaned_source_media,
+    prune_unreferenced_proof_media,
+)
 from app.services.pagination import keyset_before, take_page
 from app.services.storage import avatar_key_of, sweep_keys
 
@@ -380,8 +386,9 @@ def hard_delete_geolocation(
         raise EventNotFoundError("Event not found")
 
     # Capture S3 keys *before* the cascade fires: every media row, source and
-    # proof roles alike, derivatives included.
-    media_keys = collect_media_keys(list(geo.media))
+    # proof roles alike, derivatives included, plus the source media a
+    # correction superseded, which outlives its row.
+    media_keys = collect_event_media_keys(db, geo)
 
     target = {
         "geolocation_id": str(geo.id),
@@ -415,10 +422,12 @@ def redact_version(
     ``redacted_at`` / ``redacted_by_id``. ``version_no`` and ``created_at``
     stay, so ``/vN`` addressing never shifts.
 
-    A redacted version displays no images, so this is also the one write
-    outside an edit that can free a proof image: any image no readable version
-    and no current proof body points at is deleted here, row and object, on the
-    commit-then-sweep discipline the media paths share.
+    A redacted version displays nothing, so this is also the one write outside
+    an edit that can free evidence: a proof image no readable version and no
+    current proof body points at is deleted here, row and object, and so is the
+    S3 object of a superseded source media this version alone named (its row
+    went when the correction replaced it). Both run on the commit-then-sweep
+    discipline the media paths share.
 
     Idempotent: a second call on an already-redacted version changes nothing and
     writes no audit row, matching ``services/reports.set_event_moderation``.
@@ -441,10 +450,20 @@ def redact_version(
     row = versions.get_version(db, event_id=event.id, version_no=version_no)
     if row is None:
         raise VersionNotFoundError("Version not found")
+    # Read what this version was rendering before it is blanked; the flush puts
+    # the redaction in front of the queries below, so neither counts this row
+    # among the versions that still hold a file alive.
+    superseded_sources = versions.media_fragment(row.snapshot, "source_media")
     if not versions.redact_version(db, version=row, actor_id=actor_id):
         return row
+    db.flush()
 
-    removed_keys = prune_unreferenced_proof_media(db, event)
+    # One media, one count; the keys run longer, since a source image owns its
+    # two derivatives as well, so the audit entry counts the media the redaction
+    # freed and the sweep takes the keys.
+    removed_proof_keys, removed_proof_rows = prune_unreferenced_proof_media(db, event)
+    freed_sources = orphaned_source_media(db, event, dropped=superseded_sources)
+    removed_keys = removed_proof_keys + collect_snapshot_media_keys(freed_sources)
     log_admin_event(
         db,
         actor_id=actor_id,
@@ -452,7 +471,7 @@ def redact_version(
         target={
             "geolocation_id": str(event.id),
             "version_no": version_no,
-            "removed_media_count": len(removed_keys),
+            "removed_media_count": removed_proof_rows + len(freed_sources),
         },
     )
     db.commit()
@@ -564,7 +583,7 @@ def hard_delete_user(
     geolocations = db.query(Event).filter(Event.owner_id == user.id).all()
     geo_media_keys: list[str] = []
     for geo in geolocations:
-        geo_media_keys.extend(collect_media_keys(list(geo.media)))
+        geo_media_keys.extend(collect_event_media_keys(db, geo))
     avatar_key = avatar_key_of(user.avatar_url)
 
     target = {

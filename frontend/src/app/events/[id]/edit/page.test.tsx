@@ -175,13 +175,13 @@ async function submitDetection() {
   fireEvent.click(await screen.findByRole("button", { name: "Confirm submit" }));
 }
 
-/** Reject the detection on screen, through its confirm-with-reason panel. */
-function rejectDetection(reason: string) {
-  fireEvent.click(screen.getByRole("button", { name: "Reject" }));
-  fireEvent.change(screen.getByLabelText(/Reject reason/), {
+/** Close the detection on screen, through its confirm-with-reason panel. */
+function closeDetection(reason: string) {
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  fireEvent.change(screen.getByLabelText(/Close reason/), {
     target: { value: reason },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Reject this detection" }));
+  fireEvent.click(screen.getByRole("button", { name: "Close this detection" }));
 }
 
 beforeEach(() => {
@@ -209,27 +209,27 @@ describe("the detection edit surface", () => {
     ).toBeInTheDocument();
     // No description line under the title: the fields say what they are.
     expect(screen.queryByText(/Submitting publishes the event/)).toBeNull();
-    // The flow action stands alone at the foot: no Cancel, and no Reject
+    // The flow action stands alone at the foot: no Cancel, and no Close
     // beside it.
     const submit = screen.getByRole("button", { name: "Submit" });
     expect(submit).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Cancel" })).toBeNull();
 
-    // Reject is a plain button up in the action area, ahead of the fields, and
+    // Close is a plain button up in the action area, ahead of the fields, and
     // never a menu entry behind a ⋯ disclosure.
-    const reject = screen.getByRole("button", { name: "Reject" });
+    const close = screen.getByRole("button", { name: "Close" });
     expect(
-      reject.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING
+      close.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(screen.queryByRole("menuitem")).toBeNull();
     expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
   });
 
-  it("rejects the detection behind its reason panel", async () => {
+  it("closes the detection behind its reason panel", async () => {
     closeMock.mockResolvedValue(detectionFixture({ status: "closed" }));
     render(<EditEventPage />);
 
-    rejectDetection("Not a strike.");
+    closeDetection("Not a strike.");
     // Off a review pass, a disposed detection leaves for the queue list.
     await waitFor(() =>
       expect(push).toHaveBeenCalledWith("/profile/ana/detections")
@@ -287,11 +287,11 @@ describe("a review pass over the queue", () => {
     );
   });
 
-  it("hands over to the next detection after a rejection", async () => {
+  it("hands over to the next detection after a close", async () => {
     closeMock.mockResolvedValue(detectionFixture({ status: "closed" }));
     render(<EditEventPage />);
 
-    rejectDetection("Duplicate of an earlier detection.");
+    closeDetection("Duplicate of an earlier detection.");
     await waitFor(() =>
       expect(push).toHaveBeenCalledWith("/events/d2/edit?queue=1")
     );
@@ -322,7 +322,7 @@ describe("a review pass over the queue", () => {
   it("drops the position for a detection the queue no longer holds", () => {
     queueItems = [detectionFixture({ id: "d9", title: "Someone else's turn" })];
     render(<EditEventPage />);
-    // Published or rejected in another tab: the flag is stale, so the page is
+    // Published or closed in another tab: the flag is stale, so the page is
     // a plain edit again rather than claiming a position it doesn't have.
     expect(screen.queryByText(/Detection \d+ of/)).toBeNull();
     expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
@@ -416,27 +416,26 @@ describe("editing a published geolocation", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/no longer be edited/)).toBeNull();
     expect(screen.getByRole("button", { name: "Save version 2" })).toBeInTheDocument();
-    // Neither verb belongs to a published row: it is not skippable and not
-    // rejectable.
+    // Neither verb belongs to this form on a published row: it is not
+    // skippable, and its close is on the detail page rather than mid-edit.
     expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
   });
 
-  it("renders the evidence anchor read-only", () => {
+  it("offers the evidence anchor for correction, seeded from the row", () => {
     render(<EditEventPage />);
 
-    // The source URL is a link to open, not a field to retype, and the media
-    // block offers no add or remove.
-    expect(screen.queryByRole("textbox", { name: /Source URL/ })).toBeNull();
+    // The import picks the wrong media out of a multi-media post often enough
+    // that both halves stay editable after publication; the version this save
+    // files is what keeps the old ones readable.
+    expect(screen.getByRole("textbox", { name: /Source URL/ })).toHaveValue(
+      "https://t.me/channel/12345"
+    );
+    // The stored media offers its Remove, which is what opens the picker: an
+    // event carries one source media, so a swap is a removal then an upload.
     expect(
-      screen.getByRole("link", { name: "https://t.me/channel/12345" })
+      screen.getByRole("button", { name: "Remove media" })
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Add media/)).toBeNull();
-    expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
-    // And the reason it can't move is one click away, on the locked marker.
-    expect(
-      screen.getAllByRole("button", { name: "Why can't I change the source?" })
-    ).toHaveLength(2);
   });
 
   it("saves on the click that made it, then lands on the event", async () => {
@@ -484,7 +483,7 @@ describe("editing a published geolocation", () => {
     expect(saveVersionMock.mock.calls[0][1].source_posted_at).toBe("2026-05-30T15:00");
   });
 
-  it("posts the version note and never the evidence anchor", async () => {
+  it("posts the version note beside the evidence anchor", async () => {
     render(<EditEventPage />);
 
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
@@ -499,10 +498,25 @@ describe("editing a published geolocation", () => {
     const [id, input] = saveVersionMock.mock.calls[0];
     expect(id).toBe("d1");
     expect(input.note).toBe("Coordinates were off by a block.");
-    // The anchor is not assembled at all, so no client bug can post it.
-    expect(input).not.toHaveProperty("source_url");
-    expect(input).not.toHaveProperty("files");
-    expect(input).not.toHaveProperty("remove_media_ids");
+    // The anchor rides along, since this endpoint declares it: the untouched
+    // form posts the source the row holds and stages no media swap.
+    expect(input.source_url).toBe("https://t.me/channel/12345");
+    expect(input.files).toEqual([]);
+    expect(input.remove_media_ids).toEqual([]);
+  });
+
+  it("corrects the source URL as a version of its own", async () => {
+    render(<EditEventPage />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /Source URL/ }), {
+      target: { value: "https://t.me/channel/999" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
+
+    expect(saveVersionMock.mock.calls[0][1].source_url).toBe(
+      "https://t.me/channel/999"
+    );
   });
 
   it("refuses a save that would change nothing, without a request", async () => {

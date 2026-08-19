@@ -16,7 +16,7 @@ beforeEach(() => {
 });
 
 describe("CloseEventForm", () => {
-  it("names the action from status: a request is withdrawn", () => {
+  it("names the row it closes: a request", () => {
     render(
       <CloseEventForm
         eventId="e1"
@@ -25,13 +25,13 @@ describe("CloseEventForm", () => {
         onCancel={() => {}}
       />
     );
-    expect(screen.getByText("Withdraw reason")).toBeInTheDocument();
+    expect(screen.getByText("Close reason")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Withdraw this request" })
+      screen.getByRole("button", { name: "Close this request" })
     ).toBeInTheDocument();
   });
 
-  it("names the action from status: a detection is rejected", () => {
+  it("names the row it closes: a detection", () => {
     render(
       <CloseEventForm
         eventId="e1"
@@ -40,9 +40,9 @@ describe("CloseEventForm", () => {
         onCancel={() => {}}
       />
     );
-    expect(screen.getByText("Reject reason")).toBeInTheDocument();
+    expect(screen.getByText("Close reason")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Reject this detection" })
+      screen.getByRole("button", { name: "Close this detection" })
     ).toBeInTheDocument();
   });
 
@@ -55,7 +55,7 @@ describe("CloseEventForm", () => {
         onCancel={() => {}}
       />
     );
-    fireEvent.click(screen.getByRole("button", { name: "Withdraw this request" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close this request" }));
     expect(mockClose).not.toHaveBeenCalled();
     expect(
       screen.getByText("A reason is required to close this request.")
@@ -74,10 +74,10 @@ describe("CloseEventForm", () => {
         onCancel={() => {}}
       />
     );
-    fireEvent.change(screen.getByLabelText("Reject reason"), {
+    fireEvent.change(screen.getByLabelText("Close reason"), {
       target: { value: "  AI-generated image  " },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Reject this detection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close this detection" }));
     await waitFor(() =>
       expect(mockClose).toHaveBeenCalledWith("e1", "AI-generated image")
     );

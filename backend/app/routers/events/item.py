@@ -1,5 +1,9 @@
-"""Single-event ops by id: detail, delete, the lifecycle verbs (geolocate,
-close), and the published-row correction path (save_version + its version history)."""
+"""Single-event ops by id: detail, the lifecycle verbs (geolocate, close), and
+the published-row correction path (save_version + its version history).
+
+No delete: an owner takes a row back with ``close``, which keeps the record
+readable, and destruction is the admin router's ``DELETE /admin/events/{id}``.
+"""
 
 import uuid
 
@@ -19,7 +23,6 @@ from fastapi import (
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.cache import points_cache
 from app.dependencies import get_current_user, get_current_user_optional, get_db
 from app.models.content_report import ContentReport
 from app.models.event import (
@@ -57,10 +60,9 @@ from app.schemas.event import (
 )
 from app.schemas.report import ContentReportCreate, ContentReportRead
 from app.services import events as events_service
-from app.services import permissions
 from app.services import reports as reports_service
 from app.services import versions as versions_service
-from app.services.evidence_intake import EvidenceIntakeError, collect_media_keys
+from app.services.evidence_intake import EvidenceIntakeError
 from app.services.pagination import (
     decode_ordinal_cursor,
     encode_ordinal_cursor,
@@ -69,9 +71,6 @@ from app.services.pagination import (
     take_page,
 )
 from app.services.source_archive import SnapshotRejected
-from app.services.storage import (
-    sweep_keys,
-)
 from app.services.thumbnails import thumbnail_media_criteria
 
 router = APIRouter()
@@ -189,41 +188,16 @@ def get_event(
     return build_event_read(geo, lat=lat, lng=lng, capture_lat=capture_lat, capture_lng=capture_lng)
 
 
-@router.delete("/{geolocation_id}", status_code=status.HTTP_204_NO_CONTENT)
-@limiter.limit("30/minute")
-def delete_event(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Hard-delete by the owner. Cascades drop the tag links, contributor
-    rows and media rows; the S3 objects (media of every role, plus the source
-    image derivatives) are swept after the commit lands. Admin soft-delete
-    lives behind the admin router and stamps ``deleted_at`` instead.
-    """
-    geo = resolve_live_event(db, geolocation_id)
-    permissions.ensure_owner(geo, current_user)
-
-    # Snapshot the S3 keys before the cascade drops the rows, then
-    # commit-then-sweep (see ``services.storage.sweep_keys``).
-    media_keys = collect_media_keys(list(geo.media))
-
-    db.delete(geo)
-    db.commit()
-
-    sweep_keys(media_keys, context=f"event {geo.id} delete")
-
-    points_cache.invalidate()
-
-
 # ── Lifecycle verbs ───────────────────────────────────────────────────
 # Geolocate writes the caller's edits and moves a ``requested`` or
 # ``detected`` event to ``geolocated``; close is the terminal withdraw /
-# reject. A detection is owner-only; a ``requested`` event is
-# answerable by anyone (the fulfiller becomes the owner). Past the geolocate a
-# row is corrected through ``save_version``, owner-only, which files the superseded
-# version rather than overwriting it. See ``api.md``.
+# reject / retract, available in every live state. A detection is owner-only; a
+# ``requested`` event is answerable by anyone (the fulfiller becomes the owner).
+# Past the geolocate a row is corrected through ``save_version``, owner-only,
+# which files the superseded version rather than overwriting it. Removing a row
+# is not among them: destruction is the admin router's
+# ``DELETE /admin/events/{id}``, so an owner's own way out of a published claim
+# is the retraction, which keeps the record. See ``api.md``.
 
 
 @router.post("/{geolocation_id}/geolocate", response_model=EventRead)
@@ -350,17 +324,19 @@ async def save_event_version(
     request: Request,
     geolocation_id: uuid.UUID,
     # Multipart, mirroring geolocate: the form posts the whole editable state
-    # and the service writes it, plus the superseded version, atomically. The
-    # evidence anchor takes NO field here: ``source_url``, ``files`` and
-    # ``remove_media_ids`` are absent by design, so the endpoint cannot be asked
-    # to move what the published claim rests on.
+    # and the service writes it, plus the superseded version, atomically.
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     lat: float = Form(...),
     lng: float = Form(...),
     capture_source_lat: float | None = Form(None),
     capture_source_lng: float | None = Form(None),
-    # The archived copy of the event's stored source URL. Accepted because it
-    # archives the anchor rather than changing it.
+    # The footage origin, editable here as on geolocate and versioned with the
+    # rest. Optional, unlike on geolocate: omitted or empty keeps what the row
+    # holds (FastAPI reads an empty form value as an absent one, so the two
+    # arrive here identically), while a whitespace-only value is a 400, since a
+    # published row always carries one.
+    source_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
+    # The archived copy of the source URL this write stores.
     source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
     # The archived copy of the post a machine detection came from, on the same
     # terms: the provenance link is immutable, and archiving it is not a change
@@ -390,8 +366,12 @@ async def save_event_version(
     # The editor's own words about this edit, stored on the version it
     # supersedes. Optional.
     note: str | None = Form(None, max_length=VERSION_NOTE_MAX_LENGTH),
-    # The proof body's new inline images, matched to its ``placeholder://``
-    # srcs. Source media carry no field: the anchor is immutable.
+    # Ids of existing media to drop (JSON array), as on geolocate: the
+    # replacement source rides in ``files``, and the version this call files
+    # keeps the dropped one renderable.
+    remove_media_ids: str | None = Form(None),
+    files: list[UploadFile] | None = File(None),
+    # The proof body's new inline images, matched to its ``placeholder://`` srcs.
     proof_files: list[UploadFile] | None = File(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -403,13 +383,14 @@ async def save_event_version(
     as an ``event_versions`` row and the event moves to the next
     ``version_no``, in one transaction under a row lock.
 
-    The evidence anchor is immutable: ``source_url`` and the source media take
-    no field. A published row is past ``POST /events/{id}/close``, so a wrong
-    source on one is an admin matter rather than an owner action. Everything
-    else the publish form wrote is editable and versioned, the secondary source
-    links included. The published evidence floor is re-checked on the post-edit
-    state, so a version cannot drop the row below it. Soft-deleted rows read as
-    404.
+    The evidence anchor is editable, and versioned with everything else:
+    ``source_url`` takes a field here, and the source media moves on the
+    ``remove_media_ids`` + ``files`` pair ``POST /events/{id}/geolocate`` takes,
+    under the same one-source cap. The version this call files carries the
+    source URL and the source media it supersedes, so the record still shows
+    what the claim rested on. The published evidence floor is re-checked on the
+    post-edit state, so a version cannot drop the row below it. Soft-deleted
+    rows read as 404.
 
     This is also where an archived copy of one of the row's links is recorded:
     ``source_snapshot_url``, ``detected_from_snapshot_url`` and
@@ -427,6 +408,7 @@ async def save_event_version(
     proof_data = parse_optional_json_object(proof, field="proof")
     parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids", as_uuid=True)
     parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
+    parsed_remove_ids = parse_json_id_list(remove_media_ids, field="remove_media_ids")
 
     # Not owner-gated at the router: the service re-checks ownership and status
     # under the row lock, where the decision is race-free.
@@ -441,6 +423,7 @@ async def save_event_version(
             lng=lng,
             capture_source_lat=capture_source_lat,
             capture_source_lng=capture_source_lng,
+            source_url=source_url,
             source_snapshot_url=source_snapshot_url,
             detected_from_snapshot_url=detected_from_snapshot_url,
             secondary_source_urls=secondary_source_urls,
@@ -452,6 +435,8 @@ async def save_event_version(
             tag_ids=parsed_tag_ids,
             conflict_ids=parsed_conflict_ids,
             is_graphic=is_graphic,
+            remove_media_ids=parsed_remove_ids,
+            files=files or [],
             proof_files=proof_files,
             note=note,
         )
@@ -565,13 +550,16 @@ def close_event(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Close an event: withdraw a request or reject a detection (owner-only).
+    """Close an event: withdraw, reject or retract it (owner-only).
 
-    One terminal verb for both dismissal shapes; ``before_closed_status``
-    records which state the row left, and the required ``close_reason`` stays
-    publicly visible. The row remains readable (transparency), drops off the
-    map, and a closed detection is re-importable. Off ``requested`` /
-    ``detected`` → 409; soft-deleted → 404; not the owner → 403.
+    One terminal verb for all three dismissal shapes, available in every live
+    state; ``before_closed_status`` records which state the row left, and the
+    required ``close_reason`` stays publicly visible. The row remains readable
+    (transparency) and drops off the map. A closed detection stays in the
+    located catalog and stays re-importable; closing a ``geolocated`` row is a
+    public retraction, which keeps the page, the version history, the credits
+    and the archives, and leaves the published set for good. Already closed →
+    409; soft-deleted → 404; not the owner → 403.
     """
     geo = resolve_live_event(db, geolocation_id)
     try:

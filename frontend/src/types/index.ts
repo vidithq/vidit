@@ -46,8 +46,16 @@ export type Conflict = components["schemas"]["ConflictRead"];
  *  rendered marked everywhere until its owner submits it) → ``geolocated`` (a
  *  person vouched for it: via the form, or by submitting a reviewed detection;
  *  not an independent-verification claim; corrected from there on as new
- *  versions) → ``closed`` (a withdrawn request). */
+ *  versions) → ``closed`` (the row taken back by its owner, from any of the
+ *  three). */
 export type EventStatus = components["schemas"]["EventRead"]["status"];
+
+/** Which state a ``closed`` row left, and so what its close was: ``requested``
+ *  a withdrawn ask, ``detected`` a rejected machine reading, ``geolocated`` a
+ *  retracted claim. Null on every live row. */
+export type BeforeClosedStatus = NonNullable<
+  components["schemas"]["EventRead"]["before_closed_status"]
+>;
 
 /** Which entry produced a machine detection: the bot, a pasted URL, or an archive
  *  backfill. Generated, so a fourth entry reaches every reader through the

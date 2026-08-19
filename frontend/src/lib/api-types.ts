@@ -960,14 +960,7 @@ export interface paths {
         get: operations["get_event_api_v1_events__geolocation_id__get"];
         put?: never;
         post?: never;
-        /**
-         * Delete Event
-         * @description Hard-delete by the owner. Cascades drop the tag links, contributor
-         *     rows and media rows; the S3 objects (media of every role, plus the source
-         *     image derivatives) are swept after the commit lands. Admin soft-delete
-         *     lives behind the admin router and stamps ``deleted_at`` instead.
-         */
-        delete: operations["delete_event_api_v1_events__geolocation_id__delete"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -984,13 +977,16 @@ export interface paths {
         put?: never;
         /**
          * Close Event
-         * @description Close an event: withdraw a request or reject a detection (owner-only).
+         * @description Close an event: withdraw, reject or retract it (owner-only).
          *
-         *     One terminal verb for both dismissal shapes; ``before_closed_status``
-         *     records which state the row left, and the required ``close_reason`` stays
-         *     publicly visible. The row remains readable (transparency), drops off the
-         *     map, and a closed detection is re-importable. Off ``requested`` /
-         *     ``detected`` → 409; soft-deleted → 404; not the owner → 403.
+         *     One terminal verb for all three dismissal shapes, available in every live
+         *     state; ``before_closed_status`` records which state the row left, and the
+         *     required ``close_reason`` stays publicly visible. The row remains readable
+         *     (transparency) and drops off the map. A closed detection stays in the
+         *     located catalog and stays re-importable; closing a ``geolocated`` row is a
+         *     public retraction, which keeps the page, the version history, the credits
+         *     and the archives, and leaves the published set for good. Already closed →
+         *     409; soft-deleted → 404; not the owner → 403.
          */
         post: operations["close_event_api_v1_events__geolocation_id__close_post"];
         delete?: never;
@@ -1102,13 +1098,14 @@ export interface paths {
          *     as an ``event_versions`` row and the event moves to the next
          *     ``version_no``, in one transaction under a row lock.
          *
-         *     The evidence anchor is immutable: ``source_url`` and the source media take
-         *     no field. A published row is past ``POST /events/{id}/close``, so a wrong
-         *     source on one is an admin matter rather than an owner action. Everything
-         *     else the publish form wrote is editable and versioned, the secondary source
-         *     links included. The published evidence floor is re-checked on the post-edit
-         *     state, so a version cannot drop the row below it. Soft-deleted rows read as
-         *     404.
+         *     The evidence anchor is editable, and versioned with everything else:
+         *     ``source_url`` takes a field here, and the source media moves on the
+         *     ``remove_media_ids`` + ``files`` pair ``POST /events/{id}/geolocate`` takes,
+         *     under the same one-source cap. The version this call files carries the
+         *     source URL and the source media it supersedes, so the record still shows
+         *     what the claim rested on. The published evidence floor is re-checked on the
+         *     post-edit state, so a version cannot drop the row below it. Soft-deleted
+         *     rows read as 404.
          *
          *     This is also where an archived copy of one of the row's links is recorded:
          *     ``source_snapshot_url``, ``detected_from_snapshot_url`` and
@@ -1518,11 +1515,9 @@ export interface components {
          *     machine detections. Counted over all machine rows, soft-deleted or not: the
          *     metric measures what the pipeline produced.
          *
-         *     Two counting edges the metric accepts, both favouring over-counting
-         *     dismissals over under-counting them: an owner hard-delete
-         *     (``DELETE /events/{id}`` on an own detection) removes the row from both counts
-         *     entirely; an account-departure cascade soft-delete counts that account's
-         *     pending detections as rejects.
+         *     One counting edge the metric accepts, favouring over-counting dismissals
+         *     over under-counting them: an account-departure cascade soft-delete counts
+         *     that account's pending detections as rejects.
          *
          *     The ``pending_*`` counts profile the live ``detected`` queue (awaiting
          *     review, ``deleted_at IS NULL``, machine rows only): how many detections are
@@ -2154,6 +2149,8 @@ export interface components {
             event_date?: string | null;
             /** Event Time */
             event_time?: string | null;
+            /** Files */
+            files?: string[] | null;
             /**
              * Is Graphic
              * @default false
@@ -2169,6 +2166,8 @@ export interface components {
             proof?: string | null;
             /** Proof Files */
             proof_files?: string[] | null;
+            /** Remove Media Ids */
+            remove_media_ids?: string | null;
             /**
              * Secondary Snapshot Urls
              * @default []
@@ -2183,6 +2182,8 @@ export interface components {
             source_posted_at?: string | null;
             /** Source Snapshot Url */
             source_snapshot_url?: string | null;
+            /** Source Url */
+            source_url?: string | null;
             /** Tag Ids */
             tag_ids?: string | null;
             /** Title */
@@ -2358,7 +2359,7 @@ export interface components {
         /** EventList */
         EventList: {
             /** Before Closed Status */
-            before_closed_status: ("requested" | "detected") | null;
+            before_closed_status: ("requested" | "detected" | "geolocated") | null;
             /** Conflicts */
             conflicts: components["schemas"]["ConflictRead"][];
             event_coords: components["schemas"]["CoordsRead"] | null;
@@ -2390,7 +2391,7 @@ export interface components {
             archived_secondary_sources: (components["schemas"]["ArchivedLinkRead"] | null)[];
             archived_source: components["schemas"]["ArchivedLinkRead"] | null;
             /** Before Closed Status */
-            before_closed_status: ("requested" | "detected") | null;
+            before_closed_status: ("requested" | "detected" | "geolocated") | null;
             capture_source_coords: components["schemas"]["CoordsRead"] | null;
             /** Close Reason */
             close_reason: string | null;
@@ -2470,9 +2471,10 @@ export interface components {
          *     ``version_no`` is the version this row holds, not the version that replaced
          *     it: an event at ``version_no`` 3 answers with snapshots 2 and 1, and the
          *     live row is version 3. ``snapshot`` carries the editable fields as they
-         *     stood (see ``services/versions.build_snapshot``); the evidence anchor
-         *     (``source_url`` and the source media) is absent because no edit can move it,
-         *     so the live row is authoritative for it at every version.
+         *     stood (see ``services/versions.build_snapshot``), the evidence anchor
+         *     included: ``source_url`` and ``source_media`` say what the claim rested on
+         *     at that version, the media as the whole shape ``EventRead`` serves, since
+         *     the row itself is gone once a correction replaced it.
          */
         EventVersionRead: {
             /**
@@ -4382,37 +4384,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EventRead"];
                 };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_event_api_v1_events__geolocation_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                geolocation_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Validation Error */
             422: {

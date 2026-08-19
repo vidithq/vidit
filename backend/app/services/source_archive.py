@@ -437,6 +437,12 @@ def reconcile_source_archive(db: Session, *, event: Event) -> None:
       origin;
     * the old URL is gone from the event: the row is deleted.
 
+    The promotion is the same rule read the other way: a copy the analyst
+    recorded against a mirror, a proof citation or the provenance link is a copy
+    of the declared source once that link becomes ``source_url``, so its row
+    takes the ``source_url`` origin instead of a second row being minted for a
+    link that already has one.
+
     Either way nothing claims to archive the source URL but the copy of the
     source URL, so an edit that changes the source and pastes no new snapshot
     leaves the event with no archived source rather than a stale one. Pasting
@@ -447,7 +453,10 @@ def reconcile_source_archive(db: Session, *, event: Event) -> None:
     still the stored one, since a write applies its new proof at commit.
     """
     for row in list(event.archives):
-        if row.origin != "source_url" or row.original_url == event.source_url:
+        if row.original_url == event.source_url:
+            row.origin = "source_url"
+            continue
+        if row.origin != "source_url":
             continue
         origin = origin_of(event, row.original_url)
         if origin is None:
@@ -466,6 +475,13 @@ def drop_mirror_archives(db: Session, *, event: Event, kept: list[str]) -> None:
     URL survives elsewhere is left alone: only ``source_url`` demands a
     re-file, since it is the one origin the read surface reads by slot.
 
+    The event's own ``source_url`` is never dropped here, whatever origin its
+    row carries. Normalization strips the mirror equal to the source, so an edit
+    promoting an archived mirror to ``source_url`` hands a ``kept`` list without
+    it; deleting on that absence would destroy the copy of the very link the
+    edit made the anchor. :func:`reconcile_source_archive`, which runs after
+    this, re-files that row under origin ``source_url``.
+
     ``kept`` is the normalized mirror list this write stores. Call it after the
     version this write supersedes is filed, so that version keeps the copies it
     held, and before the caller's commit: the rows go with the rest of the
@@ -473,6 +489,8 @@ def drop_mirror_archives(db: Session, *, event: Event, kept: list[str]) -> None:
     """
     surviving = set(kept)
     for row in list(event.archives):
+        if row.original_url == event.source_url:
+            continue
         if row.origin == "secondary_source" and row.original_url not in surviving:
             db.delete(row)
 

@@ -162,22 +162,40 @@ def test_source_url_status_check_allows_detected_without_source_url(db, author):
 
 
 def test_before_closed_status_check_rejects_value_outside_the_domain(db, author):
-    """``before_closed_status`` on a ``closed`` row must be ``requested`` or
-    ``detected`` (the two dismissal shapes); a ``geolocated`` value here would
-    claim a frozen row was somehow withdrawn or rejected, which can't happen:
+    """``before_closed_status`` on a ``closed`` row names one of the three live
+    states it left; anything else is a value no transition can produce, and
     Postgres refuses the write."""
     bad = _bare_event(
         db,
         author=author,
         status=STATUS_CLOSED,
         closed_at=datetime.now(UTC),
-        before_closed_status="geolocated",
+        before_closed_status="published",
         event_coords=from_shape(Point(34.5, 48.5), srid=4326),
     )
     db.add(bad)
     with pytest.raises(IntegrityError, match="ck_events_before_closed_status"):
         db.commit()
     db.rollback()
+
+
+def test_before_closed_status_check_admits_a_retraction(db, author):
+    """A retracted row is ``closed`` off ``geolocated`` and keeps the
+    coordinate and the publication stamp it was published with, so the coords,
+    source-URL and geolocated-at CHECKs all still hold on it."""
+    ok = _bare_event(
+        db,
+        author=author,
+        status=STATUS_CLOSED,
+        closed_at=datetime.now(UTC),
+        before_closed_status="geolocated",
+        geolocated_at=datetime.now(UTC),
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+    )
+    db.add(ok)
+    db.commit()  # must not raise
+    db.delete(ok)
+    db.commit()
 
 
 def test_before_closed_status_check_rejects_null_on_closed_row(db, author):

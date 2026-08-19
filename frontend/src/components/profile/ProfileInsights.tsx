@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Archive, Bot, Film, MapPin } from "lucide-react";
+import { Bot, Camera, MapPin, Swords } from "lucide-react";
 
+import { profileSearchHref } from "@/lib/search";
 import { getUserStats, type UserStats } from "@/lib/users";
 import { ActivityHeatmap } from "@/components/ui/ActivityHeatmap";
 import { Card } from "@/components/ui/Card";
-import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SourceHostBar } from "@/components/ui/SourceHostBar";
 import { StatGrid, StatTile } from "@/components/ui/StatTile";
@@ -25,24 +25,31 @@ function ChartNote({ children }: { children: ReactNode }) {
 }
 
 /**
- * The shape-of-work section on the public profile: status split, media
- * count, top conflict + capture-source pills, the source-origin bar, and the
- * month grid over the span the analyst's events cover, all from
+ * The shape-of-work section on the public profile: the two live-status counts
+ * and the leading conflict and capture source as four tiles, the source-origin
+ * bar, and the month grid over the span the analyst's events cover, all from
  * `GET /users/{username}/stats`. Renders nothing until the stats arrive and
  * nothing at all for a profile with no events; a failed fetch also hides the
  * section rather than blocking the profile.
  *
  * It is the only home for the work figures on the page: the identity line
  * above carries the social and account metadata, and nothing restates
- * `Geolocated` under a second name.
+ * `Geolocated` under a second name. Each tile names its figure once: the
+ * ranked lists behind the two leaders are not printed beside them, since the
+ * tile already says who leads and the search behind it says by how much.
+ *
+ * A tile is the way into the rows it counts. Every one carries a
+ * `profileSearchHref` into `/search` scoped to this analyst, so the reader who
+ * wants to check a figure lands on the events it was summed off. A tile with
+ * no value to name (`None`) carries no link, because there is nothing to open.
  *
  * One population feeds every block: the analyst's live events in the three
  * worked statuses, detections included. A chart drawn on published work alone
  * beside tiles counting detections would print two answers to one question with
  * nothing on the page to explain the gap, so the backend serves one set. Each
  * note says what its own block makes of that set, because the blocks do not
- * all count events: `Media` counts the media hanging off them, and the month
- * grid can only draw the events that carry a date.
+ * all draw the whole of it: the month grid can only draw the events that carry
+ * a date.
  */
 export function ProfileInsights({ username }: { username: string }) {
   // The result remembers which username it answers, so navigating to another
@@ -74,54 +81,69 @@ export function ProfileInsights({ username }: { username: string }) {
   // sum is the only figure that matches the cells on screen.
   const datedCount = stats.activity.reduce((sum, bucket) => sum + bucket.count, 0);
 
+  // The head of each ranked list, which is all the card prints of it. Both
+  // lists are ordered count desc then name server-side, so the first row is
+  // the leader.
+  const topConflict = stats.top_conflicts[0];
+  const topCaptureSource = stats.capture_sources[0];
+
   return (
     <Card as="section">
       <div>
         <SectionEyebrow title="Insights" margin="none" />
         {/* The tiles' population, stated once. It is not every figure on the
-            card: `Media` counts media rows rather than events, and the month
-            grid draws only the dated ones, which its own note says. */}
+            card: the month grid draws only the dated events, which its own
+            note says. */}
         <ChartNote>
-          The tiles below describe one set of {stats.total_events}{" "}
+          The tiles below read one set of {stats.total_events}{" "}
           {stats.total_events === 1 ? "event" : "events"}: this analyst&apos;s
-          geolocations, machine detections and closed rows.
+          geolocations, machine detections and closed rows. Two count it, two
+          name what leads it.
         </ChartNote>
       </div>
 
       <StatGrid>
-        <StatTile icon={MapPin} label="Geolocated" value={stats.geolocated_count} />
+        <StatTile
+          icon={MapPin}
+          label="Geolocated"
+          value={stats.geolocated_count}
+          href={profileSearchHref(username, { status: "geolocated" })}
+        />
         {/* Bot, not a new glyph: the one detected marker across the app
             (StatusBadge, DetectionsEntry). */}
-        <StatTile icon={Bot} label="Detected" value={stats.detected_count} />
-        <StatTile icon={Archive} label="Closed" value={stats.closed_count} />
-        <StatTile icon={Film} label="Media" value={stats.media_count} />
+        <StatTile
+          icon={Bot}
+          label="Detected"
+          value={stats.detected_count}
+          href={profileSearchHref(username, { status: "detected" })}
+        />
+        {/* `small`: a conflict name is a title ("Russo-Ukrainian War"), not a
+            figure, and the tile has to hold it at 375 px. */}
+        <StatTile
+          icon={Swords}
+          label="Top conflict"
+          small
+          value={topConflict ? topConflict.name : "None"}
+          href={
+            topConflict
+              ? profileSearchHref(username, { conflict: topConflict.name })
+              : undefined
+          }
+        />
+        <StatTile
+          icon={Camera}
+          label="Top capture source"
+          small
+          value={topCaptureSource ? topCaptureSource.name : "None"}
+          href={
+            topCaptureSource
+              ? profileSearchHref(username, {
+                  capture_source: topCaptureSource.name,
+                })
+              : undefined
+          }
+        />
       </StatGrid>
-
-      {stats.top_conflicts.length > 0 && (
-        <div>
-          <SectionEyebrow title="Top conflicts" as="h3" margin="sm" />
-          <div className="flex flex-wrap gap-1.5">
-            {stats.top_conflicts.map((c) => (
-              <Pill key={c.name} tone="accent">
-                {c.name} · {c.count}
-              </Pill>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {stats.capture_sources.length > 0 && (
-        <div>
-          <SectionEyebrow title="Capture sources" as="h3" margin="sm" />
-          <div className="flex flex-wrap gap-1.5">
-            {stats.capture_sources.map((t) => (
-              <Pill key={t.name}>
-                {t.name} · {t.count}
-              </Pill>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Where the footage came from, next to what it shows and how it was
           shot: the beat an analyst works reads off the hosts. The `?` is the

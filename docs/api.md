@@ -41,13 +41,12 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/{id}/report` | 🌐 | Report an event for moderation (anonymous allowed) |
 | POST | `/events` | 🔒 | Create an event born `geolocated` (multipart, uploads media) |
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event (ex `POST /requests`) |
-| DELETE | `/events/{id}` | 🔒 | Owner-only hard delete + S3 sweep |
 | POST | `/events/{id}/geolocate` | 🔒 | Give an event a vouched location: `requested` \| `detected` → `geolocated` |
 | POST | `/events/batch-complete` | 🔒 | Publish a selection of your detections in one call (per-row verdicts) |
 | POST | `/events/{id}/versions` | 🔒 | Correct a published event, owner only; files the version it supersedes |
 | GET | `/events/{id}/versions` | 🌐 | The event's superseded versions, newest first |
 | GET | `/events/{id}/versions/{version_no}` | 🌐 | One superseded version, by its number |
-| POST | `/events/{id}/close` | 🔒 | Withdraw a request or reject a detection, owner only (→ `closed`) |
+| POST | `/events/{id}/close` | 🔒 | Withdraw, reject or retract an event, owner only (→ `closed`) |
 | GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated, filterable on readiness) |
 | **Search** | | | |
 | GET | `/search` | 🌐 | Free-text search across geolocations / requests / users |
@@ -115,7 +114,7 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | `POST /events/import-archive/presign` | 10/hour |
 | `POST /events/import-archive` | 10/hour |
 | `GET /events/import-archive/{job_id}` | 60/min |
-| `POST /events`, `POST /events/requests`, `DELETE /events/{id}` | 30/min |
+| `POST /events`, `POST /events/requests` | 30/min |
 | `POST /events/{id}/geolocate`, `POST /events/{id}/versions` | 30/min |
 | `POST /events/batch-complete` | 10/min |
 | `POST /events/{id}/close` | 60/min |
@@ -341,7 +340,7 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 **Query params:**
 | Param | Type | Description |
 |-------|------|-------------|
-| `view` | string | `located` (default, the catalog: `geolocated` + `detected` rows, plus a `closed` row whose `before_closed_status` was `detected`) or `requested` (the open-call queue, ex `/requests`: `requested` rows, plus a `closed` row whose `before_closed_status` was `requested`). Anything else → 422. |
+| `view` | string | `located` (default, the catalog: `geolocated` + `detected` rows, plus a `closed` row whose `before_closed_status` was `detected`) or `requested` (the open-call queue, ex `/requests`: `requested` rows, plus a `closed` row whose `before_closed_status` was `requested`). Each view keeps the closed rows that left its own cohort; a retraction (`closed` off `geolocated`) is in neither and is reachable by its own URL. Anything else → 422. |
 | `status` | string (repeatable) | Narrows within the view, e.g. `?view=requested&status=closed`. Repeat the param to OR within the bucket (`?status=geolocated&status=detected`). Values outside `requested` / `detected` / `geolocated` / `closed` return 422; a value the view can't contain returns an empty list. |
 | `conflict` | string (repeatable) | Filter by conflict name, matched against the [`conflicts`](#conflicts) referential (`conflicts.name`), not tags. Repeat the param to OR within the conflict bucket (`?conflict=Russian invasion of Ukraine&conflict=Gaza war`). Combining with other buckets ANDs across them. |
 | `capture_source` | string (repeatable) | Filter by capture-source tag name (`?capture_source=Satellite&capture_source=Drone`). Same semantics as `conflict`: OR within the bucket, AND across buckets, and the matched tag must carry `category == "capture_source"`. |
@@ -752,20 +751,6 @@ Create an event directly, born `geolocated`. To open a request without coordinat
 
 ---
 
-### `DELETE /events/{id}` 🔒
-
-Owner-only delete. Cascades media, tag links, and contributor rows. A **hard** delete: the row and every S3 object it referenced are gone, distinct from the admin soft-delete (`DELETE /admin/events/{id}`) and from `POST /events/{id}/close`, which leaves the row readable.
-
-**Response 204:** no body.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 403 | You are not the owner |
-| 404 | Event not found (incl. soft-deleted) |
-
----
-
 ### `GET /events/detections` 🔒
 
 Your "Detections" queue: your machine-`detected` events awaiting a geolocate, newest first (`created_at` desc). **Scoped to `current_user`**: it ignores any URL username and never exposes another analyst's rows. Powers `/profile/{username}/detections`, where you review and geolocate each detection. Returns the **full detail** shape (media + tags), not the lightweight list card, so the queue shows the evidence and names what each row is missing without a per-row fetch.
@@ -850,9 +835,9 @@ Gives an event a vouched location: transitions `requested` | `detected` → `geo
 | `lng` | float | Longitude (-180 to 180) of the subject |
 | `capture_source_lat` | float | Latitude of the camera position. Both-or-neither with `capture_source_lng`. |
 | `capture_source_lng` | float | Longitude of the camera position. |
-| `source_url` | string | ≤2000 chars, the footage origin. A detection may start with no declared source (`null`, see [`ingestion.md`](ingestion.md)): a blank value here 400s as `source_url_required`, since a `geolocated` row always carries one. Fulfilling a `requested` event ignores this field and keeps the request's `source_url`, so you can't rewrite the requester's evidence anchor |
+| `source_url` | string | ≤2000 chars, the footage origin. A detection may start with no declared source (`null`, see [`ingestion.md`](ingestion.md)): a blank value here 400s as `source_url_required`, since a `geolocated` row always carries one. Fulfilling a `requested` event ignores this field and keeps the request's `source_url`, so you can't rewrite the requester's evidence anchor. Past publication the same correction goes through [`POST /events/{id}/versions`](#post-eventsidversions), which files the version it supersedes |
 | `source_snapshot_url` | string | The archived copy of the source URL this write stores, ≤2000 chars, same contract as [`POST /events`](#post-events). On a `requested` fulfilment it is checked against the request's own `source_url`, the one that is kept. Whether or not you send it, a write that changes `source_url` never keeps a copy of the old one filed as the archived source: see [`archival.md`](archival.md). |
-| `secondary_source_urls` | string[] (repeated field) | Optional mirrors, same normalization and cap as [`POST /events`](#post-events). Unlike `source_url`, this field is **not** ignored on a `requested` fulfilment: the submitted list replaces whatever the row held, since the mirrors sit outside the frozen evidence anchor. |
+| `secondary_source_urls` | string[] (repeated field) | Optional mirrors, same normalization and cap as [`POST /events`](#post-events). Unlike `source_url`, this field is **not** ignored on a `requested` fulfilment: the submitted list replaces whatever the row held, the mirrors carrying none of the requester's evidence anchor protection. |
 | `secondary_snapshot_urls` | string[] (repeated field) | The archived copy of each mirror, same contract as [`POST /events`](#post-events). Filed against the links this write stores, so a copy posted beside a mirror the write drops is dropped with it. |
 | `event_date` | string (YYYY-MM-DD) | When the depicted event happened. Optional, mirroring create: empty / omitted stores NULL (renders as *Unknown*) |
 | `event_time` | string (HH:MM) | Optional time-of-day for the event (UTC); empty / omitted clears it |
@@ -861,7 +846,7 @@ Gives an event a vouched location: transitions `requested` | `detected` → `geo
 | `tag_ids` | JSON string (UUID[]) | Replaces the tag set wholesale |
 | `conflict_ids` | JSON string (UUID[]) | Replaces the event's [conflict](#conflicts) set wholesale |
 | `is_graphic` | boolean | The graphic-content declaration. Unlike every other field here it ratchets: `true` sets the flag, and `false` leaves an already-flagged event flagged. To clear the flag, use [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation), which audits the unmark |
-| `remove_media_ids` | JSON string (UUID[]) | Existing source media to drop (S3 swept) |
+| `remove_media_ids` | JSON string (UUID[]) | Existing source media to drop (S3 swept: nothing is versioned before publication) |
 | `files` | file[] | New source media to add (0 or 1; kept + new must total exactly one, same allowlist + size limits as create) |
 | `proof_files` | file[] | New proof images referenced by `placeholder://` srcs in `proof` |
 
@@ -945,7 +930,7 @@ The first six are the same stable codes the single-row geolocate answers with, a
 
 Correct a published event. Owner-only, and only while `geolocated`: the state a correction applies to is the vouched record, so before publication a row is edited through its own path ([`POST /events/{id}/geolocate`](#post-eventsidgeolocate) for a detection or a request). The write files the pre-edit state as a version, applies your form, and moves the event to the next `version_no`, all in one transaction under a row lock. Two concurrent edits therefore take their numbers in order rather than racing. **Multipart**, mirroring geolocate.
 
-**Editability contract.** After publication the **evidence anchor is immutable**: `source_url` and the source media are what the published claim rests on, so this endpoint declares no field for either, and sending one changes nothing. A wrong source on a published event is an admin matter: [`POST /events/{id}/close`](#post-eventsidclose) rejects a `geolocated` row, so its owner has no path to the anchor. Everything else the publish form wrote is editable and versioned: the title, both coordinate sets, the event date and hour, the source post time, the graphic-content flag, the tags, the conflicts, the proof body with its inline images, and the secondary source links, which are mirrors rather than the evidence origin and sit outside the anchor.
+**Editability contract.** Everything the publish form wrote is editable and versioned, the **evidence anchor** included: the title, both coordinate sets, the event date and hour, the source post time, the graphic-content flag, the tags, the conflicts, the proof body with its inline images, the secondary source links, `source_url`, and the source media. The anchor moves on the fields [`POST /events/{id}/geolocate`](#post-eventsidgeolocate) takes, under the same one-source cap: `remove_media_ids` drops the stored media and `files` carries its replacement. The version this call files records the source URL and the source media it supersedes, so the record still shows what the claim rested on. `detected_from_url` (the provenance link) is the one field no write moves, at any point in the lifecycle.
 
 **This is also where a published record's archived copies are recorded.** `source_snapshot_url`, `detected_from_snapshot_url` and `secondary_snapshot_urls` archive a link without changing it, which is why the two immutable links carry the field at all. Each lands in the version this call produces, so one call files one version carrying the edit and the copies. Which of a record's links are archived is part of what the record says, so a save whose only change is a copy is a version like any other, and the changed-field list names it *Archived copies*. See [`archival.md`](archival.md).
 
@@ -957,7 +942,8 @@ Correct a published event. Owner-only, and only while `geolocated`: the state a 
 | `lng` | float | Longitude (-180 to 180) of the subject |
 | `capture_source_lat` | float | Latitude of the camera position. Both-or-neither with `capture_source_lng`. |
 | `capture_source_lng` | float | Longitude of the camera position. |
-| `source_snapshot_url` | string | The archived copy of the event's stored source URL, ≤2000 chars, checked as every archived-copy field is (see [`archival.md`](archival.md)). Accepted here because it archives the anchor rather than changing it. It lands in the version this edit produces, so one call files one version carrying both |
+| `source_url` | string | ≤2000 chars, the footage origin. Optional here, unlike on geolocate: omitted or empty keeps the URL the row holds, a whitespace-only value 400s as `source_url_required` (a `geolocated` row always carries one), and any other value replaces it, the version this call files keeping the old one readable |
+| `source_snapshot_url` | string | The archived copy of the source URL this write stores, ≤2000 chars, checked as every archived-copy field is (see [`archival.md`](archival.md)). It lands in the version this edit produces, so one call files one version carrying both. A copy of a source URL this edit replaced is re-filed against the link it still covers or dropped, exactly as on geolocate |
 | `detected_from_snapshot_url` | string | The archived copy of `detected_from_url`, the post a machine detection came from, ≤2000 chars and on the same terms. Accepted for the same reason: the provenance link is immutable, and archiving it is not a change to it. A 400 (`original_url_not_on_event`) on a row carrying no provenance link |
 | `secondary_source_urls` | string[] (repeated field) | Optional mirrors, same normalization and cap as [`POST /events`](#post-events). The submitted list replaces whatever the row held |
 | `secondary_snapshot_urls` | string[] (repeated field) | The archived copy of each mirror, same contract as [`POST /events`](#post-events). Lands in the version this edit produces, so one call files one version carrying the edit and the copies |
@@ -969,6 +955,8 @@ Correct a published event. Owner-only, and only while `geolocated`: the state a 
 | `conflict_ids` | JSON string (UUID[]) | Replaces the event's [conflict](#conflicts) set wholesale |
 | `is_graphic` | boolean | The graphic-content declaration. Ratchets exactly as on geolocate: `true` sets the flag, `false` leaves an already-flagged event flagged. To clear it, use [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation) |
 | `note` | string | Optional, ≤280 chars. Your own words about this edit, stored on the version it supersedes and read back by [`GET /events/{id}/versions`](#get-eventsidversions) |
+| `remove_media_ids` | JSON string (UUID[]) | The source media to drop. Its S3 object is **not** swept: the version this call files renders it |
+| `files` | file[] | The replacement source media (0 or 1; kept + new must total exactly one, same allowlist + size limits as create) |
 | `proof_files` | file[] | New proof images referenced by `placeholder://` srcs in `proof` |
 
 The published evidence floor is re-checked against the post-edit state, so a correction cannot drop the row below what publishing it required: a source media on the row, at least one proof image in the final proof body, one conflict, and one `capture_source` tag.
@@ -979,20 +967,22 @@ The published evidence floor is re-checked against the post-edit state, so a cor
 
 **Media and history.** A proof image the new body no longer references is normally deleted, row and object. It is kept instead when a readable past version displays it, so that version stays renderable after the image left the current body. A version records the images its own proof body referenced, so an image no version ever displayed is not held alive by the history, and a [redacted](#post-admineventsidversionsversion_noredact) version holds nothing alive at all.
 
+The source media takes the other route, because its row cannot stay: an event carries at most one, so a swap deletes the row it replaces. The version records that media whole (`source_media` in the snapshot, the shape `GET /events/{id}` serves its `media` in) and the S3 object is left in place, so `/events/{id}/vN` renders the footage that version rested on. The object is swept when the event is deleted, or when the last readable version naming it is redacted.
+
 **Proof-image ceiling.** `max_proof_images_per_event` bounds what the new proof body displays, not what one request sends: the already-uploaded images the body still references plus the files it adds. An image kept only because a past version displays it does not count, so swapping images across corrections never exhausts the ceiling. The check runs before anything reaches S3.
 
-**Image ownership.** An already-uploaded src in `proof` must be one of this event's own proof images. A URL naming another event's stored image is rejected (`invalid_file`): the owning event's next correction or [redaction](#post-admineventsidversionsversion_noredact) deletes that file, so a body pointing at it would render a hole.
+**Image ownership.** An already-uploaded src in `proof` must be one of this event's own images: a proof image, its live source media, or a source media a past version still names. A URL naming another event's stored image is rejected (`invalid_file`): the owning event's next correction or [redaction](#post-admineventsidversionsversion_noredact) deletes that file, so a body pointing at it would render a hole.
 
 **Response 200:** same shape as `GET /events/{id}`, with `version_no` one higher.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `too_many_source_links`, `media_required` (the row carries no source media), a rejected file or a proof src naming another event's image (`invalid_file` / `evidence_processing_failed`), `proof_files_mismatch`, or a rejected `source_snapshot_url` / `secondary_snapshot_urls` entry (the `snapshot_*` codes listed under [*Error envelope*](#api-reference)) |
+| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `too_many_source_links`, `media_required` (the edit would leave the row with no source media), `source_url_required` (a blank `source_url` field), a rejected file or a proof src naming another event's image (`invalid_file` / `evidence_processing_failed`), `proof_files_mismatch`, or a rejected `source_snapshot_url` / `secondary_snapshot_urls` entry (the `snapshot_*` codes listed under [*Error envelope*](#api-reference)) |
 | 403 | You are not the owner |
 | 404 | Event not found (incl. soft-deleted) |
-| 409 | Row is not `geolocated` (`invalid_state`), the save moves no versioned field and no archived copy (`nothing_changed`), or the event already carries 100 versions and the save is an edit rather than an archive-only one (`version_limit`) |
-| 422 | `note` over 280 chars, a proof body that would display more than `max_proof_images_per_event` images (its already-uploaded images plus the new files), or a single `secondary_source_urls` item over 2000 chars |
+| 409 | Row is not `geolocated` (`invalid_state`), the save moves no versioned field and no archived copy (`nothing_changed`), the event already carries 100 versions and the save is an edit rather than an archive-only one (`version_limit`), or `source_media_conflict` (a concurrent edit raced past the one-source cap) |
+| 422 | `note` over 280 chars, kept + new source media over one (`too_many_files`), a proof body that would display more than `max_proof_images_per_event` images (its already-uploaded images plus the new files), or a single `secondary_source_urls` item over 2000 chars |
 
 ---
 
@@ -1021,6 +1011,17 @@ Paged like every list endpoint: 50 rows a page by default, capped at 100 however
       "redacted": false,
       "snapshot": {
         "title": "Strike on depot, Donetsk",
+        "source_url": "https://t.me/channel/12345",
+        "source_media": [
+          {
+            "id": "uuid",
+            "role": "source",
+            "storage_url": "https://d10w3bld05vsky.cloudfront.net/uploads/.../clip.mp4",
+            "media_type": "video",
+            "sha256": "9f2c…",
+            "original_filename": "clip.mp4"
+          }
+        ],
         "event_coords": { "lat": 48.123, "lng": 37.456 },
         "capture_source_coords": null,
         "event_date": "2026-03-15",
@@ -1034,8 +1035,10 @@ Paged like every list endpoint: 50 rows a page by default, capped at 100 however
         "proof_media": [
           {
             "id": "uuid",
+            "role": "proof",
             "storage_url": "https://d10w3bld05vsky.cloudfront.net/proof/.../overlay.jpg",
             "media_type": "image",
+            "sha256": "3b71…",
             "original_filename": "overlay.jpg"
           }
         ],
@@ -1057,7 +1060,7 @@ Paged like every list endpoint: 50 rows a page by default, capped at 100 however
 
 `version_no` is the version the row **holds**, not the one that replaced it: an event whose `version_no` is 3 answers with snapshots 2 and 1, and the live row is version 3. `edited_by` is the analyst whose edit superseded that version, `null` once their account is erased. `note` is their optional line about the edit, `null` when they left none. `created_at` is when the edit happened. `redacted` is `true` on a version an admin blanked (see [`POST /admin/events/{id}/versions/{version_no}/redact`](#post-admineventsidversionsversion_noredact)); such a row keeps its number, its `created_at` and its `edited_by`, and serves `{}` as its `snapshot` with `note` `null`.
 
-`snapshot` carries the editable fields as they stood. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `proof_media` carries enough to render the snapshot's images. `archives` carries the archived copies the record held at that version, one entry per link, sorted by `original_url`; recording a copy on a published event files a version of its own (see [`POST /events/{id}/versions`](#post-eventsidversions)). The evidence anchor is absent by design: no edit can move `source_url` or the source media, so the live row is authoritative for both at every version.
+`snapshot` carries the editable fields as they stood, the evidence anchor included: `source_url` and `source_media` are what the record rested on at that version. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `proof_media` and `source_media` carry each media whole, in the shape [`GET /events/{id}`](#get-eventsid) serves `media` in, because the row itself may be gone: an event holds one source media, so a correction that swaps it deletes the row it replaces and the snapshot is what still describes it. `archives` carries the archived copies the record held at that version, one entry per link, sorted by `original_url`; recording a copy on a published event files a version of its own (see [`POST /events/{id}/versions`](#post-eventsidversions)). Every snapshot names the evidence anchor, so a client renders `source_url` and `source_media` from the snapshot alone; a snapshot filed before another field was versioned omits that field, and a client reads the live row for it.
 
 **Errors:**
 | Code | Case |
@@ -1084,7 +1087,17 @@ The live row is the current version and is not filed, so its own number answers 
 
 ### `POST /events/{id}/close` 🔒
 
-Close an event: withdraw a `requested` row or reject a detection, owner-only, in one verb. The row stays publicly visible (transparency: a queue entry that didn't produce a geolocation, or a machine detection judged wrong); `before_closed_status` records which state it left (drives the requested-view routing). A re-import leaves a closed `detected` row closed, so a rejection does not have to be made twice. Distinct from `DELETE`, which removes the row for good.
+Close an event, owner-only, in one verb. The row stays publicly visible with the reason attached, and `before_closed_status` records which state it left, which is what the close means:
+
+| Left | Reads as | What happens to it |
+|------|----------|--------------------|
+| `requested` | Withdrawn ask | Stays in the `requested` queue view as a closed row |
+| `detected` | Rejected machine reading | Stays in the `located` catalog view, and a re-import leaves it closed, so a rejection is not made twice |
+| `geolocated` | Public retraction | Leaves the published set, both read views and the map; the page, its `id`, its version history, its credits and its archives stay |
+
+Closing is terminal: there is no un-close, which is why the reason is required. It is the owner's only way to take a row back, destruction being `DELETE /admin/events/{id}`.
+
+A retraction keeps the record because readers act on published claims: someone who cited the coordinate needs the page they cited to say the claim was taken back, and the version history to say what it used to state.
 
 **Request body:**
 ```json
@@ -1099,7 +1112,7 @@ Close an event: withdraw a `requested` row or reject a detection, owner-only, in
 |------|------|
 | 403 | You are not the owner |
 | 404 | Event not found (incl. soft-deleted) |
-| 409 | Row is not `requested` / `detected` (`invalid_state`, `geolocated` and `closed` are both terminal here) |
+| 409 | Row is already `closed` (`invalid_state`, the terminal state) |
 | 422 | `close_reason` missing or over 2000 chars |
 
 ---
@@ -1111,8 +1124,8 @@ There is no `/requests` router. A **request** is a `requested` event, a **geoloc
 - **List / detail**: [`GET /events`](#get-events) (`view=requested` is the request queue, `view=located` the geolocation catalog, both carry `detected` rows too) and [`GET /events/{id}`](#get-eventsid) (any status).
 - **Open a request**: [`POST /events/requests`](#post-eventsrequests) (no coordinates required).
 - **Fulfil a request, or vouch a detection**: [`POST /events/{id}/geolocate`](#post-eventsidgeolocate) (`requested` | `detected` → `geolocated`, one verb for both).
-- **Withdraw a request, or reject a detection**: [`POST /events/{id}/close`](#post-eventsidclose) (one verb for both, `before_closed_status` tells them apart).
-- **Remove**: [`DELETE /events/{id}`](#delete-eventsid) (owner hard delete) or `DELETE /admin/events/{id}` (admin soft/hard delete).
+- **Withdraw a request, reject a detection, or retract a geolocation**: [`POST /events/{id}/close`](#post-eventsidclose) (one verb for all three, `before_closed_status` tells them apart).
+- **Remove**: `DELETE /admin/events/{id}` (admin soft/hard delete). An owner takes a row back with `close`, which keeps it readable; nothing an owner does destroys a row.
 
 `GET /events/{id}` always carries the `geolocators` list. `Search` groups a hit under `requests` when its `status` is `requested`, see below.
 
@@ -1330,7 +1343,7 @@ Public profile of an analyst.
 
 ### `GET /users/{username}/stats`
 
-Aggregated shape of an analyst's work. Pure aggregation over existing columns; drives the profile's insights section (status split, media volume, top theatres, capture lens, source hosts, activity over time).
+Aggregated shape of an analyst's work. Pure aggregation over existing columns; drives the profile's insights section (see [`design.md`](design.md#public-profile)), which tiles `geolocated_count`, `detected_count` and the head of `top_conflicts` and `capture_sources`, then draws `source_hosts` and `activity`. `closed_count` reads in the tiles' population line, and `media_count` is read by the profile share card.
 
 **Response 200:**
 ```json
@@ -1349,9 +1362,9 @@ Aggregated shape of an analyst's work. Pure aggregation over existing columns; d
 }
 ```
 
-Every field describes one population: the analyst's visible events (`deleted_at IS NULL`, `hidden_at IS NULL`) in the three worked statuses, `geolocated` + `detected` + `closed`. That set is `total_events`, and it includes detections. A `requested` row is an open call for help rather than documented work, so it takes part in no aggregate here.
+Every field describes one population: the analyst's visible events (`deleted_at IS NULL`, `hidden_at IS NULL`) in the three worked statuses, `geolocated` + `detected` + `closed`. That set is `total_events`, and it includes detections. A `requested` row is an open call for help rather than documented work, so it takes part in no aggregate here, and neither does its withdrawn form (`closed` off `requested`). A rejected detection and a retracted geolocation both count under `closed_count`: each is a judgement the analyst made and part of the record they built.
 
-`top_conflicts` and `capture_sources` are capped at 5, ordered by count desc then name.
+`top_conflicts` and `capture_sources` are capped at 5, ordered by count desc then name, so the first entry is the leader a client can name without reading the rest. Both are empty for an analyst whose events carry no conflict or no `capture_source` tag.
 
 `source_hosts` breaks the same set down by the host of `source_url`, folded to lower case with a leading `www.` removed, so `www.tiktok.com` and `tiktok.com` are one entry. Capped at 5 and ordered by count desc then host; `other_hosts_count` carries every event on a host past the fifth, and `no_source_count` the events whose `source_url` is null or names no readable host (a machine detection whose post declared no source). The five counts plus those two totals add up to `total_events`.
 
@@ -1441,7 +1454,7 @@ Remove your profile picture. Clears `users.avatar_url` and deletes the stored ob
 
 An analyst's published geolocations, newest event date first, ties broken by `created_at DESC, id DESC`.
 
-Serves `status = "geolocated"` only, the rows the analyst vouched for and froze. A detection is machine output they have not stood behind, a `closed` row off `detected` is one they rejected, and a `requested` row is an open call for help rather than an answer, so none of the three appear here. The filter applies to `total` as well as to the rows, so the pager never counts a row the feed will not serve. `geolocations_count` on [`GET /users/{username}`](#get-usersusername) counts the same set, so `total` and the profile's count agree. The detections stay reachable: [`GET /users/{username}/stats`](#get-usersusernamestats) tallies them alongside the published work, and the owner works their own detections from [`GET /events/detections`](#get-eventsdetections).
+Serves `status = "geolocated"` only, the rows the analyst vouched for and still stands behind. A detection is machine output they have not stood behind, a `closed` row off `detected` is one they rejected, a `closed` row off `geolocated` is one they retracted, and a `requested` row is an open call for help rather than an answer, so none of the four appear here. The filter applies to `total` as well as to the rows, so the pager never counts a row the feed will not serve. `geolocations_count` on [`GET /users/{username}`](#get-usersusername) counts the same set, so `total` and the profile's count agree. The detections stay reachable: [`GET /users/{username}/stats`](#get-usersusernamestats) tallies them alongside the published work, and the owner works their own detections from [`GET /events/detections`](#get-eventsdetections).
 
 Offset-paged, not cursor-paged: the ordering this feed reads by is `event_date`, a nullable and editable column, so it cannot key a cursor (see [Pagination](#pagination)). The tiebreaker makes the ordering total, so a page cannot repeat a row the previous page served.
 
@@ -1509,7 +1522,7 @@ Unfollow another analyst. Idempotent. Unknown username returns 404 rather than n
 
 ### `GET /timeline` 🔒
 
-Activity feed of geolocations submitted by analysts you follow, newest submission first (`created_at DESC, id DESC`).
+Activity feed of geolocations submitted by analysts you follow, newest submission first (`created_at DESC, id DESC`). Published work only, the same set [`GET /users/{username}/events`](#get-usersusernameevents) serves: a detection nobody has vouched for and a geolocation its author retracted are both out.
 
 **Query params:**
 | Param | Type | Description |
@@ -1546,9 +1559,9 @@ Returns 403 for non-admins, 401 for anonymous callers.
 
 Quality signal on the machine-extraction pipeline. A **machine detection** is an event imported from X (the archive backfill or the bot), identified by `detected_from_url` being set; a human submit always carries `detected_from_url = null`. Read-only, no audit row (a metric read is not an administrative act).
 
-**Reject-rate** is the share of machine detections dismissed before publication, whichever door they left through. A machine detection counts as a reject if either an owner closed it straight out of `detected` (`status = "closed"` with `before_closed_status = "detected"`) or an admin soft-deleted it while it was still `detected` (`deleted_at` set with `status = "detected"`). A detection the owner vouched (promoted to `geolocated`) is **not** a reject, even once soft-deleted (it was vouched before removal); one still awaiting review is **not** a reject yet. `reject_rate` is `machine_rejected / machine_total` as a 0..1 ratio (`0` when there are no machine detections). Counted over every machine row, soft-deleted or not: the metric measures what the pipeline produced.
+**Reject-rate** is the share of machine detections dismissed before publication, whichever door they left through. A machine detection counts as a reject if either an owner closed it straight out of `detected` (`status = "closed"` with `before_closed_status = "detected"`) or an admin soft-deleted it while it was still `detected` (`deleted_at` set with `status = "detected"`). A detection the owner vouched (promoted to `geolocated`) is **not** a reject, even once soft-deleted or retracted (it was vouched before either); one still awaiting review is **not** a reject yet. `reject_rate` is `machine_rejected / machine_total` as a 0..1 ratio (`0` when there are no machine detections). Counted over every machine row, soft-deleted or not: the metric measures what the pipeline produced.
 
-Two counting edges the metric accepts, both favouring over-counting dismissals over under-counting them: an owner **hard-delete** (`DELETE /events/{id}` on an own detection) removes the row from both counts entirely; an **account-departure cascade** soft-delete counts that account's pending detections as rejects.
+One counting edge the metric accepts, favouring over-counting dismissals over under-counting them: an **account-departure cascade** soft-delete counts that account's pending detections as rejects.
 
 The `pending_*` counts profile the **live** `detected` queue (`deleted_at IS NULL`, machine rows only): detections missing a piece the geolocate floor will demand (a source media, a proof-role image, or a `source_url`), so a low-quality extraction run is visible before an analyst opens the queue.
 
@@ -1709,7 +1722,7 @@ Remove an event. Default is soft delete (sets `deleted_at`); pass `?hard=true` f
 
 **Soft delete** (`?hard=false` or omitted): the row, its media rows, and its S3 objects stay put. Only `deleted_at` flips, and every public read filters it out. Idempotent: re-soft-deleting preserves the original timestamp and skips the audit append.
 
-**Hard delete** (`?hard=true`): drops the row (cascade kills every `media` row, source and proof roles alike) and best-effort-deletes the corresponding S3 objects. The DB transaction commits *before* the S3 delete attempt so a flaky storage backend can't strand DB rows pointing at live keys; per-key S3 failures are logged and swallowed (the accepted residual orphan risk).
+**Hard delete** (`?hard=true`): drops the row (cascade kills every `media` row, source and proof roles alike) and best-effort-deletes the corresponding S3 objects, the superseded source objects the event's versions name included. A source media a correction replaced has no row left, so the snapshots are the only thing resolving those keys, and deleting the event is what frees them. The DB transaction commits *before* the S3 delete attempt so a flaky storage backend can't strand DB rows pointing at live keys; per-key S3 failures are logged and swallowed (the accepted residual orphan risk).
 
 **Response 200:**
 ```json
@@ -1829,7 +1842,7 @@ Rate-limited to 60/hour.
 
 Blank one filed version of an event's history. [`event_versions`](data-model.md#event_versions) is append-only and a version number is a public address, so a version carrying material the record must stop serving is blanked rather than removed: `snapshot` becomes `{}` and `note` becomes `null`, while the row, its `version_no`, its `created_at` and its `edited_by` stay. [`GET /events/{id}/versions`](#get-eventsidversions) keeps listing it with `redacted: true`, so `/vN` addressing never shifts and the history still shows that a version existed.
 
-A redacted version displays nothing, so it stops holding proof images alive: an image no readable version and no current proof body points at is deleted with the redaction, row and object. Audited via `admin_events` (`action = "event_version_redacted"`).
+A redacted version displays nothing, so it stops holding evidence alive. A proof image no readable version and no current proof body points at is deleted with the redaction, row and object. So is the S3 object of a source media this version alone named: its row went when the correction that replaced it landed, and nothing renders it once the version is blanked. Audited via `admin_events` (`action = "event_version_redacted"`).
 
 Idempotent: redacting an already-redacted version returns it unchanged and appends no audit row.
 

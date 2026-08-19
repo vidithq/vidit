@@ -243,11 +243,11 @@ describe("public profile order", () => {
       )
     ).toBeInTheDocument();
     // The population line is scoped to the tiles, because it is not true of
-    // everything under it: `Media` counts media rows, which routinely run
-    // past `total_events`, and the grid counts dated events only.
+    // everything under it: the grid counts dated events only, and the bar
+    // splits the set by a field an event may not carry.
     expect(
       screen.getByText(
-        "The tiles below describe one set of 3 events: this analyst's geolocations, machine detections and closed rows."
+        "The tiles below read one set of 3 events: this analyst's geolocations, machine detections and closed rows. Two count it, two name what leads it."
       )
     ).toBeInTheDocument();
     expect(screen.getByText("Source origin")).toBeInTheDocument();

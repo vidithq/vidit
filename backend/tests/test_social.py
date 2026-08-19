@@ -11,8 +11,8 @@ Coverage matrix:
   deleted target so a typo username surfaces an error instead of silently
   no-op'ing.
 * ``GET /timeline`` — 401 anonymous, empty when the caller follows nobody,
-  surfaces only live (non-soft-deleted) geolocations from followed users
-  with their coordinates inline (no per-row N+1), and respects pagination
+  surfaces only live (non-soft-deleted), published geolocations from followed
+  users with their coordinates inline (no per-row N+1), and respects pagination
   (``page``, ``per_page``).
 * ``GET /users/{username}`` — ``followers_count`` / ``following_count`` /
   ``is_following`` reflect the current state for both an anonymous viewer
@@ -36,7 +36,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
 from app.main import app
-from app.models.event import Event
+from app.models.event import STATUS_CLOSED, STATUS_DETECTED, STATUS_GEOLOCATED, Event
 from app.models.follow import Follow
 from app.models.media import Media
 from app.models.user import User
@@ -370,6 +370,42 @@ def test_timeline_excludes_soft_deleted_geolocations(db, cleanup):
     body = response.json()
     titles = [item["title"] for item in body["items"]]
     assert titles == ["Live"]
+    assert body["total"] == 1
+
+
+def test_timeline_carries_only_what_the_author_published(db, cleanup):
+    """The follow feed serves the published set and nothing else.
+
+    A ``detected`` row is machine output the author never vouched for, and a
+    retraction is published work they took back, so neither belongs in a feed
+    that says "here is what the people you follow have documented". Same
+    predicate as the author's own profile feed, so one analyst's rows read the
+    same whichever way a reader reaches them.
+    """
+    record_user, record_geo = cleanup
+    viewer = _make_user(db, suffix="viewer")
+    author = _make_user(db, suffix="author")
+    record_user(viewer)
+    record_user(author)
+
+    published = _make_geo(db, author=author, title="Published", event=date(2026, 5, 10))
+    detection = _make_geo(db, author=author, title="Detection", event=date(2026, 5, 11))
+    detection.status = STATUS_DETECTED
+    retracted = _make_geo(db, author=author, title="Retracted", event=date(2026, 5, 12))
+    retracted.status = STATUS_CLOSED
+    retracted.before_closed_status = STATUS_GEOLOCATED
+    retracted.closed_at = datetime.now(UTC)
+    retracted.close_reason = "The footage was misattributed."
+    db.commit()
+    record_geo(published)
+    record_geo(detection)
+    record_geo(retracted)
+
+    db.add(Follow(follower_id=viewer.id, followed_id=author.id))
+    db.commit()
+
+    body = client.get("/api/v1/timeline", headers=login_as(client, viewer)).json()
+    assert [item["title"] for item in body["items"]] == ["Published"]
     assert body["total"] == 1
 
 

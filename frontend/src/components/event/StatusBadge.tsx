@@ -18,9 +18,10 @@ import { Pill, type PillTone } from "@/components/ui/Pill";
  *   detection); it does NOT claim independent verification, only that a person
  *   stands behind it. The neutral colour keeps the accent states the
  *   attention-drawing marks.
- * - `closed` (neutral, a cross): a terminal audit row. The one badge covers
- *   both dismissal shapes; which one this row took is the Reason beside it on
- *   the detail surfaces, and the `status` concept's `?` names the pair.
+ * - `closed` (neutral, a cross): a terminal audit row. The one badge covers all
+ *   three dismissal shapes, a withdrawn request, a rejected detection and a
+ *   retracted geolocation; which one this row took is the Reason beside it on
+ *   the detail surfaces, and the `status` concept's `?` names the three.
  *
  * The badge is a label, never an explanation: what a status means is the
  * `status` concept in [`lib/fieldHelp.ts`](../../lib/fieldHelp.ts), read by the
