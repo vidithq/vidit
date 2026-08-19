@@ -28,6 +28,10 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     - **`/events/{id}` stays the canonical address.** A version page carries `robots: noindex` and a canonical link to the event, and asking for the current version's own number forwards there rather than serving the record twice. A segment that is not `v` followed by a version number is a 404, as is a number past the current version. The action cluster is absent on a version page: sharing, reporting and editing act on the record.
   - **One version reads without walking the history** (`GET /events/{id}/versions/{version_no}`). The direct read behind a `/vN` address, public and visibility-gated exactly like the list. The current version's own number answers 404, since the live row is not filed; a redacted version answers with its blanked shape rather than 404, because the version exists and the record still shows that it does.
 
+### Fixed
+
+- **Every generated icon shipped at 32px, so Google kept the generic globe** ([`frontend/src/app/icon.tsx`](frontend/src/app/icon.tsx)). Next hands the image handler its `id` as a Promise; the handler compared it to a string, never matched, and served the 32px favicon at `/icon/android-192` and `/icon/android-512` while the `<link sizes>` claimed 192 and 512. Google's favicon crawler drops icons under 48px, so the `/favicon.ico` handler added in v0.4.7 was not enough on its own. The handler now awaits the id and each variant renders at its declared size.
+
 ## v0.5.5, 2026-08-18
 
 ### Changed
