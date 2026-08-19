@@ -138,6 +138,10 @@ function publishedFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     status: "geolocated",
     version_no: 1,
     geolocated_at: "2026-06-02T11:00:00Z",
+    // Both carry seconds, the precision a real source post time has and the two
+    // form inputs do not: an untouched save must not post the truncation back.
+    source_posted_at: "2026-05-30T14:32:27Z",
+    event_time: "14:32:27",
     tags: CURATED_TAGS,
     conflicts: CONFLICTS,
     ...overrides,
@@ -451,6 +455,37 @@ describe("editing a published geolocation", () => {
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
     expect(geolocateMock).not.toHaveBeenCalled();
     await waitFor(() => expect(push).toHaveBeenCalledWith("/events/d1"));
+  });
+
+  it("keeps the seconds of an untouched source post time and event time", async () => {
+    render(<EditEventPage />);
+
+    // Both inputs hold less than their column does, so a save that never went
+    // near them must not post the truncation back: the instant is omitted, which
+    // the endpoint reads as "keep what the row holds", and the time goes back at
+    // the row's own precision, since an absent one clears it.
+    fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
+      target: { value: "Corrected title" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
+
+    const [, input] = saveVersionMock.mock.calls[0];
+    expect(input.source_posted_at).toBe("");
+    expect(input.event_time).toBe("14:32:27");
+  });
+
+  it("posts a source post time the editor actually moved", async () => {
+    render(<EditEventPage />);
+
+    // The label carries its own `?` button, so the query is narrowed to the input.
+    fireEvent.change(screen.getByLabelText(/^Source posted/, { selector: "input" }), {
+      target: { value: "2026-05-30T15:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
+
+    expect(saveVersionMock.mock.calls[0][1].source_posted_at).toBe("2026-05-30T15:00");
   });
 
   it("posts the version note and never the evidence anchor", async () => {

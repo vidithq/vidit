@@ -2,6 +2,7 @@ import { apiFetch } from "./api";
 import type { components } from "@/lib/api-types";
 import { archiveTooLarge } from "./archive";
 import { cleanNumber, inBounds } from "./coordinates";
+import { toDatetimeLocalUTC } from "./format";
 import { proofHasImage, proofImageSrcs } from "./proof";
 import type {
   ArchiveImportJob,
@@ -767,11 +768,18 @@ export function hasVersionChanges(
     capture_source_coords: coordsOf(state.captureLat, state.captureLng),
     event_date: state.eventDate || null,
     event_time: state.eventTime || null,
-    // Blank keeps what the row holds, the way the endpoint reads it; the input
+    // Compared at the input's own precision, which is what the save posts. The
+    // datetime input stops at the minute, so a field still holding what the row
+    // seeded it with is untouched however many seconds the column carries, and
+    // the save omits it rather than truncating the stored instant. A blanked
+    // field keeps the row's value too, the way the endpoint reads an absent one.
+    // Only a value the analyst actually changed is a new instant, and the input
     // is a UTC wall clock, which is what the `Z` names.
-    source_posted_at: state.sourcePostedAt
-      ? `${state.sourcePostedAt}Z`
-      : geo.source_posted_at,
+    source_posted_at:
+      state.sourcePostedAt &&
+      state.sourcePostedAt !== toDatetimeLocalUTC(geo.source_posted_at)
+        ? `${state.sourcePostedAt}Z`
+        : geo.source_posted_at,
     // Ratcheted, as the server ratchets it: a cleared switch on a flagged row
     // changes nothing.
     is_graphic: geo.is_graphic || state.isGraphic,

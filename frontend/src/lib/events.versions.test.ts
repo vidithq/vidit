@@ -485,15 +485,24 @@ describe("hasVersionChanges", () => {
     expect(hasVersionChanges(CURRENT, untouched())).toBe(false);
   });
 
-  it("reads the two format gaps between the form and the API as no change", () => {
-    // The time input drops the seconds and the datetime input drops the zone;
-    // neither is an edit, and a naive string comparison would call both one.
+  it("reads an untouched lossy input as no change, seconds and all", () => {
+    // Both inputs hold less than their column does: the time input drops the
+    // seconds and the datetime input stops at the minute. A form still holding
+    // what the row seeded it with is untouched however much precision the row
+    // carries, so neither reads as an edit and neither is posted back.
+    const precise: EventDetail = {
+      ...CURRENT,
+      source_posted_at: "2026-05-09T15:45:27Z",
+      event_time: "15:45:27",
+    };
+    expect(hasVersionChanges(precise, untouched())).toBe(false);
+    // Blank reads as no change too, the way the endpoint reads an absent field.
+    expect(hasVersionChanges(precise, untouched({ sourcePostedAt: "" }))).toBe(false);
+    // A minute the analyst actually moved is still a change.
     expect(
-      hasVersionChanges(
-        CURRENT,
-        untouched({ eventTime: "15:45", sourcePostedAt: "2026-05-09T15:45" })
-      )
-    ).toBe(false);
+      hasVersionChanges(precise, untouched({ sourcePostedAt: "2026-05-09T16:00" }))
+    ).toBe(true);
+    expect(hasVersionChanges(precise, untouched({ eventTime: "16:00" }))).toBe(true);
   });
 
   it("names a moved field, however it moved", () => {

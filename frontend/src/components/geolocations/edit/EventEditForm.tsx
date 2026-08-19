@@ -164,10 +164,15 @@ export function EventEditForm({
     geo.secondary_source_urls.map(() => "")
   );
   const [eventDate, setEventDate] = useState(geo.event_date ?? "");
-  const [eventTime, setEventTime] = useState(geo.event_time?.slice(0, 5) ?? "");
-  const [sourcePostedAt, setSourcePostedAt] = useState(
-    toDatetimeLocalUTC(geo.source_posted_at)
-  );
+  // The two inputs that hold less than the column does: `<input type="time">`
+  // drops the seconds and `<input type="datetime-local">` stops at the minute.
+  // What each was seeded with is kept, since a value still equal to it is a
+  // field the analyst never touched, and posting the truncation back would take
+  // the seconds off a published record on an edit that never went near it.
+  const seededEventTime = geo.event_time?.slice(0, 5) ?? "";
+  const seededSourcePostedAt = toDatetimeLocalUTC(geo.source_posted_at);
+  const [eventTime, setEventTime] = useState(seededEventTime);
+  const [sourcePostedAt, setSourcePostedAt] = useState(seededSourcePostedAt);
   // The graphic-content declaration the detection already carries, editable here.
   // Submitting posts the whole state, so an untouched switch re-posts the same
   // value rather than clearing it.
@@ -237,7 +242,22 @@ export function EventEditForm({
   const submitMutation = useMutation(
     () =>
       editingPublished
-        ? saveVersion(geo.id, { ...buildCommon(), note: editNote })
+        ? saveVersion(geo.id, {
+            ...buildCommon(),
+            // An untouched lossy field is not posted as the truncation the input
+            // holds. `source_posted_at` is dropped, which this endpoint alone
+            // reads as "keep what the row holds"; `event_time` has no such
+            // contract (an absent value clears it), so it goes back at the row's
+            // own precision instead. Only the submit path posts either verbatim,
+            // where there is no stored value to preserve.
+            source_posted_at:
+              sourcePostedAt === seededSourcePostedAt ? "" : sourcePostedAt,
+            event_time:
+              eventTime === seededEventTime
+                ? (geo.event_time ?? undefined)
+                : eventTime || undefined,
+            note: editNote,
+          })
         : geolocateEvent(geo.id, {
             ...buildCommon(),
             source_url: sourceUrl.trim(),
