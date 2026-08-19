@@ -426,7 +426,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Controls · buttons & pills" />
 
-          <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive or alerting, no grey button. `dangerGhost` is red at ghost weight, for a red control sitting in an icon row (the report flag). `icon` makes a square icon-only button, the one icon control on the site; `buttonClasses` puts the same shape on a <Link> or an <a> that navigates; `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm. `disabled` drops the tone for neutral grey rather than fading it, so a button that refuses the click reads like every other inert control on the site.">
+          <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive or alerting, no grey button. `dangerGhost` is red at ghost weight, for a red control sitting in an icon row (the report flag). `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm. `disabled` drops the tone for neutral grey rather than fading it, so a button that refuses the click reads like every other inert control on the site. `icon` makes a square icon-only button, and every icon control on the site is that ghost icon button, at one size: a page-header cluster, the profile header row, the coordinates line, the archive mark beside a source link, a field's trailing adornment, all the same 32px square with the same hover plate. An action is <Button icon variant='ghost'>; navigation is buttonClasses('ghost', {icon: true}) on a <Link> or an <a>, so a control that navigates never nests a button inside an anchor; a control with nothing to act on is the disabled button, which paints itself neutral grey and leaves the tab order (an inert link becomes a disabled button, since a dead anchor is not a control). aria-label is the whole name, title repeats it, and only a tooltip that moves while the name holds still (a copy flash) may differ. Marks are 14px lucide or brand glyphs.">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="primary">Primary</Button>
@@ -434,9 +434,6 @@ export default function PalettePage() {
                 <Button variant="ghost">Ghost</Button>
                 <Button variant="danger">Danger</Button>
                 <Button variant="dangerGhost">Danger ghost</Button>
-                <Button icon variant="ghost" aria-label="Locate" title="Locate">
-                  <MapPin size={15} />
-                </Button>
               </div>
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <span className="text-[11px] text-neutral-600 self-center">disabled:</span>
@@ -444,9 +441,6 @@ export default function PalettePage() {
                 <Button variant="secondary" disabled>Secondary</Button>
                 <Button variant="ghost" disabled>Ghost</Button>
                 <Button variant="danger" disabled>Danger</Button>
-                <Button icon variant="ghost" disabled aria-label="Locate" title="Locate">
-                  <MapPin size={15} />
-                </Button>
               </div>
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <span className="text-[11px] text-neutral-600 self-center">two-click confirm:</span>
@@ -456,37 +450,35 @@ export default function PalettePage() {
                   Confirm delete
                 </Button>
               </div>
-            </div>
-          </Item>
-
-          <Item name="the icon control" usage="Every icon control on the site is the ghost icon button, at one size: a page-header cluster, the profile header row, the coordinates line, the archive mark beside a source link, a field's trailing adornment, all the same 32px square with the same hover plate. An action is <Button icon variant='ghost'>; navigation is buttonClasses('ghost', {icon: true}) on a <Link> or an <a>, so a control that navigates never nests a button inside an anchor; a control with nothing to act on is the disabled button, which paints itself neutral grey and leaves the tab order (an inert link becomes a disabled button, since a dead anchor is not a control). aria-label is the whole name, title repeats it, and only a tooltip that moves while the name holds still (a copy flash) may differ. Marks are 14px lucide or brand glyphs.">
-            <div className="flex items-center gap-4 text-sm text-neutral-300">
-              <Variant label="action">
-                <Button icon variant="ghost" aria-label="Copy coordinates" title="Copy coordinates">
-                  <Copy size={14} />
-                </Button>
-              </Variant>
-              <Variant label="navigation">
-                <a
-                  href="#"
-                  aria-label="Wayback Machine copy of the source"
-                  title="Wayback Machine copy of the source"
-                  className={buttonClasses("ghost", { icon: true })}
-                >
-                  <Archive size={14} />
-                </a>
-              </Variant>
-              <Variant label="inert">
-                <Button
-                  icon
-                  variant="ghost"
-                  disabled
-                  aria-label="No map link until the coordinate pair is complete"
-                  title="No map link until the coordinate pair is complete"
-                >
-                  <ExternalLink size={14} />
-                </Button>
-              </Variant>
+              <div className="flex flex-wrap items-center gap-4 pt-1 text-sm text-neutral-300">
+                <span className="text-[11px] text-neutral-600 self-end pb-2">icon control:</span>
+                <Variant label="action">
+                  <Button icon variant="ghost" aria-label="Copy coordinates" title="Copy coordinates">
+                    <Copy size={14} />
+                  </Button>
+                </Variant>
+                <Variant label="navigation">
+                  <a
+                    href="#"
+                    aria-label="Wayback Machine copy of the source"
+                    title="Wayback Machine copy of the source"
+                    className={buttonClasses("ghost", { icon: true })}
+                  >
+                    <Archive size={14} />
+                  </a>
+                </Variant>
+                <Variant label="inert">
+                  <Button
+                    icon
+                    variant="ghost"
+                    disabled
+                    aria-label="No map link until the coordinate pair is complete"
+                    title="No map link until the coordinate pair is complete"
+                  >
+                    <ExternalLink size={14} />
+                  </Button>
+                </Variant>
+              </div>
             </div>
           </Item>
 
@@ -789,11 +781,11 @@ export default function PalettePage() {
               <Avatar username="demo" size="w-16 h-16" fallback="icon" />
             </Variant>
             <Variant label='fallback="initial"'>
-              <Avatar username="Marius" size="size-10" />
+              <Avatar username="ana-demo" size="size-10" />
             </Variant>
             <Variant label="src that fails to load (falls back)">
               <Avatar
-                username="Marius"
+                username="ana-demo"
                 size="size-10"
                 src="/palette/this-avatar-does-not-exist.jpg"
               />

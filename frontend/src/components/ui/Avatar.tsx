@@ -53,6 +53,14 @@ export function Avatar({
           src={src}
           alt={decorative ? "" : `${username}'s avatar`}
           onError={() => setFailedSrc(src)}
+          // The markup is server-rendered, so the browser starts the request
+          // before React hydrates and an error that lands in that window never
+          // reaches `onError`. Read the element the first time we hold it: an
+          // image that finished loading with nothing decoded is one that
+          // failed, so the circle falls back on a reload too.
+          ref={(node) => {
+            if (node?.complete && node.naturalWidth === 0) setFailedSrc(src);
+          }}
           className="w-full h-full object-cover"
         />
       ) : fallback === "icon" ? (
