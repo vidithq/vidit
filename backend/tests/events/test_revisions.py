@@ -34,6 +34,7 @@ from app.models.event import (
     EventRevision,
 )
 from app.models.media import Media
+from app.models.source_archive import SourceArchive
 from app.models.user import User
 from app.services.auth import hash_password
 from tests.conftest import login_as
@@ -167,6 +168,61 @@ def test_revise_snapshots_the_old_version_and_bumps_the_row(
     assert snapshot_row.snapshot["event_coords"] == {"lat": 48.5, "lng": 34.5}
     assert snapshot_row.snapshot["proof_media"][0]["storage_url"] == STORED_PROOF_URL
     assert [t["id"] for t in snapshot_row.snapshot["tags"]] == [str(capture_source_tag.id)]
+
+
+def test_an_edit_that_archives_the_source_files_one_version_holding_the_new_copy(
+    db, author, conflict, capture_source_tag
+):
+    """The copy pasted with an edit lands in the version that edit produces.
+
+    The archived copies are part of a version, and the snapshot is filed before
+    the write applies, so the superseded version holds the copies the record had
+    and the live row holds the one just recorded. One write, one version: the
+    edit and the copy travel together rather than filing a version each.
+    """
+    geo = _published(db, author, conflict, capture_source_tag)
+    wayback = f"https://web.archive.org/web/20260811120000/{geo.source_url}"
+
+    response = _revise(
+        geo.id,
+        author,
+        data=_form(conflict, capture_source_tag, source_snapshot_url=wayback),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["revision_no"] == 2
+    assert response.json()["archived_source"] == {"url": wayback, "provider": "wayback"}
+
+    db.expire_all()
+    rows = db.query(EventRevision).filter(EventRevision.event_id == geo.id).all()
+    assert len(rows) == 1
+    assert rows[0].snapshot["archives"] == []
+
+
+def test_a_version_holds_the_archived_copies_the_record_carried(
+    db, author, conflict, capture_source_tag
+):
+    """A copy recorded before an edit is in the version that edit supersedes,
+    so ``/v1`` renders the copies as that version had them."""
+    geo = _published(db, author, conflict, capture_source_tag)
+    wayback = f"https://web.archive.org/web/20260811120000/{geo.source_url}"
+    db.add(
+        SourceArchive(
+            event_id=geo.id,
+            original_url=geo.source_url,
+            origin="source_url",
+            snapshot_url=wayback,
+            provider="wayback",
+        )
+    )
+    db.commit()
+
+    assert _revise(geo.id, author, data=_form(conflict, capture_source_tag)).status_code == 200
+
+    db.expire_all()
+    row = db.query(EventRevision).filter(EventRevision.event_id == geo.id).one()
+    assert [
+        (a["original_url"], a["snapshot_url"], a["provider"]) for a in row.snapshot["archives"]
+    ] == [(geo.source_url, wayback, "wayback")]
 
 
 def test_revise_is_owner_only(db, author, second_user, conflict, capture_source_tag):

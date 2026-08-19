@@ -961,7 +961,7 @@ Correct a published event. Owner-only, and only while `geolocated`: the state a 
 | `lng` | float | Longitude (-180 to 180) of the subject |
 | `capture_source_lat` | float | Latitude of the camera position. Both-or-neither with `capture_source_lng`. |
 | `capture_source_lng` | float | Longitude of the camera position. |
-| `source_snapshot_url` | string | The archived copy of the event's stored source URL, ≤2000 chars, same contract as [`POST /events/{id}/archives`](#post-eventsidarchives). Accepted here because it archives the anchor rather than changing it |
+| `source_snapshot_url` | string | The archived copy of the event's stored source URL, ≤2000 chars, same contract as [`POST /events/{id}/archives`](#post-eventsidarchives). Accepted here because it archives the anchor rather than changing it. It lands in the version this edit produces, so one call files one revision carrying both |
 | `secondary_source_urls` | string[] (repeated field) | Optional mirrors, same normalization and cap as [`POST /events`](#post-events). The submitted list replaces whatever the row held |
 | `event_date` | string (YYYY-MM-DD) | When the depicted event happened. Empty / omitted stores NULL (renders as *Unknown*) |
 | `event_time` | string (HH:MM) | Optional time-of-day for the event (UTC); empty / omitted clears it |
@@ -1036,6 +1036,15 @@ Paged like every list endpoint: capped at 100 rows however large `limit` is, and
             "media_type": "image",
             "original_filename": "overlay.jpg"
           }
+        ],
+        "archives": [
+          {
+            "original_url": "https://t.me/channel/12345",
+            "origin": "source_url",
+            "snapshot_url": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345",
+            "provider": "wayback",
+            "created_at": "2026-03-16T09:45:00+00:00"
+          }
         ]
       }
     }
@@ -1046,7 +1055,7 @@ Paged like every list endpoint: capped at 100 rows however large `limit` is, and
 
 `revision_no` is the version the row **holds**, not the one that replaced it: an event whose `revision_no` is 3 answers with snapshots 2 and 1, and the live row is version 3. `edited_by` is the analyst whose edit superseded that version, `null` once their account is erased. `note` is their optional line about the edit, `null` when they left none. `created_at` is when the edit happened. `redacted` is `true` on a version an admin blanked (see [`POST /admin/events/{id}/revisions/{revision_no}/redact`](#post-admineventsidrevisionsrevision_noredact)); such a row keeps its number, its `created_at` and its `edited_by`, and serves `{}` as its `snapshot` with `note` `null`.
 
-`snapshot` carries the editable fields as they stood. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `proof_media` carries enough to render the snapshot's images. The evidence anchor is absent by design: no edit can move `source_url` or the source media, so the live row is authoritative for both at every version.
+`snapshot` carries the editable fields as they stood. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `proof_media` carries enough to render the snapshot's images. `archives` carries the archived copies the record held at that version, one entry per link, sorted by `original_url`; recording a copy on a published event files a version of its own (see [`POST /events/{id}/archives`](#post-eventsidarchives)). The evidence anchor is absent by design: no edit can move `source_url` or the source media, so the live row is authoritative for both at every version.
 
 **Errors:**
 | Code | Case |
@@ -1109,6 +1118,8 @@ This is the path for an event that already exists, and for any link it carries. 
 `original_url` must be one of the links the event carries: its `source_url`, one of its `secondary_source_urls`, its `detected_from_url`, or an `http(s)` href in its proof body. `snapshot_url` must be `https` on exactly one of `web.archive.org`, `archive.ph`, `archive.today`; a `web.archive.org` URL must be a replay URL (`/web/<timestamp>/<original>`) whose embedded original names the same page as `original_url`, and an `archive.ph` / `archive.today` URL a bare snapshot code (`/<code>`). The provider is inferred from the host.
 
 One copy per link: a second call for the same `original_url` replaces the copy rather than adding one, which is how the owner corrects a wrong paste.
+
+**On a `geolocated` event this files a revision.** Which of a published record's links are archived is part of what that record says, so the write files the superseded version, moves `revision_no` on and credits the caller, under the same row lock as [`POST /events/{id}/revise`](#post-eventsidrevise) and with no `note`: the version's changed-field list names it *Archived copies*. A call that stores the copy the link already carries moves nothing and files nothing, and a `requested` or `detected` row is not versioned at all, so the copy is stored on its own. A copy pasted as `source_snapshot_url` with a `revise` rides that edit's version instead of filing a second one.
 
 **Response 200:**
 ```json

@@ -448,6 +448,8 @@ One superseded version of a published event. Correcting a `geolocated` row must 
 
 Read it as "the snapshots, then the live row": an event at `revision_no` 3 carries rows 1 and 2 here, and the live row is version 3. Publication writes nothing here, so version 1 is the published row itself.
 
+Two writes file a version, both through `services/revisions.file_version`: the owner's edit ([`POST /events/{id}/revise`](api.md#post-eventsidrevise)) and an [archived copy](#source_archives) recorded on a `geolocated` row ([`POST /events/{id}/archives`](api.md#post-eventsidarchives)), which is a change to what the published record says about its own evidence. Both take the number under the event's row lock.
+
 Redaction is the one write a filed row takes, and it is still not a delete: an admin blanks `snapshot` and `note` in place and stamps `redacted_at` / `redacted_by_id`, so the row, its number and its byline stay. See [`POST /admin/events/{id}/revisions/{revision_no}/redact`](api.md#post-admineventsidrevisionsrevision_noredact).
 
 | Column | Type | Constraints |
@@ -457,7 +459,7 @@ Redaction is the one write a filed row takes, and it is still not a delete: an a
 | `revision_no` | `INTEGER` | NOT NULL. The version this row **holds**, not the one that replaced it. |
 | `edited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst whose edit superseded this version. NULL once that account is erased: an event legitimately outlives an editor who is not its owner. |
 | `note` | `TEXT` | nullable. The editor's own words about the edit. Bounded to 280 characters by the schema, not the column, which stays unbounded `TEXT`. |
-| `snapshot` | `JSONB` | NOT NULL. The editable fields as they stood: `title`, `event_coords`, `capture_source_coords`, `event_date`, `event_time`, `source_posted_at`, `is_graphic`, `secondary_source_urls`, `tags`, `conflicts`, `proof`, and `proof_media`. `proof_media` carries the images this version's own proof body referenced, not every `proof` row the event holds. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. The evidence anchor (`source_url` and the `source` media) is absent, because no edit can move it, so the live row is authoritative for it at every version. `{}` on a redacted version. |
+| `snapshot` | `JSONB` | NOT NULL. The editable fields as they stood: `title`, `event_coords`, `capture_source_coords`, `event_date`, `event_time`, `source_posted_at`, `is_graphic`, `secondary_source_urls`, `tags`, `conflicts`, `proof`, `proof_media`, and `archives`. `proof_media` carries the images this version's own proof body referenced, not every `proof` row the event holds. `archives` carries the version's [archived copies](#source_archives) (`original_url`, `origin`, `snapshot_url`, `provider`, `created_at`), sorted by `original_url` so a stored list never reshuffles between versions. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. The evidence anchor (`source_url` and the `source` media) is absent, because no edit can move it, so the live row is authoritative for it at every version. `{}` on a redacted version. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL. When the edit that superseded this version happened. |
 | `redacted_at` | `TIMESTAMPTZ` | nullable. When an admin blanked this version's content. NULL on every ordinary row. |
 | `redacted_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Which admin redacted it. NULL once that account is erased; the readable trail is the `admin_events` row the same write files. |
@@ -689,6 +691,8 @@ One row per link an analyst has recorded an archived copy for: the event's `sour
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 
 `UNIQUE (event_id, original_url)` is one copy per link. It is also the owner's correction path: pasting a second snapshot for a link overwrites the row rather than adding a competing one.
+
+The table holds the copies as they stand. On a `geolocated` event, writing one also files an [`event_revisions`](#event_revisions) row, whose `archives` fragment is what the copies were at that version, so the history reads them back after a correction overwrites the live row.
 
 
 ---

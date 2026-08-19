@@ -44,6 +44,11 @@ def record_archived_copy(
     which is how the owner corrects a wrong paste. Soft-deleted → 404, not the
     owner → 403.
 
+    On a ``geolocated`` event the copy is a tracked change: the write files the
+    superseded version and the row takes the next ``revision_no``, credited to
+    the caller. A re-record of the copy the link already carries moves nothing
+    and files nothing.
+
     The ceiling is per hour rather than per minute: one analyst archiving every
     link on a busy event is a run of a dozen calls, and nothing here costs an
     outbound request.
@@ -56,6 +61,7 @@ def record_archived_copy(
             event=geo,
             original_url=body.original_url,
             snapshot_url=body.snapshot_url,
+            recorded_by=current_user,
         )
     except source_archive_service.SnapshotRejected as exc:
         raise_archive_error(exc)

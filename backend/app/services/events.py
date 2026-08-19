@@ -927,7 +927,9 @@ async def revise(
     # is also what protects that version's images from the intake's proof diff
     # below, which is why it is staged first: the diff reads the snapshots, this
     # one included, and keeps every image a readable version still displays.
-    revisions.snapshot(db, geo=geo, edited_by=current_user, note=note)
+    # The row becomes the next version in the same call, so the archived copy
+    # staged further down lands in the new version rather than in the filed one.
+    revisions.file_version(db, geo=geo, edited_by=current_user, note=note)
 
     # Same autoflush suppression as ``geolocate``: the collection assignments
     # lazy-load the current sets, which would flush a half-edited row.
@@ -946,8 +948,6 @@ async def revise(
         geo.is_graphic = geo.is_graphic or is_graphic
         geo.tags = effective_tags
         geo.conflicts = effective_conflicts
-        # The row is now the next version; the snapshot above holds the last one.
-        geo.revision_no = geo.revision_no + 1
 
     replace_source_links(db, geo, secondary_links)
 

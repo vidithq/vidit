@@ -346,9 +346,9 @@ def test_an_oversized_snapshot_is_refused():
 # ── recording a copy ───────────────────────────────────────────────────
 
 
-def test_record_snapshot_stores_the_copy_with_its_provider_and_origin(db, event):
+def test_record_snapshot_stores_the_copy_with_its_provider_and_origin(db, owner, event):
     row = source_archive.record_snapshot(
-        db, event=event, original_url=SOURCE, snapshot_url=WAYBACK_SNAPSHOT
+        db, event=event, original_url=SOURCE, snapshot_url=WAYBACK_SNAPSHOT, recorded_by=owner
     )
     assert (row.original_url, row.origin) == (SOURCE, "source_url")
     assert (row.snapshot_url, row.provider) == (WAYBACK_SNAPSHOT, "wayback")
@@ -357,14 +357,18 @@ def test_record_snapshot_stores_the_copy_with_its_provider_and_origin(db, event)
     assert [(r.snapshot_url, r.provider) for r in stored] == [(WAYBACK_SNAPSHOT, "wayback")]
 
 
-def test_record_snapshot_overwrites_the_slot_on_a_resubmission(db, event):
+def test_record_snapshot_overwrites_the_slot_on_a_resubmission(db, owner, event):
     """One copy per link is what makes a second paste the owner's correction
     path rather than a competing row."""
     source_archive.record_snapshot(
-        db, event=event, original_url=SOURCE, snapshot_url=WAYBACK_SNAPSHOT
+        db, event=event, original_url=SOURCE, snapshot_url=WAYBACK_SNAPSHOT, recorded_by=owner
     )
     row = source_archive.record_snapshot(
-        db, event=event, original_url=SOURCE, snapshot_url=ARCHIVE_TODAY_SNAPSHOT
+        db,
+        event=event,
+        original_url=SOURCE,
+        snapshot_url=ARCHIVE_TODAY_SNAPSHOT,
+        recorded_by=owner,
     )
 
     assert (row.snapshot_url, row.provider) == (ARCHIVE_TODAY_SNAPSHOT, "archive_today")
@@ -376,19 +380,20 @@ def test_record_snapshot_overwrites_the_slot_on_a_resubmission(db, event):
     )
 
 
-def test_record_snapshot_refuses_a_link_the_event_does_not_carry(db, event):
+def test_record_snapshot_refuses_a_link_the_event_does_not_carry(db, owner, event):
     with pytest.raises(source_archive.SnapshotRejected) as excinfo:
         source_archive.record_snapshot(
             db,
             event=event,
             original_url="https://elsewhere.example/x",
             snapshot_url=f"https://web.archive.org/web/{CAPTURE_TS}/https://elsewhere.example/x",
+            recorded_by=owner,
         )
     assert excinfo.value.code == "original_url_not_on_event"
     assert db.query(SourceArchive).filter(SourceArchive.event_id == event.id).count() == 0
 
 
-def test_record_snapshot_covers_every_kind_of_link_the_event_carries(db, event):
+def test_record_snapshot_covers_every_kind_of_link_the_event_carries(db, owner, event):
     """The source, a mirror, the provenance link and a proof citation are all
     archivable, each stored under its own origin."""
     event.detected_from_url = DETECTED_FROM
@@ -396,7 +401,11 @@ def test_record_snapshot_covers_every_kind_of_link_the_event_carries(db, event):
 
     for url in (SOURCE, MIRROR, DETECTED_FROM, PROOF_LINK):
         source_archive.record_snapshot(
-            db, event=event, original_url=url, snapshot_url=ARCHIVE_TODAY_SNAPSHOT
+            db,
+            event=event,
+            original_url=url,
+            snapshot_url=ARCHIVE_TODAY_SNAPSHOT,
+            recorded_by=owner,
         )
 
     stored = db.query(SourceArchive).filter(SourceArchive.event_id == event.id).all()
@@ -408,9 +417,13 @@ def test_record_snapshot_covers_every_kind_of_link_the_event_carries(db, event):
     }
 
 
-def test_archive_row_for_matches_a_link_by_url(db, event):
+def test_archive_row_for_matches_a_link_by_url(db, owner, event):
     source_archive.record_snapshot(
-        db, event=event, original_url=PROOF_LINK, snapshot_url=ARCHIVE_TODAY_SNAPSHOT
+        db,
+        event=event,
+        original_url=PROOF_LINK,
+        snapshot_url=ARCHIVE_TODAY_SNAPSHOT,
+        recorded_by=owner,
     )
     db.refresh(event)
 

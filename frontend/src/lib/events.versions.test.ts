@@ -113,6 +113,23 @@ function snapshot(overrides: Record<string, unknown> = {}): Record<string, unkno
         original_filename: null,
       },
     ],
+    // The copies this version held, the set the current row still carries.
+    archives: [
+      {
+        original_url: "https://t.me/channel/4242",
+        origin: "source_url",
+        snapshot_url: "https://web.archive.org/x",
+        provider: "wayback",
+        created_at: "2026-06-01T00:00:00+00:00",
+      },
+      {
+        original_url: "https://t.me/mirror/2",
+        origin: "secondary_source",
+        snapshot_url: "https://archive.ph/two",
+        provider: "archive_today",
+        created_at: "2026-06-01T00:00:00+00:00",
+      },
+    ],
     ...overrides,
   };
 }
@@ -156,7 +173,26 @@ describe("snapshotToEventView", () => {
     expect(view.owner).toEqual(CURRENT.owner);
     expect(view.source_url).toBe(CURRENT.source_url);
     expect(view.media).toEqual(CURRENT.media);
+  });
+
+  it("shows the archived copies as that version held them", () => {
     expect(view.archived_source).toEqual(CURRENT.archived_source);
+    const unarchived = snapshotToEventView(CURRENT, revision(2, snapshot({ archives: [] })));
+    expect(unarchived.archived_source).toBeNull();
+    expect(unarchived.archived_secondary_sources).toEqual([null, null]);
+  });
+
+  it("stands the live row's copies in for a version that files none", () => {
+    // A version filed before the copies were versioned says nothing about
+    // them, so it is not read as a record that had none.
+    const legacy = { ...snapshot() };
+    delete legacy.archives;
+    const filed = snapshotToEventView(CURRENT, revision(2, legacy));
+    expect(filed.archived_source).toEqual(CURRENT.archived_source);
+    expect(filed.archived_secondary_sources).toEqual([
+      { url: "https://archive.ph/two", provider: "archive_today" },
+      null,
+    ]);
   });
 
   it("pairs each mirror with the copy archived for that URL, not its position", () => {
@@ -240,6 +276,65 @@ describe("changedFields", () => {
       conflicts: [...conflicts].reverse(),
     };
     expect(changedFields(version, reordered)).toEqual([]);
+  });
+
+  it("names the archived copies a version recorded", () => {
+    // Everything else pinned to the current row, so the copy is the one move.
+    const unchanged = {
+      title: CURRENT.title,
+      proof: CURRENT.proof,
+      secondary_source_urls: CURRENT.secondary_source_urls,
+    };
+    const before = snapshotToEventView(
+      CURRENT,
+      revision(2, snapshot({ ...unchanged, archives: [] }))
+    );
+    expect(changedFields(CURRENT, before)).toEqual(["Archived copies"]);
+
+    // Same copies in the other order is not an edit: the set is keyed by the
+    // link each copy covers, not by its position.
+    const reordered = snapshotToEventView(
+      CURRENT,
+      revision(
+        2,
+        snapshot({
+          ...unchanged,
+          archives: [...(snapshot().archives as unknown[])].reverse(),
+        })
+      )
+    );
+    expect(changedFields(CURRENT, reordered)).toEqual([]);
+  });
+
+  it("names the archived copies when one link's snapshot was corrected", () => {
+    const corrected = snapshotToEventView(
+      CURRENT,
+      revision(
+        2,
+        snapshot({
+          title: CURRENT.title,
+          proof: CURRENT.proof,
+          secondary_source_urls: CURRENT.secondary_source_urls,
+          archives: [
+            {
+              original_url: CURRENT.source_url,
+              origin: "source_url",
+              snapshot_url: "https://archive.ph/wrong",
+              provider: "archive_today",
+              created_at: "2026-06-01T00:00:00+00:00",
+            },
+            {
+              original_url: "https://t.me/mirror/2",
+              origin: "secondary_source",
+              snapshot_url: "https://archive.ph/two",
+              provider: "archive_today",
+              created_at: "2026-06-01T00:00:00+00:00",
+            },
+          ],
+        })
+      )
+    );
+    expect(changedFields(CURRENT, corrected)).toEqual(["Archived copies"]);
   });
 
   it("names the moved coordinates, dates, graphic flag and camera position", () => {

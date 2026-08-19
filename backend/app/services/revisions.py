@@ -1,9 +1,11 @@
 """Version history for a published event: snapshot, read, redact, media floor.
 
-``services/events.revise`` is the only writer of new versions. Before an edit
-touches the live row it calls :func:`snapshot`, which files the state the row
-carried up to that moment as an append-only ``event_revisions`` entry; the live
-row then takes the next ``revision_no``. History is therefore "the snapshots,
+:func:`file_version` is how a new version comes to be, and the two writers that
+change a published row call it: ``services/events.revise`` (the owner's edit)
+and ``services/source_archive.record_snapshot`` (an archived copy recorded on a
+``geolocated`` row). Before the write touches the live row, the state it carried
+up to that moment is filed as an append-only ``event_revisions`` entry and the
+live row takes the next ``revision_no``. History is therefore "the snapshots,
 then the current row", and the publication paths (``create_with_evidence``,
 ``geolocate``, ``_publish_detection``) write no revision at all: version 1 is
 the published row itself.
@@ -70,6 +72,11 @@ def build_snapshot(geo: Event) -> dict[str, Any]:
     not every ``proof`` row the event holds: a row kept alive for an older
     version is not part of this one, and claiming it here would both misreport
     the version and pin the image forever.
+
+    ``archives`` carries the archived copies the event held at this version, so
+    ``/vN`` renders the copies as they stood rather than today's. Sorted by the
+    link they cover, since the relationship has no order of its own and a stored
+    list that reshuffles between versions would read as an edit.
     """
     displayed = set(extract_image_srcs(geo.proof))
     return {
@@ -96,15 +103,29 @@ def build_snapshot(geo: Event) -> dict[str, Any]:
             for m in geo.media
             if m.role == "proof" and m.storage_url in displayed
         ],
+        "archives": [
+            {
+                "original_url": a.original_url,
+                "origin": a.origin,
+                "snapshot_url": a.snapshot_url,
+                "provider": a.provider,
+                "created_at": a.created_at.isoformat(),
+            }
+            for a in sorted(geo.archives, key=lambda a: a.original_url)
+        ],
     }
 
 
-def snapshot(db: Session, *, geo: Event, edited_by: User, note: str | None) -> EventRevision:
-    """File the event's pre-edit state as its ``revision_no``-th version.
+def file_version(db: Session, *, geo: Event, edited_by: User, note: str | None) -> EventRevision:
+    """File the state the row carries and move it to the next version.
 
-    Staged, not committed: the caller applies the edit and commits both in one
-    transaction, so a failed edit leaves no orphan version behind. Call it
-    before any field is mutated.
+    The one place a version comes to be: the snapshot is taken at the row's
+    current ``revision_no`` and the row is bumped past it, so the two halves
+    cannot drift apart between the writers that produce versions.
+
+    Staged, not committed: the caller applies its write and commits both in one
+    transaction, so a failed write leaves no orphan version behind. Call it
+    before any field is mutated, since the snapshot reads the live row.
     """
     row = EventRevision(
         event_id=geo.id,
@@ -114,6 +135,7 @@ def snapshot(db: Session, *, geo: Event, edited_by: User, note: str | None) -> E
         snapshot=build_snapshot(geo),
     )
     db.add(row)
+    geo.revision_no = geo.revision_no + 1
     return row
 
 
