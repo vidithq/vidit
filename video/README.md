@@ -88,8 +88,8 @@ For 4K (3840×2160), append `--scale 2` to the render command.
    frames to disk. `ffmpeg` muxes them into `out/recording-submit.mp4` at
    2560×1440, at the fps the grabber actually sustained.
 
-   One form serves both publishes: `/submit` opens on the Single entry
-   path, the recording picks *From an X post* to reveal the tweet-import
+   One form serves both publishes: `/submit` opens on the *Single* path,
+   the recording picks *From an X post* to reveal the tweet-import
    banner, and the two actions at the foot of the form are *Publish
    geolocation* and *Publish request*. Classification is two referentials,
    so the recording searches the conflict in its typeahead and clicks the
@@ -253,9 +253,9 @@ Two consequences worth knowing before you re-record:
 |---|---|---|
 | Intro | The wordmark, the release, and the tagline | |
 | 1 | The identity block: avatar, handle, bio. Motionless, no cursor. | Your work, on one page. |
-| 2 | The travel down the page: the counters strip passes through, the coverage map lands. | Every event you documented. |
+| 2 | The travel down the page: the counters close the identity block on the way out, the coverage map lands. | Every event you documented. |
 | 3 | The coverage map, fitted to the analyst's own points on mount, then a camera ease into the densest worked area. | The ground you covered. |
-| 4 | On down to the submissions, one opens: source media, the point map, coordinates, the source row with its archived copy, the written proof. | The source, and a copy that outlives it. |
+| 4 | On down past the Insights card to the submissions, one opens: source media, the point map, coordinates, the source row with its archived copy, the written proof. | The source, and a copy that outlives it. |
 | 5 | The general map, pulling back so the analyst's points sit among everyone else's. | One archive, open to read without an account. |
 | Outro | The wordmark and vidit.app (`OutroV04`, shared with the v0.4 promo) | |
 
@@ -277,13 +277,14 @@ The two dimensions are chosen, not rounded:
 
 - **1040 wide** keeps the desktop layout (above Tailwind's `lg`) with the
   content column at its 848 px cap.
-- **560 tall** ends the frame in the gap under the identity block and above
-  the counters strip, so the opening holds the handle, the avatar and the bio
-  with nothing cut in half. The counters stay out of the still opening on
-  purpose: zero followers is the weakest thing on the page, so the travelling
-  passes through it rather than resting on it. The profile leads with identity
-  and puts the counters straight under it, so treat 560 as a landmark to
-  re-check on each capture rather than a fixed number.
+- **560 tall** is measured against the identity block, so the opening holds
+  the avatar, the handle and the bio with nothing cut in half and stops before
+  the coverage map. The counters (followers, following, member since) are the
+  closing line of that block rather than a strip of their own, so they ride the
+  bottom of the frame instead of anchoring the shot: zero followers is the
+  weakest thing on the page. The profile's layout has moved that landing point
+  once already, so treat 560 as a landmark to re-check on each capture rather
+  than a fixed number.
 
 `CAPTURE` in `PromoV05.tsx` derives the browser body from those numbers, so
 the body always carries the take's aspect ratio and `objectFit: cover` has
@@ -369,7 +370,12 @@ backend/.venv/bin/python video/prep-review-take.py \
     --archive "<their export>.zip" --username MPGeoint \
     --creating --threads 14 --out video/out/x-archive-trimmed.zip
 
-# 2. the take and the render
+# 2. the import worker, in another shell: the API enqueues the import and
+#    the worker runs it, so without this the take waits on a Done step that
+#    never arrives
+make dev-worker
+
+# 3. the take and the render
 cd video
 VIDIT_DEMO_PASSWORD=… npm run record:v05b   # → public/clips/import-review.mp4
 npm run render:v05b                          # → out/promo-v05b.mp4
@@ -383,7 +389,7 @@ The beats, all windows of the one take:
 | 2 | Privacy | The live progress steps, held on `DMs, messages and account data never leave your device.` |
 | 3 | Idempotence | The finished run and its outcome line. |
 | 4 | The queue | The queue on `All`, where `Ready to review` and `Missing: …` badges sit side by side, then the readiness filter with the server's whole-queue counts. |
-| 5 | The review pass | `Draft n of m`, the footage, the coordinates and the source, then the conflict typeahead and the capture source. |
+| 5 | The review pass | `Detection n of m`, the footage, the coordinates and the source, then the conflict typeahead and the capture source. |
 | 6 | Submit | The proof, both submit clicks, and the next draft opening on its own. |
 | 7 | The map | The camera easing onto the field the pass just worked. |
 | 8 | Closing card | `OutroV04`, shared with the other promos. |

@@ -61,13 +61,14 @@ const CAPTURE_DPR = 2;
 // frame width.
 //
 // 1040 wide keeps the desktop layout (above Tailwind's `lg`) with the column
-// at its cap. 560 tall ends the frame in the gap under the identity block and
-// above the counters strip, so the opening holds the handle, the avatar and
-// the bio with nothing cut in half. The counters are deliberately NOT in the
-// still opening: zero followers is the weakest thing on the page, so the
-// travelling passes through it rather than resting on it. The public profile
-// leads with identity and puts the counters straight under it, so re-check
-// where 560 lands on every capture: the landmark is a layout, not a constant.
+// at its cap. 560 tall is measured against the identity block: the opening
+// holds the avatar, the handle and the bio with nothing cut in half, and stops
+// before the coverage map. The counters (followers / following / member since)
+// are the closing line of that block rather than a strip of their own, so they
+// ride the bottom of the frame instead of anchoring the shot: zero followers is
+// the weakest thing on the page. Where 560 lands has moved with that layout
+// once already, so re-check it on every capture: the landmark is a layout, not
+// a constant.
 //
 // The comp's browser body matches this aspect exactly, so nothing is cropped.
 // Change one and change `CAPTURE` in src/PromoV05.tsx.
@@ -211,10 +212,11 @@ async function clipPortfolio() {
     rec.mark("identity");
     await wait(2500);
 
-    // 2. One long eased travel down the page. The counters strip passes by on
-    //    the way, which is where it belongs, and the coverage map is where the
-    //    travel stops. The Insights card and the linked accounts sit below the
-    //    submissions now, so the travel never reaches them.
+    // 2. One long eased travel down the page, stopping on the coverage map.
+    //    The counters close the identity block rather than standing as a strip
+    //    of their own, so they pass by at the head of the move; the linked
+    //    accounts are icon buttons in the header's action cluster, in frame
+    //    from the opening shot rather than somewhere further down.
     console.log("→ travel down to the work");
     rec.mark("work");
     await slowScrollToLocator(page, coverage, 3100, 70);
@@ -231,9 +233,10 @@ async function clipPortfolio() {
     });
     await wait(400);
 
-    // 4. Carry on down to the submissions and open one. `EntityCard` is a
-    //    Next `<Link>`, so the route swaps under the cursor: no reload, no
-    //    white flash, the picture never leaves the page.
+    // 4. Carry on down to the submissions, past the Insights card the profile
+    //    puts under the map, and open one. `EntityCard` is a Next `<Link>`, so
+    //    the route swaps under the cursor: no reload, no white flash, the
+    //    picture never leaves the page.
     console.log("→ down to the submissions, open one");
     rec.mark("submissions");
     await slowScrollToLocator(page, submissions, 1500, 120);

@@ -574,8 +574,9 @@ async function pickPromoteTarget(auth, hero) {
 
   // Page 1 first, in queue order: a target already on the queue's landing
   // page needs no off-camera pagination hops, which read as a jump cut in
-  // the final edit. per_page=20 mirrors the queue's own page size exactly.
-  const p1 = await api(auth, "GET", "/events/detections?page=1&per_page=20");
+  // the final edit. per_page=10 mirrors the queue's own page size exactly
+  // (`DETECTIONS_PER_PAGE` in frontend/src/lib/events.ts).
+  const p1 = await api(auth, "GET", "/events/detections?page=1&per_page=10");
   for (const cand of eligible(p1.items).slice(0, 12)) {
     const detail = await api(auth, "GET", `/events/${cand.id}`);
     if (proofHasImage(detail.proof)) return { id: cand.id, detail, needsProof: false };
@@ -895,14 +896,18 @@ async function clipDemo(auth, hero, zipPath) {
       waitUntil: "domcontentloaded",
     });
     rec.mark("queueRedirect");
-    await page.waitForSelector('a[href^="/events/"][href$="/edit"]', { timeout: 15000 });
+    // Every queue row links its detection inside a review pass, so the href
+    // carries the `?queue=1` flag the edit page reads.
+    await page.waitForSelector('a[href^="/events/"][href$="/edit?queue=1"]', {
+      timeout: 15000,
+    });
     await wait(1800); // the filled queue breathes
 
     // ── promote target picked mid-take, off camera (API only) ────────────
     const target = await pickPromoteTarget(auth, hero);
     console.log(`→ promote target: ${target.detail.title} (${target.id})`);
-    const card = page.locator(`a[href="/events/${target.id}/edit"]`).first();
-    // The queue paginates (20 per page) and the target rides whatever page
+    const card = page.locator(`a[href="/events/${target.id}/edit?queue=1"]`).first();
+    // The queue paginates (10 per page) and the target rides whatever page
     // its import position landed on. Hop pages until its card mounts; the
     // hops sit between the comp's windows, so the final cut jumps from the
     // queue landing straight to the target's page (same layout, a plain
@@ -986,18 +991,29 @@ async function clipDemo(auth, hero, zipPath) {
     );
     await wait(900);
 
-    console.log("→ Submit → Confirm & submit");
-    const submitBtn = page.getByRole("button", { name: /^submit$/i }).first();
+    console.log("→ Submit (arm, then confirm)");
+    // Located by type rather than by name: the button arms in place and its
+    // label walks Submit -> Confirm submit -> Submitting… across the two
+    // clicks. The second click has to land inside ARM_MS (3s), so the settle
+    // stays short.
+    const submitBtn = page.locator('form button[type="submit"]').first();
     rec.mark("submit");
     await glideAndClick(page, submitBtn);
-    await wait(500);
-    const confirmBtn = page.getByRole("button", { name: /confirm & submit/i }).first();
-    await confirmBtn.waitFor({ timeout: 5000 });
-    await wait(450); // the confirm step reads before the click
-    await glideAndClick(page, confirmBtn, { steps: 38, settle: 600 });
-    await page.waitForURL(/\/profile\/[^/]+\/detections/, { timeout: 30000 });
+    await page
+      .getByRole("button", { name: /confirm submit/i })
+      .first()
+      .waitFor({ timeout: 5000 });
+    await wait(450); // the armed ring reads before the confirming click
+    await glideAndClick(page, submitBtn, { steps: 10, settle: 260 });
+    // Where a submit lands depends on whether the row the queue linked is
+    // inside the batch a review pass walks: inside it the form hands over to
+    // the next detection's own URL, outside it the pass is over and the queue
+    // list comes back. Either way the target's edit page is left behind.
+    await page.waitForURL((url) => !url.href.includes(`${target.id}/edit`), {
+      timeout: 30000,
+    });
     rec.mark("published");
-    await wait(1700); // the row is gone from the queue
+    await wait(1700); // the page the submit handed over to settles
 
     // ── the analyst's work, in one place, back ON the map ────────────────
     // Field feedback drove this closing beat: what lands with analysts is

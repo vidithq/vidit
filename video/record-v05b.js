@@ -139,7 +139,7 @@ function conflictQueryFor(coords) {
 // The review beat opens a draft off the queue's Ready filter, so the click
 // lands on the page the filter beat just produced. Three further conditions:
 // the draft has to clear the submit floor, it has to sit inside the batch the
-// review pass walks (that batch is what gives the form its "Draft n of m"
+// review pass walks (that batch is what gives the form its "Detection n of m"
 // position and its next draft), and its coordinates have to fall inside a
 // conflict box the take can name.
 async function pickReviewTarget(auth) {
@@ -153,7 +153,7 @@ async function pickReviewTarget(auth) {
     const query = conflictQueryFor(row.event_coords);
     if (!query) continue;
     console.log(
-      `  review target: ${row.title} (${row.id})  ·  Draft ${position + 1} of ${walk.total}` +
+      `  review target: ${row.title} (${row.id})  ·  Detection ${position + 1} of ${walk.total}` +
         `  ·  conflict search "${query}"`
     );
     return { row, next: walk.items[position + 1], query };
@@ -259,8 +259,12 @@ async function clipImportReview(auth) {
       1000,
       240
     ).catch(() => {});
+    // The step's own detail line, in full: the export guide above the form
+    // carries a second sentence ending in "never leave your device", so a
+    // looser query resolves against that one and the mark lands before the
+    // stepper is up.
     await page
-      .getByText("never leave your device", { exact: false })
+      .getByText("DMs, messages and account data never leave your device.")
       .first()
       .waitFor({ timeout: 60000 })
       .catch(() => console.warn("  (the privacy line never showed)"));
