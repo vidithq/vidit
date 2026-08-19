@@ -48,9 +48,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
-from app.services.tweet_ingest.archive import read_tweets  # noqa: E402
-from app.services.tweet_ingest.detect import detect  # noqa: E402
-from app.services.tweet_ingest.stitch import stitch  # noqa: E402
+from app.services.tweet_ingest import read_tweets, resolve_threads, stitch  # noqa: E402
 
 # The disposition compares coordinates rounded to this many places, mirroring
 # ``_COORD_PLACES`` in app/services/detection.py.
@@ -108,24 +106,26 @@ def load_detections(zip_path: Path, handle: str) -> list[dict]:
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    # One engine for the bot, the paste and the archive: the same
+    # ``resolve_threads`` the import job runs, so the report counts what the
+    # import will actually do.
     out: list[dict] = []
-    for thread in threads:
-        ids = [r.tweet_id for r in thread]
-        for geo in detect(thread):
-            out.append(
-                {
-                    "detected_from_url": geo.detected_from_url,
-                    "source_url": geo.source_url,
-                    "lat": round(float(geo.coordinate.lat), COORD_PLACES),
-                    "lng": round(float(geo.coordinate.lng), COORD_PLACES),
-                    "title": geo.title,
-                    "event_date": geo.event_date.isoformat() if geo.event_date else None,
-                    "thread_ids": ids,
-                    "thread_key": ids[0],
-                    "has_source_media": bool(geo.source_media),
-                    "has_proof_media": bool(geo.proof_media),
-                }
-            )
+    for geo in resolve_threads(threads).detections:
+        ids = [str(i) for i in geo.thread_tweet_ids]
+        out.append(
+            {
+                "detected_from_url": geo.detected_from_url,
+                "source_url": geo.source_url,
+                "lat": round(float(geo.coordinate.lat), COORD_PLACES),
+                "lng": round(float(geo.coordinate.lng), COORD_PLACES),
+                "title": geo.title,
+                "event_date": geo.event_date.isoformat() if geo.event_date else None,
+                "thread_ids": ids,
+                "thread_key": ids[0],
+                "has_source_media": bool(geo.source_media),
+                "has_proof_media": bool(geo.proof_media),
+            }
+        )
     return out
 
 

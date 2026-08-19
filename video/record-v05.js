@@ -1,8 +1,8 @@
 // v0.5 promo A ("the portfolio"): ONE unbroken take of an analyst's public
 // profile, recorded LOGGED OUT against a running instance.
 //
-//   portfolio.mp4  identity block → the work → the coverage map → one
-//                  submission's detail → the general map.
+//   portfolio.mp4  identity block → the coverage map → the Insights card →
+//                  one submission's detail → the general map.
 //
 // The comp (`src/PromoV05.tsx`) plays this clip as a SINGLE continuous window:
 // there is no cut anywhere in the recorded part, so every transition you see
@@ -41,6 +41,7 @@ const {
   wait,
   slowScrollToLocator,
   easeCamera,
+  glideHover,
   glideAndClick,
   glideClickStretchedCard,
   createRecorder,
@@ -61,14 +62,20 @@ const CAPTURE_DPR = 2;
 // frame width.
 //
 // 1040 wide keeps the desktop layout (above Tailwind's `lg`) with the column
-// at its cap. 560 tall is measured against the identity block: the opening
-// holds the avatar, the handle and the bio with nothing cut in half, and stops
-// before the coverage map. The counters (followers / following / member since)
-// are the closing line of that block rather than a strip of their own, so they
-// ride the bottom of the frame instead of anchoring the shot: zero followers is
-// the weakest thing on the page. Where 560 lands has moved with that layout
-// once already, so re-check it on every capture: the landmark is a layout, not
-// a constant.
+// at its cap. 560 tall is measured against the opening shot, which holds the
+// identity block AND the whole coverage map under it: the identity is one
+// compact header (handle, avatar, bio, then the followers / following /
+// member-since line), so the map card starts around 156 CSS px down and ends
+// inside the frame. That is what the take is built on: the coverage beat runs
+// in place, with the avatar and the handle still on screen, and the first
+// scroll of the take is the one onto the Insights card. The counters ride the
+// bottom of the identity block rather than anchoring a strip of their own,
+// which is deliberate: zero followers is the weakest thing on the page.
+//
+// Where 560 lands has moved with the profile's layout twice already, so
+// re-check it on every capture: the landmark is a layout, not a constant. If
+// the identity block grows enough to push the map out of the opening frame,
+// the take needs a travel between `identity` and `coverage` again.
 //
 // The comp's browser body matches this aspect exactly, so nothing is cropped.
 // Change one and change `CAPTURE` in src/PromoV05.tsx.
@@ -180,6 +187,10 @@ async function clipPortfolio() {
   await recordClip("portfolio", { cookies: null }, async (page, rec) => {
     const submissions = page.getByRole("heading", { name: "Recent submissions" });
     const coverage = page.getByRole("heading", { name: "Coverage" });
+    const insights = page.getByRole("heading", { name: "Insights" });
+    // The last block of the Insights card. The card runs taller than the
+    // capture window, so the beat reads it in two positions rather than one.
+    const eventDates = page.getByRole("heading", { name: "Event dates" });
     const details = page.getByRole("heading", { name: "Details" });
     const mapLink = page.locator('aside[aria-label="Primary navigation"] a[href="/map"]');
 
@@ -207,40 +218,54 @@ async function clipPortfolio() {
     // after a mousemove, and the first frame is a tweet's thumbnail.
     rec.start();
 
-    // 1. The identity block, motionless.
+    // The profile pass gives each block of the portfolio its own beat and
+    // enough screen time to be read: the page order since the identity block
+    // became one compact header is identity, Coverage, Insights, Recent
+    // submissions, and the take walks it at that pace. Every hold below is
+    // real time on screen, so shortening one shortens the beat itself.
+
+    // 1. The profile top, motionless: avatar, handle, bio and the followers /
+    //    following / member-since line, with the whole coverage map already
+    //    under them (see VIEWPORT). The linked accounts are icon buttons in
+    //    the header's action cluster, so they are in this frame too.
     console.log("→ identity (still)");
     rec.mark("identity");
-    await wait(2500);
+    await wait(2000);
 
-    // 2. One long eased travel down the page, stopping on the coverage map.
-    //    The counters close the identity block rather than standing as a strip
-    //    of their own, so they pass by at the head of the move; the linked
-    //    accounts are icon buttons in the header's action cluster, in frame
-    //    from the opening shot rather than somewhere further down.
-    console.log("→ travel down to the work");
-    rec.mark("work");
-    await slowScrollToLocator(page, coverage, 3100, 70);
-    await wait(500);
-
-    // 3. The camera walks into the worked area, on the map the page just
-    //    scrolled to.
-    console.log("→ the coverage map");
+    // 2. The coverage beat, worked IN PLACE. The map is already in frame, so
+    //    scrolling to it would only push the analyst off the top of the shot
+    //    for no gain: the page stays where it is and the camera does the
+    //    travelling, walking into the densest worked area and holding there
+    //    with the avatar and the handle still on screen above it.
+    console.log("→ the coverage map (camera only, no scroll)");
     rec.mark("coverage");
     await easeCamera(page, {
       center: COVERAGE_CENTER,
       zoom: COVERAGE_ZOOM,
-      durationMs: 1900,
+      durationMs: 2800,
     });
-    await wait(400);
+    await wait(2200);
 
-    // 4. Carry on down to the submissions, past the Insights card the profile
-    //    puts under the map, and open one. `EntityCard` is a Next `<Link>`, so
-    //    the route swaps under the cursor: no reload, no white flash, the
-    //    picture never leaves the page.
+    // 3. The Insights card, the summary that interprets the map above it, and
+    //    the take's first scroll. The card is taller than the capture window,
+    //    so the beat lands with its head at the top of the frame (the
+    //    counters, the top conflicts and the capture sources), holds, then
+    //    drifts on to the source-origin bar and the whole event-dates grid
+    //    and holds again. One beat, one caption, two reading positions.
+    console.log("→ the insights card");
+    rec.mark("insights");
+    await slowScrollToLocator(page, insights, 2300, 40);
+    await wait(1800);
+    await slowScrollToLocator(page, eventDates, 1400, 130);
+    await wait(1200);
+
+    // 4. On down to the submissions, and open one. `EntityCard` is a Next
+    //    `<Link>`, so the route swaps under the cursor: no reload, no white
+    //    flash, the picture never leaves the page.
     console.log("→ down to the submissions, open one");
     rec.mark("submissions");
-    await slowScrollToLocator(page, submissions, 1500, 120);
-    await wait(600);
+    await slowScrollToLocator(page, submissions, 1800, 120);
+    await wait(900);
     const card = page.locator(`a[href="/events/${TARGET_EVENT}"]`).locator("xpath=..");
     rec.mark("cardClick");
     await glideClickStretchedCard(page, card, TARGET_EVENT);
@@ -249,6 +274,7 @@ async function clipPortfolio() {
     // address bar here, so the chrome never names a page the recording has
     // not reached yet.
     rec.mark("eventUrl");
+    const tEvt = Date.now();
     await page.getByRole("heading", { name: "Source media" }).waitFor({ timeout: 25000 });
     await page
       .waitForFunction(
@@ -259,18 +285,42 @@ async function clipPortfolio() {
         { timeout: 15000 }
       )
       .catch(() => {});
+    // Logged because this wait is the one that can silently stretch the take:
+    // the source clip streams from the media host, and the poster frame is
+    // what the beat holds on.
+    console.log(`  · event page settled after ${Date.now() - tEvt}ms`);
     rec.mark("eventOpen");
-    await wait(900);
+    // The source clip's poster frame, held long enough to be seen as footage
+    // rather than as a loading box. Chrome decodes H.264, so this is a real
+    // frame of the source video (see `createRecorder`).
+    await wait(2000);
 
     // 5. The eased scroll takes the frame from the source media past the
     //    point map down to the details, where the coordinates, the source
-    //    link with its archived-copy glyph, and the proof all read at once.
+    //    link with its archived-copy mark, and the proof all read at once.
     console.log("→ read the event: coordinates, source, archived copy, proof");
     rec.mark("eventScroll");
     await slowScrollToLocator(page, details, 1900, 90);
-    await wait(1900);
+    await wait(1100);
 
-    // 6. Out to the general map through the sidebar (another in-page push),
+    // 6. The archived copy itself, which is what the caption over this beat
+    //    claims. The cursor settles on the accent mark beside the Source row
+    //    and stays there: the mark takes its hover state, so the frame shows
+    //    the copy as something you can open rather than as decoration on the
+    //    row. `a[aria-label*="copy of the source"]` is the mark for a copy
+    //    that EXISTS (`ArchivedCopyLink`); the empty state renders a disabled
+    //    <button> under a different name, and `verifyTarget` has already
+    //    refused the take if this event had one. Nothing is clicked: the copy
+    //    lives off-instance and opening it would leave the product.
+    console.log("→ hover the archived copy of the source");
+    rec.mark("archiveHover");
+    await glideHover(page, page.locator('a[aria-label*="copy of the source"]'), {
+      steps: 55,
+      hold: 1400,
+    });
+    await wait(500);
+
+    // 7. Out to the general map through the sidebar (another in-page push),
     //    then the pull back so the analyst's points join everyone else's.
     console.log("→ out to the general map");
     rec.mark("mapNav");

@@ -125,13 +125,23 @@ const CURSOR_INIT = () => {
 // Pacing: brisk but human. The cursor still travels visibly (~0.6s per
 // glide) and every click settles before firing, but the holds are short:
 // the beat breathes for a moment, not seconds, before the comp cuts.
-async function glideAndClick(page, locator, { steps = 50, settle = 450 } = {}) {
+// Glide the cursor onto an element and stop there. The same motion as
+// `glideAndClick` without the press, for a beat that FRAMES a control rather
+// than using it: the hover state paints, the cursor names what the caption is
+// talking about, and nothing is activated. A native `title` tooltip is browser
+// UI rather than page content, so it is not part of what the capture grabs.
+async function glideHover(page, locator, { steps = 50, hold = 1200 } = {}) {
   const box = await locator.boundingBox();
   if (!box) throw new Error("locator not visible");
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
   await page.mouse.move(x, y, { steps });
-  await wait(settle);
+  await wait(hold);
+  return { x, y };
+}
+
+async function glideAndClick(page, locator, { steps = 50, settle = 450 } = {}) {
+  const { x, y } = await glideHover(page, locator, { steps, hold: settle });
   await page.mouse.click(x, y);
   return { x, y };
 }
@@ -496,14 +506,26 @@ function createRecorder({
     // (~6 fps through Playwright's screenshot, ~20 raw); on Metal the raw
     // CDP capture below sustains ~33 fps at native 1080p during a camera
     // ease and more on DOM pages.
-    const browser = await chromium.launch({
+    const launchOptions = {
       headless: true,
       // --force-device-scale-factor: the raw CDP captureScreenshot grabs the
       // SURFACE, which ignores Playwright's emulated deviceScaleFactor (only
       // Playwright's own screenshot path re-renders at the override). Without
       // this flag every take captured at 720p and the encode upscaled it.
       args: ["--use-angle=metal", `--force-device-scale-factor=${dpr}`],
-    });
+    };
+    // Playwright's bundled Chromium ships without the H.264 decoder, so every
+    // source video on camera stays a black box and its poster frame never
+    // paints. The installed Google Chrome decodes it; fall back to the bundle
+    // only where Chrome is absent, and say so, since that take will show the
+    // black player.
+    let browser;
+    try {
+      browser = await chromium.launch({ ...launchOptions, channel: "chrome" });
+    } catch {
+      console.log("  (Google Chrome not found; bundled Chromium has no H.264, videos will render black)");
+      browser = await chromium.launch(launchOptions);
+    }
     const ctx = await browser.newContext({
       viewport,
       // DPR 2 doubles the captured device px: the comp shows the recording
@@ -660,6 +682,7 @@ module.exports = {
   mintCookies,
   apiCall,
   CURSOR_INIT,
+  glideHover,
   glideAndClick,
   slowScrollToY,
   slowScrollToLocator,

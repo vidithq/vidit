@@ -249,15 +249,23 @@ Two consequences worth knowing before you re-record:
 - Never navigate with `page.goto` inside the recorded pass. A reload blinks
   the page white, and there is no cut available to hide it.
 
+The take walks the profile in the order the page itself reads: identity,
+Coverage, Insights, Recent submissions. Each block gets its own beat, its own
+hold and its own caption.
+
 | Beat | What is on camera | Caption |
 |---|---|---|
 | Intro | The wordmark, the release, and the tagline | |
-| 1 | The identity block: avatar, handle, bio. Motionless, no cursor. | Your work, on one page. |
-| 2 | The travel down the page: the counters close the identity block on the way out, the coverage map lands. | Every event you documented. |
-| 3 | The coverage map, fitted to the analyst's own points on mount, then a camera ease into the densest worked area. | The ground you covered. |
-| 4 | On down past the Insights card to the submissions, one opens: source media, the point map, coordinates, the source row with its archived copy, the written proof. | The source, and a copy that outlives it. |
-| 5 | The general map, pulling back so the analyst's points sit among everyone else's. | One archive, open to read without an account. |
+| 1 | The profile top, motionless and cursor-free: avatar, handle, bio, and the followers, following and member-since line, with the coverage map already in frame under them. | Your work, on one page. |
+| 2 | The coverage map, worked in place. The page does not scroll: the map opens fitted to the analyst's own points, then the camera eases into the densest worked area and holds there while the avatar and the handle stay on screen above it. | The ground you covered. |
+| 3 | The Insights card, read in two positions: the counters, the top conflicts and the capture sources, then the source-origin bar and the whole event-dates grid. The card is taller than the capture window, so the beat drifts once rather than trying to frame it whole. | What you covered, counted: conflicts, sources, dates. |
+| 4 | Recent submissions, the analyst's latest geolocations. | Every event you documented. |
+| 5 | One submission opens: the source clip's poster frame, then the eased scroll to the point map, the coordinates and the Details block, where the cursor settles on the archived copy beside the Source row and holds. | The source, and a copy that outlives it. |
+| 6 | The general map, pulling back so the analyst's points sit among everyone else's. | One archive, open to read without an account. |
 | Outro | The wordmark and vidit.app (`OutroV04`, shared with the v0.4 promo) | |
+
+The take's first scroll is the one onto the Insights card. Beats 1 and 2 share
+one page position, which is what the capture geometry below is chosen for.
 
 ### Why the capture window is short and wide
 
@@ -277,14 +285,21 @@ The two dimensions are chosen, not rounded:
 
 - **1040 wide** keeps the desktop layout (above Tailwind's `lg`) with the
   content column at its 848 px cap.
-- **560 tall** is measured against the identity block, so the opening holds
-  the avatar, the handle and the bio with nothing cut in half and stops before
-  the coverage map. The counters (followers, following, member since) are the
-  closing line of that block rather than a strip of their own, so they ride the
-  bottom of the frame instead of anchoring the shot: zero followers is the
-  weakest thing on the page. The profile's layout has moved that landing point
-  once already, so treat 560 as a landmark to re-check on each capture rather
-  than a fixed number.
+- **560 tall** is measured against the opening shot, which holds the identity
+  block and the whole coverage map under it. The identity is one compact
+  header, so the map card starts around 156 CSS px down the page and still ends
+  inside the frame. The counters (followers, following, member since) are the
+  closing line of that block rather than a strip of their own, so they ride
+  under the bio instead of anchoring the shot: zero followers is the weakest
+  thing on the page.
+
+That geometry is what beats 1 and 2 are built on: the coverage beat moves the
+camera and not the page, so the analyst stays on screen while their map is
+worked, and the take spends no seconds scrolling 100 px. The profile's layout
+has moved that landing point twice already, so treat 560 as a landmark to
+re-check on each capture rather than a fixed number. If the identity block ever
+grows enough to push the map out of the opening frame, the take needs a travel
+between `identity` and `coverage` again.
 
 `CAPTURE` in `PromoV05.tsx` derives the browser body from those numbers, so
 the body always carries the take's aspect ratio and `objectFit: cover` has
@@ -333,7 +348,7 @@ Retarget it to another analyst by changing `HANDLE`, `COVERAGE_CENTER` and
 to record if any of it stops holding:
 
 - `archived_source` is set. This is the copy of the SOURCE link, which is the
-  one beat 4 frames. An event can carry a copy of a secondary source or of
+  one beat 5 frames. An event can carry a copy of a secondary source or of
   the post it was detected from and still show an empty glyph on the Source
   row, so those two fields do not qualify it.
 - Source media, coordinates and a written proof, so the frame carries what
@@ -342,7 +357,9 @@ to record if any of it stops holding:
   the cursor clicks.
 
 To give an event its archived copy, capture the source yourself and record
-the snapshot through `POST /events/{id}/archives` as the owner. Look the
+the snapshot as the owner through `POST /events/{id}/versions`, posting the
+event's current editable state with `source_snapshot_url` set (on a published
+event an archived copy is a version of its own, see `docs/api.md`). Look the
 capture up in Wayback's CDX API first (`https://web.archive.org/cdx/search/cdx?url=<source>&output=json&filter=statuscode:200`)
 and submit one through Save Page Now only if none exists. Save Page Now
 structurally refuses `x.com`, which is where most sources here live;

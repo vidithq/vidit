@@ -78,7 +78,7 @@ const mark = (key: string, fallback: number) => clip?.marks?.[key] ?? fallback;
 const TAKE_FROM = mark("identity", 0);
 const TAKE_TO = Math.min(
   clip?.durationSec ?? 0,
-  mark("mapOpen", 19.85) + 2.1 + 0.6 // the pull-back ease, then a short hold
+  mark("mapOpen", 30.18) + 2.1 + 0.6 // the pull-back ease, then a short hold
 );
 const TAKE_FRAMES = Math.round((TAKE_TO - TAKE_FROM) * COMP_FPS);
 
@@ -92,31 +92,47 @@ type CaptionCue = { at: number; eyebrow: string; title: string };
 
 const CUES: CaptionCue[] = [
   {
+    // The identity block, held still, then the travel that leaves it.
     at: mark("identity", 0),
     eyebrow: "The profile",
     title: "Your work, on one page.",
   },
   {
-    // The travel down: the counters strip passes by (48 submitted) and the
-    // coverage map is where the travel lands.
-    at: mark("work", 2.86),
-    eyebrow: "The record",
-    title: "Every event you documented.",
-  },
-  {
-    at: mark("coverage", 6.13),
+    at: mark("coverage", 7.34),
     eyebrow: "Coverage",
     title: "The ground you covered.",
   },
   {
-    // Slightly ahead of the click, so the line is already read by the time
-    // the event's source row arrives.
-    at: mark("submissions", 8.83) + 1.4,
+    // One caption over the whole Insights beat, both of its reading
+    // positions: it comes up on the travel off the map and clears when the
+    // page leaves the card.
+    at: mark("insights", 12.45),
+    eyebrow: "Insights",
+    title: "What you covered, counted: conflicts, sources, dates.",
+  },
+  {
+    at: mark("submissions", 18.79),
+    eyebrow: "The record",
+    title: "Every event you documented.",
+  },
+  {
+    // On the click rather than after it, so the line is already read by the
+    // time the event's source row arrives. It runs over the whole event beat,
+    // the poster frame, the scroll to the Details block and the cursor's hold
+    // on the archived copy (`archiveHover`), which is the half of the line
+    // the frame has to earn.
+    at: mark("cardClick", 21.56),
     eyebrow: "One event",
     title: "The source, and a copy that outlives it.",
   },
   {
-    at: mark("mapNav", 17.36),
+    // `mapUrl`, not `mapNav`: the take stamps `mapNav` before the cursor even
+    // starts for the sidebar, which put the closing line up two and a half
+    // seconds before the map existed. `mapUrl` is the router push landing,
+    // about a third of a second before the map paints, and `mapOpen` is later
+    // still, after the settle wait, which would leave the closing line about
+    // two seconds of screen time.
+    at: mark("mapUrl", 28.51),
     eyebrow: "The archive",
     title: "One archive, open to read without an account.",
   },
@@ -128,8 +144,8 @@ const CUES: CaptionCue[] = [
 // changed, so the bar never names a page ahead of the picture.
 const URL_CUES: { at: number; url: string }[] = [
   { at: mark("identity", 0), url: "vidit.app/profile/MPGeoint" },
-  { at: mark("eventUrl", 12.51), url: "vidit.app/events/…" },
-  { at: mark("mapUrl", 18.25), url: "vidit.app/map" },
+  { at: mark("eventUrl", 22.9), url: "vidit.app/events/…" },
+  { at: mark("mapUrl", 28.51), url: "vidit.app/map" },
 ];
 
 const pickAt = <T extends { at: number }>(cues: T[], sec: number): T =>
