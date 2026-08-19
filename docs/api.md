@@ -1088,7 +1088,6 @@ Any active filter empties the users group: the filters are event predicates, and
 **Errors:**
 | Code | Case |
 |------|------|
-| 401 | Unauthenticated |
 | 422 | `type` outside the allowed set, or `limit` outside [1, 50] |
 
 ---
