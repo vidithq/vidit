@@ -28,7 +28,7 @@ recorded for a URL the event does not carry.
 
 An archived copy is part of what a published record says, so recording one on a
 ``geolocated`` event is a tracked change: :func:`record_snapshot` files the
-version it supersedes through ``services/revisions.file_version``, exactly as an
+version it supersedes through ``services/versions.file_version``, exactly as an
 edit does, and the history names the change *Archived copies*. Below
 publication (``requested`` / ``detected``) nothing is versioned, so the copy is
 stored on its own. A re-record that stores the same snapshot for the same link
@@ -65,7 +65,7 @@ from app.models.source_archive import (
     SourceArchiveProvider,
 )
 from app.models.user import User
-from app.services import revisions
+from app.services import versions
 from app.services.sanitize import extract_link_hrefs, normalised_host, safe_link_href
 
 # Every host a snapshot may live on, and the provider each one is. The
@@ -427,15 +427,15 @@ def record_snapshot(
     **On a published row the copy is a new version.** A ``geolocated`` event is
     the vouched record, and what it says about its own evidence includes which
     of its links are archived, so this write files the superseded version first
-    (``services/revisions.file_version``, credited to ``recorded_by``, with no
+    (``services/versions.file_version``, credited to ``recorded_by``, with no
     note: the diff names the change) and the row takes the next number. It runs
-    under the same row lock and in the same order as ``services/events.revise``,
+    under the same row lock and in the same order as ``services/events.save_version``,
     so a copy recorded while an edit is in flight takes its number after that
     edit rather than racing it. Nothing is filed when the stored copy of the
     link is already this snapshot, since that write moves nothing, and nothing
     is filed below publication, where no version exists to supersede.
     """
-    # Serialize on the row and re-read it under the lock, ``revise``'s
+    # Serialize on the row and re-read it under the lock, ``save_version``'s
     # discipline: the status and the current version number both decide what
     # this write does, so both are read after the lock rather than off the row
     # the router resolved.
@@ -451,7 +451,7 @@ def record_snapshot(
     if event.status == STATUS_GEOLOCATED and (
         stored is None or stored.snapshot_url != snapshot_url
     ):
-        revisions.file_version(db, geo=event, edited_by=recorded_by, note=None)
+        versions.file_version(db, geo=event, edited_by=recorded_by, note=None)
     stage_snapshot(
         db, event=event, original_url=original_url, origin=origin, snapshot_url=snapshot_url
     )

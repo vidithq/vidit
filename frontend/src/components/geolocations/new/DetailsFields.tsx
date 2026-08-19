@@ -71,7 +71,7 @@ interface DetailsFieldsProps {
    *  (`false`). */
   sourceUrlLocked: boolean;
   /** What the locked marker on the source URL says. Defaults to `LockedHint`'s
-   *  "from request"; the revise form names the reason it can't move. */
+   *  "from request"; the edit form names the reason it can't move. */
   sourceLockNote?: ReactNode;
   /** A machine detection's provenance — the post it was imported from. Shown
    *  read-only inside this block (it's the one immutable field) when provided;

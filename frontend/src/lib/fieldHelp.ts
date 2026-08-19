@@ -108,10 +108,10 @@ export const FIELD_HELP = {
     text: "The source link and the source media are what the published geolocation rests on, so they can't be edited afterwards. Everything else is editable, and each edit is kept as a version. If the source itself is wrong, contact an admin: a published event can't be closed, so correcting its source is theirs to do.",
     label: "Why can't I change the source?",
   },
-  // What a revision note is for.
-  edit_note: {
+  // What a version note is for.
+  version_note: {
     text: "Optional. One line on what you changed and why, kept with the version this edit replaces so a reader can follow the correction.",
-    label: "What is the edit note?",
+    label: "What is the version note?",
   },
   // Detection submit action, spelled out here.
   action_submit: {

@@ -122,26 +122,26 @@ class EventArchiveCreate(BaseModel):
     snapshot_url: str = Field(min_length=1, max_length=SOURCE_URL_MAX_LENGTH)
 
 
-# How long the note an editor may attach to one revision runs. Short on
+# How long the note an editor may attach to one version runs. Short on
 # purpose: it says what changed and why, and the argument itself belongs in the
 # proof body. The column stays unbounded ``Text``; this is the boundary cap, so
 # an over-long note is a 422 on the field rather than a database error.
-EDIT_NOTE_MAX_LENGTH = 280
+VERSION_NOTE_MAX_LENGTH = 280
 
 
-class EventRevisionRead(BaseModel):
+class EventVersionRead(BaseModel):
     """One superseded version of an event.
 
-    ``revision_no`` is the version this row holds, not the version that replaced
-    it: an event at ``revision_no`` 3 answers with snapshots 2 and 1, and the
+    ``version_no`` is the version this row holds, not the version that replaced
+    it: an event at ``version_no`` 3 answers with snapshots 2 and 1, and the
     live row is version 3. ``snapshot`` carries the editable fields as they
-    stood (see ``services/revisions.build_snapshot``); the evidence anchor
+    stood (see ``services/versions.build_snapshot``); the evidence anchor
     (``source_url`` and the source media) is absent because no edit can move it,
     so the live row is authoritative for it at every version.
     """
 
     id: uuid.UUID
-    revision_no: int
+    version_no: int
     # Who made the edit that superseded this version. NULL once that account is
     # erased, or when it was soft-deleted (the serializer drops it for the same
     # reason ``EventRead.requested_by`` does).
@@ -161,14 +161,14 @@ class EventRevisionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class EventRevisionList(BaseModel):
+class EventVersionList(BaseModel):
     """An event's history: the superseded versions, newest first.
 
     Paged like every other list (``Link: rel="next"``, opaque cursor);
     ``total`` is the whole history, not the page.
     """
 
-    items: list[EventRevisionRead]
+    items: list[EventVersionRead]
     total: int
 
 
@@ -310,11 +310,11 @@ class EventRead(BaseModel):
     # The 4-value lifecycle: ``requested`` / ``detected`` / ``geolocated`` /
     # ``closed``. See ``models.event.STATUS_*``.
     status: EventStatus
-    # Which version of the event this payload is. 1 until the owner revises it;
-    # each revise files the superseded state and increments this. Every state
+    # Which version of the event this payload is. 1 until the owner edits it;
+    # each edit files the superseded state and increments this. Every state
     # carries it (the column is NOT NULL), but only a ``geolocated`` row can
-    # move past 1, since revising is the published-row correction path.
-    revision_no: int
+    # move past 1, since editingPublished is the published-row correction path.
+    version_no: int
     # Free-text reason the event was closed; NULL while it is open.
     close_reason: str | None
     # The status held just before ``closed`` (withdrawn vs rejected); drives the

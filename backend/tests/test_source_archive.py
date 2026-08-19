@@ -457,7 +457,7 @@ def test_the_provider_constraint_rejects_an_unknown_service(db, event):
 def _load_migration(stem: str):
     """One migration module, loaded by path.
 
-    ``alembic/versions`` is not a package, so a revision is imported through
+    ``alembic/versions`` is not a package, so a version is imported through
     the file loader rather than a normal import. Only its SQL builders are
     read; the ``op``-driven schema half is what ``alembic upgrade`` exercises.
     """

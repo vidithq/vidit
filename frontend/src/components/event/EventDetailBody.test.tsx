@@ -30,7 +30,7 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     source_posted_at: "2026-05-30T14:32:00Z",
     is_graphic: false,
     status: "geolocated",
-    revision_no: 1,
+    version_no: 1,
     close_reason: null,
     before_closed_status: null,
     detected_from_url: null,

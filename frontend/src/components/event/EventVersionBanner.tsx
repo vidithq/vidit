@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import type { EventVersion } from "@/lib/events";
+import type { EventVersionEntry } from "@/lib/events";
 import { formatDate } from "@/lib/format";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
@@ -27,7 +27,7 @@ export function EventVersionBanner({
   total,
 }: {
   eventId: string;
-  version: EventVersion;
+  version: EventVersionEntry;
   total: number;
 }) {
   return (

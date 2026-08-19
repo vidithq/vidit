@@ -144,7 +144,7 @@ const ROADMAP: {
     version: "v0.6",
     state: "upcoming",
     title: "Collaboration & reviews",
-    body: "Notifications, shared credit on events, edit history on published geolocations, and the request board as a shared queue. Organisations get a verified profile with members and roles, and an analyst or an organisation can approve a geolocation at a given revision.",
+    body: "Notifications, shared credit on events, edit history on published geolocations, and the request board as a shared queue. Organisations get a verified profile with members and roles, and an analyst or an organisation can approve a geolocation at a given version.",
   },
   {
     version: "v1.0",

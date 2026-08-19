@@ -4,12 +4,12 @@ import {
   changedFields,
   eventVersion,
   eventVersions,
-  eventRevisionsPath,
+  eventVersionsPath,
   eventVersionHref,
   parseVersionSegment,
   snapshotToEventView,
 } from "./events";
-import type { EventDetail, EventRevision } from "@/types";
+import type { EventDetail, EventVersion } from "@/types";
 
 const CURRENT: EventDetail = {
   id: "e1",
@@ -21,7 +21,7 @@ const CURRENT: EventDetail = {
   event_time: "15:45:00",
   is_graphic: false,
   status: "geolocated",
-  revision_no: 3,
+  version_no: 3,
   close_reason: null,
   before_closed_status: null,
   owner: { id: "a1", username: "analyst", avatar_url: null },
@@ -72,26 +72,26 @@ const CURRENT: EventDetail = {
 
 const BOB = { id: "a2", username: "bob", avatar_url: null };
 
-/** A filed version: `revision_no` is the version it holds, and the byline, date
+/** A filed version: `version_no` is the version it holds, and the byline, date
  *  and note are the edit that superseded it. */
-function revision(
-  revisionNo: number,
+function row(
+  versionNo: number,
   snapshot: Record<string, unknown>,
-  extra: Partial<EventRevision> = {}
-): EventRevision {
+  extra: Partial<EventVersion> = {}
+): EventVersion {
   return {
-    id: `r${revisionNo}`,
-    revision_no: revisionNo,
+    id: `r${versionNo}`,
+    version_no: versionNo,
     edited_by: BOB,
     note: null,
-    created_at: `2026-06-0${revisionNo + 1}T00:00:00Z`,
+    created_at: `2026-06-0${versionNo + 1}T00:00:00Z`,
     snapshot,
     redacted: false,
     ...extra,
   };
 }
 
-/** The snapshot shape `services/revisions.build_snapshot` files. */
+/** The snapshot shape `services/versions.build_snapshot` files. */
 function snapshot(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     title: "v2 title",
@@ -149,8 +149,8 @@ describe("parseVersionSegment", () => {
 
 describe("paths", () => {
   it("carries a cursor only when the walk has one", () => {
-    expect(eventRevisionsPath("e1", null)).toBe("/events/e1/revisions");
-    expect(eventRevisionsPath("e1", "abc")).toBe("/events/e1/revisions?cursor=abc");
+    expect(eventVersionsPath("e1", null)).toBe("/events/e1/versions");
+    expect(eventVersionsPath("e1", "abc")).toBe("/events/e1/versions?cursor=abc");
   });
 
   it("addresses a version as one path segment", () => {
@@ -159,11 +159,11 @@ describe("paths", () => {
 });
 
 describe("snapshotToEventView", () => {
-  const view = snapshotToEventView(CURRENT, revision(2, snapshot()));
+  const view = snapshotToEventView(CURRENT, row(2, snapshot()));
 
   it("overlays the versioned fields", () => {
     expect(view.title).toBe("v2 title");
-    expect(view.revision_no).toBe(2);
+    expect(view.version_no).toBe(2);
     expect(view.proof).toEqual(snapshot().proof);
     expect(view.tags).toEqual([{ id: "t2", name: "Drone", category: "capture_source" }]);
   });
@@ -177,7 +177,7 @@ describe("snapshotToEventView", () => {
 
   it("shows the archived copies as that version held them", () => {
     expect(view.archived_source).toEqual(CURRENT.archived_source);
-    const unarchived = snapshotToEventView(CURRENT, revision(2, snapshot({ archives: [] })));
+    const unarchived = snapshotToEventView(CURRENT, row(2, snapshot({ archives: [] })));
     expect(unarchived.archived_source).toBeNull();
     expect(unarchived.archived_secondary_sources).toEqual([null, null]);
   });
@@ -187,7 +187,7 @@ describe("snapshotToEventView", () => {
     // them, so it is not read as a record that had none.
     const legacy = { ...snapshot() };
     delete legacy.archives;
-    const filed = snapshotToEventView(CURRENT, revision(2, legacy));
+    const filed = snapshotToEventView(CURRENT, row(2, legacy));
     expect(filed.archived_source).toEqual(CURRENT.archived_source);
     expect(filed.archived_secondary_sources).toEqual([
       { url: "https://archive.ph/two", provider: "archive_today" },
@@ -209,19 +209,19 @@ describe("snapshotToEventView", () => {
   });
 
   it("resolves a conflict through the referential and falls back on its stored name", () => {
-    expect(snapshotToEventView(CURRENT, revision(2, snapshot())).conflicts[0]).toEqual(
+    expect(snapshotToEventView(CURRENT, row(2, snapshot())).conflicts[0]).toEqual(
       CURRENT.conflicts[0]
     );
     const gone = snapshotToEventView(
       CURRENT,
-      revision(2, snapshot({ conflicts: [{ id: "c9", name: "A deleted conflict" }] }))
+      row(2, snapshot({ conflicts: [{ id: "c9", name: "A deleted conflict" }] }))
     );
     expect(gone.conflicts[0].name).toBe("A deleted conflict");
     expect(gone.conflicts[0].start_year).toBeNull();
   });
 
   it("maps a redacted version's empty snapshot to empty content, not a throw", () => {
-    const blanked = snapshotToEventView(CURRENT, revision(2, {}, { redacted: true }));
+    const blanked = snapshotToEventView(CURRENT, row(2, {}, { redacted: true }));
     expect(blanked.title).toBe(CURRENT.title);
     expect(blanked.event_coords).toBeNull();
     expect(blanked.proof).toBeNull();
@@ -231,7 +231,7 @@ describe("snapshotToEventView", () => {
 });
 
 describe("changedFields", () => {
-  const previous = snapshotToEventView(CURRENT, revision(2, snapshot()));
+  const previous = snapshotToEventView(CURRENT, row(2, snapshot()));
 
   it("names each field the edit moved, in the page's own vocabulary", () => {
     expect(changedFields(CURRENT, previous)).toEqual([
@@ -255,7 +255,7 @@ describe("changedFields", () => {
   it("compares tags and conflicts by identity, not by name", () => {
     const renamed = snapshotToEventView(
       CURRENT,
-      revision(2, snapshot({ tags: [{ id: "t2", name: "UAV", category: "capture_source" }] }))
+      row(2, snapshot({ tags: [{ id: "t2", name: "UAV", category: "capture_source" }] }))
     );
     expect(changedFields(CURRENT, renamed)).not.toContain("Tags");
   });
@@ -287,7 +287,7 @@ describe("changedFields", () => {
     };
     const before = snapshotToEventView(
       CURRENT,
-      revision(2, snapshot({ ...unchanged, archives: [] }))
+      row(2, snapshot({ ...unchanged, archives: [] }))
     );
     expect(changedFields(CURRENT, before)).toEqual(["Archived copies"]);
 
@@ -295,7 +295,7 @@ describe("changedFields", () => {
     // link each copy covers, not by its position.
     const reordered = snapshotToEventView(
       CURRENT,
-      revision(
+      row(
         2,
         snapshot({
           ...unchanged,
@@ -309,7 +309,7 @@ describe("changedFields", () => {
   it("names the archived copies when one link's snapshot was corrected", () => {
     const corrected = snapshotToEventView(
       CURRENT,
-      revision(
+      row(
         2,
         snapshot({
           title: CURRENT.title,
@@ -340,7 +340,7 @@ describe("changedFields", () => {
   it("names the moved coordinates, dates, graphic flag and camera position", () => {
     const before = snapshotToEventView(
       CURRENT,
-      revision(
+      row(
         2,
         snapshot({
           title: CURRENT.title,
@@ -365,7 +365,7 @@ describe("changedFields", () => {
 });
 
 describe("eventVersions", () => {
-  const rows = [revision(2, snapshot(), { note: "fixed the title" }), revision(1, snapshot({ title: "v1 title" }))];
+  const rows = [row(2, snapshot(), { note: "fixed the title" }), row(1, snapshot({ title: "v1 title" }))];
 
   it("describes each version by the edit that produced it", () => {
     const versions = eventVersions(CURRENT, rows);
@@ -399,7 +399,7 @@ describe("eventVersions", () => {
   });
 
   it("renders a single version for a record nobody has corrected", () => {
-    const versions = eventVersions({ ...CURRENT, revision_no: 1 }, []);
+    const versions = eventVersions({ ...CURRENT, version_no: 1 }, []);
     expect(versions).toHaveLength(1);
     expect(versions[0]).toMatchObject({ number: 1, current: true, changed: null });
     expect(versions[0].editor).toEqual(CURRENT.owner);
@@ -416,8 +416,8 @@ describe("eventVersions", () => {
 
   it("marks a redacted version and compares nothing against it", () => {
     const versions = eventVersions(CURRENT, [
-      revision(2, {}, { redacted: true, note: null }),
-      revision(1, snapshot({ title: "v1 title" })),
+      row(2, {}, { redacted: true, note: null }),
+      row(1, snapshot({ title: "v1 title" })),
     ]);
     expect(versions[1]).toMatchObject({ number: 2, redacted: true, view: null, changed: null });
     // The version above it keeps its byline and loses only its comparison.
@@ -429,8 +429,8 @@ describe("eventVersions", () => {
 describe("eventVersion", () => {
   it("assembles one version from the two rows that describe it", () => {
     const version = eventVersion(CURRENT, 2, {
-      own: revision(2, snapshot()),
-      producedBy: revision(1, snapshot({ title: "v1 title" }), { note: "why" }),
+      own: row(2, snapshot()),
+      producedBy: row(1, snapshot({ title: "v1 title" }), { note: "why" }),
     });
     expect(version).toMatchObject({
       number: 2,
@@ -446,9 +446,10 @@ describe("eventVersion", () => {
     // The content read landed and the one below it did not, so the version has
     // its snapshot and nothing to say about the edit that made it. The
     // record's own author and publication date belong to version 1 alone.
-    const version = eventVersion(CURRENT, 2, { own: revision(2, snapshot()) });
+    const version = eventVersion(CURRENT, 2, { own: row(2, snapshot()) });
     expect(version.view?.title).toBe("v2 title");
     expect(version.editor).toBeNull();
     expect(version.createdAt).toBeNull();
   });
 });
+

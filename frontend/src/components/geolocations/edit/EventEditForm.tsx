@@ -32,11 +32,11 @@ import { Input } from "@/components/ui/Input";
 import { cleanNumber } from "@/lib/coordinates";
 import {
   archivedCopies,
-  EDIT_NOTE_MAX_LEN,
+  VERSION_NOTE_MAX_LEN,
   geolocateEvent,
   missingEventFields,
   parseCaptureCoords,
-  reviseEvent,
+  saveVersion,
   type EventFieldsState,
 } from "@/lib/events";
 import { toDatetimeLocalUTC } from "@/lib/format";
@@ -47,7 +47,7 @@ const REJECT_PANEL_ID = "reject-detection-form";
 
 // What the two locked anchor fields say on a published event, with the `?` that
 // explains why they are locked. The submit form leaves both editable, so this
-// marker only ever appears in revise mode.
+// marker only ever appears when a version is being saved.
 const ANCHOR_LOCK_NOTE = (
   <>
     evidence anchor <FieldHelp concept="evidence_anchor" size={10} />
@@ -65,12 +65,12 @@ const ANCHOR_LOCK_NOTE = (
  * immutable, and the write takes a confirm, since publishing makes the event
  * public and fixes its source.
  *
- * **Save revision** (a `geolocated` row): the same fields, minus the evidence
+ * **Save version** (a `geolocated` row): the same fields, minus the evidence
  * anchor. `source_url` and the source media are what the published claim rests
  * on, so they render read-only and the endpoint declares no field for either;
  * everything else is editable, and the write files the version it supersedes
  * rather than overwriting it. An optional note travels with that version. No
- * confirm: a revision adds a version, which is the ordinary way a published
+ * confirm: a version adds a version, which is the ordinary way a published
  * event changes.
  *
  * Built like the create form throughout (same field bricks, same `MediaManager`
@@ -102,10 +102,10 @@ export function EventEditForm({
   const { refresh: refreshDetectionCount } = useDetectionsCount();
   // Which of the two edits this is. Read off the row rather than passed in:
   // the state IS the mode, so the page and the form cannot disagree about it.
-  const revising = geo.status === "geolocated";
+  const editingPublished = geo.status === "geolocated";
   // Where a write that finishes with this row goes: back to the queue list on
   // its own, on to the next detection during a review pass, and to the event
-  // itself after a revision (`redirectTo`, which the page sets per surface).
+  // itself after a version (`redirectTo`, which the page sets per surface).
   const finish = queue?.onAdvance ?? (() => router.push(redirectTo));
 
   // No tier at all on this surface: the flow action is the form's own Submit, at
@@ -172,7 +172,7 @@ export function EventEditForm({
   // at submit. A detection's existing proof images are already stored URLs in
   // the doc, so this set covers only newly-added images.
   const [proofFiles, setProofFiles] = useState<File[]>([]);
-  // The note that travels with the version this edit supersedes. Revise only:
+  // The note that travels with the version this edit supersedes. Edit only:
   // there is no superseded version to annotate before publication.
   const [editNote, setEditNote] = useState("");
 
@@ -201,7 +201,7 @@ export function EventEditForm({
   } = useIncompleteForm();
 
   // Everything both writes post. The anchor fields (`source_url` and the source
-  // media) are added by the submit path alone: revise declares no field for
+  // media) are added by the submit path alone: saving a version declares no field for
   // them, so they must not even be assembled there.
   const buildCommon = () => ({
     title: title.trim(),
@@ -226,13 +226,13 @@ export function EventEditForm({
 
   // The one write this surface makes, in whichever shape the row is in. On a
   // detection, submit applies the whole form and flips the row to `geolocated`
-  // in one atomic request; on a published event, revise applies the editable
+  // in one atomic request; on a published event, saving a version applies the editable
   // fields and files the version it supersedes. The server enforces the same
   // evidence floor on both.
   const submitMutation = useMutation(
     () =>
-      revising
-        ? reviseEvent(geo.id, { ...buildCommon(), note: editNote })
+      editingPublished
+        ? saveVersion(geo.id, { ...buildCommon(), note: editNote })
         : geolocateEvent(geo.id, {
             ...buildCommon(),
             source_url: sourceUrl.trim(),
@@ -240,11 +240,11 @@ export function EventEditForm({
             files: newFiles,
           }),
     {
-      fallback: revising ? "Couldn't save this revision." : "Couldn't submit.",
+      fallback: editingPublished ? "Couldn't save this version." : "Couldn't submit.",
       onSuccess: () => {
         // The detections badge counts `detected` rows, which only the submit
         // path changes.
-        if (!revising) refreshDetectionCount();
+        if (!editingPublished) refreshDetectionCount();
         finish();
       },
     }
@@ -273,9 +273,9 @@ export function EventEditForm({
   const actionError = submitMutation.error;
 
   // Submit floor is computed on the post-edit state: kept existing media plus
-  // staged new files, and the selected curated tags. On a revision the anchor
+  // staged new files, and the selected curated tags. On a version the anchor
   // cannot move, so the count is simply what the row already carries.
-  const keptMediaCount = revising
+  const keptMediaCount = editingPublished
     ? geo.media.length
     : geo.media.filter((m) => !removedIds.has(m.id)).length + newFiles.length;
   const selectedCurated = taxonomy.curatedTags.filter((t) =>
@@ -325,21 +325,21 @@ export function EventEditForm({
     const missing = missingEventFields(fieldsState(), {
       requireMedia: true,
       requireTags: true,
-      // A revision matches what `revise` accepts, which matches what publishing
+      // A version matches what `save_version` accepts, which matches what publishing
       // a detection accepts: a row whose source post time was never resolved is
       // published with it blank, so an edit must not be blocked on filling it
       // in. Submitting a detection still requires it, as `geolocate` does.
-      requireSourcePostedAt: !revising,
+      requireSourcePostedAt: !editingPublished,
     });
     if (missing.length) {
       flagIncomplete(missing);
       return;
     }
-    // A revision adds a version, so it writes on the click that made it. A
+    // A version adds a version, so it writes on the click that made it. A
     // submit publishes the row, so it arms the button and the
     // click after it writes; every check above runs on both clicks, so a form
     // that stopped being submittable between them says so instead of posting.
-    if (revising) {
+    if (editingPublished) {
       void submitMutation.run();
       return;
     }
@@ -351,11 +351,16 @@ export function EventEditForm({
   // can't name the write three different ways.
   const CONFIRM_SENTENCE =
     "Click again to submit. Submitting publishes the event; later changes become versions.";
-  const widestLabel = revising ? "Save revision" : "Confirm submit";
-  const submitLabel = revising
+  // The number the save would produce, not the one on screen: the live row is
+  // version N and this write files it as N and becomes N + 1, so the button
+  // names what the reader is about to create.
+  const nextVersion = geo.version_no + 1;
+  const saveLabel = `Save version ${nextVersion}`;
+  const widestLabel = editingPublished ? saveLabel : "Confirm submit";
+  const submitLabel = editingPublished
     ? busy
       ? "Saving…"
-      : "Save revision"
+      : saveLabel
     : busy
       ? "Submitting…"
       : submitArmed
@@ -366,7 +371,7 @@ export function EventEditForm({
     <PageShell
       back
       backFallback={redirectTo}
-      title={revising ? "Edit geolocation" : "Submit detection"}
+      title={editingPublished ? "Edit geolocation" : "Submit detection"}
       actions={
         // Everything that disposes of this detection rather than filling it in,
         // in the header's own cluster: the position and the way past it during
@@ -382,7 +387,7 @@ export function EventEditForm({
               </Button>
             </>
           )}
-          {!revising && (
+          {!editingPublished && (
             <Button
               variant="danger"
               onClick={() => setRejecting(true)}
@@ -440,8 +445,8 @@ export function EventEditForm({
           }
           // Half of the published event's evidence anchor: readable, never
           // swappable, and the `?` on the marker says why.
-          locked={revising}
-          lockNote={revising ? ANCHOR_LOCK_NOTE : undefined}
+          locked={editingPublished}
+          lockNote={editingPublished ? ANCHOR_LOCK_NOTE : undefined}
           invalid={invalidKeys.has("source_media")}
         />
 
@@ -481,8 +486,8 @@ export function EventEditForm({
           graphicLocked={geo.is_graphic}
           // The other half of the anchor. A detection's source is still being
           // established, so the submit form leaves it editable.
-          sourceUrlLocked={revising}
-          sourceLockNote={revising ? ANCHOR_LOCK_NOTE : undefined}
+          sourceUrlLocked={editingPublished}
+          sourceLockNote={editingPublished ? ANCHOR_LOCK_NOTE : undefined}
           detectedFromUrl={geo.detected_from_url}
           sourcePostedAtInvalid={invalidKeys.has("source_posted_at")}
           sourceUrlInvalid={invalidKeys.has("source_url")}
@@ -508,17 +513,17 @@ export function EventEditForm({
         {/* The note rides with the version this edit supersedes, so it sits at
             the end of the fields it describes, next to the action that files
             them. Optional, and never part of the floor. */}
-        {revising && (
+        {editingPublished && (
           <Card as="section">
-            <SectionHeading title="Edit note" concept="edit_note" />
+            <SectionHeading title="Version note" concept="version_note" />
             <Input
-              id="edit_note"
+              id="version_note"
               type="text"
               value={editNote}
-              maxLength={EDIT_NOTE_MAX_LEN}
+              maxLength={VERSION_NOTE_MAX_LEN}
               onChange={(e) => setEditNote(e.target.value)}
               placeholder="What changed, and why"
-              aria-label="Edit note"
+              aria-label="Version note"
             />
           </Card>
         )}
@@ -557,8 +562,8 @@ export function EventEditForm({
             {/* What the second click costs is the button's `?`, which every
                 field on this form already carries, rather than a line of copy
                 that appears mid-gesture and pushes the button sideways. A
-                revision adds a version, so it has nothing to warn about. */}
-            {!revising && <FieldHelp concept="action_submit" />}
+                version adds a version, so it has nothing to warn about. */}
+            {!editingPublished && <FieldHelp concept="action_submit" />}
           </span>
           {/* Sibling status region, the shape every copy control uses: the armed
               state is reported once, as a status, so a reader who cannot see

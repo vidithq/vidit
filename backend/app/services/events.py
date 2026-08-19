@@ -6,8 +6,8 @@ loop, proof-image intake, the DB commit, and the post-commit S3 sweep on
 rollback. The write verbs map one-to-one onto the lifecycle:
 :func:`create_with_evidence` births a ``geolocated`` row, :func:`create_request`
 a ``requested`` one, :func:`geolocate` is the one generalized transition to
-``geolocated`` (fulfil a request, vouch a detection), :func:`revise` corrects a
-published row and files the superseded version as a revision, and :func:`close`
+``geolocated`` (fulfil a request, vouch a detection), :func:`save_version` corrects a
+published row and files the superseded state as a version, and :func:`close`
 is the terminal withdraw / reject.
 
 Errors are typed `EventError` subclasses with stable `.code`
@@ -48,7 +48,7 @@ from app.models.event import (
 from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
-from app.services import revisions, source_archive
+from app.services import source_archive, versions
 from app.services.event_filters import visible_events
 from app.services.evidence_intake import (
     EvidenceIntakeError,
@@ -155,7 +155,7 @@ class EventStateError(EventError):
     Raised when a geolocate targets a row that isn't ``requested`` /
     ``detected`` (a ``geolocated`` row is past that transition, ``closed`` is
     terminal), when a close targets a row already past those states, or when a
-    revise targets a row that is not ``geolocated`` (there is no version to
+    :func:`save_version` targets a row that is not ``geolocated`` (there is no version to
     supersede before publication). Maps to 409: the request is well-formed but
     conflicts with the row's current state.
     """
@@ -864,7 +864,7 @@ async def geolocate(
     return geo
 
 
-async def revise(
+async def save_version(
     db: Session,
     *,
     geo: Event,
@@ -887,13 +887,13 @@ async def revise(
     source_snapshot_url: str | None = None,
     secondary_snapshot_urls: list[str] | None = None,
 ) -> Event:
-    """Correct a published event, filing the superseded state as a revision.
+    """Correct a published event, filing the superseded state as a version.
 
     Owner-only, and only on a ``geolocated`` row: before publication a row is
     still being written (a detection is machine output its owner submits, a
     request is an open call anyone answers), so there is no vouched version for
     an edit to supersede. The pre-edit state is snapshotted into
-    ``event_revisions`` at the current ``revision_no``, the edit is applied, and
+    ``event_versions`` at the current ``version_no``, the edit is applied, and
     the row takes the next number, all in one transaction under the same row
     lock :func:`close` and :func:`geolocate` take.
 
@@ -923,7 +923,7 @@ async def revise(
     same checks. It archives the anchor rather than changing it, so it is
     accepted here. ``secondary_snapshot_urls`` does the same per submitted
     mirror. Both are staged after the version this edit supersedes is filed, so
-    one call files one revision whose new version carries the copies.
+    one call files one version and the new one carries the copies.
 
     The evidence floor a publication met is re-checked against the post-edit
     state, so an edit cannot drop a published row below it: a ``source`` media
@@ -931,7 +931,7 @@ async def revise(
     and the curated ``capture_source`` tag. Proof images ride in ``proof_files``
     and resolve against the doc's ``placeholder://`` srcs, exactly as on the
     publish forms; an image the new body drops is deleted only if no readable
-    version displays it (see ``services/revisions.referenced_media_urls``).
+    version displays it (see ``services/versions.referenced_media_urls``).
 
     Raises :class:`EventStateError` (409) off ``geolocated``, the 403 of
     ``ensure_owner`` for anyone but the owner,
@@ -944,12 +944,12 @@ async def revise(
     # Same lock discipline as ``geolocate`` and ``close``: serialize on the row,
     # then re-read status and ownership under the lock. ``populate_existing()``
     # is what makes the re-read real, since the router already put this row in
-    # the session identity map. Two concurrent revises therefore take their
-    # ``revision_no`` in a defined order rather than both snapshotting version N.
+    # the session identity map. Two concurrent edits therefore take their
+    # ``version_no`` in a defined order rather than both snapshotting version N.
     geo = db.query(Event).filter(Event.id == geo.id).populate_existing().with_for_update().one()
     ensure_owner(geo, current_user)
     if geo.status != STATUS_GEOLOCATED:
-        raise EventStateError("Only a geolocated event can be revised")
+        raise EventStateError("Only a geolocated event can be edited")
 
     validate_coordinates(lat, lng)
     capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
@@ -979,7 +979,7 @@ async def revise(
     # one included, and keeps every image a readable version still displays.
     # The row becomes the next version in the same call, so the archived copy
     # staged further down lands in the new version rather than in the filed one.
-    revisions.file_version(db, geo=geo, edited_by=current_user, note=note)
+    versions.file_version(db, geo=geo, edited_by=current_user, note=note)
 
     # Same autoflush suppression as ``geolocate``: the collection assignments
     # lazy-load the current sets, which would flush a half-edited row.
@@ -1018,7 +1018,7 @@ async def revise(
         source_files=[],
         proof_doc=proof_data,
         proof_files=proof_files,
-        sweep_context=f"event {geo.id} revise rollback",
+        sweep_context=f"event {geo.id} save_version rollback",
     )
 
     db.refresh(geo)

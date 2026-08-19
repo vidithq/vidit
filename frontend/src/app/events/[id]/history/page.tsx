@@ -4,10 +4,10 @@ import { useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
-import type { EventDetail, EventRevision, EventRevisionList } from "@/types";
+import type { EventDetail, EventVersion, EventVersionList } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useCursorList } from "@/hooks/useCursorList";
-import { eventRevisionsPath, eventVersions } from "@/lib/events";
+import { eventVersionsPath, eventVersions } from "@/lib/events";
 import { EventVersionRow } from "@/components/event/EventVersionRow";
 import { Button } from "@/components/ui/Button";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
@@ -17,7 +17,7 @@ import { TEXT_LINK } from "@/components/ui/styles";
 /** The history read answers an envelope rather than a bare array, so the walk
  *  is told where its rows are. Module-level: `useCursorList` keys its fetches on
  *  this function's identity. */
-const revisionRows = (page: EventRevisionList): EventRevision[] => page.items;
+const versionRows = (page: EventVersionList): EventVersion[] => page.items;
 
 /**
  * Every version of one event, newest first.
@@ -41,22 +41,22 @@ export default function EventHistoryPage() {
   );
 
   const buildPath = useCallback(
-    (cursor: string | null) => eventRevisionsPath(eventId, cursor),
+    (cursor: string | null) => eventVersionsPath(eventId, cursor),
     [eventId]
   );
   const {
-    items: revisions,
+    items: rows,
     error: historyError,
     loading,
     loadingMore,
     hasMore,
     loadMore,
-  } = useCursorList<EventRevision, EventRevisionList>(buildPath, revisionRows);
+  } = useCursorList<EventVersion, EventVersionList>(buildPath, versionRows);
 
   if (error) return <PageError message={error} />;
   if (!geo) return <PageLoading />;
 
-  const versions = eventVersions(geo, revisions, hasMore);
+  const versions = eventVersions(geo, rows, hasMore);
 
   return (
     <PageShell
@@ -76,7 +76,7 @@ export default function EventHistoryPage() {
         <>
           <p className="text-[11px] text-neutral-500">
             <span className="text-neutral-300 font-medium">
-              {geo.revision_no} version{geo.revision_no === 1 ? "" : "s"}
+              {geo.version_no} version{geo.version_no === 1 ? "" : "s"}
             </span>{" "}
             · newest first
           </p>

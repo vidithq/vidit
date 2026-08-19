@@ -97,15 +97,15 @@ erDiagram
         TIMESTAMPTZ deleted_at "nullable, admin soft-delete"
         TIMESTAMPTZ hidden_at "nullable, admin takedown"
         BOOLEAN is_graphic "death, injury or human remains"
-        INTEGER revision_no "which version the live row is, from 1"
+        INTEGER version_no "which version the live row is, from 1"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
     }
 
-    event_revisions {
+    event_versions {
         UUID id PK
         UUID event_id FK
-        INTEGER revision_no "the version this row holds"
+        INTEGER version_no "the version this row holds"
         UUID edited_by_id FK "nullable, who superseded it"
         TEXT note "nullable, capped at 280 chars by the schema"
         JSONB snapshot "the editable fields as they stood, blank once redacted"
@@ -197,9 +197,9 @@ erDiagram
     events ||--o{ event_geolocators : "event_id"
     users ||--o{ event_geolocators : "user_id"
     events ||--o{ event_source_links : "event_id"
-    events ||--o{ event_revisions : "event_id"
-    users ||--o{ event_revisions : "edited_by_id"
-    users ||--o{ event_revisions : "redacted_by_id"
+    events ||--o{ event_versions : "event_id"
+    users ||--o{ event_versions : "edited_by_id"
+    users ||--o{ event_versions : "redacted_by_id"
     events |o--o{ content_reports : "event_id"
     users ||--o{ content_reports : "reporter_user_id"
     users ||--o{ content_reports : "resolved_by"
@@ -371,12 +371,12 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 | `detected_at` | `TIMESTAMPTZ` | nullable. Stamped when a machine produced it, entering `detected`. |
 | `geolocated_at` | `TIMESTAMPTZ` | nullable. Stamped when a person vouched for it and published it, entering `geolocated`. |
 | `closed_at` | `TIMESTAMPTZ` | nullable. Stamped when the event entered the terminal `closed` state. |
-| `status` | `VARCHAR(20)` | NOT NULL, `server_default 'geolocated'`. The lifecycle runs `requested` (an open call to geolocate) → `detected` (a machine detection, marked on every surface, immutable until vouched) → `geolocated` (a person vouched for it and published it; always has a location, and every later correction is a revision) → `closed` (a withdrawn request or a rejected detection). It is a plain string, not a native enum, and `ck_events_status_valid` pins the value domain. The default keeps a direct human submit correct without setting the value explicitly; the requested and detected paths pass `status` explicitly. The `geolocate`, `revise` and `close` transitions are documented in [`api.md`](api.md). |
+| `status` | `VARCHAR(20)` | NOT NULL, `server_default 'geolocated'`. The lifecycle runs `requested` (an open call to geolocate) → `detected` (a machine detection, marked on every surface, immutable until vouched) → `geolocated` (a person vouched for it and published it; always has a location, and every later correction is a version) → `closed` (a withdrawn request or a rejected detection). It is a plain string, not a native enum, and `ck_events_status_valid` pins the value domain. The default keeps a direct human submit correct without setting the value explicitly; the requested and detected paths pass `status` explicitly. The `geolocate`, `save_version` and `close` transitions are documented in [`api.md`](api.md). |
 | `close_reason` | `TEXT` | nullable. A free-text reason the event was closed, such as AI image, bot bug, or withdrawn. Kept visible for transparency. A curated reason picker is deferred. |
 | `before_closed_status` | `VARCHAR(20)` | nullable. The status held just before `closed`: `requested` means withdrawn, `detected` means rejected. Drives the requested-view routing. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks an admin soft-delete: the row and its media stay in place, but every public read filters it out, admins included. |
 | `hidden_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks a takedown: the row is withheld from every public read the same way `deleted_at` is, but an admin still reads it (judging the [content report](#content_reports) that led to the takedown means seeing what was withheld), and the state is reversible, which is what separates it from `deleted_at`. Set by `POST /admin/reports/{id}/resolve` (`resolution = "hidden"`) or directly by `PATCH /admin/events/{id}/moderation`; cleared only by the latter. |
-| `revision_no` | `INTEGER` | NOT NULL, `server_default 1`. Which version of the event the live row is. It starts at 1 and moves forward one step per correction, which files the superseded state in [`event_revisions`](#event_revisions). Only a `geolocated` row can move past 1, because revising is the published-row correction path; see [`POST /events/{id}/revise`](api.md#post-eventsidrevise). A version number is a public address, so it never changes meaning: a revision is never deleted, and the number only ever increases. |
+| `version_no` | `INTEGER` | NOT NULL, `server_default 1`. Which version of the event the live row is. It starts at 1 and moves forward one step per correction, which files the superseded state in [`event_versions`](#event_versions). Only a `geolocated` row can move past 1, because saving a version is the published-row correction path; see [`POST /events/{id}/versions`](api.md#post-eventsidversions). A version number is a public address, so it never changes meaning: a version is never deleted, and the number only ever increases. |
 | `is_graphic` | `BOOLEAN` | NOT NULL, default `false`. `TRUE` when the footage shows death, injury or human remains. The author sets it on the create / edit forms; an admin can override it, directly (`PATCH /admin/events/{id}/moderation`) or by resolving a report as `marked_graphic`. Public column, carried by every event read schema: the frontend covers a flagged event's media behind [`GraphicContentGate`](design.md#components) until the viewer confirms they want to see it. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
@@ -442,21 +442,21 @@ The composite PK's leading `event_id` serves the forward read, who geolocated ev
 
 ---
 
-### `event_revisions`
+### `event_versions`
 
-One superseded version of a published event. Correcting a `geolocated` row must not silently rewrite the record, so the pre-edit state is filed here before the edit lands and `events.revision_no` moves on. The table is append-only: a row is never updated and never deleted, because a version number is a public address.
+One superseded version of a published event. Correcting a `geolocated` row must not silently rewrite the record, so the pre-edit state is filed here before the edit lands and `events.version_no` moves on. The table is append-only: a row is never updated and never deleted, because a version number is a public address.
 
-Read it as "the snapshots, then the live row": an event at `revision_no` 3 carries rows 1 and 2 here, and the live row is version 3. Publication writes nothing here, so version 1 is the published row itself.
+Read it as "the snapshots, then the live row": an event at `version_no` 3 carries rows 1 and 2 here, and the live row is version 3. Publication writes nothing here, so version 1 is the published row itself.
 
-Two writes file a version, both through `services/revisions.file_version`: the owner's edit ([`POST /events/{id}/revise`](api.md#post-eventsidrevise)) and an [archived copy](#source_archives) recorded on a `geolocated` row ([`POST /events/{id}/archives`](api.md#post-eventsidarchives)), which is a change to what the published record says about its own evidence. Both take the number under the event's row lock.
+Two writes file a version, both through `services/versions.file_version`: the owner's edit ([`POST /events/{id}/versions`](api.md#post-eventsidversions)) and an [archived copy](#source_archives) recorded on a `geolocated` row ([`POST /events/{id}/archives`](api.md#post-eventsidarchives)), which is a change to what the published record says about its own evidence. Both take the number under the event's row lock.
 
-Redaction is the one write a filed row takes, and it is still not a delete: an admin blanks `snapshot` and `note` in place and stamps `redacted_at` / `redacted_by_id`, so the row, its number and its byline stay. See [`POST /admin/events/{id}/revisions/{revision_no}/redact`](api.md#post-admineventsidrevisionsrevision_noredact).
+Redaction is the one write a filed row takes, and it is still not a delete: an admin blanks `snapshot` and `note` in place and stamps `redacted_at` / `redacted_by_id`, so the row, its number and its byline stay. See [`POST /admin/events/{id}/versions/{version_no}/redact`](api.md#post-admineventsidversionsversion_noredact).
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL |
-| `revision_no` | `INTEGER` | NOT NULL. The version this row **holds**, not the one that replaced it. |
+| `version_no` | `INTEGER` | NOT NULL. The version this row **holds**, not the one that replaced it. |
 | `edited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst whose edit superseded this version. NULL once that account is erased: an event legitimately outlives an editor who is not its owner. |
 | `note` | `TEXT` | nullable. The editor's own words about the edit. Bounded to 280 characters by the schema, not the column, which stays unbounded `TEXT`. |
 | `snapshot` | `JSONB` | NOT NULL. The editable fields as they stood: `title`, `event_coords`, `capture_source_coords`, `event_date`, `event_time`, `source_posted_at`, `is_graphic`, `secondary_source_urls`, `tags`, `conflicts`, `proof`, `proof_media`, and `archives`. `proof_media` carries the images this version's own proof body referenced, not every `proof` row the event holds. `archives` carries the version's [archived copies](#source_archives) (`original_url`, `origin`, `snapshot_url`, `provider`, `created_at`), sorted by `original_url` so a stored list never reshuffles between versions. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. The evidence anchor (`source_url` and the `source` media) is absent, because no edit can move it, so the live row is authoritative for it at every version. `{}` on a redacted version. |
@@ -464,11 +464,11 @@ Redaction is the one write a filed row takes, and it is still not a delete: an a
 | `redacted_at` | `TIMESTAMPTZ` | nullable. When an admin blanked this version's content. NULL on every ordinary row. |
 | `redacted_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Which admin redacted it. NULL once that account is erased; the readable trail is the `admin_events` row the same write files. |
 
-**Unique constraint:** `uq_event_revisions_event_no` on `(event_id, revision_no)`. The writer takes the number off the locked event row, so a duplicate is a bug Postgres rejects rather than a second history entry for one version.
+**Unique constraint:** `uq_event_versions_event_no` on `(event_id, version_no)`. The writer takes the number off the locked event row, so a duplicate is a bug Postgres rejects rather than a second history entry for one version.
 
 There is no secondary index: the only read is "this event's history, by version", served by the unique constraint's leading `event_id`.
 
-**Media are not versioned.** A `media` row a readable snapshot's `proof_media` points at is never hard-deleted, so a past version stays renderable after the current proof body drops the image. The shared intake checks this before it deletes a proof row; see `services/revisions.referenced_media_urls`. A redacted version displays nothing, so it holds nothing alive: redacting the last version that showed an image deletes that image, row and object.
+**Media are not versioned.** A `media` row a readable snapshot's `proof_media` points at is never hard-deleted, so a past version stays renderable after the current proof body drops the image. The shared intake checks this before it deletes a proof row; see `services/versions.referenced_media_urls`. A redacted version displays nothing, so it holds nothing alive: redacting the last version that showed an image deletes that image, row and object.
 
 ---
 
@@ -692,7 +692,7 @@ One row per link an analyst has recorded an archived copy for: the event's `sour
 
 `UNIQUE (event_id, original_url)` is one copy per link. It is also the owner's correction path: pasting a second snapshot for a link overwrites the row rather than adding a competing one.
 
-The table holds the copies as they stand. On a `geolocated` event, writing one also files an [`event_revisions`](#event_revisions) row, whose `archives` fragment is what the copies were at that version, so the history reads them back after a correction overwrites the live row.
+The table holds the copies as they stand. On a `geolocated` event, writing one also files an [`event_versions`](#event_versions) row, whose `archives` fragment is what the copies were at that version, so the history reads them back after a correction overwrites the live row.
 
 
 ---
@@ -726,7 +726,7 @@ PostGIS enables native geospatial queries: bounding-box filtering, distance comp
 ### Why a `event_geolocators` table and not an id array?
 The table is read from both sides: an event's geolocators, and a user's geolocations on the profile page. A junction table indexes both directions and carries a per-row `created_at`. An id array on `events` would force a GIN scan for the reverse query and store no timestamp.
 
-### Why full snapshots in `event_revisions` and not a per-field change log?
+### Why full snapshots in `event_versions` and not a per-field change log?
 A version has to be readable on its own: `/events/{id}/v2` renders the whole event as it stood, which a change log answers only by replaying every entry from the beginning. A snapshot answers it with one row, and the fields it stores are exactly the fields an edit can write, so a snapshot plus the live row is a complete history. The cost is bounded, because an event accumulates a handful of versions. What changed between two versions is a diff of adjacent snapshots, computed at read time.
 
 ### Why redact a version in place instead of deleting the row?

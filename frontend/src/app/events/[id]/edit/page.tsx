@@ -85,7 +85,7 @@ export default function EditEventPage() {
     );
   }
 
-  // A detection is confirmed here and a published geolocation is revised here.
+  // A detection is confirmed here and a published geolocation is edited here.
   // The states in between are handled elsewhere: a `requested` event is
   // answered through the submit form, and a `closed` one is terminal.
   if (geo.status !== "detected" && geo.status !== "geolocated") {
@@ -106,7 +106,7 @@ export default function EditEventPage() {
   }
 
   // Where the form returns to when it is done: the detections queue after a
-  // confirmation, the event itself after a revision.
+  // confirmation, the event itself after a version.
   const doneHref =
     geo.status === "geolocated"
       ? `/events/${geo.id}`

@@ -20,14 +20,14 @@ from fastapi import HTTPException
 from pydantic import StringConstraints
 from sqlalchemy.orm import Session
 
-from app.models.event import SOURCE_URL_MAX_LENGTH, Event, EventRevision
+from app.models.event import SOURCE_URL_MAX_LENGTH, Event, EventVersion
 from app.routers._errors import raise_typed_error
 from app.schemas.event import (
     ArchivedLinkRead,
     CoordsRead,
     EventList,
     EventRead,
-    EventRevisionRead,
+    EventVersionRead,
 )
 from app.schemas.media import MediaRead
 from app.services.event_filters import visible_events
@@ -150,7 +150,7 @@ def build_event_list(
     )
 
 
-def build_revision_read(row: EventRevision) -> EventRevisionRead:
+def build_version_read(row: EventVersion) -> EventVersionRead:
     """Assemble one superseded version's wire shape.
 
     The snapshot travels as stored, so a version reads back exactly as it was
@@ -160,9 +160,9 @@ def build_revision_read(row: EventRevision) -> EventRevisionRead:
     banned account must not surface as the byline of a still-live event.
     """
     editor = row.edited_by
-    return EventRevisionRead(
+    return EventVersionRead(
         id=row.id,
-        revision_no=row.revision_no,
+        version_no=row.version_no,
         edited_by=editor if editor is not None and editor.deleted_at is None else None,
         note=row.note,
         created_at=row.created_at,
@@ -235,7 +235,7 @@ def build_event_read(
         closed_at=geo.closed_at,
         is_graphic=geo.is_graphic,
         status=geo.status,
-        revision_no=geo.revision_no,
+        version_no=geo.version_no,
         close_reason=geo.close_reason,
         before_closed_status=geo.before_closed_status,
         detected_from_url=geo.detected_from_url,

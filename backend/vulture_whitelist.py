@@ -28,9 +28,9 @@ processed_at  # app/models/bot_mention.py — audit stamp, written at insert onl
 # Stamped by services/reports.resolve_report and read on the wire only (the
 # column, the ContentReportRead field, and the assignment all collapse here).
 resolved_by  # app/models/content_report.py + app/schemas/report.py
-# Set at construction in services/revisions.snapshot and read only through the
+# Set at construction in services/versions.snapshot and read only through the
 # `edited_by` relationship the history serializer walks.
-edited_by_id  # app/models/event.py EventRevision
+edited_by_id  # app/models/event.py EventVersion
 email_verified_at  # app/models/user.py, audit stamp written at registration only
 
 # ── ASGI middleware override ──────────────────────────────────────────────────
@@ -84,11 +84,11 @@ period  # schemas/user.py ActivityBucket (wire field)
 finished_at  # models/archive_import_job.py + schemas/event.py ArchiveImportJobRead: written by the worker, read on the wire only
 progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
-redacted  # schemas/event.py EventRevisionRead (wire field, built in routers/events/_common.py)
-# Written by ``services/revisions.redact``, read by nothing in ``app/``: the
+redacted  # schemas/event.py EventVersionRead (wire field, built in routers/events/_common.py)
+# Written by ``services/versions.redact``, read by nothing in ``app/``: the
 # column is the row-level record of who redacted a version, and the readable
 # trail is the ``admin_events`` row the same write files.
-redacted_by_id  # models/event.py EventRevision
+redacted_by_id  # models/event.py EventVersion
 
 # ── Test-only helper ──────────────────────────────────────────────────────────
 # Called from tests/, which the gate does not scan, so it reads as unused here.

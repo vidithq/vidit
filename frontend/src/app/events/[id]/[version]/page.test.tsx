@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { EventDetail, EventRevision } from "@/types";
+import type { EventDetail, EventVersion } from "@/types";
 
 // The map canvas needs WebGL, which jsdom has none of.
 vi.mock("@/components/map/Map", () => ({ default: () => <div data-testid="map" /> }));
@@ -50,7 +50,7 @@ const EVENT: EventDetail = {
   source_posted_at: "2026-05-30T14:32:00Z",
   is_graphic: false,
   status: "geolocated",
-  revision_no: 3,
+  version_no: 3,
   close_reason: null,
   before_closed_status: null,
   detected_from_url: null,
@@ -76,17 +76,17 @@ const EVENT: EventDetail = {
   geolocators: [],
 };
 
-function revision(
-  revisionNo: number,
+function version(
+  versionNo: number,
   snapshot: Record<string, unknown>,
-  extra: Partial<EventRevision> = {}
-): EventRevision {
+  extra: Partial<EventVersion> = {}
+): EventVersion {
   return {
-    id: `r${revisionNo}`,
-    revision_no: revisionNo,
+    id: `r${versionNo}`,
+    version_no: versionNo,
     edited_by: BOB,
     note: null,
-    created_at: `2026-06-0${revisionNo + 1}T10:00:00Z`,
+    created_at: `2026-06-0${versionNo + 1}T10:00:00Z`,
     snapshot,
     redacted: false,
     ...extra,
@@ -108,11 +108,11 @@ const snapshot = (title: string): Record<string, unknown> => ({
   proof_media: [],
 });
 
-let rows: Record<number, EventRevision>;
+let rows: Record<number, EventVersion>;
 
 function resource(path: string): unknown {
   if (path === "/events/e1") return EVENT;
-  const match = path.match(/^\/events\/e1\/revisions\/([0-9]+)$/);
+  const match = path.match(/^\/events\/e1\/versions\/([0-9]+)$/);
   return match ? rows[Number(match[1])] : null;
 }
 
@@ -122,8 +122,8 @@ beforeEach(() => {
   replace.mockClear();
   notFound.mockClear();
   rows = {
-    1: revision(1, snapshot("v1 title"), { note: "why v2 happened" }),
-    2: revision(2, snapshot("v2 title"), { note: "why v3 happened" }),
+    1: version(1, snapshot("v1 title"), { note: "why v2 happened" }),
+    2: version(2, snapshot("v2 title"), { note: "why v3 happened" }),
   };
 });
 
@@ -151,7 +151,7 @@ describe("EventVersionPage", () => {
   });
 
   it("serves a redacted version as its banner and a notice, with no content", () => {
-    rows[2] = revision(2, {}, { redacted: true });
+    rows[2] = version(2, {}, { redacted: true });
     render(<EventVersionPage />);
     expect(screen.getByText(/Version 2 of 3/)).toBeTruthy();
     expect(screen.getByText(/redacted this version/)).toBeTruthy();

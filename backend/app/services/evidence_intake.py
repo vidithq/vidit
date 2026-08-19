@@ -38,7 +38,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.event import Event
 from app.models.media import Media
-from app.services import revisions
+from app.services import versions
 from app.services.evidence_processing import EvidenceProcessingError
 from app.services.sanitize import PROOF_PLACEHOLDER_PREFIX, extract_image_srcs
 from app.services.storage import (
@@ -172,9 +172,9 @@ def _history_pinned_srcs(db: Session, event: Event) -> set[str]:
     Asked only of a row that has a history at all (version 1 has no snapshot to
     protect), so the ordinary write pays no query.
     """
-    if event.revision_no <= 1:
+    if event.version_no <= 1:
         return set()
-    return revisions.referenced_media_urls(db, event.id)
+    return versions.referenced_media_urls(db, event.id)
 
 
 def _reject_foreign_proof_srcs(event: Event, displayed_srcs: set[str]) -> None:
@@ -185,7 +185,7 @@ def _reject_foreign_proof_srcs(event: Event, displayed_srcs: set[str]) -> None:
     whose it is. Ownership is decided here: an src this storage layer wrote
     (``key_from_url`` resolves it to a key) has to be one of THIS event's own
     ``proof`` rows. Without the check, event B could embed event A's proof image,
-    and A's next revise or redact would then sweep the object out from under B.
+    and A's next edit or redact would then sweep the object out from under B.
 
     Srcs the storage layer did not write (relative paths, a dev deployment's
     external https) resolve to no key and no row of any event, so they are left
@@ -225,7 +225,7 @@ def prune_unreferenced_proof_media(db: Session, event: Event) -> list[str]:
     The standalone form of the diff :func:`attach_evidence_and_commit` runs as
     part of a write, for the one caller that changes what the history displays
     without touching the event itself: redacting a version
-    (``services/revisions.redact``) can leave an image no readable version and
+    (``services/versions.redact_version``) can leave an image no readable version and
     no current body points at.
 
     Staged, not committed. The caller commits, then sweeps the returned keys.
@@ -333,7 +333,7 @@ async def attach_evidence_and_commit(
     # it still shows plus the files it adds. Counting the batch alone let an
     # event grow past the ceiling a few images at a time; counting the rows the
     # write keeps charged the owner for images pinned only because an old version
-    # renders them, so swapping an image across revisions ate the quota for good
+    # renders them, so swapping an image across versions ate the quota for good
     # with nothing left to free.
     displayed_proof_rows = sum(
         1 for m in event.media if m.role == "proof" and m.storage_url in displayed_srcs

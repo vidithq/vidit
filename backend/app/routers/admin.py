@@ -9,7 +9,7 @@ from app.dependencies import get_db, require_admin
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._errors import raise_typed_error
-from app.routers.events._common import build_revision_read
+from app.routers.events._common import build_version_read
 from app.schemas.admin import (
     AdminDetectionStatsRead,
     AdminEventDeleteResponse,
@@ -24,7 +24,7 @@ from app.schemas.admin import (
     AdminUserRead,
     UserXHandleUpdate,
 )
-from app.schemas.event import EventRevisionRead
+from app.schemas.event import EventVersionRead
 from app.schemas.report import ContentReportList, ContentReportRead, ContentReportUpdate
 from app.services import admin as admin_service
 from app.services import maintenance as maintenance_service
@@ -43,7 +43,7 @@ router = APIRouter()
 _ADMIN_ERROR_STATUS: dict[str, int] = {
     "user_not_found": 404,
     "geolocation_not_found": 404,
-    "revision_not_found": 404,
+    "version_not_found": 404,
     "x_handle_conflict": 409,
 }
 
@@ -376,24 +376,24 @@ def set_event_moderation(
 
 
 @router.post(
-    "/events/{geolocation_id}/revisions/{revision_no}/redact",
-    response_model=EventRevisionRead,
+    "/events/{geolocation_id}/versions/{version_no}/redact",
+    response_model=EventVersionRead,
 )
 @limiter.limit("60/hour")
-def redact_event_revision(
+def redact_event_version(
     request: Request,
     geolocation_id: uuid.UUID,
-    revision_no: int,
+    version_no: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
-) -> EventRevisionRead:
+) -> EventVersionRead:
     """Blank one filed version of an event's history.
 
-    ``event_revisions`` is append-only and a version number is a public
+    ``event_versions`` is append-only and a version number is a public
     address, so a version whose content the record must stop serving is blanked
     rather than removed: the snapshot and the note go, the row, its
-    ``revision_no`` and its ``created_at`` stay, and
-    [`GET /events/{id}/revisions`] still lists it, marked ``redacted``. A
+    ``version_no`` and its ``created_at`` stay, and
+    [`GET /events/{id}/versions`] still lists it, marked ``redacted``. A
     redacted version displays no images, so a proof image only it pointed at is
     deleted with it.
 
@@ -402,15 +402,15 @@ def redact_event_revision(
     version the event does not carry.
     """
     try:
-        row = admin_service.redact_revision(
+        row = admin_service.redact_version(
             db,
             actor_id=current_user.id,
             geolocation_id=geolocation_id,
-            revision_no=revision_no,
+            version_no=version_no,
         )
     except admin_service.AdminError as exc:
         _raise_admin_error(exc)
-    return build_revision_read(row)
+    return build_version_read(row)
 
 
 # ── Maintenance ──────────────────────────────────────────────────────────

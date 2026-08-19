@@ -13,7 +13,7 @@ interface PagedResult<T> {
 
 /** The rows out of a page payload that *is* the rows. The default for every
  *  list endpoint answering a bare array; an endpoint answering an envelope
- *  (`GET /events/{id}/revisions` serves `{items, total}`) passes its own reader.
+ *  (`GET /events/{id}/versions` serves `{items, total}`) passes its own reader.
  *  Module-level so the default keeps one identity across renders: it is a hook
  *  dependency, and a fresh closure per render would refetch the first page
  *  forever. */

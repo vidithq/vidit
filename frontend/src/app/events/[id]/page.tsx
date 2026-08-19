@@ -18,7 +18,7 @@ export default function EventPage() {
   );
   // A geolocated event is finished work, so it carries no flow action: the
   // cluster is the utilities tier plus, for its author, the edit that files a
-  // revision. Called before the early returns, as every hook here must be.
+  // version. Called before the early returns, as every hook here must be.
   const { actions, panels } = useEventActions({ event: geo, surface: "event" });
 
   if (error)
@@ -36,9 +36,9 @@ export default function EventPage() {
           <AuthorByline author={geo.owner} avatar />
           {/* Which version the page is showing, next to who filed it: an event
               nobody has corrected is version 1 and says nothing. */}
-          {geo.revision_no > 1 && (
-            <Pill tone="neutral" title={`Version ${geo.revision_no}`}>
-              v{geo.revision_no}
+          {geo.version_no > 1 && (
+            <Pill tone="neutral" title={`Version ${geo.version_no}`}>
+              v{geo.version_no}
             </Pill>
           )}
         </span>

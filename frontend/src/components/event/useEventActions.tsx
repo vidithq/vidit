@@ -38,7 +38,7 @@ import type { EventDetail } from "@/types";
  * 3. **Owner management**: the controls only the author holds, and each
  *    surface carries only its own, as icon buttons in the row like every other
  *    control in it. The event page carries editing a published geolocation,
- *    which files a revision rather than overwriting the record, as a pencil;
+ *    which files a version rather than overwriting the record, as a pencil;
  *    the request page carries closing the request and deleting it, and the
  *    destructive one is red and confirms on a second click rather than hiding
  *    behind a disclosure. The two do not cross: `/events/{id}` serves a row of
@@ -65,7 +65,7 @@ export type ActionSurface = "event" | "request" | "panel" | "edit";
 // correction its author makes.
 //
 // Owner management is two entries, not one, because the surfaces claim
-// different halves of it: `revise` is correcting a published geolocation, which
+// different halves of it: `saveVersion` is correcting a published geolocation, which
 // only the event page offers, and `dispose` is withdrawing or deleting a
 // request, which only the request page offers. Each surface serves rows of
 // several statuses, so the split is what keeps a request's verbs off the event
@@ -76,16 +76,16 @@ const TIERS: Record<
   ActionSurface,
   {
     flow: boolean;
-    revise: boolean;
+    saveVersion: boolean;
     dispose: boolean;
     history: boolean;
     utilities: boolean;
   }
 > = {
-  event:   { flow: false, revise: true,  dispose: false, history: true,  utilities: true },
-  request: { flow: true,  revise: false, dispose: true,  history: false, utilities: true },
-  panel:   { flow: false, revise: false, dispose: false, history: false, utilities: false },
-  edit:    { flow: false, revise: false, dispose: false, history: false, utilities: false },
+  event:   { flow: false, saveVersion: true,  dispose: false, history: true,  utilities: true },
+  request: { flow: true,  saveVersion: false, dispose: true,  history: false, utilities: true },
+  panel:   { flow: false, saveVersion: false, dispose: false, history: false, utilities: false },
+  edit:    { flow: false, saveVersion: false, dispose: false, history: false, utilities: false },
 };
 
 // Ties the menu entry to the panel it opens two levels down the tree, which
@@ -163,7 +163,7 @@ export function useEventActions({
   // disclosure holding two entries costs a click on every use to hide what the
   // row has width for. What a destructive verb gets instead of a hiding place
   // is a colour and a second click.
-  const canRevise = isAuthor && tiers.revise && event.status === "geolocated";
+  const canSaveVersion = isAuthor && tiers.saveVersion && event.status === "geolocated";
   const canClose = isAuthor && tiers.dispose && isOpenRequest;
   const canDelete =
     isAuthor && tiers.dispose && (isOpenRequest || event.status === "closed");
@@ -175,7 +175,7 @@ export function useEventActions({
   const rowIsEmpty =
     !tiers.utilities &&
     !(tiers.flow && isOpenRequest) &&
-    !canRevise &&
+    !canSaveVersion &&
     !canClose &&
     !canDelete;
 
@@ -195,7 +195,7 @@ export function useEventActions({
             Geolocate
           </Link>
         )}
-        {canRevise && (
+        {canSaveVersion && (
           <Link
             href={`/events/${event.id}/edit`}
             className={buttonClasses("ghost", { icon: true })}
@@ -203,7 +203,7 @@ export function useEventActions({
             // "Edit" alone would read as an in-place rewrite. The record is
             // corrected by adding a version, and the label says so.
             aria-label="Edit this geolocation"
-            title="Edit this geolocation (files a new version)"
+            title="Edit this geolocation (saves a new version)"
           >
             <Pencil size={14} />
           </Link>

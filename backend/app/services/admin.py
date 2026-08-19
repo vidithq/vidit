@@ -15,7 +15,7 @@ from app.models.event import (
     STATUS_DETECTED,
     STATUS_GEOLOCATED,
     Event,
-    EventRevision,
+    EventVersion,
 )
 from app.models.invite_code import InviteCode
 from app.models.media import Media
@@ -25,7 +25,7 @@ from app.schemas.admin import (
     AdminInviteCodeRead,
     AdminInviteRedeemerRead,
 )
-from app.services import revisions
+from app.services import versions
 from app.services.auth import bump_token_version, generate_invite_code, invite_code_status
 from app.services.evidence_intake import collect_media_keys, prune_unreferenced_proof_media
 from app.services.pagination import keyset_before, take_page
@@ -55,10 +55,10 @@ class XHandleConflictError(AdminError):
     code = "x_handle_conflict"
 
 
-class RevisionNotFoundError(AdminError):
+class VersionNotFoundError(AdminError):
     """The event carries no version under that number."""
 
-    code = "revision_not_found"
+    code = "version_not_found"
 
 
 def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInviteRedeemerRead]:
@@ -405,34 +405,34 @@ def hard_delete_geolocation(
     return target
 
 
-def redact_revision(
+def redact_version(
     db: Session,
     *,
     actor_id: uuid.UUID,
     geolocation_id: uuid.UUID,
-    revision_no: int,
-) -> EventRevision:
+    version_no: int,
+) -> EventVersion:
     """Blank one filed version of an event, keeping the row and its number.
 
     The moderation exit for a version whose content the record must stop
-    serving. ``event_revisions`` is append-only, so nothing is dropped: the
+    serving. ``event_versions`` is append-only, so nothing is dropped: the
     snapshot and the note are blanked in place and the row is stamped
-    ``redacted_at`` / ``redacted_by_id``. ``revision_no`` and ``created_at``
+    ``redacted_at`` / ``redacted_by_id``. ``version_no`` and ``created_at``
     stay, so ``/vN`` addressing never shifts.
 
     A redacted version displays no images, so this is also the one write
-    outside a revise that can free a proof image: any image no readable version
+    outside an edit that can free a proof image: any image no readable version
     and no current proof body points at is deleted here, row and object, on the
     commit-then-sweep discipline the media paths share.
 
     Idempotent: a second call on an already-redacted version changes nothing and
     writes no audit row, matching ``services/reports.set_event_moderation``.
     Raises :class:`EventNotFoundError` (404) for an unknown or soft-deleted
-    event and :class:`RevisionNotFoundError` (404) for a version the event does
+    event and :class:`VersionNotFoundError` (404) for a version the event does
     not carry.
     """
     # Locked like the event a moderation verdict mutates: the prune below reads
-    # this event's media and its history, so a concurrent revise must not be
+    # this event's media and its history, so a concurrent edit must not be
     # interleaving its own proof diff with this one.
     event = (
         db.query(Event)
@@ -443,27 +443,27 @@ def redact_revision(
     )
     if event is None:
         raise EventNotFoundError("Event not found")
-    row = revisions.get_revision(db, event_id=event.id, revision_no=revision_no)
+    row = versions.get_version(db, event_id=event.id, version_no=version_no)
     if row is None:
-        raise RevisionNotFoundError("Revision not found")
-    if not revisions.redact(db, revision=row, actor_id=actor_id):
+        raise VersionNotFoundError("Version not found")
+    if not versions.redact_version(db, version=row, actor_id=actor_id):
         return row
 
     removed_keys = prune_unreferenced_proof_media(db, event)
     log_admin_event(
         db,
         actor_id=actor_id,
-        action="event_revision_redacted",
+        action="event_version_redacted",
         target={
             "geolocation_id": str(event.id),
-            "revision_no": revision_no,
+            "version_no": version_no,
             "removed_media_count": len(removed_keys),
         },
     )
     db.commit()
     db.refresh(row)
 
-    sweep_keys(removed_keys, context=f"event {event.id} revision {revision_no} redaction")
+    sweep_keys(removed_keys, context=f"event {event.id} version {version_no} redaction")
     return row
 
 

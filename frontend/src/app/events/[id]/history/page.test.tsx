@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { EventDetail, EventRevision } from "@/types";
+import type { EventDetail, EventVersion } from "@/types";
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "e1" }),
@@ -15,7 +15,7 @@ vi.mock("@/hooks/useApiResource", () => ({
 // The walk itself is `useCursorList`'s (covered by its own consumers); what this
 // page owns is what it makes of the rows a walk hands back.
 const walk = {
-  items: [] as EventRevision[],
+  items: [] as EventVersion[],
   error: null as string | null,
   loading: false,
   loadingMore: false,
@@ -32,7 +32,7 @@ const BOB = { id: "u2", username: "bob", avatar_url: null };
 
 let event: EventDetail;
 
-function baseEvent(revisionNo: number): EventDetail {
+function baseEvent(versionNo: number): EventDetail {
   return {
     id: "e1",
     title: "Strike on a depot",
@@ -44,7 +44,7 @@ function baseEvent(revisionNo: number): EventDetail {
     source_posted_at: "2026-05-30T14:32:00Z",
     is_graphic: false,
     status: "geolocated",
-    revision_no: revisionNo,
+    version_no: versionNo,
     close_reason: null,
     before_closed_status: null,
     detected_from_url: null,
@@ -71,17 +71,17 @@ function baseEvent(revisionNo: number): EventDetail {
   };
 }
 
-function revision(
-  revisionNo: number,
+function version(
+  versionNo: number,
   snapshot: Record<string, unknown>,
-  extra: Partial<EventRevision> = {}
-): EventRevision {
+  extra: Partial<EventVersion> = {}
+): EventVersion {
   return {
-    id: `r${revisionNo}`,
-    revision_no: revisionNo,
+    id: `r${versionNo}`,
+    version_no: versionNo,
     edited_by: BOB,
     note: null,
-    created_at: `2026-06-0${revisionNo + 1}T10:00:00Z`,
+    created_at: `2026-06-0${versionNo + 1}T10:00:00Z`,
     snapshot,
     redacted: false,
     ...extra,
@@ -109,8 +109,8 @@ const row = (n: number) => screen.getByLabelText(`Version ${n}`).parentElement!;
 beforeEach(() => {
   event = baseEvent(3);
   walk.items = [
-    revision(2, snapshot("v2 title"), { note: "coordinates were off" }),
-    revision(1, snapshot("v1 title")),
+    version(2, snapshot("v2 title"), { note: "coordinates were off" }),
+    version(1, snapshot("v1 title")),
   ];
   walk.hasMore = false;
   walk.loading = false;
@@ -153,8 +153,8 @@ describe("EventHistoryPage", () => {
 
   it("marks a redacted version and compares nothing against it", () => {
     walk.items = [
-      revision(2, {}, { redacted: true }),
-      revision(1, snapshot("v1 title")),
+      version(2, {}, { redacted: true }),
+      version(1, snapshot("v1 title")),
     ];
     render(<EventHistoryPage />);
     expect(within(row(2)).getByText("Redacted")).toBeTruthy();
@@ -162,7 +162,7 @@ describe("EventHistoryPage", () => {
   });
 
   it("offers Load more while the walk has pages, holding the incomplete row back", () => {
-    walk.items = [revision(2, snapshot("v2 title"))];
+    walk.items = [version(2, snapshot("v2 title"))];
     walk.hasMore = true;
     render(<EventHistoryPage />);
     // Version 2's authorship is filed on version 1, which is not loaded yet.

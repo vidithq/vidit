@@ -21,7 +21,7 @@ interface SourceMediaFieldProps {
    *  media, no add / remove. */
   locked?: boolean;
   /** What the locked marker says. Defaults to `LockedHint`'s "from request";
-   *  the revise form names the reason it can't move (the evidence anchor). */
+   *  the edit form names the reason it can't move (the evidence anchor). */
   lockNote?: ReactNode;
   /** The event's `is_graphic` flag, forwarded to the persisted tiles. */
   isGraphic?: boolean;

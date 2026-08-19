@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from app.models.event import STATUS_DETECTED, STATUS_REQUESTED, Event, EventRevision
+from app.models.event import STATUS_DETECTED, STATUS_REQUESTED, Event, EventVersion
 from app.models.source_archive import SourceArchive
 from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
@@ -220,11 +220,11 @@ def test_a_wayback_snapshot_of_another_page_is_refused(db, author):
 # ── a copy on a published row is a version ─────────────────────────────
 
 
-def _revisions(db, event_id):
+def _versions(db, event_id):
     return (
-        db.query(EventRevision)
-        .filter(EventRevision.event_id == event_id)
-        .order_by(EventRevision.revision_no)
+        db.query(EventVersion)
+        .filter(EventVersion.event_id == event_id)
+        .order_by(EventVersion.version_no)
         .all()
     )
 
@@ -233,20 +233,20 @@ def test_a_copy_on_a_published_row_files_a_version(db, author):
     """What a published record says about its own evidence includes which of
     its links are archived, so recording a copy supersedes a version."""
     geo = _make_geo(db, author=author, source_url=SOURCE)
-    assert geo.revision_no == 1
+    assert geo.version_no == 1
 
     assert _post(geo.id, author).status_code == 200
 
     db.expire_all()
-    rows = _revisions(db, geo.id)
+    rows = _versions(db, geo.id)
     assert len(rows) == 1
-    assert rows[0].revision_no == 1
+    assert rows[0].version_no == 1
     assert rows[0].edited_by_id == author.id
     # No note: the changed-field list is what says an archived copy was added.
     assert rows[0].note is None
     # The filed version is the state before the copy, which is no copy at all.
     assert rows[0].snapshot["archives"] == []
-    assert db.get(Event, geo.id).revision_no == 2
+    assert db.get(Event, geo.id).version_no == 2
 
 
 def test_the_filed_version_holds_the_copies_it_had_and_the_row_holds_the_new_one(db, author):
@@ -257,8 +257,8 @@ def test_the_filed_version_holds_the_copies_it_had_and_the_row_holds_the_new_one
     assert _post(geo.id, author, original_url=MIRROR, snapshot_url=ARCHIVE_TODAY).status_code == 200
 
     db.expire_all()
-    rows = _revisions(db, geo.id)
-    assert [r.revision_no for r in rows] == [1, 2]
+    rows = _versions(db, geo.id)
+    assert [r.version_no for r in rows] == [1, 2]
     assert [a["original_url"] for a in rows[0].snapshot["archives"]] == []
     assert [(a["original_url"], a["snapshot_url"]) for a in rows[1].snapshot["archives"]] == [
         (SOURCE, WAYBACK)
@@ -272,11 +272,11 @@ def test_the_history_reads_the_archival_version_back(db, author):
     geo = _make_geo(db, author=author, source_url=SOURCE)
     assert _post(geo.id, author).status_code == 200
 
-    response = client.get(f"/api/v1/events/{geo.id}/revisions")
+    response = client.get(f"/api/v1/events/{geo.id}/versions")
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["total"] == 1
-    assert body["items"][0]["revision_no"] == 1
+    assert body["items"][0]["version_no"] == 1
     assert body["items"][0]["edited_by"]["username"] == author.username
     assert body["items"][0]["snapshot"]["archives"] == []
 
@@ -289,8 +289,8 @@ def test_re_recording_the_same_copy_files_no_version(db, author):
     assert _post(geo.id, author).status_code == 200
 
     db.expire_all()
-    assert len(_revisions(db, geo.id)) == 1
-    assert db.get(Event, geo.id).revision_no == 2
+    assert len(_versions(db, geo.id)) == 1
+    assert db.get(Event, geo.id).version_no == 2
 
 
 def test_a_corrected_copy_files_its_own_version(db, author):
@@ -301,7 +301,7 @@ def test_a_corrected_copy_files_its_own_version(db, author):
     assert _post(geo.id, author, snapshot_url=ARCHIVE_TODAY).status_code == 200
 
     db.expire_all()
-    rows = _revisions(db, geo.id)
+    rows = _versions(db, geo.id)
     assert len(rows) == 2
     assert [a["snapshot_url"] for a in rows[1].snapshot["archives"]] == [WAYBACK]
 
@@ -314,8 +314,8 @@ def test_a_copy_below_publication_files_no_version(db, author):
         assert _post(geo.id, author).status_code == 200
 
         db.expire_all()
-        assert _revisions(db, geo.id) == []
-        assert db.get(Event, geo.id).revision_no == 1
+        assert _versions(db, geo.id) == []
+        assert db.get(Event, geo.id).version_no == 1
         assert _copy(db, geo.id, SOURCE) is not None
 
 
@@ -327,8 +327,8 @@ def test_a_rejected_snapshot_files_no_version(db, author):
     assert response.status_code == 400
 
     db.expire_all()
-    assert _revisions(db, geo.id) == []
-    assert db.get(Event, geo.id).revision_no == 1
+    assert _versions(db, geo.id) == []
+    assert db.get(Event, geo.id).version_no == 1
 
 
 # ── the copy the submit form carries ───────────────────────────────────

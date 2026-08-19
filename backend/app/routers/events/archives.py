@@ -45,7 +45,7 @@ def record_archived_copy(
     owner → 403.
 
     On a ``geolocated`` event the copy is a tracked change: the write files the
-    superseded version and the row takes the next ``revision_no``, credited to
+    superseded version and the row takes the next ``version_no``, credited to
     the caller. A re-record of the copy the link already carries moves nothing
     and files nothing.
 

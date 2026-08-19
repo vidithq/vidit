@@ -3,9 +3,9 @@
 import { useEffect } from "react";
 import { notFound, useParams, useRouter } from "next/navigation";
 
-import type { EventDetail, EventRevision } from "@/types";
+import type { EventDetail, EventVersion } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
-import { eventRevisionPath, eventVersion, parseVersionSegment } from "@/lib/events";
+import { eventVersionPath, eventVersion, parseVersionSegment } from "@/lib/events";
 import { skipBackRecord } from "@/lib/navigation";
 import { EventPageBody } from "@/components/event/EventPageBody";
 import { EventVersionBanner } from "@/components/event/EventVersionBanner";
@@ -42,15 +42,15 @@ export default function EventVersionPage() {
   );
   // The live row is the current version, so only the versions below it are
   // filed and readable here.
-  const filed = geo !== null && number !== null && number < geo.revision_no;
-  const { data: revision, error: revisionError } = useApiResource<EventRevision>(
-    filed ? eventRevisionPath(eventId, number!) : null
+  const filed = geo !== null && number !== null && number < geo.version_no;
+  const { data: row, error: rowError } = useApiResource<EventVersion>(
+    filed ? eventVersionPath(eventId, number!) : null
   );
-  const { data: producedBy, error: producedByError } = useApiResource<EventRevision>(
-    filed && number! > 1 ? eventRevisionPath(eventId, number! - 1) : null
+  const { data: producedBy, error: producedByError } = useApiResource<EventVersion>(
+    filed && number! > 1 ? eventVersionPath(eventId, number! - 1) : null
   );
 
-  const isCurrent = geo !== null && number === geo.revision_no;
+  const isCurrent = geo !== null && number === geo.version_no;
   useEffect(() => {
     if (!isCurrent) return;
     // The current version has one address, and this is not it: a `/vN` link
@@ -66,15 +66,15 @@ export default function EventVersionPage() {
   if (error) return <PageError message={error} />;
   if (!geo) return <PageLoading />;
   // Past the current version there is nothing to have been filed.
-  if (number > geo.revision_no) notFound();
+  if (number > geo.version_no) notFound();
   if (isCurrent) return <PageLoading />;
-  if (revisionError) return <PageError message={revisionError} />;
-  if (!revision) return <PageLoading />;
+  if (rowError) return <PageError message={rowError} />;
+  if (!row) return <PageLoading />;
   // The byline read is the last one to land; a failed one costs the banner its
   // byline rather than the page its content.
   if (number > 1 && !producedBy && !producedByError) return <PageLoading />;
 
-  const version = eventVersion(geo, number, { own: revision, producedBy });
+  const version = eventVersion(geo, number, { own: row, producedBy });
 
   return (
     <PageShell
@@ -89,7 +89,7 @@ export default function EventVersionPage() {
         </span>
       }
     >
-      <EventVersionBanner eventId={geo.id} version={version} total={geo.revision_no} />
+      <EventVersionBanner eventId={geo.id} version={version} total={geo.version_no} />
       {version.view ? (
         <EventPageBody geo={version.view} />
       ) : (

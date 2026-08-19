@@ -156,7 +156,7 @@ const MOCK_DETAIL: EventDetail = {
   event_date: "2026-05-09",
   is_graphic: false,
   status: "geolocated",
-  revision_no: 1,
+  version_no: 1,
   close_reason: null,
   before_closed_status: null,
   owner: {
@@ -780,7 +780,7 @@ export default function PalettePage() {
 
           <Item
             name="<ArchivedCopies>"
-            usage="The archived copy beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One copy per link, from whichever service produced it, so the affordance is a single lucide glyph: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy, never in the shape. It is a <Glyph> in exactly two states, and colour says which: accent where a copy exists and the mark opens it, grey and inert where none does, for every reader including the event's owner. Recording a copy is an edit, so it happens in the edit form's <ArchiveSourceField> and files a revision; nothing here writes. The affordance closes on a <FieldHelp> `?` (archived_copies); help={false} drops it where a caller renders a list of them and hoists one `?` to the section (the Secondary sources list). Every glyph looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
+            usage="The archived copy beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One copy per link, from whichever service produced it, so the affordance is a single lucide glyph: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy, never in the shape. It is a <Glyph> in exactly two states, and colour says which: accent where a copy exists and the mark opens it, grey and inert where none does, for every reader including the event's owner. Recording a copy is an edit, so it happens in the edit form's <ArchiveSourceField> and files a version; nothing here writes. The affordance closes on a <FieldHelp> `?` (archived_copies); help={false} drops it where a caller renders a list of them and hoists one `?` to the section (the Secondary sources list). Every glyph looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
           >
             <Variant label="a stored copy named for the Wayback Machine (primary source)">
               <span className="text-sm text-neutral-300">

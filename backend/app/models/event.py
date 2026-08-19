@@ -102,21 +102,21 @@ class EventGeolocator(Base):
     )
 
 
-class EventRevision(Base):
+class EventVersion(Base):
     """One superseded version of a published event, snapshotted at an edit.
 
-    Append-only: a row is written by ``services/events.revise`` before the edit
+    Append-only: a row is written by ``services/events.save_version`` before the edit
     lands, holding the state the event carried up to that moment, and is never
-    updated or deleted. ``revision_no`` is the number of the version this row
-    holds, so it pairs with ``Event.revision_no`` (the version the live row is):
+    updated or deleted. ``version_no`` is the number of the version this row
+    holds, so it pairs with ``Event.version_no`` (the version the live row is):
     an event at version 3 carries snapshots 1 and 2, and the reading order of
     its history is snapshot 1, snapshot 2, the live row.
 
     ``snapshot`` holds the structured fields the edit form writes (see
-    ``services/revisions.build_snapshot``). Media files are not versioned, so a
+    ``services/versions.build_snapshot``). Media files are not versioned, so a
     ``media`` row a snapshot points at is never hard-deleted while the snapshot
     exists (``services/evidence_intake.attach_evidence_and_commit`` reads
-    ``services/revisions.referenced_media_urls`` before it drops a proof row).
+    ``services/versions.referenced_media_urls`` before it drops a proof row).
 
     Redaction is the one write a filed row takes. An admin blanks ``snapshot``
     and ``note`` and stamps ``redacted_at`` / ``redacted_by_id``; the row and
@@ -125,13 +125,13 @@ class EventRevision(Base):
     an image only it pointed at becomes deletable again.
     """
 
-    __tablename__ = "event_revisions"
+    __tablename__ = "event_versions"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     event_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("events.id", ondelete="CASCADE"), nullable=False
     )
-    revision_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
     # Who made the edit that superseded this version. ``ondelete=SET NULL`` for
     # the same reason as ``Event.requested_by_id``: an event legitimately
     # outlives an editor who is not its owner, and a GDPR erasure nulls their
@@ -141,7 +141,7 @@ class EventRevision(Base):
     )
     # The editor's own words about the edit. Unbounded ``Text`` like the other
     # free-text columns; the API caps accepted input at
-    # ``schemas/event.EDIT_NOTE_MAX_LENGTH``.
+    # ``schemas/event.VERSION_NOTE_MAX_LENGTH``.
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     snapshot = mapped_column(JSONB, nullable=False)
     # When the edit that superseded this version happened.
@@ -160,7 +160,7 @@ class EventRevision(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
-    event = relationship("Event", back_populates="revisions")
+    event = relationship("Event", back_populates="versions")
     # Only the editor is a relationship: the redacting admin is recorded for the
     # audit trail (``admin_events`` carries the act itself) and never rendered,
     # so the column stands alone.
@@ -172,7 +172,7 @@ class EventRevision(Base):
         # rejects rather than a second history entry for the same version.
         # Its leading ``event_id`` also serves the only read there is, "this
         # event's history, by version", so there is no secondary index.
-        UniqueConstraint("event_id", "revision_no", name="uq_event_revisions_event_no"),
+        UniqueConstraint("event_id", "version_no", name="uq_event_versions_event_no"),
     )
 
 
@@ -346,13 +346,13 @@ class Event(Base):
         Boolean, default=False, nullable=False, server_default=text("false")
     )
     # Which version of the event this row IS. Starts at 1 and is incremented
-    # under the row lock by ``services/events.revise``, which first files the
-    # superseded state as an ``EventRevision``. A version number is a public
-    # address (``/events/{id}/v{n}``), so it only ever moves forward: a revision
+    # under the row lock by ``services/events.save_version``, which first files the
+    # superseded state as an ``EventVersion``. A version number is a public
+    # address (``/events/{id}/v{n}``), so it only ever moves forward: a version
     # is never deleted and a number never changes meaning. The server_default
     # keeps every insert correct without setting it, and backfills the rows
     # written before the column as version 1.
-    revision_no: Mapped[int] = mapped_column(
+    version_no: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default=text("1")
     )
 
@@ -381,13 +381,13 @@ class Event(Base):
         cascade="all, delete-orphan",
         order_by="EventSourceLink.position",
     )
-    # The superseded versions, oldest first. Append-only (see ``EventRevision``);
+    # The superseded versions, oldest first. Append-only (see ``EventVersion``);
     # the cascade drops them with a hard-deleted event.
-    revisions = relationship(
-        "EventRevision",
+    versions = relationship(
+        "EventVersion",
         back_populates="event",
         cascade="all, delete-orphan",
-        order_by="EventRevision.revision_no",
+        order_by="EventVersion.version_no",
     )
 
     __table_args__ = (

@@ -22,7 +22,7 @@ ordering total, so rows inserted while a caller walks pages can neither
 duplicate a row onto the next page nor skip one, the way an ``OFFSET`` walk
 does. A list whose rows already carry a unique ordinal pages on that instead
 (:func:`encode_ordinal_cursor`), which needs no tiebreaker and no timestamp;
-one event's revision history is the case, ordered on ``revision_no``. Both forms
+one event's version history is the case, ordered on ``version_no``. Both forms
 are opaque on purpose (base64 of a compact JSON payload): the shape is this
 module's business, not a contract callers build values for.
 """
@@ -111,7 +111,7 @@ def decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
 def encode_ordinal_cursor(value: int) -> str:
     """Opaque cursor for a list ordered on a unique integer of its own.
 
-    One event's revision history pages this way: ``revision_no`` is unique per
+    One event's version history pages this way: ``version_no`` is unique per
     event and taken under the event's row lock, so it totally orders the history
     without a tiebreaker and without reading ``created_at``, a clock the
     application sets and that therefore skews between instances.

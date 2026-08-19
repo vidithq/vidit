@@ -204,7 +204,7 @@ function SavePageLink({
  *
  * A read surface, not a write one. Recording a copy is an edit like any other:
  * the owner pastes the snapshot into the edit form's archived-copy field
- * (`ArchiveSourceField`), which files a revision naming the change, where a
+ * (`ArchiveSourceField`), which files a version naming the change, where a
  * control here would write to the live row from a page nobody is editing.
  *
  * The glyph is a small mark with no label beside it, so the affordance closes

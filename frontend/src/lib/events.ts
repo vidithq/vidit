@@ -8,7 +8,7 @@ import type {
   ArchiveImportPresign,
   ArchivedLink,
   EventDetail,
-  EventRevision,
+  EventVersion,
   EventStatus,
   Media,
   TagCategory,
@@ -188,7 +188,7 @@ export function deleteEvent(id: string): Promise<void> {
  * multipart, mirroring create. Moves a `requested` (request fulfilment) or
  * `detected` event to `geolocated`, which publishes it: the event becomes the
  * vouched record, its evidence anchor is fixed, and every later change is a new
- * version through `reviseEvent`. On a `requested` event the backend transfers
+ * version through `saveVersion`. On a `requested` event the backend transfers
  * ownership to the geolocator. The form posts the whole state; the server
  * writes it atomically. New media ride in `files`; existing media are dropped
  * via `remove_media_ids`. Only `detected_from_url` (the provenance anchor) and
@@ -221,7 +221,7 @@ export interface EventEditInput {
   /** Optional ISO `HH:MM`; empty / omitted clears it. */
   event_time?: string;
   /** ISO datetime (`YYYY-MM-DDTHH:MM`, UTC). Required on the publish paths: a
-   *  post always has a time. Left empty on `reviseEvent` the field is not
+   *  post always has a time. Left empty on `saveVersion` the field is not
    *  posted at all, and the published row keeps the instant it holds. */
   source_posted_at: string;
   proof?: Record<string, unknown> | null;
@@ -253,7 +253,7 @@ function appendSharedEventFields(
   fd: FormData,
   input: {
     title: string;
-    /** Omitted on a revise: the evidence anchor is immutable past publication,
+    /** Omitted when saving a version: the evidence anchor is immutable past publication,
      *  so that endpoint declares no `source_url` field at all. */
     source_url?: string;
     source_snapshot_url?: string;
@@ -302,7 +302,7 @@ function appendSharedEventFields(
     fd.append("capture_source_lng", String(input.capture_source_lng));
   }
   if (input.event_time) fd.append("event_time", input.event_time);
-  // Omitted rather than posted empty: on `revise` an absent value keeps the
+  // Omitted rather than posted empty: on `save_version` an absent value keeps the
   // instant the published row holds, so posting "" would ask the server to tell
   // "blanked" from "untouched" on a field the form always renders. The publish
   // paths require the field and reject a submit that leaves it out.
@@ -369,10 +369,10 @@ export function geolocateEvent(
  *  event has no existing media to drop). */
 export type EventCreateInput = Omit<EventEditInput, "remove_media_ids">;
 
-/** How long a revision's edit note may run. Mirrors
- *  `schemas/event.EDIT_NOTE_MAX_LENGTH`: the form stops at the cap instead of
+/** How long a version's edit note may run. Mirrors
+ *  `schemas/event.VERSION_NOTE_MAX_LENGTH`: the form stops at the cap instead of
  *  letting the server 422 a note someone just typed out. */
-export const EDIT_NOTE_MAX_LEN = 280;
+export const VERSION_NOTE_MAX_LEN = 280;
 
 /**
  * Correcting a published event: the geolocate form minus the evidence anchor.
@@ -382,31 +382,31 @@ export const EDIT_NOTE_MAX_LEN = 280;
  * matter (`close` rejects a `geolocated` row, so its owner has no path to it).
  * Everything else stays editable and is versioned.
  */
-export type EventReviseInput = Omit<
+export type EventVersionInput = Omit<
   EventEditInput,
   "source_url" | "remove_media_ids" | "files"
 > & {
   /** The editor's own words about this edit, stored on the version it
-   *  supersedes. Optional, capped at `EDIT_NOTE_MAX_LEN`. */
+   *  supersedes. Optional, capped at `VERSION_NOTE_MAX_LEN`. */
   note?: string;
 };
 
 /**
- * Save a correction to a published event: `POST /events/{id}/revise`
+ * Save a correction to a published event: `POST /events/{id}/versions`
  * (multipart), owner-only and `geolocated`-only. The server files the
- * superseded state as a revision and moves the row to the next `revision_no`,
+ * superseded state as a version and moves the row to the next `version_no`,
  * so the edit adds a version rather than overwriting the record.
  */
-export function reviseEvent(
+export function saveVersion(
   id: string,
-  input: EventReviseInput
+  input: EventVersionInput
 ): Promise<EventDetail> {
   const fd = new FormData();
   appendEventFormFields(fd, input);
   if (input.note?.trim()) {
     fd.append("note", input.note.trim());
   }
-  return apiFetch<EventDetail>(`/events/${id}/revise`, {
+  return apiFetch<EventDetail>(`/events/${id}/versions`, {
     method: "POST",
     body: fd,
   });
@@ -414,30 +414,30 @@ export function reviseEvent(
 
 // ── Version history ───────────────────────────────────────────────────────
 //
-// The read side of a corrected record. `GET /events/{id}/revisions` serves the
-// superseded versions newest first and `GET /events/{id}/revisions/{n}` serves
+// The read side of a corrected record. `GET /events/{id}/versions` serves the
+// superseded versions newest first and `GET /events/{id}/versions/{n}` serves
 // one of them; the live row is the current version and is served by
 // `GET /events/{id}` alone. Everything below turns those three payloads into
 // what `/events/{id}/history` and `/events/{id}/vN` render.
 
 /** One page of an event's history. `cursor` is the value the previous page's
  *  `Link: rel="next"` carried, `null` for the first page. */
-export function eventRevisionsPath(id: string, cursor: string | null): string {
+export function eventVersionsPath(id: string, cursor: string | null): string {
   const params = new URLSearchParams();
   if (cursor) params.set("cursor", cursor);
   const query = params.toString();
-  return `/events/${id}/revisions${query ? `?${query}` : ""}`;
+  return `/events/${id}/versions${query ? `?${query}` : ""}`;
 }
 
 /** One filed version by its number, the direct read behind a `/vN` address. */
-export function eventRevisionPath(id: string, revisionNo: number): string {
-  return `/events/${id}/revisions/${revisionNo}`;
+export function eventVersionPath(id: string, versionNo: number): string {
+  return `/events/${id}/versions/${versionNo}`;
 }
 
 /** Where one version of an event is read. The current version keeps the
  *  canonical `/events/{id}`, so this is only ever a past version's address. */
-export function eventVersionHref(id: string, revisionNo: number): string {
-  return `/events/${id}/v${revisionNo}`;
+export function eventVersionHref(id: string, versionNo: number): string {
+  return `/events/${id}/v${versionNo}`;
 }
 
 /** Where an event's version list is read. */
@@ -456,7 +456,7 @@ export function parseVersionSegment(segment: string): number | null {
 /** The one human label per versioned field, in the order a changed-field list
  *  prints them. They are the names the event page already prints over the same
  *  values, so a reader recognises what moved without a second vocabulary. Keyed
- *  by the fields `services/revisions.build_snapshot` files, since a field a
+ *  by the fields `services/versions.build_snapshot` files, since a field a
  *  version cannot carry is a field no diff can name. */
 const VERSION_FIELD_LABELS = {
   title: "Title",
@@ -509,13 +509,13 @@ export function archivedCopies(view: EventDetail): Map<string, ArchivedLink> {
 
 /** The archived copies one filed version held, keyed by the link each covers.
  *
- *  `services/revisions.build_snapshot` files them, so a version renders the
+ *  `services/versions.build_snapshot` files them, so a version renders the
  *  copies as they stood rather than today's. A snapshot with no `archives` key
  *  states nothing about them (a version filed before they were versioned, or a
  *  redacted one), so the live row's copies stand in: claiming the record had
  *  none would print an archival that never happened as a change. */
 function snapshotArchivedCopies(
-  snapshot: EventRevision["snapshot"],
+  snapshot: EventVersion["snapshot"],
   current: EventDetail
 ): Map<string, ArchivedLink> {
   if (!Array.isArray(snapshot.archives)) return archivedCopies(current);
@@ -538,7 +538,7 @@ function snapshotArchivedCopies(
  * (`source_url`, the source media) and the row's identity (id, owner, status,
  * creation date) carry no field because no edit can move them, so they come
  * from the current row, which is authoritative for them at every version.
- * `revision_no` is the version being read, so the page prints which one it is.
+ * `version_no` is the version being read, so the page prints which one it is.
  *
  * Two overlays are rebuilt rather than copied. The archived copies are the ones
  * this version held, and they are spread back over the three fields that carry
@@ -555,15 +555,15 @@ function snapshotArchivedCopies(
  */
 export function snapshotToEventView(
   current: EventDetail,
-  revision: EventRevision
+  version: EventVersion
 ): EventDetail {
-  const snapshot = revision.snapshot;
+  const snapshot = version.snapshot;
   const archivedByUrl = snapshotArchivedCopies(snapshot, current);
   const conflictsById = new Map(current.conflicts.map((c) => [c.id, c]));
   const secondarySourceUrls = asList<string>(snapshot.secondary_source_urls);
   return {
     ...current,
-    revision_no: revision.revision_no,
+    version_no: version.version_no,
     archived_source: archivedByUrl.get(current.source_url ?? "") ?? null,
     archived_detected_from: archivedByUrl.get(current.detected_from_url ?? "") ?? null,
     title: asString(snapshot.title, current.title),
@@ -689,7 +689,7 @@ export function changedFields(version: EventDetail, previous: EventDetail): stri
 }
 
 /** One version of an event, as the history list and the version page read it. */
-export interface EventVersion {
+export interface EventVersionEntry {
   /** Which version this is. `1` is the record as it was published. */
   number: number;
   /** True for the live row, the one `/events/{id}` serves. */
@@ -712,16 +712,16 @@ export interface EventVersion {
   changed: string[] | null;
 }
 
-/** The revision rows one version is assembled from.
+/** The version rows one version is assembled from.
  *
  *  `own` holds this version's content, and is absent for the current version,
  *  which is the live row rather than a filed one. `producedBy` holds the edit
  *  that **produced** this version, which the API files on the version that edit
  *  superseded, so it is the row numbered one lower. `previous` is the view of
  *  that lower version, the base the changed-field list is computed against. */
-export interface EventVersionRows {
-  own?: EventRevision | null;
-  producedBy?: EventRevision | null;
+export interface EventVersionEntryRows {
+  own?: EventVersion | null;
+  producedBy?: EventVersion | null;
   previous?: EventDetail | null;
 }
 
@@ -730,7 +730,7 @@ export interface EventVersionRows {
  *
  * A version is described by the edit that **produced** it, the way a page
  * history reads: who made that edit, when, their note about it, and the fields
- * it moved. The API files the two halves of that apart, because a revision row
+ * it moved. The API files the two halves of that apart, because a version row
  * carries the content of the version it holds alongside the byline, date and
  * note of the edit that superseded it. Version `n` therefore takes its content
  * from row `n` and its authorship from row `n - 1`; version 1, which no edit
@@ -745,9 +745,9 @@ export interface EventVersionRows {
 export function eventVersion(
   current: EventDetail,
   number: number,
-  { own = null, producedBy = null, previous = null }: EventVersionRows = {}
-): EventVersion {
-  const isCurrent = number === current.revision_no;
+  { own = null, producedBy = null, previous = null }: EventVersionEntryRows = {}
+): EventVersionEntry {
+  const isCurrent = number === current.version_no;
   const view = isCurrent
     ? current
     : own && !own.redacted
@@ -781,22 +781,22 @@ export function eventVersion(
  */
 export function eventVersions(
   current: EventDetail,
-  revisions: EventRevision[],
+  rows: EventVersion[],
   hasMore = false
-): EventVersion[] {
-  const byNumber = new Map(revisions.map((row) => [row.revision_no, row]));
-  const oldest = hasMore && revisions.length > 0 ? Math.min(...byNumber.keys()) + 1 : 1;
+): EventVersionEntry[] {
+  const byNumber = new Map(rows.map((row) => [row.version_no, row]));
+  const oldest = hasMore && rows.length > 0 ? Math.min(...byNumber.keys()) + 1 : 1;
 
   // The version below is built as its own row too, so this is the diff base
   // only: the content it reads is the same snapshot either way.
   const viewOf = (number: number): EventDetail | null =>
     eventVersion(current, number, { own: byNumber.get(number) }).view;
 
-  const versions: EventVersion[] = [];
-  for (let number = current.revision_no; number >= oldest; number--) {
+  const entries: EventVersionEntry[] = [];
+  for (let number = current.version_no; number >= oldest; number--) {
     const own = byNumber.get(number);
-    if (number !== current.revision_no && own === undefined) break;
-    versions.push(
+    if (number !== current.version_no && own === undefined) break;
+    entries.push(
       eventVersion(current, number, {
         own,
         producedBy: byNumber.get(number - 1),
@@ -804,7 +804,7 @@ export function eventVersions(
       })
     );
   }
-  return versions;
+  return entries;
 }
 
 /**
@@ -1196,9 +1196,9 @@ export interface EventFieldsOptions {
   requireTags?: boolean;
   /** Require the source post time. Default true, which is what publishing
    *  asks for (`POST /events/{id}/geolocate` declares the field required).
-   *  False on a revision: a detection whose source post time was never
+   *  False on a version: a detection whose source post time was never
    *  resolved publishes through the batch completion with the column NULL, and
-   *  `POST /events/{id}/revise` takes the field as optional to match, so
+   *  `POST /events/{id}/versions` takes the field as optional to match, so
    *  flagging it here would block an edit the server accepts. */
   requireSourcePostedAt?: boolean;
 }

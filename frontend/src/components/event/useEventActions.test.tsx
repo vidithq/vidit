@@ -26,7 +26,7 @@ function eventFixture(status: EventStatus): EventDetail {
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
     status,
-    revision_no: 1,
+    version_no: 1,
     is_graphic: false,
     close_reason: null,
     before_closed_status: null,

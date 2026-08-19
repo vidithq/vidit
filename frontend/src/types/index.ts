@@ -121,17 +121,17 @@ export type Media = components["schemas"]["MediaRead"];
  *  carries a ``source_url``. */
 export type EventDetail = components["schemas"]["EventRead"];
 
-/** One filed version of an event (`GET /events/{id}/revisions`, `GET
- *  /events/{id}/revisions/{n}`). `revision_no` is the version the row **holds**,
+/** One filed version of an event (`GET /events/{id}/versions`, `GET
+ *  /events/{id}/versions/{n}`). `version_no` is the version the row **holds**,
  *  not the one that replaced it, and `edited_by` / `created_at` / `note` belong
  *  to the edit that superseded it, which is the edit that produced version
- *  `revision_no + 1` (see `lib/events.ts::eventVersions`). `snapshot` is the
+ *  `version_no + 1` (see `lib/events.ts::eventVersions`). `snapshot` is the
  *  editable state as it stood, `{}` on a `redacted` row. */
-export type EventRevision = components["schemas"]["EventRevisionRead"];
+export type EventVersion = components["schemas"]["EventVersionRead"];
 
 /** One page of an event's history plus the size of the whole history. Paged
  *  like every list (`Link: rel="next"`), so `total` is not `items.length`. */
-export type EventRevisionList = components["schemas"]["EventRevisionList"];
+export type EventVersionList = components["schemas"]["EventVersionList"];
 
 /** One link's archived copy: the snapshot URL and the provider holding it.
  *  Carried by `archived_source`, by `archived_detected_from`, and by each entry

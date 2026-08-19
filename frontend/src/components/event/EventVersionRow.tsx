@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import type { EventVersion } from "@/lib/events";
+import type { EventVersionEntry } from "@/lib/events";
 import { eventVersionHref } from "@/lib/events";
 import { formatDate } from "@/lib/format";
 import { AuthorByline } from "@/components/ui/AuthorByline";
@@ -15,7 +15,7 @@ import { TAPPABLE_HOVER } from "@/components/ui/styles";
  * versioned field says that too, since the row exists and the reader is owed
  * the reason it looks unchanged.
  */
-function changeSummary(version: EventVersion): string | null {
+function changeSummary(version: EventVersionEntry): string | null {
   if (version.number === 1) return "Published";
   if (version.changed === null) return null;
   return version.changed.length === 0
@@ -40,7 +40,7 @@ export function EventVersionRow({
   version,
 }: {
   eventId: string;
-  version: EventVersion;
+  version: EventVersionEntry;
 }) {
   const summary = changeSummary(version);
   return (

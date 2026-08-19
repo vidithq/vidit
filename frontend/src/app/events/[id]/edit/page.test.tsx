@@ -49,18 +49,18 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 vi.mock("@/lib/events", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/events")>()),
   geolocateEvent: vi.fn(),
-  reviseEvent: vi.fn(),
+  saveVersion: vi.fn(),
   closeEvent: vi.fn(),
 }));
 
-import { closeEvent, geolocateEvent, reviseEvent } from "@/lib/events";
+import { closeEvent, geolocateEvent, saveVersion } from "@/lib/events";
 import { ARM_MS } from "@/hooks/useConfirmAction";
 import type { Conflict, EventDetail, Tag } from "@/types";
 
 import EditEventPage from "./page";
 
 const geolocateMock = vi.mocked(geolocateEvent);
-const reviseMock = vi.mocked(reviseEvent);
+const saveVersionMock = vi.mocked(saveVersion);
 const closeMock = vi.mocked(closeEvent);
 
 const CONFLICTS: Conflict[] = [
@@ -91,7 +91,7 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
     status: "detected",
-    revision_no: 1,
+    version_no: 1,
     is_graphic: false,
     close_reason: null,
     before_closed_status: null,
@@ -136,7 +136,7 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
 function publishedFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   return detectionFixture({
     status: "geolocated",
-    revision_no: 1,
+    version_no: 1,
     geolocated_at: "2026-06-02T11:00:00Z",
     tags: CURATED_TAGS,
     conflicts: CONFLICTS,
@@ -187,10 +187,10 @@ function rejectDetection(reason: string) {
 beforeEach(() => {
   push.mockReset();
   geolocateMock.mockReset();
-  reviseMock.mockReset();
+  saveVersionMock.mockReset();
   closeMock.mockReset();
   geolocateMock.mockResolvedValue(detectionFixture({ status: "geolocated" }));
-  reviseMock.mockResolvedValue(publishedFixture({ revision_no: 2 }));
+  saveVersionMock.mockResolvedValue(publishedFixture({ version_no: 2 }));
   row = detectionFixture();
   queryParam = null;
   queueItems = [
@@ -401,7 +401,7 @@ describe("the submit confirm", () => {
   });
 });
 
-describe("revising a published geolocation", () => {
+describe("editing a published geolocation", () => {
   beforeEach(() => {
     row = publishedFixture();
   });
@@ -415,7 +415,7 @@ describe("revising a published geolocation", () => {
       screen.getByRole("heading", { name: "Edit geolocation" })
     ).toBeInTheDocument();
     expect(screen.queryByText(/no longer be edited/)).toBeNull();
-    expect(screen.getByRole("button", { name: "Save revision" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save version 2" })).toBeInTheDocument();
     // Neither verb belongs to a published row: it is not skippable and not
     // rejectable.
     expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
@@ -442,24 +442,24 @@ describe("revising a published geolocation", () => {
   it("saves on the click that made it, then lands on the event", async () => {
     render(<EditEventPage />);
 
-    // No arming step: a revision adds a version, which is the ordinary way a
+    // No arming step: a version adds a version, which is the ordinary way a
     // published event changes.
-    fireEvent.click(screen.getByRole("button", { name: "Save revision" }));
-    await waitFor(() => expect(reviseMock).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
     expect(geolocateMock).not.toHaveBeenCalled();
     await waitFor(() => expect(push).toHaveBeenCalledWith("/events/d1"));
   });
 
-  it("posts the edit note and never the evidence anchor", async () => {
+  it("posts the version note and never the evidence anchor", async () => {
     render(<EditEventPage />);
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Edit note" }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Version note" }), {
       target: { value: "Coordinates were off by a block." },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save revision" }));
-    await waitFor(() => expect(reviseMock).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
 
-    const [id, input] = reviseMock.mock.calls[0];
+    const [id, input] = saveVersionMock.mock.calls[0];
     expect(id).toBe("d1");
     expect(input.note).toBe("Coordinates were off by a block.");
     // The anchor is not assembled at all, so no client bug can post it.
@@ -472,12 +472,12 @@ describe("revising a published geolocation", () => {
     row = publishedFixture({ conflicts: [] });
     render(<EditEventPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Save revision" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
     // The notice names the miss and nothing is written; the server enforces
     // the same floor, this just spares the round trip.
     const notice = await screen.findByRole("alert");
     expect(notice).toHaveTextContent("Conflict");
-    expect(reviseMock).not.toHaveBeenCalled();
+    expect(saveVersionMock).not.toHaveBeenCalled();
   });
 });
 
@@ -487,7 +487,7 @@ describe("a state with no owner edit", () => {
     render(<EditEventPage />);
 
     expect(screen.getByText(/no edit form/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Save revision" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save version 2" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
   });
 });
