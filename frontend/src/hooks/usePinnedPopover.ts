@@ -9,15 +9,14 @@ import {
 } from "react";
 
 /**
- * The pin + dismiss + placement machinery shared by the anchored popovers
- * (`FieldHelp`, `OverflowMenu`): shown from JS hover state on the anchor (not a
- * CSS `group-hover`, so a surrounding `.group` can't trigger it), pinned on
- * click (touch devices don't hover), closed by outside-click, Escape, scroll,
- * resize, or pointer-leave. Pass `hover: false` for a click-only popover
- * (`OverflowMenu`: a menu holding a delete must not open under a passing
- * pointer, and must not open on a tab through the trigger either), which drops
- * the hover and focus handlers and leaves the click toggle, `close`, and every
- * dismissal path in place.
+ * The pin + dismiss + placement machinery behind an anchored popover
+ * (`FieldHelp`): shown from JS hover state on the anchor (not a CSS
+ * `group-hover`, so a surrounding `.group` can't trigger it), pinned on click
+ * (touch devices don't hover), closed by outside-click, Escape, scroll, resize,
+ * or pointer-leave. Pass `hover: false` for a popover that must open on a
+ * deliberate click alone, never under a passing pointer or a tab through the
+ * trigger, which drops the hover and focus handlers and leaves the click
+ * toggle, `close`, and every dismissal path in place.
  *
  * The popover is meant to render in a portal with `position: fixed`
  * (`popoverStyle`) so an `overflow` ancestor (e.g. the map detail side panel)

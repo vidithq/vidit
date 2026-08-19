@@ -24,10 +24,12 @@ interface DetailSidePanelProps {
  * + 3.5rem clearance to keep the bottom pill off the panel even on hover.
  */
 export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelProps) {
-  // The panel is a reading surface, so it takes the utilities tier only: the
-  // share pair and the report flag, in the same order and the same spot the
-  // detail pages put them. Called before the loading branch, as every hook must
-  // be; `detail` is null until the row lands.
+  // The panel takes no tier at all: it previews a row whose own page is one
+  // click away on the title, and acting on a record from a hover-sized preview
+  // of it puts the same controls in two places. The call stays because the
+  // grammar decides that, not this component, and it hands back the slots a
+  // future tier would land in. Called before the loading branch, as every hook
+  // must be; `detail` is null until the row lands.
   const { actions, panels } = useEventActions({ event: detail, surface: "panel" });
 
   return (
@@ -69,18 +71,17 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
                 <ArrowRight size={14} className="ml-1 inline align-[-2px]" />
               </Link>
             </h2>
-            {/* The panel's actions ride the byline row, right-aligned under the
-                title and clear of the close button, so this surface puts its
-                controls in the same top-right spot the two detail pages do.
-                The same shared cluster as those pages, so tweet and clipboard
-                output and the report form stay in sync across every surface.
-                Navigation lives on the title permalink above, so the row
-                carries actions only. */}
+            {/* The byline alone under the title. Anything the grammar hands
+                back rides the same row, right-aligned and clear of the close
+                button, so a tier this surface ever takes lands in the top-right
+                spot the two detail pages use; it carries none today. */}
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs text-neutral-400">
                 <AuthorByline author={detail.owner} size="xs" avatar />
               </p>
-              <div className="flex items-center gap-3 shrink-0">{actions}</div>
+              {actions && (
+                <div className="flex items-center gap-3 shrink-0">{actions}</div>
+              )}
             </div>
           </div>
 
