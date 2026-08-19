@@ -12,6 +12,7 @@ CHECK is dropped and recreated with the widened domain; the iff between
 
 from typing import Sequence, Union
 
+import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -41,13 +42,27 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # A retracted row is outside the narrowed domain, so it goes back to the
-    # published state it left; the close stamps are cleared with it, which
-    # ``ck_events_closed_stamp`` requires of a non-closed row.
-    op.execute(
-        "UPDATE events SET status = 'geolocated', before_closed_status = NULL,"
-        " closed_at = NULL, close_reason = NULL"
-        " WHERE status = 'closed' AND before_closed_status = 'geolocated'"
+    # A retracted row is outside the narrowed domain, and the only shapes that
+    # fit it again are republishing the claim its author took back or deleting
+    # the row. Both decide something a schema migration has no standing to
+    # decide, so the downgrade refuses and names the rows instead: an operator
+    # who means to republish or to remove them says so with their own
+    # statement, and re-runs this. An empty catalog downgrades untouched.
+    retracted = (
+        op.get_bind()
+        .execute(
+            sa.text(
+                "SELECT count(*) FROM events"
+                " WHERE status = 'closed' AND before_closed_status = 'geolocated'"
+            )
+        )
+        .scalar_one()
     )
+    if retracted:
+        raise RuntimeError(
+            f"{retracted} retracted geolocation(s) carry before_closed_status = 'geolocated',"
+            " which the narrowed CHECK forbids. Decide what happens to them"
+            " (republish them as 'geolocated', or delete them) and re-run this downgrade."
+        )
     op.drop_constraint(CONSTRAINT, "events", type_="check")
     op.create_check_constraint(CONSTRAINT, "events", PREVIOUS)

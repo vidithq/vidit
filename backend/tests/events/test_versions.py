@@ -21,7 +21,6 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
@@ -36,9 +35,7 @@ from app.models.event import (
 )
 from app.models.media import Media
 from app.models.source_archive import SourceArchive
-from app.models.user import User
 from app.services import versions as versions_service
-from app.services.auth import hash_password
 from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
 from tests.events._helpers import (
@@ -47,24 +44,6 @@ from tests.events._helpers import (
     proof_file_part,
     proof_form_field,
 )
-
-
-@pytest.fixture
-def admin_user(db):
-    user = User(
-        username=f"adm{uuid.uuid4().hex[:8]}",
-        email=f"adm-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        is_admin=True,
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
 
 # A stored proof image, on the dev media host the sanitiser admits, so a proof
 # body can reference an already-uploaded URL the way an edit form does.
@@ -331,6 +310,53 @@ def test_dropping_a_mirror_drops_its_archived_copy(db, author, conflict, capture
     assert db.query(SourceArchive).filter(SourceArchive.event_id == geo.id).count() == 0
     row = db.query(EventVersion).filter(EventVersion.event_id == geo.id).one()
     assert [a["original_url"] for a in row.snapshot["archives"]] == [mirror]
+
+
+def test_promoting_an_archived_mirror_to_the_source_keeps_its_copy(
+    db, author, conflict, capture_source_tag
+):
+    """The mirror an edit makes the source keeps the copy filed against it.
+
+    Normalization drops the mirror equal to the new source, so the submitted
+    mirror list stops naming it; dropping its copy on that absence would destroy
+    the archive of the very link the edit just promoted, in the same write that
+    promoted it. The row survives and is re-filed under origin ``source_url``.
+    """
+    mirror = "https://t.me/channel/424242"
+    geo = _published(db, author, conflict, capture_source_tag, secondary_source_urls=[mirror])
+    original = geo.source_url
+    mirror_copy = f"https://web.archive.org/web/20260811120000/{mirror}"
+    db.add(
+        SourceArchive(
+            event_id=geo.id,
+            original_url=mirror,
+            origin="secondary_source",
+            snapshot_url=mirror_copy,
+            provider="wayback",
+        )
+    )
+    db.commit()
+
+    response = _save_version(
+        geo.id,
+        author,
+        data=_form(
+            conflict,
+            capture_source_tag,
+            source_url=mirror,
+            secondary_source_urls=[original],
+        ),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["source_url"] == mirror
+    assert body["secondary_source_urls"] == [original]
+    assert body["archived_source"] == {"url": mirror_copy, "provider": "wayback"}
+
+    db.expire_all()
+    row = db.query(SourceArchive).filter(SourceArchive.event_id == geo.id).one()
+    assert row.original_url == mirror
+    assert row.origin == "source_url"
 
 
 def test_save_version_refuses_a_mirror_snapshot_of_another_link(
@@ -1195,6 +1221,62 @@ def test_a_proof_body_may_cite_the_events_own_source_media(
     assert db.query(Media).filter(Media.id == source_row.id).count() == 1
 
 
+def test_a_proof_body_may_cite_a_source_media_a_correction_superseded(
+    db, author, conflict, capture_source_tag
+):
+    """Ownership survives the swap that deletes the row.
+
+    A proof legitimately shows a frame of the footage being located. Correcting
+    the anchor deletes the ``source`` row that frame came from, while the object
+    stays and the version's snapshot is what still names it, so reading
+    ownership off the live rows alone would 400 the correction itself and every
+    later write of that body.
+    """
+    geo = _published(db, author, conflict, capture_source_tag)
+    superseded = _source_row(db, geo)
+    superseded_url = "http://localhost:8000/local-storage/uploads/e/superseded.jpg"
+    superseded.storage_url = superseded_url
+    superseded_id = str(superseded.id)
+    db.commit()
+
+    body = {
+        "type": "doc",
+        "content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": "The frame."}]},
+            {"type": "image", "attrs": {"src": STORED_PROOF_URL}},
+            {"type": "image", "attrs": {"src": superseded_url}},
+        ],
+    }
+    # The correction that supersedes the cited frame, carrying the body that
+    # cites it.
+    assert (
+        _save_version(
+            geo.id,
+            author,
+            data=_form(
+                conflict,
+                capture_source_tag,
+                proof=json.dumps(body),
+                remove_media_ids=json.dumps([superseded_id]),
+            ),
+            files=[_source_part()],
+        ).status_code
+        == 200
+    )
+
+    db.expire_all()
+    assert db.query(Media).filter(Media.id == superseded_id).count() == 0
+
+    # Every later write of the same body: the row is gone for good, so this is
+    # the leg that would 400 on every edit from here on.
+    response = _save_version(
+        geo.id,
+        author,
+        data=_form(conflict, capture_source_tag, title="Second correction", proof=json.dumps(body)),
+    )
+    assert response.status_code == 200, response.text
+
+
 # ── Reading the history ───────────────────────────────────────────────────
 
 
@@ -1479,6 +1561,62 @@ def test_redact_frees_the_image_only_that_version_displayed(
     assert remaining[0].storage_url != STORED_PROOF_URL
     # The image the current body still shows is untouched.
     assert remaining[0].storage_url in json.dumps(db.get(Event, geo.id).proof)
+
+
+def test_redaction_keeps_a_superseded_source_the_live_proof_still_shows(
+    db, author, admin_user, conflict, capture_source_tag, tmp_path, monkeypatch
+):
+    """A proof body is the third thing that holds a superseded source alive.
+
+    The row went with the correction that replaced it and the last version
+    naming it is being blanked, so the live proof body is the only thing left
+    pointing at the object. Sweeping it there would punch a hole in the
+    published record the redaction never touched.
+    """
+    from app.services import storage as storage_module
+
+    monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
+    monkeypatch.setattr(storage_module.settings, "local_storage_dir", str(tmp_path))
+
+    geo = _published(db, author, conflict, capture_source_tag)
+    superseded = _source_row(db, geo)
+    superseded_url = "http://localhost:8000/local-storage/uploads/e/cited.jpg"
+    superseded.storage_url = superseded_url
+    superseded_id = str(superseded.id)
+    db.commit()
+    stored_object = tmp_path / "uploads" / "e" / "cited.jpg"
+    stored_object.parent.mkdir(parents=True, exist_ok=True)
+    stored_object.write_bytes(TINY_JPEG)
+
+    body = {
+        "type": "doc",
+        "content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": "The frame."}]},
+            {"type": "image", "attrs": {"src": STORED_PROOF_URL}},
+            {"type": "image", "attrs": {"src": superseded_url}},
+        ],
+    }
+    assert (
+        _save_version(
+            geo.id,
+            author,
+            data=_form(
+                conflict,
+                capture_source_tag,
+                proof=json.dumps(body),
+                remove_media_ids=json.dumps([superseded_id]),
+            ),
+            files=[_source_part()],
+        ).status_code
+        == 200
+    )
+    db.expire_all()
+    assert stored_object.exists()
+
+    # Version 1 is the only readable version naming that media, so this is the
+    # redaction that would free it if the live body did not display it.
+    assert _redact(geo.id, 1, admin_user).status_code == 200
+    assert stored_object.exists()
 
 
 def test_redact_404s_an_unknown_version_or_event(

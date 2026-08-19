@@ -61,7 +61,10 @@ def published_events() -> ColumnElement[bool]:
     filters on both, so its count and its rows agree, and the profile
     payload's ``geolocations_count``
     (:func:`routers.users.get_user_profile`) counts through it too, so the
-    profile's share card headlines the size of the set the feed serves.
+    profile's share card headlines the size of the set the feed serves. The
+    follow feed (:func:`services.social.get_timeline`) filters on it as well, so
+    one analyst's rows read the same whether a reader reaches them through the
+    profile or through a follow.
 
     Why the other three states are out:
 
@@ -73,7 +76,7 @@ def published_events() -> ColumnElement[bool]:
     * ``closed`` off ``geolocated`` is published work the analyst retracted.
       A retraction is the analyst saying the claim no longer stands, so it
       leaves this set the moment it is taken back, and with it the profile
-      feed, the counts and the read views. What it does not leave is the
+      feed, the follow feed, the counts and the read views. What it does not leave is the
       record: the page, its version history, its credits and its archives all
       stay, marked as withdrawn with the reason.
     * ``requested`` is an open call for help, an ask rather than an answer.

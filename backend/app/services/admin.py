@@ -459,8 +459,9 @@ def redact_version(
     db.flush()
 
     # One media, one count; the keys run longer, since a source image owns its
-    # two derivatives as well.
-    removed_proof_keys = prune_unreferenced_proof_media(db, event)
+    # two derivatives as well, so the audit entry counts the media the redaction
+    # freed and the sweep takes the keys.
+    removed_proof_keys, removed_proof_rows = prune_unreferenced_proof_media(db, event)
     freed_sources = orphaned_source_media(db, event, dropped=superseded_sources)
     removed_keys = removed_proof_keys + collect_snapshot_media_keys(freed_sources)
     log_admin_event(
@@ -470,7 +471,7 @@ def redact_version(
         target={
             "geolocation_id": str(event.id),
             "version_no": version_no,
-            "removed_media_count": len(removed_proof_keys) + len(freed_sources),
+            "removed_media_count": removed_proof_rows + len(freed_sources),
         },
     )
     db.commit()

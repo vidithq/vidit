@@ -21,7 +21,13 @@ from shapely.geometry import Point
 from app.cache import points_cache
 from app.config import settings
 from app.database import SessionLocal
-from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, DetectedVia, Event
+from app.models.event import (
+    STATUS_DETECTED,
+    STATUS_GEOLOCATED,
+    DetectedVia,
+    Event,
+    EventVersion,
+)
 from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
@@ -449,6 +455,56 @@ async def test_same_source_and_coordinate_skips_across_provenance_urls(db, owner
     outcome = await _persist(db, owner=owner, detections=[second], fetch_media=_missing_fetcher)
     assert outcome.created == [] and len(outcome.skipped) == 1
     assert db.query(Event).filter(Event.owner_id == owner.id).count() == 1
+
+
+async def test_a_corrected_source_url_still_matches_its_own_re_import(db, owner):
+    """Correcting the evidence anchor does not earn the owner a duplicate row.
+
+    A hand-submitted published row carries no provenance post, so its source URL
+    is the only leg that can recognise it. Once the owner corrects that URL the
+    live column no longer holds the one the post declares, while the version the
+    correction filed still does; matching the live column alone would land a
+    re-import of the same post as a fresh ``detected`` row beside the published
+    one it already produced.
+    """
+    original = "https://t.me/chan/original"
+    geo = Event(
+        owner_id=owner.id,
+        title="Human submit",
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url=original,
+        source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        event_date=date(2025, 11, 12),
+        status=STATUS_GEOLOCATED,
+        geolocated_at=datetime.now(UTC),
+    )
+    db.add(geo)
+    db.commit()
+    # The correction: the row moves to a better link, the version it filed keeps
+    # the one the record was submitted under.
+    db.add(
+        EventVersion(
+            event_id=geo.id,
+            version_no=1,
+            edited_by_id=owner.id,
+            snapshot={"source_url": original, "source_media": []},
+        )
+    )
+    geo.source_url = "https://t.me/chan/corrected"
+    geo.version_no = 2
+    db.commit()
+    geo_id = geo.id
+
+    outcome = await _persist(
+        db,
+        owner=owner,
+        detections=[_detection(url="https://x.com/own/status/77", source_url=original)],
+        fetch_media=_missing_fetcher,
+    )
+    assert outcome.created == [] and len(outcome.skipped) == 1
+
+    db.expire_all()
+    assert [row.id for row in db.query(Event).filter(Event.owner_id == owner.id)] == [geo_id]
 
 
 async def test_same_source_different_coordinate_still_creates(db, owner):
