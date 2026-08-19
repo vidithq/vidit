@@ -10,16 +10,24 @@ the publication paths (``create_with_evidence``, ``geolocate``,
 ``_publish_detection``) write no version at all: version 1 is the published row
 itself.
 
-:func:`referenced_media_urls` is the floor that keeps a snapshot renderable.
-Media files are not versioned, so the shared intake asks here before it drops a
-proof-media row whose image the current proof body no longer references: a row
-some snapshot displayed stays, object included. A snapshot carries the images
-its own proof body referenced, nothing else, so an image no version ever
-displayed is not held alive by the history.
+:func:`referenced_media_urls` is the floor that keeps a snapshot's proof images
+renderable. Media rows are not versioned, so the shared intake asks here before
+it drops a proof-media row whose image the current proof body no longer
+references: a row some snapshot displayed stays, object included. A snapshot
+carries the images its own proof body referenced, nothing else, so an image no
+version ever displayed is not held alive by the history.
+
+The source media takes the other route, because a row cannot stay: an event
+carries at most one ``source`` media (``uq_media_source_per_event``), so
+swapping the anchor deletes the row it replaces. The snapshot therefore carries
+the whole render shape of that media (:func:`build_snapshot`), and only the S3
+object is held alive; :func:`referenced_source_media` is what says which objects
+those are, for the sweeps that would otherwise orphan or delete them.
 
 :func:`redact_version` is the one write a filed row takes: an admin blanks its
 content while the row and its number stay. A redacted snapshot contributes
-nothing to the floor above, so an image only it pointed at becomes deletable.
+nothing to either floor above, so a proof image only it pointed at becomes
+deletable and so does a superseded source object only it named.
 
 :func:`matches_current` is what refuses a version that would carry the state the
 live row already carries, and it reads :data:`COMPARED_FIELDS` off the same
@@ -47,6 +55,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models.conflict import Conflict
 from app.models.event import Event, EventVersion
+from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
 from app.services.sanitize import extract_image_srcs
@@ -70,13 +79,17 @@ MAX_VERSIONS_PER_EVENT = 100
 HISTORY_PAGE_SIZE = 50
 
 # The versioned fields a no-change check reads, in the shapes
-# :func:`build_snapshot` stores them. Two of that function's keys are absent on
+# :func:`build_snapshot` stores them. Three of that function's keys are absent on
 # purpose: ``proof_media`` is derived from the proof body's image srcs, so a body
-# that did not move displays the same images, and ``archives`` carries a stored
+# that did not move displays the same images; ``archives`` carries a stored
 # ``created_at`` an incoming paste cannot state, which is why the callers compare
-# the copies through :func:`archived_pairs` instead.
+# the copies through :func:`archived_pairs` instead; and ``source_media`` names
+# stored rows, while an incoming swap is an upload that has neither id nor URL
+# until it lands, so the caller compares the swap itself (a removal or a new
+# file is a change, and nothing else moves that media).
 COMPARED_FIELDS: tuple[str, ...] = (
     "title",
+    "source_url",
     "event_coords",
     "capture_source_coords",
     "event_date",
@@ -128,6 +141,26 @@ def conflict_entries(conflicts: Iterable[Conflict]) -> list[dict[str, str]]:
     return [{"id": str(c.id), "name": c.name} for c in conflicts]
 
 
+def media_entry(media: Media) -> dict[str, Any]:
+    """One media row as a snapshot stores it: the fields ``MediaRead`` serves.
+
+    The same shape the live row's media come back in
+    (``schemas/media.MediaRead``), so a version page renders a stored media and
+    a snapshotted one through one component. It is the whole row rather than a
+    reference to it, because the row itself may be gone: the source media a
+    later version replaced is deleted, and this fragment is what still describes
+    it.
+    """
+    return {
+        "id": str(media.id),
+        "role": media.role,
+        "storage_url": media.storage_url,
+        "media_type": media.media_type,
+        "sha256": media.sha256,
+        "original_filename": media.original_filename,
+    }
+
+
 def archived_pairs(geo: Event) -> dict[str, str]:
     """Each archived link of the event with the snapshot URL it currently holds.
 
@@ -142,9 +175,17 @@ def build_snapshot(geo: Event) -> dict[str, Any]:
 
     Exactly the field set :func:`services.events.save_version` writes, which is what
     makes a snapshot plus the live row a complete history: a field an edit can
-    change is a field a snapshot carries. The evidence anchor (``source_url``
-    and the ``source`` media) is absent on purpose, since an edit cannot move
-    it, and the live row is authoritative for it at every version.
+    change is a field a snapshot carries.
+
+    ``source_url`` and ``source_media`` are the evidence anchor, which an edit
+    can move, so a version records what the claim rested on. ``source_media``
+    carries the media's whole render shape rather than a reference to it: an
+    event holds at most one ``source`` row (``uq_media_source_per_event``), so
+    the row a swap replaces is deleted and the snapshot is the only thing left
+    describing it. The S3 object stays (see :func:`referenced_source_media`), so
+    ``/vN`` renders the footage the version rested on. The list holds at most
+    one entry, matching ``schemas/event.EventRead.media``, so a version and the
+    live row render through the same component.
 
     Tags and conflicts carry their names alongside their ids so a version stays
     readable after a referential row is renamed or deleted. ``proof`` is
@@ -163,6 +204,8 @@ def build_snapshot(geo: Event) -> dict[str, Any]:
     displayed = set(extract_image_srcs(geo.proof))
     return {
         "title": geo.title,
+        "source_url": geo.source_url,
+        "source_media": [media_entry(m) for m in geo.media if m.role == "source"],
         "event_coords": point_shape(geo.event_coords),
         "capture_source_coords": point_shape(geo.capture_source_coords),
         "event_date": geo.event_date.isoformat() if geo.event_date is not None else None,
@@ -176,14 +219,7 @@ def build_snapshot(geo: Event) -> dict[str, Any]:
         "conflicts": conflict_entries(geo.conflicts),
         "proof": copy.deepcopy(geo.proof),
         "proof_media": [
-            {
-                "id": str(m.id),
-                "storage_url": m.storage_url,
-                "media_type": m.media_type,
-                "original_filename": m.original_filename,
-            }
-            for m in geo.media
-            if m.role == "proof" and m.storage_url in displayed
+            media_entry(m) for m in geo.media if m.role == "proof" and m.storage_url in displayed
         ],
         "archives": [
             {
@@ -277,35 +313,74 @@ def file_version(
     return row
 
 
-def referenced_media_urls(db: Session, event_id: uuid.UUID) -> set[str]:
-    """Every proof-image URL this event's readable snapshots display.
+def _media_entries(fragment: Any) -> list[dict[str, Any]]:
+    """One snapshot's ``proof_media`` / ``source_media`` value, defensively.
 
-    The one query behind the media floor: a ``media`` row whose URL is in this
-    set survives its removal from the current proof body, so a past version
-    still renders. Reads only the ``proof_media`` fragment of each snapshot, not
-    the proof documents.
+    A redacted snapshot is ``{}`` and a version filed before a key existed
+    carries nothing under it, so anything but a list of objects reads as no
+    entries. The driver normally hands back decoded JSON; a text round-trip is
+    decoded here, so a media floor can never silently read as "nothing is
+    referenced" and delete a file a version still renders.
+    """
+    if isinstance(fragment, str):
+        fragment = json.loads(fragment)
+    if not isinstance(fragment, list):
+        return []
+    return [entry for entry in fragment if isinstance(entry, dict)]
+
+
+def media_fragment(snapshot: Mapping[str, Any], key: str) -> list[dict[str, Any]]:
+    """That media fragment of one already-read snapshot.
+
+    The single-row form of :func:`_fragments`, for a caller holding the row
+    rather than querying the history (an admin redaction reads what the version
+    it blanks was rendering).
+    """
+    return _media_entries(snapshot.get(key))
+
+
+def _fragments(db: Session, event_id: uuid.UUID, key: str) -> list[dict[str, Any]]:
+    """That fragment of every readable snapshot of one event, flattened.
 
     Redacted versions are skipped. Their content is gone by design, so nothing
-    renders them and an image they alone pointed at is free to be deleted.
+    renders them and a file they alone pointed at is free to be deleted.
     """
-    urls: set[str] = set()
+    entries: list[dict[str, Any]] = []
     for (fragment,) in (
-        db.query(EventVersion.snapshot["proof_media"])
+        db.query(EventVersion.snapshot[key])
         .filter(EventVersion.event_id == event_id)
         .filter(EventVersion.redacted_at.is_(None))
     ):
-        # The driver normally hands back decoded JSON; a text round-trip is
-        # decoded here so the floor can never silently read as "nothing is
-        # referenced", which would delete an image a version still shows.
-        if isinstance(fragment, str):
-            fragment = json.loads(fragment)
-        if not isinstance(fragment, list):
-            continue
-        for entry in fragment:
-            url = entry.get("storage_url") if isinstance(entry, dict) else None
-            if isinstance(url, str):
-                urls.add(url)
-    return urls
+        entries.extend(_media_entries(fragment))
+    return entries
+
+
+def referenced_media_urls(db: Session, event_id: uuid.UUID) -> set[str]:
+    """Every proof-image URL this event's readable snapshots display.
+
+    The one query behind the proof-media floor: a ``media`` row whose URL is in
+    this set survives its removal from the current proof body, so a past version
+    still renders. Reads only the ``proof_media`` fragment of each snapshot, not
+    the proof documents.
+    """
+    return {
+        url
+        for entry in _fragments(db, event_id, "proof_media")
+        if isinstance(url := entry.get("storage_url"), str)
+    }
+
+
+def referenced_source_media(db: Session, event_id: uuid.UUID) -> list[dict[str, Any]]:
+    """Every source media this event's readable snapshots render.
+
+    The source counterpart of :func:`referenced_media_urls`, and it answers with
+    the entries rather than the URLs because there is no row left to read the
+    media type off: an anchor swap deletes the row it replaces, so the S3 key of
+    a superseded source (its derivatives included) resolves from the snapshot
+    alone. A sweep that would orphan or delete one of those objects asks here
+    first.
+    """
+    return _fragments(db, event_id, "source_media")
 
 
 def count_versions(db: Session, event_id: uuid.UUID) -> int:

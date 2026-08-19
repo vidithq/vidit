@@ -119,9 +119,10 @@ class EventVersionRead(BaseModel):
     ``version_no`` is the version this row holds, not the version that replaced
     it: an event at ``version_no`` 3 answers with snapshots 2 and 1, and the
     live row is version 3. ``snapshot`` carries the editable fields as they
-    stood (see ``services/versions.build_snapshot``); the evidence anchor
-    (``source_url`` and the source media) is absent because no edit can move it,
-    so the live row is authoritative for it at every version.
+    stood (see ``services/versions.build_snapshot``), the evidence anchor
+    included: ``source_url`` and ``source_media`` say what the claim rested on
+    at that version, the media as the whole shape ``EventRead`` serves, since
+    the row itself is gone once a correction replaced it.
     """
 
     id: uuid.UUID

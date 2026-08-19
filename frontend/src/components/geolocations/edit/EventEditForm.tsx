@@ -50,15 +50,6 @@ import type { EventDetail } from "@/types";
 // Ties Reject to the reason panel it opens, which is not its DOM sibling.
 const REJECT_PANEL_ID = "reject-detection-form";
 
-// What the two locked anchor fields say on a published event, with the `?` that
-// explains why they are locked. The submit form leaves both editable, so this
-// marker only ever appears when a version is being saved.
-const ANCHOR_LOCK_NOTE = (
-  <>
-    evidence anchor <FieldHelp concept="evidence_anchor" size={10} />
-  </>
-);
-
 /**
  * Owner edit of one event, in the two shapes an owner edits in.
  *
@@ -68,15 +59,14 @@ const ANCHOR_LOCK_NOTE = (
  * and submits it, which applies the form and flips the row to `geolocated` in
  * one atomic multipart request. Only `detected_from_url` (provenance) is
  * immutable, and the write takes a confirm, since publishing makes the event
- * public and fixes its source.
+ * public.
  *
- * **Save version** (a `geolocated` row): the same fields, minus the evidence
- * anchor. `source_url` and the source media are what the published claim rests
- * on, so they render read-only and the endpoint declares no field for either;
- * everything else is editable, and the write files the version it supersedes
- * rather than overwriting it. An optional note travels with that version. No
- * confirm: a version adds a version, which is the ordinary way a published
- * event changes.
+ * **Save version** (a `geolocated` row): the same fields, the evidence anchor
+ * included. `source_url` and the source media are editable here as on a
+ * detection, and the write files the version it supersedes rather than
+ * overwriting it, so the record keeps what the claim rested on. An optional
+ * note travels with that version. No confirm: a version adds a version, which
+ * is the ordinary way a published event changes.
  *
  * Built like the create form throughout (same field bricks, same `MediaManager`
  * staging). State is seeded from props (the form mounts only after the row
@@ -215,11 +205,13 @@ export function EventEditForm({
     clearIncomplete,
   } = useIncompleteForm();
 
-  // Everything both writes post. The anchor fields (`source_url` and the source
-  // media) are added by the submit path alone: saving a version declares no field for
-  // them, so they must not even be assembled there.
+  // Everything both writes post, the evidence anchor included: both endpoints
+  // declare the same fields, and a version records the anchor it supersedes.
   const buildCommon = () => ({
     title: title.trim(),
+    source_url: sourceUrl.trim(),
+    remove_media_ids: [...removedIds],
+    files: newFiles,
     // Same strict parse as the two optional coordinate pairs, so one coordinate
     // can't read valid one way and invalid the other. Required here (the floor
     // check below runs first), so a NaN never reaches a submit.
@@ -264,12 +256,7 @@ export function EventEditForm({
             detected_from_snapshot_url: detectedFromSnapshotUrl,
             note: editNote,
           })
-        : geolocateEvent(geo.id, {
-            ...buildCommon(),
-            source_url: sourceUrl.trim(),
-            remove_media_ids: [...removedIds],
-            files: newFiles,
-          }),
+        : geolocateEvent(geo.id, buildCommon()),
     {
       fallback: editingPublished ? "Couldn't save this version." : "Couldn't submit.",
       // The server is the authority on both version refusals, since the row may
@@ -315,12 +302,12 @@ export function EventEditForm({
   const busy = submitMutation.loading;
   const actionError = submitMutation.error;
 
-  // Submit floor is computed on the post-edit state: kept existing media plus
-  // staged new files, and the selected curated tags. On a version the anchor
-  // cannot move, so the count is simply what the row already carries.
-  const keptMediaCount = editingPublished
-    ? geo.media.length
-    : geo.media.filter((m) => !removedIds.has(m.id)).length + newFiles.length;
+  // The floor is computed on the post-edit state, on both writes alike: kept
+  // existing media plus staged new files, and the selected curated tags. A
+  // version re-checks the same floor server side, so a save that would leave
+  // the published record without footage is caught here first.
+  const keptMediaCount =
+    geo.media.filter((m) => !removedIds.has(m.id)).length + newFiles.length;
   const selectedCurated = taxonomy.curatedTags.filter((t) =>
     selectedTagIds.includes(t.id)
   );
@@ -342,6 +329,8 @@ export function EventEditForm({
   // What the version check reads: the editable state as the inputs hold it.
   const versionState = (): EventVersionFormState => ({
     title,
+    sourceUrl,
+    sourceMediaMoved: removedIds.size > 0 || newFiles.length > 0,
     lat,
     lng,
     captureLat,
@@ -513,10 +502,6 @@ export function EventEditForm({
           onRemoveStaged={(i) =>
             setNewFiles((prev) => prev.filter((_, idx) => idx !== i))
           }
-          // Half of the published event's evidence anchor: readable, never
-          // swappable, and the `?` on the marker says why.
-          locked={editingPublished}
-          lockNote={editingPublished ? ANCHOR_LOCK_NOTE : undefined}
           invalid={invalidKeys.has("source_media")}
         />
 
@@ -554,10 +539,6 @@ export function EventEditForm({
           // The loaded value, not the live one: the flag ratchets on the
           // backend, so an event that arrived flagged cannot be unflagged here.
           graphicLocked={geo.is_graphic}
-          // The other half of the anchor. A detection's source is still being
-          // established, so the submit form leaves it editable.
-          sourceUrlLocked={editingPublished}
-          sourceLockNote={editingPublished ? ANCHOR_LOCK_NOTE : undefined}
           detectedFromUrl={geo.detected_from_url}
           // The provenance link's archive pair, on the one write that declares
           // the field. Passing the setter is what turns the locked field's mark

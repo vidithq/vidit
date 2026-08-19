@@ -3,9 +3,10 @@
 A ``geolocated`` row is the vouched record, so a correction files the version it
 supersedes instead of overwriting it: ``event_versions`` gains a snapshot,
 ``events.version_no`` moves on, and ``GET /events/{id}/versions`` reads the
-history back. The suite covers the write's four guards (owner, state, the
-immutable evidence anchor, the published evidence floor), the media rule that
-keeps a past version renderable, and the row lock two concurrent edits
+history back. The suite covers the write's three guards (owner, state, the published evidence
+floor), the corrections it files (the evidence anchor included, which a version
+records so the record still shows what the claim rested on), the media rules
+that keep a past version renderable, and the row lock two concurrent edits
 serialize on.
 
 Shared fixtures live in ``conftest.py``; ``client`` / ``_make_geo`` / the proof
@@ -38,6 +39,7 @@ from app.models.source_archive import SourceArchive
 from app.models.user import User
 from app.services import versions as versions_service
 from app.services.auth import hash_password
+from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
 from tests.events._helpers import (
     _make_geo,
@@ -416,33 +418,245 @@ def test_save_version_is_geolocated_only(db, author, conflict, capture_source_ta
         assert response.json()["detail"]["code"] == "invalid_state"
 
 
-def test_save_version_cannot_move_the_evidence_anchor(db, author, conflict, capture_source_tag):
-    """``source_url`` and the source media take no field: sending them anyway
-    changes nothing, because the endpoint declares neither."""
-    geo = _published(db, author, conflict, capture_source_tag)
-    source_id = str(next(m.id for m in geo.media if m.role == "source"))
-    original_source_url = geo.source_url
+# ── The evidence anchor moves, and the version keeps what it was ──────────
 
+
+def _source_part(filename="swap.jpg"):
+    return ("files", (filename, TINY_JPEG, "image/jpeg"))
+
+
+def _source_row(db, geo):
+    return db.query(Media).filter(Media.event_id == geo.id, Media.role == "source").one()
+
+
+def test_save_version_swaps_the_source_media_and_the_version_keeps_the_old_one(
+    db, author, conflict, capture_source_tag
+):
+    """The import picks the wrong media out of a multi-media post often enough
+    that the owner has to be able to replace it, and the version it supersedes
+    is where the old one stays readable."""
+    geo = _published(db, author, conflict, capture_source_tag)
+    old = _source_row(db, geo)
+    old_id, old_url = str(old.id), old.storage_url
+
+    response = _save_version(
+        geo.id,
+        author,
+        data=_form(conflict, capture_source_tag, remove_media_ids=json.dumps([old_id])),
+        files=[_source_part()],
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [m["id"] for m in body["media"]] != [old_id]
+    assert len(body["media"]) == 1
+
+    db.expire_all()
+    # One source media, the new one: the swap is a replacement, not an addition.
+    assert _source_row(db, geo).storage_url != old_url
+    # The version this edit filed describes the media it superseded whole, so
+    # ``/v1`` renders the footage the published claim rested on.
+    filed = db.query(EventVersion).filter(EventVersion.event_id == geo.id).one()
+    assert [m["id"] for m in filed.snapshot["source_media"]] == [old_id]
+    assert filed.snapshot["source_media"][0]["storage_url"] == old_url
+    assert filed.snapshot["source_media"][0]["media_type"] == "image"
+
+
+def test_save_version_edits_the_source_url_and_files_the_old_one(
+    db, author, conflict, capture_source_tag
+):
+    """An analyst who finds the original post behind a repost corrects the link,
+    and the version says what the record pointed at before."""
+    geo = _published(db, author, conflict, capture_source_tag)
+    original = geo.source_url
+
+    response = _save_version(
+        geo.id,
+        author,
+        data=_form(conflict, capture_source_tag, source_url="https://example.com/original"),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["source_url"] == "https://example.com/original"
+
+    db.expire_all()
+    assert db.get(Event, geo.id).source_url == "https://example.com/original"
+    filed = db.query(EventVersion).filter(EventVersion.event_id == geo.id).one()
+    assert filed.snapshot["source_url"] == original
+
+
+def test_an_anchor_correction_alone_is_a_change(db, author, conflict, capture_source_tag):
+    """Neither half of the anchor is exempt from the no-change check, and
+    neither is refused by it: a save that moves only the source URL, or only the
+    source media, files its version."""
+    geo = _published(db, author, conflict, capture_source_tag, title="Original title")
+    # Bring the row to exactly what the form posts, so the two saves below move
+    # the anchor and nothing else.
+    assert (
+        _save_version(geo.id, author, data=_form(conflict, capture_source_tag)).status_code == 200
+    )
+
+    assert (
+        _save_version(
+            geo.id, author, data=_form(conflict, capture_source_tag, source_url="https://a.test/2")
+        ).status_code
+        == 200
+    )
+
+    db.expire_all()
+    old_id = str(_source_row(db, geo).id)
     response = _save_version(
         geo.id,
         author,
         data=_form(
             conflict,
             capture_source_tag,
-            source_url="https://attacker.example/other",
-            remove_media_ids=json.dumps([source_id]),
+            source_url="https://a.test/2",
+            remove_media_ids=json.dumps([old_id]),
         ),
-        files=[("files", ("swap.jpg", b"\xff\xd8\xff\xdb", "image/jpeg"))],
+        files=[_source_part()],
     )
     assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["source_url"] == original_source_url
-    assert [m["id"] for m in body["media"]] == [source_id]
 
     db.expire_all()
-    refreshed = db.get(Event, geo.id)
-    assert refreshed.source_url == original_source_url
-    assert [str(m.id) for m in refreshed.media if m.role == "source"] == [source_id]
+    assert db.get(Event, geo.id).version_no == 4
+
+
+def test_a_version_keeps_the_one_source_cap(db, author, conflict, capture_source_tag):
+    """A file with no removal beside it would leave the event on two source
+    media, which is what ``uq_media_source_per_event`` forbids."""
+    geo = _published(db, author, conflict, capture_source_tag)
+
+    response = _save_version(
+        geo.id, author, data=_form(conflict, capture_source_tag), files=[_source_part()]
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"]["code"] == "too_many_files"
+
+    db.expire_all()
+    assert db.get(Event, geo.id).version_no == 1
+    assert db.query(EventVersion).filter(EventVersion.event_id == geo.id).count() == 0
+
+
+def test_a_version_cannot_leave_the_record_without_footage(
+    db, author, conflict, capture_source_tag
+):
+    """Dropping the source media with nothing to replace it fails the published
+    floor, so the row keeps its media and its version."""
+    geo = _published(db, author, conflict, capture_source_tag)
+    old_id = str(_source_row(db, geo).id)
+
+    response = _save_version(
+        geo.id,
+        author,
+        data=_form(conflict, capture_source_tag, remove_media_ids=json.dumps([old_id])),
+    )
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"]["code"] == "media_required"
+
+    db.expire_all()
+    assert db.get(Event, geo.id).version_no == 1
+    assert str(_source_row(db, geo).id) == old_id
+
+
+def test_a_blank_source_url_is_refused_and_an_absent_one_keeps_it(
+    db, author, conflict, capture_source_tag
+):
+    """A published row always carries a source (``ck_events_source_url_status``),
+    so blanking the field is a 400; leaving it out keeps what the row holds."""
+    geo = _published(db, author, conflict, capture_source_tag)
+    stored = geo.source_url
+
+    response = _save_version(
+        geo.id, author, data=_form(conflict, capture_source_tag, source_url="   ")
+    )
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"]["code"] == "source_url_required"
+
+    db.expire_all()
+    assert db.get(Event, geo.id).version_no == 1
+
+    assert (
+        _save_version(geo.id, author, data=_form(conflict, capture_source_tag)).status_code == 200
+    )
+    db.expire_all()
+    assert db.get(Event, geo.id).source_url == stored
+
+
+def test_a_replaced_source_url_does_not_keep_the_old_ones_archived_copy(
+    db, author, conflict, capture_source_tag
+):
+    """A copy is a copy of a link: once the source URL moves, the row filed
+    against the old one no longer archives the event's source."""
+    geo = _published(db, author, conflict, capture_source_tag)
+    wayback = f"https://web.archive.org/web/20260811120000/{geo.source_url}"
+    db.add(
+        SourceArchive(
+            event_id=geo.id,
+            original_url=geo.source_url,
+            origin="source_url",
+            snapshot_url=wayback,
+            provider="wayback",
+        )
+    )
+    db.commit()
+
+    response = _save_version(
+        geo.id,
+        author,
+        data=_form(conflict, capture_source_tag, source_url="https://example.com/original"),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["archived_source"] is None
+
+    db.expire_all()
+    assert db.query(SourceArchive).filter(SourceArchive.event_id == geo.id).count() == 0
+    # The version that carried the copy still reads it.
+    filed = db.query(EventVersion).filter(EventVersion.event_id == geo.id).one()
+    assert [a["snapshot_url"] for a in filed.snapshot["archives"]] == [wayback]
+
+
+def test_the_superseded_source_object_outlives_the_row_and_dies_with_the_history(
+    db, author, admin_user, conflict, capture_source_tag, tmp_path, monkeypatch
+):
+    """An event carries one ``source`` row, so a swap deletes the one it
+    replaces; the object stays, because the version filed by that same save is
+    what renders it. Redacting the last version that named it frees it.
+    """
+    from app.services import storage as storage_module
+
+    monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
+    monkeypatch.setattr(storage_module.settings, "local_storage_dir", str(tmp_path))
+
+    geo = _published(db, author, conflict, capture_source_tag)
+    stored = _source_row(db, geo)
+    stored_url = "http://localhost:8000/local-storage/uploads/e/original.jpg"
+    stored_id = stored.id
+    stored.storage_url = stored_url
+    db.commit()
+    original = tmp_path / "uploads" / "e" / "original.jpg"
+    original.parent.mkdir(parents=True, exist_ok=True)
+    original.write_bytes(TINY_JPEG)
+
+    assert (
+        _save_version(
+            geo.id,
+            author,
+            data=_form(conflict, capture_source_tag, remove_media_ids=json.dumps([str(stored_id)])),
+            files=[_source_part()],
+        ).status_code
+        == 200
+    )
+
+    db.expire_all()
+    # The row is gone (the index allows one) and the object is not.
+    assert db.query(Media).filter(Media.id == stored_id).count() == 0
+    assert original.exists()
+    # The version still serves what it rested on.
+    served = client.get(f"/api/v1/events/{geo.id}/versions/1").json()
+    assert served["snapshot"]["source_media"][0]["storage_url"] == stored_url
+
+    # Redaction is what frees it: nothing readable names that media any more.
+    assert _redact(geo.id, 1, admin_user).status_code == 200
+    assert not original.exists()
 
 
 def test_save_version_holds_the_published_floor(db, author, conflict, capture_source_tag):

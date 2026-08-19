@@ -113,16 +113,20 @@ class EventVersion(Base):
     its history is snapshot 1, snapshot 2, the live row.
 
     ``snapshot`` holds the structured fields the edit form writes (see
-    ``services/versions.build_snapshot``). Media files are not versioned, so a
-    ``media`` row a snapshot points at is never hard-deleted while the snapshot
-    exists (``services/evidence_intake.attach_evidence_and_commit`` reads
-    ``services/versions.referenced_media_urls`` before it drops a proof row).
+    ``services/versions.build_snapshot``), the evidence anchor included. Media
+    rows are not versioned, so a ``proof`` row a snapshot points at is never
+    hard-deleted while the snapshot exists
+    (``services/evidence_intake.attach_evidence_and_commit`` reads
+    ``services/versions.referenced_media_urls`` before it drops one). The
+    ``source`` row cannot stay, one per event being the cap, so the snapshot
+    describes that media whole and its file is what outlives the row
+    (``services/versions.referenced_source_media``).
 
     Redaction is the one write a filed row takes. An admin blanks ``snapshot``
     and ``note`` and stamps ``redacted_at`` / ``redacted_by_id``; the row and
     its number stay, so ``/vN`` addressing never shifts and the history still
-    shows that a version existed. A redacted snapshot references no media, so
-    an image only it pointed at becomes deletable again.
+    shows that a version existed. A redacted snapshot references no media, so a
+    file only it pointed at becomes deletable again.
     """
 
     __tablename__ = "event_versions"

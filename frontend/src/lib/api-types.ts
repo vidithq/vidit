@@ -963,9 +963,11 @@ export interface paths {
         /**
          * Delete Event
          * @description Hard-delete by the owner. Cascades drop the tag links, contributor
-         *     rows and media rows; the S3 objects (media of every role, plus the source
-         *     image derivatives) are swept after the commit lands. Admin soft-delete
-         *     lives behind the admin router and stamps ``deleted_at`` instead.
+         *     rows, media rows and filed versions; the S3 objects (media of every role,
+         *     the source image derivatives, and the source media a correction superseded,
+         *     which outlive their row so history stays renderable) are swept after the
+         *     commit lands. Admin soft-delete lives behind the admin router and stamps
+         *     ``deleted_at`` instead.
          */
         delete: operations["delete_event_api_v1_events__geolocation_id__delete"];
         options?: never;
@@ -1102,13 +1104,14 @@ export interface paths {
          *     as an ``event_versions`` row and the event moves to the next
          *     ``version_no``, in one transaction under a row lock.
          *
-         *     The evidence anchor is immutable: ``source_url`` and the source media take
-         *     no field. A published row is past ``POST /events/{id}/close``, so a wrong
-         *     source on one is an admin matter rather than an owner action. Everything
-         *     else the publish form wrote is editable and versioned, the secondary source
-         *     links included. The published evidence floor is re-checked on the post-edit
-         *     state, so a version cannot drop the row below it. Soft-deleted rows read as
-         *     404.
+         *     The evidence anchor is editable, and versioned with everything else:
+         *     ``source_url`` takes a field here, and the source media moves on the
+         *     ``remove_media_ids`` + ``files`` pair ``POST /events/{id}/geolocate`` takes,
+         *     under the same one-source cap. The version this call files carries the
+         *     source URL and the source media it supersedes, so the record still shows
+         *     what the claim rested on. The published evidence floor is re-checked on the
+         *     post-edit state, so a version cannot drop the row below it. Soft-deleted
+         *     rows read as 404.
          *
          *     This is also where an archived copy of one of the row's links is recorded:
          *     ``source_snapshot_url``, ``detected_from_snapshot_url`` and
@@ -2154,6 +2157,8 @@ export interface components {
             event_date?: string | null;
             /** Event Time */
             event_time?: string | null;
+            /** Files */
+            files?: string[] | null;
             /**
              * Is Graphic
              * @default false
@@ -2169,6 +2174,8 @@ export interface components {
             proof?: string | null;
             /** Proof Files */
             proof_files?: string[] | null;
+            /** Remove Media Ids */
+            remove_media_ids?: string | null;
             /**
              * Secondary Snapshot Urls
              * @default []
@@ -2183,6 +2190,8 @@ export interface components {
             source_posted_at?: string | null;
             /** Source Snapshot Url */
             source_snapshot_url?: string | null;
+            /** Source Url */
+            source_url?: string | null;
             /** Tag Ids */
             tag_ids?: string | null;
             /** Title */
@@ -2470,9 +2479,10 @@ export interface components {
          *     ``version_no`` is the version this row holds, not the version that replaced
          *     it: an event at ``version_no`` 3 answers with snapshots 2 and 1, and the
          *     live row is version 3. ``snapshot`` carries the editable fields as they
-         *     stood (see ``services/versions.build_snapshot``); the evidence anchor
-         *     (``source_url`` and the source media) is absent because no edit can move it,
-         *     so the live row is authoritative for it at every version.
+         *     stood (see ``services/versions.build_snapshot``), the evidence anchor
+         *     included: ``source_url`` and ``source_media`` say what the claim rested on
+         *     at that version, the media as the whole shape ``EventRead`` serves, since
+         *     the row itself is gone once a correction replaced it.
          */
         EventVersionRead: {
             /**

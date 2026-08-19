@@ -68,13 +68,12 @@ interface DetailsFieldsProps {
    *  geolocate write would discard. A fresh submit leaves this `false` (nothing
    *  is set yet); fulfilling a flagged request sets it, like the edit form. */
   graphicLocked?: boolean;
-  /** Render the source URL read-only — it's inherited from the request on a
-   *  fulfilment (shows a "from request" hint), and frozen as the evidence
-   *  anchor on a published event. The detection edit form leaves it editable
-   *  (`false`). */
-  sourceUrlLocked: boolean;
+  /** Render the source URL read-only: it is inherited from the request on a
+   *  fulfilment, which shows a "from request" hint. Both owner edit shapes
+   *  leave it editable, so they omit it. */
+  sourceUrlLocked?: boolean;
   /** What the locked marker on the source URL says. Defaults to `LockedHint`'s
-   *  "from request"; the edit form names the reason it can't move. */
+   *  "from request". */
   sourceLockNote?: ReactNode;
   /** A machine detection's provenance — the post it was imported from. Shown
    *  read-only inside this block (it's the one immutable field) when provided;
@@ -117,7 +116,7 @@ export function DetailsFields({
   isGraphic,
   setIsGraphic,
   graphicLocked = false,
-  sourceUrlLocked,
+  sourceUrlLocked = false,
   sourceLockNote,
   detectedFromUrl,
   detectedFromSnapshotUrl = "",

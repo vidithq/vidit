@@ -422,21 +422,20 @@ describe("editing a published geolocation", () => {
     expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
   });
 
-  it("renders the evidence anchor read-only", () => {
+  it("offers the evidence anchor for correction, seeded from the row", () => {
     render(<EditEventPage />);
 
-    // The source URL is a link to open, not a field to retype, and the media
-    // block offers no add or remove.
-    expect(screen.queryByRole("textbox", { name: /Source URL/ })).toBeNull();
+    // The import picks the wrong media out of a multi-media post often enough
+    // that both halves stay editable after publication; the version this save
+    // files is what keeps the old ones readable.
+    expect(screen.getByRole("textbox", { name: /Source URL/ })).toHaveValue(
+      "https://t.me/channel/12345"
+    );
+    // The stored media offers its Remove, which is what opens the picker: an
+    // event carries one source media, so a swap is a removal then an upload.
     expect(
-      screen.getByRole("link", { name: "https://t.me/channel/12345" })
+      screen.getByRole("button", { name: "Remove media" })
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Add media/)).toBeNull();
-    expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
-    // And the reason it can't move is one click away, on the locked marker.
-    expect(
-      screen.getAllByRole("button", { name: "Why can't I change the source?" })
-    ).toHaveLength(2);
   });
 
   it("saves on the click that made it, then lands on the event", async () => {
@@ -484,7 +483,7 @@ describe("editing a published geolocation", () => {
     expect(saveVersionMock.mock.calls[0][1].source_posted_at).toBe("2026-05-30T15:00");
   });
 
-  it("posts the version note and never the evidence anchor", async () => {
+  it("posts the version note beside the evidence anchor", async () => {
     render(<EditEventPage />);
 
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
@@ -499,10 +498,25 @@ describe("editing a published geolocation", () => {
     const [id, input] = saveVersionMock.mock.calls[0];
     expect(id).toBe("d1");
     expect(input.note).toBe("Coordinates were off by a block.");
-    // The anchor is not assembled at all, so no client bug can post it.
-    expect(input).not.toHaveProperty("source_url");
-    expect(input).not.toHaveProperty("files");
-    expect(input).not.toHaveProperty("remove_media_ids");
+    // The anchor rides along, since this endpoint declares it: the untouched
+    // form posts the source the row holds and stages no media swap.
+    expect(input.source_url).toBe("https://t.me/channel/12345");
+    expect(input.files).toEqual([]);
+    expect(input.remove_media_ids).toEqual([]);
+  });
+
+  it("corrects the source URL as a version of its own", async () => {
+    render(<EditEventPage />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /Source URL/ }), {
+      target: { value: "https://t.me/channel/999" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
+
+    expect(saveVersionMock.mock.calls[0][1].source_url).toBe(
+      "https://t.me/channel/999"
+    );
   });
 
   it("refuses a save that would change nothing, without a request", async () => {

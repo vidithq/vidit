@@ -17,11 +17,10 @@ interface SourceMediaFieldProps {
   staged: File[];
   onAddFiles?: (files: File[]) => void;
   onRemoveStaged?: (index: number) => void;
-  /** Read-only (request fulfilment, a published event's anchor): show existing
-   *  media, no add / remove. */
+  /** Read-only (a request fulfilment, which inherits the requester's media):
+   *  show existing media, no add / remove. */
   locked?: boolean;
-  /** What the locked marker says. Defaults to `LockedHint`'s "from request";
-   *  the edit form names the reason it can't move (the evidence anchor). */
+  /** What the locked marker says. Defaults to `LockedHint`'s "from request". */
   lockNote?: ReactNode;
   /** The event's `is_graphic` flag, forwarded to the persisted tiles. */
   isGraphic?: boolean;

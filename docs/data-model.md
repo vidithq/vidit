@@ -457,7 +457,7 @@ Redaction is that one write, and it is still not a delete: an admin blanks `snap
 | `version_no` | `INTEGER` | NOT NULL. The version this row **holds**, not the one that replaced it. |
 | `edited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst whose edit superseded this version. NULL once that account is erased: an event legitimately outlives an editor who is not its owner. |
 | `note` | `TEXT` | nullable. The editor's own words about the edit. Bounded to 280 characters by the schema, not the column, which stays unbounded `TEXT`. |
-| `snapshot` | `JSONB` | NOT NULL. The editable fields as they stood: `title`, `event_coords`, `capture_source_coords`, `event_date`, `event_time`, `source_posted_at`, `is_graphic`, `secondary_source_urls`, `tags`, `conflicts`, `proof`, `proof_media`, and `archives`. `proof_media` carries the images this version's own proof body referenced, not every `proof` row the event holds. `archives` carries the version's [archived copies](#source_archives) (`original_url`, `origin`, `snapshot_url`, `provider`, `created_at`), sorted by `original_url` so a stored list never reshuffles between versions. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. The evidence anchor (`source_url` and the `source` media) is absent, because no edit can move it, so the live row is authoritative for it at every version. `{}` on a redacted version. |
+| `snapshot` | `JSONB` | NOT NULL. The editable fields as they stood: `title`, `source_url`, `source_media`, `event_coords`, `capture_source_coords`, `event_date`, `event_time`, `source_posted_at`, `is_graphic`, `secondary_source_urls`, `tags`, `conflicts`, `proof`, `proof_media`, and `archives`. `source_media` and `proof_media` carry each [media](#media) whole (`id`, `role`, `storage_url`, `media_type`, `sha256`, `original_filename`); `proof_media` holds the images this version's own proof body referenced, not every `proof` row the event holds. `archives` carries the version's [archived copies](#source_archives) (`original_url`, `origin`, `snapshot_url`, `provider`, `created_at`), sorted by `original_url` so a stored list never reshuffles between versions. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `{}` on a redacted version. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL. When the edit that superseded this version happened. |
 | `redacted_at` | `TIMESTAMPTZ` | nullable. When an admin blanked this version's content. NULL on every ordinary row. |
 | `redacted_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Which admin redacted it. NULL once that account is erased; the readable trail is the `admin_events` row the same write files. |
@@ -466,13 +466,15 @@ Redaction is that one write, and it is still not a delete: an admin blanks `snap
 
 There is no secondary index: the only read is "this event's history, by version", served by the unique constraint's leading `event_id`.
 
-**Media are not versioned.** A `media` row a readable snapshot's `proof_media` points at is never hard-deleted, so a past version stays renderable after the current proof body drops the image. The shared intake checks this before it deletes a proof row; see `services/versions.referenced_media_urls`. A redacted version displays nothing, so it holds nothing alive: redacting the last version that showed an image deletes that image, row and object.
+**Media rows are not versioned; the files they name outlive them.** A `media` row a readable snapshot's `proof_media` points at is never hard-deleted, so a past version stays renderable after the current proof body drops the image. The shared intake checks this before it deletes a proof row; see `services/versions.referenced_media_urls`.
+
+The `source` media cannot take that route: [`uq_media_source_per_event`](#media) allows one per event, so a correction that swaps the anchor deletes the row it replaces. The snapshot carries that media whole instead, and its S3 object is left in place, which is what keeps `/vN` renderable; `services/versions.referenced_source_media` is what resolves those objects for the sweeps that would otherwise orphan or delete them. A redacted version displays nothing, so it holds nothing alive: redacting the last version that showed a proof image deletes that image, row and object, and the last one that named a superseded source frees its file.
 
 ---
 
 ### `event_source_links`
 
-An event's ordered secondary source links: mirrors of the same footage on another network, or another post from the same point of view. The primary evidence anchor stays the scalar `events.source_url`. These rows are optional extras with no such protection; see [`api.md`](api.md#post-events).
+An event's ordered secondary source links: mirrors of the same footage on another network, or another post from the same point of view. The primary source stays the scalar `events.source_url`, which a `requested` row protects from its fulfiller; these rows are optional extras with no such protection. See [`api.md`](api.md#post-events).
 
 | Column | Type | Constraints |
 |--------|------|-------------|

@@ -192,25 +192,51 @@ describe("createEvent multipart", () => {
 });
 
 describe("saveVersion multipart", () => {
+  /** The version form: the geolocate form, whole. The evidence anchor rides
+   *  along, since a correction to it is versioned like any other. */
+  const versionInput = { ...createInput, remove_media_ids: [] };
+
+  it("carries the evidence anchor, so a published source can be corrected", async () => {
+    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
+    await saveVersion("e1", {
+      ...versionInput,
+      source_url: "https://t.me/c/9",
+      remove_media_ids: ["m1"],
+      files: [vid],
+    });
+    const body = lastBody();
+    expect(body.get("source_url")).toBe("https://t.me/c/9");
+    expect(body.get("remove_media_ids")).toBe(JSON.stringify(["m1"]));
+    expect(body.getAll("files")).toEqual([vid]);
+    const [path] = mockFetch.mock.calls.at(-1) as [string];
+    expect(path).toBe("/events/e1/versions");
+  });
+
+  it("omits an untouched removal list rather than posting an empty one", async () => {
+    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
+    await saveVersion("e1", versionInput);
+    expect(lastBody().has("remove_media_ids")).toBe(false);
+  });
+
   it("omits a blank source_posted_at so the published instant survives", async () => {
     // The server reads an absent field as "keep": posting "" would ask it to
     // tell a blanked field from an untouched one, and a correction to the title
     // would wipe the instant the record was vouched with.
     mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
-    await saveVersion("e1", { ...createInput, source_posted_at: "" });
+    await saveVersion("e1", { ...versionInput, source_posted_at: "" });
     expect(lastBody().has("source_posted_at")).toBe(false);
   });
 
   it("posts a source_posted_at the editor filled in", async () => {
     mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
-    await saveVersion("e1", { ...createInput, source_posted_at: "2026-02-03T04:05" });
+    await saveVersion("e1", { ...versionInput, source_posted_at: "2026-02-03T04:05" });
     expect(lastBody().get("source_posted_at")).toBe("2026-02-03T04:05");
   });
 
   it("carries a mirror's archived copy, so one edit files one version", async () => {
     mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
     await saveVersion("e1", {
-      ...createInput,
+      ...versionInput,
       secondary_source_urls: ["https://t.me/c/3"],
       secondary_snapshot_urls: ["https://archive.ph/abcde"],
     });

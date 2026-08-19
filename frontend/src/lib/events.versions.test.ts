@@ -93,6 +93,15 @@ function row(
 function snapshot(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     title: "v2 title",
+    source_url: "https://t.me/channel/4242",
+    source_media: [
+      {
+        id: "m1",
+        role: "source",
+        media_type: "image",
+        storage_url: "https://m/source.jpg",
+      },
+    ],
     event_coords: { lat: 48.0159, lng: 37.8024 },
     capture_source_coords: null,
     event_date: "2026-05-09",
@@ -166,11 +175,47 @@ describe("snapshotToEventView", () => {
     expect(view.tags).toEqual([{ id: "t2", name: "Drone", category: "capture_source" }]);
   });
 
-  it("keeps the immutables from the current row", () => {
+  it("keeps the row's identity from the current row", () => {
     expect(view.id).toBe(CURRENT.id);
     expect(view.owner).toEqual(CURRENT.owner);
-    expect(view.source_url).toBe(CURRENT.source_url);
-    expect(view.media).toEqual(CURRENT.media);
+  });
+
+  it("shows the evidence anchor as that version held it", () => {
+    // The anchor is versioned, so a version that rested on another source
+    // renders that source and that media, not the ones that replaced them. The
+    // media row itself is gone by then (an event carries one source media), so
+    // the snapshot's own fragment is what the page renders.
+    const superseded = snapshotToEventView(
+      CURRENT,
+      row(
+        2,
+        snapshot({
+          source_url: "https://t.me/channel/1",
+          source_media: [
+            {
+              id: "m0",
+              role: "source",
+              media_type: "video",
+              storage_url: "https://m/old.mp4",
+            },
+          ],
+        })
+      )
+    );
+    expect(superseded.source_url).toBe("https://t.me/channel/1");
+    expect(superseded.media.map((m) => m.id)).toEqual(["m0"]);
+    expect(superseded.thumbnail?.storage_url).toBe("https://m/old.mp4");
+  });
+
+  it("stands the live row's anchor in for a version that files none", () => {
+    // A version filed before the anchor was versioned states nothing about it,
+    // so the live row answers for it rather than the page blanking the section.
+    const legacy = { ...snapshot() };
+    delete legacy.source_url;
+    delete legacy.source_media;
+    const filed = snapshotToEventView(CURRENT, row(2, legacy));
+    expect(filed.source_url).toBe(CURRENT.source_url);
+    expect(filed.media).toEqual(CURRENT.media);
   });
 
   it("ratchets the graphic flag against the live row", () => {
@@ -255,6 +300,42 @@ describe("changedFields", () => {
 
   it("says nothing when nothing moved", () => {
     expect(changedFields(previous, previous)).toEqual([]);
+  });
+
+  it("names a corrected evidence anchor", () => {
+    // Both halves are versioned, and each is named on its own: correcting the
+    // link the record cites is not the same edit as replacing the footage.
+    const unchanged = {
+      title: CURRENT.title,
+      proof: CURRENT.proof,
+      secondary_source_urls: CURRENT.secondary_source_urls,
+    };
+    const otherLink = snapshotToEventView(
+      CURRENT,
+      row(2, snapshot({ ...unchanged, source_url: "https://t.me/channel/1" }))
+    );
+    // The copies move with it: a copy covers a link, so the one filed against
+    // the version's own source is not a copy of the source the record cites now.
+    expect(changedFields(CURRENT, otherLink)).toEqual(["Source URL", "Archived copies"]);
+
+    const otherMedia = snapshotToEventView(
+      CURRENT,
+      row(
+        2,
+        snapshot({
+          ...unchanged,
+          source_media: [
+            {
+              id: "m0",
+              role: "source",
+              media_type: "image",
+              storage_url: "https://m/old.jpg",
+            },
+          ],
+        })
+      )
+    );
+    expect(changedFields(CURRENT, otherMedia)).toEqual(["Source media"]);
   });
 
   it("reads two spellings of one instant as the same moment", () => {
@@ -470,6 +551,8 @@ describe("hasVersionChanges", () => {
     overrides: Partial<EventVersionFormState> = {}
   ): EventVersionFormState => ({
     title: CURRENT.title,
+    sourceUrl: CURRENT.source_url!,
+    sourceMediaMoved: false,
     lat: String(CURRENT.event_coords!.lat),
     lng: String(CURRENT.event_coords!.lng),
     captureLat: "",
@@ -492,6 +575,20 @@ describe("hasVersionChanges", () => {
 
   it("reads an untouched form as no change at all", () => {
     expect(hasVersionChanges(CURRENT, untouched())).toBe(false);
+  });
+
+  it("reads a corrected source URL as a change, and a blank one as none", () => {
+    expect(
+      hasVersionChanges(CURRENT, untouched({ sourceUrl: "https://t.me/channel/9" }))
+    ).toBe(true);
+    // Blank keeps the stored source, the way an omitted field does server side,
+    // so it is not a correction to it.
+    expect(hasVersionChanges(CURRENT, untouched({ sourceUrl: "" }))).toBe(false);
+  });
+
+  it("reads a staged source-media swap as a change", () => {
+    // The file has no URL until it lands, so the staging is the whole fact.
+    expect(hasVersionChanges(CURRENT, untouched({ sourceMediaMoved: true }))).toBe(true);
   });
 
   it("reads an untouched lossy input as no change, seconds and all", () => {
