@@ -3,7 +3,6 @@
 import { Archive, ArchiveRestore, ExternalLink } from "lucide-react";
 
 import type { ArchivedLink } from "@/types";
-import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Glyph } from "@/components/ui/Glyph";
 import { Input } from "@/components/ui/Input";
 
@@ -16,10 +15,6 @@ interface ArchivedCopiesProps {
    *  value with `mirrorDescription`, which keeps two mirrors on one host
    *  tellable apart. */
   describes: string;
-  /** Set false where a caller renders several of these in one list and hoists
-   *  the `?` to the section instead, so the explanation appears once rather
-   *  than on every row (the Secondary sources list). */
-  help?: boolean;
 }
 
 /**
@@ -152,23 +147,28 @@ function archivable(url: string): string | null {
  * (`ArchiveSnapshotField`), which files a version naming the change, where a
  * control here would write to the live row from a page nobody is editing.
  *
- * The glyph is a small mark with no label beside it, so the affordance closes
- * on a `?`: the glyph's accessible name carries its own state for a screen
- * reader, and the `archived_copies` concept explains it to a sighted one. One
- * `?` per group, never one per glyph.
+ * The glyph is a small mark with no label beside it, and it carries no `?` of
+ * its own: the glyph's accessible name carries its own state for a screen
+ * reader, and the row's field concept explains the mark to a sighted one, so a
+ * page listing ten mirrors shows one explanation rather than ten. That is the
+ * `source_url`, `secondary_source_urls` and `detected_from` tooltips, each of
+ * which describes the archive mark on its own row.
+ *
+ * `self-center` on the box: the rows it sits in align their text on the
+ * baseline, and a 24px square hung off a baseline sits low against the link it
+ * belongs to.
  *
  * One component for the primary source, the provenance link and every secondary
  * mirror, so the same fact cannot grow two affordances.
  */
-export function ArchivedCopies({ copy, describes, help = true }: ArchivedCopiesProps) {
+export function ArchivedCopies({ copy, describes }: ArchivedCopiesProps) {
   return (
-    <span className="ml-2 inline-flex shrink-0 items-center gap-1 align-middle">
+    <span className="ml-1 inline-flex shrink-0 items-center self-center align-middle">
       {copy ? (
         <ArchivedGlyph copy={copy} describes={describes} />
       ) : (
         <MissingGlyph describes={describes} />
       )}
-      {help && <FieldHelp concept="archived_copies" size={12} />}
     </span>
   );
 }

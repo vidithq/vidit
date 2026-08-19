@@ -50,23 +50,27 @@ interface FieldProps {
   invalid?: boolean;
 }
 
-// The room a `trailing` adornment is given: the field's own right padding
-// (`px-3`, 12px) plus the width of the two `<Glyph>` marks the widest adornment
-// carries (13px each with a 6px gap). Typed text stops here, so a value long
-// enough to reach the edge runs under nothing. One figure for every adornment:
-// a per-call-site padding is how two fields wearing the same mark end up with
-// the text stopping in two different places. Exported for the one field that
-// is not an `<input>`: `<LockedUrl>` renders its frozen value as an anchor and
-// has to clear the same adornment by the same amount.
-export const TRAILING_ROOM = "pr-11";
+// The room a `trailing` adornment is given: the adornment's own inset from the
+// field edge (6px, which matches the gutter a 24px box leaves above and below
+// it in a 38px field) plus the width of the two `<Glyph>` squares the widest
+// adornment carries (24px each with a 2px gap). Typed text stops here, so a
+// value long enough to reach the edge runs under nothing. One figure for every
+// adornment: a per-call-site padding is how two fields wearing the same mark end
+// up with the text stopping in two different places. Exported for the one field
+// that is not an `<input>`: `<LockedUrl>` renders its frozen value as an anchor
+// and has to clear the same adornment by the same amount.
+export const TRAILING_ROOM = "pr-14";
 
 /** The adornment itself, positioned against a `relative` field box: centred on
  *  the field's height whatever height it takes, and taking the pointer, since
- *  what sits in it are controls. Shared with `<LockedUrl>` for the same reason
- *  `TRAILING_ROOM` is. */
+ *  what sits in it are controls. A glyph carries its own 24px box now, so the
+ *  inset is the gutter around that box rather than the field's text padding,
+ *  and two marks sit a hair apart: their hover plates have to read as two
+ *  controls without a channel of field between them. Shared with `<LockedUrl>`
+ *  for the same reason `TRAILING_ROOM` is. */
 export function FieldAdornment({ children }: { children: ReactNode }) {
   return (
-    <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1.5">
+    <span className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center gap-0.5">
       {children}
     </span>
   );
@@ -79,9 +83,9 @@ export function FieldAdornment({ children }: { children: ReactNode }) {
  * overlays content at the trailing edge, vertically centred on the field
  * whatever height it takes. A trailing adornment is where a field's own actions
  * live: the map and copy marks of the longitude field, the picker of a date
- * field, the archive mark of a URL field. Glyphs inside a field are
- * [`<Glyph>`](./Glyph.tsx), so an in-field control reads as the same offer as
- * every other inline mark on the site.
+ * field, the archive mark of a URL field. Marks inside a field are
+ * [`<Glyph>`](./Glyph.tsx), each a 24px ghost square, so an in-field control
+ * reads as the same offer as every other compact mark on the site.
  *
  * Unlike `icon`, `trailing` takes the pointer: the marks in it are controls.
  */

@@ -14,9 +14,10 @@ import { formatCoordinates, mapsUrl } from "@/lib/coordinates";
  * What lands on the clipboard is the same 6-decimal rendering the page shows,
  * which pastes back into the inputs as a pair.
  *
- * Two `<Glyph>` marks, the shape every mark inside a field carries: 13px, set
- * in the line they act on, with no button box to outweigh the coordinate itself
- * or to take width from the field they ride in.
+ * Two `<Glyph>` marks, the shape every mark inside a field carries: a 13px mark
+ * in a 24px ghost square, small enough not to outweigh the coordinate itself or
+ * to take width from the field they ride in. They sit a hair apart, so the two
+ * hover plates read as two controls rather than as one wide one.
  *
  * A null pair (a coordinate still being typed, or one out of bounds) keeps both
  * marks in place and grey rather than removing them: the actions occupy the
@@ -37,7 +38,7 @@ export function CoordinateActions({
   const point = lat === null || lng === null ? null : { lat, lng };
 
   return (
-    <span className="inline-flex items-center gap-1.5">
+    <span className="inline-flex items-center gap-0.5">
       <Glyph
         icon={ExternalLink}
         label={

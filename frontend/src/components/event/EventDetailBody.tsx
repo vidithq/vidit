@@ -19,7 +19,6 @@ import {
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
-import { FieldHelp } from "@/components/ui/FieldHelp";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ProofSection } from "@/components/ui/ProofSection";
@@ -314,8 +313,9 @@ function DetailRows({
  * The Secondary sources row: a count that expands into the list. Rendered only
  * for a non-empty list (the caller guards), so the Details block gains nothing
  * on an event that declares no mirror. Each link is a `SourceLabel` trailed by
- * its `ArchivedCopies` pair, the same affordance the Source row above renders,
- * so the primary and its mirrors read alike.
+ * its `ArchivedCopies` mark, the same affordance the Source row above renders,
+ * so the primary and its mirrors read alike. The row's own `?` explains that
+ * mark once for the whole list.
  *
  * `archived` is index-aligned with `urls` (the payload's contract), so mirror
  * `i` takes record `i`.
@@ -341,29 +341,24 @@ function SecondarySourcesRow({
       align="start"
     >
       <div className="flex flex-col items-end gap-1 ml-4">
-        <span className="inline-flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            aria-expanded={open}
-            className={`inline-flex items-center gap-1 ${textSize} ${TEXT_LINK}`}
-          >
-            {open ? (
-              <>
-                Hide
-                <ChevronUp size={12} />
-              </>
-            ) : (
-              <>
-                {urls.length} more source{urls.length === 1 ? "" : "s"}
-                <ChevronDown size={12} />
-              </>
-            )}
-          </button>
-          {/* One `?` for the whole expanded list, not one per mirror: ten
-              mirrors would otherwise carry ten copies of the same sentence. */}
-          {open && <FieldHelp concept="archived_copies" size={12} />}
-        </span>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className={`inline-flex items-center gap-1 ${textSize} ${TEXT_LINK}`}
+        >
+          {open ? (
+            <>
+              Hide
+              <ChevronUp size={12} />
+            </>
+          ) : (
+            <>
+              {urls.length} more source{urls.length === 1 ? "" : "s"}
+              <ChevronDown size={12} />
+            </>
+          )}
+        </button>
         {open &&
           urls.map((url, index) => (
             // Index key: two mirrors may repeat a URL, and the archival record
@@ -383,7 +378,6 @@ function SecondarySourcesRow({
               <ArchivedCopies
                 copy={archived[index] ?? null}
                 describes={mirrorDescription(safeHostname(url), index, urls.length)}
-                help={false}
               />
             </span>
           ))}

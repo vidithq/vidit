@@ -10,7 +10,6 @@ import {
   SNAPSHOT_HINT,
   SNAPSHOT_HOSTS,
 } from "./ArchivedCopies";
-import { FIELD_HELP } from "@/lib/fieldHelp";
 
 /**
  * The two states one link's archive affordance can be in: a copy exists, or it
@@ -18,7 +17,6 @@ import { FIELD_HELP } from "@/lib/fieldHelp";
  * the whole affordance is here.
  */
 describe("ArchivedCopies", () => {
-  const SOURCE = "https://t.me/channel/1";
   const WAYBACK = "https://web.archive.org/web/20260601120000/https://t.me/channel/1";
   const ARCHIVE_TODAY = "https://archive.ph/abcde";
 
@@ -52,15 +50,14 @@ describe("ArchivedCopies", () => {
       return svg;
     };
     const drawings = new Set([
-      mark(<ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback" }} help={false} />),
+      mark(<ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback" }} />),
       mark(
         <ArchivedCopies
           {...props}
           copy={{ url: ARCHIVE_TODAY, provider: "archive_today" }}
-          help={false}
         />
       ),
-      mark(<ArchivedCopies {...props} copy={null} help={false} />),
+      mark(<ArchivedCopies {...props} copy={null} />),
     ]);
 
     expect(drawings.size).toBe(1);
@@ -125,21 +122,20 @@ describe("ArchivedCopies", () => {
     ).toHaveClass("text-neutral-600");
   });
 
-  it("closes the affordance with one `?`, never one per state", () => {
-    // The glyph carries no label beside it, so the house help affordance
-    // explains it. A caller rendering a list of them hoists it to the section
-    // with `help={false}`.
-    const { rerender } = render(
-      <ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback" }} />
-    );
-    expect(
-      screen.getByRole("button", { name: FIELD_HELP.archived_copies.label })
-    ).toBeInTheDocument();
-
-    rerender(
-      <ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback" }} help={false} />
-    );
+  // The mark is explained by the row it sits on, not by a `?` of its own: an
+  // expanded list of ten mirrors would otherwise carry ten copies of one
+  // sentence. So the component renders the mark and nothing beside it.
+  it("carries no help affordance of its own", () => {
+    render(<ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback" }} />);
     expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+  });
+
+  // The row it rides aligns its text on the baseline, where a 24px box would
+  // otherwise hang low against the link it belongs to.
+  it("centres its box on the line rather than hanging it off the baseline", () => {
+    const { container } = render(<ArchivedCopies {...props} copy={null} />);
+    expect(container.firstElementChild).toHaveClass("self-center");
   });
 });
 

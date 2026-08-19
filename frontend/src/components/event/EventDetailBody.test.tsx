@@ -489,12 +489,14 @@ describe("EventDetailBody", () => {
     // Same new-tab affordance as the primary Source row.
     expect(link).toHaveAttribute("target", "_blank");
     expect(screen.getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
-    // One `?` for the whole expanded list, hoisted off the mirrors: ten mirrors
-    // must not carry ten copies of the same sentence. The Source row keeps its
-    // own, one per group, so the page shows exactly two.
+    // The archive marks carry no `?` of their own: ten mirrors must not carry
+    // ten copies of one sentence, so the row's own Secondary sources tooltip
+    // explains the mark for the whole list.
     expect(
-      screen.getAllByRole("button", { name: FIELD_HELP.archived_copies.label })
-    ).toHaveLength(2);
+      screen.getByRole("button", {
+        name: FIELD_HELP.secondary_source_urls.label,
+      })
+    ).toBeInTheDocument();
   });
 
   it("keeps each mirror's archived copy on its own mirror", () => {

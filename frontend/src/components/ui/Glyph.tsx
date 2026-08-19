@@ -6,37 +6,47 @@ import type { ComponentType } from "react";
  *  without leading it, large enough that lucide's strokes stay legible. */
 const GLYPH_SIZE = 13;
 
+// The box every glyph occupies, whatever state it is in: a 24px square with the
+// mark centred in it. One figure for both states, so a mark that lands or goes
+// inert never moves the line it sits in. It is `<Button icon>`'s square at a
+// smaller stop, which is what lets a glyph and an icon button read as the same
+// family of control at two weights.
+const GLYPH_BOX =
+  "inline-flex size-6 shrink-0 items-center justify-center rounded-md";
+
 // The two colour states, private to this file: the primitive below is what
 // picks between them, so a call site reaches for `<Glyph>` rather than for a
 // class string. Accent is the accent every clickable on the site carries, so an
 // acting mark and a link read as the same offer.
 //
-// One hover for every active glyph, link and button alike: the accent lightens.
+// One hover for every active glyph, link and button alike, and it is `<Button>`
+// ghost's: the accent lightens and a tinted plate comes up under the mark.
 // `TEXT_LINK`'s own hover is an underline, which a mark carrying no text cannot
 // show, so a glyph would answer the pointer on a text link and stay dead on an
-// icon. Colour is the one channel it has, and it is the same rise whichever
-// element the mark renders as, so a reader cannot tell a navigating mark from
-// an acting one by how it answers.
+// icon. The plate is the same answer a ghost button gives, so the two quiet
+// controls on the site react alike, and it is the same rise whichever element
+// the mark renders as, so a reader cannot tell a navigating mark from an acting
+// one by how it answers.
 //
 // Grey here is a state, not a dimmed accent: a control is accent when it acts
 // and neutral grey when it cannot, so an inert glyph reads as inert instead of
-// as a faint version of a link. It takes no hover at all, since nothing there
-// answers. The same rule paints <Button>'s disabled state. Size and spacing
-// stay at the call site, since a glyph sits in whatever line of text carries
-// it.
-const ACTION_GLYPH =
-  "inline-flex text-orange-400 transition-colors hover:text-orange-300";
-const MUTED_GLYPH = "inline-flex text-neutral-600";
+// as a faint version of a link. It takes no hover and no plate at all, since
+// nothing there answers, and it keeps the same 24px box, so nothing shifts. The
+// same rule paints <Button>'s disabled state. Spacing stays at the call site,
+// since a glyph sits in whatever line of text carries it.
+const ACTION_GLYPH = `${GLYPH_BOX} text-orange-400 transition-colors hover:bg-orange-500/10 hover:text-orange-300`;
+const MUTED_GLYPH = `${GLYPH_BOX} text-neutral-600`;
 
 /**
- * The one bare inline glyph: a 13px mark set in a line of text, with no button
- * chrome around it.
+ * The one compact glyph control: a 13px mark centred in a 24px square that
+ * lights up on hover, which is `<Button>` ghost at a smaller stop.
  *
  * The shape a control takes when it belongs to a line rather than to an action
  * row: the archived-copy mark beside a source link, the map and copy marks on a
- * coordinates line and beside the coordinate fields. A square icon button in
- * those places outweighs the text it serves and, beside a field, takes width
- * from it. Where a control does own its own box, that is `<Button icon>`.
+ * coordinates line and beside the coordinate fields. A full icon button in those
+ * places outweighs the text it serves and, beside a field, takes width from it,
+ * so the glyph keeps the ghost treatment and shrinks the square. Where a control
+ * owns the full box, that is `<Button icon>`.
  *
  * Colour is the state, and the primitive is what makes that true: it paints
  * accent only when it renders something a reader can act on, and neutral grey
@@ -49,8 +59,9 @@ const MUTED_GLYPH = "inline-flex text-neutral-600";
  * One of `href` (an outbound link, opened in a new tab) or `onClick` (an action
  * on this page) makes it a control; neither is a mark that only states
  * something, like a copy that does not exist. An active glyph answers the
- * pointer the same way in both forms, by lightening its accent, so no mark on
- * the site is a control that fails to react; an inert one takes no hover.
+ * pointer the same way in both forms, by lightening its accent under a tinted
+ * plate, so no mark on the site is a control that fails to react; an inert one
+ * takes no hover and no plate, and holds the same square so the line is still.
  *
  * The glyph carries no text, so `label` is its whole name: it lands on both
  * `aria-label` and `title`, which is the bare name of an icon-only control

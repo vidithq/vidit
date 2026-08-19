@@ -27,21 +27,39 @@ describe("Glyph", () => {
   });
 
   it("answers the pointer the same way whichever control it renders as", () => {
-    // A mark carries no text, so an underline on hover shows nothing: colour is
-    // the one channel it has, and the same rise on both forms is what keeps a
-    // navigating mark and an acting one from reading as different offers. An
-    // inert mark takes no hover at all, since nothing there answers.
+    // A mark carries no text, so an underline on hover shows nothing: the rise
+    // is `<Button>` ghost's, a lightened accent over a tinted plate, and the
+    // same rise on both forms is what keeps a navigating mark and an acting one
+    // from reading as different offers. An inert mark takes no hover at all,
+    // since nothing there answers.
     const { rerender } = render(
       <Glyph icon={Archive} label="Copy of the source" href="https://x.test" />
     );
-    const hover = "hover:text-orange-300";
-    expect(screen.getByRole("link")).toHaveClass(hover);
+    const hover = ["hover:bg-orange-500/10", "hover:text-orange-300"];
+    expect(screen.getByRole("link")).toHaveClass(...hover);
 
     rerender(<Glyph icon={Archive} label="Record a copy" onClick={() => {}} />);
-    expect(screen.getByRole("button")).toHaveClass(hover);
+    expect(screen.getByRole("button")).toHaveClass(...hover);
 
     rerender(<Glyph icon={Archive} label="No copy of the source" />);
     expect(screen.getByRole("img").className).not.toMatch(/hover:/);
+  });
+
+  // The box is the state-independent half of the shape: a mark that lands or
+  // goes inert must not move the line it sits in, so both states measure the
+  // same square and only the paint and the plate differ.
+  it("occupies one 24px square in every state", () => {
+    const box = ["size-6", "rounded-md"];
+    const { rerender } = render(
+      <Glyph icon={Archive} label="Copy of the source" href="https://x.test" />
+    );
+    expect(screen.getByRole("link")).toHaveClass(...box);
+
+    rerender(<Glyph icon={Archive} label="Record a copy" onClick={() => {}} />);
+    expect(screen.getByRole("button")).toHaveClass(...box);
+
+    rerender(<Glyph icon={Archive} label="No copy of the source" />);
+    expect(screen.getByRole("img")).toHaveClass("size-6");
   });
 
   // The rule the primitive exists to hold: colour says whether a mark can be

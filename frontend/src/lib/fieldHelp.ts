@@ -30,16 +30,12 @@ export const FIELD_HELP = {
     label: "What is the camera position?",
   },
   source_url: {
-    text: "Where the footage was first published (the original post or channel). Not your own geolocation tweet.",
+    text: "Where the footage was first published (the original post or channel). Not your own geolocation tweet. The archive mark beside the link is its archived copy, so the evidence survives the original being deleted: orange opens the stored copy, grey means there is none yet. On your own events, editing the event turns that mark into the way you record one, offering the Wayback Machine with the link filled in and accepting a snapshot you took at archive.ph or archive.today.",
     label: "What is the source?",
   },
   secondary_source_urls: {
-    text: "Optional. Mirrors of the same media: the same footage posted on another network, or another post of it from the same point of view. The Source above stays the first place it was published.",
+    text: "Optional. Mirrors of the same media: the same footage posted on another network, or another post of it from the same point of view. The Source above stays the first place it was published. Each mirror carries the same archive mark as the Source: orange opens its stored copy, grey means there is none yet, and its owner records one from the edit form.",
     label: "What are secondary sources?",
-  },
-  archived_copies: {
-    text: "An archived copy of a source link, so the evidence survives the original being deleted. You make it yourself: on your own events, edit the event, click the archive mark inside the link's field and paste the snapshot into the line it opens, which offers the Wayback Machine with the link filled in and accepts a snapshot you took at archive.ph or archive.today. Here on the event, orange means a copy exists and opens it; grey means none yet.",
-    label: "What are the archived copies?",
   },
   source_media: {
     text: "The footage being located. Not a map screenshot or an annotated export.",
@@ -66,7 +62,7 @@ export const FIELD_HELP = {
     label: "What does the status mean?",
   },
   detected_from: {
-    text: "The post this detection was imported from. Its provenance, kept distinct from Source (the footage origin).",
+    text: "The post this detection was imported from. Its provenance, kept distinct from Source (the footage origin). It carries the same archive mark as the Source: orange opens its stored copy, grey means there is none yet.",
     label: "What is 'detected from'?",
   },
   requested_by: {

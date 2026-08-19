@@ -132,9 +132,11 @@ export function ProfileIdentity({
  *  identity, so the marks sit where every other page keeps the controls that
  *  act on the thing the page is about, right of the title. One shape for the
  *  whole row: `<Glyph>` marks, the owner's Edit profile included, so the header
- *  offers one kind of control rather than four marks beside a button. The row
- *  keeps its own `gap-2` and the cluster's `gap-2` separates it from whatever
- *  button sits at the far right. The cluster wraps and right-aligns, the shape
+ *  offers one kind of control rather than four marks beside a button. Each mark
+ *  is a 24px box carrying its own hover plate, so that box is what spaces the
+ *  row and the marks sit a hair apart, close enough to read as one row of
+ *  controls; the cluster's own `gap-2` separates the row from whatever button
+ *  sits at the far right. The cluster wraps and right-aligns, the shape
  *  every page-level action cluster uses, so the marks and the button break onto
  *  separate lines on a phone instead of widening the header.
  *
@@ -152,7 +154,7 @@ export function ProfileActions({
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
       {!edit.editing && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-0.5">
           <LinkedAccountsLine profile={profile} />
           {isOwn && (
             <Glyph icon={Pencil} label="Edit profile" onClick={edit.startEditing} />
