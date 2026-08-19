@@ -571,10 +571,10 @@ Each request and each `geolocated` event requires at least one `source` media ro
 | `name` | `VARCHAR(100)` | UNIQUE, NOT NULL |
 | `category` | `VARCHAR(20)` | NOT NULL, `'capture_source'` or `'free'` |
 
-Tags with category `capture_source` describe the original "lens" that captured the media: `Smartphone`, `Satellite`, `Drone`, `Static camera`, `Dashcam`, `Body / helmet cam`, plus an `Unknown` escape value. Migration `s5n7p9r1t3v5` seeds them in production, since the category is required on the submit form and the options must exist on a fresh database.
+Tags with category `capture_source` describe the original "lens" that captured the media: `Smartphone`, `Satellite`, `Drone`, `Static camera`, `Dashcam`, `Body / helmet cam`, plus an `Unknown` escape value. The [baseline migration](engineering.md#migration-house-style) seeds them, since the category is required on the submit form and the options must exist on a fresh database.
 Tags with category `free` are user-created and free-form.
 
-Conflicts were formerly a third category. They now live in the dedicated [`conflicts`](#conflicts) table; migration `j2l4n6p8r0t2` moved the rows and their event links.
+Conflicts are not a tag category. They live in the dedicated [`conflicts`](#conflicts) table and link to events through [`event_conflicts`](#event_conflicts).
 
 `capture_source` is **curated**, server-managed and not user-creatable, and **required**: a submission must carry at least one `capture_source` tag and at least one conflict; see [`api.md`](api.md) → `POST /events`. The API layer enforces this rule, not a database constraint. Both domains ship an escape value: `capture_source` has `"Unknown"`, and conflict has `"Other"`. `name` is globally UNIQUE across both categories, so a `capture_source` tag cannot share a name with a `free` tag.
 

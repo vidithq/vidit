@@ -285,6 +285,18 @@ The frontend mirrors are hand-kept: change a backend value, change its mirror.
 - Geometry columns use `geoalchemy2` types, with `spatial_index` stated explicitly (GeoAlchemy2 otherwise creates a GIST index by default).
 - Validate a new migration's whole chain on a fresh database before pushing: `docker-compose up -d`, then `uv run alembic upgrade head`. Verify the current head with `uv run alembic heads`, not by filename sort order.
 
+The chain starts at one baseline migration, the only file whose `down_revision` is `None`. It builds the whole schema in a single step: the `postgis` extension, every table, constraint and index, and the seed rows a fresh database needs (the `capture_source` tag taxonomy and the `Other` conflict escape value). New migrations stack on top of it as usual.
+
+A squash replaces the chain with a new baseline that **keeps the previous head's revision id**. A database whose `alembic_version` already holds that id therefore needs no stamp, and the pre-deploy `alembic upgrade head` runs nothing. Read the deployed revision before merging a squash, and squash only when it matches the head being replaced:
+
+```sql
+SELECT version_num FROM alembic_version;
+```
+
+A database at an intermediate revision has no path forward, because the revisions between it and the baseline are gone. Rebuild it: drop the database and run `uv run alembic upgrade head`, or restore a dump taken at the baseline revision. This reaches local databases only, production being at head.
+
+The pytest template database keys its reuse on the alembic head id, which a squash preserves. Drop `<db>_test_tpl` after a squash so the next run rebuilds the template from the baseline.
+
 ---
 
 ## Code comments
