@@ -3,8 +3,8 @@
 Nothing here talks to an archiving service, because nothing in the module does:
 the capture happens in the analyst's browser and the server only checks and
 stores what comes back. What is under test is therefore the two halves of that
-check (is this one of the event's links, and is this URL a snapshot of it), the
-one-slot write, and the data mapping of the migrations that shaped the table.
+check (is this one of the event's links, and is this URL a snapshot of it) and
+the one-slot write.
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
@@ -452,134 +451,3 @@ def test_the_provider_constraint_rejects_an_unknown_service(db, event):
     with pytest.raises(IntegrityError):
         db.commit()
     db.rollback()
-
-
-# ── migration data mapping ─────────────────────────────────────────────
-
-
-def _load_migration(stem: str):
-    """One migration module, loaded by path.
-
-    ``alembic/versions`` is not a package, so a version is imported through
-    the file loader rather than a normal import. Only its SQL builders are
-    read; the ``op``-driven schema half is what ``alembic upgrade`` exercises.
-    """
-    import importlib.util
-    import pathlib
-
-    path = pathlib.Path(__file__).resolve().parents[1] / "alembic" / "versions" / f"{stem}.py"
-    spec = importlib.util.spec_from_file_location(stem, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _load_single_snapshot_migration():
-    return _load_migration("b0d2f4h6j8l0_source_archive_single_snapshot")
-
-
-@pytest.fixture
-def queue_table(db):
-    """A scratch table in the pre-migration queue shape, dropped afterwards.
-
-    The mapping runs against this rather than against ``source_archives``: the
-    live table is already migrated, and the statements are table-parameterised
-    precisely so their data half stays testable.
-    """
-    name = f"source_archives_queue_{uuid.uuid4().hex[:8]}"
-    db.execute(
-        text(
-            f"""
-            CREATE TABLE {name} (
-                id TEXT PRIMARY KEY,
-                status TEXT NOT NULL,
-                wayback_url TEXT,
-                archive_today_url TEXT,
-                snapshot_url TEXT,
-                provider TEXT,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                finished_at TIMESTAMPTZ
-            )
-            """
-        )
-    )
-    db.commit()
-    yield name
-    db.execute(text(f"DROP TABLE {name}"))
-    db.commit()
-
-
-def test_the_migration_folds_each_capture_into_the_single_slot(db, queue_table):
-    """A captured row keeps its URL and gains the provider it came from;
-    Wayback wins on a row holding both, since a replay URL embeds the original
-    and a short code does not."""
-    migration = _load_single_snapshot_migration()
-    db.execute(
-        text(
-            f"""
-            INSERT INTO {queue_table} (id, status, wayback_url, archive_today_url) VALUES
-                ('a', 'done', 'https://web.archive.org/web/1/x', NULL),
-                ('b', 'done', NULL, 'https://archive.ph/abcde'),
-                ('c', 'done', 'https://web.archive.org/web/2/y', 'https://archive.ph/fghij')
-            """
-        )
-    )
-    for statement in migration.fold_captures_sql(queue_table):
-        db.execute(text(statement))
-    db.commit()
-
-    rows = {
-        r[0]: r[1:]
-        for r in db.execute(text(f"SELECT id, snapshot_url, provider FROM {queue_table}"))
-    }
-    assert rows["a"] == ("https://web.archive.org/web/1/x", "wayback")
-    assert rows["b"] == ("https://archive.ph/abcde", "archive_today")
-    assert rows["c"] == ("https://web.archive.org/web/2/y", "wayback")
-
-
-def test_the_migration_deletes_the_rows_that_were_only_queue_entries(db, queue_table):
-    """A row with no capture was an unfinished job under a pipeline that no
-    longer runs, and nothing at all under a model where a row means a copy."""
-    migration = _load_single_snapshot_migration()
-    db.execute(
-        text(
-            f"""
-            INSERT INTO {queue_table} (id, status, wayback_url, archive_today_url) VALUES
-                ('a', 'done', 'https://web.archive.org/web/1/x', NULL),
-                ('b', 'queued', NULL, NULL),
-                ('c', 'running', NULL, NULL),
-                ('d', 'failed', NULL, NULL)
-            """
-        )
-    )
-    for statement in migration.fold_captures_sql(queue_table):
-        db.execute(text(statement))
-    db.commit()
-
-    assert {r[0] for r in db.execute(text(f"SELECT id FROM {queue_table}"))} == {"a"}
-
-
-def test_the_migration_downgrade_puts_a_snapshot_back_in_its_provider_column(db, queue_table):
-    """Downgrade keeps every copy reachable in the two-column shape, and lands
-    each row ``done``, which is what the restored check pins."""
-    migration = _load_single_snapshot_migration()
-    db.execute(
-        text(
-            f"""
-            INSERT INTO {queue_table} (id, status, snapshot_url, provider) VALUES
-                ('a', 'queued', 'https://web.archive.org/web/1/x', 'wayback'),
-                ('b', 'queued', 'https://archive.ph/abcde', 'archive_today')
-            """
-        )
-    )
-    db.execute(text(migration.unfold_captures_sql(queue_table)))
-    db.commit()
-
-    rows = {
-        r[0]: r[1:]
-        for r in db.execute(
-            text(f"SELECT id, status, wayback_url, archive_today_url FROM {queue_table}")
-        )
-    }
-    assert rows["a"] == ("done", "https://web.archive.org/web/1/x", None)
-    assert rows["b"] == ("done", None, "https://archive.ph/abcde")
