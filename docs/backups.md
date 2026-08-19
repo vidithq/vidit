@@ -149,6 +149,7 @@ Confirm a fresh object appears under today's `YYYY/MM/DD/` prefix before you dep
   ```bash
   railway ssh --service backend -- 'uv run alembic downgrade -1'
   ```
+  Check the target first with `uv run alembic history -r-2:current`. Stepping back from the baseline migration (see [`engineering.md`](engineering.md#migration-house-style)) drops every table, so this path applies only while the deploy added a revision on top of it. Otherwise go to 2c.
 - **2c. Full restore** (data corruption, or downgrade is not safe). The [restore drill](#restore-drill) above is the validated `pg_restore` procedure. For a live restore, run `pg_restore` from a one-off `postgres:16` container on the Railway network, or temporarily open public database networking. `pg_restore --clean --if-exists` **wipes anything added since the snapshot**. For partial recovery, restore into a scratch database and copy out specific tables.
 
 A dedicated restore job is not yet scheduled.
