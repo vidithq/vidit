@@ -38,7 +38,6 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     before_closed_status: null,
     detected_from_url: "https://x.com/analyst/status/1",
     detected_via: null,
-    detected_post_at: "2026-05-30T15:00:00Z",
     owner: { id: "u1", username: "ana" },
     tags: [],
     conflicts: [],
@@ -50,10 +49,6 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
       content: [{ type: "image", attrs: { src: "https://cdn.test/p.jpg" } }],
     },
     created_at: "2026-06-02T10:00:00Z",
-    updated_at: "2026-06-02T10:00:00Z",
-    requested_at: null,
-    detected_at: "2026-06-02T10:00:00Z",
-    geolocated_at: null,
     closed_at: null,
     media: [
       {

@@ -154,10 +154,12 @@ def test_resolve_marked_graphic_sets_the_flag_and_stamps_the_report(db, admin_us
     body = response.json()
     assert body["resolution"] == "marked_graphic"
     assert body["resolved_at"] is not None
-    assert body["resolved_by"] == str(admin_user.id)
 
     db.expire_all()
     assert db.query(Event).filter(Event.id == event.id).one().is_graphic is True
+    # ``resolved_by`` is a column the operator queries, not a wire field.
+    stored = db.query(ContentReport).filter(ContentReport.id == report.id).one()
+    assert stored.resolved_by == admin_user.id
 
     assert _audit(db, admin_user, "report_resolved").target == {
         "report_id": str(report.id),
@@ -317,7 +319,6 @@ def test_orphaned_report_can_still_be_dismissed(db, admin_user, event):
     body = response.json()
     assert body["event_id"] is None
     assert body["resolution"] == "dismissed"
-    assert body["resolved_by"] == str(admin_user.id)
 
     assert _audit(db, admin_user, "report_resolved").target == {
         "report_id": str(report.id),

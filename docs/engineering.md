@@ -493,9 +493,7 @@ db = SessionLocal()
 try:
     row = InviteCode(
         code=code,
-        max_uses=1,
         expires_at=datetime.now(UTC) + timedelta(days=7),
-        note="break-glass",
     )
     db.add(row)
     db.commit()

@@ -1526,10 +1526,8 @@ export interface components {
          * AdminInviteCodeCreate
          * @description Body for `POST /admin/invite-codes`.
          *
-         *     The service hardcodes ``max_uses=1`` so each code maps to exactly one
-         *     analyst and the audit trail (`used_by`, `used_at`) is unambiguous. The
-         *     `invite_codes.max_uses INT` column stays for forward-compat with bulk
-         *     invites, but the API doesn't expose it today.
+         *     Every code is single-use, so each one maps to exactly one analyst and the
+         *     audit trail (`used_by`, `used_at`) is unambiguous.
          *
          *     ``x_handle`` optionally binds the code to an X handle: redemption copies
          *     it onto the new account (the bot-attribution link). Same normalization
@@ -1564,18 +1562,12 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Max Uses */
-            max_uses: number;
             redeemer: components["schemas"]["AdminInviteRedeemerRead"] | null;
-            /** Revoked At */
-            revoked_at: string | null;
             /**
              * Status
              * @enum {string}
              */
             status: "active" | "exhausted" | "revoked" | "expired";
-            /** Use Count */
-            use_count: number;
             /** Used At */
             used_at: string | null;
             /** X Handle */
@@ -1773,8 +1765,6 @@ export interface components {
             error: string | null;
             /** Failed */
             failed: number;
-            /** Finished At */
-            finished_at: string | null;
             /**
              * Id
              * Format: uuid
@@ -1788,8 +1778,6 @@ export interface components {
             progress_total: number | null;
             /** Skipped */
             skipped: number;
-            /** Started At */
-            started_at: string | null;
             /**
              * Status
              * @enum {string}
@@ -2182,8 +2170,6 @@ export interface components {
             resolution: ("marked_graphic" | "hidden" | "dismissed") | null;
             /** Resolved At */
             resolved_at: string | null;
-            /** Resolved By */
-            resolved_by: string | null;
         };
         /**
          * ContentReportUpdate
@@ -2283,12 +2269,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
-            /** Detected At */
-            detected_at: string | null;
             /** Detected From Url */
             detected_from_url: string | null;
-            /** Detected Post At */
-            detected_post_at: string | null;
             /** Detected Via */
             detected_via: ("bot" | "paste" | "archive") | null;
             event_coords: components["schemas"]["CoordsRead"] | null;
@@ -2296,8 +2278,6 @@ export interface components {
             event_date: string | null;
             /** Event Time */
             event_time: string | null;
-            /** Geolocated At */
-            geolocated_at: string | null;
             /** Geolocators */
             geolocators: components["schemas"]["AuthorRef"][];
             /**
@@ -2314,8 +2294,6 @@ export interface components {
             proof: {
                 [key: string]: unknown;
             } | null;
-            /** Requested At */
-            requested_at: string | null;
             requested_by: components["schemas"]["AuthorRef"] | null;
             /** Secondary Source Urls */
             secondary_source_urls: string[];
@@ -2333,11 +2311,6 @@ export interface components {
             thumbnail: components["schemas"]["MediaRead"] | null;
             /** Title */
             title: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
         };
         /**
          * ExternalLinks
