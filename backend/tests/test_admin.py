@@ -25,7 +25,7 @@ from app.models.media import Media
 from app.models.user import User
 from app.services import storage as storage_module
 from app.services.auth import hash_password
-from tests._fixtures import TINY_JPEG
+from tests._fixtures import TINY_JPEG, store_bytes
 from tests.conftest import login_as
 
 client = TestClient(app)
@@ -799,7 +799,7 @@ def test_hard_delete_user_sweeps_their_avatar(admin_user, regular_user, db, monk
 
     storage = storage_module.get_storage()
     key = f"avatars/{regular_user.id}/{uuid.uuid4()}.jpg"
-    storage.put_bytes_sync(TINY_JPEG, key, "image/jpeg")
+    store_bytes(TINY_JPEG, key)
     stored = tmp_path / key
     assert stored.is_file()
 

@@ -94,8 +94,6 @@ progress_total  # models/archive_import_job.py + schemas/event.py: worker-stampe
 # ── Test-only helper ──────────────────────────────────────────────────────────
 # Called from tests/, which the gate does not scan, so it reads as unused here.
 _cache_clear  # services/tweet_ingest/syndication.py
-_.get_bytes  # services/storage.py, both backends
-_.put_bytes_sync  # services/storage.py, both backends
 
 # ── Starlette request-body cache, written by us, read by the framework ────────
 # The body-size middleware caches the streamed body onto ``request._body`` so
