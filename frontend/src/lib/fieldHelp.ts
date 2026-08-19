@@ -58,7 +58,7 @@ export const FIELD_HELP = {
     label: "What is the added date?",
   },
   status: {
-    text: "Requested: an open call to geolocate this footage. Detected: machine output from a tweet, shown marked until its owner submits it. Geolocated: a person vouched for it (via the form, or by submitting a reviewed detection), not independently verified. Closed: the request was withdrawn, or the detection was rejected.",
+    text: "Requested: an open call to geolocate this footage. Detected: machine output from a tweet, shown marked until its owner submits it. Geolocated: a person vouched for it (via the form, or by submitting a reviewed detection), not independently verified. Closed: the request was withdrawn, the detection was rejected, or the published geolocation was retracted by its author, whose page stays up with the reason.",
     label: "What does the status mean?",
   },
   detected_from: {

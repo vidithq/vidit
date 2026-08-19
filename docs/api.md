@@ -942,7 +942,7 @@ Correct a published event. Owner-only, and only while `geolocated`: the state a 
 | `lng` | float | Longitude (-180 to 180) of the subject |
 | `capture_source_lat` | float | Latitude of the camera position. Both-or-neither with `capture_source_lng`. |
 | `capture_source_lng` | float | Longitude of the camera position. |
-| `source_url` | string | ≤2000 chars, the footage origin. Optional here, unlike on geolocate: empty / omitted keeps the URL the row holds, and a blank value 400s as `source_url_required`, since a `geolocated` row always carries one. A value replaces it, and the version this call files keeps the old one readable |
+| `source_url` | string | ≤2000 chars, the footage origin. Optional here, unlike on geolocate: omitted or empty keeps the URL the row holds, a whitespace-only value 400s as `source_url_required` (a `geolocated` row always carries one), and any other value replaces it, the version this call files keeping the old one readable |
 | `source_snapshot_url` | string | The archived copy of the source URL this write stores, ≤2000 chars, checked as every archived-copy field is (see [`archival.md`](archival.md)). It lands in the version this edit produces, so one call files one version carrying both. A copy of a source URL this edit replaced is re-filed against the link it still covers or dropped, exactly as on geolocate |
 | `detected_from_snapshot_url` | string | The archived copy of `detected_from_url`, the post a machine detection came from, ≤2000 chars and on the same terms. Accepted for the same reason: the provenance link is immutable, and archiving it is not a change to it. A 400 (`original_url_not_on_event`) on a row carrying no provenance link |
 | `secondary_source_urls` | string[] (repeated field) | Optional mirrors, same normalization and cap as [`POST /events`](#post-events). The submitted list replaces whatever the row held |
@@ -971,7 +971,7 @@ The source media takes the other route, because its row cannot stay: an event ca
 
 **Proof-image ceiling.** `max_proof_images_per_event` bounds what the new proof body displays, not what one request sends: the already-uploaded images the body still references plus the files it adds. An image kept only because a past version displays it does not count, so swapping images across corrections never exhausts the ceiling. The check runs before anything reaches S3.
 
-**Image ownership.** An already-uploaded src in `proof` must be one of this event's own proof images. A URL naming another event's stored image is rejected (`invalid_file`): the owning event's next correction or [redaction](#post-admineventsidversionsversion_noredact) deletes that file, so a body pointing at it would render a hole.
+**Image ownership.** An already-uploaded src in `proof` must be one of this event's own images: a proof image, its live source media, or a source media a past version still names. A URL naming another event's stored image is rejected (`invalid_file`): the owning event's next correction or [redaction](#post-admineventsidversionsversion_noredact) deletes that file, so a body pointing at it would render a hole.
 
 **Response 200:** same shape as `GET /events/{id}`, with `version_no` one higher.
 
@@ -1060,7 +1060,7 @@ Paged like every list endpoint: 50 rows a page by default, capped at 100 however
 
 `version_no` is the version the row **holds**, not the one that replaced it: an event whose `version_no` is 3 answers with snapshots 2 and 1, and the live row is version 3. `edited_by` is the analyst whose edit superseded that version, `null` once their account is erased. `note` is their optional line about the edit, `null` when they left none. `created_at` is when the edit happened. `redacted` is `true` on a version an admin blanked (see [`POST /admin/events/{id}/versions/{version_no}/redact`](#post-admineventsidversionsversion_noredact)); such a row keeps its number, its `created_at` and its `edited_by`, and serves `{}` as its `snapshot` with `note` `null`.
 
-`snapshot` carries the editable fields as they stood, the evidence anchor included: `source_url` and `source_media` are what the record rested on at that version. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `proof_media` and `source_media` carry each media whole, in the shape [`GET /events/{id}`](#get-eventsid) serves `media` in, because the row itself may be gone: an event holds one source media, so a correction that swaps it deletes the row it replaces and the snapshot is what still describes it. `archives` carries the archived copies the record held at that version, one entry per link, sorted by `original_url`; recording a copy on a published event files a version of its own (see [`POST /events/{id}/versions`](#post-eventsidversions)). A snapshot filed before a field was versioned omits it, and a client reads the live row for it.
+`snapshot` carries the editable fields as they stood, the evidence anchor included: `source_url` and `source_media` are what the record rested on at that version. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `proof_media` and `source_media` carry each media whole, in the shape [`GET /events/{id}`](#get-eventsid) serves `media` in, because the row itself may be gone: an event holds one source media, so a correction that swaps it deletes the row it replaces and the snapshot is what still describes it. `archives` carries the archived copies the record held at that version, one entry per link, sorted by `original_url`; recording a copy on a published event files a version of its own (see [`POST /events/{id}/versions`](#post-eventsidversions)). Every snapshot names the evidence anchor, so a client renders `source_url` and `source_media` from the snapshot alone; a snapshot filed before another field was versioned omits that field, and a client reads the live row for it.
 
 **Errors:**
 | Code | Case |
@@ -1522,7 +1522,7 @@ Unfollow another analyst. Idempotent. Unknown username returns 404 rather than n
 
 ### `GET /timeline` 🔒
 
-Activity feed of geolocations submitted by analysts you follow, newest submission first (`created_at DESC, id DESC`).
+Activity feed of geolocations submitted by analysts you follow, newest submission first (`created_at DESC, id DESC`). Published work only, the same set [`GET /users/{username}/events`](#get-usersusernameevents) serves: a detection nobody has vouched for and a geolocation its author retracted are both out.
 
 **Query params:**
 | Param | Type | Description |
@@ -1722,7 +1722,7 @@ Remove an event. Default is soft delete (sets `deleted_at`); pass `?hard=true` f
 
 **Soft delete** (`?hard=false` or omitted): the row, its media rows, and its S3 objects stay put. Only `deleted_at` flips, and every public read filters it out. Idempotent: re-soft-deleting preserves the original timestamp and skips the audit append.
 
-**Hard delete** (`?hard=true`): drops the row (cascade kills every `media` row, source and proof roles alike) and best-effort-deletes the corresponding S3 objects. The DB transaction commits *before* the S3 delete attempt so a flaky storage backend can't strand DB rows pointing at live keys; per-key S3 failures are logged and swallowed (the accepted residual orphan risk).
+**Hard delete** (`?hard=true`): drops the row (cascade kills every `media` row, source and proof roles alike) and best-effort-deletes the corresponding S3 objects, the superseded source objects the event's versions name included. A source media a correction replaced has no row left, so the snapshots are the only thing resolving those keys, and deleting the event is what frees them. The DB transaction commits *before* the S3 delete attempt so a flaky storage backend can't strand DB rows pointing at live keys; per-key S3 failures are logged and swallowed (the accepted residual orphan risk).
 
 **Response 200:**
 ```json

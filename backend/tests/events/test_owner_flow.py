@@ -15,11 +15,7 @@ from __future__ import annotations
 import json
 import uuid
 
-import pytest
-
 from app.models.event import STATUS_CLOSED, STATUS_DETECTED, STATUS_GEOLOCATED, Event
-from app.models.user import User
-from app.services.auth import hash_password
 from tests.conftest import login_as
 from tests.events._helpers import (
     WORLD_BBOX,
@@ -28,24 +24,6 @@ from tests.events._helpers import (
     proof_file_part,
     proof_form_field,
 )
-
-
-@pytest.fixture
-def admin_user(db):
-    user = User(
-        username=f"adm{uuid.uuid4().hex[:8]}",
-        email=f"adm-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        is_admin=True,
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
 
 # ── Destroying a row is admin-only ────────────────────────────────────────
 

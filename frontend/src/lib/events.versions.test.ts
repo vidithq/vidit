@@ -207,15 +207,51 @@ describe("snapshotToEventView", () => {
     expect(superseded.thumbnail?.storage_url).toBe("https://m/old.mp4");
   });
 
-  it("stands the live row's anchor in for a version that files none", () => {
-    // A version filed before the anchor was versioned states nothing about it,
-    // so the live row answers for it rather than the page blanking the section.
-    const legacy = { ...snapshot() };
-    delete legacy.source_url;
-    delete legacy.source_media;
-    const filed = snapshotToEventView(CURRENT, row(2, legacy));
-    expect(filed.source_url).toBe(CURRENT.source_url);
-    expect(filed.media).toEqual(CURRENT.media);
+  it("reads each version's anchor off its own snapshot across a history", () => {
+    // Two swaps, three anchors. Reading the anchor off the live row where a
+    // snapshot could be taken for silent would render today's footage on both
+    // older versions and hand `changedFields` the same value on either side of
+    // each swap, so neither swap would print.
+    const v1Media = {
+      id: "m0",
+      role: "source",
+      media_type: "video",
+      storage_url: "https://m/first.mp4",
+    };
+    const v2Media = {
+      id: "m1",
+      role: "source",
+      media_type: "image",
+      storage_url: "https://m/second.jpg",
+    };
+    const v1 = snapshotToEventView(
+      CURRENT,
+      row(1, snapshot({ source_url: "https://t.me/channel/1", source_media: [v1Media] }))
+    );
+    const v2 = snapshotToEventView(
+      CURRENT,
+      row(2, snapshot({ source_url: "https://t.me/channel/2", source_media: [v2Media] }))
+    );
+
+    expect([v1.source_url, v2.source_url, CURRENT.source_url]).toEqual([
+      "https://t.me/channel/1",
+      "https://t.me/channel/2",
+      "https://t.me/channel/4242",
+    ]);
+    expect([v1.media[0].id, v2.media[0].id, CURRENT.media[0].id]).toEqual([
+      "m0",
+      "m1",
+      "m1",
+    ]);
+    expect(v1.thumbnail?.storage_url).toBe("https://m/first.mp4");
+
+    // Each swap is attributed to the edit that made it, and only to that one.
+    expect(changedFields(v2, v1)).toContain("Source URL");
+    expect(changedFields(v2, v1)).toContain("Source media");
+    expect(changedFields(CURRENT, v2)).toContain("Source URL");
+    // v2 already carries the live row's media, so the last edit moved the URL
+    // alone: the media label must not ride along with it.
+    expect(changedFields(CURRENT, v2)).not.toContain("Source media");
   });
 
   it("ratchets the graphic flag against the live row", () => {

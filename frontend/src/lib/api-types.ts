@@ -1515,11 +1515,9 @@ export interface components {
          *     machine detections. Counted over all machine rows, soft-deleted or not: the
          *     metric measures what the pipeline produced.
          *
-         *     Two counting edges the metric accepts, both favouring over-counting
-         *     dismissals over under-counting them: an owner hard-delete
-         *     (``DELETE /events/{id}`` on an own detection) removes the row from both counts
-         *     entirely; an account-departure cascade soft-delete counts that account's
-         *     pending detections as rejects.
+         *     One counting edge the metric accepts, favouring over-counting dismissals
+         *     over under-counting them: an account-departure cascade soft-delete counts
+         *     that account's pending detections as rejects.
          *
          *     The ``pending_*`` counts profile the live ``detected`` queue (awaiting
          *     review, ``deleted_at IS NULL``, machine rows only): how many detections are

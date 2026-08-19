@@ -12,9 +12,11 @@
 # API namespace (the backend mounts `/events`), `requests` as a top-level API
 # resource (a request is a `requested` event, so it is `POST /events/requests`
 # and `GET /events?view=requested`), the two frontend routes that are now
-# redirect stubs (`/geolocations/new` and `/requests/new`, both `/submit`), and
-# the removed tweet-media proxy (`GET /events/import-from-tweet/media`: the
-# paste creates detections now, so media comes off the detection's `storage_url`).
+# redirect stubs (`/geolocations/new` and `/requests/new`, both `/submit`), the
+# removed tweet-media proxy (`GET /events/import-from-tweet/media`: the paste
+# creates detections now, so media comes off the detection's `storage_url`), and
+# the removed owner delete (`DELETE /events/{id}`: an owner closes a row, so the
+# only route that removes one is `DELETE /admin/events/{id}`).
 #
 # Comments are stripped before the scan, so prose may name an old route while
 # code may not.
@@ -52,6 +54,26 @@ for script in ./*.js; do
       printf '%s\n' "$hits" | sed 's/^/    /'
     fi
   done <<<"$BANNED"
+done
+
+# The owner delete is its own scan rather than a BANNED row: the method and the
+# URL sit on different lines of a `fetch` call, and the table above matches one
+# line at a time.
+for script in ./*.js; do
+  code=$(sed 's://.*::' "$script")
+  hits=$(printf '%s\n' "$code" | awk '
+    { line[NR] = $0 }
+    /method: *"DELETE"/ {
+      for (i = NR - 3; i < NR; i++)
+        if (i > 0 && line[i] ~ /\$\{API\}\/events\//)
+          printf "%d:%s\n", i, line[i]
+    }
+  ')
+  if [ -n "$hits" ]; then
+    status=1
+    echo "✗ $script: DELETE on \${API}/events/{id}. Use \${API}/admin/events/{id}?hard=true"
+    printf '%s\n' "$hits" | sed 's/^/    /'
+  fi
 done
 
 if [ "$status" -ne 0 ]; then

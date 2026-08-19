@@ -184,8 +184,8 @@ export function getEvent(id: string): Promise<EventDetail> {
  * The generalized fulfil / submit transition: `POST /events/{id}/geolocate`,
  * multipart, mirroring create. Moves a `requested` (request fulfilment) or
  * `detected` event to `geolocated`, which publishes it: the event becomes the
- * vouched record, its evidence anchor is fixed, and every later change is a new
- * version through `saveVersion`. On a `requested` event the backend transfers
+ * vouched record, and every later change to it, the evidence anchor included,
+ * is a new version through `saveVersion`. On a `requested` event the backend transfers
  * ownership to the geolocator. The form posts the whole state; the server
  * writes it atomically. New media ride in `files`; existing media are dropped
  * via `remove_media_ids`. Only `detected_from_url` (the provenance anchor) and
@@ -386,8 +386,10 @@ export const VERSION_NOTE_MAX_LEN = 280;
  * keeps the source it holds.
  */
 export type EventVersionInput = Omit<EventEditInput, "source_url"> & {
-  /** Optional: omitted (or blank) keeps the stored source URL, since a
-   *  published row always carries one. */
+  /** Optional: omitted or empty keeps the stored source URL, since a published
+   *  row always carries one. The server reads an empty form value as an absent
+   *  one, so posting the field blank is the same as leaving it out; a
+   *  whitespace-only value is a 400. */
   source_url?: string;
   /** The editor's own words about this edit, stored on the version it
    *  supersedes. Optional, capped at `VERSION_NOTE_MAX_LEN`. */
@@ -571,11 +573,13 @@ function snapshotArchivedCopies(
  * included: `source_url` and `source_media` are what the record rested on at
  * that version, and the media fragment is the whole row shape, since the row
  * itself is gone once a later version replaced it (an event carries one source
- * media). A snapshot stating neither is a version filed before the anchor was
- * versioned, so the live row stands in rather than blanking the section. The
- * row's identity (id, owner, status, creation date) always comes from the
- * current row, no edit being able to move it. `version_no` is the version being
- * read, so the page prints which one it is.
+ * media). The anchor is read off the snapshot alone, never off the live row:
+ * every filed version names it, so standing the live row in would render the
+ * media that replaced the anchor on the versions it replaced and hand the
+ * changed-field list the same value on both sides of a swap. The row's identity
+ * (id, owner, status, creation date) always comes from the current row, no edit
+ * being able to move it. `version_no` is the version being read, so the page
+ * prints which one it is.
  *
  * Two overlays are rebuilt rather than copied. The archived copies are the ones
  * this version held, and they are spread back over the three fields that carry
@@ -598,11 +602,8 @@ export function snapshotToEventView(
   const archivedByUrl = snapshotArchivedCopies(snapshot, current);
   const conflictsById = new Map(current.conflicts.map((c) => [c.id, c]));
   const secondarySourceUrls = asList<string>(snapshot.secondary_source_urls);
-  const sourceUrl =
-    "source_url" in snapshot ? asNullableString(snapshot.source_url) : current.source_url;
-  const media = Array.isArray(snapshot.source_media)
-    ? asList<Media>(snapshot.source_media)
-    : current.media;
+  const sourceUrl = asNullableString(snapshot.source_url);
+  const media = asList<Media>(snapshot.source_media);
   return {
     ...current,
     version_no: version.version_no,
@@ -610,7 +611,7 @@ export function snapshotToEventView(
     media,
     // Derived from the same media, so a preview of this version shows the
     // footage it rested on rather than the one that replaced it.
-    thumbnail: media[0] ?? current.thumbnail,
+    thumbnail: media[0] ?? null,
     archived_source: archivedByUrl.get(sourceUrl ?? "") ?? null,
     archived_detected_from: archivedByUrl.get(current.detected_from_url ?? "") ?? null,
     title: asString(snapshot.title, current.title),

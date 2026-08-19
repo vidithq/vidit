@@ -189,10 +189,11 @@ class EventSourceLink(Base):
     """One secondary source link: the same media mirrored on another network,
     or another post from the same point of view.
 
-    The primary evidence anchor stays the scalar ``Event.source_url`` (the first
-    place the media was posted, frozen against a fulfiller's rewrite). These are
-    ordered extras and carry no such protection: the geolocate transition
-    replaces the whole list with whatever the fulfiller submits. ``position`` is
+    The primary evidence anchor stays the scalar ``Event.source_url``, the first
+    place the media was posted. These are ordered extras: the geolocate
+    transition and every later correction replace the whole list with whatever
+    the submitter posts, while the anchor moves only on its own field, and a
+    move of it files a version. ``position`` is
     part of the composite PK, so the stored order IS the read order and a
     duplicate slot is rejected by Postgres; the ``event_id`` cascade drops the
     rows on hard-delete.

@@ -331,8 +331,10 @@ async def save_event_version(
     capture_source_lat: float | None = Form(None),
     capture_source_lng: float | None = Form(None),
     # The footage origin, editable here as on geolocate and versioned with the
-    # rest. Optional, unlike on geolocate: absent keeps what the row holds, and
-    # a blank value is a 400, since a published row always carries one.
+    # rest. Optional, unlike on geolocate: omitted or empty keeps what the row
+    # holds (FastAPI reads an empty form value as an absent one, so the two
+    # arrive here identically), while a whitespace-only value is a 400, since a
+    # published row always carries one.
     source_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
     # The archived copy of the source URL this write stores.
     source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),

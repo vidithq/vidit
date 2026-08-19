@@ -744,10 +744,10 @@ async def geolocate(
     source media: ``files`` added, ``remove_media_ids`` dropped), and on
     success the row becomes ``geolocated``, stamped ``geolocated_at``, with the
     caller credited in ``event_geolocators``. From there it is corrected through
-    :func:`save_version`, which files each superseded version; what publication
-    fixes is the evidence anchor (``source_url`` and the source media), not the
-    record. ``detected_from_url`` (the provenance anchor) and ``status`` carry
-    no form field.
+    :func:`save_version`, which files each superseded version, the evidence
+    anchor (``source_url`` and the source media) included. What publication
+    fixes is ``detected_from_url``, the provenance anchor, which along with
+    ``status`` carries no form field.
 
     ``is_graphic`` is the one field the form cannot lower: it ratchets, so a
     posted false leaves an already-flagged event flagged. Clearing it is
@@ -781,8 +781,7 @@ async def geolocate(
     source media (kept or new), at least one proof image in the final proof
     body, a conflict, and the curated ``capture_source`` tag.
 
-    The secondary source links are NOT part of that frozen anchor: unlike
-    ``source_url``, the submitted list replaces whatever the row held, on a
+    The secondary source links replace whatever the row held, wholesale, on a
     requested fulfilment as well as an owner's detected submit. They are
     mirrors, not the evidence origin, so a fulfiller correcting them is an
     edit, not a rewrite of the requester's claim.
@@ -974,9 +973,9 @@ async def save_version(
     The media moves on the same fields :func:`geolocate` takes,
     ``remove_media_ids`` dropping the stored row and ``files`` carrying the
     replacement, and the same one-source cap binds. ``source_url`` is optional
-    here, like ``source_posted_at``: absent keeps what the row holds, and a
-    blank value is refused rather than stored, since a ``geolocated`` row always
-    carries a source (``ck_events_source_url_status``). Everything else the
+    here, like ``source_posted_at``: omitted or empty keeps what the row holds,
+    and a whitespace-only value is refused rather than stored, since a
+    ``geolocated`` row always carries a source (``ck_events_source_url_status``). Everything else the
     publish form wrote is editable and versioned too: title, both coordinate
     sets, the event date and hour, the source post time, the graphic-content
     flag, tags, conflicts, the proof body and its inline images, and the
@@ -988,7 +987,7 @@ async def save_version(
     media whole, and the object it names is left in place, so the version stays
     renderable. What sweeps it is the event's own deletion
     (``evidence_intake.collect_event_media_keys``) or the redaction of the last
-    version that named it (``evidence_intake.orphaned_source_keys``).
+    version that named it (``evidence_intake.orphaned_source_media``).
 
     ``source_posted_at`` is optional, matching what publication accepts: a
     detection whose source post time was never resolved publishes through
@@ -1065,7 +1064,9 @@ async def save_version(
         secondary_source_urls, secondary_snapshot_urls or []
     )
     # An absent field keeps the stored source, the way ``source_posted_at``
-    # keeps the stored instant; a blank one is refused, since a published row
+    # keeps the stored instant, and the router hands an empty form value over as
+    # an absent one, so a form posting the field blank keeps it too. A
+    # whitespace-only value is refused rather than stored, since a published row
     # always carries a source URL (``ck_events_source_url_status``).
     if source_url is not None and not source_url.strip():
         raise SourceUrlRequiredError("A source URL is required on a published event")

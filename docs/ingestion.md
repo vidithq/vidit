@@ -403,6 +403,8 @@ flowchart LR
 
 The coordinate compares to six decimal places, the rounding the extraction dedups on. The source URL leg collapses the delete-and-repost shape: two provenance posts declaring the same footage at the same coordinate are one detection.
 
+The source URL leg reads the version history as well as the live column. The owner of a published row can correct its [evidence anchor](api.md#post-eventsidversions), and the version that edit files is what still carries the URL the row was imported under, so a re-import of the original post matches the row it already produced instead of creating a second one beside it. A [redacted](api.md#post-admineventsidversionsversion_noredact) version carries no URL, so it matches nothing.
+
 The provenance leg is the thread's post IDs, not a URL and not the anchor alone. Not a URL, because one post spells the same URL several ways (`x.com` or `twitter.com`, the handle in any case, the handle-less `/i/web/status/` form), which would split one geolocation across two detections; `detected_from_url` stays as the display value, written from the ID at the engine's exit. Not the anchor alone, because the entries anchor differently on one thread: in a 3-post self-thread A→B→C carrying the coordinate in C, the archive anchors on A while a bot tag or a paste on C reads [one hop](#the-contract) and anchors on B. Each row therefore stores every post ID of the thread it was read from (`events.detected_thread_tweet_ids`), and a detection matches when the incoming thread's IDs intersect a stored set; a row carrying none matches on its anchor ID alone.
 
 [`detection._row_disposition`](../backend/app/services/detection.py) holds the matrix, and each row states why:

@@ -58,6 +58,7 @@ from app.models.event import Event, EventVersion
 from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
+from app.schemas.media import MediaRead
 from app.services.sanitize import extract_image_srcs
 
 # How many versions one event may carry. Past a hundred the history has stopped
@@ -144,21 +145,15 @@ def conflict_entries(conflicts: Iterable[Conflict]) -> list[dict[str, str]]:
 def media_entry(media: Media) -> dict[str, Any]:
     """One media row as a snapshot stores it: the fields ``MediaRead`` serves.
 
-    The same shape the live row's media come back in
-    (``schemas/media.MediaRead``), so a version page renders a stored media and
-    a snapshotted one through one component. It is the whole row rather than a
-    reference to it, because the row itself may be gone: the source media a
-    later version replaced is deleted, and this fragment is what still describes
-    it.
+    Serialised through :class:`schemas.media.MediaRead` rather than spelled out,
+    so a field added to the read model reaches the snapshot with it and a
+    version page renders a stored media and a snapshotted one through one
+    component. ``mode="json"`` is what makes the UUID a string, since the
+    fragment is stored as JSONB. It is the whole row rather than a reference to
+    it, because the row itself may be gone: the source media a later version
+    replaced is deleted, and this fragment is what still describes it.
     """
-    return {
-        "id": str(media.id),
-        "role": media.role,
-        "storage_url": media.storage_url,
-        "media_type": media.media_type,
-        "sha256": media.sha256,
-        "original_filename": media.original_filename,
-    }
+    return MediaRead.model_validate(media).model_dump(mode="json")
 
 
 def archived_pairs(geo: Event) -> dict[str, str]:

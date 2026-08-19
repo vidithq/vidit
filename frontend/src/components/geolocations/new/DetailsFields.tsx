@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 
 import type { ArchivedLink } from "@/types";
 import {
@@ -72,9 +72,6 @@ interface DetailsFieldsProps {
    *  fulfilment, which shows a "from request" hint. Both owner edit shapes
    *  leave it editable, so they omit it. */
   sourceUrlLocked?: boolean;
-  /** What the locked marker on the source URL says. Defaults to `LockedHint`'s
-   *  "from request". */
-  sourceLockNote?: ReactNode;
   /** A machine detection's provenance — the post it was imported from. Shown
    *  read-only inside this block (it's the one immutable field) when provided;
    *  the submit form omits it. */
@@ -117,7 +114,6 @@ export function DetailsFields({
   setIsGraphic,
   graphicLocked = false,
   sourceUrlLocked = false,
-  sourceLockNote,
   detectedFromUrl,
   detectedFromSnapshotUrl = "",
   setDetectedFromSnapshotUrl,
@@ -157,7 +153,7 @@ export function DetailsFields({
   const sourceUrlLabel = (
     <>
       Source URL <FieldHelp concept="source_url" />{" "}
-      {sourceUrlLocked && <LockedHint>{sourceLockNote}</LockedHint>}
+      {sourceUrlLocked && <LockedHint />}
     </>
   );
 

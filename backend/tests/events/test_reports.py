@@ -16,28 +16,9 @@ import pytest
 from app.config import settings
 from app.models.content_report import ContentReport
 from app.models.follow import Follow
-from app.models.user import User
 from app.services import email
-from app.services.auth import hash_password
 from tests.conftest import login_as
 from tests.events._helpers import WORLD_BBOX, _make_geo, client
-
-
-@pytest.fixture
-def admin_user(db):
-    user = User(
-        username=f"adm{uuid.uuid4().hex[:8]}",
-        email=f"adm-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        is_admin=True,
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
 
 
 @pytest.fixture
