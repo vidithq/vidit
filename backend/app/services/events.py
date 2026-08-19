@@ -895,8 +895,7 @@ def _publish_detection(
         # A withheld detection is frozen for its owner (same as the single-row
         # :func:`geolocate`, which resolves through ``_resolve_live_event``):
         # while an admin holds a row down, its owner does not get to move it on
-        # to a published state. Not an archival guarantee, since the queue
-        # filters on ``deleted_at`` alone (see :func:`source_archive.claim_next`).
+        # to a published state.
         .filter(Event.id == event_id, *visible_events())
         .populate_existing()
         .with_for_update()
