@@ -11,14 +11,8 @@ live in `conftest.py`; `client` / `_make_geo` / the proof helpers in
 from __future__ import annotations
 
 import json
-import uuid
 
-import pytest
-
-from app.models.admin_event import AdminEvent
 from app.models.event import STATUS_DETECTED, Event
-from app.models.user import User
-from app.services.auth import hash_password
 from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
 from tests.events._helpers import (
@@ -27,27 +21,6 @@ from tests.events._helpers import (
     proof_file_part,
     proof_form_field,
 )
-
-
-@pytest.fixture
-def admin_user(db):
-    """An admin, for the one door that can still clear the flag."""
-    user = User(
-        username=f"mod{uuid.uuid4().hex[:8]}",
-        email=f"mod-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        is_admin=True,
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    # Reap this actor's audit rows so the user row deletes cleanly, the same
-    # teardown shape as the moderation suite.
-    db.expire_all()
-    db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
 
 
 def _create_form(conflict, capture_source_tag, **overrides):

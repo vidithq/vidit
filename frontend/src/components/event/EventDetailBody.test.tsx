@@ -304,10 +304,36 @@ describe("EventDetailBody", () => {
     expect(
       screen.getByText("Duplicate of an existing request.")
     ).toBeInTheDocument();
-    // The badge is the state, the Reason is why: it carries no hover text of
-    // its own, and the `status` concept's `?` on the row names both dismissal
-    // shapes.
-    expect(screen.getByText("Closed").closest("[title]")).toBeNull();
+    expect(screen.getByText("5 Jun 2026")).toBeInTheDocument();
+    // The badge is the state, the Reason is why: neither the badge nor the
+    // Closed row carries hover text of its own, and the `status` concept's `?`
+    // on the row names every dismissal shape.
+    for (const node of screen.getAllByText("Closed")) {
+      expect(node.closest("[title]")).toBeNull();
+    }
+  });
+
+  // A retraction is the one closed shape that carries a full published record
+  // behind it, and the page has to say the claim was taken back rather than
+  // render as if it still stood.
+  it("marks a retracted geolocation as closed, with the reason and the day", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          status: "closed",
+          before_closed_status: "geolocated",
+          close_reason: "Wrong village: the footage is from Vovchansk.",
+          closed_at: "2026-06-05T12:00:00Z",
+        })}
+        variant="page"
+      />
+    );
+    expect(screen.getByText("Reason")).toBeInTheDocument();
+    expect(
+      screen.getByText("Wrong village: the footage is from Vovchansk.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("5 Jun 2026")).toBeInTheDocument();
+    expect(screen.getAllByText("Closed").length).toBeGreaterThan(0);
   });
 
   it("omits the Reason row when a closed row has no reason", () => {

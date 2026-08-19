@@ -14,6 +14,7 @@ import pytest
 
 from app.cache import points_cache
 from app.database import SessionLocal
+from app.models.admin_event import AdminEvent
 from app.models.conflict import Conflict
 from app.models.content_report import ContentReport
 from app.models.event import Event, EventGeolocator
@@ -101,6 +102,30 @@ def second_user(db):
     user_id = user.id
     yield user
     _delete_user_and_events(db, user_id)
+
+
+@pytest.fixture
+def admin_user(db):
+    """An admin actor, for the suites that exercise an admin-only door.
+
+    Teardown reaps this actor's ``admin_events`` rows before the user row, so a
+    suite whose admin action is audited (a redaction, a hard delete) still tears
+    down cleanly; a suite that audits nothing pays two no-op deletes.
+    """
+    user = User(
+        username=f"adm{uuid.uuid4().hex[:8]}",
+        email=f"adm-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("password123"),
+        is_admin=True,
+    )
+    db.add(user)
+    db.commit()
+    user_id = user.id
+    yield user
+    db.expire_all()
+    db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete(synchronize_session=False)
+    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+    db.commit()
 
 
 @pytest.fixture

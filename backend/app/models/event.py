@@ -31,8 +31,11 @@ from app.database import Base
 #                   location (a coord-less one carries media alone).
 #   ``geolocated``  a person vouched for it and froze it (yesterday's geolocation
 #                   ``submitted`` + a fulfilled request); always has a location.
-#   ``closed``      withdrawn (a ``requested`` event the owner dropped) or
-#                   rejected (a ``detected`` row the owner threw out);
+#   ``closed``      withdrawn (a ``requested`` event the owner dropped),
+#                   rejected (a ``detected`` row the owner threw out), or
+#                   retracted (a ``geolocated`` row its owner took back, a
+#                   public retraction: the page stays readable, the row keeps
+#                   its coordinate, credits, archives and version history);
 #                   ``before_closed_status`` records which.
 # ``event_coords`` is independent of ``status`` (held by the CHECK below): only
 # ``geolocated`` requires it. The alias is the value-domain source of truth: the
@@ -45,9 +48,11 @@ STATUS_GEOLOCATED: EventStatus = "geolocated"
 STATUS_CLOSED: EventStatus = "closed"
 
 # The status held just before ``closed``: ``requested`` = withdrawn,
-# ``detected`` = rejected. Drives the status badge, the requested-view routing,
-# and lets re-import treat a closed detection as re-importable.
-BeforeClosedStatus = Literal["requested", "detected"]
+# ``detected`` = rejected, ``geolocated`` = retracted. Drives the status badge,
+# the requested-view routing, and the read views: a closed detection stays in
+# the located catalog, while a retraction leaves every feed and the map (see
+# ``services/event_filters.view_predicate``).
+BeforeClosedStatus = Literal["requested", "detected", "geolocated"]
 
 # Which of the three ingest entries produced a machine detection. Stamped once, by
 # ``detection.persist_detections``, from a value each entry passes; NULL on a human
@@ -113,16 +118,20 @@ class EventVersion(Base):
     its history is snapshot 1, snapshot 2, the live row.
 
     ``snapshot`` holds the structured fields the edit form writes (see
-    ``services/versions.build_snapshot``). Media files are not versioned, so a
-    ``media`` row a snapshot points at is never hard-deleted while the snapshot
-    exists (``services/evidence_intake.attach_evidence_and_commit`` reads
-    ``services/versions.referenced_media_urls`` before it drops a proof row).
+    ``services/versions.build_snapshot``), the evidence anchor included. Media
+    rows are not versioned, so a ``proof`` row a snapshot points at is never
+    hard-deleted while the snapshot exists
+    (``services/evidence_intake.attach_evidence_and_commit`` reads
+    ``services/versions.referenced_media_urls`` before it drops one). The
+    ``source`` row cannot stay, one per event being the cap, so the snapshot
+    describes that media whole and its file is what outlives the row
+    (``services/versions.referenced_source_media``).
 
     Redaction is the one write a filed row takes. An admin blanks ``snapshot``
     and ``note`` and stamps ``redacted_at`` / ``redacted_by_id``; the row and
     its number stay, so ``/vN`` addressing never shifts and the history still
-    shows that a version existed. A redacted snapshot references no media, so
-    an image only it pointed at becomes deletable again.
+    shows that a version existed. A redacted snapshot references no media, so a
+    file only it pointed at becomes deletable again.
     """
 
     __tablename__ = "event_versions"
@@ -180,10 +189,11 @@ class EventSourceLink(Base):
     """One secondary source link: the same media mirrored on another network,
     or another post from the same point of view.
 
-    The primary evidence anchor stays the scalar ``Event.source_url`` (the first
-    place the media was posted, frozen against a fulfiller's rewrite). These are
-    ordered extras and carry no such protection: the geolocate transition
-    replaces the whole list with whatever the fulfiller submits. ``position`` is
+    The primary evidence anchor stays the scalar ``Event.source_url``, the first
+    place the media was posted. These are ordered extras: the geolocate
+    transition and every later correction replace the whole list with whatever
+    the submitter posts, while the anchor moves only on its own field, and a
+    move of it files a version. ``position`` is
     part of the composite PK, so the stored order IS the read order and a
     duplicate slot is rejected by Postgres; the ``event_id`` cascade drops the
     rows on hard-delete.
@@ -426,7 +436,7 @@ class Event(Base):
             # NULL, not FALSE, and Postgres accepts any CHECK that is not FALSE.
             # Without it a closed row could still carry a NULL discriminator.
             "(status = 'closed' AND before_closed_status IS NOT NULL"
-            " AND before_closed_status IN ('requested', 'detected'))"
+            " AND before_closed_status IN ('requested', 'detected', 'geolocated'))"
             " OR (status <> 'closed' AND before_closed_status IS NULL)",
             name="ck_events_before_closed_status",
         ),

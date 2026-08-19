@@ -61,7 +61,10 @@ def published_events() -> ColumnElement[bool]:
     filters on both, so its count and its rows agree, and the profile
     payload's ``geolocations_count``
     (:func:`routers.users.get_user_profile`) counts through it too, so the
-    profile's share card headlines the size of the set the feed serves.
+    profile's share card headlines the size of the set the feed serves. The
+    follow feed (:func:`services.social.get_timeline`) filters on it as well, so
+    one analyst's rows read the same whether a reader reaches them through the
+    profile or through a follow.
 
     Why the other three states are out:
 
@@ -70,6 +73,12 @@ def published_events() -> ColumnElement[bool]:
       them with a claim they never made.
     * ``closed`` off ``detected`` is a detection the analyst threw out. Listing a
       rejected row as their work inverts the decision they took.
+    * ``closed`` off ``geolocated`` is published work the analyst retracted.
+      A retraction is the analyst saying the claim no longer stands, so it
+      leaves this set the moment it is taken back, and with it the profile
+      feed, the follow feed, the counts and the read views. What it does not leave is the
+      record: the page, its version history, its credits and its archives all
+      stay, marked as withdrawn with the reason.
     * ``requested`` is an open call for help, an ask rather than an answer.
       It carries no vouched location, anyone may fulfil it, and it lives on
       its own read view (see :data:`VIEWS`). ``closed`` off ``requested`` is
@@ -143,7 +152,9 @@ STATUSES = frozenset({STATUS_REQUESTED, STATUS_DETECTED, STATUS_GEOLOCATED, STAT
 # The two read views over the one table. ``located`` is the catalog: vouched +
 # machine rows, keeping a rejected detection visible (``closed`` off
 # ``detected``). ``requested`` is the open-call queue (ex ``/requests``),
-# keeping a withdrawn request visible the same way.
+# keeping a withdrawn request visible the same way. Neither serves a retraction
+# (``closed`` off ``geolocated``), which is reachable by its URL alone: see
+# :func:`view_predicate`.
 VIEWS = frozenset({"located", "requested"})
 
 
@@ -160,7 +171,16 @@ def apply_author_filter(query: SAQuery, author: str) -> SAQuery:
 
 
 def view_predicate(view: str):
-    """The status predicate for a read view (see ``VIEWS``)."""
+    """The status predicate for a read view (see ``VIEWS``).
+
+    Each view keeps the closed rows that left its own cohort, so a decision
+    stays legible where it was taken: a rejected detection in ``located``, a
+    withdrawn request in ``requested``. A retraction (``closed`` off
+    ``geolocated``) is in neither. It is a claim its author took back, so
+    leaving it in the catalog would keep offering it as one; the page stays
+    readable at its URL for anyone holding a link or a citation, which is what
+    makes the retraction visible to the readers who acted on the claim.
+    """
     if view == "requested":
         return or_(
             Event.status == STATUS_REQUESTED,

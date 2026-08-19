@@ -86,6 +86,11 @@ function version(
 
 const snapshot = (title: string): Record<string, unknown> => ({
   title,
+  // Every filed version names the evidence anchor, so the fixture does too:
+  // omitting it here would read as a swap on the edit that produced the next
+  // version and print a changed field no edit moved.
+  source_url: "https://t.me/channel/12345",
+  source_media: [],
   event_coords: { lat: 48.01, lng: 37.8 },
   capture_source_coords: null,
   event_date: "2026-06-01",

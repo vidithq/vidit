@@ -441,10 +441,10 @@ export default function PalettePage() {
               </div>
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <span className="text-[11px] text-neutral-600 self-center">two-click confirm:</span>
-                <Button variant="danger">Delete this request</Button>
+                <Button variant="danger">Destructive action</Button>
                 <span className="text-neutral-600 self-center">→</span>
                 <Button variant="danger" className={DANGER_CONFIRM}>
-                  Confirm delete
+                  Confirm
                 </Button>
               </div>
               <div className="flex flex-wrap items-center gap-4 pt-1 text-sm text-neutral-300">

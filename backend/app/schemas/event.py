@@ -119,9 +119,10 @@ class EventVersionRead(BaseModel):
     ``version_no`` is the version this row holds, not the version that replaced
     it: an event at ``version_no`` 3 answers with snapshots 2 and 1, and the
     live row is version 3. ``snapshot`` carries the editable fields as they
-    stood (see ``services/versions.build_snapshot``); the evidence anchor
-    (``source_url`` and the source media) is absent because no edit can move it,
-    so the live row is authoritative for it at every version.
+    stood (see ``services/versions.build_snapshot``), the evidence anchor
+    included: ``source_url`` and ``source_media`` say what the claim rested on
+    at that version, the media as the whole shape ``EventRead`` serves, since
+    the row itself is gone once a correction replaced it.
     """
 
     id: uuid.UUID
@@ -263,8 +264,9 @@ class EventRead(BaseModel):
     archived_source: ArchivedLinkRead | None
     # Mirrors of the same media on other networks (or other same-POV posts), in
     # the order the submitter gave them. Empty when the event declares none;
-    # always serialised. Unlike ``source_url`` these are not the frozen evidence
-    # anchor: a fulfiller replaces the whole list at the geolocate transition.
+    # always serialised. Unlike ``source_url`` these are not the evidence
+    # anchor: a submitter replaces the whole list at the geolocate transition
+    # and at every later correction, neither being a move of the anchor.
     secondary_source_urls: list[str]
     # The archived copies of ``secondary_source_urls``, same length and same
     # order: entry ``i`` covers mirror ``i``, NULL on the same terms as
@@ -302,8 +304,8 @@ class EventRead(BaseModel):
     version_no: int
     # Free-text reason the event was closed; NULL while it is open.
     close_reason: str | None
-    # The status held just before ``closed`` (withdrawn vs rejected); drives the
-    # badge + requested-view routing. NULL while the event is open.
+    # The status held just before ``closed`` (withdrawn, rejected or retracted);
+    # drives the badge + requested-view routing. NULL while the event is open.
     before_closed_status: BeforeClosedStatus | None
     # The post a machine detection was imported from, a provenance link
     # distinct from ``source_url`` (footage origin). NULL for human submits.
@@ -349,7 +351,8 @@ class EventList(BaseModel):
     is_graphic: bool
     # See ``EventRead.status``; a list card marks ``detected`` too.
     status: EventStatus
-    # Lets the card tell a withdrawn request from a rejected detection.
+    # Lets the card tell a withdrawn request from a rejected detection and from
+    # a retracted geolocation.
     before_closed_status: BeforeClosedStatus | None
     owner: AuthorRef
     # The card thumbnail: first ``source`` media, else first ``proof`` image

@@ -180,16 +180,12 @@ export function getEvent(id: string): Promise<EventDetail> {
   return apiFetch<EventDetail>(`/events/${id}`);
 }
 
-export function deleteEvent(id: string): Promise<void> {
-  return apiFetch<void>(`/events/${id}`, { method: "DELETE" });
-}
-
 /**
  * The generalized fulfil / submit transition: `POST /events/{id}/geolocate`,
  * multipart, mirroring create. Moves a `requested` (request fulfilment) or
  * `detected` event to `geolocated`, which publishes it: the event becomes the
- * vouched record, its evidence anchor is fixed, and every later change is a new
- * version through `saveVersion`. On a `requested` event the backend transfers
+ * vouched record, and every later change to it, the evidence anchor included,
+ * is a new version through `saveVersion`. On a `requested` event the backend transfers
  * ownership to the geolocator. The form posts the whole state; the server
  * writes it atomically. New media ride in `files`; existing media are dropped
  * via `remove_media_ids`. Only `detected_from_url` (the provenance anchor) and
@@ -254,8 +250,8 @@ function appendSharedEventFields(
   fd: FormData,
   input: {
     title: string;
-    /** Omitted when saving a version: the evidence anchor is immutable past publication,
-     *  so that endpoint declares no `source_url` field at all. */
+    /** Optional on the version path alone, where an omitted field keeps the
+     *  source the published row holds. */
     source_url?: string;
     source_snapshot_url?: string;
     secondary_source_urls?: string[];
@@ -319,17 +315,18 @@ function appendSharedEventFields(
   }
 }
 
-/** Append the multipart fields shared by create + geolocate: every field
- *  except geolocate's `remove_media_ids`. The source-media key differs by
- *  endpoint (create / request take a singular `file`, geolocate a plural
- *  `files` list for kept-plus-new), so the caller passes it. Builds on
- *  `appendSharedEventFields` and adds the always-present subject point, the
- *  optional `event_date`, the source media, and the proof-body images. */
+/** Append the multipart fields every geolocation write posts. The source-media
+ *  key differs by endpoint (create / request take a singular `file`, geolocate
+ *  and the version path a plural `files` list for kept-plus-new), so the caller
+ *  passes it. Builds on `appendSharedEventFields` and adds the always-present
+ *  subject point, the optional `event_date`, the source media with the ids a
+ *  swap drops, and the proof-body images. */
 function appendEventFormFields(
   fd: FormData,
   input: Omit<EventEditInput, "remove_media_ids" | "source_url" | "files"> & {
     source_url?: string;
     files?: File[];
+    remove_media_ids?: string[];
   },
   sourceKey: "file" | "files" = "files"
 ): void {
@@ -341,6 +338,12 @@ function appendEventFormFields(
   }
   for (const file of input.files ?? []) {
     fd.append(sourceKey, file);
+  }
+  // The other half of a source swap, on the two paths that edit an existing
+  // row: the file above is the replacement, these are the rows it replaces.
+  // A create has nothing to drop and never carries the key.
+  if (input.remove_media_ids?.length) {
+    fd.append("remove_media_ids", JSON.stringify(input.remove_media_ids));
   }
   // The proof body's inline images, matched to its `placeholder://` srcs by
   // filename server-side. Nothing hits S3 until this submit.
@@ -357,9 +360,6 @@ export function geolocateEvent(
 ): Promise<EventDetail> {
   const fd = new FormData();
   appendEventFormFields(fd, input);
-  if (input.remove_media_ids.length > 0) {
-    fd.append("remove_media_ids", JSON.stringify(input.remove_media_ids));
-  }
   return apiFetch<EventDetail>(`/events/${id}/geolocate`, {
     method: "POST",
     body: fd,
@@ -376,17 +376,21 @@ export type EventCreateInput = Omit<EventEditInput, "remove_media_ids">;
 export const VERSION_NOTE_MAX_LEN = 280;
 
 /**
- * Correcting a published event: the geolocate form minus the evidence anchor.
- * `source_url`, the source media (`files`) and `remove_media_ids` are absent
- * because the endpoint declares none of them: past publication the anchor is
- * what the claim rests on, and a wrong source on a published event is an admin
- * matter (`close` rejects a `geolocated` row, so its owner has no path to it).
- * Everything else stays editable and is versioned.
+ * Correcting a published event: the geolocate form, whole. The evidence anchor
+ * is editable here too, `source_url` on its own field and the source media on
+ * the `remove_media_ids` + `files` pair, under the same one-source cap: the
+ * import sometimes picks the wrong media out of a multi-media post, and a
+ * better copy of the same footage turns up later. The version this write files
+ * carries the anchor it supersedes, so the record still shows what the claim
+ * rested on. `source_url` is optional here alone: omitted, the published row
+ * keeps the source it holds.
  */
-export type EventVersionInput = Omit<
-  EventEditInput,
-  "source_url" | "remove_media_ids" | "files"
-> & {
+export type EventVersionInput = Omit<EventEditInput, "source_url"> & {
+  /** Optional: omitted or empty keeps the stored source URL, since a published
+   *  row always carries one. The server reads an empty form value as an absent
+   *  one, so posting the field blank is the same as leaving it out; a
+   *  whitespace-only value is a 400. */
+  source_url?: string;
   /** The editor's own words about this edit, stored on the version it
    *  supersedes. Optional, capped at `VERSION_NOTE_MAX_LEN`. */
   note?: string;
@@ -457,6 +461,24 @@ export function eventHistoryHref(id: string): string {
   return `/events/${id}/history`;
 }
 
+/**
+ * Whether this row has been published, retraction included.
+ *
+ * A version only exists past publication (every other state is edited in
+ * place), and retracting a published row keeps its history: the surfaces that
+ * offer the history therefore ask this rather than `status === "geolocated"`,
+ * which would drop the way into the record exactly when a reader most needs to
+ * walk what the record used to claim.
+ */
+export function hasPublishedRecord(
+  geo: Pick<EventDetail, "status" | "before_closed_status">
+): boolean {
+  return (
+    geo.status === "geolocated" ||
+    (geo.status === "closed" && geo.before_closed_status === "geolocated")
+  );
+}
+
 /** The version number a `/events/{id}/vN` path segment names, or `null` when
  *  the segment is not one. `v0` and any other shape are `null`, so the route
  *  answers 404 rather than asking the API about a number no event carries. */
@@ -472,6 +494,8 @@ export function parseVersionSegment(segment: string): number | null {
  *  version cannot carry is a field no diff can name. */
 const VERSION_FIELD_LABELS = {
   title: "Title",
+  source_url: "Source URL",
+  source_media: "Source media",
   event_coords: "Coordinates",
   capture_source_coords: "Camera position",
   event_date: "Event date",
@@ -545,11 +569,17 @@ function snapshotArchivedCopies(
 /**
  * One filed version as the shape every event surface already renders.
  *
- * The snapshot carries the fields an edit can move; the evidence anchor
- * (`source_url`, the source media) and the row's identity (id, owner, status,
- * creation date) carry no field because no edit can move them, so they come
- * from the current row, which is authoritative for them at every version.
- * `version_no` is the version being read, so the page prints which one it is.
+ * The snapshot carries the fields an edit can move, the evidence anchor
+ * included: `source_url` and `source_media` are what the record rested on at
+ * that version, and the media fragment is the whole row shape, since the row
+ * itself is gone once a later version replaced it (an event carries one source
+ * media). The anchor is read off the snapshot alone, never off the live row:
+ * every filed version names it, so standing the live row in would render the
+ * media that replaced the anchor on the versions it replaced and hand the
+ * changed-field list the same value on both sides of a swap. The row's identity
+ * (id, owner, status, creation date) always comes from the current row, no edit
+ * being able to move it. `version_no` is the version being read, so the page
+ * prints which one it is.
  *
  * Two overlays are rebuilt rather than copied. The archived copies are the ones
  * this version held, and they are spread back over the three fields that carry
@@ -572,10 +602,17 @@ export function snapshotToEventView(
   const archivedByUrl = snapshotArchivedCopies(snapshot, current);
   const conflictsById = new Map(current.conflicts.map((c) => [c.id, c]));
   const secondarySourceUrls = asList<string>(snapshot.secondary_source_urls);
+  const sourceUrl = asNullableString(snapshot.source_url);
+  const media = asList<Media>(snapshot.source_media);
   return {
     ...current,
     version_no: version.version_no,
-    archived_source: archivedByUrl.get(current.source_url ?? "") ?? null,
+    source_url: sourceUrl,
+    media,
+    // Derived from the same media, so a preview of this version shows the
+    // footage it rested on rather than the one that replaced it.
+    thumbnail: media[0] ?? null,
+    archived_source: archivedByUrl.get(sourceUrl ?? "") ?? null,
     archived_detected_from: archivedByUrl.get(current.detected_from_url ?? "") ?? null,
     title: asString(snapshot.title, current.title),
     event_coords: asCoords(snapshot.event_coords),
@@ -671,6 +708,10 @@ export function changedFields(version: EventDetail, previous: EventDetail): stri
     if (differs) changed.push(label);
   };
   flag(VERSION_FIELD_LABELS.title, version.title !== previous.title);
+  flag(VERSION_FIELD_LABELS.source_url, version.source_url !== previous.source_url);
+  // By identity: a swap is a new row, and the media a version rendered is named
+  // by the snapshot that filed it.
+  flag(VERSION_FIELD_LABELS.source_media, !sameList(ids(version.media), ids(previous.media)));
   flag(
     VERSION_FIELD_LABELS.event_coords,
     !sameCoords(version.event_coords, previous.event_coords)
@@ -714,6 +755,13 @@ export function changedFields(version: EventDetail, previous: EventDetail): stri
  *  archived rather than what the row stores. */
 export interface EventVersionFormState {
   title: string;
+  /** The source URL as the input holds it. Blank keeps the stored one, which is
+   *  what the endpoint does with an omitted field. */
+  sourceUrl: string;
+  /** Whether the form stages a source-media swap: a stored row marked for
+   *  removal, or a file queued for upload. Either moves the anchor, and neither
+   *  can be compared as a value, the upload having no URL until it lands. */
+  sourceMediaMoved: boolean;
   lat: string;
   lng: string;
   captureLat: string;
@@ -748,10 +796,12 @@ const coordsOf = (lat: string, lng: string): EventDetail["event_coords"] => {
  *
  * The comparison is `changedFields` itself, over a candidate assembled from the
  * form state, so the two cannot come to disagree about which fields a version
- * carries. The archived copies are the one leg computed here instead: a paste is
+ * carries. Two legs are computed here instead. The archived copies: a paste is
  * a change only where it differs from the copy that link already holds, and
  * spreading the pastes back over the three fields `archivedCopies` reads would
- * have to invent a provider for each, which nothing compares.
+ * have to invent a provider for each, which nothing compares. And the source
+ * media: a staged swap is a change by construction, since a file queued for
+ * upload has no id to compare against the row's.
  */
 export function hasVersionChanges(
   geo: EventDetail,
@@ -774,11 +824,13 @@ export function hasVersionChanges(
   }
   const stored = archivedCopies(geo);
   const copiesMove = [...pastedCopies].some(([url, copy]) => stored.get(url)?.url !== copy);
-  if (copiesMove) return true;
+  if (copiesMove || state.sourceMediaMoved) return true;
 
   const candidate: EventDetail = {
     ...geo,
     title: state.title.trim(),
+    // Blank keeps the stored source, the way an omitted field does server side.
+    source_url: state.sourceUrl.trim() || geo.source_url,
     event_coords: coordsOf(state.lat, state.lng),
     capture_source_coords: coordsOf(state.captureLat, state.captureLng),
     event_date: state.eventDate || null,
@@ -1253,9 +1305,10 @@ export function batchCompletionBlockers(geo: {
   return missing;
 }
 
-/** Close an event: withdraw a request or reject a detection (owner-only).
- *  `POST /events/{id}/close`. The reason stays publicly visible next to the
- *  closed badge, so it's required. */
+/** Close an event: withdraw a request, reject a detection, or retract a
+ *  published geolocation (owner-only). `POST /events/{id}/close`. The reason
+ *  stays publicly visible next to the closed badge, so it's required, and
+ *  closing is terminal: the owner has no un-close. */
 export function closeEvent(id: string, closeReason: string): Promise<EventDetail> {
   return apiFetch<EventDetail>(`/events/${id}/close`, {
     method: "POST",

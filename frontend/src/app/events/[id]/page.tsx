@@ -13,13 +13,21 @@ import { Pill } from "@/components/ui/Pill";
 export default function EventPage() {
   const params = useParams();
   const eventId = typeof params.id === "string" ? params.id : "";
-  const { data: geo, error } = useApiResource<EventDetail>(
-    eventId ? `/events/${eventId}` : null
-  );
+  const {
+    data: geo,
+    error,
+    refetch,
+  } = useApiResource<EventDetail>(eventId ? `/events/${eventId}` : null);
   // A geolocated event is finished work, so it carries no flow action: the
   // cluster is the utilities tier plus, for its author, the edit that files a
-  // version. Called before the early returns, as every hook here must be.
-  const { actions, panels } = useEventActions({ event: geo, surface: "event" });
+  // version and the close that retracts it. The retraction rewrites the row's
+  // status and reason, so the page refetches on it. Called before the early
+  // returns, as every hook here must be.
+  const { actions, panels } = useEventActions({
+    event: geo,
+    surface: "event",
+    onChanged: refetch,
+  });
 
   if (error)
     return (

@@ -1,12 +1,13 @@
 """Owner mutation lifecycle for events.
 
-`DELETE` (hard delete, owner-only) plus the machine-`detected` owner flow:
-`POST .../geolocate` (writes the owner's edits and flips the row to
-`geolocated`) and `POST .../close` (the owner rejects the detection; the row
-stays visible with ``before_closed_status='detected'`` and is re-importable).
-Close is state-gated to `requested` / `detected`; geolocate accepts `detected`
-(owner-only) or `requested` (anyone). Shared fixtures live in `conftest.py`;
-`client` / `_make_geo` / the proof helpers in `_helpers.py`.
+The machine-`detected` owner flow: `POST .../geolocate` (writes the owner's
+edits and flips the row to `geolocated`) and `POST .../close` (the owner
+rejects the detection; the row stays visible with
+``before_closed_status='detected'`` and is re-importable). Close is owner-only
+and runs in every live state; geolocate accepts `detected` (owner-only) or
+`requested` (anyone). The owner holds no destructive verb at all, covered here
+too. Shared fixtures live in `conftest.py`; `client` / `_make_geo` / the proof
+helpers in `_helpers.py`.
 """
 
 from __future__ import annotations
@@ -24,72 +25,42 @@ from tests.events._helpers import (
     proof_form_field,
 )
 
-# ── DELETE /events/{id} ───────────────────────────────────────────────────
+# ── Destroying a row is admin-only ────────────────────────────────────────
 
 
-def test_delete_requires_authentication(db, author):
-    geo = _make_geo(db, author=author)
-    response = client.delete(f"/api/v1/events/{geo.id}")
-    assert response.status_code == 401
-
-
-def test_delete_returns_404_for_unknown_id(author):
-    response = client.delete(f"/api/v1/events/{uuid.uuid4()}", headers=login_as(client, author))
-    assert response.status_code == 404
-
-
-def test_delete_returns_404_for_soft_deleted(db, author):
-    """Admin already removed it; the owner sees the same 404 surface.
-
-    Same observed behaviour as an unknown id, the owner can't infer
-    that "an admin reached in and removed this," only that the row is
-    gone from their perspective.
-    """
-    geo = _make_geo(db, author=author, deleted=True)
-    response = client.delete(f"/api/v1/events/{geo.id}", headers=login_as(client, author))
-    assert response.status_code == 404
-
-
-def test_delete_returns_403_when_not_owner(db, author, second_user):
-    geo = _make_geo(db, author=author)
-    response = client.delete(f"/api/v1/events/{geo.id}", headers=login_as(client, second_user))
-    assert response.status_code == 403
-
-
-def test_delete_succeeds_for_owner_and_removes_row(db, author):
+def test_owner_has_no_delete_verb(db, author):
+    """The owner's way out of their own row is ``close``, which keeps the
+    record readable. Destruction is an admin act, so the path serves no
+    ``DELETE`` at all and the row survives the attempt."""
     geo = _make_geo(db, author=author)
     geo_id = geo.id
     response = client.delete(f"/api/v1/events/{geo_id}", headers=login_as(client, author))
-    assert response.status_code == 204
+    assert response.status_code == 405
+    db.expire_all()
+    assert db.query(Event).filter(Event.id == geo_id).first() is not None
+
+
+def test_admin_hard_delete_still_removes_the_row(db, author, admin_user):
+    """The one destructive path that remains (mode and audit trail are covered
+    in ``test_admin.py``)."""
+    geo = _make_geo(db, author=author)
+    geo_id = geo.id
+    response = client.delete(
+        f"/api/v1/admin/events/{geo_id}?hard=true",
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 200
     db.expire_all()
     assert db.query(Event).filter(Event.id == geo_id).first() is None
 
 
-def test_delete_invalidates_points_cache(db, author):
-    """The map gets stale instantly when the owner drops a row.
-
-    Without this, anyone holding a cached `/points` response would see
-    the deleted row's marker for up to the cache TTL.
-    """
-    geo = _make_geo(db, author=author)
-    first = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
-    assert first.headers.get("x-cache") == "MISS"
-    warm = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
-    assert warm.headers.get("x-cache") == "HIT"
-
-    client.delete(f"/api/v1/events/{geo.id}", headers=login_as(client, author))
-
-    after = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
-    assert after.headers.get("x-cache") == "MISS", "delete must invalidate the points cache"
-
-
 # ── Owner flow: POST .../geolocate / POST .../close ────────────────────────
-# Close is owner-only and state-gated to ``requested`` / ``detected``; a
-# ``geolocated`` row is frozen. Geolocate writes the owner's edits AND flips a
-# ``detected`` (owner-only) or ``requested`` (anyone) row to ``geolocated`` in
-# one step (the create-time evidence floor is enforced there). The detected →
-# geolocated freeze and the close-then-re-import recreate seam
-# (test_detection.py) are what these lock in.
+# Close is owner-only and runs in every live state; only an already ``closed``
+# row is past it. Geolocate writes the owner's edits AND flips a ``detected``
+# (owner-only) or ``requested`` (anyone) row to ``geolocated`` in one step (the
+# create-time evidence floor is enforced there). The detected → geolocated
+# freeze and the close-then-re-import recreate seam (test_detection.py) are what
+# these lock in.
 
 
 def _detected(db, author, **kwargs):
@@ -421,9 +392,84 @@ def test_close_returns_403_when_not_owner(db, author, second_user):
     assert response.status_code == 403
 
 
-def test_close_rejects_geolocated_row(db, author):
-    geo = _make_geo(db, author=author)  # geolocated, DELETE owns its removal
+def test_close_retracts_a_published_row(db, author):
+    """Closing a ``geolocated`` row is a public retraction: it stamps
+    ``before_closed_status='geolocated'`` and keeps the id, the coordinate and
+    the reason, so the page still reads as the record of a claim taken back."""
+    geo = _make_geo(db, author=author)
+    geo_id = geo.id
+    response = _close(geo_id, author, reason="Wrong village, corrected elsewhere")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == STATUS_CLOSED
+    assert body["before_closed_status"] == STATUS_GEOLOCATED
+    assert body["close_reason"] == "Wrong village, corrected elsewhere"
+    assert body["closed_at"] is not None
+    assert body["id"] == str(geo_id)
+    assert body["event_coords"] is not None
+
+    detail = client.get(f"/api/v1/events/{geo_id}")
+    assert detail.status_code == 200
+    assert detail.json()["before_closed_status"] == STATUS_GEOLOCATED
+
+
+def test_retraction_leaves_the_read_views_and_the_map(db, author):
+    """A retracted claim stops being offered: it leaves the located catalog,
+    the requested queue and the map. Only its own URL still serves it."""
+    geo = _make_geo(db, author=author)
+    geo_id = geo.id
+    assert str(geo_id) in {r["id"] for r in client.get("/api/v1/events").json()}
+    assert str(geo_id) in {
+        row[0] for row in client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").json()
+    }
+
+    assert _close(geo_id, author).status_code == 200
+
+    assert str(geo_id) not in {r["id"] for r in client.get("/api/v1/events").json()}
+    assert str(geo_id) not in {r["id"] for r in client.get("/api/v1/events?view=requested").json()}
+    assert str(geo_id) not in {
+        row[0] for row in client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").json()
+    }
+
+
+def test_retraction_leaves_the_published_feed_and_count(db, author):
+    """``published_events`` is what the profile feed and its headline count
+    read, so a retraction drops out of both at once."""
+    geo = _make_geo(db, author=author)
+
+    def feed():
+        body = client.get(f"/api/v1/users/{author.username}/events").json()
+        return {r["id"] for r in body["items"]}
+
+    before = client.get(f"/api/v1/users/{author.username}").json()["geolocations_count"]
+    assert str(geo.id) in feed()
+
+    assert _close(geo.id, author).status_code == 200
+
+    after = client.get(f"/api/v1/users/{author.username}").json()["geolocations_count"]
+    assert after == before - 1
+    assert str(geo.id) not in feed()
+
+
+def test_close_rejects_an_already_closed_row(db, author):
+    """``closed`` is terminal: there is no owner un-close and no second close."""
+    geo = _make_geo(db, author=author)
+    assert _close(geo.id, author).status_code == 200
     response = _close(geo.id, author)
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "invalid_state"
+
+
+def test_retracted_row_cannot_be_edited(db, author, conflict, capture_source_tag):
+    """A correction supersedes a live claim; a retracted row has none to
+    supersede, so the version path stays shut on it."""
+    geo = _make_geo(db, author=author)
+    assert _close(geo.id, author).status_code == 200
+    response = client.post(
+        f"/api/v1/events/{geo.id}/versions",
+        data=_floor_form(conflict, capture_source_tag),
+        headers=login_as(client, author),
+    )
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "invalid_state"
 

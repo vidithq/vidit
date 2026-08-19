@@ -547,7 +547,6 @@ _DOCUMENTED_LIMITS = [
     ),
     _Case("post", "/api/v1/events", 30, "user", {"data": _SUBMIT_FORM, **_SUBMIT_FILE}),
     _Case("post", "/api/v1/events/requests", 30, "user", {"data": _SUBMIT_FORM, **_SUBMIT_FILE}),
-    _Case("delete", f"/api/v1/events/{_MISSING_ID}", 30),
     _Case(
         "post",
         f"/api/v1/events/{_MISSING_ID}/geolocate",

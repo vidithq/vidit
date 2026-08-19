@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.models.event import Event
 from app.models.follow import Follow
 from app.models.user import User
-from app.services.event_filters import visible_events
+from app.services.event_filters import published_events, visible_events
 from app.services.thumbnails import thumbnail_media_criteria
 
 
@@ -68,7 +68,14 @@ def get_timeline(
     page: int = 1,
     per_page: int = 20,
 ) -> dict:
-    """Page through events owned by users that ``user_id`` follows.
+    """Page through the published geolocations of the users ``user_id`` follows.
+
+    Filtered on :func:`services.event_filters.published_events` beside the
+    visibility pair, so the feed carries what a followed analyst stood behind
+    and nothing else: a detection they have not vouched for is machine output,
+    and a geolocation they retracted is a claim taken back. Both leave the feed
+    the moment their status says so, which is the same set the analyst's own
+    profile feed serves.
 
     Returns ``{"items": [(geo, lat, lng), ...], "total": int}``, ordered by
     ``created_at DESC, id DESC``: submission order, the ordering the
@@ -85,7 +92,7 @@ def get_timeline(
     if not followed_ids:
         return {"items": [], "total": 0}
 
-    where_clause = and_(Event.owner_id.in_(followed_ids), *visible_events())
+    where_clause = and_(Event.owner_id.in_(followed_ids), *visible_events(), published_events())
     total = db.query(func.count(Event.id)).filter(where_clause).scalar() or 0
     window = (
         db.query(

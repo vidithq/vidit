@@ -82,11 +82,15 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
     live = (
         Event.owner_id == user_id,
         Event.status.in_(COUNTED_STATUSES),
-        # ``closed`` covers two different rows. Off ``detected`` it is a
+        # ``closed`` covers three different rows. Off ``detected`` it is a
         # machine detection the analyst threw out, a judgement they made, so it is
-        # documented work. Off ``requested`` it is a call for help they
-        # withdrew, and a ``requested`` row takes part in no aggregate here, so
-        # its retired form must not either. ``is_distinct_from`` rather than
+        # documented work; off ``geolocated`` it is published work they
+        # retracted, documented for the same reason (the retraction is part of
+        # the record, and the tallies below print it under ``closed`` rather
+        # than under the geolocations it left). Off ``requested`` it is a call
+        # for help they withdrew, and a ``requested`` row takes part in no
+        # aggregate here, so its retired form must not either.
+        # ``is_distinct_from`` rather than
         # ``!=``: ``before_closed_status`` is NULL on every non-closed row, and
         # ``!=`` would evaluate NULL there and drop all of them.
         Event.before_closed_status.is_distinct_from(STATUS_REQUESTED),

@@ -2,7 +2,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { useEventActions, type ActionSurface } from "./useEventActions";
-import type { EventDetail, EventStatus } from "@/types";
+import type { BeforeClosedStatus, EventDetail, EventStatus } from "@/types";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -14,7 +14,10 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: { id: "u1", username: "ana" } }),
 }));
 
-function eventFixture(status: EventStatus): EventDetail {
+function eventFixture(
+  status: EventStatus,
+  beforeClosedStatus: BeforeClosedStatus | null = null
+): EventDetail {
   return {
     id: "e1",
     title: "Strike near Bakhmut",
@@ -29,7 +32,7 @@ function eventFixture(status: EventStatus): EventDetail {
     version_no: 1,
     is_graphic: false,
     close_reason: null,
-    before_closed_status: null,
+    before_closed_status: beforeClosedStatus,
     detected_from_url: null,
     detected_via: null,
     owner: { id: "u1", username: "ana" },
@@ -52,12 +55,14 @@ function eventFixture(status: EventStatus): EventDetail {
 function Harness({
   status,
   surface,
+  beforeClosedStatus = null,
 }: {
   status: EventStatus;
   surface: ActionSurface;
+  beforeClosedStatus?: BeforeClosedStatus | null;
 }) {
   const { actions, panels } = useEventActions({
-    event: eventFixture(status),
+    event: eventFixture(status, beforeClosedStatus),
     surface,
   });
   return (
@@ -68,15 +73,27 @@ function Harness({
   );
 }
 
-/** The owner verbs the row is showing, as accessible names. Every one of them
- *  is a button in the row, so there is nothing to open first. */
-function ownerControls(): string[] {
-  return ["Close this request", "Delete this request"].filter(
-    (name) => screen.queryByRole("button", { name }) !== null
-  );
+/** The close control the row is showing, as its accessible name, or `null`.
+ *  Every owner verb is a button in the row, so there is nothing to open first. */
+function closeControl(): string | null {
+  for (const name of [
+    "Close this request",
+    "Close this detection",
+    "Close this geolocation",
+    "Close this event",
+  ]) {
+    if (screen.queryByRole("button", { name }) !== null) return name;
+  }
+  return null;
 }
 
-describe("owner management is scoped to the surface that owns the verb", () => {
+/** No surface offers a destructive verb: an owner takes a row back, an admin
+ *  removes it. Matched loosely so a delete control under any wording fails. */
+function hasDeleteControl(): boolean {
+  return screen.queryByRole("button", { name: /delete/i }) !== null;
+}
+
+describe("owner management: correcting, taking back, and never destroying", () => {
   // Every owner verb is a control in the row: the author's own actions are the
   // ones they reach for most, and a disclosure over them costs a click per use.
   it("offers the published correction on the event surface as a visible icon", () => {
@@ -85,7 +102,6 @@ describe("owner management is scoped to the surface that owns the verb", () => {
       "href",
       "/events/e1/edit"
     );
-    expect(ownerControls()).toEqual([]);
   });
 
   it.each<EventStatus>(["requested", "closed", "detected"])(
@@ -96,37 +112,56 @@ describe("owner management is scoped to the surface that owns the verb", () => {
     }
   );
 
-  // `/events/{id}` serves a row of ANY status, so the request verbs must not
-  // appear there just because the reader owns the row: a requested or closed
-  // event opened by id is not the request surface.
-  it.each<EventStatus>(["requested", "closed", "detected"])(
-    "offers no request verb on the event surface for a %s row",
-    (status) => {
-      render(<Harness status={status} surface="event" />);
-      expect(ownerControls()).toEqual([]);
+  // One verb closes all three live states, and the noun names the row it
+  // closes, so a reader learns one word rather than three.
+  it.each<[EventStatus, string]>([
+    ["requested", "Close this request"],
+    ["detected", "Close this detection"],
+    ["geolocated", "Close this geolocation"],
+  ])("names the row a %s close applies to", (status, label) => {
+    render(<Harness status={status} surface="event" />);
+    expect(closeControl()).toBe(label);
+  });
+
+  it.each<ActionSurface>(["event", "request"])(
+    "carries the close verb on the %s surface",
+    (surface) => {
+      render(<Harness status="requested" surface={surface} />);
+      expect(closeControl()).toBe("Close this request");
     }
   );
 
-  it("keeps closing and deleting on the request surface, in the row", () => {
-    render(<Harness status="requested" surface="request" />);
-    expect(ownerControls()).toEqual([
-      "Close this request",
-      "Delete this request",
-    ]);
-  });
+  // Closing is terminal and there is no owner un-close, so the verb goes once
+  // it has been taken.
+  it.each<ActionSurface>(["event", "request"])(
+    "offers nothing to close on a closed row (%s surface)",
+    (surface) => {
+      render(<Harness status="closed" surface={surface} beforeClosedStatus="requested" />);
+      expect(closeControl()).toBeNull();
+    }
+  );
 
-  it("leaves a closed request deletable on the request surface", () => {
-    render(<Harness status="closed" surface="request" />);
-    expect(ownerControls()).toEqual(["Delete this request"]);
-  });
+  // Destruction is admin-only, so no surface and no status shows a delete.
+  it.each<EventStatus>(["requested", "detected", "geolocated", "closed"])(
+    "offers no delete for a %s row on either detail surface",
+    (status) => {
+      for (const surface of ["event", "request"] as const) {
+        const { unmount } = render(<Harness status={status} surface={surface} />);
+        expect(hasDeleteControl()).toBe(false);
+        unmount();
+      }
+    }
+  );
 
-  // The row is gone for good, so the destructive verb asks twice rather than
-  // firing on the click that reached it.
-  it("arms the delete before it fires, and says so", () => {
-    render(<Harness status="requested" surface="request" />);
-    fireEvent.click(screen.getByRole("button", { name: "Delete this request" }));
-    expect(screen.getByRole("button", { name: "Confirm delete" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(/cannot be undone/);
+  // The reason is what makes a closed row readable as a decision rather than a
+  // disappearance, so the panel that captures it opens named for the row.
+  it("opens the close panel named for the row it closes", () => {
+    render(<Harness status="geolocated" surface="event" />);
+    fireEvent.click(screen.getByRole("button", { name: "Close this geolocation" }));
+    expect(screen.getByLabelText("Close reason")).toBeInTheDocument();
+    // The panel's own submit repeats the label, so the reader confirms the row
+    // they picked rather than a bare "Close".
+    expect(screen.getAllByRole("button", { name: "Close this geolocation" })).toHaveLength(2);
   });
 
   it("gives the map panel no action row at all", () => {
@@ -156,9 +191,9 @@ describe("utilities are the detail pages' tier", () => {
       const { container } = render(<Harness status="geolocated" surface={surface} />);
       expect(screen.queryByRole("button", { name: "Share on X" })).toBeNull();
       expect(screen.queryByRole("button", { name: "Report" })).toBeNull();
-      expect(ownerControls()).toEqual([]);
+      expect(closeControl()).toBeNull();
       // Not merely empty: an empty wrapper is still a flex item, and a host
-      // adds its own controls (the form's queue position, Skip, Reject) to
+      // adds its own controls (the form's queue position, Skip, Close) to
       // that cluster.
       expect(container).toBeEmptyDOMElement();
     }
@@ -176,13 +211,25 @@ describe("utilities are the detail pages' tier", () => {
     );
   });
 
-  it.each<EventStatus>(["requested", "detected", "closed"])(
-    "offers no version history for a %s row, which has no versions to walk",
-    (status) => {
-      render(<Harness status={status} surface="event" />);
-      expect(screen.queryByRole("link", { name: "Version history" })).toBeNull();
-    }
-  );
+  // A retraction keeps the record it took back, and the history is the part of
+  // it a reader most needs after one.
+  it("keeps the version history on a retracted row", () => {
+    render(<Harness status="closed" surface="event" beforeClosedStatus="geolocated" />);
+    expect(screen.getByRole("link", { name: "Version history" })).toHaveAttribute(
+      "href",
+      "/events/e1/history"
+    );
+  });
+
+  it.each<[EventStatus, BeforeClosedStatus | null]>([
+    ["requested", null],
+    ["detected", null],
+    ["closed", "requested"],
+    ["closed", "detected"],
+  ])("offers no version history for a %s row, which never published", (status, before) => {
+    render(<Harness status={status} surface="event" beforeClosedStatus={before} />);
+    expect(screen.queryByRole("link", { name: "Version history" })).toBeNull();
+  });
 
   it.each<ActionSurface>(["request", "edit", "panel"])(
     "carries no version history on the %s surface",
