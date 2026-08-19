@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { ApiError } from "@/lib/api";
+
 import { SourceMediaField } from "@/components/geolocations/SourceMediaField";
 import { TitleField } from "@/components/geolocations/TitleField";
 import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
@@ -34,10 +36,13 @@ import {
   archivedCopies,
   VERSION_NOTE_MAX_LEN,
   geolocateEvent,
+  hasVersionChanges,
   missingEventFields,
+  nothingChangedMessage,
   parseCaptureCoords,
   saveVersion,
   type EventFieldsState,
+  type EventVersionFormState,
 } from "@/lib/events";
 import { toDatetimeLocalUTC } from "@/lib/format";
 import type { EventDetail } from "@/types";
@@ -241,6 +246,16 @@ export function EventEditForm({
           }),
     {
       fallback: editingPublished ? "Couldn't save this version." : "Couldn't submit.",
+      // The server is the authority on both version refusals, since the row may
+      // have moved under a form that has been open a while. `nothing_changed`
+      // takes the same sentence the pre-submit check raises, so a reader never
+      // sees two wordings for one verdict; `version_limit` keeps the server's
+      // own message, which carries the ceiling, so the number is not mirrored
+      // here.
+      onError: (err) =>
+        err instanceof ApiError && err.code === "nothing_changed"
+          ? nothingChangedMessage(geo.version_no)
+          : undefined,
       onSuccess: () => {
         // The detections badge counts `detected` rows, which only the submit
         // path changes.
@@ -296,6 +311,25 @@ export function EventEditForm({
     ),
   });
 
+  // What the version check reads: the editable state as the inputs hold it.
+  const versionState = (): EventVersionFormState => ({
+    title,
+    lat,
+    lng,
+    captureLat,
+    captureLng,
+    eventDate,
+    eventTime,
+    sourcePostedAt,
+    isGraphic,
+    proof,
+    tagIds: selectedTagIds,
+    conflictIds: selectedConflictIds,
+    secondarySourceUrls,
+    secondarySnapshotUrls,
+    sourceSnapshotUrl,
+  });
+
   // Submit enforces the full floor (it publishes the row), then asks to confirm.
   // Submitting an incomplete detection surfaces the notice (every miss at once)
   // instead of entering the confirm step.
@@ -340,6 +374,13 @@ export function EventEditForm({
     // click after it writes; every check above runs on both clicks, so a form
     // that stopped being submittable between them says so instead of posting.
     if (editingPublished) {
+      // A version has to change something. Caught here so a save with nothing
+      // touched costs no request; the server refuses the same edit, and both
+      // say it in the same words.
+      if (!hasVersionChanges(geo, versionState())) {
+        submitMutation.setError(nothingChangedMessage(geo.version_no));
+        return;
+      }
       void submitMutation.run();
       return;
     }

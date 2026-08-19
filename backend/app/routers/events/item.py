@@ -45,6 +45,7 @@ from app.routers.events._common import (
     build_event_read,
     build_version_read,
     raise_archive_error,
+    raise_version_error,
     resolve_live_event,
 )
 from app.schemas.event import (
@@ -441,6 +442,8 @@ async def save_event_version(
         _raise_event_error(exc)
     except SnapshotRejected as exc:
         raise_archive_error(exc)
+    except versions_service.VersionLimitError as exc:
+        raise_version_error(exc)
     return _serialize_event(db, edited)
 
 

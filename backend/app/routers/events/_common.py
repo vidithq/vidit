@@ -3,8 +3,9 @@
 What the ``read`` / ``write`` / ``item`` sub-routers all need, kept here so
 none imports another:
 
-* the typed-error → HTTP envelopes (``_raise_event_error`` and
-  :func:`raise_archive_error`, each over its ``code → status`` map),
+* the typed-error → HTTP envelopes (``_raise_event_error``,
+  :func:`raise_archive_error` and :func:`raise_version_error`, each over its
+  ``code → status`` map),
 * :func:`build_event_read` and :func:`build_event_list`, the single
   ``EventRead`` / ``EventList`` assemblers shared by every response site
   (including the users and social routers, which import from here), and
@@ -34,6 +35,7 @@ from app.services.event_filters import visible_events
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
 from app.services.source_archive import SnapshotRejected, archive_row_for
 from app.services.thumbnails import pick_thumbnail
+from app.services.versions import VersionLimitError
 
 # Item type of the repeated ``secondary_source_urls`` multipart field, shared by
 # the create / request / geolocate forms. The ceiling rides on the ITEM: a
@@ -75,12 +77,27 @@ _EVENT_ERROR_STATUS: dict[str, int] = {
     "tag_requirements_not_met": 400,
     "too_many_source_links": 400,
     "invalid_state": 409,
+    "nothing_changed": 409,
 }
 
 
 def _raise_event_error(exc: EvidenceIntakeError) -> NoReturn:
     """Translate a typed events-service error into an HTTP response."""
     raise_typed_error(exc, _EVENT_ERROR_STATUS)
+
+
+_VERSION_ERROR_STATUS: dict[str, int] = {"version_limit": 409}
+
+
+def raise_version_error(exc: VersionLimitError) -> NoReturn:
+    """Translate a refused version into its 409.
+
+    Its own envelope rather than an entry in :data:`_EVENT_ERROR_STATUS`,
+    because the ceiling is raised by ``services/versions`` and met by both
+    writers that produce a version: the owner's edit and an archived copy
+    recorded on a published row, which is not an events-service call at all.
+    """
+    raise_typed_error(exc, _VERSION_ERROR_STATUS)
 
 
 def resolve_live_event(db: Session, event_id: uuid.UUID) -> Event:

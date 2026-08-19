@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   changedFields,
   eventVersion,
+  hasVersionChanges,
   eventVersions,
   eventVersionsPath,
   eventVersionHref,
   parseVersionSegment,
   snapshotToEventView,
+  type EventVersionFormState,
 } from "./events";
 import type { EventDetail, EventVersion } from "@/types";
 
@@ -453,3 +455,87 @@ describe("eventVersion", () => {
   });
 });
 
+describe("hasVersionChanges", () => {
+  /** The form as it is seeded from `CURRENT`: every input holding what the row
+   *  holds, which is what an untouched edit page posts. */
+  const untouched = (
+    overrides: Partial<EventVersionFormState> = {}
+  ): EventVersionFormState => ({
+    title: CURRENT.title,
+    lat: String(CURRENT.event_coords!.lat),
+    lng: String(CURRENT.event_coords!.lng),
+    captureLat: "",
+    captureLng: "",
+    eventDate: CURRENT.event_date!,
+    // `<input type="time">` holds minutes, the API serves seconds.
+    eventTime: CURRENT.event_time!.slice(0, 5),
+    // `toDatetimeLocalUTC` renders the stored instant as a naive UTC clock.
+    sourcePostedAt: "2026-05-09T15:45",
+    isGraphic: CURRENT.is_graphic,
+    proof: CURRENT.proof as Record<string, unknown>,
+    tagIds: CURRENT.tags.map((tag) => tag.id),
+    conflictIds: CURRENT.conflicts.map((c) => c.id),
+    secondarySourceUrls: [...CURRENT.secondary_source_urls],
+    secondarySnapshotUrls: CURRENT.secondary_source_urls.map(() => ""),
+    sourceSnapshotUrl: "",
+    ...overrides,
+  });
+
+  it("reads an untouched form as no change at all", () => {
+    expect(hasVersionChanges(CURRENT, untouched())).toBe(false);
+  });
+
+  it("reads the two format gaps between the form and the API as no change", () => {
+    // The time input drops the seconds and the datetime input drops the zone;
+    // neither is an edit, and a naive string comparison would call both one.
+    expect(
+      hasVersionChanges(
+        CURRENT,
+        untouched({ eventTime: "15:45", sourcePostedAt: "2026-05-09T15:45" })
+      )
+    ).toBe(false);
+  });
+
+  it("names a moved field, however it moved", () => {
+    const moved: Partial<EventVersionFormState>[] = [
+      { title: "Corrected title" },
+      { lat: "49" },
+      { captureLat: "48.1", captureLng: "37.9" },
+      { eventDate: "2026-05-10" },
+      { eventTime: "16:00" },
+      { sourcePostedAt: "2026-05-09T16:00" },
+      { isGraphic: true },
+      { tagIds: [] },
+      { conflictIds: [] },
+      { secondarySourceUrls: ["https://t.me/mirror/1"] },
+      { proof: { type: "doc", content: [] } },
+    ];
+    for (const change of moved) {
+      expect(hasVersionChanges(CURRENT, untouched(change))).toBe(true);
+    }
+  });
+
+  it("counts a new archived copy and ignores a re-paste of the stored one", () => {
+    // Mirror 2 already holds this copy, so pasting it again moves nothing.
+    expect(
+      hasVersionChanges(
+        CURRENT,
+        untouched({ secondarySnapshotUrls: ["", "https://archive.ph/two"] })
+      )
+    ).toBe(false);
+    // Mirror 1 holds none, so a paste beside it is a change on its own.
+    expect(
+      hasVersionChanges(
+        CURRENT,
+        untouched({ secondarySnapshotUrls: ["https://archive.ph/one", ""] })
+      )
+    ).toBe(true);
+    // And a corrected copy of the source is one too.
+    expect(
+      hasVersionChanges(
+        CURRENT,
+        untouched({ sourceSnapshotUrl: "https://web.archive.org/corrected" })
+      )
+    ).toBe(true);
+  });
+});

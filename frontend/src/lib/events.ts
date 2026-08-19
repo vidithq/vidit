@@ -612,6 +612,13 @@ const sameCoords = (
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((value, index) => value === b[index]);
 
+/** Two clock times are the same time to the minute, which is the precision the
+ *  field carries: the API serves `HH:MM:SS` and the form's `<input type="time">`
+ *  holds `HH:MM`, so a raw string comparison would call an untouched field
+ *  changed. */
+const sameTime = (a: string | null, b: string | null): boolean =>
+  (a?.slice(0, 5) ?? null) === (b?.slice(0, 5) ?? null);
+
 /** Two unordered relationships hold the same members. Tags and conflicts are
  *  sets the API serves in whatever order it read them, so a position-sensitive
  *  comparison would announce a changed field on an edit that touched neither. */
@@ -658,7 +665,7 @@ export function changedFields(version: EventDetail, previous: EventDetail): stri
     !sameCoords(version.capture_source_coords, previous.capture_source_coords)
   );
   flag(VERSION_FIELD_LABELS.event_date, version.event_date !== previous.event_date);
-  flag(VERSION_FIELD_LABELS.event_time, version.event_time !== previous.event_time);
+  flag(VERSION_FIELD_LABELS.event_time, !sameTime(version.event_time, previous.event_time));
   flag(
     VERSION_FIELD_LABELS.source_posted_at,
     !sameInstant(version.source_posted_at, previous.source_posted_at)
@@ -687,6 +694,104 @@ export function changedFields(version: EventDetail, previous: EventDetail): stri
   flag(VERSION_FIELD_LABELS.is_graphic, version.is_graphic !== previous.is_graphic);
   return changed;
 }
+
+/** The editable state the edit form holds, as the strings its inputs carry.
+ *
+ *  Spelled out per field rather than reusing `EventVersionInput`, because the
+ *  check runs on what is typed rather than on what would be posted: the coordinate
+ *  inputs are still strings, and the two snapshot pastes are what the analyst
+ *  archived rather than what the row stores. */
+export interface EventVersionFormState {
+  title: string;
+  lat: string;
+  lng: string;
+  captureLat: string;
+  captureLng: string;
+  eventDate: string;
+  eventTime: string;
+  sourcePostedAt: string;
+  isGraphic: boolean;
+  proof: Record<string, unknown> | null;
+  tagIds: string[];
+  conflictIds: string[];
+  secondarySourceUrls: string[];
+  secondarySnapshotUrls: string[];
+  sourceSnapshotUrl: string;
+}
+
+const coordsOf = (lat: string, lng: string): EventDetail["event_coords"] => {
+  const [parsedLat, parsedLng] = [cleanNumber(lat), cleanNumber(lng)];
+  return parsedLat === null || parsedLng === null ? null : { lat: parsedLat, lng: parsedLng };
+};
+
+/**
+ * Whether saving this form would file a version that differs from the one on
+ * screen.
+ *
+ * The form posts the whole editable state, so a save with nothing touched would
+ * otherwise ask the server to mint a version whose changed-field list is empty.
+ * The check runs on the client so that save costs no request, and the server
+ * refuses the same edit with `nothing_changed`, which is the authority: the row
+ * may have moved under a form that has been open a while.
+ *
+ * The comparison is `changedFields` itself, over a candidate assembled from the
+ * form state, so the two cannot come to disagree about which fields a version
+ * carries. The archived copies are the one leg computed here instead: a paste is
+ * a change only where it differs from the copy that link already holds, and
+ * spreading the pastes back over the three fields `archivedCopies` reads would
+ * have to invent a provider for each, which nothing compares.
+ */
+export function hasVersionChanges(
+  geo: EventDetail,
+  state: EventVersionFormState
+): boolean {
+  const mirrors: string[] = [];
+  const pastedCopies = new Map<string, string>();
+  state.secondarySourceUrls.forEach((raw, index) => {
+    const url = raw.trim();
+    if (!url) return;
+    mirrors.push(url);
+    const copy = (state.secondarySnapshotUrls[index] ?? "").trim();
+    if (copy) pastedCopies.set(url, copy);
+  });
+  const sourceCopy = state.sourceSnapshotUrl.trim();
+  if (sourceCopy && geo.source_url) pastedCopies.set(geo.source_url, sourceCopy);
+  const stored = archivedCopies(geo);
+  const copiesMove = [...pastedCopies].some(([url, copy]) => stored.get(url)?.url !== copy);
+  if (copiesMove) return true;
+
+  const candidate: EventDetail = {
+    ...geo,
+    title: state.title.trim(),
+    event_coords: coordsOf(state.lat, state.lng),
+    capture_source_coords: coordsOf(state.captureLat, state.captureLng),
+    event_date: state.eventDate || null,
+    event_time: state.eventTime || null,
+    // Blank keeps what the row holds, the way the endpoint reads it; the input
+    // is a UTC wall clock, which is what the `Z` names.
+    source_posted_at: state.sourcePostedAt
+      ? `${state.sourcePostedAt}Z`
+      : geo.source_posted_at,
+    // Ratcheted, as the server ratchets it: a cleared switch on a flagged row
+    // changes nothing.
+    is_graphic: geo.is_graphic || state.isGraphic,
+    secondary_source_urls: mirrors,
+    // Realigned with the mirrors above, since `archivedCopies` pairs the two
+    // lists by position.
+    archived_secondary_sources: mirrors.map((url) => stored.get(url) ?? null),
+    // Only the ids are compared, so the rest of each row is the loaded one.
+    tags: state.tagIds.map((id) => ({ id })) as EventDetail["tags"],
+    conflicts: state.conflictIds.map((id) => ({ id })) as EventDetail["conflicts"],
+    proof: state.proof,
+  };
+  return changedFields(candidate, geo).length > 0;
+}
+
+/** What the edit form says when a save would file a version identical to the one
+ *  on screen. One sentence for both refusals: the client-side check raises it
+ *  without a request, and the server's `nothing_changed` 409 maps to it. */
+export const nothingChangedMessage = (versionNo: number): string =>
+  `Nothing changed since version ${versionNo}`;
 
 /** One version of an event, as the history list and the version page read it. */
 export interface EventVersionEntry {

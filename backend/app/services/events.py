@@ -163,6 +163,19 @@ class EventStateError(EventError):
     code = "invalid_state"
 
 
+class NothingChangedError(EventError):
+    """The edit would file a version carrying the state the live row carries.
+
+    A version spends a number in a public address space and prints a row in the
+    history, so an edit that moves no versioned field is refused rather than
+    recorded: the record must not claim a correction that did not happen. The
+    note is not a versioned field, so a note on its own does not lift this.
+    Maps to 409, like the other "the row's state forbids this" verdicts.
+    """
+
+    code = "nothing_changed"
+
+
 def validate_coordinates(lat: float, lng: float) -> None:
     """Reject out-of-range coordinates: the single bounds check shared by the
     human create + geolocate paths."""
@@ -933,13 +946,22 @@ async def save_version(
     publish forms; an image the new body drops is deleted only if no readable
     version displays it (see ``services/versions.referenced_media_urls``).
 
+    **A version has to change something.** The incoming state is compared
+    against the live row on the versioned fields
+    (``services/versions.COMPARED_FIELDS``, plus the archived copies), and an
+    edit that moves none of them raises :class:`NothingChangedError` before the
+    version is filed and before any upload runs.
+
     Raises :class:`EventStateError` (409) off ``geolocated``, the 403 of
-    ``ensure_owner`` for anyone but the owner,
-    :class:`InvalidCoordinatesError` / :class:`InvalidProofError` /
-    :class:`ProofImageRequiredError` / :class:`MediaRequiredError` /
-    :class:`TagRequirementsError` / :class:`TooManySourceLinksError` (400) on a
-    bad value or an unmet floor, and the shared file-validation errors. Returns
-    the refreshed row, one version further on.
+    ``ensure_owner`` for anyone but the owner, :class:`NothingChangedError`
+    (409) on an edit that moves nothing,
+    ``services/versions.VersionLimitError`` (409) on a row already at
+    ``MAX_VERSIONS_PER_EVENT``, :class:`InvalidCoordinatesError` /
+    :class:`InvalidProofError` / :class:`ProofImageRequiredError` /
+    :class:`MediaRequiredError` / :class:`TagRequirementsError` /
+    :class:`TooManySourceLinksError` (400) on a bad value or an unmet floor, and
+    the shared file-validation errors. Returns the refreshed row, one version
+    further on.
     """
     # Same lock discipline as ``geolocate`` and ``close``: serialize on the row,
     # then re-read status and ownership under the lock. ``populate_existing()``
@@ -971,6 +993,51 @@ async def save_version(
     effective_tags = _resolve_tags(db, tag_ids)
     effective_conflicts = _resolve_conflicts(db, conflict_ids)
     _require_submission_floor(effective_tags, effective_conflicts)
+
+    # An edit that moves nothing is refused before anything is staged. A version
+    # spends a number in a public address space (``/events/{id}/vN``) and prints
+    # a row in the history, so one carrying the state the live row already
+    # carries tells a reader that a correction happened when none did. Compared
+    # on the incoming values against the row under the lock, so a refused edit
+    # files no version and uploads no file. The note is not part of the
+    # comparison: it annotates a change, and on its own there is none to
+    # annotate.
+    proposed = {
+        "title": title,
+        "event_coords": {"lat": lat, "lng": lng},
+        "capture_source_coords": versions.point_shape(capture_point),
+        "event_date": event_date.isoformat() if event_date is not None else None,
+        "event_time": event_time.isoformat() if event_time is not None else None,
+        # ``None`` keeps what the row holds, so the proposed value is the stored
+        # one; anything else is what the write would store.
+        "source_posted_at": (
+            source_posted_at.isoformat()
+            if source_posted_at is not None
+            else (geo.source_posted_at.isoformat() if geo.source_posted_at is not None else None)
+        ),
+        # Ratcheted, exactly as the write below ratchets it: a posted false on a
+        # flagged row changes nothing.
+        "is_graphic": geo.is_graphic or is_graphic,
+        "secondary_source_urls": secondary_links,
+        "tags": versions.tag_entries(effective_tags),
+        "conflicts": versions.conflict_entries(effective_conflicts),
+        "proof": proof_data if proof_data is not None else geo.proof,
+    }
+    # The archived copies are their own leg: a paste is a change only where it
+    # differs from the copy that link already holds, and only for a link the
+    # post-edit row still carries, since a paste beside a dropped mirror is
+    # dropped with it. A dropped mirror is a change the list above already names.
+    stored_copies = versions.archived_pairs(geo)
+    pasted_copies = {
+        link: mirror_snapshots[link] for link in secondary_links if link in mirror_snapshots
+    }
+    if source_snapshot_url and geo.source_url is not None:
+        pasted_copies[geo.source_url] = source_snapshot_url
+    copies_move = any(
+        stored_copies.get(link) != snapshot for link, snapshot in pasted_copies.items()
+    )
+    if not copies_move and versions.matches_current(geo, proposed):
+        raise NothingChangedError(f"Nothing changed since version {geo.version_no}.")
 
     # File the version this edit supersedes BEFORE any field moves: the snapshot
     # reads the live collections, so it has to run against the pre-edit row. It

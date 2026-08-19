@@ -14,10 +14,15 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers.events._common import raise_archive_error, resolve_live_event
+from app.routers.events._common import (
+    raise_archive_error,
+    raise_version_error,
+    resolve_live_event,
+)
 from app.schemas.event import ArchivedLinkRead, EventArchiveCreate
 from app.services import permissions
 from app.services import source_archive as source_archive_service
+from app.services import versions as versions_service
 
 router = APIRouter()
 
@@ -65,4 +70,6 @@ def record_archived_copy(
         )
     except source_archive_service.SnapshotRejected as exc:
         raise_archive_error(exc)
+    except versions_service.VersionLimitError as exc:
+        raise_version_error(exc)
     return ArchivedLinkRead(url=row.snapshot_url, provider=row.provider)

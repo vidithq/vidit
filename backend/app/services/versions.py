@@ -21,6 +21,11 @@ displayed is not held alive by the history.
 content while the row and its number stay. A redacted snapshot contributes
 nothing to the floor above, so an image only it pointed at becomes deletable.
 
+:func:`matches_current` is what refuses a version that would carry the state the
+live row already carries, and it reads :data:`COMPARED_FIELDS` off the same
+snapshot the filing writes, so the check and the record cannot come to disagree
+about what a version is made of.
+
 Reads are paginated through the shared cursor vocabulary
 (``services/pagination``), so a long history walks the same way every other
 list does.
@@ -31,7 +36,7 @@ from __future__ import annotations
 import copy
 import json
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -45,12 +50,52 @@ from app.models.tag import Tag
 from app.models.user import User
 from app.services.sanitize import extract_image_srcs
 
+# How many versions one event may carry. Past a hundred the history has stopped
+# being a record of corrections: a script re-posting the same edit or a mirror
+# re-archived on a timer walks the number up without a reader ever gaining a
+# fact, while every version costs a snapshot row and pins alive every proof
+# image its body displayed. The number is the live row's, so version 100 is the
+# last one a write can produce.
+MAX_VERSIONS_PER_EVENT = 100
+
+# The versioned fields a no-change check reads, in the shapes
+# :func:`build_snapshot` stores them. Two of that function's keys are absent on
+# purpose: ``proof_media`` is derived from the proof body's image srcs, so a body
+# that did not move displays the same images, and ``archives`` carries a stored
+# ``created_at`` an incoming paste cannot state, which is why the callers compare
+# the copies through :func:`archived_pairs` instead.
+COMPARED_FIELDS: tuple[str, ...] = (
+    "title",
+    "event_coords",
+    "capture_source_coords",
+    "event_date",
+    "event_time",
+    "source_posted_at",
+    "is_graphic",
+    "secondary_source_urls",
+    "tags",
+    "conflicts",
+    "proof",
+)
+
+
+class VersionLimitError(Exception):
+    """The event already carries :data:`MAX_VERSIONS_PER_EVENT` versions.
+
+    Raised by :func:`file_version`, so both writers that produce a version (the
+    owner's edit and an archived copy recorded on a published row) meet the
+    ceiling in one place rather than each carrying its own count. Maps to 409.
+    """
+
+    code = "version_limit"
+
 
 def point_shape(value: Any) -> dict[str, float] | None:
     """One stored PostGIS point as the snapshot's wire shape, or ``None``.
 
     Same nesting as ``schemas/event.CoordsRead``, so a snapshot renders through
-    the components the live row renders through.
+    the components the live row renders through, and a proposed point compares
+    against a stored one without either side spelling the pair itself.
     """
     if value is None:
         return None
@@ -70,6 +115,15 @@ def tag_entries(tags: Iterable[Tag]) -> list[dict[str, str]]:
 def conflict_entries(conflicts: Iterable[Conflict]) -> list[dict[str, str]]:
     """Conflicts as a snapshot stores them, for the reason :func:`tag_entries` does."""
     return [{"id": str(c.id), "name": c.name} for c in conflicts]
+
+
+def archived_pairs(geo: Event) -> dict[str, str]:
+    """Each archived link of the event with the snapshot URL it currently holds.
+
+    The comparable form of the ``archives`` fragment: one copy per link, so a
+    paste equal to the stored copy for that link reads as no change at all.
+    """
+    return {a.original_url: a.snapshot_url for a in geo.archives}
 
 
 def build_snapshot(geo: Event) -> dict[str, Any]:
@@ -133,6 +187,38 @@ def build_snapshot(geo: Event) -> dict[str, Any]:
     }
 
 
+def _ids(entries: Any) -> list[str]:
+    """The ids of a snapshot's ``tags`` / ``conflicts`` fragment, sorted."""
+    return sorted(str(entry["id"]) for entry in entries)
+
+
+def matches_current(geo: Event, proposed: Mapping[str, Any]) -> bool:
+    """True when every versioned field of ``proposed`` equals the live row's.
+
+    ``proposed`` is keyed by :data:`COMPARED_FIELDS` in the shapes
+    :func:`build_snapshot` stores, so a write that passes this check would file a
+    snapshot indistinguishable from the row it supersedes. The archived copies
+    are the caller's own leg (:func:`archived_pairs`), since a paste carries no
+    ``created_at`` to compare.
+
+    Tags and conflicts compare as sets of ids, the way the history's own
+    changed-field list compares them: the relationships are unordered and carry
+    the referential's current name, so neither the order a set came back in nor
+    a rename under a published event is a change to this event.
+
+    Read against the live row under the caller's lock and before anything is
+    staged, so a refused write files no version and uploads nothing.
+    """
+    current = build_snapshot(geo)
+    for field in COMPARED_FIELDS:
+        if field in ("tags", "conflicts"):
+            if _ids(current[field]) != _ids(proposed[field]):
+                return False
+        elif current[field] != proposed[field]:
+            return False
+    return True
+
+
 def file_version(db: Session, *, geo: Event, edited_by: User, note: str | None) -> EventVersion:
     """File the state the row carries and move it to the next version.
 
@@ -143,7 +229,15 @@ def file_version(db: Session, *, geo: Event, edited_by: User, note: str | None) 
     Staged, not committed: the caller applies its write and commits both in one
     transaction, so a failed write leaves no orphan version behind. Call it
     before any field is mutated, since the snapshot reads the live row.
+
+    Raises :class:`VersionLimitError` on a row already at
+    :data:`MAX_VERSIONS_PER_EVENT`, before anything is staged, so the ceiling
+    holds for the owner's edit and for a recorded archived copy alike.
     """
+    if geo.version_no >= MAX_VERSIONS_PER_EVENT:
+        raise VersionLimitError(
+            f"This event has reached {MAX_VERSIONS_PER_EVENT} versions. Contact an admin."
+        )
     row = EventVersion(
         event_id=geo.id,
         version_no=geo.version_no,

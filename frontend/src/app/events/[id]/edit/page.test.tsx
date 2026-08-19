@@ -442,6 +442,9 @@ describe("editing a published geolocation", () => {
   it("saves on the click that made it, then lands on the event", async () => {
     render(<EditEventPage />);
 
+    fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
+      target: { value: "Corrected title" },
+    });
     // No arming step: a version adds a version, which is the ordinary way a
     // published event changes.
     fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
@@ -453,6 +456,9 @@ describe("editing a published geolocation", () => {
   it("posts the version note and never the evidence anchor", async () => {
     render(<EditEventPage />);
 
+    fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
+      target: { value: "Corrected title" },
+    });
     fireEvent.change(screen.getByRole("textbox", { name: "Version note" }), {
       target: { value: "Coordinates were off by a block." },
     });
@@ -466,6 +472,30 @@ describe("editing a published geolocation", () => {
     expect(input).not.toHaveProperty("source_url");
     expect(input).not.toHaveProperty("files");
     expect(input).not.toHaveProperty("remove_media_ids");
+  });
+
+  it("refuses a save that would change nothing, without a request", async () => {
+    render(<EditEventPage />);
+
+    // The form posts the whole editable state, so an untouched save would
+    // otherwise mint a version whose changed-field list is empty. The note is
+    // not a versioned field, so it does not lift the refusal on its own.
+    fireEvent.change(screen.getByRole("textbox", { name: "Version note" }), {
+      target: { value: "Read it again." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+
+    expect(
+      await screen.findByText("Nothing changed since version 1")
+    ).toBeInTheDocument();
+    expect(saveVersionMock).not.toHaveBeenCalled();
+
+    // A moved field makes it a correction again.
+    fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
+      target: { value: "Corrected title" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
   });
 
   it("still holds the published floor before it posts", async () => {

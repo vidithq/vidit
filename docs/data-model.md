@@ -450,6 +450,8 @@ Read it as "the snapshots, then the live row": an event at `version_no` 3 carrie
 
 Two writes file a version, both through `services/versions.file_version`: the owner's edit ([`POST /events/{id}/versions`](api.md#post-eventsidversions)) and an [archived copy](#source_archives) recorded on a `geolocated` row ([`POST /events/{id}/archives`](api.md#post-eventsidarchives)), which is a change to what the published record says about its own evidence. Both take the number under the event's row lock.
 
+An event carries at most 100 versions (`services/versions.MAX_VERSIONS_PER_EVENT`): a write that would produce version 101 is refused, whichever of the two writers makes it. And a version has to differ from the row it supersedes, so an edit that moves no versioned field files nothing.
+
 Redaction is the one write a filed row takes, and it is still not a delete: an admin blanks `snapshot` and `note` in place and stamps `redacted_at` / `redacted_by_id`, so the row, its number and its byline stay. See [`POST /admin/events/{id}/versions/{version_no}/redact`](api.md#post-admineventsidversionsversion_noredact).
 
 | Column | Type | Constraints |
@@ -727,7 +729,7 @@ PostGIS enables native geospatial queries: bounding-box filtering, distance comp
 The table is read from both sides: an event's geolocators, and a user's geolocations on the profile page. A junction table indexes both directions and carries a per-row `created_at`. An id array on `events` would force a GIN scan for the reverse query and store no timestamp.
 
 ### Why full snapshots in `event_versions` and not a per-field change log?
-A version has to be readable on its own: `/events/{id}/v2` renders the whole event as it stood, which a change log answers only by replaying every entry from the beginning. A snapshot answers it with one row, and the fields it stores are exactly the fields an edit can write, so a snapshot plus the live row is a complete history. The cost is bounded, because an event accumulates a handful of versions. What changed between two versions is a diff of adjacent snapshots, computed at read time.
+A version has to be readable on its own: `/events/{id}/v2` renders the whole event as it stood, which a change log answers only by replaying every entry from the beginning. A snapshot answers it with one row, and the fields it stores are exactly the fields an edit can write, so a snapshot plus the live row is a complete history. The cost is bounded: an edit that changes nothing files nothing, and an event stops at 100 versions. What changed between two versions is a diff of adjacent snapshots, computed at read time.
 
 ### Why redact a version in place instead of deleting the row?
 A version number is a public address: `/events/{id}/v2` has to keep meaning version 2 forever, and deleting row 2 would either shift every later number or leave a hole the history cannot explain. Blanking keeps the row, its number, its timestamp and its byline, so the record still says a version existed and who superseded it, while the content it carried is gone. It also gives the media floor a clean answer: a version that displays nothing holds no image alive.

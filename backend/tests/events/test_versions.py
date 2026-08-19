@@ -36,6 +36,7 @@ from app.models.event import (
 from app.models.media import Media
 from app.models.source_archive import SourceArchive
 from app.models.user import User
+from app.services import versions as versions_service
 from app.services.auth import hash_password
 from tests.conftest import login_as
 from tests.events._helpers import (
@@ -478,6 +479,119 @@ def test_concurrent_versions_take_their_number_in_order(db, author, conflict, ca
     assert numbers == [1, 2]
 
 
+# ── A version has to change something, and there are only so many ─────────
+
+
+def test_an_edit_that_moves_nothing_is_refused(db, author, conflict, capture_source_tag):
+    """Re-posting the state the row already holds is a 409, and files nothing.
+
+    The form posts the whole editable state, so a reader who opens the edit page
+    and saves without touching a field would otherwise mint a version whose
+    changed-field list is empty and whose ``/vN`` address claims a correction
+    that never happened.
+    """
+    geo = _published(db, author, conflict, capture_source_tag, title="Original title")
+    # One real edit first, so the row now holds exactly what this form posts.
+    assert (
+        _save_version(geo.id, author, data=_form(conflict, capture_source_tag)).status_code == 200
+    )
+
+    response = _save_version(geo.id, author, data=_form(conflict, capture_source_tag))
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["code"] == "nothing_changed"
+
+    db.expire_all()
+    assert db.query(EventVersion).filter(EventVersion.event_id == geo.id).count() == 1
+    assert db.get(Event, geo.id).version_no == 2
+
+
+def test_a_note_alone_does_not_make_a_version(db, author, conflict, capture_source_tag):
+    """The note annotates a change; on its own there is none to annotate."""
+    geo = _published(db, author, conflict, capture_source_tag, title="Original title")
+    assert (
+        _save_version(geo.id, author, data=_form(conflict, capture_source_tag)).status_code == 200
+    )
+
+    response = _save_version(
+        geo.id, author, data=_form(conflict, capture_source_tag, note="Checked it again.")
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "nothing_changed"
+
+    db.expire_all()
+    assert db.get(Event, geo.id).version_no == 2
+
+
+def test_a_new_archived_copy_is_a_change_and_the_same_one_is_not(
+    db, author, conflict, capture_source_tag
+):
+    """A copy the link does not hold yet is a change on its own; re-pasting the
+    copy it already holds is not."""
+    geo = _published(db, author, conflict, capture_source_tag, title="Original title")
+    wayback = f"https://web.archive.org/web/20260811120000/{geo.source_url}"
+    assert (
+        _save_version(geo.id, author, data=_form(conflict, capture_source_tag)).status_code == 200
+    )
+
+    # No field moves, but the copy is new, so the edit is a change.
+    assert (
+        _save_version(
+            geo.id,
+            author,
+            data=_form(conflict, capture_source_tag, source_snapshot_url=wayback),
+        ).status_code
+        == 200
+    )
+
+    response = _save_version(
+        geo.id, author, data=_form(conflict, capture_source_tag, source_snapshot_url=wayback)
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "nothing_changed"
+
+    db.expire_all()
+    assert db.get(Event, geo.id).version_no == 3
+
+
+def test_an_event_stops_at_the_version_ceiling(db, author, conflict, capture_source_tag):
+    """Version 100 is the last one an edit can produce."""
+    geo = _published(db, author, conflict, capture_source_tag)
+    geo.version_no = versions_service.MAX_VERSIONS_PER_EVENT
+    db.commit()
+
+    response = _save_version(
+        geo.id, author, data=_form(conflict, capture_source_tag, title="One more")
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["code"] == "version_limit"
+    assert "100 versions" in response.json()["detail"]["message"]
+
+    db.expire_all()
+    assert db.query(EventVersion).filter(EventVersion.event_id == geo.id).count() == 0
+    assert db.get(Event, geo.id).version_no == versions_service.MAX_VERSIONS_PER_EVENT
+
+
+def test_an_archived_copy_meets_the_same_ceiling(db, author, conflict, capture_source_tag):
+    """The other writer that produces a version stops at the same number."""
+    geo = _published(db, author, conflict, capture_source_tag)
+    geo.version_no = versions_service.MAX_VERSIONS_PER_EVENT
+    db.commit()
+
+    response = client.post(
+        f"/api/v1/events/{geo.id}/archives",
+        headers=login_as(client, author),
+        json={
+            "original_url": geo.source_url,
+            "snapshot_url": f"https://web.archive.org/web/20260811120000/{geo.source_url}",
+        },
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["code"] == "version_limit"
+
+    db.expire_all()
+    assert db.query(SourceArchive).filter(SourceArchive.event_id == geo.id).count() == 0
+
+
 # ── Optional source post time ─────────────────────────────────────────────
 
 
@@ -539,8 +653,9 @@ def test_a_blank_source_post_time_keeps_the_stored_one(db, author, conflict, cap
     db.expire_all()
     assert db.get(Event, geo.id).source_posted_at == stored
 
-    # An omitted field reads the same way.
-    form = _form(conflict, capture_source_tag)
+    # An omitted field reads the same way. The title moves on each call, since
+    # an edit that moves nothing at all is refused.
+    form = _form(conflict, capture_source_tag, title="Corrected again")
     del form["source_posted_at"]
     assert _save_version(geo.id, author, data=form).status_code == 200
     db.expire_all()

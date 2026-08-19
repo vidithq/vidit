@@ -979,6 +979,10 @@ Correct a published event. Owner-only, and only while `geolocated`: the state a 
 
 The published evidence floor is re-checked against the post-edit state, so a correction cannot drop the row below what publishing it required: a source media on the row, at least one proof image in the final proof body, one conflict, and one `capture_source` tag.
 
+**A version has to change something.** The form posts the whole editable state, so an edit that moves none of the versioned fields (the ones listed under *Editability contract*, plus the archived copies) is refused with `nothing_changed` rather than filed: a version spends a number in a public address space and prints a row in the history, and one identical to the row it supersedes would claim a correction that never happened. The `note` is not a versioned field, so a note on its own does not make a version. The check runs before any file is uploaded.
+
+**An event carries at most 100 versions.** A write that would produce version 101 is refused with `version_limit`, whether it is a correction or an [archived copy recorded on the row](#post-eventsidarchives). Past that count the history has stopped recording corrections and started recording a loop, and every version costs a snapshot row plus the proof images it pins alive.
+
 **Media and history.** A proof image the new body no longer references is normally deleted, row and object. It is kept instead when a readable past version displays it, so that version stays renderable after the image left the current body. A version records the images its own proof body referenced, so an image no version ever displayed is not held alive by the history, and a [redacted](#post-admineventsidversionsversion_noredact) version holds nothing alive at all.
 
 **Proof-image ceiling.** `max_proof_images_per_event` bounds what the new proof body displays, not what one request sends: the already-uploaded images the body still references plus the files it adds. An image kept only because a past version displays it does not count, so swapping images across corrections never exhausts the ceiling. The check runs before anything reaches S3.
@@ -993,7 +997,7 @@ The published evidence floor is re-checked against the post-edit state, so a cor
 | 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `too_many_source_links`, `media_required` (the row carries no source media), a rejected file or a proof src naming another event's image (`invalid_file` / `evidence_processing_failed`), `proof_files_mismatch`, or a rejected `source_snapshot_url` / `secondary_snapshot_urls` entry (the `snapshot_*` codes of [`POST /events/{id}/archives`](#post-eventsidarchives)) |
 | 403 | You are not the owner |
 | 404 | Event not found (incl. soft-deleted) |
-| 409 | Row is not `geolocated` (`invalid_state`) |
+| 409 | Row is not `geolocated` (`invalid_state`), the edit moves no versioned field (`nothing_changed`), or the event already carries 100 versions (`version_limit`) |
 | 422 | `note` over 280 chars, a proof body that would display more than `max_proof_images_per_event` images (its already-uploaded images plus the new files), or a single `secondary_source_urls` item over 2000 chars |
 
 ---
@@ -1123,7 +1127,7 @@ This is the path for an event that already exists, and for any link it carries. 
 
 One copy per link: a second call for the same `original_url` replaces the copy rather than adding one, which is how the owner corrects a wrong paste.
 
-**On a `geolocated` event this files a version.** Which of a published record's links are archived is part of what that record says, so the write files the superseded version, moves `version_no` on and credits the caller, under the same row lock as [`POST /events/{id}/versions`](#post-eventsidversions) and with no `note`: the version's changed-field list names it *Archived copies*. A call that stores the copy the link already carries moves nothing and files nothing, and a `requested` or `detected` row is not versioned at all, so the copy is stored on its own. A copy pasted as `source_snapshot_url` or `secondary_snapshot_urls` with an edit rides that edit's version instead of filing a second one.
+**On a `geolocated` event this files a version.** Which of a published record's links are archived is part of what that record says, so the write files the superseded version, moves `version_no` on and credits the caller, under the same row lock as [`POST /events/{id}/versions`](#post-eventsidversions) and with no `note`: the version's changed-field list names it *Archived copies*. A call that stores the copy the link already carries moves nothing and files nothing, and a `requested` or `detected` row is not versioned at all, so the copy is stored on its own. A copy pasted as `source_snapshot_url` or `secondary_snapshot_urls` with an edit rides that edit's version instead of filing a second one. An event carries at most 100 versions, so a copy that would produce version 101 is refused with `version_limit`.
 
 **Response 200:**
 ```json
@@ -1136,6 +1140,7 @@ One copy per link: a second call for the same `original_url` replaces the copy r
 | 400 | `original_url` is not a link this event carries (`original_url_not_on_event`), or `snapshot_url` failed a check (`snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_original_mismatch`, `snapshot_not_a_snapshot_code`) |
 | 403 | You are not the owner |
 | 404 | Event not found (incl. soft-deleted) |
+| 409 | The event already carries 100 versions (`version_limit`) |
 | 422 | A field is missing, empty, or over 2000 chars |
 
 ---
