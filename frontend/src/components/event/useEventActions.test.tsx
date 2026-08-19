@@ -73,13 +73,13 @@ function Harness({
   );
 }
 
-/** The close verb the row is showing, as its accessible name, or `null`. Every
- *  owner verb is a button in the row, so there is nothing to open first. */
+/** The close control the row is showing, as its accessible name, or `null`.
+ *  Every owner verb is a button in the row, so there is nothing to open first. */
 function closeControl(): string | null {
   for (const name of [
-    "Withdraw this request",
-    "Reject this detection",
-    "Retract this geolocation",
+    "Close this request",
+    "Close this detection",
+    "Close this geolocation",
     "Close this event",
   ]) {
     if (screen.queryByRole("button", { name }) !== null) return name;
@@ -112,13 +112,13 @@ describe("owner management: correcting, taking back, and never destroying", () =
     }
   );
 
-  // The close verb is the same write in all three live states; what changes is
-  // what the author is saying, so the label has to say it.
+  // One verb closes all three live states, and the noun names the row it
+  // closes, so a reader learns one word rather than three.
   it.each<[EventStatus, string]>([
-    ["requested", "Withdraw this request"],
-    ["detected", "Reject this detection"],
-    ["geolocated", "Retract this geolocation"],
-  ])("names the close of a %s row as its own act", (status, label) => {
+    ["requested", "Close this request"],
+    ["detected", "Close this detection"],
+    ["geolocated", "Close this geolocation"],
+  ])("names the row a %s close applies to", (status, label) => {
     render(<Harness status={status} surface="event" />);
     expect(closeControl()).toBe(label);
   });
@@ -127,7 +127,7 @@ describe("owner management: correcting, taking back, and never destroying", () =
     "carries the close verb on the %s surface",
     (surface) => {
       render(<Harness status="requested" surface={surface} />);
-      expect(closeControl()).toBe("Withdraw this request");
+      expect(closeControl()).toBe("Close this request");
     }
   );
 
@@ -154,14 +154,14 @@ describe("owner management: correcting, taking back, and never destroying", () =
   );
 
   // The reason is what makes a closed row readable as a decision rather than a
-  // disappearance, so the panel that captures it opens named for the act.
-  it("opens the close panel named for the act it performs", () => {
+  // disappearance, so the panel that captures it opens named for the row.
+  it("opens the close panel named for the row it closes", () => {
     render(<Harness status="geolocated" surface="event" />);
-    fireEvent.click(screen.getByRole("button", { name: "Retract this geolocation" }));
-    expect(screen.getByLabelText("Retract reason")).toBeInTheDocument();
-    // The panel's own submit repeats the act, so the reader confirms the thing
-    // they picked rather than a generic "Close".
-    expect(screen.getAllByRole("button", { name: "Retract this geolocation" })).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Close this geolocation" }));
+    expect(screen.getByLabelText("Close reason")).toBeInTheDocument();
+    // The panel's own submit repeats the label, so the reader confirms the row
+    // they picked rather than a bare "Close".
+    expect(screen.getAllByRole("button", { name: "Close this geolocation" })).toHaveLength(2);
   });
 
   it("gives the map panel no action row at all", () => {
@@ -193,7 +193,7 @@ describe("utilities are the detail pages' tier", () => {
       expect(screen.queryByRole("button", { name: "Report" })).toBeNull();
       expect(closeControl()).toBeNull();
       // Not merely empty: an empty wrapper is still a flex item, and a host
-      // adds its own controls (the form's queue position, Skip, Reject) to
+      // adds its own controls (the form's queue position, Skip, Close) to
       // that cluster.
       expect(container).toBeEmptyDOMElement();
     }

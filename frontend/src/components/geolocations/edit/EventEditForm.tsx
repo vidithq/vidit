@@ -24,7 +24,7 @@ import {
   TaxonomyFields,
   useTaxonomy,
 } from "@/components/geolocations/TaxonomyFields";
-import { CloseEventForm } from "@/components/event/CloseEventForm";
+import { closeActionLabel, CloseEventForm } from "@/components/event/CloseEventForm";
 import { useEventActions } from "@/components/event/useEventActions";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
@@ -47,8 +47,8 @@ import {
 import { toDatetimeLocalUTC } from "@/lib/format";
 import type { EventDetail } from "@/types";
 
-// Ties Reject to the reason panel it opens, which is not its DOM sibling.
-const REJECT_PANEL_ID = "reject-detection-form";
+// Ties Close to the reason panel it opens, which is not its DOM sibling.
+const CLOSE_PANEL_ID = "close-detection-form";
 
 /**
  * Owner edit of one event, in the two shapes an owner edits in.
@@ -110,13 +110,13 @@ export function EventEditForm({
   // (`useEventActions`), and it hands back the slot the panels land in.
   const { actions, panels } = useEventActions({ event: geo, surface: "edit" });
 
-  // Reject the detection: the confirm step is the inline `CloseEventForm` (a
+  // Close the detection: the confirm step is the inline `CloseEventForm` (a
   // required, publicly visible reason), so this flag only opens the panel. It
   // sits in the open beside Skip rather than behind the `⋯` menu: the menu is
   // for the rare management action on a reading surface, while working a detection
-  // has three verbs (submit it, skip it, reject it) and hiding one of them
+  // has three verbs (submit it, skip it, close it) and hiding one of them
   // behind a disclosure costs a click on every pass.
-  const [rejecting, setRejecting] = useState(false);
+  const [closing, setClosing] = useState(false);
 
   const [title, setTitle] = useState(geo.title);
   // Coordinates + event date are optional on a detection, so seed the
@@ -434,7 +434,7 @@ export function EventEditForm({
       actions={
         // Everything that disposes of this detection rather than filling it in,
         // in the header's own cluster: the position and the way past it during
-        // a review pass, then Reject. Submit is the only action left at the foot
+        // a review pass, then Close. Submit is the only action left at the foot
         // of the fields. A published event has none of those verbs (it is
         // neither skippable nor rejectable), so its header carries no cluster.
         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
@@ -449,12 +449,12 @@ export function EventEditForm({
           {!editingPublished && (
             <Button
               variant="danger"
-              onClick={() => setRejecting(true)}
-              disabled={busy || rejecting}
-              aria-controls={REJECT_PANEL_ID}
-              aria-expanded={rejecting}
+              onClick={() => setClosing(true)}
+              disabled={busy || closing}
+              aria-controls={CLOSE_PANEL_ID}
+              aria-expanded={closing}
             >
-              Reject
+              Close
             </Button>
           )}
           {actions}
@@ -464,12 +464,12 @@ export function EventEditForm({
       {/* Under the header, where the trigger that opened it is. */}
       {panels}
 
-      {/* The reason panel Reject opens, in the same slot the shared action
+      {/* The reason panel Close opens, in the same slot the shared action
           row's own panels use: under the header, below its trigger. */}
-      {rejecting && (
-        <div id={REJECT_PANEL_ID}>
+      {closing && (
+        <div id={CLOSE_PANEL_ID}>
           <Card as="section">
-            <SectionEyebrow title="Reject this detection" margin="none" />
+            <SectionEyebrow title={closeActionLabel(geo.status)} margin="none" />
             <CloseEventForm
               eventId={geo.id}
               status={geo.status}
@@ -478,7 +478,7 @@ export function EventEditForm({
                 refreshDetectionCount();
                 finish();
               }}
-              onCancel={() => setRejecting(false)}
+              onCancel={() => setClosing(false)}
             />
           </Card>
         </div>
@@ -597,7 +597,7 @@ export function EventEditForm({
 
         {/* The flow action, alone at the foot of the fields it applies, as on
             the create form. Disposing of the detection is not a form action: Skip
-            and Reject sit in the header. */}
+            and Close sit in the header. */}
         <div className="flex flex-wrap items-center gap-3">
           <span className="inline-flex items-center gap-1.5">
             <Button

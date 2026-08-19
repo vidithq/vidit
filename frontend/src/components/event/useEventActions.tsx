@@ -63,8 +63,8 @@ export type ActionSurface = "event" | "request" | "panel" | "edit";
 // different halves of it: `saveVersion` is correcting a published geolocation,
 // which only the event page offers, and `close` is taking a row back, which
 // both detail pages offer since both serve rows their author may still want to
-// withdraw. What each row actually gets is decided per status below, so a
-// surface never prints a verb the row cannot take. `history` is the read into a
+// take back. What each row actually gets is decided per status below, so a
+// surface never offers a close to a row that cannot take one. `history` is the read into a
 // published record's versions, public, first in the utilities row: the event
 // page alone carries it, since the map panel and the forms show one version by
 // construction.
@@ -145,7 +145,7 @@ export function useEventActions({
   // A surface whose every tier is off, or off for this row, gets nothing rather
   // than an empty row: the wrapper is itself an item in the host's own cluster,
   // so an empty one prints a gap beside the controls the host adds of its own
-  // (the edit form's queue position, Skip and Reject).
+  // (the edit form's queue position, Skip and Close).
   const rowIsEmpty =
     !tiers.utilities && !(tiers.flow && isOpenRequest) && !canSaveVersion && !canClose;
 
@@ -184,8 +184,8 @@ export function useEventActions({
             aria-controls={CLOSE_FORM_ID}
             // The row is taken back, not deleted: it stays readable with its
             // reason, so this is not a destructive verb and does not wear the
-            // destructive colour. The label names what this row's close is,
-            // which on a published geolocation is a retraction.
+            // destructive colour. One verb closes every shape, and the label
+            // names the row it closes.
             aria-label={closeLabel}
             title={closeLabel}
           >

@@ -9,59 +9,39 @@ import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Input";
 import { FORM_LABEL, FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
-interface CloseCopy {
-  verb: string;
-  noun: string;
-  prompt: string;
-}
-
 /**
- * How the one close verb reads in each state, in one place: the action row's
- * button, the panel's eyebrow and this form all name the same act, so a reader
- * is never offered "Close this request" on a published geolocation. The three
- * live shapes are the same write and differ only in what the author is saying:
- * an ask dropped, a machine reading judged wrong, a claim taken back. A
- * `closed` row is the state the verb produces and carries no live verb, so it
- * falls back to the plain word rather than borrowing another shape's.
+ * What each row is called, for the one verb that closes all of them. The verb
+ * is always *Close*: one write ends a request, a detection and a published
+ * geolocation alike, and giving each shape its own verb asked a reader to learn
+ * three words for one act and left the action row, the panel eyebrow and the
+ * confirm button free to drift apart. The noun still names the row, so the
+ * label says what is being closed.
+ *
+ * A `closed` row is the state the verb produces and offers no close, so it
+ * never reaches this map; the generic noun covers it rather than a fourth
+ * entry claiming a shape that has none.
  */
-const CLOSE_COPY: Record<EventStatus, CloseCopy> = {
-  requested: {
-    verb: "Withdraw",
-    noun: "request",
-    prompt: "Why are you withdrawing this request?",
-  },
-  detected: {
-    verb: "Reject",
-    noun: "detection",
-    prompt: "Why isn't this a valid detection?",
-  },
-  geolocated: {
-    verb: "Retract",
-    noun: "geolocation",
-    prompt: "Why are you retracting this geolocation?",
-  },
-  closed: {
-    verb: "Close",
-    noun: "event",
-    prompt: "Why are you closing this event?",
-  },
+const CLOSE_NOUN: Partial<Record<EventStatus, string>> = {
+  requested: "request",
+  detected: "detection",
+  geolocated: "geolocation",
 };
 
-/** The close vocabulary for one row's state (see `CLOSE_COPY`). */
-export function closeCopy(status: EventStatus): CloseCopy {
-  return CLOSE_COPY[status];
+/** What this row is called in the close copy (see `CLOSE_NOUN`). */
+function closeNoun(status: EventStatus): string {
+  return CLOSE_NOUN[status] ?? "event";
 }
 
-/** The row's own close label, as the action row and the panel eyebrow print it. */
+/** The row's own close label, as the action row, the panel eyebrow and this
+ *  form's confirm button all print it. */
 export function closeActionLabel(status: EventStatus): string {
-  const { verb, noun } = closeCopy(status);
-  return `${verb} this ${noun}`;
+  return `Close this ${closeNoun(status)}`;
 }
 
 interface CloseEventFormProps {
   eventId: string;
-  /** The row's current status, so the copy names the action: a `requested` row
-   *  is withdrawn, a `detected` row is rejected, a `geolocated` row retracted. */
+  /** The row's current status, which names the row in the copy: a request, a
+   *  detection or a geolocation. The verb is *Close* in every case. */
   status: EventStatus;
   /** Called with the closed event on success (the parent refetches / routes). */
   onClosed: (closed: EventDetail) => void;
@@ -74,10 +54,10 @@ interface CloseEventFormProps {
 /**
  * Inline "close this event" panel: a required free-text reason plus a confirm /
  * cancel pair, composed from the shared primitives (`Textarea`, `Button`, the
- * `FORM_*` constants). One verb closes all three dismissal shapes, so the copy
- * keys off `status` through `CLOSE_COPY`. The reason stays publicly visible on
- * the closed row (transparency), which is why the backend requires it; this
- * enforces the same non-empty rule client-side.
+ * `FORM_*` constants). One verb closes all three live shapes, and `status` only
+ * picks the noun it is spelled with (`CLOSE_NOUN`). The reason stays publicly
+ * visible on the closed row (transparency), which is why the backend requires
+ * it; this enforces the same non-empty rule client-side.
  */
 export function CloseEventForm({
   eventId,
@@ -88,7 +68,7 @@ export function CloseEventForm({
 }: CloseEventFormProps) {
   const [reason, setReason] = useState("");
   const [emptyReason, setEmptyReason] = useState(false);
-  const { verb, noun, prompt } = closeCopy(status);
+  const noun = closeNoun(status);
 
   const closeMutation = useMutation(() => closeEvent(eventId, reason.trim()), {
     fallback: "Close failed",
@@ -110,7 +90,7 @@ export function CloseEventForm({
     <div className="space-y-3">
       <div className="space-y-1.5">
         <label htmlFor="close_reason" className={FORM_LABEL}>
-          {verb} reason
+          Close reason
         </label>
         <Textarea
           id="close_reason"
@@ -121,7 +101,7 @@ export function CloseEventForm({
             if (emptyReason) setEmptyReason(false);
           }}
           invalid={emptyReason}
-          placeholder={`${prompt} (stays visible on the closed row)`}
+          placeholder={`Why are you closing this ${noun}? (stays visible on the closed row)`}
         />
         <p className="text-xs text-neutral-500">
           The reason stays publicly visible next to the closed badge.
