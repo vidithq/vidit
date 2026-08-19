@@ -25,6 +25,9 @@
 position  # app/models/event.py EventSourceLink
 original_filename  # app/models/media.py, and schemas/media.py
 processed_at  # app/models/bot_mention.py, audit stamp written at insert only
+# Set at construction in services/versions.file_version and read only through
+# the `edited_by` relationship the history serializer walks.
+edited_by_id  # app/models/event.py EventVersion
 email_verified_at  # app/models/user.py, audit stamp written at registration only
 
 # ── Write-only audit columns ──────────────────────────────────────────────────
@@ -90,6 +93,11 @@ no_source_count  # schemas/user.py UserStatsRead
 period  # schemas/user.py ActivityBucket (wire field)
 progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
+redacted  # schemas/event.py EventVersionRead (wire field, built in routers/events/_common.py)
+# Written by ``services/versions.redact_version``, read by nothing in ``app/``: the
+# column is the row-level record of who redacted a version, and the readable
+# trail is the ``admin_events`` row the same write files.
+redacted_by_id  # models/event.py EventVersion
 
 # ── Test-only helper ──────────────────────────────────────────────────────────
 # Called from tests/, which the gate does not scan, so it reads as unused here.

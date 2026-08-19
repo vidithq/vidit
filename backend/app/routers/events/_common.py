@@ -3,14 +3,15 @@
 What the ``read`` / ``write`` / ``item`` sub-routers all need, kept here so
 none imports another:
 
-* the typed-error → HTTP envelopes (``_raise_event_error`` and
-  :func:`raise_archive_error`, each over its ``code → status`` map),
+* the typed-error → HTTP envelopes (``_raise_event_error``,
+  :func:`raise_archive_error` and :func:`raise_version_error`, each over its
+  ``code → status`` map),
 * :func:`build_event_read` and :func:`build_event_list`, the single
   ``EventRead`` / ``EventList`` assemblers shared by every response site
   (including the users and social routers, which import from here), and
 * the small projection helpers (:func:`coords_or_none`, :func:`thumbnail_media`)
   every serializer leans on, and :func:`resolve_live_event`, the by-id fetch
-  the ``item`` and ``archives`` sub-routers share.
+  the write sub-routers share.
 """
 
 import uuid
@@ -20,14 +21,21 @@ from fastapi import HTTPException
 from pydantic import StringConstraints
 from sqlalchemy.orm import Session
 
-from app.models.event import SOURCE_URL_MAX_LENGTH, Event
+from app.models.event import SOURCE_URL_MAX_LENGTH, Event, EventVersion
 from app.routers._errors import raise_typed_error
-from app.schemas.event import ArchivedLinkRead, CoordsRead, EventList, EventRead
+from app.schemas.event import (
+    ArchivedLinkRead,
+    CoordsRead,
+    EventList,
+    EventRead,
+    EventVersionRead,
+)
 from app.schemas.media import MediaRead
 from app.services.event_filters import visible_events
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
 from app.services.source_archive import SnapshotRejected, archive_row_for
 from app.services.thumbnails import pick_thumbnail
+from app.services.versions import VersionLimitError
 
 # Item type of the repeated ``secondary_source_urls`` multipart field, shared by
 # the create / request / geolocate forms. The ceiling rides on the ITEM: a
@@ -38,9 +46,8 @@ SecondarySourceUrl = Annotated[str, StringConstraints(max_length=SOURCE_URL_MAX_
 # Every ``SnapshotRejected`` code is the same verdict about the same two
 # fields: what the analyst pasted is not a snapshot of the link they named. 400
 # across the board, with the code telling them which check it failed. Shared by
-# the archives endpoint and the two write forms that carry
-# ``source_snapshot_url``, so one paste is answered the same way wherever it
-# arrives.
+# every write form that carries a snapshot field, so one paste is answered the
+# same way wherever it arrives.
 ARCHIVE_ERROR_STATUS: dict[str, int] = {
     "original_url_not_on_event": 400,
     "snapshot_url_invalid": 400,
@@ -69,12 +76,27 @@ _EVENT_ERROR_STATUS: dict[str, int] = {
     "tag_requirements_not_met": 400,
     "too_many_source_links": 400,
     "invalid_state": 409,
+    "nothing_changed": 409,
 }
 
 
 def _raise_event_error(exc: EvidenceIntakeError) -> NoReturn:
     """Translate a typed events-service error into an HTTP response."""
     raise_typed_error(exc, _EVENT_ERROR_STATUS)
+
+
+_VERSION_ERROR_STATUS: dict[str, int] = {"version_limit": 409}
+
+
+def raise_version_error(exc: VersionLimitError) -> NoReturn:
+    """Translate a refused version into its 409.
+
+    Its own envelope rather than an entry in :data:`_EVENT_ERROR_STATUS`,
+    because the ceiling is raised by ``services/versions`` and
+    :class:`VersionLimitError` is not an :class:`EvidenceIntakeError`, which is
+    the one base :func:`_raise_event_error` catches.
+    """
+    raise_typed_error(exc, _VERSION_ERROR_STATUS)
 
 
 def resolve_live_event(db: Session, event_id: uuid.UUID) -> Event:
@@ -144,6 +166,27 @@ def build_event_list(
     )
 
 
+def build_version_read(row: EventVersion) -> EventVersionRead:
+    """Assemble one superseded version's wire shape.
+
+    The snapshot travels as stored, so a version reads back exactly as it was
+    filed, and a redacted one reads back blank because that is what redaction
+    wrote. A soft-deleted editor is dropped for the same reason
+    :func:`build_event_read` drops a soft-deleted requester or geolocator: a
+    banned account must not surface as the byline of a still-live event.
+    """
+    editor = row.edited_by
+    return EventVersionRead(
+        id=row.id,
+        version_no=row.version_no,
+        edited_by=editor if editor is not None and editor.deleted_at is None else None,
+        note=row.note,
+        created_at=row.created_at,
+        snapshot=row.snapshot,
+        redacted=row.redacted_at is not None,
+    )
+
+
 def _archived_link(geo: Event, url: str | None) -> ArchivedLinkRead | None:
     """One link's archived copy as wire shape, or ``None`` when it has none.
 
@@ -201,9 +244,11 @@ def build_event_read(
         event_time=geo.event_time,
         source_posted_at=geo.source_posted_at,
         created_at=geo.created_at,
+        geolocated_at=geo.geolocated_at,
         closed_at=geo.closed_at,
         is_graphic=geo.is_graphic,
         status=geo.status,
+        version_no=geo.version_no,
         close_reason=geo.close_reason,
         before_closed_status=geo.before_closed_status,
         detected_from_url=geo.detected_from_url,

@@ -1,7 +1,7 @@
 """The ``/events`` routers: one ``APIRouter`` per concern.
 
 Each concern (``read`` / ``duplicates`` / ``import_tweet`` / ``import_archive``
-/ ``write`` / ``batch`` / ``archives`` / ``item``) owns its own ``APIRouter``;
+/ ``write`` / ``batch`` / ``item``) owns its own ``APIRouter``;
 ``main.py`` mounts each under the shared ``/api/v1/events`` prefix.
 
 They're exposed as an **ordered** tuple because the order is load-bearing:
@@ -11,7 +11,6 @@ GETs (``/points``, ``/possible-duplicates``) and 422 on the non-UUID segment.
 """
 
 from app.routers.events import (
-    archives,
     batch,
     duplicates,
     import_archive,
@@ -28,6 +27,5 @@ routers = (
     import_archive.router,
     write.router,
     batch.router,
-    archives.router,
     item.router,
 )

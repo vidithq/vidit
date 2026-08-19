@@ -11,17 +11,20 @@ Two rules hold across every list endpoint:
   :data:`MAX_PAGE_SIZE` rows gets :data:`MAX_PAGE_SIZE`, never an error:
   over-asking is not malformed, it just doesn't buy anything.
 * **Malformed is a 422.** A page size below 1, a page below 1, a cursor that
-  does not decode to a ``(created_at, id)`` pair: all rejected before they
+  does not decode to the shape its list pages on: all rejected before they
   reach the query, where a negative ``OFFSET`` or a non-positive ``LIMIT``
   would be a 500 from Postgres. A cursor that decodes cleanly is honoured
   whether or not this server minted it; see :func:`decode_cursor`.
 
-The cursor is keyset, not offset: ``(created_at, id)`` under
-``ORDER BY created_at DESC, id DESC``. ``id`` is the tiebreaker that makes the
+The cursor is keyset, not offset. Most lists page on ``(created_at, id)`` under
+``ORDER BY created_at DESC, id DESC``: ``id`` is the tiebreaker that makes the
 ordering total, so rows inserted while a caller walks pages can neither
 duplicate a row onto the next page nor skip one, the way an ``OFFSET`` walk
-does. It is opaque on purpose (base64 of a compact JSON pair): its shape is
-this module's business, not a contract callers build values for.
+does. A list whose rows already carry a unique ordinal pages on that instead
+(:func:`encode_ordinal_cursor`), which needs no tiebreaker and no timestamp;
+one event's version history is the case, ordered on ``version_no``. Both forms
+are opaque on purpose (base64 of a compact JSON payload): the shape is this
+module's business, not a contract callers build values for.
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ import base64
 import binascii
 import uuid
 from datetime import datetime
+from typing import Any
 
 import orjson
 from fastapi import HTTPException, Request
@@ -60,10 +64,20 @@ def page_size(requested: int) -> int:
     return min(requested, MAX_PAGE_SIZE)
 
 
+def _encode(payload: Any) -> str:
+    """Base64 of the compact JSON payload, unpadded: the cursor wire form."""
+    return base64.urlsafe_b64encode(orjson.dumps(payload)).decode("ascii").rstrip("=")
+
+
+def _decode(cursor: str) -> Any:
+    """Undo :func:`_encode`. Raises on anything that is not a cursor."""
+    padded = cursor + "=" * (-len(cursor) % 4)
+    return orjson.loads(base64.urlsafe_b64decode(padded))
+
+
 def encode_cursor(created_at: datetime, row_id: uuid.UUID) -> str:
     """Opaque cursor naming the last row of the page just served."""
-    raw = orjson.dumps([created_at.isoformat(), str(row_id)])
-    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+    return _encode([created_at.isoformat(), str(row_id)])
 
 
 def decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
@@ -80,9 +94,8 @@ def decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
     cursor naming the same position would give. There is nothing to forge, the
     encoding hides no authorisation, and every filter still applies.
     """
-    padded = cursor + "=" * (-len(cursor) % 4)
     try:
-        decoded = orjson.loads(base64.urlsafe_b64decode(padded))
+        decoded = _decode(cursor)
         if not (
             isinstance(decoded, list)
             and len(decoded) == 2
@@ -91,6 +104,32 @@ def decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
             raise ValueError("cursor does not decode to a [created_at, id] pair")
         created_raw, id_raw = decoded
         return datetime.fromisoformat(created_raw), uuid.UUID(id_raw)
+    except (ValueError, TypeError, binascii.Error) as exc:
+        raise HTTPException(status_code=422, detail="cursor is malformed") from exc
+
+
+def encode_ordinal_cursor(value: int) -> str:
+    """Opaque cursor for a list ordered on a unique integer of its own.
+
+    One event's version history pages this way: ``version_no`` is unique per
+    event and taken under the event's row lock, so it totally orders the history
+    without a tiebreaker and without reading ``created_at``, a clock the
+    application sets and that therefore skews between instances.
+    """
+    return _encode(value)
+
+
+def decode_ordinal_cursor(cursor: str) -> int:
+    """Parse an ordinal cursor back into its integer, 422 on anything else.
+
+    Booleans are rejected alongside the rest: ``True`` is an ``int`` in Python
+    and would silently page from position 1.
+    """
+    try:
+        decoded = _decode(cursor)
+        if isinstance(decoded, bool) or not isinstance(decoded, int):
+            raise ValueError("cursor does not decode to an integer")
+        return decoded
     except (ValueError, TypeError, binascii.Error) as exc:
         raise HTTPException(status_code=422, detail="cursor is malformed") from exc
 
@@ -122,14 +161,15 @@ def take_page[T](rows: list[T], size: int) -> tuple[list[T], bool]:
     return rows[:size], len(rows) > size
 
 
-def next_link(request: Request, created_at: datetime, row_id: uuid.UUID) -> str:
+def next_link(request: Request, cursor: str) -> str:
     """``Link`` header value pointing at the next page of this exact query.
 
     Carries every filter the caller sent, with ``cursor`` replaced and the
     offset ``page`` dropped: the two ways of walking a list must not travel
     together in one URL.
+
+    Takes the encoded cursor rather than a row's keys, so a list ordered on
+    something other than ``(created_at, id)`` builds its header here too.
     """
-    url = request.url.remove_query_params("page").include_query_params(
-        cursor=encode_cursor(created_at, row_id)
-    )
+    url = request.url.remove_query_params("page").include_query_params(cursor=cursor)
     return f'<{url}>; rel="next"'

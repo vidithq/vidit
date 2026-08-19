@@ -1,16 +1,16 @@
 "use client";
 
 import type { ComponentType } from "react";
-import { Globe } from "lucide-react";
+import { Check, Globe } from "lucide-react";
 
 import { displayLinkValue, resolveLinkHref, type PublicProfile } from "@/lib/users";
 import type { ExternalLinks } from "@/types";
 import { DiscordGlyph, GitHubGlyph, XGlyph } from "@/components/ui/BrandGlyphs";
-import { buttonClasses } from "@/components/ui/Button";
+import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { CopyButton } from "@/components/ui/CopyButton";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_LABEL } from "@/components/ui/form-styles";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import type { ProfileEditState } from "./useProfileEdit";
 
 /** The platforms a profile can link, in reading order. One source for both the
@@ -104,8 +104,8 @@ export function LinkedAccountsFields({ edit }: { edit: ProfileEditState }) {
 }
 
 /**
- * Where to reach the analyst, as a row of square ghost icon buttons: one button
- * per platform the profile carries, the brand mark alone.
+ * Where to reach the analyst: one ghost icon button per platform the profile
+ * carries, the brand mark alone.
  *
  * It reads in the header action cluster, right of the handle, the same place
  * the event page keeps its share controls, so reaching the analyst is an action
@@ -113,69 +113,120 @@ export function LinkedAccountsFields({ edit }: { edit: ProfileEditState }) {
  * work: a visitor who wants the analyst's X account does not scroll a portfolio
  * to find it. Marks rather than tiles printing the handles: four names the
  * analyst holds elsewhere, set beside the one name this page is about, take the
- * weight off the handle that titles the page. The account each button reaches
- * is in its `title` and its accessible name (`X / Twitter: @LoLManya`), which
- * is where a reader who wants the handle itself gets it: a bare mark says the
+ * weight off the handle that titles the page. The account each mark reaches is
+ * in its `title` and its accessible name (`X / Twitter: @LoLManya`), which is
+ * where a reader who wants the handle itself gets it: a bare mark says the
  * platform and nothing else.
+ *
+ * One shape across the whole row, and it is the site's one icon control: the
+ * row is every icon control the header offers, the owner's Edit profile
+ * included, so a reader meets one kind of control there rather than marks of
+ * one size beside a button of another.
  *
  * The name prints `displayLinkValue`, not the stored string, so an X value reads
  * `@LoLManya` whether it was stored as a profile URL or as a bare handle.
  *
- * The platform's `action` decides the control. `copy` is a `<CopyButton>`
- * carrying the brand mark, which is Discord: the platform publishes no profile
- * URL for a username, so handing it over is the one thing a reader can do with
- * it. `link` is an anchor carrying the button shape, the pattern for a
- * navigation control that looks like a button, opening in a new tab.
+ * The platform's `action` decides what the mark does, never how it looks.
+ * `copy` is `<CopyHandle>`, the brand mark over `useCopyToClipboard`, which is
+ * Discord: the platform publishes no profile URL for a username, so handing it
+ * over is the one thing a reader can do with it. `link` opens the profile in a
+ * new tab. The two differ in the flash and in nothing else.
  *
  * A `link` platform whose value `resolveLinkHref` refuses renders nothing: a
- * button that goes nowhere is a dead control. The backend validates these
- * values on the way in, so an unresolvable one cannot be stored, and what falls
- * here is a stored value the strict parse still refuses, a URL on a host the
- * platform does not own among them.
+ * mark that goes nowhere is a dead control. The backend validates these values
+ * on the way in, so an unresolvable one cannot be stored, and what falls here is
+ * a stored value the strict parse still refuses, a URL on a host the platform
+ * does not own among them.
  *
- * A profile carrying no reachable account renders nothing at all.
+ * A profile carrying no reachable account renders nothing at all, which on
+ * someone else's profile leaves the row to the Follow button alone.
  *
- * The row wraps inside itself, and the actions slot it sits in is already
- * capped at the header width, so four marks beside an edit button break onto a
- * second right-aligned line on a phone instead of widening the header.
+ * A fragment, not a row: the header cluster owns the row these sit in, since
+ * the owner's Edit profile mark belongs to it too and a profile with no linked
+ * account still has that one.
  */
 export function LinkedAccountsLine({ profile }: { profile: PublicProfile }) {
-  const buttons = LINK_PLATFORMS.flatMap(({ key, label, Icon, action }) => {
-    const value = profile.external_links[key]?.trim() ?? "";
-    if (!value) return [];
-    const shown = displayLinkValue(key, value);
-    const name = `${label}: ${shown}`;
+  return (
+    <>
+      {LINK_PLATFORMS.flatMap(({ key, label, Icon, action }) => {
+        const value = profile.external_links[key]?.trim() ?? "";
+        if (!value) return [];
+        const shown = displayLinkValue(key, value);
+        const name = `${label}: ${shown}`;
 
-    if (action === "copy") {
-      return [
-        <CopyButton
-          key={key}
-          icon={Icon}
-          value={() => value}
-          label={`Copy ${label} username: ${shown}`}
-          copiedLabel={`${label} username copied`}
-        />,
-      ];
-    }
+        if (action === "copy") {
+          return [
+            <CopyHandle key={key} Icon={Icon} label={label} shown={shown} value={value} />,
+          ];
+        }
 
-    const href = resolveLinkHref(key, value);
-    if (!href) return [];
-    return [
-      <a
-        key={key}
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={buttonClasses("ghost", { icon: true })}
-        title={name}
+        const href = resolveLinkHref(key, value);
+        if (!href) return [];
+        return [
+          <a
+            key={key}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={name}
+            title={name}
+            className={buttonClasses("ghost", { icon: true })}
+          >
+            <Icon size={14} />
+          </a>,
+        ];
+      })}
+    </>
+  );
+}
+
+/**
+ * The account a reader can only take away: the brand mark, flipping to a check
+ * for the flash window.
+ *
+ * The gesture and its feedback are `useCopyToClipboard`, the one home for the
+ * clipboard write and the flash timer, worn here the way `<CoordinateActions>`
+ * wears it. The resting mark stays the platform's own, since this row is brand
+ * marks and a generic copy mark would say less than the one it replaced; only
+ * the flash is fixed, because what confirms a write reads the same everywhere.
+ * Nothing else sets this mark apart from its neighbours.
+ *
+ * The accessible name is static and names the handle, and the confirmation
+ * lands in a sibling live region: a name that changes on click is re-announced
+ * as a new control. Only the tooltip and the mark flip.
+ */
+function CopyHandle({
+  Icon,
+  label,
+  shown,
+  value,
+}: {
+  Icon: ComponentType<{ size?: number }>;
+  /** The platform's name, for both the action name and the confirmation. */
+  label: string;
+  /** The handle as a reader reads it (`displayLinkValue`). */
+  shown: string;
+  /** What lands on the clipboard: the stored value. */
+  value: string;
+}) {
+  const { copied, copy } = useCopyToClipboard();
+  const name = `Copy ${label} username: ${shown}`;
+  const copiedLabel = `${label} username copied`;
+
+  return (
+    <>
+      <Button
+        icon
+        variant="ghost"
+        onClick={() => void copy(value)}
         aria-label={name}
+        title={copied ? copiedLabel : name}
       >
-        <Icon size={14} />
-      </a>,
-    ];
-  });
-
-  if (buttons.length === 0) return null;
-
-  return <div className="flex flex-wrap items-center gap-1">{buttons}</div>;
+        {copied ? <Check size={14} /> : <Icon size={14} />}
+      </Button>
+      <span className="sr-only" role="status" aria-live="polite">
+        {copied ? copiedLabel : ""}
+      </span>
+    </>
+  );
 }

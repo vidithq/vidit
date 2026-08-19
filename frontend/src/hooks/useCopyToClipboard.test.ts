@@ -26,9 +26,9 @@ describe("useCopyToClipboard", () => {
     expect(result.current.copied).toBe(false);
 
     await act(async () => {
-      await result.current.copy("https://vidit.app/profile/marius");
+      await result.current.copy("https://vidit.app/profile/ana-demo");
     });
-    expect(writeText).toHaveBeenCalledWith("https://vidit.app/profile/marius");
+    expect(writeText).toHaveBeenCalledWith("https://vidit.app/profile/ana-demo");
     expect(result.current.copied).toBe(true);
 
     act(() => {

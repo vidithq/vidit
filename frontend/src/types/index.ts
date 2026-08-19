@@ -45,8 +45,8 @@ export type Conflict = components["schemas"]["ConflictRead"];
  *  geolocate, the requested/request view) → ``detected`` (machine output,
  *  rendered marked everywhere until its owner submits it) → ``geolocated`` (a
  *  person vouched for it: via the form, or by submitting a reviewed detection;
- *  not an independent-verification claim, frozen) → ``closed`` (a withdrawn
- *  request). */
+ *  not an independent-verification claim; corrected from there on as new
+ *  versions) → ``closed`` (a withdrawn request). */
 export type EventStatus = components["schemas"]["EventRead"]["status"];
 
 /** Which entry produced a machine detection: the bot, a pasted URL, or an archive
@@ -112,7 +112,7 @@ export type Media = components["schemas"]["MediaRead"];
 
 /** Full event detail (`GET /events/{id}`, `GET /events/detections`).
  *  Adds the source URL, the proof body, the full media list, provenance
- *  (``detected_from_url`` / ``detected_post_at``), and the ``requested_by``
+ *  (``detected_from_url``), and the ``requested_by``
  *  trace on top of the compact ``EventList`` card fields. Covers every
  *  lifecycle state: a ``requested`` row (the requested view) reads through
  *  this same shape, with ``event_coords`` null unless the poster attached a
@@ -120,6 +120,18 @@ export type Media = components["schemas"]["MediaRead"];
  *  row with no declared source; every ``requested`` / ``geolocated`` row
  *  carries a ``source_url``. */
 export type EventDetail = components["schemas"]["EventRead"];
+
+/** One filed version of an event (`GET /events/{id}/versions`, `GET
+ *  /events/{id}/versions/{n}`). `version_no` is the version the row **holds**,
+ *  not the one that replaced it, and `edited_by` / `created_at` / `note` belong
+ *  to the edit that superseded it, which is the edit that produced version
+ *  `version_no + 1` (see `lib/events.ts::eventVersions`). `snapshot` is the
+ *  editable state as it stood, `{}` on a `redacted` row. */
+export type EventVersion = components["schemas"]["EventVersionRead"];
+
+/** One page of an event's history plus the size of the whole history. Paged
+ *  like every list (`Link: rel="next"`), so `total` is not `items.length`. */
+export type EventVersionList = components["schemas"]["EventVersionList"];
 
 /** One link's archived copy: the snapshot URL and the provider holding it.
  *  Carried by `archived_source`, by `archived_detected_from`, and by each entry

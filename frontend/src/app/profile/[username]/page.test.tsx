@@ -34,6 +34,7 @@ vi.mock("@/lib/users", async (importOriginal) => ({
   getUserStats: vi.fn((username: string) => getUserStats(username)),
 }));
 
+import { buttonClasses } from "@/components/ui/Button";
 import type { PublicProfile, UserStats } from "@/lib/users";
 import type { EventListItem, MapPoint } from "@/types";
 
@@ -170,9 +171,9 @@ describe("public profile order", () => {
     mountProfile();
     await screen.findByText("Insights");
 
-    // Icon buttons, so the handle carrying the account is in the accessible
-    // name rather than on screen: a bare brand mark says the platform and
-    // nothing else, and a bare handle does not say which account it is.
+    // Bare marks, so the handle carrying the account is in the accessible
+    // name rather than on screen: a brand mark says the platform and nothing
+    // else, and a bare handle does not say which account it is.
     const x = screen.getByRole("link", { name: "X / Twitter: @ana_osint" });
     expect(x).toHaveAttribute("href", "https://x.com/ana_osint");
     expect(x.textContent).toBe("");
@@ -199,6 +200,28 @@ describe("public profile order", () => {
     expect(screen.getByRole("button", { name: "Follow" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /copy profile link/i })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit profile" })).toBeNull();
+  });
+
+  it("draws the whole header row as marks, the owner's edit control included", async () => {
+    useAuth.mockReturnValue({
+      user: { id: "u1", username: "ana", email: "ana@example.test" },
+      loading: false,
+      logout: vi.fn(),
+      refresh: vi.fn(),
+    });
+    mountProfile();
+    await screen.findByText("Insights");
+
+    // One kind of control in the row, and it is the site's one icon control:
+    // the owner's Edit sits in the same ghost square as the accounts beside it,
+    // navigating or acting, rather than in a tier of its own.
+    const marks = [
+      screen.getByRole("link", { name: "X / Twitter: @ana_osint" }),
+      screen.getByRole("link", { name: "Website: ana.example" }),
+      screen.getByRole("button", { name: "Edit profile" }),
+    ];
+    const shape = buttonClasses("ghost", { icon: true });
+    for (const mark of marks) expect(mark.className).toBe(shape);
   });
 
   it("names each chart by what it counts, in words that need no tooltip", async () => {

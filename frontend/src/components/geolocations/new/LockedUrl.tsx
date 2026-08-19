@@ -1,4 +1,6 @@
-import { LOCKED_FIELD } from "@/components/ui/Input";
+import type { ReactNode } from "react";
+
+import { FieldAdornment, LOCKED_FIELD, TRAILING_ROOM } from "@/components/ui/Input";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
 
@@ -19,9 +21,21 @@ import { cn } from "@/lib/cn";
  * high. Accent orange per the accent recipe, since it is clickable, and the
  * focus ring is the border the default field turns on focus, so a focused
  * locked link looks like a focused field.
+ *
+ * `trailing` is the adornment slot `<Input>` carries, in the same place and at
+ * the same size: the value is frozen, but the field's own actions are not, and
+ * the archive mark on a published event's source URL sits here. The link
+ * truncates before the adornment rather than under it.
  */
-export function LockedUrl({ href }: { href: string }) {
-  return (
+export function LockedUrl({
+  href,
+  trailing,
+}: {
+  href: string;
+  /** Marks overlaid at the field's right edge, as on `<Input trailing>`. */
+  trailing?: ReactNode;
+}) {
+  const link = (
     <a
       href={href}
       target="_blank"
@@ -30,9 +44,18 @@ export function LockedUrl({ href }: { href: string }) {
         LOCKED_FIELD,
         TEXT_LINK,
         "block truncate outline-hidden focus-visible:border-orange-500",
+        trailing && TRAILING_ROOM,
       )}
     >
       {href}
     </a>
+  );
+
+  if (!trailing) return link;
+  return (
+    <div className="relative">
+      {link}
+      <FieldAdornment>{trailing}</FieldAdornment>
+    </div>
   );
 }

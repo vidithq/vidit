@@ -74,6 +74,38 @@ export interface paths {
         patch: operations["set_event_moderation_api_v1_admin_events__geolocation_id__moderation_patch"];
         trace?: never;
     };
+    "/api/v1/admin/events/{geolocation_id}/versions/{version_no}/redact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redact Event Version
+         * @description Blank one filed version of an event's history.
+         *
+         *     ``event_versions`` is append-only and a version number is a public
+         *     address, so a version whose content the record must stop serving is blanked
+         *     rather than removed: the snapshot and the note go, the row, its
+         *     ``version_no`` and its ``created_at`` stay, and
+         *     [`GET /events/{id}/versions`] still lists it, marked ``redacted``. A
+         *     redacted version displays no images, so a proof image only it pointed at is
+         *     deleted with it.
+         *
+         *     Idempotent: redacting an already-redacted version changes nothing and
+         *     writes no audit row. 404 for an unknown or soft-deleted event, and for a
+         *     version the event does not carry.
+         */
+        post: operations["redact_event_version_api_v1_admin_events__geolocation_id__versions__version_no__redact_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/invite-codes": {
         parameters: {
             query?: never;
@@ -614,9 +646,10 @@ export interface paths {
          *     ``services/events.create_with_evidence``.
          *
          *     ``source_snapshot_url`` records the event's archived source in the same
-         *     write: the same checks ``POST /events/{id}/archives`` runs, so a paste that
-         *     is not a snapshot of ``source_url`` is a 400 carrying the failing check's
-         *     code, and no event is created.
+         *     write, and ``secondary_snapshot_urls`` records one copy per mirror, on the
+         *     checks every archived-copy field runs (``services/source_archive``): a paste
+         *     that is not a snapshot of the link it sits beside is a 400 carrying the
+         *     failing check's code, and no event is created.
          */
         post: operations["create_event_api_v1_events_post"];
         delete?: never;
@@ -909,41 +942,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{event_id}/archives": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Record Archived Copy
-         * @description Record the archived copy of one of this event's links (owner-only).
-         *
-         *     ``original_url`` has to be one of the links the event carries (its source,
-         *     a secondary source, the post it was detected from, or a proof citation);
-         *     ``snapshot_url`` has to be an ``https`` URL on one of the three allowed
-         *     archive hosts, and to name the same page. Both checks live in
-         *     ``services/source_archive``; a failure is a 400 carrying the code that says
-         *     which one.
-         *
-         *     One copy per link: pasting a second snapshot for a link replaces the first,
-         *     which is how the owner corrects a wrong paste. Soft-deleted → 404, not the
-         *     owner → 403.
-         *
-         *     The ceiling is per hour rather than per minute: one analyst archiving every
-         *     link on a busy event is a run of a dozen calls, and nothing here costs an
-         *     outbound request.
-         */
-        post: operations["record_archived_copy_api_v1_events__event_id__archives_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/events/{geolocation_id}": {
         parameters: {
             query?: never;
@@ -1018,8 +1016,9 @@ export interface paths {
          *     form (title, coordinates, source URL, dates, the graphic-content flag,
          *     proof + its images, tags, and the source media: ``files`` added,
          *     ``remove_media_ids`` dropped), and on
-         *     success the row is written and frozen as ``geolocated``, with the caller
-         *     credited as a geolocator. Only ``detected_from_url`` (provenance) and
+         *     success the row is written and published as ``geolocated``, with the caller
+         *     credited as a geolocator; from there it is corrected through ``save_version``,
+         *     which files each superseded version. Only ``detected_from_url`` (provenance) and
          *     ``status`` carry no field. A detection is owner-only (403
          *     otherwise); a ``requested`` event is answerable by anyone, and the
          *     fulfiller becomes its owner (``requested_by`` keeps the original poster).
@@ -1027,11 +1026,12 @@ export interface paths {
          *     a conflict, and the ``capture_source`` tag, 400 otherwise). Off
          *     ``requested`` / ``detected`` → 409. Soft-deleted rows read as 404.
          *
-         *     ``source_snapshot_url`` records the archived source in the same write, on
-         *     the terms ``POST /events/{id}/archives`` applies (a paste that is not a
-         *     snapshot of the stored source URL is a 400, and nothing is written). An
-         *     edit that changes the source URL and pastes no new snapshot leaves the
-         *     event with no archived source rather than the old one's copy.
+         *     ``source_snapshot_url`` records the archived source in the same write and
+         *     ``secondary_snapshot_urls`` records one copy per mirror, on the checks every
+         *     archived-copy field runs (a paste that is not a snapshot of the link it sits
+         *     beside is a 400, and nothing is written). An edit that changes the source URL
+         *     and pastes no new snapshot leaves the event with no archived source rather
+         *     than the old one's copy.
          */
         post: operations["geolocate_event_api_v1_events__geolocation_id__geolocate_post"];
         delete?: never;
@@ -1062,6 +1062,92 @@ export interface paths {
          *     are invisible to the caller, so all three read the same.
          */
         post: operations["report_event_api_v1_events__geolocation_id__report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{geolocation_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Event Versions
+         * @description The event's superseded versions, newest first.
+         *
+         *     Public, like the event itself: a corrected record is only auditable if the
+         *     corrections are readable. The live row is the current version and is not
+         *     listed here, so an event nobody has edited answers with an empty list.
+         *     Soft-deleted rows read as 404; a withheld row does too for everyone but an
+         *     admin, who still needs to read what was taken down in order to judge the
+         *     report that took it down (the same branch ``GET /{id}`` takes).
+         *
+         *     Paged like every other list: ``services/versions.HISTORY_PAGE_SIZE`` rows by
+         *     default, capped at 100 however large ``limit`` is, and a caller reading past
+         *     the first page follows the ``cursor`` in the ``Link: rel="next"`` header.
+         *     ``total`` is the whole history, not the page.
+         */
+        get: operations["list_event_versions_api_v1_events__geolocation_id__versions_get"];
+        put?: never;
+        /**
+         * Save Event Version
+         * @description Correct a published event, keeping the version it replaces readable.
+         *
+         *     Owner-only, and only while ``geolocated`` (409 otherwise): a correction to a
+         *     vouched record must not silently rewrite it, so the pre-edit state is filed
+         *     as an ``event_versions`` row and the event moves to the next
+         *     ``version_no``, in one transaction under a row lock.
+         *
+         *     The evidence anchor is immutable: ``source_url`` and the source media take
+         *     no field. A published row is past ``POST /events/{id}/close``, so a wrong
+         *     source on one is an admin matter rather than an owner action. Everything
+         *     else the publish form wrote is editable and versioned, the secondary source
+         *     links included. The published evidence floor is re-checked on the post-edit
+         *     state, so a version cannot drop the row below it. Soft-deleted rows read as
+         *     404.
+         *
+         *     This is also where an archived copy of one of the row's links is recorded:
+         *     ``source_snapshot_url``, ``detected_from_snapshot_url`` and
+         *     ``secondary_snapshot_urls`` archive a link without changing it, and land in
+         *     the version this call produces. A save whose only change is a copy is
+         *     accepted even at the version ceiling, since evidence preservation never
+         *     waits on a quota.
+         */
+        post: operations["save_event_version_api_v1_events__geolocation_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{geolocation_id}/versions/{version_no}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Event Version
+         * @description One superseded version of an event, by its number.
+         *
+         *     The direct read behind the ``/vN`` address: a reader opening one version
+         *     reads that version, rather than walking the history until the page holding
+         *     it comes back. Public and visibility-gated exactly like the list above.
+         *
+         *     The live row is the current version and is not filed here, so its number
+         *     answers 404: ``GET /{id}`` is where the current version is read. A number
+         *     the event never carried answers 404 too, and a redacted version answers
+         *     with its blanked shape rather than a 404, since the version exists and the
+         *     record still shows that it does.
+         */
+        get: operations["get_event_version_api_v1_events__geolocation_id__versions__version_no__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1936,6 +2022,11 @@ export interface components {
             /** Proof Files */
             proof_files?: string[] | null;
             /**
+             * Secondary Snapshot Urls
+             * @default []
+             */
+            secondary_snapshot_urls: string[];
+            /**
              * Secondary Source Urls
              * @default []
              */
@@ -1978,6 +2069,11 @@ export interface components {
             proof?: string | null;
             /** Proof Files */
             proof_files?: string[] | null;
+            /**
+             * Secondary Snapshot Urls
+             * @default []
+             */
+            secondary_snapshot_urls: string[];
             /**
              * Secondary Source Urls
              * @default []
@@ -2024,6 +2120,11 @@ export interface components {
             /** Remove Media Ids */
             remove_media_ids?: string | null;
             /**
+             * Secondary Snapshot Urls
+             * @default []
+             */
+            secondary_snapshot_urls: string[];
+            /**
              * Secondary Source Urls
              * @default []
              */
@@ -2034,6 +2135,54 @@ export interface components {
             source_snapshot_url?: string | null;
             /** Source Url */
             source_url: string;
+            /** Tag Ids */
+            tag_ids?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** Body_save_event_version_api_v1_events__geolocation_id__versions_post */
+        Body_save_event_version_api_v1_events__geolocation_id__versions_post: {
+            /** Capture Source Lat */
+            capture_source_lat?: number | null;
+            /** Capture Source Lng */
+            capture_source_lng?: number | null;
+            /** Conflict Ids */
+            conflict_ids?: string | null;
+            /** Detected From Snapshot Url */
+            detected_from_snapshot_url?: string | null;
+            /** Event Date */
+            event_date?: string | null;
+            /** Event Time */
+            event_time?: string | null;
+            /**
+             * Is Graphic
+             * @default false
+             */
+            is_graphic: boolean;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /** Note */
+            note?: string | null;
+            /** Proof */
+            proof?: string | null;
+            /** Proof Files */
+            proof_files?: string[] | null;
+            /**
+             * Secondary Snapshot Urls
+             * @default []
+             */
+            secondary_snapshot_urls: string[];
+            /**
+             * Secondary Source Urls
+             * @default []
+             */
+            secondary_source_urls: string[];
+            /** Source Posted At */
+            source_posted_at?: string | null;
+            /** Source Snapshot Url */
+            source_snapshot_url?: string | null;
             /** Tag Ids */
             tag_ids?: string | null;
             /** Title */
@@ -2198,21 +2347,6 @@ export interface components {
             lng: number;
         };
         /**
-         * EventArchiveCreate
-         * @description Body of ``POST /events/{event_id}/archives``.
-         *
-         *     ``original_url`` names which of the event's links the copy is of, and has
-         *     to be one the event actually carries; ``snapshot_url`` is what the provider
-         *     handed the analyst back. Both ceilings match the columns behind them, so an
-         *     oversized paste is a 422 on the field rather than a database error.
-         */
-        EventArchiveCreate: {
-            /** Original Url */
-            original_url: string;
-            /** Snapshot Url */
-            snapshot_url: string;
-        };
-        /**
          * EventCloseRequest
          * @description Body for ``POST /events/{id}/close``. The reason is required: a closed
          *     event stays publicly visible, so the why must travel with it.
@@ -2278,6 +2412,8 @@ export interface components {
             event_date: string | null;
             /** Event Time */
             event_time: string | null;
+            /** Geolocated At */
+            geolocated_at: string | null;
             /** Geolocators */
             geolocators: components["schemas"]["AuthorRef"][];
             /**
@@ -2311,6 +2447,55 @@ export interface components {
             thumbnail: components["schemas"]["MediaRead"] | null;
             /** Title */
             title: string;
+            /** Version No */
+            version_no: number;
+        };
+        /**
+         * EventVersionList
+         * @description An event's history: the superseded versions, newest first.
+         *
+         *     Paged like every other list (``Link: rel="next"``, opaque cursor);
+         *     ``total`` is the whole history, not the page.
+         */
+        EventVersionList: {
+            /** Items */
+            items: components["schemas"]["EventVersionRead"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * EventVersionRead
+         * @description One superseded version of an event.
+         *
+         *     ``version_no`` is the version this row holds, not the version that replaced
+         *     it: an event at ``version_no`` 3 answers with snapshots 2 and 1, and the
+         *     live row is version 3. ``snapshot`` carries the editable fields as they
+         *     stood (see ``services/versions.build_snapshot``); the evidence anchor
+         *     (``source_url`` and the source media) is absent because no edit can move it,
+         *     so the live row is authoritative for it at every version.
+         */
+        EventVersionRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            edited_by: components["schemas"]["AuthorRef"] | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Note */
+            note: string | null;
+            /** Redacted */
+            redacted: boolean;
+            /** Snapshot */
+            snapshot: {
+                [key: string]: unknown;
+            };
+            /** Version No */
+            version_no: number;
         };
         /**
          * ExternalLinks
@@ -2993,6 +3178,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminEventModerationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redact_event_version_api_v1_admin_events__geolocation_id__versions__version_no__redact_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+                version_no: number;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventVersionRead"];
                 };
             };
             /** @description Validation Error */
@@ -4142,43 +4361,6 @@ export interface operations {
             };
         };
     };
-    record_archived_copy_api_v1_events__event_id__archives_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                event_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EventArchiveCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ArchivedLinkRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_event_api_v1_events__geolocation_id__get: {
         parameters: {
             query?: never;
@@ -4341,6 +4523,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContentReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_event_versions_api_v1_events__geolocation_id__versions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor from a Link: rel=next header */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventVersionList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_event_version_api_v1_events__geolocation_id__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_save_event_version_api_v1_events__geolocation_id__versions_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_event_version_api_v1_events__geolocation_id__versions__version_no__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+                version_no: number;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventVersionRead"];
                 };
             };
             /** @description Validation Error */

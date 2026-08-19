@@ -49,16 +49,18 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 vi.mock("@/lib/events", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/events")>()),
   geolocateEvent: vi.fn(),
+  saveVersion: vi.fn(),
   closeEvent: vi.fn(),
 }));
 
-import { closeEvent, geolocateEvent } from "@/lib/events";
+import { closeEvent, geolocateEvent, saveVersion } from "@/lib/events";
 import { ARM_MS } from "@/hooks/useConfirmAction";
 import type { Conflict, EventDetail, Tag } from "@/types";
 
 import EditEventPage from "./page";
 
 const geolocateMock = vi.mocked(geolocateEvent);
+const saveVersionMock = vi.mocked(saveVersion);
 const closeMock = vi.mocked(closeEvent);
 
 const CONFLICTS: Conflict[] = [
@@ -89,6 +91,7 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
     status: "detected",
+    version_no: 1,
     is_graphic: false,
     close_reason: null,
     before_closed_status: null,
@@ -105,6 +108,7 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
       content: [{ type: "image", attrs: { src: "https://cdn.test/p.jpg" } }],
     },
     created_at: "2026-06-02T10:00:00Z",
+    geolocated_at: null,
     closed_at: null,
     media: [
       {
@@ -121,11 +125,33 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   };
 }
 
+/**
+ * A published geolocation the owner is correcting: the same row past its
+ * confirmation, already carrying the curated picks a publication required.
+ */
+function publishedFixture(overrides: Partial<EventDetail> = {}): EventDetail {
+  return detectionFixture({
+    status: "geolocated",
+    version_no: 1,
+    geolocated_at: "2026-06-02T11:00:00Z",
+    // Both carry seconds, the precision a real source post time has and the two
+    // form inputs do not: an untouched save must not post the truncation back.
+    source_posted_at: "2026-05-30T14:32:27Z",
+    event_time: "14:32:27",
+    tags: CURATED_TAGS,
+    conflicts: CONFLICTS,
+    ...overrides,
+  });
+}
+
+/** The row `/events/d1` serves, set per test. */
+let row: EventDetail;
+
 /** The queue this detection is being walked through: itself, then two more. */
 let queueItems: EventDetail[] = [];
 
 function resource(path: string) {
-  if (path.startsWith("/events/d1")) return detectionFixture();
+  if (path.startsWith("/events/d1")) return row;
   if (path.startsWith("/events/detections"))
     return { items: queueItems, total: queueItems.length, page: 1, per_page: 100 };
   if (path === "/tags?curated=true") return CURATED_TAGS;
@@ -161,8 +187,11 @@ function rejectDetection(reason: string) {
 beforeEach(() => {
   push.mockReset();
   geolocateMock.mockReset();
+  saveVersionMock.mockReset();
   closeMock.mockReset();
   geolocateMock.mockResolvedValue(detectionFixture({ status: "geolocated" }));
+  saveVersionMock.mockResolvedValue(publishedFixture({ version_no: 2 }));
+  row = detectionFixture();
   queryParam = null;
   queueItems = [
     detectionFixture(),
@@ -179,7 +208,7 @@ describe("the detection edit surface", () => {
       screen.getByRole("heading", { name: "Submit detection" })
     ).toBeInTheDocument();
     // No description line under the title: the fields say what they are.
-    expect(screen.queryByText(/Submitting freezes the row/)).toBeNull();
+    expect(screen.queryByText(/Submitting publishes the event/)).toBeNull();
     // The flow action stands alone at the foot: no Cancel, and no Reject
     // beside it.
     const submit = screen.getByRole("button", { name: "Submit" });
@@ -325,9 +354,9 @@ describe("the submit confirm", () => {
   it("announces the armed state and what the next click costs", () => {
     armSubmit();
     // A live region beside the button, not a renamed control: the reader hears
-    // the state and what it costs, in the shape `<CopyButton>` already uses.
+    // the state and what it costs, in the shape every copy control uses.
     const announcement = screen.getByText(
-      "Click again to submit. Submitting freezes the event."
+      "Click again to submit. Submitting publishes the event; later changes become versions."
     );
     expect(announcement).toHaveAttribute("role", "status");
     expect(announcement).toHaveAttribute("aria-live", "polite");
@@ -344,7 +373,9 @@ describe("the submit confirm", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(button).toHaveAccessibleName("Submit");
     expect(
-      screen.queryByText("Click again to submit. Submitting freezes the event.")
+      screen.queryByText(
+        "Click again to submit. Submitting publishes the event; later changes become versions."
+      )
     ).toBeNull();
   });
 
@@ -367,5 +398,157 @@ describe("the submit confirm", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("editing a published geolocation", () => {
+  beforeEach(() => {
+    row = publishedFixture();
+  });
+
+  it("opens the correction form instead of refusing the edit", () => {
+    render(<EditEventPage />);
+
+    // The old gate turned every non-`detected` row away here; a published row
+    // now reaches the form, under its own title and its own action.
+    expect(
+      screen.getByRole("heading", { name: "Edit geolocation" })
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/no longer be edited/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Save version 2" })).toBeInTheDocument();
+    // Neither verb belongs to a published row: it is not skippable and not
+    // rejectable.
+    expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
+  });
+
+  it("renders the evidence anchor read-only", () => {
+    render(<EditEventPage />);
+
+    // The source URL is a link to open, not a field to retype, and the media
+    // block offers no add or remove.
+    expect(screen.queryByRole("textbox", { name: /Source URL/ })).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "https://t.me/channel/12345" })
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Add media/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
+    // And the reason it can't move is one click away, on the locked marker.
+    expect(
+      screen.getAllByRole("button", { name: "Why can't I change the source?" })
+    ).toHaveLength(2);
+  });
+
+  it("saves on the click that made it, then lands on the event", async () => {
+    render(<EditEventPage />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
+      target: { value: "Corrected title" },
+    });
+    // No arming step: a version adds a version, which is the ordinary way a
+    // published event changes.
+    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
+    expect(geolocateMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/events/d1"));
+  });
+
+  it("keeps the seconds of an untouched source post time and event time", async () => {
+    render(<EditEventPage />);
+
+    // Both inputs hold less than their column does, so a save that never went
+    // near them must not post the truncation back: the instant is omitted, which
+    // the endpoint reads as "keep what the row holds", and the time goes back at
+    // the row's own precision, since an absent one clears it.
+    fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
+      target: { value: "Corrected title" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
+
+    const [, input] = saveVersionMock.mock.calls[0];
+    expect(input.source_posted_at).toBe("");
+    expect(input.event_time).toBe("14:32:27");
+  });
+
+  it("posts a source post time the editor actually moved", async () => {
+    render(<EditEventPage />);
+
+    // The label carries its own `?` button, so the query is narrowed to the input.
+    fireEvent.change(screen.getByLabelText(/^Source posted/, { selector: "input" }), {
+      target: { value: "2026-05-30T15:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
+
+    expect(saveVersionMock.mock.calls[0][1].source_posted_at).toBe("2026-05-30T15:00");
+  });
+
+  it("posts the version note and never the evidence anchor", async () => {
+    render(<EditEventPage />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
+      target: { value: "Corrected title" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Version note" }), {
+      target: { value: "Coordinates were off by a block." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
+
+    const [id, input] = saveVersionMock.mock.calls[0];
+    expect(id).toBe("d1");
+    expect(input.note).toBe("Coordinates were off by a block.");
+    // The anchor is not assembled at all, so no client bug can post it.
+    expect(input).not.toHaveProperty("source_url");
+    expect(input).not.toHaveProperty("files");
+    expect(input).not.toHaveProperty("remove_media_ids");
+  });
+
+  it("refuses a save that would change nothing, without a request", async () => {
+    render(<EditEventPage />);
+
+    // The form posts the whole editable state, so an untouched save would
+    // otherwise mint a version whose changed-field list is empty. The note is
+    // not a versioned field, so it does not lift the refusal on its own.
+    fireEvent.change(screen.getByRole("textbox", { name: "Version note" }), {
+      target: { value: "Read it again." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+
+    expect(
+      await screen.findByText("Nothing changed since version 1.")
+    ).toBeInTheDocument();
+    expect(saveVersionMock).not.toHaveBeenCalled();
+
+    // A moved field makes it a correction again.
+    fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
+      target: { value: "Corrected title" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("still holds the published floor before it posts", async () => {
+    row = publishedFixture({ conflicts: [] });
+    render(<EditEventPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
+    // The notice names the miss and nothing is written; the server enforces
+    // the same floor, this just spares the round trip.
+    const notice = await screen.findByRole("alert");
+    expect(notice).toHaveTextContent("Conflict");
+    expect(saveVersionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("a state with no owner edit", () => {
+  it("says so instead of offering a form", () => {
+    row = detectionFixture({ status: "closed", close_reason: "AI-generated." });
+    render(<EditEventPage />);
+
+    expect(screen.getByText(/no edit form/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save version 2" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
   });
 });

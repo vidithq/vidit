@@ -47,54 +47,60 @@ export function CoordinateInputs({
     setLng(String(pair.lng));
   };
 
-  // The verification affordances only make sense on a real point, so they
-  // appear once the pair parses in bounds and disappear while it is half-typed.
+  // The verification affordances only act on a real point, so they grey out
+  // while the pair is half-typed or out of bounds.
   const pair = coordinatePair(lat, lng);
 
   return (
-    <div className="space-y-1.5">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <label
-            htmlFor={latId}
-            className={`${FORM_LABEL}${invalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
-          >
-            Latitude
-          </label>
-          <Input
-            id={latId}
-            type="text"
-            required={required}
-            value={lat}
-            onChange={(e) => setLat(e.target.value)}
-            onPaste={onPastePair}
-            placeholder="48.015883"
-            className="font-mono"
-            invalid={invalid}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label
-            htmlFor={lngId}
-            className={`${FORM_LABEL}${invalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
-          >
-            Longitude
-          </label>
-          <Input
-            id={lngId}
-            type="text"
-            required={required}
-            value={lng}
-            onChange={(e) => setLng(e.target.value)}
-            onPaste={onPastePair}
-            placeholder="37.802411"
-            className="font-mono"
-            invalid={invalid}
-          />
-        </div>
+    // Two columns at every width: the pair's own actions ride inside the
+    // longitude field as its trailing adornment, so checking a coordinate
+    // against imagery costs neither a third column that squeezes the fields on
+    // a phone nor a line of its own under them.
+    <div className="grid grid-cols-2 gap-4">
+      <div className="space-y-1.5">
+        <label
+          htmlFor={latId}
+          className={`${FORM_LABEL}${invalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
+        >
+          Latitude
+        </label>
+        <Input
+          id={latId}
+          type="text"
+          required={required}
+          value={lat}
+          onChange={(e) => setLat(e.target.value)}
+          onPaste={onPastePair}
+          placeholder="48.015883"
+          className="font-mono"
+          invalid={invalid}
+        />
       </div>
-
-      {pair && <CoordinateActions lat={pair.lat} lng={pair.lng} />}
+      <div className="space-y-1.5">
+        <label
+          htmlFor={lngId}
+          className={`${FORM_LABEL}${invalid ? ` ${FORM_INVALID_LABEL}` : ""}`}
+        >
+          Longitude
+        </label>
+        <Input
+          id={lngId}
+          type="text"
+          required={required}
+          value={lng}
+          onChange={(e) => setLng(e.target.value)}
+          onPaste={onPastePair}
+          placeholder="37.802411"
+          className="font-mono"
+          invalid={invalid}
+          // Always mounted, greyed until the pair parses: the adornment holds
+          // one width, so nothing shifts the moment the second half of a
+          // coordinate is typed.
+          trailing={
+            <CoordinateActions lat={pair?.lat ?? null} lng={pair?.lng ?? null} />
+          }
+        />
+      </div>
     </div>
   );
 }

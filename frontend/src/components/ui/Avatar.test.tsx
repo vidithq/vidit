@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { Avatar } from "./Avatar";
 
@@ -39,6 +39,28 @@ describe("Avatar", () => {
 
     expect(container.querySelector("img")).toBeNull();
     expect(screen.getByText("A")).toBeInTheDocument();
+  });
+
+  // The circle is server-rendered, so a picture can fail before React hydrates
+  // and that error never reaches onError. jsdom loads nothing, so the finished
+  // but empty image is faked here.
+  it("falls back when the picture failed before hydration", () => {
+    const complete = vi
+      .spyOn(HTMLImageElement.prototype, "complete", "get")
+      .mockReturnValue(true);
+    const naturalWidth = vi
+      .spyOn(HTMLImageElement.prototype, "naturalWidth", "get")
+      .mockReturnValue(0);
+
+    const { container } = render(
+      <Avatar src="https://cdn.example.com/gone.jpg" username="analyst" size="size-10" />,
+    );
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByText("A")).toBeInTheDocument();
+
+    complete.mockRestore();
+    naturalWidth.mockRestore();
   });
 
   it("retries once the owner types a different URL", () => {

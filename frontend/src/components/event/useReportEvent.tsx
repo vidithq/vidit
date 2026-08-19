@@ -119,8 +119,7 @@ export function useReportEvent(eventId: string): {
       title="Report"
       aria-expanded={open}
       // Only while the form is mounted: `aria-controls` pointing at an id that
-      // is not in the document is a dangling reference (the `OverflowMenu`
-      // trigger takes the same care).
+      // is not in the document is a dangling reference.
       aria-controls={open ? FORM_ID : undefined}
       onClick={() => {
         reportMutation.reset();

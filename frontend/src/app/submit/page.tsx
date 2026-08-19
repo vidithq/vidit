@@ -8,6 +8,7 @@ import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { cleanNumber } from "@/lib/coordinates";
 import {
+  archivedCopies,
   createEvent,
   createEventRequest,
   FIELD_LABELS,
@@ -153,6 +154,12 @@ function SubmitForm() {
   // Optional mirrors of the same media (other networks, other same-POV posts),
   // ordered. Never part of either publish floor.
   const [secondarySourceUrls, setSecondarySourceUrls] = useState<string[]>([]);
+  // One archived-copy paste per mirror, index-aligned with the list above:
+  // `LinkListInput` moves both together, so a removed row takes its copy with
+  // it. Optional per row, like the source's.
+  const [secondarySnapshotUrls, setSecondarySnapshotUrls] = useState<string[]>(
+    []
+  );
   const [eventDate, setEventDate] = useState("");
   // Optional event time-of-day (HH:MM, UTC).
   const [eventTime, setEventTime] = useState("");
@@ -207,6 +214,9 @@ function SubmitForm() {
         // The request's mirrors carry over too: the fulfilment replaces the
         // whole list server-side, so anything not re-posted here is dropped.
         setSecondarySourceUrls(b.secondary_source_urls);
+        // Blank pastes, one per carried-over mirror: the copies the request
+        // already holds are shown by the rows rather than re-posted.
+        setSecondarySnapshotUrls(b.secondary_source_urls.map(() => ""));
         // Carry the request's optional metadata into the form: the dates the
         // poster knew, and the in-progress proof so the analyst continues from
         // it instead of a blank editor. The form mounts only after the request
@@ -237,6 +247,7 @@ function SubmitForm() {
         source_url: sourceUrl.trim(),
         source_snapshot_url: sourceSnapshotUrl,
         secondary_source_urls: secondarySourceUrls,
+        secondary_snapshot_urls: secondarySnapshotUrls,
         proof,
         // Optional approximate guess, both-or-neither, same strict parse as the
         // camera point below (no silent truncation of a half-typed coordinate).
@@ -278,6 +289,7 @@ function SubmitForm() {
           source_url: sourceUrl,
           source_snapshot_url: sourceSnapshotUrl,
           secondary_source_urls: secondarySourceUrls,
+          secondary_snapshot_urls: secondarySnapshotUrls,
           event_date: eventDate || undefined,
           event_time: eventTime || undefined,
           source_posted_at: sourcePostedAt,
@@ -298,6 +310,7 @@ function SubmitForm() {
         source_url: sourceUrl,
         source_snapshot_url: sourceSnapshotUrl,
         secondary_source_urls: secondarySourceUrls,
+        secondary_snapshot_urls: secondarySnapshotUrls,
         event_date: eventDate || undefined,
         event_time: eventTime || undefined,
         source_posted_at: sourcePostedAt,
@@ -386,11 +399,14 @@ function SubmitForm() {
     clearIncomplete();
   };
 
-  // A pasted snapshot that cannot be one, caught before the upload: the field
-  // flags itself red, and the publish it would have failed says why. Not a
-  // missing field (the archive is optional), so it never enters the tick-list.
+  // A pasted snapshot that cannot be one, on the source or on any mirror,
+  // caught before the upload: the field flags itself red, and the publish it
+  // would have failed says why. Not a missing field (every archive here is
+  // optional), so it never enters the tick-list.
   const snapshotUnusable =
-    sourceSnapshotUrl.trim() !== "" && !isSnapshotUrl(sourceSnapshotUrl);
+    [sourceSnapshotUrl, ...secondarySnapshotUrls].some(
+      (pasted) => pasted.trim() !== "" && !isSnapshotUrl(pasted)
+    );
 
   const publishGeolocation = async () => {
     resetActions();
@@ -576,6 +592,9 @@ function SubmitForm() {
           archivedSource={request?.archived_source ?? null}
           secondarySourceUrls={secondarySourceUrls}
           setSecondarySourceUrls={setSecondarySourceUrls}
+          secondarySnapshotUrls={secondarySnapshotUrls}
+          setSecondarySnapshotUrls={setSecondarySnapshotUrls}
+          archivedCopies={request ? archivedCopies(request) : undefined}
           eventDate={eventDate}
           setEventDate={setEventDate}
           eventTime={eventTime}

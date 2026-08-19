@@ -5,6 +5,7 @@ import {
   createEventRequest,
   geolocateEvent,
   parseCaptureCoords,
+  saveVersion,
   type EventCreateInput,
 } from "./events";
 import { apiFetch } from "./api";
@@ -101,6 +102,44 @@ describe("createEvent multipart", () => {
     expect(lastBody().has("secondary_source_urls")).toBe(false);
   });
 
+  it("posts one archived-copy entry per surviving mirror, aligned with it", async () => {
+    await createEvent({
+      ...createInput,
+      secondary_source_urls: ["https://t.me/c/3", "https://x.com/u/status/2"],
+      secondary_snapshot_urls: ["", "  https://archive.ph/abcde  "],
+    });
+    const body = lastBody();
+    expect(body.getAll("secondary_source_urls")).toEqual([
+      "https://t.me/c/3",
+      "https://x.com/u/status/2",
+    ]);
+    // Blank where that mirror was not archived, so position i on the wire
+    // names mirror i whatever the analyst filled in.
+    expect(body.getAll("secondary_snapshot_urls")).toEqual([
+      "",
+      "https://archive.ph/abcde",
+    ]);
+  });
+
+  it("drops a blank mirror row together with its copy", async () => {
+    await createEvent({
+      ...createInput,
+      secondary_source_urls: ["   ", "https://t.me/c/3"],
+      secondary_snapshot_urls: ["https://archive.ph/orphan", "https://archive.ph/abcde"],
+    });
+    const body = lastBody();
+    expect(body.getAll("secondary_source_urls")).toEqual(["https://t.me/c/3"]);
+    expect(body.getAll("secondary_snapshot_urls")).toEqual(["https://archive.ph/abcde"]);
+  });
+
+  it("sends a blank copy entry per mirror when none were pasted", async () => {
+    await createEvent({
+      ...createInput,
+      secondary_source_urls: ["https://t.me/c/3"],
+    });
+    expect(lastBody().getAll("secondary_snapshot_urls")).toEqual([""]);
+  });
+
   it("posts the archived copy of the source when one was pasted", async () => {
     await createEvent({
       ...createInput,
@@ -149,6 +188,35 @@ describe("createEvent multipart", () => {
     const body = lastBody();
     expect(body.get("capture_source_lat")).toBe("50.1");
     expect(body.get("capture_source_lng")).toBe("30.2");
+  });
+});
+
+describe("saveVersion multipart", () => {
+  it("omits a blank source_posted_at so the published instant survives", async () => {
+    // The server reads an absent field as "keep": posting "" would ask it to
+    // tell a blanked field from an untouched one, and a correction to the title
+    // would wipe the instant the record was vouched with.
+    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
+    await saveVersion("e1", { ...createInput, source_posted_at: "" });
+    expect(lastBody().has("source_posted_at")).toBe(false);
+  });
+
+  it("posts a source_posted_at the editor filled in", async () => {
+    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
+    await saveVersion("e1", { ...createInput, source_posted_at: "2026-02-03T04:05" });
+    expect(lastBody().get("source_posted_at")).toBe("2026-02-03T04:05");
+  });
+
+  it("carries a mirror's archived copy, so one edit files one version", async () => {
+    mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
+    await saveVersion("e1", {
+      ...createInput,
+      secondary_source_urls: ["https://t.me/c/3"],
+      secondary_snapshot_urls: ["https://archive.ph/abcde"],
+    });
+    expect(lastBody().getAll("secondary_snapshot_urls")).toEqual([
+      "https://archive.ph/abcde",
+    ]);
   });
 });
 

@@ -51,6 +51,7 @@ export function PageShell({
             variant="ghost"
             onClick={handleBack}
             aria-label="Back"
+          title="Back"
             className="flex -ml-2 mb-1 lg:inline-flex lg:absolute lg:right-full lg:top-1.5 lg:mr-3 lg:mb-0 lg:ml-0"
           >
             <ArrowLeft size={18} />

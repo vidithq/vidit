@@ -319,6 +319,7 @@ export function TimelineScrubber({
               <button
                 onClick={resetWindow}
                 aria-label="Reset window"
+                title="Reset window"
                 className="shrink-0 flex items-center justify-center w-5 h-5 text-neutral-500 hover:text-neutral-300 transition-colors"
               >
                 <RotateCcw size={12} />

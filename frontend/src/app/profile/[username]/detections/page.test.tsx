@@ -33,6 +33,7 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
     status: "detected",
+    version_no: 1,
     is_graphic: false,
     close_reason: null,
     before_closed_status: null,
@@ -49,6 +50,7 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
       content: [{ type: "image", attrs: { src: "https://cdn.test/p.jpg" } }],
     },
     created_at: "2026-06-02T10:00:00Z",
+    geolocated_at: null,
     closed_at: null,
     media: [
       {

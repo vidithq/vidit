@@ -84,6 +84,7 @@ export function FileManager({
       type="button"
       onClick={onClick}
       aria-label={label}
+      title={label}
       className="absolute top-1 right-1 flex size-6 items-center justify-center rounded-full bg-neutral-950/80 text-neutral-300 transition-colors hover:bg-neutral-950 hover:text-red-400"
     >
       <X size={13} />

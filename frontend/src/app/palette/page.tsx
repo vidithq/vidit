@@ -11,6 +11,7 @@ import {
   Circle,
   Copy,
   Download,
+  ExternalLink,
   Film,
   Mail,
   MapPin,
@@ -65,8 +66,9 @@ import { IncompleteFormNotice } from "@/components/ui/IncompleteFormNotice";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import {
-  ArchiveSourceField,
+  ArchiveAdornment,
   ArchivedCopies,
+  ArchiveSnapshotField,
   DETECTED_FROM_DESCRIPTION,
   PRIMARY_SOURCE_DESCRIPTION,
   mirrorDescription,
@@ -83,9 +85,9 @@ import {
   ARMED_RING,
   WARNING_CALLOUT,
 } from "@/components/ui/styles";
-import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
-import { CopyButton } from "@/components/ui/CopyButton";
-import { OverflowMenu } from "@/components/ui/OverflowMenu";
+import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
+import { CoordinateActions } from "@/components/event/CoordinateActions";
+import { DateTimeInput } from "@/components/ui/DateTimeInput";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
 import { ProofSection } from "@/components/ui/ProofSection";
@@ -99,6 +101,7 @@ import {
 } from "@/components/ui/form-styles";
 import { Input, Select } from "@/components/ui/Input";
 import { LinkListInput } from "@/components/ui/LinkListInput";
+import { safeHostname } from "@/lib/format";
 
 /**
  * Living style guide: every reusable primitive, its variants, and a one-line
@@ -154,6 +157,7 @@ const MOCK_DETAIL: EventDetail = {
   event_date: "2026-05-09",
   is_graphic: false,
   status: "geolocated",
+  version_no: 1,
   close_reason: null,
   before_closed_status: null,
   owner: {
@@ -190,6 +194,7 @@ const MOCK_DETAIL: EventDetail = {
   archived_detected_from: null,
   proof: null,
   created_at: "2026-06-01T00:00:00Z",
+  geolocated_at: "2026-06-03T10:00:00Z",
   closed_at: null,
   media: [],
   thumbnail: null,
@@ -329,6 +334,7 @@ export default function PalettePage() {
   const [tpSelected, setTpSelected] = useState<string[]>([]);
   const [tpConflictSel, setTpConflictSel] = useState<string[]>([]);
   const [links, setLinks] = useState<string[]>(["https://t.me/channel/12345"]);
+  const [linkCopies, setLinkCopies] = useState<string[]>([""]);
 
   return (
     <PageShell
@@ -393,12 +399,12 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="ARMED_RING" usage="The armed half of a two-click confirm on a control that stays put: a ring plus a neutral plate, so the button reads as changed without moving or resizing anything. Applied via className over any variant, paired with useConfirmAction (which owns the arming, the timeout, and the Escape / outside-click exits) and a label that says what the next click does. Every armed control that is not the loud red point of no return uses it: the event share row's detection-link pair, the detection form's Submit. DANGER_CONFIRM is the destructive counterpart.">
+          <Item name="ARMED_RING" usage="The armed half of a two-click confirm on a control that stays put: a ring plus a neutral plate, so the button reads as changed without moving or resizing anything. Applied via className over any variant, paired with useConfirmAction (which owns the arming, the timeout, and the Escape / outside-click exits) and a label that says what the next click does. Every armed control that is not the loud red point of no return uses it: the event share row's detection link, the detection form's Submit. DANGER_CONFIRM is the destructive counterpart.">
             <div className="flex items-center gap-3">
               <Button variant="primary" className={ARMED_RING}>
                 Confirm submit
               </Button>
-              <Button icon variant="ghost" className={ARMED_RING} aria-label="Copy link">
+              <Button icon variant="ghost" className={ARMED_RING} aria-label="Copy coordinates" title="Copy coordinates">
                 <Copy size={15} />
               </Button>
             </div>
@@ -416,7 +422,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Controls · buttons & pills" />
 
-          <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive or alerting, no grey button. `dangerGhost` is red at ghost weight, for a red control sitting in an icon row (the report flag). `icon` makes a square icon-only button; `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm.">
+          <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive or alerting, no grey button. `dangerGhost` is red at ghost weight, for a red control sitting in an icon row (the report flag). `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm. `disabled` drops the tone for neutral grey rather than fading it, so a button that refuses the click reads like every other inert control on the site. `icon` makes a square icon-only button, and every icon control on the site is that ghost icon button, at one size: a page-header cluster, the profile header row, the coordinates line, the archive mark beside a source link, a field's trailing adornment, all the same 32px square with the same hover plate. An action is <Button icon variant='ghost'>; navigation is buttonClasses('ghost', {icon: true}) on a <Link> or an <a>, so a control that navigates never nests a button inside an anchor; a control with nothing to act on is the disabled button, which paints itself neutral grey and leaves the tab order (an inert link becomes a disabled button, since a dead anchor is not a control). aria-label is the whole name, title repeats it, and only a tooltip that moves while the name holds still (a copy flash) may differ. Marks are 14px lucide or brand glyphs.">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="primary">Primary</Button>
@@ -424,9 +430,13 @@ export default function PalettePage() {
                 <Button variant="ghost">Ghost</Button>
                 <Button variant="danger">Danger</Button>
                 <Button variant="dangerGhost">Danger ghost</Button>
-                <Button icon variant="ghost" aria-label="Locate">
-                  <MapPin size={15} />
-                </Button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="text-[11px] text-neutral-600 self-center">disabled:</span>
+                <Button variant="primary" disabled>Primary</Button>
+                <Button variant="secondary" disabled>Secondary</Button>
+                <Button variant="ghost" disabled>Ghost</Button>
+                <Button variant="danger" disabled>Danger</Button>
               </div>
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <span className="text-[11px] text-neutral-600 self-center">two-click confirm:</span>
@@ -436,23 +446,36 @@ export default function PalettePage() {
                   Confirm delete
                 </Button>
               </div>
+              <div className="flex flex-wrap items-center gap-4 pt-1 text-sm text-neutral-300">
+                <span className="text-[11px] text-neutral-600 self-end pb-2">icon control:</span>
+                <Variant label="action">
+                  <Button icon variant="ghost" aria-label="Copy coordinates" title="Copy coordinates">
+                    <Copy size={14} />
+                  </Button>
+                </Variant>
+                <Variant label="navigation">
+                  <a
+                    href="#"
+                    aria-label="Wayback Machine copy of the source"
+                    title="Wayback Machine copy of the source"
+                    className={buttonClasses("ghost", { icon: true })}
+                  >
+                    <Archive size={14} />
+                  </a>
+                </Variant>
+                <Variant label="inert">
+                  <Button
+                    icon
+                    variant="ghost"
+                    disabled
+                    aria-label="No map link until the coordinate pair is complete"
+                    title="No map link until the coordinate pair is complete"
+                  >
+                    <ExternalLink size={14} />
+                  </Button>
+                </Variant>
+              </div>
             </div>
-          </Item>
-
-          <Item name="<CopyButton>" usage="The one copy-to-clipboard control: a square ghost icon button whose resting glyph flips to a check for the flash window (useCopyToClipboard). Used by the event share row and the profile's Discord account. `value` is a getter so the call site can read window at click time; `icon` swaps the resting glyph where the value names itself better than a copy mark does (the check is fixed); `beforeCopy` gates the write (the share row arms a detection link on the first click); the accessible name stays constant and the copied state is announced by a sibling live region.">
-            <div className="flex items-center gap-2">
-              <CopyButton value={() => "https://vidit.app/events/demo"} label="Copy event link" />
-              <CopyButton icon={DiscordGlyph} value={() => "a-handle"} label="Copy Discord username: a-handle" copiedLabel="Discord username copied" />
-            </div>
-          </Item>
-
-          <Item name="<OverflowMenu>" usage="The one overflow menu: a ghost ⋯ icon button opening a small anchored panel of actions, on usePinnedPopover (the FieldHelp machinery, click-only here since a menu holding a delete must not open under a passing pointer). It carries the management tier of a detail surface's action row, so the row keeps at most one flow action plus its icon utilities: the request page's Close and Delete sit in here. Items are {label, onClick, danger, disabled, controls}; the trigger is aria-haspopup=menu, the panel role=menu, each entry role=menuitem, and acting on one closes the menu. Renders nothing when the list is empty.">
-            <OverflowMenu
-              items={[
-                { label: "Close this request", onClick: () => {} },
-                { label: "Delete this request", danger: true, onClick: () => {} },
-              ]}
-            />
           </Item>
 
           <Item name="<ActiveFilterPills>" usage="The one rendering of active filters: a row of removable accent chips (label + ×), shared by the map's filter overlay and the search page so active filter state reads identically everywhere. Entries are {key, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty.">
@@ -563,13 +586,20 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Forms" />
 
-          <Item name="<Input> (+ FORM_INVALID_FIELD)" usage="The one form field: variant (default / compact / locked) + invalid + icon. `<Input invalid>` is sugar over the FORM_INVALID_FIELD red-outline token; the same raw token flags non-input surfaces too (media dropzone, proof editor, section cards). `icon` overlays a leading icon (the search box). Native props + className pass through.">
+          <Item name="<Input> (+ FORM_INVALID_FIELD, FieldAdornment, TRAILING_ROOM)" usage="The one form field: variant (default / compact / locked) + invalid + icon + trailing. `<Input invalid>` is sugar over the FORM_INVALID_FIELD red-outline token; the same raw token flags non-input surfaces too (media dropzone, proof editor, section cards). `icon` overlays a leading icon at the leading edge, inert. `trailing` is the field's own action slot at the other edge, centred on the field's height and taking the pointer: the map and copy marks of a longitude field, the picker of a <DateTimeInput>, the archive mark of a URL field. Each one is a ghost icon button, the site's one icon control, set a hair apart so two hover plates read as two controls; the field is one height across the three variants so that 32px square sits inside any of them with a 3px gutter, and the text padding grows by TRAILING_ROOM so a long value never runs under them. FieldAdornment + TRAILING_ROOM are exported for the one field that is not an input: <LockedUrl> renders a frozen value as an anchor and clears the same adornment by the same amount. Native props + className pass through.">
             <div className="w-full max-w-sm space-y-2">
               <Variant label="default">
                 <Input placeholder="Type here..." />
               </Variant>
               <Variant label="icon (search box)">
                 <Input icon={<SearchIcon size={14} />} type="search" placeholder="Search…" />
+              </Variant>
+              <Variant label="trailing (the field's own actions)">
+                <Input
+                  placeholder="48.015883"
+                  className="font-mono"
+                  trailing={<CoordinateActions lat={48.015883} lng={37.802411} />}
+                />
               </Variant>
               <Variant label='variant="compact" (admin rows)'>
                 <Input variant="compact" placeholder="Compact" />
@@ -613,7 +643,28 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: the submit / edit forms' Secondary sources. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly.">
+          <Item name="<DateTimeInput>" usage="A date, a time or an instant: the native control wearing the site's own mark. The browser draws its picker button in engine chrome at engine size, which on the dark field reads as a foreign element; the brick sets `.picker-glyph` (globals.css hides that button, Webkit/Chromium only) and puts a ghost icon button in the field's trailing slot instead, Calendar for anything picking a day and Clock for a time of day, opening the same native picker through showPicker() and falling back to focusing the field. One brick for the event date, the event time and the source post time, on the submit form and the edit form alike. It also owns `has-value`, the class globals.css mutes an empty field's dd/mm/yyyy placeholder off, so no call site derives it. A date field too narrow for an adornment (the search filters, the map scrubber) stays a bare Input of type date and keeps the native button.">
+            <div className="w-full max-w-sm space-y-2">
+              <Variant label='type="date" (empty)'>
+                <DateTimeInput type="date" value="" onChange={() => {}} />
+              </Variant>
+              <Variant label='type="time"'>
+                <DateTimeInput type="time" value="14:30" onChange={() => {}} />
+              </Variant>
+              <Variant label='type="datetime-local"'>
+                <DateTimeInput
+                  type="datetime-local"
+                  value="2026-06-01T14:30"
+                  onChange={() => {}}
+                />
+              </Variant>
+              <Variant label="invalid (a required field left blank)">
+                <DateTimeInput type="date" value="" invalid onChange={() => {}} />
+              </Variant>
+            </div>
+          </Item>
+
+          <Item name="<LinkListInput>" usage="An ordered list of URL fields with a remove per row and one add button: the submit / edit forms' Secondary sources. `max` mirrors the server cap and disables add at the ceiling. Blank rows are the caller's to drop at assembly. `companion` gives every row a second value plus a mark inside the row's URL field (`trailing`) and a line under it (`render`), all three kept index-aligned through adds and removals: on the source forms that is the <ArchiveAdornment> / <ArchiveSnapshotField> pair, so a mirror is archived where it is typed. The list owns which rows are expanded for the same reason it owns the values, and a row seeded with a companion value opens showing it.">
             <div className="w-full max-w-sm space-y-4">
               <Variant label="editable (max 3 here)">
                 <LinkListInput
@@ -622,6 +673,43 @@ export default function PalettePage() {
                   max={3}
                   itemLabel="Secondary source"
                   placeholder="https://x.com/user/status/12345"
+                />
+              </Variant>
+              <Variant label="with a companion field per row">
+                <LinkListInput
+                  values={links}
+                  onChange={setLinks}
+                  max={3}
+                  itemLabel="Secondary source"
+                  placeholder="https://x.com/user/status/12345"
+                  companion={{
+                    values: linkCopies,
+                    onChange: setLinkCopies,
+                    trailing: ({ index, url, expanded, toggle }) => (
+                      <ArchiveAdornment
+                        describes={mirrorDescription(
+                          safeHostname(url),
+                          index,
+                          links.length
+                        )}
+                        copy={null}
+                        expanded={expanded}
+                        onToggle={toggle}
+                      />
+                    ),
+                    render: ({ index, url, value, onChange }) => (
+                      <ArchiveSnapshotField
+                        link={url}
+                        describes={mirrorDescription(
+                          safeHostname(url),
+                          index,
+                          links.length
+                        )}
+                        value={value}
+                        onChange={onChange}
+                      />
+                    ),
+                  }}
                 />
               </Variant>
             </div>
@@ -689,11 +777,11 @@ export default function PalettePage() {
               <Avatar username="demo" size="w-16 h-16" fallback="icon" />
             </Variant>
             <Variant label='fallback="initial"'>
-              <Avatar username="Marius" size="size-10" />
+              <Avatar username="ana-demo" size="size-10" />
             </Variant>
             <Variant label="src that fails to load (falls back)">
               <Avatar
-                username="Marius"
+                username="ana-demo"
                 size="size-10"
                 src="/palette/this-avatar-does-not-exist.jpg"
               />
@@ -712,7 +800,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AuthorByline>" usage="The 'by @user' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots.">
+          <Item name="<AuthorByline>" usage="The 'by @user' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots. link=false drops the anchor for a slot that is already one click (a version-history row under its stretched link), where a nested link is a target the mouse and the keyboard disagree about.">
             <Variant label="avatar (detail-page signature)">
               <span className="text-sm text-neutral-400">
                 <AuthorByline author={MOCK_DETAIL.owner} avatar />
@@ -728,6 +816,11 @@ export default function PalettePage() {
                 <AuthorByline author={MOCK_DETAIL.owner} size="xs" />
               </span>
             </Variant>
+            <Variant label="link={false} (inside a row-wide link)">
+              <span className="text-xs text-neutral-400">
+                <AuthorByline author={MOCK_DETAIL.owner} prefix={false} link={false} />
+              </span>
+            </Variant>
           </Item>
 
           <Item name="<SourceLabel>" usage="Source display: the stored URL shortened to its host, with italic fallbacks for a null URL (To confirm) and a value the parser gives no host for (no source)">
@@ -737,7 +830,7 @@ export default function PalettePage() {
 
           <Item
             name="<ArchivedCopies>"
-            usage="The archived copy beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One copy per link, from whichever service produced it, so the affordance is a single lucide glyph: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy and in the text of the prefill link, never in the shape. Accent and clickable once a copy exists. With no copy the glyph is grey: inert for a reader, and for the event's owner (canArchive) a disclosure that opens one submit page prefilled with the link (the Wayback Machine, whose replay URL the server can check against the link it claims to archive) plus one field to paste the snapshot back, which flips the glyph in place. One door, not one accepted provider: the field takes a snapshot from web.archive.org, archive.ph or archive.today alike, and the line beside the link says so. The affordance closes on a <FieldHelp> `?` (archived_copies); help={false} drops it where a caller renders a list of them and hoists one `?` to the section (the Secondary sources list). Every glyph looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
+            usage="The archived copy beside an outbound source link, on the event detail surfaces: the primary Source row, the Detected from row, and every expanded secondary mirror. One copy per link, from whichever service produced it, so the affordance is a single lucide mark: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy, never in the shape. It is one ghost icon button in exactly two states, and colour says which: accent where a copy exists and the mark opens it, grey and disabled where none does, for every reader including the event's owner. Recording a copy is an edit, so it happens on the forms through <ArchiveAdornment> + <ArchiveSnapshotField> and files a version; nothing here writes. The mark carries no `?` of its own: the row's field concept explains it (source_url, secondary_source_urls, detected_from), so an expanded list of ten mirrors shows one explanation rather than ten. It sits `self-center` because those rows align their text on the baseline, where the square hangs low. Every mark looks alike across the page, so the accessible name carries the state and the target both: PRIMARY_SOURCE_DESCRIPTION for the source, DETECTED_FROM_DESCRIPTION for the provenance link, mirrorDescription(host, index, total) for a mirror, which leads with the position whenever the list holds more than one (two mirrors on one host would otherwise share a name) and falls back to a literal for a URL with no host."
           >
             <Variant label="a stored copy named for the Wayback Machine (primary source)">
               <span className="text-sm text-neutral-300">
@@ -747,10 +840,7 @@ export default function PalettePage() {
                     url: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
                     provider: "wayback",
                   }}
-                  url="https://t.me/channel/12345"
-                  eventId="demo"
                   describes={PRIMARY_SOURCE_DESCRIPTION}
-                  canArchive={false}
                 />
               </span>
             </Variant>
@@ -759,68 +849,94 @@ export default function PalettePage() {
                 t.me
                 <ArchivedCopies
                   copy={{ url: "https://archive.ph/abcde", provider: "archive_today" }}
-                  url="https://t.me/mirror/1"
-                  eventId="demo"
                   describes={mirrorDescription("t.me", 1, 2)}
-                  canArchive={false}
                 />
               </span>
             </Variant>
-            <Variant label="no copy yet, seen by a reader (inert)">
-              <span className="text-sm text-neutral-300">
-                t.me
-                <ArchivedCopies
-                  copy={null}
-                  url="https://t.me/channel/12345"
-                  eventId="demo"
-                  describes={PRIMARY_SOURCE_DESCRIPTION}
-                  canArchive={false}
-                />
-              </span>
-            </Variant>
-            <Variant label="no copy yet, seen by the owner (opens the provider + paste field)">
+            <Variant label="no copy yet: grey and inert, for every reader">
               <span className="text-sm text-neutral-300">
                 x.com
-                <ArchivedCopies
-                  copy={null}
-                  url="https://x.com/analyst/status/1234567890"
-                  eventId="demo"
-                  describes={DETECTED_FROM_DESCRIPTION}
-                  canArchive
-                />
+                <ArchivedCopies copy={null} describes={DETECTED_FROM_DESCRIPTION} />
               </span>
             </Variant>
           </Item>
 
           <Item
-            name="<ArchiveSourceField>"
-            usage="The same archival affordance as a form field, sitting under the Source URL input on the submit and edit forms (inside <DetailsFields>). Nothing is written on its own: the pasted snapshot travels with the form as `source_snapshot_url` and lands in the same write as the event, which is what lets a source be archived before the event exists. Optional by construction (an `optional` marker, no readiness entry, no red outline until something unusable is typed). The one provider link recomputes from the current Source URL value and is replaced by one line while it holds nothing usable, with the sentence naming the other accepted hosts beside it in both states (and wired to the paste field through aria-describedby); `copy` renders the copy an event already carries, above the field that replaces it. isSnapshotUrl / SNAPSHOT_HINT are its client-side check (https + the three archive hosts) and the one sentence explaining it, reused by the forms to refuse a publish before the upload."
+            name="<ArchiveAdornment>"
+            usage="The archive mark a link on a form carries, inside the URL field itself (<Input trailing>, or <LockedUrl trailing> where the value is frozen). One mark per link, where the link is typed, so archiving is not a block under the field. On a form it is never grey: whatever state the link is in there is something to do with it. No copy yet is the ArchiveRestore mark, which opens the paste line under the field; a link that already has one carries the Archive mark opening the stored copy (the same mark and name the event page shows) with ArchiveRestore beside it, since one link holds one copy and a wrong paste has to be replaceable. Every name folds in `describes`, because a form carries several of these and they look alike. Nothing is written here: the paste travels with the form."
           >
-            <Variant label="a source URL is typed: one provider link, one paste field">
-              <ArchiveSourceField
-                sourceUrl="https://t.me/channel/12345"
-                value=""
-                onChange={() => {}}
-              />
+            <Variant label="no copy yet: the mark opens the paste line">
+              <div className="w-full max-w-sm">
+                <Input
+                  type="url"
+                  defaultValue="https://t.me/channel/12345"
+                  trailing={
+                    <ArchiveAdornment
+                      describes={PRIMARY_SOURCE_DESCRIPTION}
+                      copy={null}
+                      expanded={false}
+                      onToggle={() => {}}
+                    />
+                  }
+                />
+              </div>
             </Variant>
-            <Variant label="no usable source URL yet">
-              <ArchiveSourceField sourceUrl="" value="" onChange={() => {}} />
+            <Variant label="a copy exists: it opens, and the second mark replaces it">
+              <div className="w-full max-w-sm">
+                <Input
+                  type="url"
+                  defaultValue="https://t.me/channel/12345"
+                  trailing={
+                    <ArchiveAdornment
+                      describes={PRIMARY_SOURCE_DESCRIPTION}
+                      copy={{ url: "https://archive.ph/abcde", provider: "archive_today" }}
+                      expanded={false}
+                      onToggle={() => {}}
+                    />
+                  }
+                />
+              </div>
             </Variant>
-            <Variant label="a paste that cannot be a snapshot">
-              <ArchiveSourceField
-                sourceUrl="https://t.me/channel/12345"
-                value="https://example.com/not-an-archive"
-                onChange={() => {}}
-              />
-            </Variant>
-            <Variant label="the event already carries a copy (edit form)">
-              <ArchiveSourceField
-                sourceUrl="https://t.me/channel/12345"
-                value=""
-                onChange={() => {}}
-                copy={{ url: "https://archive.ph/abcde", provider: "archive_today" }}
-              />
-            </Variant>
+          </Item>
+
+          <Item
+            name="<ArchiveSnapshotField>"
+            usage="The line the mark opens, directly under the URL field it archives: one field and nothing else. No label, no optional marker, no sentence, because the placeholder states the whole contract and reads the accepted hosts off SNAPSHOT_HOSTS. The trailing mark opens web.archive.org/save/<link> for the value currently typed above, so archiving a corrected URL is a re-click; it is the one place on a form a mark goes grey, since a link that does not parse has no page to open. isSnapshotUrl / SNAPSHOT_HINT are the client-side check (https + the three archive hosts) and the one sentence explaining it, reused by the forms to refuse a publish before the upload. Nothing is written here: the paste travels with the form as `source_snapshot_url` or as this row's `secondary_snapshot_urls` entry."
+          >
+            <div className="w-full max-w-sm space-y-2">
+              <Variant label="a link is typed: the door is live">
+                <ArchiveSnapshotField
+                  link="https://t.me/channel/12345"
+                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  value=""
+                  onChange={() => {}}
+                />
+              </Variant>
+              <Variant label="no usable link yet: the door is inert">
+                <ArchiveSnapshotField
+                  link=""
+                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  value=""
+                  onChange={() => {}}
+                />
+              </Variant>
+              <Variant label="a paste that cannot be a snapshot">
+                <ArchiveSnapshotField
+                  link="https://t.me/channel/12345"
+                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  value="https://example.com/not-an-archive"
+                  onChange={() => {}}
+                />
+              </Variant>
+              <Variant label="one mirror's line">
+                <ArchiveSnapshotField
+                  link="https://rumble.com/v-mirror"
+                  describes={mirrorDescription("rumble.com", 1, 2)}
+                  value=""
+                  onChange={() => {}}
+                />
+              </Variant>
+            </div>
           </Item>
 
           <Item name="<Dot>" usage="The orange notification dot: the rail's identity row, the profile's detections entry, the map filter panel's in-flight pulse. Position / ring / size via className.">

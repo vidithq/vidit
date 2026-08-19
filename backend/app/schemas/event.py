@@ -6,7 +6,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.archive_import_job import ArchiveImportJobStatus
 from app.models.event import (
-    SOURCE_URL_MAX_LENGTH,
     BeforeClosedStatus,
     DetectedVia,
     EventStatus,
@@ -107,17 +106,54 @@ class ArchivedLinkRead(BaseModel):
     provider: SourceArchiveProvider
 
 
-class EventArchiveCreate(BaseModel):
-    """Body of ``POST /events/{event_id}/archives``.
+# How long the note an editor may attach to one version runs. Short on
+# purpose: it says what changed and why, and the argument itself belongs in the
+# proof body. The column stays unbounded ``Text``; this is the boundary cap, so
+# an over-long note is a 422 on the field rather than a database error.
+VERSION_NOTE_MAX_LENGTH = 280
 
-    ``original_url`` names which of the event's links the copy is of, and has
-    to be one the event actually carries; ``snapshot_url`` is what the provider
-    handed the analyst back. Both ceilings match the columns behind them, so an
-    oversized paste is a 422 on the field rather than a database error.
+
+class EventVersionRead(BaseModel):
+    """One superseded version of an event.
+
+    ``version_no`` is the version this row holds, not the version that replaced
+    it: an event at ``version_no`` 3 answers with snapshots 2 and 1, and the
+    live row is version 3. ``snapshot`` carries the editable fields as they
+    stood (see ``services/versions.build_snapshot``); the evidence anchor
+    (``source_url`` and the source media) is absent because no edit can move it,
+    so the live row is authoritative for it at every version.
     """
 
-    original_url: str = Field(min_length=1, max_length=SOURCE_URL_MAX_LENGTH)
-    snapshot_url: str = Field(min_length=1, max_length=SOURCE_URL_MAX_LENGTH)
+    id: uuid.UUID
+    version_no: int
+    # Who made the edit that superseded this version. NULL once that account is
+    # erased, or when it was soft-deleted (the serializer drops it for the same
+    # reason ``EventRead.requested_by`` does).
+    edited_by: AuthorRef | None
+    # The editor's own words about the edit. NULL when they left none, and on a
+    # redacted version, whose note is blanked with its snapshot.
+    note: str | None
+    # When the edit that superseded this version happened.
+    created_at: datetime
+    # The editable fields as they stood, and ``{}`` on a redacted version.
+    snapshot: dict[str, Any]
+    # Whether an admin blanked this version's content. The row and its number
+    # stay either way, so ``/vN`` addressing never shifts and the history still
+    # shows that a version existed.
+    redacted: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EventVersionList(BaseModel):
+    """An event's history: the superseded versions, newest first.
+
+    Paged like every other list (``Link: rel="next"``, opaque cursor);
+    ``total`` is the whole history, not the page.
+    """
+
+    items: list[EventVersionRead]
+    total: int
 
 
 class EventCloseRequest(BaseModel):
@@ -245,6 +281,11 @@ class EventRead(BaseModel):
     # Required-nullable: the key is always serialised.
     source_posted_at: datetime | None
     created_at: datetime
+    # When the row became ``geolocated``: the date version 1 of a published
+    # event is credited to on the version history and the version pages (every
+    # later version takes its date from the edit that produced it). NULL until
+    # publication.
+    geolocated_at: datetime | None
     # NULL until the event is closed.
     closed_at: datetime | None
     # TRUE when the footage shows death, injury or human remains, set by the
@@ -254,6 +295,11 @@ class EventRead(BaseModel):
     # The 4-value lifecycle: ``requested`` / ``detected`` / ``geolocated`` /
     # ``closed``. See ``models.event.STATUS_*``.
     status: EventStatus
+    # Which version of the event this payload is. 1 until the owner edits it;
+    # each edit files the superseded state and increments this. Every state
+    # carries it (the column is NOT NULL), but only a ``geolocated`` row can
+    # move past 1, since ``save_version`` is the published-row correction path.
+    version_no: int
     # Free-text reason the event was closed; NULL while it is open.
     close_reason: str | None
     # The status held just before ``closed`` (withdrawn vs rejected); drives the

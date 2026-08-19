@@ -9,6 +9,7 @@ from app.dependencies import get_db, require_admin
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._errors import raise_typed_error
+from app.routers.events._common import build_version_read
 from app.schemas.admin import (
     AdminDetectionStatsRead,
     AdminEventDeleteResponse,
@@ -23,18 +24,26 @@ from app.schemas.admin import (
     AdminUserRead,
     UserXHandleUpdate,
 )
+from app.schemas.event import EventVersionRead
 from app.schemas.report import ContentReportList, ContentReportRead, ContentReportUpdate
 from app.services import admin as admin_service
 from app.services import maintenance as maintenance_service
 from app.services import registration as registration_service
 from app.services import reports as reports_service
-from app.services.pagination import MAX_PAGE_SIZE, decode_cursor, next_link, page_size
+from app.services.pagination import (
+    MAX_PAGE_SIZE,
+    decode_cursor,
+    encode_cursor,
+    next_link,
+    page_size,
+)
 
 router = APIRouter()
 
 _ADMIN_ERROR_STATUS: dict[str, int] = {
     "user_not_found": 404,
     "geolocation_not_found": 404,
+    "version_not_found": 404,
     "x_handle_conflict": 409,
 }
 
@@ -109,7 +118,7 @@ def list_invite_codes(
     )
     if has_next:
         last = rows[-1]
-        response.headers["Link"] = next_link(request, last.created_at, last.id)
+        response.headers["Link"] = next_link(request, encode_cursor(last.created_at, last.id))
     return admin_service.serialize_invite_codes(db, rows)
 
 
@@ -364,6 +373,44 @@ def set_event_moderation(
     if hidden_changed:
         points_cache.invalidate()
     return AdminEventModerationRead.model_validate(event)
+
+
+@router.post(
+    "/events/{geolocation_id}/versions/{version_no}/redact",
+    response_model=EventVersionRead,
+)
+@limiter.limit("60/hour")
+def redact_event_version(
+    request: Request,
+    geolocation_id: uuid.UUID,
+    version_no: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> EventVersionRead:
+    """Blank one filed version of an event's history.
+
+    ``event_versions`` is append-only and a version number is a public
+    address, so a version whose content the record must stop serving is blanked
+    rather than removed: the snapshot and the note go, the row, its
+    ``version_no`` and its ``created_at`` stay, and
+    [`GET /events/{id}/versions`] still lists it, marked ``redacted``. A
+    redacted version displays no images, so a proof image only it pointed at is
+    deleted with it.
+
+    Idempotent: redacting an already-redacted version changes nothing and
+    writes no audit row. 404 for an unknown or soft-deleted event, and for a
+    version the event does not carry.
+    """
+    try:
+        row = admin_service.redact_version(
+            db,
+            actor_id=current_user.id,
+            geolocation_id=geolocation_id,
+            version_no=version_no,
+        )
+    except admin_service.AdminError as exc:
+        _raise_admin_error(exc)
+    return build_version_read(row)
 
 
 # ── Maintenance ──────────────────────────────────────────────────────────
