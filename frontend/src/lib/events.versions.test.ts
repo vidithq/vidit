@@ -49,12 +49,8 @@ const CURRENT: EventDetail = {
   detected_from_url: null,
   detected_via: null,
   archived_detected_from: null,
-  detected_post_at: null,
   proof: { type: "doc", content: [{ type: "image", attrs: { src: "https://m/c.jpg" } }] },
   created_at: "2026-06-01T00:00:00Z",
-  updated_at: "2026-06-04T00:00:00Z",
-  requested_at: null,
-  detected_at: null,
   // Deliberately apart from `created_at`: the record was submitted at midnight
   // and published nine hours later, and version 1 is the publication.
   geolocated_at: "2026-06-01T09:00:00Z",

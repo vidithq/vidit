@@ -2412,6 +2412,8 @@ export interface components {
             event_date: string | null;
             /** Event Time */
             event_time: string | null;
+            /** Geolocated At */
+            geolocated_at: string | null;
             /** Geolocators */
             geolocators: components["schemas"]["AuthorRef"][];
             /**

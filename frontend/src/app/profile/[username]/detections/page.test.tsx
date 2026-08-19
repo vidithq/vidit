@@ -50,6 +50,7 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
       content: [{ type: "image", attrs: { src: "https://cdn.test/p.jpg" } }],
     },
     created_at: "2026-06-02T10:00:00Z",
+    geolocated_at: null,
     closed_at: null,
     media: [
       {

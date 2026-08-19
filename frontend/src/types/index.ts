@@ -112,7 +112,7 @@ export type Media = components["schemas"]["MediaRead"];
 
 /** Full event detail (`GET /events/{id}`, `GET /events/detections`).
  *  Adds the source URL, the proof body, the full media list, provenance
- *  (``detected_from_url`` / ``detected_post_at``), and the ``requested_by``
+ *  (``detected_from_url``), and the ``requested_by``
  *  trace on top of the compact ``EventList`` card fields. Covers every
  *  lifecycle state: a ``requested`` row (the requested view) reads through
  *  this same shape, with ``event_coords`` null unless the poster attached a

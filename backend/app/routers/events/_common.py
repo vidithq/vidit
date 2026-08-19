@@ -244,6 +244,7 @@ def build_event_read(
         event_time=geo.event_time,
         source_posted_at=geo.source_posted_at,
         created_at=geo.created_at,
+        geolocated_at=geo.geolocated_at,
         closed_at=geo.closed_at,
         is_graphic=geo.is_graphic,
         status=geo.status,

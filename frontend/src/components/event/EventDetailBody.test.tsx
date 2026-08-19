@@ -65,6 +65,7 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
       ],
     },
     created_at: "2026-06-02T10:00:00Z",
+    geolocated_at: "2026-06-03T10:00:00Z",
     closed_at: null,
     media: [
       {
@@ -443,7 +444,6 @@ describe("EventDetailBody", () => {
       <EventDetailBody
         geo={geoFixture({
           status: "detected",
-          detected_at: "2026-06-02T09:00:00Z",
           geolocated_at: null,
           source_url: null,
         })}

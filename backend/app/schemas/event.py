@@ -281,6 +281,11 @@ class EventRead(BaseModel):
     # Required-nullable: the key is always serialised.
     source_posted_at: datetime | None
     created_at: datetime
+    # When the row became ``geolocated``: the date version 1 of a published
+    # event is credited to on the version history and the version pages (every
+    # later version takes its date from the edit that produced it). NULL until
+    # publication.
+    geolocated_at: datetime | None
     # NULL until the event is closed.
     closed_at: datetime | None
     # TRUE when the footage shows death, injury or human remains, set by the
