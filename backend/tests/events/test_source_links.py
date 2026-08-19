@@ -405,12 +405,12 @@ def test_truncate_cleans_before_it_caps():
 
 
 def test_hard_delete_cascades_to_the_links(db, author):
-    """The ``event_id`` FK cascade drops the child rows, so an owner delete
-    can't strand orphan links."""
+    """The ``event_id`` FK cascade drops the child rows, so the admin hard
+    delete can't strand orphan links."""
     geo = _make_geo(db, author=author, secondary_source_urls=[_MIRROR_A, _MIRROR_B])
     geo_id = geo.id
-    response = client.delete(f"/api/v1/events/{geo_id}", headers=login_as(client, author))
-    assert response.status_code == 204
+    db.delete(geo)
+    db.commit()
     db.expire_all()
     assert db.query(EventSourceLink).filter(EventSourceLink.event_id == geo_id).count() == 0
 

@@ -1,18 +1,15 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CircleX, History, MapPin, Pencil, Trash2 } from "lucide-react";
+import { CircleX, History, MapPin, Pencil } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
-import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
-import { useMutation } from "@/hooks/useMutation";
-import { deleteEvent, eventHistoryHref } from "@/lib/events";
-import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
+import { eventHistoryHref, hasPublishedRecord } from "@/lib/events";
+import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { CloseEventForm } from "@/components/event/CloseEventForm";
+import { closeActionLabel, CloseEventForm } from "@/components/event/CloseEventForm";
 import ShareButtons from "@/components/event/ShareButtons";
 import { useReportEvent } from "@/components/event/useReportEvent";
 import type { EventDetail } from "@/types";
@@ -35,15 +32,13 @@ import type { EventDetail } from "@/types";
  *    page the title links to, not to a hover-sized preview of it.
  * 2. **The flow action**, at most one, filled: what this surface exists to move
  *    forward. Only an open request carries one (geolocate it).
- * 3. **Owner management**: the controls only the author holds, and each
- *    surface carries only its own, as icon buttons in the row like every other
- *    control in it. The event page carries editing a published geolocation,
- *    which files a version rather than overwriting the record, as a pencil;
- *    the request page carries closing the request and deleting it, and the
- *    destructive one is red and confirms on a second click rather than hiding
- *    behind a disclosure. The two do not cross: `/events/{id}` serves a row of
- *    any status, so an unscoped owner tier put "Close this request" on the page
- *    for a row that is not a request at all.
+ * 3. **Owner management**: the controls only the author holds, as icon buttons
+ *    in the row like every other control in it. The event page carries editing
+ *    a published geolocation, which files a version rather than overwriting the
+ *    record, as a pencil; both detail pages carry closing the row, which is how
+ *    an author takes their own work back. Nothing here destroys a row: closing
+ *    keeps it readable with its reason, and removing one for good is an admin
+ *    act.
  *
  * The hook returns nodes rather than rendering them, the shape `useReportEvent`
  * already uses, because the row and the panels its triggers open land in two
@@ -65,27 +60,28 @@ export type ActionSurface = "event" | "request" | "panel" | "edit";
 // correction its author makes.
 //
 // Owner management is two entries, not one, because the surfaces claim
-// different halves of it: `saveVersion` is correcting a published geolocation, which
-// only the event page offers, and `dispose` is withdrawing or deleting a
-// request, which only the request page offers. Each surface serves rows of
-// several statuses, so the split is what keeps a request's verbs off the event
-// page and back. `history` is the read into a published record's versions,
-// public, first in the utilities row: the event page alone carries it, since
-// the map panel and the forms show one version by construction.
+// different halves of it: `saveVersion` is correcting a published geolocation,
+// which only the event page offers, and `close` is taking a row back, which
+// both detail pages offer since both serve rows their author may still want to
+// withdraw. What each row actually gets is decided per status below, so a
+// surface never prints a verb the row cannot take. `history` is the read into a
+// published record's versions, public, first in the utilities row: the event
+// page alone carries it, since the map panel and the forms show one version by
+// construction.
 const TIERS: Record<
   ActionSurface,
   {
     flow: boolean;
     saveVersion: boolean;
-    dispose: boolean;
+    close: boolean;
     history: boolean;
     utilities: boolean;
   }
 > = {
-  event:   { flow: false, saveVersion: true,  dispose: false, history: true,  utilities: true },
-  request: { flow: true,  saveVersion: false, dispose: true,  history: false, utilities: true },
-  panel:   { flow: false, saveVersion: false, dispose: false, history: false, utilities: false },
-  edit:    { flow: false, saveVersion: false, dispose: false, history: false, utilities: false },
+  event:   { flow: false, saveVersion: true,  close: true,  history: true,  utilities: true },
+  request: { flow: true,  saveVersion: false, close: true,  history: false, utilities: true },
+  panel:   { flow: false, saveVersion: false, close: false, history: false, utilities: false },
+  edit:    { flow: false, saveVersion: false, close: false, history: false, utilities: false },
 };
 
 // Ties the menu entry to the panel it opens two levels down the tree, which
@@ -105,8 +101,6 @@ export interface EventActions {
   actions: ReactNode;
   /** The panels the row's triggers open, for the body under the header. */
   panels: ReactNode;
-  /** A failed write from this row; the surface merges it with its load error. */
-  error: string | null;
 }
 
 export function useEventActions({
@@ -114,7 +108,6 @@ export function useEventActions({
   surface,
   onChanged,
 }: EventActionsOptions): EventActions {
-  const router = useRouter();
   const { user } = useAuth();
   // The report control is its own state machine (it works signed out and
   // outlives a surface's other actions), consumed here so the utilities tier is
@@ -122,36 +115,16 @@ export function useEventActions({
   const report = useReportEvent(event?.id ?? "");
   // Whether the inline close panel is open.
   const [closing, setClosing] = useState(false);
-  // `deleted` stays true through the post-delete navigation so the actions
-  // don't re-enable in the unmount window (the row is gone; a second click
-  // would 404).
-  const [deleted, setDeleted] = useState(false);
-  const deleteMutation = useMutation(() => deleteEvent(event!.id), {
-    fallback: "Delete failed",
-    onSuccess: () => {
-      setDeleted(true);
-      router.push("/requests");
-    },
-  });
 
   // Same leak the report form had: this hook survives a client navigation from
-  // one request to the next, so per-event state has to follow the row rather
-  // than the mount. Without it the next request opens with the previous one's
-  // close panel open, or permanently disabled actions inherited from a delete
-  // that already navigated away.
+  // one row to the next, so per-event state has to follow the row rather than
+  // the mount. Without it the next row opens with the previous one's close
+  // panel already open.
   useEffect(() => {
-    // Guarded on a real id: `event` also goes null while a row loads and
-    // during the post-delete navigation, and resetting `deleted` there would
-    // re-enable the actions in exactly the unmount window it exists to cover.
-    if (!event?.id) return;
     setClosing(false);
-    setDeleted(false);
   }, [event?.id]);
 
-  const pending = deleteMutation.loading || deleted;
-  const error = deleteMutation.error;
-
-  if (!event) return { actions: null, panels: null, error };
+  if (!event) return { actions: null, panels: null };
 
   const tiers = TIERS[surface];
   const isAuthor = user?.id === event.owner.id;
@@ -161,26 +134,22 @@ export function useEventActions({
   // the row, the shape the flow action and the utilities beside it already
   // take: the author's own controls are the ones they reach for most, and a
   // disclosure holding two entries costs a click on every use to hide what the
-  // row has width for. What a destructive verb gets instead of a hiding place
-  // is a colour and a second click.
+  // row has width for.
   const canSaveVersion = isAuthor && tiers.saveVersion && event.status === "geolocated";
-  const canClose = isAuthor && tiers.dispose && isOpenRequest;
-  const canDelete =
-    isAuthor && tiers.dispose && (isOpenRequest || event.status === "closed");
+  // Every live state closes, `geolocated` included: a published claim its
+  // author no longer stands behind is retracted rather than left standing or
+  // destroyed. `closed` is terminal, so the verb disappears once taken.
+  const canClose = isAuthor && tiers.close && event.status !== "closed";
+  const closeLabel = closeActionLabel(event.status);
 
   // A surface whose every tier is off, or off for this row, gets nothing rather
   // than an empty row: the wrapper is itself an item in the host's own cluster,
   // so an empty one prints a gap beside the controls the host adds of its own
   // (the edit form's queue position, Skip and Reject).
   const rowIsEmpty =
-    !tiers.utilities &&
-    !(tiers.flow && isOpenRequest) &&
-    !canSaveVersion &&
-    !canClose &&
-    !canDelete;
+    !tiers.utilities && !(tiers.flow && isOpenRequest) && !canSaveVersion && !canClose;
 
   return {
-    error,
     // `flex-wrap` plus `justify-end`: the row is wider than a phone, so it
     // breaks into stacked right-aligned lines instead of pushing the header
     // sideways (PageShell caps the cluster at the header width).
@@ -199,7 +168,6 @@ export function useEventActions({
           <Link
             href={`/events/${event.id}/edit`}
             className={buttonClasses("ghost", { icon: true })}
-            aria-disabled={pending || undefined}
             // "Edit" alone would read as an in-place rewrite. The record is
             // corrected by adding a version, and the label says so.
             aria-label="Edit this geolocation"
@@ -213,18 +181,17 @@ export function useEventActions({
             icon
             variant="ghost"
             onClick={() => setClosing(true)}
-            disabled={pending}
             aria-controls={CLOSE_FORM_ID}
-            // The request is withdrawn, not deleted: the row stays readable
-            // with its reason, so this is not the destructive verb and does not
-            // wear the destructive colour.
-            aria-label="Close this request"
-            title="Close this request"
+            // The row is taken back, not deleted: it stays readable with its
+            // reason, so this is not a destructive verb and does not wear the
+            // destructive colour. The label names what this row's close is,
+            // which on a published geolocation is a retraction.
+            aria-label={closeLabel}
+            title={closeLabel}
           >
             <CircleX size={14} />
           </Button>
         )}
-        {canDelete && <DeleteRequestButton onDelete={deleteMutation.run} disabled={pending} />}
         {/* The utilities tier, one unit so it stays together when the row
             wraps: the history (event page only), the share pair, then the
             report flag, in that order. Reading surfaces only: a form carries
@@ -237,7 +204,7 @@ export function useEventActions({
                 reader can walk the corrections, so it is not the owner's
                 control. A published row is the only one with versions to walk,
                 since every other state is edited in place. */}
-            {tiers.history && event.status === "geolocated" && (
+            {tiers.history && hasPublishedRecord(event) && (
               <Link
                 href={eventHistoryHref(event.id)}
                 className={buttonClasses("ghost", { icon: true })}
@@ -273,11 +240,10 @@ export function useEventActions({
           // report form uses).
           <div id={CLOSE_FORM_ID}>
             <Card as="section">
-              <SectionEyebrow title="Close this request" margin="none" />
+              <SectionEyebrow title={closeLabel} margin="none" />
               <CloseEventForm
                 eventId={event.id}
                 status={event.status}
-                disabled={pending}
                 onClosed={() => {
                   setClosing(false);
                   onChanged?.();
@@ -291,57 +257,4 @@ export function useEventActions({
       </>
     ),
   };
-}
-
-/**
- * Deleting a request: red, and it takes two clicks.
- *
- * The row is gone for good, so the guard is the two-click confirm every
- * point of no return on this site uses (`useConfirmAction`), not a browser
- * `confirm()` dialog: the second click lands on the same pixels as the first,
- * nothing is inserted and nothing moves, and the armed state is `DANGER_CONFIRM`
- * loud red, the one place that fill appears. It disarms on its own after
- * `ARM_MS`, on Escape, and on any click or focus landing elsewhere.
- *
- * An icon-only control has no visible label to flip, so the name and the
- * tooltip say what the next click does, and a sibling live region reports the
- * armed state for a reader who cannot see the colour.
- *
- * Its own component rather than a branch in the row: the arming is state, and
- * the hook that owns it cannot be called conditionally.
- */
-function DeleteRequestButton({
-  onDelete,
-  disabled,
-}: {
-  onDelete: () => Promise<unknown>;
-  disabled: boolean;
-}) {
-  const { armed, trigger, controlRef } = useConfirmAction(
-    () => {
-      void onDelete();
-    },
-    { timeoutMs: ARM_MS, dismissOnOutside: true }
-  );
-  const label = armed ? "Confirm delete" : "Delete this request";
-
-  return (
-    <>
-      <Button
-        ref={controlRef}
-        icon
-        variant="dangerGhost"
-        className={armed ? DANGER_CONFIRM : ""}
-        onClick={trigger}
-        disabled={disabled}
-        aria-label={label}
-        title={armed ? "Confirm delete: this cannot be undone" : label}
-      >
-        <Trash2 size={14} />
-      </Button>
-      <span className="sr-only" role="status" aria-live="polite">
-        {armed ? "Click again to delete this request. This cannot be undone." : ""}
-      </span>
-    </>
-  );
 }

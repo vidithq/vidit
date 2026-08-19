@@ -9,10 +9,59 @@ import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Input";
 import { FORM_LABEL, FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
+interface CloseCopy {
+  verb: string;
+  noun: string;
+  prompt: string;
+}
+
+/**
+ * How the one close verb reads in each state, in one place: the action row's
+ * button, the panel's eyebrow and this form all name the same act, so a reader
+ * is never offered "Close this request" on a published geolocation. The three
+ * live shapes are the same write and differ only in what the author is saying:
+ * an ask dropped, a machine reading judged wrong, a claim taken back. A
+ * `closed` row is the state the verb produces and carries no live verb, so it
+ * falls back to the plain word rather than borrowing another shape's.
+ */
+const CLOSE_COPY: Record<EventStatus, CloseCopy> = {
+  requested: {
+    verb: "Withdraw",
+    noun: "request",
+    prompt: "Why are you withdrawing this request?",
+  },
+  detected: {
+    verb: "Reject",
+    noun: "detection",
+    prompt: "Why isn't this a valid detection?",
+  },
+  geolocated: {
+    verb: "Retract",
+    noun: "geolocation",
+    prompt: "Why are you retracting this geolocation?",
+  },
+  closed: {
+    verb: "Close",
+    noun: "event",
+    prompt: "Why are you closing this event?",
+  },
+};
+
+/** The close vocabulary for one row's state (see `CLOSE_COPY`). */
+export function closeCopy(status: EventStatus): CloseCopy {
+  return CLOSE_COPY[status];
+}
+
+/** The row's own close label, as the action row and the panel eyebrow print it. */
+export function closeActionLabel(status: EventStatus): string {
+  const { verb, noun } = closeCopy(status);
+  return `${verb} this ${noun}`;
+}
+
 interface CloseEventFormProps {
   eventId: string;
   /** The row's current status, so the copy names the action: a `requested` row
-   *  is withdrawn, a `detected` row is rejected. */
+   *  is withdrawn, a `detected` row is rejected, a `geolocated` row retracted. */
   status: EventStatus;
   /** Called with the closed event on success (the parent refetches / routes). */
   onClosed: (closed: EventDetail) => void;
@@ -25,10 +74,10 @@ interface CloseEventFormProps {
 /**
  * Inline "close this event" panel: a required free-text reason plus a confirm /
  * cancel pair, composed from the shared primitives (`Textarea`, `Button`, the
- * `FORM_*` constants). One verb closes both dismissal shapes (a withdrawn
- * request and a rejected detection) so the copy keys off `status`. The reason
- * stays publicly visible on the closed row (transparency), which is why the
- * backend requires it; this enforces the same non-empty rule client-side.
+ * `FORM_*` constants). One verb closes all three dismissal shapes, so the copy
+ * keys off `status` through `CLOSE_COPY`. The reason stays publicly visible on
+ * the closed row (transparency), which is why the backend requires it; this
+ * enforces the same non-empty rule client-side.
  */
 export function CloseEventForm({
   eventId,
@@ -39,9 +88,7 @@ export function CloseEventForm({
 }: CloseEventFormProps) {
   const [reason, setReason] = useState("");
   const [emptyReason, setEmptyReason] = useState(false);
-  const isRequest = status === "requested";
-  const noun = isRequest ? "request" : "detection";
-  const verb = isRequest ? "Withdraw" : "Reject";
+  const { verb, noun, prompt } = closeCopy(status);
 
   const closeMutation = useMutation(() => closeEvent(eventId, reason.trim()), {
     fallback: "Close failed",
@@ -74,11 +121,7 @@ export function CloseEventForm({
             if (emptyReason) setEmptyReason(false);
           }}
           invalid={emptyReason}
-          placeholder={
-            isRequest
-              ? "Why are you withdrawing this request? (stays visible on the closed row)"
-              : "Why isn't this a valid detection? (stays visible on the closed row)"
-          }
+          placeholder={`${prompt} (stays visible on the closed row)`}
         />
         <p className="text-xs text-neutral-500">
           The reason stays publicly visible next to the closed badge.
@@ -98,7 +141,7 @@ export function CloseEventForm({
 
       <div className="flex items-center gap-3">
         <Button variant="danger" onClick={submit} disabled={busy}>
-          {closeMutation.loading ? "Closing…" : `${verb} this ${noun}`}
+          {closeMutation.loading ? "Closing…" : closeActionLabel(status)}
         </Button>
         <Button variant="ghost" onClick={onCancel} disabled={busy}>
           Cancel

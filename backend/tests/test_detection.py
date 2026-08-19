@@ -410,6 +410,35 @@ async def test_closed_detection_is_skipped(db, owner):
     )
 
 
+async def test_retracted_geolocation_is_skipped(db, owner):
+    """A retraction is published work taken back, so the machine stays off it.
+
+    Same rule as the ``geolocated`` skip: the row a person published is never
+    written by an import, and closing it does not hand the import a way in.
+    Without the guard a re-import would reopen the retracted claim as a fresh
+    ``detected`` row carrying the machine's parse of the same post.
+    """
+    _publish_the_default_pair(db, owner)
+    geo = db.query(Event).filter(Event.owner_id == owner.id).one()
+    geo_id, stored_title = geo.id, geo.title
+    geo.before_closed_status = STATUS_GEOLOCATED
+    geo.status = "closed"
+    geo.closed_at = datetime.now(UTC)
+    geo.close_reason = "Wrong village"
+    db.commit()
+
+    outcome = await _persist(
+        db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher
+    )
+    assert outcome.created == [] and len(outcome.skipped) == 1 and len(outcome.updated) == 0
+
+    db.expire_all()
+    rows = db.query(Event).filter(Event.owner_id == owner.id).all()
+    assert [r.id for r in rows] == [geo_id]
+    assert rows[0].status == "closed"
+    assert rows[0].title == stored_title
+
+
 async def test_same_source_and_coordinate_skips_across_provenance_urls(db, owner):
     # The delete-and-repost duplicate: two different tweets (distinct
     # detected_from_url) declaring the same footage source at the same

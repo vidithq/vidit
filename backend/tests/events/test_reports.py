@@ -305,7 +305,7 @@ def test_hidden_event_absent_from_the_follow_timeline(db, author, second_user):
 
 def test_hidden_event_is_frozen_for_its_owner(db, author):
     """Every ``/{id}`` verb resolves through the same helper, so a withheld
-    event can be neither closed nor investigated nor deleted while it stands."""
+    event can be neither closed nor investigated while it stands."""
     hidden = _make_geo(db, author=author, hidden=True)
     headers = login_as(client, author)
 
@@ -315,4 +315,3 @@ def test_hidden_event_is_frozen_for_its_owner(db, author):
         headers=headers,
     )
     assert close.status_code == 404
-    assert client.delete(f"/api/v1/events/{hidden.id}", headers=headers).status_code == 404

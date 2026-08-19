@@ -960,16 +960,7 @@ export interface paths {
         get: operations["get_event_api_v1_events__geolocation_id__get"];
         put?: never;
         post?: never;
-        /**
-         * Delete Event
-         * @description Hard-delete by the owner. Cascades drop the tag links, contributor
-         *     rows, media rows and filed versions; the S3 objects (media of every role,
-         *     the source image derivatives, and the source media a correction superseded,
-         *     which outlive their row so history stays renderable) are swept after the
-         *     commit lands. Admin soft-delete lives behind the admin router and stamps
-         *     ``deleted_at`` instead.
-         */
-        delete: operations["delete_event_api_v1_events__geolocation_id__delete"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -986,13 +977,16 @@ export interface paths {
         put?: never;
         /**
          * Close Event
-         * @description Close an event: withdraw a request or reject a detection (owner-only).
+         * @description Close an event: withdraw, reject or retract it (owner-only).
          *
-         *     One terminal verb for both dismissal shapes; ``before_closed_status``
-         *     records which state the row left, and the required ``close_reason`` stays
-         *     publicly visible. The row remains readable (transparency), drops off the
-         *     map, and a closed detection is re-importable. Off ``requested`` /
-         *     ``detected`` → 409; soft-deleted → 404; not the owner → 403.
+         *     One terminal verb for all three dismissal shapes, available in every live
+         *     state; ``before_closed_status`` records which state the row left, and the
+         *     required ``close_reason`` stays publicly visible. The row remains readable
+         *     (transparency) and drops off the map. A closed detection stays in the
+         *     located catalog and stays re-importable; closing a ``geolocated`` row is a
+         *     public retraction, which keeps the page, the version history, the credits
+         *     and the archives, and leaves the published set for good. Already closed →
+         *     409; soft-deleted → 404; not the owner → 403.
          */
         post: operations["close_event_api_v1_events__geolocation_id__close_post"];
         delete?: never;
@@ -2367,7 +2361,7 @@ export interface components {
         /** EventList */
         EventList: {
             /** Before Closed Status */
-            before_closed_status: ("requested" | "detected") | null;
+            before_closed_status: ("requested" | "detected" | "geolocated") | null;
             /** Conflicts */
             conflicts: components["schemas"]["ConflictRead"][];
             event_coords: components["schemas"]["CoordsRead"] | null;
@@ -2399,7 +2393,7 @@ export interface components {
             archived_secondary_sources: (components["schemas"]["ArchivedLinkRead"] | null)[];
             archived_source: components["schemas"]["ArchivedLinkRead"] | null;
             /** Before Closed Status */
-            before_closed_status: ("requested" | "detected") | null;
+            before_closed_status: ("requested" | "detected" | "geolocated") | null;
             capture_source_coords: components["schemas"]["CoordsRead"] | null;
             /** Close Reason */
             close_reason: string | null;
@@ -4392,37 +4386,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EventRead"];
                 };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_event_api_v1_events__geolocation_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                geolocation_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Validation Error */
             422: {

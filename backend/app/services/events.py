@@ -8,7 +8,7 @@ rollback. The write verbs map one-to-one onto the lifecycle:
 a ``requested`` one, :func:`geolocate` is the one generalized transition to
 ``geolocated`` (fulfil a request, vouch a detection), :func:`save_version` corrects a
 published row and files the superseded state as a version, and :func:`close`
-is the terminal withdraw / reject.
+is the terminal withdraw / reject / retract, available in every live state.
 
 Errors are typed `EventError` subclasses with stable `.code`
 strings, translated to HTTP via the same `{code, message}` envelope as
@@ -154,10 +154,10 @@ class EventStateError(EventError):
 
     Raised when a geolocate targets a row that isn't ``requested`` /
     ``detected`` (a ``geolocated`` row is past that transition, ``closed`` is
-    terminal), when a close targets a row already past those states, or when a
+    terminal), when a close targets an already ``closed`` row, or when a
     :func:`save_version` targets a row that is not ``geolocated`` (there is no version to
-    supersede before publication). Maps to 409: the request is well-formed but
-    conflicts with the row's current state.
+    supersede before publication, and a retracted row is not corrected). Maps to
+    409: the request is well-formed but conflicts with the row's current state.
     """
 
     code = "invalid_state"
@@ -1447,29 +1447,40 @@ def complete_detections(
 
 
 def close(db: Session, *, geo: Event, current_user: User, close_reason: str) -> Event:
-    """Close an event: withdraw a request or reject a detection, in one verb.
+    """Close an event: withdraw, reject or retract it, in one verb.
 
-    Owner-only. The row stays publicly visible (transparency: the queue tried
-    and didn't produce a geolocation, or a machine detection was judged wrong).
-    ``before_closed_status`` records which state it left so the badge, the
-    requested-view routing, and detection re-import can tell the two apart. A
-    closed detection is re-importable (see ``detection._disposition``);
-    removing a row for good is the hard ``DELETE``.
+    Owner-only, and available in all three live states.
+    ``before_closed_status`` records which one the row left, so the badge, the
+    read views and detection re-import can tell them apart:
 
-    Raises :class:`EventStateError` (409) off ``requested`` / ``detected``. A
-    ``geolocated`` row is past this verb, corrected through
-    :func:`save_version` instead, and ``closed`` is terminal. Commits,
-    invalidates the points cache, returns the refreshed row.
+    * off ``requested``, a withdrawn call for help.
+    * off ``detected``, a rejected machine detection. It stays in the located
+      catalog as an audit row and stays re-importable
+      (see ``detection._row_disposition``).
+    * off ``geolocated``, a public retraction of published work. The page stays
+      readable and keeps its id, coordinate, credits, archives and version
+      history, with the reason beside the closed badge; it leaves the published
+      set, the feeds and the map (``event_filters.published_events`` and
+      ``view_predicate``), and no machine touches it again.
+
+    The row stays publicly visible in every case: a record that says why it was
+    taken back is what a retraction is. Nothing here reopens a closed row, which
+    is why the reason is required; removing a row for good is the admin delete.
+
+    Raises :class:`EventStateError` (409) on a ``closed`` row, the terminal
+    state. Commits, invalidates the points cache, returns the refreshed row.
     """
-    # Serialize on the row like ``geolocate``: a ``requested`` event is
-    # fulfillable by anyone, so a concurrent geolocate (a different actor) could
-    # otherwise be silently overwritten by this owner-only close reading a stale
-    # in-memory status. ``populate_existing`` refreshes the identity-mapped row
+    # Serialize on the row like ``geolocate`` and ``save_version``: a
+    # ``requested`` event is fulfillable by anyone, so a concurrent geolocate (a
+    # different actor) could otherwise be silently overwritten by this close
+    # reading a stale in-memory status, and a concurrent correction of a
+    # published row must file its version either wholly before or wholly after
+    # the retraction. ``populate_existing`` refreshes the identity-mapped row
     # from the freshly locked SELECT before the owner and status re-checks.
     geo = db.query(Event).filter(Event.id == geo.id).populate_existing().with_for_update().one()
     ensure_owner(geo, current_user)
-    if geo.status not in (STATUS_REQUESTED, STATUS_DETECTED):
-        raise EventStateError("Only requested or detected events can be closed")
+    if geo.status == STATUS_CLOSED:
+        raise EventStateError("This event is already closed")
     # Sound cast: the guard above pins status to the BeforeClosedStatus domain.
     geo.before_closed_status = cast(BeforeClosedStatus, geo.status)
     geo.status = STATUS_CLOSED

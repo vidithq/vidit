@@ -15,7 +15,6 @@ What we lock in:
 * ``GET /events?view=requested`` scoping + status / tag / author filters.
 * ``POST /events/requests`` rejects blank title / source_url / a missing
   file; auth required; the row is born ``requested`` + stamped.
-* ``DELETE /events/{id}`` owner-only; 404 for unknown / soft-deleted.
 * ``POST /events/{id}/close`` owner-only; requires a reason; rejects
   already-terminal states; stamps ``closed_at`` + ``before_closed_status``.
 * ``POST /events/{id}/geolocate`` fulfils a requested event in place:
@@ -661,22 +660,6 @@ def test_create_populates_sha256_on_media(db, author):
     db.query(Media).filter(Media.event_id == request_id).delete(synchronize_session=False)
     db.query(Event).filter(Event.id == request_id).delete(synchronize_session=False)
     db.commit()
-
-
-# ── DELETE /events/{id} on a request ──────────────────────────────────────
-
-
-def test_delete_succeeds_for_owner_and_cascades_media(db, author):
-    """The auth / 404 / 403 guards on DELETE are shared with the located view
-    and covered in ``test_owner_flow.py``; what is specific here is that a
-    request's media rows go with it."""
-    request = _make_request(db, author=author)
-    request_id = request.id
-    response = client.delete(f"/api/v1/events/{request_id}", headers=login_as(client, author))
-    assert response.status_code == 204
-    db.expire_all()
-    assert db.query(Event).filter(Event.id == request_id).first() is None
-    assert db.query(Media).filter(Media.event_id == request_id).count() == 0
 
 
 # ── POST /events/{id}/close (withdraw) ────────────────────────────────────

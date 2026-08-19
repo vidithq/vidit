@@ -180,10 +180,6 @@ export function getEvent(id: string): Promise<EventDetail> {
   return apiFetch<EventDetail>(`/events/${id}`);
 }
 
-export function deleteEvent(id: string): Promise<void> {
-  return apiFetch<void>(`/events/${id}`, { method: "DELETE" });
-}
-
 /**
  * The generalized fulfil / submit transition: `POST /events/{id}/geolocate`,
  * multipart, mirroring create. Moves a `requested` (request fulfilment) or
@@ -461,6 +457,24 @@ export function eventVersionHref(id: string, versionNo: number): string {
 /** Where an event's version list is read. */
 export function eventHistoryHref(id: string): string {
   return `/events/${id}/history`;
+}
+
+/**
+ * Whether this row has been published, retraction included.
+ *
+ * A version only exists past publication (every other state is edited in
+ * place), and retracting a published row keeps its history: the surfaces that
+ * offer the history therefore ask this rather than `status === "geolocated"`,
+ * which would drop the way into the record exactly when a reader most needs to
+ * walk what the record used to claim.
+ */
+export function hasPublishedRecord(
+  geo: Pick<EventDetail, "status" | "before_closed_status">
+): boolean {
+  return (
+    geo.status === "geolocated" ||
+    (geo.status === "closed" && geo.before_closed_status === "geolocated")
+  );
 }
 
 /** The version number a `/events/{id}/vN` path segment names, or `null` when
@@ -1290,9 +1304,10 @@ export function batchCompletionBlockers(geo: {
   return missing;
 }
 
-/** Close an event: withdraw a request or reject a detection (owner-only).
- *  `POST /events/{id}/close`. The reason stays publicly visible next to the
- *  closed badge, so it's required. */
+/** Close an event: withdraw a request, reject a detection, or retract a
+ *  published geolocation (owner-only). `POST /events/{id}/close`. The reason
+ *  stays publicly visible next to the closed badge, so it's required, and
+ *  closing is terminal: the owner has no un-close. */
 export function closeEvent(id: string, closeReason: string): Promise<EventDetail> {
   return apiFetch<EventDetail>(`/events/${id}/close`, {
     method: "POST",

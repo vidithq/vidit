@@ -31,8 +31,11 @@ from app.database import Base
 #                   location (a coord-less one carries media alone).
 #   ``geolocated``  a person vouched for it and froze it (yesterday's geolocation
 #                   ``submitted`` + a fulfilled request); always has a location.
-#   ``closed``      withdrawn (a ``requested`` event the owner dropped) or
-#                   rejected (a ``detected`` row the owner threw out);
+#   ``closed``      withdrawn (a ``requested`` event the owner dropped),
+#                   rejected (a ``detected`` row the owner threw out), or
+#                   retracted (a ``geolocated`` row its owner took back, a
+#                   public retraction: the page stays readable, the row keeps
+#                   its coordinate, credits, archives and version history);
 #                   ``before_closed_status`` records which.
 # ``event_coords`` is independent of ``status`` (held by the CHECK below): only
 # ``geolocated`` requires it. The alias is the value-domain source of truth: the
@@ -45,9 +48,11 @@ STATUS_GEOLOCATED: EventStatus = "geolocated"
 STATUS_CLOSED: EventStatus = "closed"
 
 # The status held just before ``closed``: ``requested`` = withdrawn,
-# ``detected`` = rejected. Drives the status badge, the requested-view routing,
-# and lets re-import treat a closed detection as re-importable.
-BeforeClosedStatus = Literal["requested", "detected"]
+# ``detected`` = rejected, ``geolocated`` = retracted. Drives the status badge,
+# the requested-view routing, and the read views: a closed detection stays in
+# the located catalog, while a retraction leaves every feed and the map (see
+# ``services/event_filters.view_predicate``).
+BeforeClosedStatus = Literal["requested", "detected", "geolocated"]
 
 # Which of the three ingest entries produced a machine detection. Stamped once, by
 # ``detection.persist_detections``, from a value each entry passes; NULL on a human
@@ -430,7 +435,7 @@ class Event(Base):
             # NULL, not FALSE, and Postgres accepts any CHECK that is not FALSE.
             # Without it a closed row could still carry a NULL discriminator.
             "(status = 'closed' AND before_closed_status IS NOT NULL"
-            " AND before_closed_status IN ('requested', 'detected'))"
+            " AND before_closed_status IN ('requested', 'detected', 'geolocated'))"
             " OR (status <> 'closed' AND before_closed_status IS NULL)",
             name="ck_events_before_closed_status",
         ),

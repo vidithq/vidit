@@ -1,5 +1,9 @@
-"""Single-event ops by id: detail, delete, the lifecycle verbs (geolocate,
-close), and the published-row correction path (save_version + its version history)."""
+"""Single-event ops by id: detail, the lifecycle verbs (geolocate, close), and
+the published-row correction path (save_version + its version history).
+
+No delete: an owner takes a row back with ``close``, which keeps the record
+readable, and destruction is the admin router's ``DELETE /admin/events/{id}``.
+"""
 
 import uuid
 
@@ -19,7 +23,6 @@ from fastapi import (
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.cache import points_cache
 from app.dependencies import get_current_user, get_current_user_optional, get_db
 from app.models.content_report import ContentReport
 from app.models.event import (
@@ -57,10 +60,9 @@ from app.schemas.event import (
 )
 from app.schemas.report import ContentReportCreate, ContentReportRead
 from app.services import events as events_service
-from app.services import permissions
 from app.services import reports as reports_service
 from app.services import versions as versions_service
-from app.services.evidence_intake import EvidenceIntakeError, collect_event_media_keys
+from app.services.evidence_intake import EvidenceIntakeError
 from app.services.pagination import (
     decode_ordinal_cursor,
     encode_ordinal_cursor,
@@ -69,9 +71,6 @@ from app.services.pagination import (
     take_page,
 )
 from app.services.source_archive import SnapshotRejected
-from app.services.storage import (
-    sweep_keys,
-)
 from app.services.thumbnails import thumbnail_media_criteria
 
 router = APIRouter()
@@ -189,43 +188,16 @@ def get_event(
     return build_event_read(geo, lat=lat, lng=lng, capture_lat=capture_lat, capture_lng=capture_lng)
 
 
-@router.delete("/{geolocation_id}", status_code=status.HTTP_204_NO_CONTENT)
-@limiter.limit("30/minute")
-def delete_event(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Hard-delete by the owner. Cascades drop the tag links, contributor
-    rows, media rows and filed versions; the S3 objects (media of every role,
-    the source image derivatives, and the source media a correction superseded,
-    which outlive their row so history stays renderable) are swept after the
-    commit lands. Admin soft-delete lives behind the admin router and stamps
-    ``deleted_at`` instead.
-    """
-    geo = resolve_live_event(db, geolocation_id)
-    permissions.ensure_owner(geo, current_user)
-
-    # Snapshot the S3 keys before the cascade drops the rows, then
-    # commit-then-sweep (see ``services.storage.sweep_keys``).
-    media_keys = collect_event_media_keys(db, geo)
-
-    db.delete(geo)
-    db.commit()
-
-    sweep_keys(media_keys, context=f"event {geo.id} delete")
-
-    points_cache.invalidate()
-
-
 # ── Lifecycle verbs ───────────────────────────────────────────────────
 # Geolocate writes the caller's edits and moves a ``requested`` or
 # ``detected`` event to ``geolocated``; close is the terminal withdraw /
-# reject. A detection is owner-only; a ``requested`` event is
-# answerable by anyone (the fulfiller becomes the owner). Past the geolocate a
-# row is corrected through ``save_version``, owner-only, which files the superseded
-# version rather than overwriting it. See ``api.md``.
+# reject / retract, available in every live state. A detection is owner-only; a
+# ``requested`` event is answerable by anyone (the fulfiller becomes the owner).
+# Past the geolocate a row is corrected through ``save_version``, owner-only,
+# which files the superseded version rather than overwriting it. Removing a row
+# is not among them: destruction is the admin router's
+# ``DELETE /admin/events/{id}``, so an owner's own way out of a published claim
+# is the retraction, which keeps the record. See ``api.md``.
 
 
 @router.post("/{geolocation_id}/geolocate", response_model=EventRead)
@@ -576,13 +548,16 @@ def close_event(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Close an event: withdraw a request or reject a detection (owner-only).
+    """Close an event: withdraw, reject or retract it (owner-only).
 
-    One terminal verb for both dismissal shapes; ``before_closed_status``
-    records which state the row left, and the required ``close_reason`` stays
-    publicly visible. The row remains readable (transparency), drops off the
-    map, and a closed detection is re-importable. Off ``requested`` /
-    ``detected`` → 409; soft-deleted → 404; not the owner → 403.
+    One terminal verb for all three dismissal shapes, available in every live
+    state; ``before_closed_status`` records which state the row left, and the
+    required ``close_reason`` stays publicly visible. The row remains readable
+    (transparency) and drops off the map. A closed detection stays in the
+    located catalog and stays re-importable; closing a ``geolocated`` row is a
+    public retraction, which keeps the page, the version history, the credits
+    and the archives, and leaves the published set for good. Already closed →
+    409; soft-deleted → 404; not the owner → 403.
     """
     geo = resolve_live_event(db, geolocation_id)
     try:

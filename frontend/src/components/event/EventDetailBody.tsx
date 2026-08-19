@@ -46,9 +46,6 @@ interface EventDetailBodyProps {
   /** Rendered between the media block and the key-value rows — the
    *  full page slots its Location map here. */
   children?: ReactNode;
-  /** Extra DetailRows appended to the Details section, where the request view
-   *  slots its "Closed" row. */
-  detailExtras?: ReactNode;
 }
 
 /**
@@ -56,18 +53,13 @@ interface EventDetailBodyProps {
  * `events/[id]`. The `variant` prop owns the density differences so the
  * field set can't drift between the two surfaces.
  */
-export function EventDetailBody({
-  geo,
-  variant,
-  children,
-  detailExtras,
-}: EventDetailBodyProps) {
+export function EventDetailBody({ geo, variant, children }: EventDetailBodyProps) {
   const compact = variant === "panel";
   return (
     <>
       <MediaBlock geo={geo} compact={compact} />
       {children}
-      <DetailRows geo={geo} compact={compact} detailExtras={detailExtras} />
+      <DetailRows geo={geo} compact={compact} />
       <ProofBlock geo={geo} compact={compact} />
     </>
   );
@@ -100,15 +92,7 @@ function MediaBlock({ geo, compact }: { geo: EventDetailBodyData; compact: boole
   );
 }
 
-function DetailRows({
-  geo,
-  compact,
-  detailExtras,
-}: {
-  geo: EventDetailBodyData;
-  compact: boolean;
-  detailExtras?: ReactNode;
-}) {
+function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boolean }) {
   // Conflicts (their own referential) and curated capture-source tags get
   // their own labelled rows so they read as structured facts, not free-form
   // chips lost in one row.
@@ -134,9 +118,11 @@ function DetailRows({
       <DetailRow label="Status" concept="status" compact={compact}>
         <StatusBadge status={geo.status} />
       </DetailRow>
-      {/* The closer's free-text reason, kept publicly visible on a closed row
-          (transparency: why the request was withdrawn or the detection
-          rejected). Sits next to the Status badge. */}
+      {/* The closer's free-text reason and the day they closed, kept publicly
+          visible on a closed row (transparency: why the request was withdrawn,
+          the detection rejected or the geolocation retracted, and when). Both
+          sit next to the Status badge, on every surface that renders a closed
+          row rather than on one page's own extras. */}
       {geo.status === "closed" && geo.close_reason && (
         <DetailRow label="Reason" compact={compact} align="start">
           <span
@@ -145,6 +131,9 @@ function DetailRows({
             {geo.close_reason}
           </span>
         </DetailRow>
+      )}
+      {geo.closed_at && (
+        <DetailRow label="Closed" compact={compact} value={formatDate(geo.closed_at)} />
       )}
       <DetailRow
         label="Event date"
@@ -259,7 +248,6 @@ function DetailRows({
           <AuthorByline author={geo.owner} prefix={false} className="text-sm" />
         </DetailRow>
       )}
-      {detailExtras}
     </>
   );
 

@@ -154,9 +154,12 @@ def _row_disposition(row: Event) -> Verdict:
     4. An open detection is machine-authored working state that no
        analyst-facing path can edit in place (every field write is welded to
        the ``geolocated`` promotion), so a newer parse overwrites it.
-    5. A ``closed`` row was judged and thrown out. A rejected detection stays
-       rejected so nobody rejects the same post twice, and a withdrawn request
-       is not the import's to reopen.
+    5. A ``closed`` row was judged and thrown out, whichever state it left. A
+       rejected detection stays rejected so nobody rejects the same post twice,
+       a withdrawn request is not the import's to reopen, and a retraction
+       (``closed`` off ``geolocated``) is published work its author took back,
+       so rule 3 keeps holding after the retraction: no machine writes to a row
+       a person published.
     6. Anything else live (a ``requested`` event matched through its source
        URL) belongs to a human flow: leave it alone.
     """

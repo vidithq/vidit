@@ -41,13 +41,12 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/{id}/report` | 🌐 | Report an event for moderation (anonymous allowed) |
 | POST | `/events` | 🔒 | Create an event born `geolocated` (multipart, uploads media) |
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event (ex `POST /requests`) |
-| DELETE | `/events/{id}` | 🔒 | Owner-only hard delete + S3 sweep |
 | POST | `/events/{id}/geolocate` | 🔒 | Give an event a vouched location: `requested` \| `detected` → `geolocated` |
 | POST | `/events/batch-complete` | 🔒 | Publish a selection of your detections in one call (per-row verdicts) |
 | POST | `/events/{id}/versions` | 🔒 | Correct a published event, owner only; files the version it supersedes |
 | GET | `/events/{id}/versions` | 🌐 | The event's superseded versions, newest first |
 | GET | `/events/{id}/versions/{version_no}` | 🌐 | One superseded version, by its number |
-| POST | `/events/{id}/close` | 🔒 | Withdraw a request or reject a detection, owner only (→ `closed`) |
+| POST | `/events/{id}/close` | 🔒 | Withdraw, reject or retract an event, owner only (→ `closed`) |
 | GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated, filterable on readiness) |
 | **Search** | | | |
 | GET | `/search` | 🌐 | Free-text search across geolocations / requests / users |
@@ -115,7 +114,7 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | `POST /events/import-archive/presign` | 10/hour |
 | `POST /events/import-archive` | 10/hour |
 | `GET /events/import-archive/{job_id}` | 60/min |
-| `POST /events`, `POST /events/requests`, `DELETE /events/{id}` | 30/min |
+| `POST /events`, `POST /events/requests` | 30/min |
 | `POST /events/{id}/geolocate`, `POST /events/{id}/versions` | 30/min |
 | `POST /events/batch-complete` | 10/min |
 | `POST /events/{id}/close` | 60/min |
@@ -341,7 +340,7 @@ List one lifecycle view, newest first. Returns a lightweight card shape (no full
 **Query params:**
 | Param | Type | Description |
 |-------|------|-------------|
-| `view` | string | `located` (default, the catalog: `geolocated` + `detected` rows, plus a `closed` row whose `before_closed_status` was `detected`) or `requested` (the open-call queue, ex `/requests`: `requested` rows, plus a `closed` row whose `before_closed_status` was `requested`). Anything else → 422. |
+| `view` | string | `located` (default, the catalog: `geolocated` + `detected` rows, plus a `closed` row whose `before_closed_status` was `detected`) or `requested` (the open-call queue, ex `/requests`: `requested` rows, plus a `closed` row whose `before_closed_status` was `requested`). Each view keeps the closed rows that left its own cohort; a retraction (`closed` off `geolocated`) is in neither and is reachable by its own URL. Anything else → 422. |
 | `status` | string (repeatable) | Narrows within the view, e.g. `?view=requested&status=closed`. Repeat the param to OR within the bucket (`?status=geolocated&status=detected`). Values outside `requested` / `detected` / `geolocated` / `closed` return 422; a value the view can't contain returns an empty list. |
 | `conflict` | string (repeatable) | Filter by conflict name, matched against the [`conflicts`](#conflicts) referential (`conflicts.name`), not tags. Repeat the param to OR within the conflict bucket (`?conflict=Russian invasion of Ukraine&conflict=Gaza war`). Combining with other buckets ANDs across them. |
 | `capture_source` | string (repeatable) | Filter by capture-source tag name (`?capture_source=Satellite&capture_source=Drone`). Same semantics as `conflict`: OR within the bucket, AND across buckets, and the matched tag must carry `category == "capture_source"`. |
@@ -752,20 +751,6 @@ Create an event directly, born `geolocated`. To open a request without coordinat
 
 ---
 
-### `DELETE /events/{id}` 🔒
-
-Owner-only delete. Cascades media, tag links, and contributor rows. A **hard** delete: the row and every S3 object it referenced are gone, distinct from the admin soft-delete (`DELETE /admin/events/{id}`) and from `POST /events/{id}/close`, which leaves the row readable.
-
-**Response 204:** no body.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 403 | You are not the owner |
-| 404 | Event not found (incl. soft-deleted) |
-
----
-
 ### `GET /events/detections` 🔒
 
 Your "Detections" queue: your machine-`detected` events awaiting a geolocate, newest first (`created_at` desc). **Scoped to `current_user`**: it ignores any URL username and never exposes another analyst's rows. Powers `/profile/{username}/detections`, where you review and geolocate each detection. Returns the **full detail** shape (media + tags), not the lightweight list card, so the queue shows the evidence and names what each row is missing without a per-row fetch.
@@ -1102,7 +1087,17 @@ The live row is the current version and is not filed, so its own number answers 
 
 ### `POST /events/{id}/close` 🔒
 
-Close an event: withdraw a `requested` row or reject a detection, owner-only, in one verb. The row stays publicly visible (transparency: a queue entry that didn't produce a geolocation, or a machine detection judged wrong); `before_closed_status` records which state it left (drives the requested-view routing). A re-import leaves a closed `detected` row closed, so a rejection does not have to be made twice. Distinct from `DELETE`, which removes the row for good.
+Close an event, owner-only, in one verb. The row stays publicly visible with the reason attached, and `before_closed_status` records which state it left, which is what the close means:
+
+| Left | Reads as | What happens to it |
+|------|----------|--------------------|
+| `requested` | Withdrawn ask | Stays in the `requested` queue view as a closed row |
+| `detected` | Rejected machine reading | Stays in the `located` catalog view, and a re-import leaves it closed, so a rejection is not made twice |
+| `geolocated` | Public retraction | Leaves the published set, both read views and the map; the page, its `id`, its version history, its credits and its archives stay |
+
+Closing is terminal: there is no un-close, which is why the reason is required. It is the owner's only way to take a row back, destruction being `DELETE /admin/events/{id}`.
+
+A retraction keeps the record because readers act on published claims: someone who cited the coordinate needs the page they cited to say the claim was taken back, and the version history to say what it used to state.
 
 **Request body:**
 ```json
@@ -1117,7 +1112,7 @@ Close an event: withdraw a `requested` row or reject a detection, owner-only, in
 |------|------|
 | 403 | You are not the owner |
 | 404 | Event not found (incl. soft-deleted) |
-| 409 | Row is not `requested` / `detected` (`invalid_state`, `geolocated` and `closed` are both terminal here) |
+| 409 | Row is already `closed` (`invalid_state`, the terminal state) |
 | 422 | `close_reason` missing or over 2000 chars |
 
 ---
@@ -1129,8 +1124,8 @@ There is no `/requests` router. A **request** is a `requested` event, a **geoloc
 - **List / detail**: [`GET /events`](#get-events) (`view=requested` is the request queue, `view=located` the geolocation catalog, both carry `detected` rows too) and [`GET /events/{id}`](#get-eventsid) (any status).
 - **Open a request**: [`POST /events/requests`](#post-eventsrequests) (no coordinates required).
 - **Fulfil a request, or vouch a detection**: [`POST /events/{id}/geolocate`](#post-eventsidgeolocate) (`requested` | `detected` → `geolocated`, one verb for both).
-- **Withdraw a request, or reject a detection**: [`POST /events/{id}/close`](#post-eventsidclose) (one verb for both, `before_closed_status` tells them apart).
-- **Remove**: [`DELETE /events/{id}`](#delete-eventsid) (owner hard delete) or `DELETE /admin/events/{id}` (admin soft/hard delete).
+- **Withdraw a request, reject a detection, or retract a geolocation**: [`POST /events/{id}/close`](#post-eventsidclose) (one verb for all three, `before_closed_status` tells them apart).
+- **Remove**: `DELETE /admin/events/{id}` (admin soft/hard delete). An owner takes a row back with `close`, which keeps it readable; nothing an owner does destroys a row.
 
 `GET /events/{id}` always carries the `geolocators` list. `Search` groups a hit under `requests` when its `status` is `requested`, see below.
 
@@ -1367,7 +1362,7 @@ Aggregated shape of an analyst's work. Pure aggregation over existing columns; d
 }
 ```
 
-Every field describes one population: the analyst's visible events (`deleted_at IS NULL`, `hidden_at IS NULL`) in the three worked statuses, `geolocated` + `detected` + `closed`. That set is `total_events`, and it includes detections. A `requested` row is an open call for help rather than documented work, so it takes part in no aggregate here.
+Every field describes one population: the analyst's visible events (`deleted_at IS NULL`, `hidden_at IS NULL`) in the three worked statuses, `geolocated` + `detected` + `closed`. That set is `total_events`, and it includes detections. A `requested` row is an open call for help rather than documented work, so it takes part in no aggregate here, and neither does its withdrawn form (`closed` off `requested`). A rejected detection and a retracted geolocation both count under `closed_count`: each is a judgement the analyst made and part of the record they built.
 
 `top_conflicts` and `capture_sources` are capped at 5, ordered by count desc then name, so the first entry is the leader a client can name without reading the rest. Both are empty for an analyst whose events carry no conflict or no `capture_source` tag.
 
@@ -1459,7 +1454,7 @@ Remove your profile picture. Clears `users.avatar_url` and deletes the stored ob
 
 An analyst's published geolocations, newest event date first, ties broken by `created_at DESC, id DESC`.
 
-Serves `status = "geolocated"` only, the rows the analyst vouched for and froze. A detection is machine output they have not stood behind, a `closed` row off `detected` is one they rejected, and a `requested` row is an open call for help rather than an answer, so none of the three appear here. The filter applies to `total` as well as to the rows, so the pager never counts a row the feed will not serve. `geolocations_count` on [`GET /users/{username}`](#get-usersusername) counts the same set, so `total` and the profile's count agree. The detections stay reachable: [`GET /users/{username}/stats`](#get-usersusernamestats) tallies them alongside the published work, and the owner works their own detections from [`GET /events/detections`](#get-eventsdetections).
+Serves `status = "geolocated"` only, the rows the analyst vouched for and still stands behind. A detection is machine output they have not stood behind, a `closed` row off `detected` is one they rejected, a `closed` row off `geolocated` is one they retracted, and a `requested` row is an open call for help rather than an answer, so none of the four appear here. The filter applies to `total` as well as to the rows, so the pager never counts a row the feed will not serve. `geolocations_count` on [`GET /users/{username}`](#get-usersusername) counts the same set, so `total` and the profile's count agree. The detections stay reachable: [`GET /users/{username}/stats`](#get-usersusernamestats) tallies them alongside the published work, and the owner works their own detections from [`GET /events/detections`](#get-eventsdetections).
 
 Offset-paged, not cursor-paged: the ordering this feed reads by is `event_date`, a nullable and editable column, so it cannot key a cursor (see [Pagination](#pagination)). The tiebreaker makes the ordering total, so a page cannot repeat a row the previous page served.
 
@@ -1564,9 +1559,9 @@ Returns 403 for non-admins, 401 for anonymous callers.
 
 Quality signal on the machine-extraction pipeline. A **machine detection** is an event imported from X (the archive backfill or the bot), identified by `detected_from_url` being set; a human submit always carries `detected_from_url = null`. Read-only, no audit row (a metric read is not an administrative act).
 
-**Reject-rate** is the share of machine detections dismissed before publication, whichever door they left through. A machine detection counts as a reject if either an owner closed it straight out of `detected` (`status = "closed"` with `before_closed_status = "detected"`) or an admin soft-deleted it while it was still `detected` (`deleted_at` set with `status = "detected"`). A detection the owner vouched (promoted to `geolocated`) is **not** a reject, even once soft-deleted (it was vouched before removal); one still awaiting review is **not** a reject yet. `reject_rate` is `machine_rejected / machine_total` as a 0..1 ratio (`0` when there are no machine detections). Counted over every machine row, soft-deleted or not: the metric measures what the pipeline produced.
+**Reject-rate** is the share of machine detections dismissed before publication, whichever door they left through. A machine detection counts as a reject if either an owner closed it straight out of `detected` (`status = "closed"` with `before_closed_status = "detected"`) or an admin soft-deleted it while it was still `detected` (`deleted_at` set with `status = "detected"`). A detection the owner vouched (promoted to `geolocated`) is **not** a reject, even once soft-deleted or retracted (it was vouched before either); one still awaiting review is **not** a reject yet. `reject_rate` is `machine_rejected / machine_total` as a 0..1 ratio (`0` when there are no machine detections). Counted over every machine row, soft-deleted or not: the metric measures what the pipeline produced.
 
-Two counting edges the metric accepts, both favouring over-counting dismissals over under-counting them: an owner **hard-delete** (`DELETE /events/{id}` on an own detection) removes the row from both counts entirely; an **account-departure cascade** soft-delete counts that account's pending detections as rejects.
+One counting edge the metric accepts, favouring over-counting dismissals over under-counting them: an **account-departure cascade** soft-delete counts that account's pending detections as rejects.
 
 The `pending_*` counts profile the **live** `detected` queue (`deleted_at IS NULL`, machine rows only): detections missing a piece the geolocate floor will demand (a source media, a proof-role image, or a `source_url`), so a low-quality extraction run is visible before an analyst opens the queue.
 
