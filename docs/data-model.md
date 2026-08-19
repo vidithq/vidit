@@ -50,10 +50,8 @@ erDiagram
         UUID id PK
         VARCHAR code
         UUID used_by FK "audit-only"
-        TIMESTAMPTZ used_at "audit-only"
+        TIMESTAMPTZ used_at "nullable, redemption stamp"
         TIMESTAMPTZ expires_at "nullable"
-        INT max_uses
-        INT use_count
         TIMESTAMPTZ revoked_at "nullable"
         VARCHAR x_handle "nullable, bound handle copied at redemption"
         TIMESTAMPTZ created_at
@@ -254,16 +252,14 @@ Lifecycle: `mint` creates a token, `consume` redeems it, and `revoke_all_live_fo
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `gen_random_uuid()` |
 | `code` | `VARCHAR(64)` | UNIQUE, NOT NULL |
-| `used_by` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable, **audit-only**. Records the first user to consume the code. The FK is set to NULL on user hard-delete. |
-| `used_at` | `TIMESTAMPTZ` | nullable, audit-only. Paired with `used_by`. |
+| `used_by` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable, **audit-only**. Records the user who redeemed the code. The FK is set to NULL on user hard-delete. |
+| `used_at` | `TIMESTAMPTZ` | nullable. Stamped at redemption. Every code is single-use, so a non-NULL value is what spends it. Unlike `used_by`, it survives the redeemer's hard-delete. |
 | `expires_at` | `TIMESTAMPTZ` | nullable |
-| `max_uses` | `INTEGER` | NOT NULL, default `1`. The usage quota. The admin page mints codes with this value; `1` means single-use. |
-| `use_count` | `INTEGER` | NOT NULL, default `0`. Increments on each successful registration. |
 | `revoked_at` | `TIMESTAMPTZ` | nullable. The admin page sets this. A non-null value invalidates the code immediately. |
 | `x_handle` | `VARCHAR(50)` | nullable. The X handle the code binds, normalized to lowercase with no `@`. Redemption copies it onto the new account's `users.x_handle`, the bot-attribution link. If the handle got linked elsewhere between mint and redemption, redemption fails soft. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
-A code is valid exactly when `revoked_at IS NULL AND use_count < max_uses AND (expires_at IS NULL OR expires_at > now())`. `used_by` and `used_at` are not part of the validity check.
+A code is valid exactly when `revoked_at IS NULL AND used_at IS NULL AND (expires_at IS NULL OR expires_at > now())`. `used_by` is not part of the validity check: it is nulled when the redeemer's account is erased, while `used_at` stays.
 
 ---
 
@@ -286,7 +282,7 @@ Indexes:
 
 Why UNIQUE on `email` and `username` instead of a partial index? Partial-index predicates must be IMMUTABLE in Postgres, and `expires_at > now()` is STABLE. The plain UNIQUE constraint keeps race-window protection without a predicate. The `/auth/register` path deletes expired rows inline before its INSERT, and the admin Maintenance reaper sweeps the rest. As a result, a recently expired pending row does not permanently reserve its address.
 
-Lifecycle: `POST /auth/register` inserts a row through `services/registration.py::create_pending_registration`. `POST /auth/confirm-registration` consumes it through `confirm_pending_registration`, which creates the `users` row, copies a bound `invite_codes.x_handle` onto it if the handle is still free, increments `invite_codes.use_count`, and deletes the pending row. `POST /auth/resend-confirmation` re-mints the token on the same row and invalidates the previous link. Cleanup runs through `services/registration.py::reap_pending_registrations`, exposed in the admin Maintenance panel.
+Lifecycle: `POST /auth/register` inserts a row through `services/registration.py::create_pending_registration`. `POST /auth/confirm-registration` consumes it through `confirm_pending_registration`, which creates the `users` row, copies a bound `invite_codes.x_handle` onto it if the handle is still free, stamps `invite_codes.used_at`, and deletes the pending row. `POST /auth/resend-confirmation` re-mints the token on the same row and invalidates the previous link. Cleanup runs through `services/registration.py::reap_pending_registrations`, exposed in the admin Maintenance panel.
 
 ---
 

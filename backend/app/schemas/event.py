@@ -75,8 +75,6 @@ class ArchiveImportJobRead(BaseModel):
     failed: int = Field(validation_alias="failed_count")
     error: str | None
     created_at: datetime
-    started_at: datetime | None
-    finished_at: datetime | None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -247,11 +245,7 @@ class EventRead(BaseModel):
     # Required-nullable: the key is always serialised.
     source_posted_at: datetime | None
     created_at: datetime
-    updated_at: datetime
-    # Per-state entry stamps; each is NULL until the event enters that state.
-    requested_at: datetime | None
-    detected_at: datetime | None
-    geolocated_at: datetime | None
+    # NULL until the event is closed.
     closed_at: datetime | None
     # TRUE when the footage shows death, injury or human remains, set by the
     # author on the write forms and overridable by an admin. Plain ``bool``: the
@@ -277,9 +271,6 @@ class EventRead(BaseModel):
     # conditions as ``archived_source``: the provenance link is archivable on
     # the same terms as the footage source.
     archived_detected_from: ArchivedLinkRead | None
-    # When the analyst posted this geolocation on X (the imported tweet's time);
-    # NULL for human submits. The "who geolocated first" precedence signal.
-    detected_post_at: datetime | None
     owner: AuthorRef
     # Who opened the request, preserved across fulfilment. NULL for a
     # directly-submitted geolocation (no request preceded it).

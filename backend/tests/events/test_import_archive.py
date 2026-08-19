@@ -28,6 +28,7 @@ from app.models.event import STATUS_CLOSED, STATUS_DETECTED, Event
 from app.services import archive_jobs
 from app.services.storage import get_storage
 from app.services.tweet_ingest import archive_zip
+from tests._fixtures import store_bytes, stored_bytes
 from tests.conftest import login_as
 from tests.events._helpers import client
 
@@ -180,7 +181,7 @@ def test_enqueue_returns_queued_job_for_staged_upload(db, author):
     job = db.get(ArchiveImportJob, uuid.UUID(body["id"]))
     assert job is not None and job.owner_id == author.id
     # The staged object is where the job row points.
-    assert get_storage().get_bytes(job.zip_key)
+    assert stored_bytes(job.zip_key)
 
 
 def test_job_poll_is_owner_only(db, author, second_user):
@@ -222,7 +223,7 @@ def test_enqueue_rejects_key_with_no_staged_object(author):
 
 def test_enqueue_rejects_oversized_staged_object(author, monkeypatch):
     key = archive_jobs.mint_staging_key(author.id)
-    get_storage().put_bytes_sync(_zip_bytes({"tweets.js": _TWEETS}), key, "application/zip")
+    store_bytes(_zip_bytes({"tweets.js": _TWEETS}), key)
     monkeypatch.setattr(archive_zip, "MAX_UPLOAD_BYTES", 10)
     resp = _enqueue(author, key)
     assert resp.status_code == 413
@@ -270,7 +271,7 @@ def test_import_creates_detected_rows_owned_by_caller(db, author, sent_emails):
     assert author.email == sent_emails[0].to
     row = db.get(ArchiveImportJob, uuid.UUID(job["id"]))
     with pytest.raises(FileNotFoundError):
-        get_storage().get_bytes(row.zip_key)
+        stored_bytes(row.zip_key)
 
 
 def test_reimport_is_idempotent(db, author, sent_emails):
@@ -397,7 +398,7 @@ def test_failed_run_lands_failed_and_notifies(db, author, sent_emails, monkeypat
     assert [e.subject for e in sent_emails] == ["Your X archive import failed"]
     # Failed jobs release their staged zip too.
     with pytest.raises(FileNotFoundError):
-        get_storage().get_bytes(job.zip_key)
+        stored_bytes(job.zip_key)
 
 
 def test_worker_reclaims_stale_running_job_and_caps_attempts(db, author, sent_emails):

@@ -28,10 +28,8 @@ InviteCodeStatus = Literal["active", "exhausted", "revoked", "expired"]
 class AdminInviteCodeCreate(BaseModel):
     """Body for `POST /admin/invite-codes`.
 
-    The service hardcodes ``max_uses=1`` so each code maps to exactly one
-    analyst and the audit trail (`used_by`, `used_at`) is unambiguous. The
-    `invite_codes.max_uses INT` column stays for forward-compat with bulk
-    invites, but the API doesn't expose it today.
+    Every code is single-use, so each one maps to exactly one analyst and the
+    audit trail (`used_by`, `used_at`) is unambiguous.
 
     ``x_handle`` optionally binds the code to an X handle: redemption copies
     it onto the new account (the bot-attribution link). Same normalization
@@ -89,18 +87,13 @@ class AdminInviteCodeRead(BaseModel):
 
     id: uuid.UUID
     code: str
-    max_uses: int
-    use_count: int
     expires_at: datetime | None
-    revoked_at: datetime | None
     created_at: datetime
     status: InviteCodeStatus
     # The X handle the code binds, copied onto the account at redemption.
     x_handle: str | None
-    # The *first* consumer, if any, with their onboarding stats. For
-    # single-use codes (the default) it's the only one; multi-use codes still
-    # surface only the first — a full per-use audit would need an
-    # `invite_code_uses` junction table.
+    # The account that redeemed the code, with its onboarding stats. NULL
+    # while the code is unredeemed, and again once that account is erased.
     redeemer: AdminInviteRedeemerRead | None
     used_at: datetime | None
 

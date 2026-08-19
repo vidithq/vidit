@@ -39,7 +39,7 @@ from app.services.tweet_ingest import (
     ParsedMedia,
     Resolution,
 )
-from tests._fixtures import TINY_JPEG
+from tests._fixtures import TINY_JPEG, stored_bytes, stored_path
 
 ARCHIVE = Path(__file__).parent / "data" / "synthetic_archive"
 
@@ -66,7 +66,7 @@ def _stored_objects(event_id: uuid.UUID) -> set[str]:
     by every test in the run, so a bucket-wide snapshot would move under a
     parallel worker's uploads.
     """
-    prefix = Path(settings.local_storage_dir) / "detected" / str(event_id)
+    prefix = stored_path(f"detected/{event_id}")
     return {str(p.relative_to(prefix)) for p in prefix.rglob("*") if p.is_file()}
 
 
@@ -645,7 +645,7 @@ async def test_a_re_import_whose_fetch_comes_back_short_keeps_the_stored_media(d
     assert row.title == "Corrected wording"
     assert {(m.role, m.storage_url, m.sha256) for m in row.media} == before
     for key in keys:
-        assert key is not None and get_storage().get_bytes(key)
+        assert key is not None and stored_bytes(key)
     # The proof document still points at the image that is still stored.
     assert [n["attrs"]["src"] for n in row.proof["content"] if n.get("type") == "image"] == [
         url for role, url, _sha in sorted(before) if role == "proof"
@@ -713,7 +713,7 @@ async def test_upsert_replaces_source_media_and_sweeps_the_old_objects(db, owner
     stored = db.query(Event).filter(Event.owner_id == owner.id).one()
     old = db.query(Media).filter(Media.event_id == stored.id, Media.role == "source").one()
     old_key = get_storage().key_from_url(old.storage_url)
-    assert old_key is not None and get_storage().get_bytes(old_key)
+    assert old_key is not None and stored_bytes(old_key)
 
     async def other_image(_parsed: ParsedMedia) -> tuple[bytes, str]:
         return OTHER_JPEG, "image/jpeg"
@@ -727,7 +727,7 @@ async def test_upsert_replaces_source_media_and_sweeps_the_old_objects(db, owner
     fresh = db.query(Media).filter(Media.event_id == stored.id, Media.role == "source").one()
     assert fresh.sha256 != old.sha256
     with pytest.raises(FileNotFoundError):
-        get_storage().get_bytes(old_key)
+        stored_bytes(old_key)
 
 
 async def test_upsert_rewrites_proof_media_and_the_nodes_that_carry_it(db, owner):

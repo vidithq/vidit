@@ -6,7 +6,7 @@ from typing import Any
 
 import bcrypt
 import jwt
-from sqlalchemy import case, update
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -118,7 +118,7 @@ def invite_code_status(invite: InviteCode) -> InviteCodeStatus:
         return "revoked"
     if invite.expires_at is not None and invite.expires_at < datetime.now(UTC):
         return "expired"
-    if invite.use_count >= invite.max_uses:
+    if invite.used_at is not None:
         return "exhausted"
     return "active"
 
@@ -132,46 +132,30 @@ def validate_invite_code(db: Session, code: str) -> InviteCode | None:
 
 
 def consume_invite_code(db: Session, invite: InviteCode, user_id: uuid.UUID) -> bool:
-    """Atomically bump ``use_count`` iff the code is still consumable.
+    """Atomically stamp the code as redeemed iff it is still consumable.
 
-    Returns ``True`` on success, ``False`` if another path consumed the
-    last slot since validation. The atomic
-    ``UPDATE ... WHERE use_count < max_uses ... RETURNING`` is the
-    race-safety: a prior read-modify-write let two concurrent confirms both
-    observe ``use_count=0`` under READ COMMITTED, both bump to 1, and create
-    two users against a ``max_uses=1`` invite. Mirrors
-    ``auth_tokens.consume`` (PR #41).
+    Returns ``True`` on success, ``False`` if another path redeemed it since
+    validation. The atomic ``UPDATE ... WHERE used_at IS NULL ... RETURNING``
+    is the race-safety: a prior read-modify-write let two concurrent confirms
+    both observe an unredeemed code under READ COMMITTED and create two users
+    against it. Mirrors ``auth_tokens.consume`` (PR #41).
 
-    Doesn't commit, so the user insert and the count bump land atomically
-    with registration.
+    Doesn't commit, so the user insert and the redemption stamp land
+    atomically with registration.
     """
-    now = datetime.now(UTC)
     stmt = (
         update(InviteCode)
         .where(
             InviteCode.id == invite.id,
             InviteCode.revoked_at.is_(None),
-            InviteCode.use_count < InviteCode.max_uses,
+            InviteCode.used_at.is_(None),
         )
-        .values(
-            use_count=InviteCode.use_count + 1,
-            # First-consumer audit columns: set only if NULL, so multi-use
-            # codes keep recording who unlocked them first.
-            used_by=case(
-                (InviteCode.used_by.is_(None), user_id),
-                else_=InviteCode.used_by,
-            ),
-            used_at=case(
-                (InviteCode.used_at.is_(None), now),
-                else_=InviteCode.used_at,
-            ),
-        )
+        .values(used_by=user_id, used_at=datetime.now(UTC))
         .returning(InviteCode.id)
     )
     if db.execute(stmt).scalar_one_or_none() is None:
         return False
-    # Refresh so later reads in this transaction see the bumped count +
-    # audit fields.
+    # Refresh so later reads in this transaction see the audit fields.
     db.refresh(invite)
     return True
 

@@ -201,10 +201,6 @@ def build_event_read(
         event_time=geo.event_time,
         source_posted_at=geo.source_posted_at,
         created_at=geo.created_at,
-        updated_at=geo.updated_at,
-        requested_at=geo.requested_at,
-        detected_at=geo.detected_at,
-        geolocated_at=geo.geolocated_at,
         closed_at=geo.closed_at,
         is_graphic=geo.is_graphic,
         status=geo.status,
@@ -215,7 +211,6 @@ def build_event_read(
         # Same eager-loaded collection as the source and the mirrors, so the
         # provenance row costs no extra query either.
         archived_detected_from=_archived_link(geo, geo.detected_from_url),
-        detected_post_at=geo.detected_post_at,
         owner=geo.owner,
         # Null a soft-deleted requester so a banned account never surfaces in the
         # requested_by slot of a still-live event owned by someone else (the
