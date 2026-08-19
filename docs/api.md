@@ -10,7 +10,7 @@ All responses are JSON.
 
 **Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side effect: `login` on success, `failed_login` on any rejected login (with `user_id` set only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches, so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL because no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches, so the audit trail carries a rate-of-requests signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best effort inside a SAVEPOINT. An audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `version_not_found`, `x_handle_conflict`); every `POST /events/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `report_not_found`, `report_already_resolved`, `report_event_gone`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`. `POST /events/import-from-tweet` adds `invalid_tweet_url`, `not_your_post`, `post_unreadable`, `upstream_unreadable` and `upstream_busy`. `POST /events/{id}/archives` adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_original_mismatch` and `snapshot_not_a_snapshot_code`; the same codes answer a rejected `source_snapshot_url` or `secondary_snapshot_urls` entry on the write paths, which run the same checks. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `version_not_found`, `x_handle_conflict`); every `POST /events/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `report_not_found`, `report_already_resolved`, `report_event_gone`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`; `POST /events/{id}/versions` adds it when the row is not `geolocated`, plus `nothing_changed` (the edit moves no versioned field) and `version_limit` (the event already carries 100 versions). `POST /events/import-from-tweet` adds `invalid_tweet_url`, `not_your_post`, `post_unreadable`, `upstream_unreadable` and `upstream_busy`. Every write path carrying an archived-copy field (`source_snapshot_url`, `secondary_snapshot_urls`, `detected_from_snapshot_url`) adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_original_mismatch` and `snapshot_not_a_snapshot_code`; they run the same checks, so one paste is answered the same way wherever it arrives. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
 ---
 
 ## Endpoints at a glance
@@ -48,7 +48,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/{id}/versions` | 🌐 | The event's superseded versions, newest first |
 | GET | `/events/{id}/versions/{version_no}` | 🌐 | One superseded version, by its number |
 | POST | `/events/{id}/close` | 🔒 | Withdraw a request or reject a detection, owner only (→ `closed`) |
-| POST | `/events/{id}/archives` | 🔒 | Record the archived copy of one of your event's links |
 | GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated, filterable on readiness) |
 | **Search** | | | |
 | GET | `/search` | 🌐 | Free-text search across geolocations / requests / users |
@@ -117,10 +116,9 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | `POST /events/import-archive` | 10/hour |
 | `GET /events/import-archive/{job_id}` | 60/min |
 | `POST /events`, `POST /events/requests`, `DELETE /events/{id}` | 30/min |
-| `POST /events/{id}/geolocate` | 30/min |
+| `POST /events/{id}/geolocate`, `POST /events/{id}/versions` | 30/min |
 | `POST /events/batch-complete` | 10/min |
 | `POST /events/{id}/close` | 60/min |
-| `POST /events/{id}/archives` | 60/hour |
 | `POST /events/{id}/report` | 10/hour (anonymous allowed; reporting has no per-account tier, only the per-IP one) |
 | **Search / Tags** | |
 | `GET /search`, `GET /search/authors` | 60/min |
@@ -675,7 +673,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 }
 ```
 
-`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source` is the archived copy of that `source_url`: `url` is the snapshot and `provider` (`wayback` or `archive_today`) is the service holding it. One copy per link, whichever service produced it. The field is `null` when no copy has been recorded, which is every link's starting state, since archival is an act the event's owner performs (see [`archival.md`](archival.md) and [`POST /events/{id}/archives`](#post-eventsidarchives)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `archived_secondary_sources` is the same list's archived copies, same length and same order: entry `i` covers mirror `i`, with the same shape and the same `null` conditions as `archived_source`, and the detail surface renders each beside its mirror. `archived_detected_from` is the archived copy of `detected_from_url`, on the same terms again, and `null` for a human submit, which carries no provenance link. `detected_via` names the ingest entry that produced a machine detection, `bot`, `paste` or `archive` (see [`ingestion.md`](ingestion.md)); it is read-only, stamped once at creation, and `null` for a human submit and for machine rows that predate it. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`). `version_no` is which version of the event this payload is: `1` until its owner corrects it, and one higher per correction (see [`POST /events/{id}/versions`](#post-eventsidversions)). `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick. `is_graphic` is `true` when the footage is flagged as showing death, injury or human remains; every media surface that renders this event's images or video covers them behind [`GraphicContentGate`](design.md#components) while it is.
+`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source` is the archived copy of that `source_url`: `url` is the snapshot and `provider` (`wayback` or `archive_today`) is the service holding it. One copy per link, whichever service produced it. The field is `null` when no copy has been recorded, which is every link's starting state, since archival is an act the event's owner performs (see [`archival.md`](archival.md)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `archived_secondary_sources` is the same list's archived copies, same length and same order: entry `i` covers mirror `i`, with the same shape and the same `null` conditions as `archived_source`, and the detail surface renders each beside its mirror. `archived_detected_from` is the archived copy of `detected_from_url`, on the same terms again, and `null` for a human submit, which carries no provenance link. `detected_via` names the ingest entry that produced a machine detection, `bot`, `paste` or `archive` (see [`ingestion.md`](ingestion.md)); it is read-only, stamped once at creation, and `null` for a human submit and for machine rows that predate it. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`). `version_no` is which version of the event this payload is: `1` until its owner corrects it, and one higher per correction (see [`POST /events/{id}/versions`](#post-eventsidversions)). `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick. `is_graphic` is `true` when the footage is flagged as showing death, injury or human remains; every media surface that renders this event's images or video covers them behind [`GraphicContentGate`](design.md#components) while it is.
 
 **Errors:**
 | Code | Case |
@@ -734,7 +732,7 @@ Create an event directly, born `geolocated`. To open a request without coordinat
 | `capture_source_lat` | float | no | Latitude of the camera position (where the footage was shot from). Both-or-neither with `capture_source_lng`. |
 | `capture_source_lng` | float | no | Longitude of the camera position. |
 | `source_url` | string | yes | Original source URL, ≤2000 chars. |
-| `source_snapshot_url` | string | no | The archived copy of `source_url`, ≤2000 chars, if you archived it while filling the form. Checked and stored exactly as [`POST /events/{id}/archives`](#post-eventsidarchives) does, in the same transaction as the event: a paste that is not a snapshot of `source_url` is a 400 and no event is created. |
+| `source_snapshot_url` | string | no | The archived copy of `source_url`, ≤2000 chars, if you archived it while filling the form. Checked and stored in the same transaction as the event, on the terms [`archival.md`](archival.md) states: a paste that is not a snapshot of `source_url` is a 400 and no event is created. |
 | `secondary_source_urls` | string[] (repeated field) | no | Optional mirrors of the same media (another network, or another post from the same point of view), one form field per link, each ≤2000 chars. Normalized server-side (stripped, blanks dropped, duplicates dropped, an entry equal to `source_url` dropped, order preserved); more than 10 after normalization is `too_many_source_links`. |
 | `secondary_snapshot_urls` | string[] (repeated field) | no | The archived copy of each mirror, one form field per entry of `secondary_source_urls` and aligned with it by position; send an empty value for a mirror you did not archive. Each is checked against the mirror it sits beside and stored under origin `secondary_source`, on the contract `source_snapshot_url` follows. The pairing happens before normalization, so a copy stays on the link it was posted under; a copy whose mirror normalization drops is dropped with it. |
 | `event_date` | string (YYYY-MM-DD) | no | When the depicted event happened. Omitted / empty → stored NULL (the footage doesn't always establish the date; renders as *Unknown*). |
@@ -754,7 +752,7 @@ Create an event directly, born `geolocated`. To open a request without coordinat
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | Typed `{code, message}` branch: `invalid_coordinates`, `media_required` (no source file), `invalid_proof` (sanitizer rejection), `proof_image_required` (no proof image), `tag_requirements_not_met` (missing conflict or `capture_source` tag), `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), `invalid_file` (disallowed MIME / size), `evidence_processing_failed`, or `proof_files_mismatch` (a `placeholder://` src with no matching `proof_files` upload, or vice versa), or a rejected `source_snapshot_url` / `secondary_snapshot_urls` entry (the `snapshot_*` codes of [`POST /events/{id}/archives`](#post-eventsidarchives)) |
+| 400 | Typed `{code, message}` branch: `invalid_coordinates`, `media_required` (no source file), `invalid_proof` (sanitizer rejection), `proof_image_required` (no proof image), `tag_requirements_not_met` (missing conflict or `capture_source` tag), `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), `invalid_file` (disallowed MIME / size), `evidence_processing_failed`, or `proof_files_mismatch` (a `placeholder://` src with no matching `proof_files` upload, or vice versa), or a rejected `source_snapshot_url` / `secondary_snapshot_urls` entry (the `snapshot_*` codes listed under [*Error envelope*](#api-reference)) |
 | 409 | `source_media_conflict`, a concurrent request raced past the one-source-per-event index |
 | 413 | Request body exceeds the platform body-size cap (`max_video_size + max_proof_images_per_event × max_image_size + 10 MB` headroom). Pre-checked by the HTTP-layer middleware before any bytes touch the worker; 413 responses traverse CORS so cross-origin callers see a clean status instead of a CORS error. |
 | 422 | Malformed input: `event_date` (not a YYYY-MM-DD date), `event_time` (not HH:MM), `source_posted_at` (not an ISO datetime), **more than `max_proof_images_per_event` files** in `proof_files` (`too_many_files`), `title` over 255 chars, `source_url` or a single `secondary_source_urls` item over 2000 chars. All match the same-shape rejection on `GET /events` filter params and `_parse_bbox`. |
@@ -841,7 +839,7 @@ Opens a request: creates a `requested` event with no coordinates yet (ex `POST /
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | Plain-string validation (empty / whitespace-only `title` or `source_url`) **or** a typed `{code, message}` branch: `invalid_coordinates` (a half-typed guess pair), `media_required` (no file), `invalid_proof`, `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), `invalid_file`, `evidence_processing_failed`, or a rejected `source_snapshot_url` / `secondary_snapshot_urls` entry (the `snapshot_*` codes of [`POST /events/{id}/archives`](#post-eventsidarchives)) |
+| 400 | Plain-string validation (empty / whitespace-only `title` or `source_url`) **or** a typed `{code, message}` branch: `invalid_coordinates` (a half-typed guess pair), `media_required` (no file), `invalid_proof`, `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), `invalid_file`, `evidence_processing_failed`, or a rejected `source_snapshot_url` / `secondary_snapshot_urls` entry (the `snapshot_*` codes listed under [*Error envelope*](#api-reference)) |
 | 413 | Request body exceeds the platform body-size cap, same middleware as `POST /events` |
 | 422 | `title` over 255 chars / `source_url` or a single `secondary_source_urls` item over 2000 chars, malformed `event_date` / `event_time` / `source_posted_at`, missing required `source_posted_at`, or `event_time` without `event_date` |
 
@@ -881,7 +879,7 @@ Gives an event a vouched location: transitions `requested` | `detected` → `geo
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required` (no proof image in the final body), `tag_requirements_not_met`, `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), a rejected file or a proof src naming another event's image (`invalid_file` / `evidence_processing_failed`), no surviving source media (`media_required`), `proof_files_mismatch`, `source_url_required` (a detection with no declared source, geolocated with a blank `source_url` field), or a rejected `source_snapshot_url` / `secondary_snapshot_urls` entry (the `snapshot_*` codes of [`POST /events/{id}/archives`](#post-eventsidarchives)) |
+| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required` (no proof image in the final body), `tag_requirements_not_met`, `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), a rejected file or a proof src naming another event's image (`invalid_file` / `evidence_processing_failed`), no surviving source media (`media_required`), `proof_files_mismatch`, `source_url_required` (a detection with no declared source, geolocated with a blank `source_url` field), or a rejected `source_snapshot_url` / `secondary_snapshot_urls` entry (the `snapshot_*` codes listed under [*Error envelope*](#api-reference)) |
 | 403 | You are not the owner of a detection (a `requested` event is answerable by anyone) |
 | 404 | Event not found (incl. soft-deleted) |
 | 409 | Row is not `requested` / `detected` (`invalid_state`; a published row is corrected through [`POST /events/{id}/versions`](#post-eventsidversions)), or `source_media_conflict` (a concurrent edit raced past the one-source cap) |
@@ -956,6 +954,8 @@ Correct a published event. Owner-only, and only while `geolocated`: the state a 
 
 **Editability contract.** After publication the **evidence anchor is immutable**: `source_url` and the source media are what the published claim rests on, so this endpoint declares no field for either, and sending one changes nothing. A wrong source on a published event is an admin matter: [`POST /events/{id}/close`](#post-eventsidclose) rejects a `geolocated` row, so its owner has no path to the anchor. Everything else the publish form wrote is editable and versioned: the title, both coordinate sets, the event date and hour, the source post time, the graphic-content flag, the tags, the conflicts, the proof body with its inline images, and the secondary source links, which are mirrors rather than the evidence origin and sit outside the anchor.
 
+**This is also where a published record's archived copies are recorded.** `source_snapshot_url`, `detected_from_snapshot_url` and `secondary_snapshot_urls` archive a link without changing it, which is why the two immutable links carry the field at all. Each lands in the version this call produces, so one call files one version carrying the edit and the copies. Which of a record's links are archived is part of what the record says, so a save whose only change is a copy is a version like any other, and the changed-field list names it *Archived copies*. See [`archival.md`](archival.md).
+
 **Request body (`multipart/form-data`):**
 | Field | Type | Description |
 |-------|------|-------------|
@@ -964,7 +964,8 @@ Correct a published event. Owner-only, and only while `geolocated`: the state a 
 | `lng` | float | Longitude (-180 to 180) of the subject |
 | `capture_source_lat` | float | Latitude of the camera position. Both-or-neither with `capture_source_lng`. |
 | `capture_source_lng` | float | Longitude of the camera position. |
-| `source_snapshot_url` | string | The archived copy of the event's stored source URL, ≤2000 chars, same contract as [`POST /events/{id}/archives`](#post-eventsidarchives). Accepted here because it archives the anchor rather than changing it. It lands in the version this edit produces, so one call files one version carrying both |
+| `source_snapshot_url` | string | The archived copy of the event's stored source URL, ≤2000 chars, checked as every archived-copy field is (see [`archival.md`](archival.md)). Accepted here because it archives the anchor rather than changing it. It lands in the version this edit produces, so one call files one version carrying both |
+| `detected_from_snapshot_url` | string | The archived copy of `detected_from_url`, the post a machine detection came from, ≤2000 chars and on the same terms. Accepted for the same reason: the provenance link is immutable, and archiving it is not a change to it. A 400 (`original_url_not_on_event`) on a row carrying no provenance link |
 | `secondary_source_urls` | string[] (repeated field) | Optional mirrors, same normalization and cap as [`POST /events`](#post-events). The submitted list replaces whatever the row held |
 | `secondary_snapshot_urls` | string[] (repeated field) | The archived copy of each mirror, same contract as [`POST /events`](#post-events). Lands in the version this edit produces, so one call files one version carrying the edit and the copies |
 | `event_date` | string (YYYY-MM-DD) | When the depicted event happened. Empty / omitted stores NULL (renders as *Unknown*) |
@@ -981,7 +982,7 @@ The published evidence floor is re-checked against the post-edit state, so a cor
 
 **A version has to change something.** The form posts the whole editable state, so an edit that moves none of the versioned fields (the ones listed under *Editability contract*, plus the archived copies) is refused with `nothing_changed` rather than filed: a version spends a number in a public address space and prints a row in the history, and one identical to the row it supersedes would claim a correction that never happened. The `note` is not a versioned field, so a note on its own does not make a version. The check runs before any file is uploaded.
 
-**An event carries at most 100 versions.** A write that would produce version 101 is refused with `version_limit`, whether it is a correction or an [archived copy recorded on the row](#post-eventsidarchives). Past that count the history has stopped recording corrections and started recording a loop, and every version costs a snapshot row plus the proof images it pins alive.
+**An event carries at most 100 versions.** An edit that would produce version 101 is refused with `version_limit`: past that count the history has stopped recording corrections and started recording a loop, and every version costs a snapshot row plus the proof images it pins alive. **A save whose only change is archived copies is exempt** and files its version regardless. Preserving evidence is what the catalog is for, and an original that dies while the row sits at the ceiling would be unarchivable for good, which is a worse record than one more version. A save that also moves a field is an edit, and meets the ceiling.
 
 **Media and history.** A proof image the new body no longer references is normally deleted, row and object. It is kept instead when a readable past version displays it, so that version stays renderable after the image left the current body. A version records the images its own proof body referenced, so an image no version ever displayed is not held alive by the history, and a [redacted](#post-admineventsidversionsversion_noredact) version holds nothing alive at all.
 
@@ -994,10 +995,10 @@ The published evidence floor is re-checked against the post-edit state, so a cor
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `too_many_source_links`, `media_required` (the row carries no source media), a rejected file or a proof src naming another event's image (`invalid_file` / `evidence_processing_failed`), `proof_files_mismatch`, or a rejected `source_snapshot_url` / `secondary_snapshot_urls` entry (the `snapshot_*` codes of [`POST /events/{id}/archives`](#post-eventsidarchives)) |
+| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `too_many_source_links`, `media_required` (the row carries no source media), a rejected file or a proof src naming another event's image (`invalid_file` / `evidence_processing_failed`), `proof_files_mismatch`, or a rejected `source_snapshot_url` / `secondary_snapshot_urls` entry (the `snapshot_*` codes listed under [*Error envelope*](#api-reference)) |
 | 403 | You are not the owner |
 | 404 | Event not found (incl. soft-deleted) |
-| 409 | Row is not `geolocated` (`invalid_state`), the edit moves no versioned field (`nothing_changed`), or the event already carries 100 versions (`version_limit`) |
+| 409 | Row is not `geolocated` (`invalid_state`), the save moves no versioned field and no archived copy (`nothing_changed`), or the event already carries 100 versions and the save is an edit rather than an archive-only one (`version_limit`) |
 | 422 | `note` over 280 chars, a proof body that would display more than `max_proof_images_per_event` images (its already-uploaded images plus the new files), or a single `secondary_source_urls` item over 2000 chars |
 
 ---
@@ -1006,12 +1007,12 @@ The published evidence floor is re-checked against the post-edit state, so a cor
 
 The event's superseded versions, newest first. Public, like the event itself: a corrected record is auditable only when its corrections are readable. The live row is the current version and is not listed here, so an event nobody has corrected answers with an empty list.
 
-Paged like every list endpoint: capped at 100 rows however large `limit` is, and a caller reading past the first page follows the `cursor` in the `Link: rel="next"` header. `total` is the whole history, not the page. Rows come back in `version_no` order, which is also what the cursor keys on: the number is unique per event and taken under the event's row lock, so it orders the history without a tiebreaker.
+Paged like every list endpoint: 50 rows a page by default, capped at 100 however large `limit` is, and a caller reading past the first page follows the `cursor` in the `Link: rel="next"` header. `total` is the whole history, not the page. Rows come back in `version_no` order, which is also what the cursor keys on: the number is unique per event and taken under the event's row lock, so it orders the history without a tiebreaker.
 
 **Query parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `limit` | int | Rows per page, clamped to 100. Default 100 |
+| `limit` | int | Rows per page, clamped to 100. Default 50 |
 | `cursor` | string | Opaque cursor from a previous response's `Link: rel="next"` header |
 
 **Response 200:**
@@ -1031,7 +1032,7 @@ Paged like every list endpoint: capped at 100 rows however large `limit` is, and
         "capture_source_coords": null,
         "event_date": "2026-03-15",
         "event_time": "14:30:00",
-        "source_posted_at": "2026-03-14T18:05:00Z",
+        "source_posted_at": "2026-03-14T18:05:00+00:00",
         "is_graphic": false,
         "secondary_source_urls": [],
         "tags": [{ "id": "uuid", "name": "Drone", "category": "capture_source" }],
@@ -1063,7 +1064,7 @@ Paged like every list endpoint: capped at 100 rows however large `limit` is, and
 
 `version_no` is the version the row **holds**, not the one that replaced it: an event whose `version_no` is 3 answers with snapshots 2 and 1, and the live row is version 3. `edited_by` is the analyst whose edit superseded that version, `null` once their account is erased. `note` is their optional line about the edit, `null` when they left none. `created_at` is when the edit happened. `redacted` is `true` on a version an admin blanked (see [`POST /admin/events/{id}/versions/{version_no}/redact`](#post-admineventsidversionsversion_noredact)); such a row keeps its number, its `created_at` and its `edited_by`, and serves `{}` as its `snapshot` with `note` `null`.
 
-`snapshot` carries the editable fields as they stood. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `proof_media` carries enough to render the snapshot's images. `archives` carries the archived copies the record held at that version, one entry per link, sorted by `original_url`; recording a copy on a published event files a version of its own (see [`POST /events/{id}/archives`](#post-eventsidarchives)). The evidence anchor is absent by design: no edit can move `source_url` or the source media, so the live row is authoritative for both at every version.
+`snapshot` carries the editable fields as they stood. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `proof_media` carries enough to render the snapshot's images. `archives` carries the archived copies the record held at that version, one entry per link, sorted by `original_url`; recording a copy on a published event files a version of its own (see [`POST /events/{id}/versions`](#post-eventsidversions)). The evidence anchor is absent by design: no edit can move `source_url` or the source media, so the live row is authoritative for both at every version.
 
 **Errors:**
 | Code | Case |
@@ -1107,41 +1108,6 @@ Close an event: withdraw a `requested` row or reject a detection, owner-only, in
 | 404 | Event not found (incl. soft-deleted) |
 | 409 | Row is not `requested` / `detected` (`invalid_state`, `geolocated` and `closed` are both terminal here) |
 | 422 | `close_reason` missing or over 2000 chars |
-
----
-
-### `POST /events/{id}/archives` 🔒
-
-Record the archived copy of one of the event's links, owner-only. The capture is not attempted server side: the analyst opens the provider's own submit page in their browser, prefilled with the link, and this is where the snapshot URL it produced comes back (see [`archival.md`](archival.md) for why).
-
-This is the path for an event that already exists, and for any link it carries. A copy of a link made while the event is being written travels with that write instead, as `source_snapshot_url` and `secondary_snapshot_urls` on [`POST /events`](#post-events), [`POST /events/requests`](#post-eventsrequests), [`POST /events/{id}/geolocate`](#post-eventsidgeolocate) and [`POST /events/{id}/versions`](#post-eventsidversions). Both run the same checks and fill the same slot.
-
-**Request body:**
-```json
-{
-  "original_url": "https://t.me/channel/12345",
-  "snapshot_url": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345"
-}
-```
-`original_url` must be one of the links the event carries: its `source_url`, one of its `secondary_source_urls`, its `detected_from_url`, or an `http(s)` href in its proof body. `snapshot_url` must be `https` on exactly one of `web.archive.org`, `archive.ph`, `archive.today`; a `web.archive.org` URL must be a replay URL (`/web/<timestamp>/<original>`) whose embedded original names the same page as `original_url`, and an `archive.ph` / `archive.today` URL a bare snapshot code (`/<code>`). The provider is inferred from the host.
-
-One copy per link: a second call for the same `original_url` replaces the copy rather than adding one, which is how the owner corrects a wrong paste.
-
-**On a `geolocated` event this files a version.** Which of a published record's links are archived is part of what that record says, so the write files the superseded version, moves `version_no` on and credits the caller, under the same row lock as [`POST /events/{id}/versions`](#post-eventsidversions) and with no `note`: the version's changed-field list names it *Archived copies*. A call that stores the copy the link already carries moves nothing and files nothing, and a `requested` or `detected` row is not versioned at all, so the copy is stored on its own. A copy pasted as `source_snapshot_url` or `secondary_snapshot_urls` with an edit rides that edit's version instead of filing a second one. An event carries at most 100 versions, so a copy that would produce version 101 is refused with `version_limit`.
-
-**Response 200:**
-```json
-{ "url": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345", "provider": "wayback" }
-```
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 400 | `original_url` is not a link this event carries (`original_url_not_on_event`), or `snapshot_url` failed a check (`snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_original_mismatch`, `snapshot_not_a_snapshot_code`) |
-| 403 | You are not the owner |
-| 404 | Event not found (incl. soft-deleted) |
-| 409 | The event already carries 100 versions (`version_limit`) |
-| 422 | A field is missing, empty, or over 2000 chars |
 
 ---
 

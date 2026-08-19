@@ -521,7 +521,7 @@ describe("editing a published geolocation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
 
     expect(
-      await screen.findByText("Nothing changed since version 1")
+      await screen.findByText("Nothing changed since version 1.")
     ).toBeInTheDocument();
     expect(saveVersionMock).not.toHaveBeenCalled();
 

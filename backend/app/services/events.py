@@ -687,10 +687,12 @@ async def geolocate(
     the whole state (title, coordinates, source URL, event date + time, source
     post time, the graphic-content flag, proof + its images, tags, and the
     source media: ``files`` added, ``remove_media_ids`` dropped), and on
-    success the row becomes
-    ``geolocated`` and frozen, stamped ``geolocated_at``, with the caller
-    credited in ``event_geolocators``. ``detected_from_url`` (the provenance
-    anchor) and ``status`` carry no form field.
+    success the row becomes ``geolocated``, stamped ``geolocated_at``, with the
+    caller credited in ``event_geolocators``. From there it is corrected through
+    :func:`save_version`, which files each superseded version; what publication
+    fixes is the evidence anchor (``source_url`` and the source media), not the
+    record. ``detected_from_url`` (the provenance anchor) and ``status`` carry
+    no form field.
 
     ``is_graphic`` is the one field the form cannot lower: it ratchets, so a
     posted false leaves an already-flagged event flagged. Clearing it is
@@ -899,6 +901,7 @@ async def save_version(
     note: str | None = None,
     source_snapshot_url: str | None = None,
     secondary_snapshot_urls: list[str] | None = None,
+    detected_from_snapshot_url: str | None = None,
 ) -> Event:
     """Correct a published event, filing the superseded state as a version.
 
@@ -932,11 +935,15 @@ async def save_version(
     /admin/events/{id}/moderation`` clears it.
 
     ``source_snapshot_url`` records the archived copy of the event's stored
-    source URL, the same slot ``POST /events/{id}/archives`` fills and on the
-    same checks. It archives the anchor rather than changing it, so it is
-    accepted here. ``secondary_snapshot_urls`` does the same per submitted
-    mirror. Both are staged after the version this edit supersedes is filed, so
-    one call files one version and the new one carries the copies.
+    source URL, ``detected_from_snapshot_url`` the copy of the post a machine
+    detection came from, and ``secondary_snapshot_urls`` one copy per submitted
+    mirror. All three archive a link rather than changing it, which is why the
+    two immutable ones are accepted here at all, and all three are staged after
+    the version this edit supersedes is filed, so one call files one version and
+    the new one carries the copies. A mirror this write drops takes its stored
+    copy with it (``source_archive.drop_mirror_archives``), since a copy filed
+    against a link the event no longer declares archives nothing the record
+    shows.
 
     The evidence floor a publication met is re-checked against the post-edit
     state, so an edit cannot drop a published row below it: a ``source`` media
@@ -952,10 +959,16 @@ async def save_version(
     edit that moves none of them raises :class:`NothingChangedError` before the
     version is filed and before any upload runs.
 
+    **A save that only archives is exempt from the version ceiling.** An event
+    stops at ``MAX_VERSIONS_PER_EVENT`` versions, but a save whose only change
+    is archived copies files its version regardless: preserving evidence is what
+    the catalog is for, and a source that dies while the row sits at the ceiling
+    would be unarchivable for good.
+
     Raises :class:`EventStateError` (409) off ``geolocated``, the 403 of
     ``ensure_owner`` for anyone but the owner, :class:`NothingChangedError`
     (409) on an edit that moves nothing,
-    ``services/versions.VersionLimitError`` (409) on a row already at
+    ``services/versions.VersionLimitError`` (409) on an edit to a row already at
     ``MAX_VERSIONS_PER_EVENT``, :class:`InvalidCoordinatesError` /
     :class:`InvalidProofError` / :class:`ProofImageRequiredError` /
     :class:`MediaRequiredError` / :class:`TagRequirementsError` /
@@ -1027,16 +1040,26 @@ async def save_version(
     # differs from the copy that link already holds, and only for a link the
     # post-edit row still carries, since a paste beside a dropped mirror is
     # dropped with it. A dropped mirror is a change the list above already names.
+    # The comparison runs through ``source_archive.same_snapshot``, the writer's
+    # own fold, so a re-paste of the stored copy that picked up a trailing slash
+    # on its way through a browser reads as the copy it is.
     stored_copies = versions.archived_pairs(geo)
     pasted_copies = {
         link: mirror_snapshots[link] for link in secondary_links if link in mirror_snapshots
     }
     if source_snapshot_url and geo.source_url is not None:
         pasted_copies[geo.source_url] = source_snapshot_url
+    if detected_from_snapshot_url and geo.detected_from_url is not None:
+        pasted_copies[geo.detected_from_url] = detected_from_snapshot_url
     copies_move = any(
-        stored_copies.get(link) != snapshot for link, snapshot in pasted_copies.items()
+        not source_archive.same_snapshot(stored_copies.get(link), snapshot)
+        for link, snapshot in pasted_copies.items()
     )
-    if not copies_move and versions.matches_current(geo, proposed):
+    # Built once, here: the same object answers the no-change check and becomes
+    # the filed snapshot below, so one save reads the row's collections once.
+    current_snapshot = versions.build_snapshot(geo)
+    fields_move = not versions.matches_current(current_snapshot, proposed)
+    if not fields_move and not copies_move:
         raise NothingChangedError(f"Nothing changed since version {geo.version_no}.")
 
     # File the version this edit supersedes BEFORE any field moves: the snapshot
@@ -1046,7 +1069,16 @@ async def save_version(
     # one included, and keeps every image a readable version still displays.
     # The row becomes the next version in the same call, so the archived copy
     # staged further down lands in the new version rather than in the filed one.
-    versions.file_version(db, geo=geo, edited_by=current_user, note=note)
+    # The ceiling binds an edit and spares a save that only archives, so an
+    # original dying at version 100 can still be preserved.
+    versions.file_version(
+        db,
+        geo=geo,
+        edited_by=current_user,
+        note=note,
+        snapshot=current_snapshot,
+        enforce_ceiling=fields_move,
+    )
 
     # Same autoflush suppression as ``geolocate``: the collection assignments
     # lazy-load the current sets, which would flush a half-edited row.
@@ -1068,13 +1100,24 @@ async def save_version(
 
     replace_source_links(db, geo, secondary_links)
 
-    # The archived copies of the anchor and of the submitted mirrors, filed in
-    # this same transaction and after ``file_version`` above, so they land in
-    # the version this edit produces rather than in the one it supersedes. No
-    # ``reconcile_source_archive``: the source URL cannot move here, so a stored
-    # copy can never come to describe a link the event no longer carries.
+    # A mirror this edit removed is gone from the event, so the copy filed
+    # against it archives a link the record no longer declares. Dropped before
+    # the pastes below and after ``file_version`` above, so the filed version
+    # keeps the copies it held while the new one carries only live links. No
+    # ``reconcile_source_archive``: the source URL and the provenance link
+    # cannot move here, so neither can strand its copy.
+    source_archive.drop_mirror_archives(db, event=geo, kept=secondary_links)
+
+    # The archived copies of the two immutable links and of the submitted
+    # mirrors, filed in this same transaction and after ``file_version`` above,
+    # so they land in the version this edit produces rather than in the one it
+    # supersedes.
     if source_snapshot_url:
         source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
+    if detected_from_snapshot_url:
+        source_archive.stage_detected_from_snapshot(
+            db, event=geo, snapshot_url=detected_from_snapshot_url
+        )
     source_archive.stage_secondary_snapshots(db, event=geo, snapshots=mirror_snapshots)
 
     # No source files: the anchor is immutable, so the intake only uploads the
@@ -1308,9 +1351,10 @@ def close(db: Session, *, geo: Event, current_user: User, close_reason: str) -> 
     closed detection is re-importable (see ``detection._disposition``);
     removing a row for good is the hard ``DELETE``.
 
-    Raises :class:`EventStateError` (409) off ``requested`` / ``detected``
-    (``geolocated`` is frozen, ``closed`` is terminal). Commits, invalidates
-    the points cache, returns the refreshed row.
+    Raises :class:`EventStateError` (409) off ``requested`` / ``detected``. A
+    ``geolocated`` row is past this verb, corrected through
+    :func:`save_version` instead, and ``closed`` is terminal. Commits,
+    invalidates the points cache, returns the refreshed row.
     """
     # Serialize on the row like ``geolocate``: a ``requested`` event is
     # fulfillable by anyone, so a concurrent geolocate (a different actor) could

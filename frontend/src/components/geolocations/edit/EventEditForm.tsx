@@ -152,6 +152,11 @@ export function EventEditForm({
   // field starts empty and the existing copy shows beside it instead: the value
   // is what to write, not what is stored.
   const [sourceSnapshotUrl, setSourceSnapshotUrl] = useState("");
+  // The copy of the post a machine detection came from. Only the published-row
+  // edit posts it, so only that shape wires the field: the provenance link is
+  // immutable from the moment the detection exists, and archiving it is not a
+  // change to it.
+  const [detectedFromSnapshotUrl, setDetectedFromSnapshotUrl] = useState("");
   // The mirrors the import found, editable here: submitting replaces the whole
   // list, so a row the owner deletes is gone from the published event.
   const [secondarySourceUrls, setSecondarySourceUrls] = useState<string[]>(
@@ -256,6 +261,7 @@ export function EventEditForm({
               eventTime === seededEventTime
                 ? (geo.event_time ?? undefined)
                 : eventTime || undefined,
+            detected_from_snapshot_url: detectedFromSnapshotUrl,
             note: editNote,
           })
         : geolocateEvent(geo.id, {
@@ -268,13 +274,15 @@ export function EventEditForm({
       fallback: editingPublished ? "Couldn't save this version." : "Couldn't submit.",
       // The server is the authority on both version refusals, since the row may
       // have moved under a form that has been open a while. `nothing_changed`
-      // takes the same sentence the pre-submit check raises, so a reader never
-      // sees two wordings for one verdict; `version_limit` keeps the server's
-      // own message, which carries the ceiling, so the number is not mirrored
-      // here.
+      // therefore prints the server's own sentence, which names the version it
+      // actually compared against rather than the one this page loaded; it is
+      // word for word what the pre-submit check raises, so a reader never sees
+      // two wordings for one verdict, and the loaded number stands in only if
+      // the envelope arrives without a message. `version_limit` keeps the
+      // server's message too, which carries the ceiling.
       onError: (err) =>
         err instanceof ApiError && err.code === "nothing_changed"
-          ? nothingChangedMessage(geo.version_no)
+          ? err.message || nothingChangedMessage(geo.version_no)
           : undefined,
       onSuccess: () => {
         // The detections badge counts `detected` rows, which only the submit
@@ -348,6 +356,7 @@ export function EventEditForm({
     secondarySourceUrls,
     secondarySnapshotUrls,
     sourceSnapshotUrl,
+    detectedFromSnapshotUrl,
   });
 
   // Submit enforces the full floor (it publishes the row), then asks to confirm.
@@ -369,7 +378,7 @@ export function EventEditForm({
     // before the upload; the field flags itself red and the banner says what a
     // snapshot link looks like.
     if (
-      [sourceSnapshotUrl, ...secondarySnapshotUrls].some(
+      [sourceSnapshotUrl, detectedFromSnapshotUrl, ...secondarySnapshotUrls].some(
         (pasted) => pasted.trim() && !isSnapshotUrl(pasted)
       )
     ) {
@@ -550,6 +559,14 @@ export function EventEditForm({
           sourceUrlLocked={editingPublished}
           sourceLockNote={editingPublished ? ANCHOR_LOCK_NOTE : undefined}
           detectedFromUrl={geo.detected_from_url}
+          // The provenance link's archive pair, on the one write that declares
+          // the field. Passing the setter is what turns the locked field's mark
+          // on, so the detection submit form renders it bare.
+          detectedFromSnapshotUrl={detectedFromSnapshotUrl}
+          setDetectedFromSnapshotUrl={
+            editingPublished ? setDetectedFromSnapshotUrl : undefined
+          }
+          archivedDetectedFrom={geo.archived_detected_from}
           sourcePostedAtInvalid={invalidKeys.has("source_posted_at")}
           sourceUrlInvalid={invalidKeys.has("source_url")}
         />

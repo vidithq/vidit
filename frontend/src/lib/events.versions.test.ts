@@ -177,6 +177,20 @@ describe("snapshotToEventView", () => {
     expect(view.media).toEqual(CURRENT.media);
   });
 
+  it("ratchets the graphic flag against the live row", () => {
+    // A version page renders the live media, so a flag raised after this
+    // version was filed still covers what the page shows: the gate can only
+    // tighten, never come off for an older version.
+    const flagged = { ...CURRENT, is_graphic: true };
+    expect(snapshotToEventView(flagged, row(2, snapshot())).is_graphic).toBe(true);
+    // And a version filed while the flag was up keeps it on an unflagged row:
+    // that is the version's own fact.
+    expect(
+      snapshotToEventView(CURRENT, row(2, snapshot({ is_graphic: true }))).is_graphic
+    ).toBe(true);
+    expect(view.is_graphic).toBe(false);
+  });
+
   it("shows the archived copies as that version held them", () => {
     expect(view.archived_source).toEqual(CURRENT.archived_source);
     const unarchived = snapshotToEventView(CURRENT, row(2, snapshot({ archives: [] })));
@@ -240,7 +254,6 @@ describe("changedFields", () => {
       "Title",
       "Secondary sources",
       "Proof",
-      "Proof images",
     ]);
   });
 
@@ -383,7 +396,6 @@ describe("eventVersions", () => {
       "Title",
       "Secondary sources",
       "Proof",
-      "Proof images",
     ]);
 
     // Version 2 was produced by the edit filed on version 1.
@@ -478,6 +490,7 @@ describe("hasVersionChanges", () => {
     secondarySourceUrls: [...CURRENT.secondary_source_urls],
     secondarySnapshotUrls: CURRENT.secondary_source_urls.map(() => ""),
     sourceSnapshotUrl: "",
+    detectedFromSnapshotUrl: "",
     ...overrides,
   });
 

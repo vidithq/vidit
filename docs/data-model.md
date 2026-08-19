@@ -444,15 +444,15 @@ The composite PK's leading `event_id` serves the forward read, who geolocated ev
 
 ### `event_versions`
 
-One superseded version of a published event. Correcting a `geolocated` row must not silently rewrite the record, so the pre-edit state is filed here before the edit lands and `events.version_no` moves on. The table is append-only: a row is never updated and never deleted, because a version number is a public address.
+One superseded version of a published event. Correcting a `geolocated` row must not silently rewrite the record, so the pre-edit state is filed here before the edit lands and `events.version_no` moves on. A version number is a public address, so a filed row is never removed and never renumbered while its event lives: nothing reuses a number, nothing reorders the history, and `/events/{id}/vN` means the same thing forever. Redaction is the one write a filed row takes (below), and the cascade with its event is the one delete.
 
 Read it as "the snapshots, then the live row": an event at `version_no` 3 carries rows 1 and 2 here, and the live row is version 3. Publication writes nothing here, so version 1 is the published row itself.
 
-Two writes file a version, both through `services/versions.file_version`: the owner's edit ([`POST /events/{id}/versions`](api.md#post-eventsidversions)) and an [archived copy](#source_archives) recorded on a `geolocated` row ([`POST /events/{id}/archives`](api.md#post-eventsidarchives)), which is a change to what the published record says about its own evidence. Both take the number under the event's row lock.
+One write files a version, through `services/versions.file_version`: the owner's edit ([`POST /events/{id}/versions`](api.md#post-eventsidversions)), which is also where an [archived copy](#source_archives) of one of the row's links is recorded, since that is a change to what the published record says about its own evidence. The number is taken under the event's row lock.
 
-An event carries at most 100 versions (`services/versions.MAX_VERSIONS_PER_EVENT`): a write that would produce version 101 is refused, whichever of the two writers makes it. And a version has to differ from the row it supersedes, so an edit that moves no versioned field files nothing.
+An event carries at most 100 versions (`services/versions.MAX_VERSIONS_PER_EVENT`): an edit that would produce version 101 is refused. A save whose only change is archived copies is exempt, because evidence preservation must not wait on a quota. And a version has to differ from the row it supersedes, so a save that moves no versioned field and no archived copy files nothing.
 
-Redaction is the one write a filed row takes, and it is still not a delete: an admin blanks `snapshot` and `note` in place and stamps `redacted_at` / `redacted_by_id`, so the row, its number and its byline stay. See [`POST /admin/events/{id}/versions/{version_no}/redact`](api.md#post-admineventsidversionsversion_noredact).
+Redaction is that one write, and it is still not a delete: an admin blanks `snapshot` and `note` in place and stamps `redacted_at` / `redacted_by_id`, so the row, its number and its byline stay. See [`POST /admin/events/{id}/versions/{version_no}/redact`](api.md#post-admineventsidversionsversion_noredact).
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -680,7 +680,7 @@ The durable queue behind `POST /events/import-archive`. The endpoint stages the 
 
 ### `source_archives`
 
-One row per link an analyst has recorded an archived copy for: the event's `source_url`, its [`event_source_links`](#event_source_links) mirrors, its `detected_from_url`, or an `http(s)` href in the proof body's Tiptap document. A row exists because a copy exists, so there is no queue state and no attempt counter. The capture happens in the analyst's own browser, and [`POST /events/{id}/archives`](api.md#post-eventsidarchives) is where the snapshot URL comes back. See [`archival.md`](archival.md) for the flow and the validation.
+One row per link an analyst has recorded an archived copy for: the event's `source_url`, its [`event_source_links`](#event_source_links) mirrors, its `detected_from_url`, or an `http(s)` href in the proof body's Tiptap document. A row exists because a copy exists, so there is no queue state and no attempt counter. The capture happens in the analyst's own browser, and the write forms are where the snapshot URL comes back: `source_snapshot_url`, `secondary_snapshot_urls` and, on [`POST /events/{id}/versions`](api.md#post-eventsidversions), `detected_from_snapshot_url`. See [`archival.md`](archival.md) for the flow and the validation.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
@@ -694,7 +694,7 @@ One row per link an analyst has recorded an archived copy for: the event's `sour
 
 `UNIQUE (event_id, original_url)` is one copy per link. It is also the owner's correction path: pasting a second snapshot for a link overwrites the row rather than adding a competing one.
 
-The table holds the copies as they stand. On a `geolocated` event, writing one also files an [`event_versions`](#event_versions) row, whose `archives` fragment is what the copies were at that version, so the history reads them back after a correction overwrites the live row.
+The table holds the copies as they stand. On a `geolocated` event, the edit that writes one also files an [`event_versions`](#event_versions) row, whose `archives` fragment is what the copies were at that version, so the history reads them back after a correction overwrites the live row.
 
 
 ---

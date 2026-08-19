@@ -942,46 +942,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{event_id}/archives": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Record Archived Copy
-         * @description Record the archived copy of one of this event's links (owner-only).
-         *
-         *     ``original_url`` has to be one of the links the event carries (its source,
-         *     a secondary source, the post it was detected from, or a proof citation);
-         *     ``snapshot_url`` has to be an ``https`` URL on one of the three allowed
-         *     archive hosts, and to name the same page. Both checks live in
-         *     ``services/source_archive``; a failure is a 400 carrying the code that says
-         *     which one.
-         *
-         *     One copy per link: pasting a second snapshot for a link replaces the first,
-         *     which is how the owner corrects a wrong paste. Soft-deleted → 404, not the
-         *     owner → 403.
-         *
-         *     On a ``geolocated`` event the copy is a tracked change: the write files the
-         *     superseded version and the row takes the next ``version_no``, credited to
-         *     the caller. A re-record of the copy the link already carries moves nothing
-         *     and files nothing.
-         *
-         *     The ceiling is per hour rather than per minute: one analyst archiving every
-         *     link on a busy event is a run of a dozen calls, and nothing here costs an
-         *     outbound request.
-         */
-        post: operations["record_archived_copy_api_v1_events__event_id__archives_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/events/{geolocation_id}": {
         parameters: {
             query?: never;
@@ -1126,9 +1086,10 @@ export interface paths {
          *     admin, who still needs to read what was taken down in order to judge the
          *     report that took it down (the same branch ``GET /{id}`` takes).
          *
-         *     Paged like every other list: capped at 100 rows however large ``limit`` is,
-         *     and a caller reading past the first page follows the ``cursor`` in the
-         *     ``Link: rel="next"`` header. ``total`` is the whole history, not the page.
+         *     Paged like every other list: ``services/versions.HISTORY_PAGE_SIZE`` rows by
+         *     default, capped at 100 however large ``limit`` is, and a caller reading past
+         *     the first page follows the ``cursor`` in the ``Link: rel="next"`` header.
+         *     ``total`` is the whole history, not the page.
          */
         get: operations["list_event_versions_api_v1_events__geolocation_id__versions_get"];
         put?: never;
@@ -1148,6 +1109,13 @@ export interface paths {
          *     links included. The published evidence floor is re-checked on the post-edit
          *     state, so a version cannot drop the row below it. Soft-deleted rows read as
          *     404.
+         *
+         *     This is also where an archived copy of one of the row's links is recorded:
+         *     ``source_snapshot_url``, ``detected_from_snapshot_url`` and
+         *     ``secondary_snapshot_urls`` archive a link without changing it, and land in
+         *     the version this call produces. A save whose only change is a copy is
+         *     accepted even at the version ceiling, since evidence preservation never
+         *     waits on a quota.
          */
         post: operations["save_event_version_api_v1_events__geolocation_id__versions_post"];
         delete?: never;
@@ -2192,6 +2160,8 @@ export interface components {
             capture_source_lng?: number | null;
             /** Conflict Ids */
             conflict_ids?: string | null;
+            /** Detected From Snapshot Url */
+            detected_from_snapshot_url?: string | null;
             /** Event Date */
             event_date?: string | null;
             /** Event Time */
@@ -2389,21 +2359,6 @@ export interface components {
             lat: number;
             /** Lng */
             lng: number;
-        };
-        /**
-         * EventArchiveCreate
-         * @description Body of ``POST /events/{event_id}/archives``.
-         *
-         *     ``original_url`` names which of the event's links the copy is of, and has
-         *     to be one the event actually carries; ``snapshot_url`` is what the provider
-         *     handed the analyst back. Both ceilings match the columns behind them, so an
-         *     oversized paste is a 422 on the field rather than a database error.
-         */
-        EventArchiveCreate: {
-            /** Original Url */
-            original_url: string;
-            /** Snapshot Url */
-            snapshot_url: string;
         };
         /**
          * EventCloseRequest
@@ -4418,43 +4373,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    record_archived_copy_api_v1_events__event_id__archives_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                event_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EventArchiveCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ArchivedLinkRead"];
                 };
             };
             /** @description Validation Error */

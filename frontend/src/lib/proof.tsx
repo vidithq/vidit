@@ -249,7 +249,7 @@ export function renderProof(
  *  image node without one is not an image here either. A `placeholder://` src
  *  counts on both sides: it is the not-yet-uploaded image riding in the same
  *  request. */
-export function proofImageSrcs(proof: Record<string, unknown> | null): string[] {
+function proofImageSrcs(proof: Record<string, unknown> | null): string[] {
   if (!proof) return [];
   const srcs: string[] = [];
   const walk = (node: TiptapNode): void => {

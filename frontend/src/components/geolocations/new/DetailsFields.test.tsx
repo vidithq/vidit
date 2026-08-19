@@ -128,6 +128,44 @@ describe("DetailsFields", () => {
       expect(screen.getByText(/provenance, can't change/)).toBeInTheDocument();
     });
 
+    it("archives the provenance link where the write path takes the paste", () => {
+      // Locked names the link, not its archived copy: the post rots like any
+      // other source, so the field carries the same mark and the same line as
+      // the Source URL above it.
+      const setter = vi.fn();
+      render(
+        <DetailsFields
+          {...baseProps}
+          detectedFromUrl="https://x.com/analyst/status/1"
+          setDetectedFromSnapshotUrl={setter}
+        />
+      );
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Archive the post it was detected from",
+        })
+      );
+      const field = screen.getByPlaceholderText(SNAPSHOT_PLACEHOLDER);
+      fireEvent.change(field, { target: { value: "https://archive.ph/abcde" } });
+      expect(setter).toHaveBeenCalledWith("https://archive.ph/abcde");
+    });
+
+    it("leaves the provenance link bare where nothing would take the paste", () => {
+      // The submit form's own write declares no field for it, so offering the
+      // mark there would open a line whose value goes nowhere.
+      render(
+        <DetailsFields
+          {...baseProps}
+          detectedFromUrl="https://x.com/analyst/status/1"
+        />
+      );
+      expect(
+        screen.queryByRole("button", {
+          name: "Archive the post it was detected from",
+        })
+      ).toBeNull();
+    });
+
     it("keeps an editable source URL an editable field, not a link", () => {
       render(<DetailsFields {...baseProps} sourceUrl="https://t.me/c/1" />);
       expect(screen.queryByRole("link", { name: "https://t.me/c/1" })).toBeNull();

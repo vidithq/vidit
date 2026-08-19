@@ -6,6 +6,7 @@ import type { ArchivedLink } from "@/types";
 import {
   ArchiveAdornment,
   ArchiveSnapshotField,
+  DETECTED_FROM_DESCRIPTION,
   mirrorDescription,
   PRIMARY_SOURCE_DESCRIPTION,
 } from "@/components/ui/ArchivedCopies";
@@ -79,6 +80,14 @@ interface DetailsFieldsProps {
    *  read-only inside this block (it's the one immutable field) when provided;
    *  the submit form omits it. */
   detectedFromUrl?: string | null;
+  /** The snapshot of that provenance link, posted as
+   *  `detected_from_snapshot_url`. Only the published-row edit declares the
+   *  field, so the pair is passed only there; without the setter the locked
+   *  field renders bare, as it does on the detection submit form. */
+  detectedFromSnapshotUrl?: string;
+  setDetectedFromSnapshotUrl?: (v: string) => void;
+  /** The copy the provenance link already carries, if any. */
+  archivedDetectedFrom?: ArchivedLink | null;
   /** Flag the source-time / source-URL inputs as missing. */
   sourcePostedAtInvalid?: boolean;
   sourceUrlInvalid?: boolean;
@@ -111,6 +120,9 @@ export function DetailsFields({
   sourceUrlLocked,
   sourceLockNote,
   detectedFromUrl,
+  detectedFromSnapshotUrl = "",
+  setDetectedFromSnapshotUrl,
+  archivedDetectedFrom = null,
   sourcePostedAtInvalid = false,
   sourceUrlInvalid = false,
 }: DetailsFieldsProps) {
@@ -124,6 +136,10 @@ export function DetailsFields({
   // keeps a row's open line aligned with its link across an add or a removal.
   const [sourceArchiveOpen, setSourceArchiveOpen] = useState(
     sourceSnapshotUrl !== ""
+  );
+  // The provenance link's own line, on the same rule as the source's above.
+  const [provenanceArchiveOpen, setProvenanceArchiveOpen] = useState(
+    detectedFromSnapshotUrl !== ""
   );
   const sourceArchiveMark = (
     <ArchiveAdornment
@@ -306,14 +322,37 @@ export function DetailsFields({
       </div>
 
       {/* Always locked and always populated (the block renders on a value), so
-          it is always the link form. */}
+          it is always the link form. Locked names the link, not its archived
+          copy: the post rots like any other source, so where the write path
+          takes the paste the field carries the same mark and the same line as
+          the Source URL above. */}
       {detectedFromUrl && (
         <div className="space-y-1.5">
           <span className={FORM_LABEL}>
             Detected from <FieldHelp concept="detected_from" />
             <LockedHint>provenance, can&apos;t change</LockedHint>
           </span>
-          <LockedUrl href={detectedFromUrl} />
+          <LockedUrl
+            href={detectedFromUrl}
+            trailing={
+              setDetectedFromSnapshotUrl && (
+                <ArchiveAdornment
+                  describes={DETECTED_FROM_DESCRIPTION}
+                  copy={archivedDetectedFrom}
+                  expanded={provenanceArchiveOpen}
+                  onToggle={() => setProvenanceArchiveOpen((open) => !open)}
+                />
+              )
+            }
+          />
+          {setDetectedFromSnapshotUrl && provenanceArchiveOpen && (
+            <ArchiveSnapshotField
+              link={detectedFromUrl}
+              describes={DETECTED_FROM_DESCRIPTION}
+              value={detectedFromSnapshotUrl}
+              onChange={setDetectedFromSnapshotUrl}
+            />
+          )}
         </div>
       )}
     </Card>

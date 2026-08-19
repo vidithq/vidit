@@ -1,14 +1,14 @@
 """Version history for a published event: snapshot, read, redact, media floor.
 
-:func:`file_version` is how a new version comes to be, and the two writers that
-change a published row call it: ``services/events.save_version`` (the owner's edit)
-and ``services/source_archive.record_snapshot`` (an archived copy recorded on a
-``geolocated`` row). Before the write touches the live row, the state it carried
-up to that moment is filed as an append-only ``event_versions`` entry and the
-live row takes the next ``version_no``. History is therefore "the snapshots,
-then the current row", and the publication paths (``create_with_evidence``,
-``geolocate``, ``_publish_detection``) write no version at all: version 1 is
-the published row itself.
+:func:`file_version` is how a new version comes to be, and one writer calls it:
+``services/events.save_version``, the owner's edit of a published row, which is
+also where an archived copy of one of that row's links is recorded. Before the
+write touches the live row, the state it carried up to that moment is filed as
+an append-only ``event_versions`` entry and the live row takes the next
+``version_no``. History is therefore "the snapshots, then the current row", and
+the publication paths (``create_with_evidence``, ``geolocate``,
+``_publish_detection``) write no version at all: version 1 is the published row
+itself.
 
 :func:`referenced_media_urls` is the floor that keeps a snapshot renderable.
 Media files are not versioned, so the shared intake asks here before it drops a
@@ -24,7 +24,8 @@ nothing to the floor above, so an image only it pointed at becomes deletable.
 :func:`matches_current` is what refuses a version that would carry the state the
 live row already carries, and it reads :data:`COMPARED_FIELDS` off the same
 snapshot the filing writes, so the check and the record cannot come to disagree
-about what a version is made of.
+about what a version is made of. The caller builds that snapshot once and hands
+it to both, so a save reads the row's collections one time.
 
 Reads are paginated through the shared cursor vocabulary
 (``services/pagination``), so a long history walks the same way every other
@@ -51,12 +52,22 @@ from app.models.user import User
 from app.services.sanitize import extract_image_srcs
 
 # How many versions one event may carry. Past a hundred the history has stopped
-# being a record of corrections: a script re-posting the same edit or a mirror
-# re-archived on a timer walks the number up without a reader ever gaining a
-# fact, while every version costs a snapshot row and pins alive every proof
-# image its body displayed. The number is the live row's, so version 100 is the
-# last one a write can produce.
+# being a record of corrections: a script re-posting the same edit walks the
+# number up without a reader ever gaining a fact, while every version costs a
+# snapshot row and pins alive every proof image its body displayed. The number
+# is the live row's, so version 100 is the last one an edit can produce.
+#
+# One write is exempt: a save whose only change is archived copies. Preserving
+# evidence is the thing this catalog exists for, and an original that dies while
+# the row sits at the ceiling would be unarchivable forever, which is a worse
+# record than a hundred-and-first version. See :func:`file_version`.
 MAX_VERSIONS_PER_EVENT = 100
+
+# How many versions one page of an event's history serves. Below
+# ``pagination.MAX_PAGE_SIZE`` on purpose: the ceiling above is 100, so a page
+# of 100 would answer every history whole and the *Load more* the list renders
+# would never appear, leaving the cursor walk unexercised by the product.
+HISTORY_PAGE_SIZE = 50
 
 # The versioned fields a no-change check reads, in the shapes
 # :func:`build_snapshot` stores them. Two of that function's keys are absent on
@@ -82,9 +93,9 @@ COMPARED_FIELDS: tuple[str, ...] = (
 class VersionLimitError(Exception):
     """The event already carries :data:`MAX_VERSIONS_PER_EVENT` versions.
 
-    Raised by :func:`file_version`, so both writers that produce a version (the
-    owner's edit and an archived copy recorded on a published row) meet the
-    ceiling in one place rather than each carrying its own count. Maps to 409.
+    Raised by :func:`file_version` for an edit, so the ceiling lives with the
+    thing it bounds rather than in the caller. A save whose only change is
+    archived copies never raises it. Maps to 409.
     """
 
     code = "version_limit"
@@ -192,13 +203,15 @@ def _ids(entries: Any) -> list[str]:
     return sorted(str(entry["id"]) for entry in entries)
 
 
-def matches_current(geo: Event, proposed: Mapping[str, Any]) -> bool:
-    """True when every versioned field of ``proposed`` equals the live row's.
+def matches_current(current: Mapping[str, Any], proposed: Mapping[str, Any]) -> bool:
+    """True when every versioned field of ``proposed`` equals the stored one's.
 
-    ``proposed`` is keyed by :data:`COMPARED_FIELDS` in the shapes
-    :func:`build_snapshot` stores, so a write that passes this check would file a
-    snapshot indistinguishable from the row it supersedes. The archived copies
-    are the caller's own leg (:func:`archived_pairs`), since a paste carries no
+    Both arguments are snapshots as :func:`build_snapshot` builds them, keyed by
+    :data:`COMPARED_FIELDS`, so a write that passes this check would file a
+    snapshot indistinguishable from the row it supersedes. Taking the built
+    snapshot rather than the row is what lets one save build it once and hand
+    the same object to :func:`file_version`. The archived copies are the
+    caller's own leg (:func:`archived_pairs`), since a paste carries no
     ``created_at`` to compare.
 
     Tags and conflicts compare as sets of ids, the way the history's own
@@ -206,10 +219,9 @@ def matches_current(geo: Event, proposed: Mapping[str, Any]) -> bool:
     the referential's current name, so neither the order a set came back in nor
     a rename under a published event is a change to this event.
 
-    Read against the live row under the caller's lock and before anything is
+    Built from the live row under the caller's lock and before anything is
     staged, so a refused write files no version and uploads nothing.
     """
-    current = build_snapshot(geo)
     for field in COMPARED_FIELDS:
         if field in ("tags", "conflicts"):
             if _ids(current[field]) != _ids(proposed[field]):
@@ -219,31 +231,46 @@ def matches_current(geo: Event, proposed: Mapping[str, Any]) -> bool:
     return True
 
 
-def file_version(db: Session, *, geo: Event, edited_by: User, note: str | None) -> EventVersion:
+def file_version(
+    db: Session,
+    *,
+    geo: Event,
+    edited_by: User,
+    note: str | None,
+    snapshot: dict[str, Any] | None = None,
+    enforce_ceiling: bool = True,
+) -> EventVersion:
     """File the state the row carries and move it to the next version.
 
     The one place a version comes to be: the snapshot is taken at the row's
     current ``version_no`` and the row is bumped past it, so the two halves
-    cannot drift apart between the writers that produce versions.
+    cannot drift apart.
+
+    ``snapshot`` is the already-built pre-edit state, for a caller that
+    compared against it first (:func:`matches_current` builds one); omit it and
+    the row is read here. Passing the one the comparison used is what keeps a
+    save to a single :func:`build_snapshot`.
+
+    ``enforce_ceiling`` is what a save whose only change is archived copies
+    turns off. Raises :class:`VersionLimitError` otherwise on a row already at
+    :data:`MAX_VERSIONS_PER_EVENT`, before anything is staged: past that count
+    an edit is refused, while preserving evidence never is, because a source
+    that dies while the row sits at the ceiling would be unarchivable for good.
 
     Staged, not committed: the caller applies its write and commits both in one
     transaction, so a failed write leaves no orphan version behind. Call it
     before any field is mutated, since the snapshot reads the live row.
-
-    Raises :class:`VersionLimitError` on a row already at
-    :data:`MAX_VERSIONS_PER_EVENT`, before anything is staged, so the ceiling
-    holds for the owner's edit and for a recorded archived copy alike.
     """
-    if geo.version_no >= MAX_VERSIONS_PER_EVENT:
+    if enforce_ceiling and geo.version_no >= MAX_VERSIONS_PER_EVENT:
         raise VersionLimitError(
-            f"This event has reached {MAX_VERSIONS_PER_EVENT} versions. Contact an admin."
+            f"This event has reached {MAX_VERSIONS_PER_EVENT} versions and can no longer be edited."
         )
     row = EventVersion(
         event_id=geo.id,
         version_no=geo.version_no,
         edited_by_id=edited_by.id,
         note=note,
-        snapshot=build_snapshot(geo),
+        snapshot=build_snapshot(geo) if snapshot is None else snapshot,
     )
     db.add(row)
     geo.version_no = geo.version_no + 1

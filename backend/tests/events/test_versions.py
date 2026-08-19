@@ -228,6 +228,109 @@ def test_save_version_files_one_version_for_a_mirror_copy(db, author, conflict, 
     assert rows[0].snapshot["archives"] == []
 
 
+def test_an_edit_archives_the_post_the_detection_came_from(
+    db, author, conflict, capture_source_tag
+):
+    """The provenance link is immutable and rots all the same, so the edit form
+    carries its archived copy beside the locked field holding it."""
+    provenance = "https://x.com/analyst/status/909090"
+    geo = _published(db, author, conflict, capture_source_tag, detected_from_url=provenance)
+    wayback = f"https://web.archive.org/web/20260811120000/{provenance}"
+
+    response = _save_version(
+        geo.id,
+        author,
+        data=_form(conflict, capture_source_tag, detected_from_snapshot_url=wayback),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["archived_detected_from"] == {"url": wayback, "provider": "wayback"}
+
+    db.expire_all()
+    row = db.query(SourceArchive).filter(SourceArchive.event_id == geo.id).one()
+    assert (row.original_url, row.origin) == (provenance, "detected_from")
+
+
+def test_a_provenance_copy_alone_is_a_change(db, author, conflict, capture_source_tag):
+    """Archiving the provenance link moves no field, and is still a version:
+    which of a record's links are archived is part of what the record says."""
+    provenance = "https://x.com/analyst/status/909090"
+    geo = _published(db, author, conflict, capture_source_tag, detected_from_url=provenance)
+    wayback = f"https://web.archive.org/web/20260811120000/{provenance}"
+    assert (
+        _save_version(geo.id, author, data=_form(conflict, capture_source_tag)).status_code == 200
+    )
+
+    assert (
+        _save_version(
+            geo.id,
+            author,
+            data=_form(conflict, capture_source_tag, detected_from_snapshot_url=wayback),
+        ).status_code
+        == 200
+    )
+    db.expire_all()
+    assert db.get(Event, geo.id).version_no == 3
+
+
+def test_a_non_canonical_re_paste_of_the_stored_copy_is_no_change(
+    db, author, conflict, capture_source_tag
+):
+    """A snapshot URL travels through a browser, which is where a trailing slash
+    comes from. The stored copy and the re-paste name one capture, so the save
+    is refused rather than filing a version for a spelling.
+    """
+    geo = _published(db, author, conflict, capture_source_tag)
+    wayback = f"https://web.archive.org/web/20260811120000/{geo.source_url}"
+    assert (
+        _save_version(
+            geo.id, author, data=_form(conflict, capture_source_tag, source_snapshot_url=wayback)
+        ).status_code
+        == 200
+    )
+
+    response = _save_version(
+        geo.id,
+        author,
+        data=_form(conflict, capture_source_tag, source_snapshot_url=f"{wayback}/"),
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["code"] == "nothing_changed"
+
+    db.expire_all()
+    assert db.get(Event, geo.id).version_no == 2
+
+
+def test_dropping_a_mirror_drops_its_archived_copy(db, author, conflict, capture_source_tag):
+    """A copy filed against a mirror the edit removed archives a link the record
+    no longer declares, so it goes with the mirror. The version this edit
+    supersedes still holds it, which is where that copy stays readable."""
+    mirror = "https://t.me/channel/424242"
+    geo = _published(db, author, conflict, capture_source_tag, secondary_source_urls=[mirror])
+    wayback = f"https://web.archive.org/web/20260811120000/{mirror}"
+    db.add(
+        SourceArchive(
+            event_id=geo.id,
+            original_url=mirror,
+            origin="secondary_source",
+            snapshot_url=wayback,
+            provider="wayback",
+        )
+    )
+    db.commit()
+
+    response = _save_version(
+        geo.id, author, data=_form(conflict, capture_source_tag, secondary_source_urls=[])
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["secondary_source_urls"] == []
+    assert response.json()["archived_secondary_sources"] == []
+
+    db.expire_all()
+    assert db.query(SourceArchive).filter(SourceArchive.event_id == geo.id).count() == 0
+    row = db.query(EventVersion).filter(EventVersion.event_id == geo.id).one()
+    assert [a["original_url"] for a in row.snapshot["archives"]] == [mirror]
+
+
 def test_save_version_refuses_a_mirror_snapshot_of_another_link(
     db, author, conflict, capture_source_tag
 ):
@@ -554,7 +657,8 @@ def test_a_new_archived_copy_is_a_change_and_the_same_one_is_not(
 
 
 def test_an_event_stops_at_the_version_ceiling(db, author, conflict, capture_source_tag):
-    """Version 100 is the last one an edit can produce."""
+    """Version 100 is the last one an edit can produce, and the refusal says so
+    without pointing anyone at an admin who has no verb for it."""
     geo = _published(db, author, conflict, capture_source_tag)
     geo.version_no = versions_service.MAX_VERSIONS_PER_EVENT
     db.commit()
@@ -564,26 +668,55 @@ def test_an_event_stops_at_the_version_ceiling(db, author, conflict, capture_sou
     )
     assert response.status_code == 409, response.text
     assert response.json()["detail"]["code"] == "version_limit"
-    assert "100 versions" in response.json()["detail"]["message"]
+    assert response.json()["detail"]["message"] == (
+        "This event has reached 100 versions and can no longer be edited."
+    )
 
     db.expire_all()
     assert db.query(EventVersion).filter(EventVersion.event_id == geo.id).count() == 0
     assert db.get(Event, geo.id).version_no == versions_service.MAX_VERSIONS_PER_EVENT
 
 
-def test_an_archived_copy_meets_the_same_ceiling(db, author, conflict, capture_source_tag):
-    """The other writer that produces a version stops at the same number."""
+def test_a_save_that_only_archives_passes_the_ceiling(db, author, conflict, capture_source_tag):
+    """Preserving evidence never waits on a quota.
+
+    A save whose only change is an archived copy files version 101 on a row at
+    the ceiling: an original that dies while the event sits at 100 would
+    otherwise be unarchivable for good, which is a worse record than one more
+    version.
+    """
     geo = _published(db, author, conflict, capture_source_tag)
+    wayback = f"https://web.archive.org/web/20260811120000/{geo.source_url}"
+    # One real edit first, so the form below re-posts exactly what the row holds
+    # and the archived copy is the only thing that moves.
+    assert (
+        _save_version(geo.id, author, data=_form(conflict, capture_source_tag)).status_code == 200
+    )
+    db.expire_all()
+    geo = db.get(Event, geo.id)
     geo.version_no = versions_service.MAX_VERSIONS_PER_EVENT
     db.commit()
 
-    response = client.post(
-        f"/api/v1/events/{geo.id}/archives",
-        headers=login_as(client, author),
-        json={
-            "original_url": geo.source_url,
-            "snapshot_url": f"https://web.archive.org/web/20260811120000/{geo.source_url}",
-        },
+    response = _save_version(
+        geo.id, author, data=_form(conflict, capture_source_tag, source_snapshot_url=wayback)
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["version_no"] == versions_service.MAX_VERSIONS_PER_EVENT + 1
+    assert response.json()["archived_source"] == {"url": wayback, "provider": "wayback"}
+
+
+def test_an_edit_carrying_a_copy_still_meets_the_ceiling(db, author, conflict, capture_source_tag):
+    """The exemption is for a save that ONLY archives. A correction that also
+    moves a field is an edit, and an edit stops at 100."""
+    geo = _published(db, author, conflict, capture_source_tag)
+    wayback = f"https://web.archive.org/web/20260811120000/{geo.source_url}"
+    geo.version_no = versions_service.MAX_VERSIONS_PER_EVENT
+    db.commit()
+
+    response = _save_version(
+        geo.id,
+        author,
+        data=_form(conflict, capture_source_tag, title="One more", source_snapshot_url=wayback),
     )
     assert response.status_code == 409, response.text
     assert response.json()["detail"]["code"] == "version_limit"
@@ -810,6 +943,42 @@ def test_save_version_rejects_a_proof_image_belonging_to_another_event(
     )
     db.expire_all()
     assert db.get(Event, geo.id).version_no == 2
+
+
+def test_a_proof_body_may_cite_the_events_own_source_media(
+    db, author, conflict, capture_source_tag
+):
+    """Ownership is per event, not per role.
+
+    A proof body legitimately shows a frame of the footage being located, which
+    is the event's own ``source`` row. That object dies only with the event that
+    owns it, so refusing the src would reject a body naming nothing but its own
+    evidence.
+    """
+    geo = _published(db, author, conflict, capture_source_tag)
+    source_row = db.query(Media).filter(Media.event_id == geo.id, Media.role == "source").one()
+    # On the media host, so the sanitiser admits the src and the ownership check
+    # is the only thing left to decide it.
+    source_row.storage_url = "http://localhost:8000/local-storage/uploads/e/source.jpg"
+    db.commit()
+
+    body = {
+        "type": "doc",
+        "content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": "The frame."}]},
+            {"type": "image", "attrs": {"src": STORED_PROOF_URL}},
+            {"type": "image", "attrs": {"src": source_row.storage_url}},
+        ],
+    }
+    response = _save_version(
+        geo.id, author, data=_form(conflict, capture_source_tag, proof=json.dumps(body))
+    )
+    assert response.status_code == 200, response.text
+
+    db.expire_all()
+    # The source row is not a proof row, so the proof diff never considered it
+    # for deletion either.
+    assert db.query(Media).filter(Media.id == source_row.id).count() == 1
 
 
 # ── Reading the history ───────────────────────────────────────────────────

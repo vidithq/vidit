@@ -3,7 +3,7 @@ import type { components } from "@/lib/api-types";
 import { archiveTooLarge } from "./archive";
 import { cleanNumber, inBounds } from "./coordinates";
 import { toDatetimeLocalUTC } from "./format";
-import { proofHasImage, proofImageSrcs } from "./proof";
+import { proofHasImage } from "./proof";
 import type {
   ArchiveImportJob,
   ArchiveImportPresign,
@@ -390,6 +390,12 @@ export type EventVersionInput = Omit<
   /** The editor's own words about this edit, stored on the version it
    *  supersedes. Optional, capped at `VERSION_NOTE_MAX_LEN`. */
   note?: string;
+  /** Optional snapshot of `detected_from_url`, the post a machine detection
+   *  came from. Only this endpoint takes it: the provenance link is immutable
+   *  from the moment the detection exists, so the published row is where its
+   *  copy is recorded. Archiving it is not a change to it, which is why an
+   *  otherwise-locked field carries the paste. */
+  detected_from_snapshot_url?: string;
 };
 
 /**
@@ -406,6 +412,11 @@ export function saveVersion(
   appendEventFormFields(fd, input);
   if (input.note?.trim()) {
     fd.append("note", input.note.trim());
+  }
+  // The provenance link's copy, appended here rather than in the shared
+  // assembler: this is the one endpoint that declares the field.
+  if (input.detected_from_snapshot_url?.trim()) {
+    fd.append("detected_from_snapshot_url", input.detected_from_snapshot_url.trim());
   }
   return apiFetch<EventDetail>(`/events/${id}/versions`, {
     method: "POST",
@@ -471,7 +482,6 @@ const VERSION_FIELD_LABELS = {
   secondary_source_urls: "Secondary sources",
   archives: "Archived copies",
   proof: "Proof",
-  proof_images: "Proof images",
   is_graphic: "Graphic flag",
 } as const;
 
@@ -573,7 +583,12 @@ export function snapshotToEventView(
     event_date: asNullableString(snapshot.event_date),
     event_time: asNullableString(snapshot.event_time),
     source_posted_at: asNullableString(snapshot.source_posted_at),
-    is_graphic: snapshot.is_graphic === true,
+    // Ratcheted against the live row, the way the backend ratchets the column:
+    // the media a version page renders is the live media, so a flag raised
+    // after this version was filed still covers what the page shows. Only the
+    // other direction is a version's own fact, a version filed while the flag
+    // was already up.
+    is_graphic: current.is_graphic || snapshot.is_graphic === true,
     secondary_source_urls: secondarySourceUrls,
     archived_secondary_sources: secondarySourceUrls.map(
       (url) => archivedByUrl.get(url) ?? null
@@ -642,13 +657,12 @@ const archivedPairs = (view: EventDetail): string[] =>
  *
  * Tags and conflicts compare by identity rather than by name: a referential row
  * renamed under a published event changes no version. They also compare as
- * sets, the relationship being unordered. `proof_images` is the set
- * of images the proof body displays, which moves with the body and is named
- * separately because swapping one image is the edit a reader most wants to see
- * announced. The archived copies compare as the set of (link, snapshot) pairs
- * the version carries, which is what the reader sees beside each link, so
- * recording a copy is announced as *Archived copies* the way any other
- * correction is announced.
+ * sets, the relationship being unordered. The inline images are not their own
+ * entry: they live inside the proof document, so a body whose images moved is a
+ * body that moved, and naming both would print two labels for one edit. The
+ * archived copies compare as the set of (link, snapshot) pairs the version
+ * carries, which is what the reader sees beside each link, so recording a copy
+ * is announced as *Archived copies* the way any other correction is announced.
  */
 export function changedFields(version: EventDetail, previous: EventDetail): string[] {
   const ids = (rows: readonly { id: string }[]) => rows.map((row) => row.id);
@@ -688,10 +702,6 @@ export function changedFields(version: EventDetail, previous: EventDetail): stri
     VERSION_FIELD_LABELS.proof,
     JSON.stringify(version.proof ?? null) !== JSON.stringify(previous.proof ?? null)
   );
-  flag(
-    VERSION_FIELD_LABELS.proof_images,
-    !sameList(proofImageSrcs(version.proof), proofImageSrcs(previous.proof))
-  );
   flag(VERSION_FIELD_LABELS.is_graphic, version.is_graphic !== previous.is_graphic);
   return changed;
 }
@@ -718,6 +728,7 @@ export interface EventVersionFormState {
   secondarySourceUrls: string[];
   secondarySnapshotUrls: string[];
   sourceSnapshotUrl: string;
+  detectedFromSnapshotUrl: string;
 }
 
 const coordsOf = (lat: string, lng: string): EventDetail["event_coords"] => {
@@ -757,6 +768,10 @@ export function hasVersionChanges(
   });
   const sourceCopy = state.sourceSnapshotUrl.trim();
   if (sourceCopy && geo.source_url) pastedCopies.set(geo.source_url, sourceCopy);
+  const provenanceCopy = state.detectedFromSnapshotUrl.trim();
+  if (provenanceCopy && geo.detected_from_url) {
+    pastedCopies.set(geo.detected_from_url, provenanceCopy);
+  }
   const stored = archivedCopies(geo);
   const copiesMove = [...pastedCopies].some(([url, copy]) => stored.get(url)?.url !== copy);
   if (copiesMove) return true;
@@ -796,10 +811,16 @@ export function hasVersionChanges(
 }
 
 /** What the edit form says when a save would file a version identical to the one
- *  on screen. One sentence for both refusals: the client-side check raises it
- *  without a request, and the server's `nothing_changed` 409 maps to it. */
+ *  on screen.
+ *
+ *  Word for word the sentence `services/events.save_version` raises with
+ *  `nothing_changed`, so the client-side check (which spends no request) and the
+ *  server's refusal read the same. Which is also why the form prefers the
+ *  server's own message when it has one: the row may have moved under a form
+ *  that has been open a while, and the server names the version it actually
+ *  compared against. */
 export const nothingChangedMessage = (versionNo: number): string =>
-  `Nothing changed since version ${versionNo}`;
+  `Nothing changed since version ${versionNo}.`;
 
 /** One version of an event, as the history list and the version page read it. */
 export interface EventVersionEntry {
@@ -898,6 +919,11 @@ export function eventVersions(
   hasMore = false
 ): EventVersionEntry[] {
   const byNumber = new Map(rows.map((row) => [row.version_no, row]));
+  // `+ 1`: while the walk has pages, the lowest row loaded is authorship for
+  // the version above it and not yet a version of its own, since its own
+  // authorship sits on the row below, which the next page carries. So the walk
+  // stops one version above it. A finished walk reaches version 1, which no
+  // edit produced.
   const oldest = hasMore && rows.length > 0 ? Math.min(...byNumber.keys()) + 1 : 1;
 
   // The version below is built as its own row too, so this is the diff base

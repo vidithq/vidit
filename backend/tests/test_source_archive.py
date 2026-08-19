@@ -343,35 +343,33 @@ def test_an_oversized_snapshot_is_refused():
     assert _reject_code(SOURCE, oversized) == "snapshot_url_too_long"
 
 
-# ── recording a copy ───────────────────────────────────────────────────
+# ── storing a copy ─────────────────────────────────────────────────────
 
 
-def test_record_snapshot_stores_the_copy_with_its_provider_and_origin(db, owner, event):
-    row = source_archive.record_snapshot(
-        db, event=event, original_url=SOURCE, snapshot_url=WAYBACK_SNAPSHOT, recorded_by=owner
+def _stage(db, event, url, snapshot):
+    """Stage the copy the way a write path does: resolve the origin, then upsert."""
+    origin = source_archive.origin_of(event, url)
+    assert origin is not None
+    source_archive.stage_snapshot(
+        db, event=event, original_url=url, origin=origin, snapshot_url=snapshot
     )
-    assert (row.original_url, row.origin) == (SOURCE, "source_url")
-    assert (row.snapshot_url, row.provider) == (WAYBACK_SNAPSHOT, "wayback")
+    db.commit()
+
+
+def test_staging_stores_the_copy_with_its_provider_and_origin(db, event):
+    _stage(db, event, SOURCE, WAYBACK_SNAPSHOT)
 
     stored = db.query(SourceArchive).filter(SourceArchive.event_id == event.id).all()
+    assert [(r.original_url, r.origin) for r in stored] == [(SOURCE, "source_url")]
     assert [(r.snapshot_url, r.provider) for r in stored] == [(WAYBACK_SNAPSHOT, "wayback")]
 
 
-def test_record_snapshot_overwrites_the_slot_on_a_resubmission(db, owner, event):
+def test_staging_overwrites_the_slot_on_a_resubmission(db, event):
     """One copy per link is what makes a second paste the owner's correction
     path rather than a competing row."""
-    source_archive.record_snapshot(
-        db, event=event, original_url=SOURCE, snapshot_url=WAYBACK_SNAPSHOT, recorded_by=owner
-    )
-    row = source_archive.record_snapshot(
-        db,
-        event=event,
-        original_url=SOURCE,
-        snapshot_url=ARCHIVE_TODAY_SNAPSHOT,
-        recorded_by=owner,
-    )
+    _stage(db, event, SOURCE, WAYBACK_SNAPSHOT)
+    _stage(db, event, SOURCE, ARCHIVE_TODAY_SNAPSHOT)
 
-    assert (row.snapshot_url, row.provider) == (ARCHIVE_TODAY_SNAPSHOT, "archive_today")
     stored = db.query(SourceArchive).filter(SourceArchive.event_id == event.id).all()
     assert len(stored) == 1
     assert (stored[0].snapshot_url, stored[0].provider) == (
@@ -380,33 +378,20 @@ def test_record_snapshot_overwrites_the_slot_on_a_resubmission(db, owner, event)
     )
 
 
-def test_record_snapshot_refuses_a_link_the_event_does_not_carry(db, owner, event):
-    with pytest.raises(source_archive.SnapshotRejected) as excinfo:
-        source_archive.record_snapshot(
-            db,
-            event=event,
-            original_url="https://elsewhere.example/x",
-            snapshot_url=f"https://web.archive.org/web/{CAPTURE_TS}/https://elsewhere.example/x",
-            recorded_by=owner,
-        )
-    assert excinfo.value.code == "original_url_not_on_event"
-    assert db.query(SourceArchive).filter(SourceArchive.event_id == event.id).count() == 0
+def test_a_link_the_event_does_not_carry_has_no_origin(db, event):
+    """``origin_of`` is the membership test every path runs before it files a
+    copy, so a URL the event never declared resolves to nothing."""
+    assert source_archive.origin_of(event, "https://elsewhere.example/x") is None
 
 
-def test_record_snapshot_covers_every_kind_of_link_the_event_carries(db, owner, event):
+def test_every_kind_of_link_the_event_carries_has_its_own_origin(db, event):
     """The source, a mirror, the provenance link and a proof citation are all
     archivable, each stored under its own origin."""
     event.detected_from_url = DETECTED_FROM
     _with_mirrors(db, event, MIRROR)
 
     for url in (SOURCE, MIRROR, DETECTED_FROM, PROOF_LINK):
-        source_archive.record_snapshot(
-            db,
-            event=event,
-            original_url=url,
-            snapshot_url=ARCHIVE_TODAY_SNAPSHOT,
-            recorded_by=owner,
-        )
+        _stage(db, event, url, ARCHIVE_TODAY_SNAPSHOT)
 
     stored = db.query(SourceArchive).filter(SourceArchive.event_id == event.id).all()
     assert {r.original_url: r.origin for r in stored} == {
@@ -417,14 +402,8 @@ def test_record_snapshot_covers_every_kind_of_link_the_event_carries(db, owner, 
     }
 
 
-def test_archive_row_for_matches_a_link_by_url(db, owner, event):
-    source_archive.record_snapshot(
-        db,
-        event=event,
-        original_url=PROOF_LINK,
-        snapshot_url=ARCHIVE_TODAY_SNAPSHOT,
-        recorded_by=owner,
-    )
+def test_archive_row_for_matches_a_link_by_url(db, event):
+    _stage(db, event, PROOF_LINK, ARCHIVE_TODAY_SNAPSHOT)
     db.refresh(event)
 
     assert source_archive.archive_row_for(event, PROOF_LINK).snapshot_url == (
@@ -432,6 +411,30 @@ def test_archive_row_for_matches_a_link_by_url(db, owner, event):
     )
     assert source_archive.archive_row_for(event, SOURCE) is None
     assert source_archive.archive_row_for(event, None) is None
+
+
+# ── is this paste the copy already stored ──────────────────────────────
+
+
+def test_a_re_paste_of_the_stored_copy_is_the_same_snapshot():
+    """A snapshot URL reaches the form through a browser, which is where a
+    trailing slash and a host in another case come from. The fold is the one
+    ``validate_snapshot`` uses, so the two never disagree about "same URL"."""
+    assert source_archive.same_snapshot(WAYBACK_SNAPSHOT, WAYBACK_SNAPSHOT)
+    assert source_archive.same_snapshot(WAYBACK_SNAPSHOT, f"{WAYBACK_SNAPSHOT}/")
+    assert source_archive.same_snapshot(
+        WAYBACK_SNAPSHOT, WAYBACK_SNAPSHOT.replace("web.archive.org", "WEB.ARCHIVE.ORG")
+    )
+
+
+def test_a_different_copy_is_not_the_same_snapshot():
+    assert not source_archive.same_snapshot(WAYBACK_SNAPSHOT, ARCHIVE_TODAY_SNAPSHOT)
+    # A link holding no copy is never matched by a paste.
+    assert not source_archive.same_snapshot(None, WAYBACK_SNAPSHOT)
+    # A capture at another timestamp is another copy, not a spelling of this one.
+    assert not source_archive.same_snapshot(
+        WAYBACK_SNAPSHOT, WAYBACK_SNAPSHOT.replace(CAPTURE_TS, "20270101000000")
+    )
 
 
 def test_the_provider_constraint_rejects_an_unknown_service(db, event):

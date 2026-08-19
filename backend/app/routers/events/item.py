@@ -62,7 +62,6 @@ from app.services import reports as reports_service
 from app.services import versions as versions_service
 from app.services.evidence_intake import EvidenceIntakeError, collect_media_keys
 from app.services.pagination import (
-    MAX_PAGE_SIZE,
     decode_ordinal_cursor,
     encode_ordinal_cursor,
     next_link,
@@ -251,7 +250,11 @@ async def geolocate_event(
     # carry no requester protection (see the service docstring).
     secondary_source_urls: list[SecondarySourceUrl] = Form([]),
     # The archived copy of each mirror, aligned with the list above by position
-    # and blank where that mirror was not archived.
+    # and blank where that mirror was not archived. The alignment is the
+    # contract: the client posts one entry here per entry there, blank included,
+    # so a copy never arrives without the link it covers and
+    # ``pair_secondary_snapshots`` can key the two by position before
+    # normalization drops any row.
     secondary_snapshot_urls: list[SecondarySourceUrl] = Form([]),
     # Optional, mirroring create: the footage doesn't always establish when the
     # depicted event happened; NULL reads as "Unknown".
@@ -290,11 +293,11 @@ async def geolocate_event(
     ``requested`` / ``detected`` → 409. Soft-deleted rows read as 404.
 
     ``source_snapshot_url`` records the archived source in the same write and
-    ``secondary_snapshot_urls`` records one copy per mirror, on the terms ``POST
-    /events/{id}/archives`` applies (a paste that is not a snapshot of the link
-    it sits beside is a 400, and nothing is written). An edit that changes the
-    source URL and pastes no new snapshot leaves the event with no archived
-    source rather than the old one's copy.
+    ``secondary_snapshot_urls`` records one copy per mirror, on the checks every
+    archived-copy field runs (a paste that is not a snapshot of the link it sits
+    beside is a 400, and nothing is written). An edit that changes the source URL
+    and pastes no new snapshot leaves the event with no archived source rather
+    than the old one's copy.
     """
     files = files or []
     proof_files = proof_files or []
@@ -357,12 +360,18 @@ async def save_event_version(
     capture_source_lat: float | None = Form(None),
     capture_source_lng: float | None = Form(None),
     # The archived copy of the event's stored source URL. Accepted because it
-    # archives the anchor rather than changing it, on the same checks as
-    # ``POST /events/{id}/archives``.
+    # archives the anchor rather than changing it.
     source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
+    # The archived copy of the post a machine detection came from, on the same
+    # terms: the provenance link is immutable, and archiving it is not a change
+    # to it. Absent on a human submit, which carries no provenance link.
+    detected_from_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
     # The mirrors, repeated once per link. Outside the anchor, so the submitted
     # list replaces whatever the row held; the archived copy of each rides
-    # beside it, aligned by position.
+    # beside it, aligned by position. The two lists are index-aligned by
+    # contract: the client posts one ``secondary_snapshot_urls`` entry per
+    # ``secondary_source_urls`` entry, blank where that mirror carries no copy,
+    # so a copy is never posted without the link it covers.
     secondary_source_urls: list[SecondarySourceUrl] = Form([]),
     secondary_snapshot_urls: list[SecondarySourceUrl] = Form([]),
     event_date: str | None = Form(None),
@@ -401,6 +410,13 @@ async def save_event_version(
     links included. The published evidence floor is re-checked on the post-edit
     state, so a version cannot drop the row below it. Soft-deleted rows read as
     404.
+
+    This is also where an archived copy of one of the row's links is recorded:
+    ``source_snapshot_url``, ``detected_from_snapshot_url`` and
+    ``secondary_snapshot_urls`` archive a link without changing it, and land in
+    the version this call produces. A save whose only change is a copy is
+    accepted even at the version ceiling, since evidence preservation never
+    waits on a quota.
     """
     proof_files = proof_files or []
     parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
@@ -426,6 +442,7 @@ async def save_event_version(
             capture_source_lat=capture_source_lat,
             capture_source_lng=capture_source_lng,
             source_snapshot_url=source_snapshot_url,
+            detected_from_snapshot_url=detected_from_snapshot_url,
             secondary_source_urls=secondary_source_urls,
             secondary_snapshot_urls=secondary_snapshot_urls,
             event_date=parsed_event_date,
@@ -472,7 +489,7 @@ def list_event_versions(
     request: Request,
     response: Response,
     geolocation_id: uuid.UUID,
-    limit: int = Query(MAX_PAGE_SIZE, ge=1),
+    limit: int = Query(versions_service.HISTORY_PAGE_SIZE, ge=1),
     cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
@@ -486,9 +503,10 @@ def list_event_versions(
     admin, who still needs to read what was taken down in order to judge the
     report that took it down (the same branch ``GET /{id}`` takes).
 
-    Paged like every other list: capped at 100 rows however large ``limit`` is,
-    and a caller reading past the first page follows the ``cursor`` in the
-    ``Link: rel="next"`` header. ``total`` is the whole history, not the page.
+    Paged like every other list: ``services/versions.HISTORY_PAGE_SIZE`` rows by
+    default, capped at 100 however large ``limit`` is, and a caller reading past
+    the first page follows the ``cursor`` in the ``Link: rel="next"`` header.
+    ``total`` is the whole history, not the page.
     """
     geo = _readable_event(db, geolocation_id, current_user)
 

@@ -6,7 +6,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.archive_import_job import ArchiveImportJobStatus
 from app.models.event import (
-    SOURCE_URL_MAX_LENGTH,
     BeforeClosedStatus,
     DetectedVia,
     EventStatus,
@@ -107,19 +106,6 @@ class ArchivedLinkRead(BaseModel):
     url: str
     # Which service holds it, inferred from the snapshot's host at write time.
     provider: SourceArchiveProvider
-
-
-class EventArchiveCreate(BaseModel):
-    """Body of ``POST /events/{event_id}/archives``.
-
-    ``original_url`` names which of the event's links the copy is of, and has
-    to be one the event actually carries; ``snapshot_url`` is what the provider
-    handed the analyst back. Both ceilings match the columns behind them, so an
-    oversized paste is a 422 on the field rather than a database error.
-    """
-
-    original_url: str = Field(min_length=1, max_length=SOURCE_URL_MAX_LENGTH)
-    snapshot_url: str = Field(min_length=1, max_length=SOURCE_URL_MAX_LENGTH)
 
 
 # How long the note an editor may attach to one version runs. Short on
@@ -313,7 +299,7 @@ class EventRead(BaseModel):
     # Which version of the event this payload is. 1 until the owner edits it;
     # each edit files the superseded state and increments this. Every state
     # carries it (the column is NOT NULL), but only a ``geolocated`` row can
-    # move past 1, since editingPublished is the published-row correction path.
+    # move past 1, since ``save_version`` is the published-row correction path.
     version_no: int
     # Free-text reason the event was closed; NULL while it is open.
     close_reason: str | None

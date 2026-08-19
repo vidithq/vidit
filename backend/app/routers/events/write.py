@@ -116,10 +116,10 @@ async def create_event(
     ``services/events.create_with_evidence``.
 
     ``source_snapshot_url`` records the event's archived source in the same
-    write, and ``secondary_snapshot_urls`` records one copy per mirror: the same
-    checks ``POST /events/{id}/archives`` runs, so a paste that is not a
-    snapshot of the link it sits beside is a 400 carrying the failing check's
-    code, and no event is created.
+    write, and ``secondary_snapshot_urls`` records one copy per mirror, on the
+    checks every archived-copy field runs (``services/source_archive``): a paste
+    that is not a snapshot of the link it sits beside is a 400 carrying the
+    failing check's code, and no event is created.
     """
     proof_files = proof_files or []
 

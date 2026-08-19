@@ -4,12 +4,12 @@ A source tweet gets deleted and an account gets suspended, which destroys
 exactly the evidence the catalog promises to preserve. An archived copy is what
 keeps a dead original readable, and the analyst is who makes it: they open the
 provider's own submit page from their own browser and paste the snapshot URL
-back. Two paths take that paste. The submit and edit forms carry one field per
-link they declare, ``source_snapshot_url`` beside the source URL and one
-``secondary_snapshot_urls`` entry beside each mirror, so the copies are made
-while the links are in front of the analyst and land in the same transaction as
-the event; ``POST /events/{event_id}/archives`` takes it afterwards, for any
-link a live event carries.
+back. The forms are the one path that paste takes: they carry one field per
+link they declare, ``source_snapshot_url`` beside the source URL, one
+``secondary_snapshot_urls`` entry beside each mirror, and
+``detected_from_snapshot_url`` beside the provenance link on the edit form, so
+the copies are made while the links are in front of the analyst and land in the
+same transaction as the event they belong to.
 
 The capture is not attempted server side. Roughly nine in ten sources here are
 ``x.com``, which Save Page Now structurally refuses, and archive.today has no
@@ -23,16 +23,17 @@ links (the analyst-submitted mirrors in ``event_source_links``), its
 ``detected_from_url`` (the analyst's post a machine detection came from),
 and every ``http(s)`` href carried by a link mark in the proof body's Tiptap
 document. :func:`collect_links` is the one home for that walk, and it is what
-the endpoint validates ``original_url`` against, so a snapshot cannot be
-recorded for a URL the event does not carry.
+:func:`reconcile_source_archive` re-files a stored row against, so a copy never
+claims to archive a URL the event does not carry.
 
 An archived copy is part of what a published record says, so recording one on a
-``geolocated`` event is a tracked change: :func:`record_snapshot` files the
-version it supersedes through ``services/versions.file_version``, exactly as an
-edit does, and the history names the change *Archived copies*. Below
-publication (``requested`` / ``detected``) nothing is versioned, so the copy is
-stored on its own. A re-record that stores the same snapshot for the same link
-changes nothing and files nothing.
+``geolocated`` event is a tracked change: the edit that carries the paste files
+the version it supersedes through ``services/versions.file_version``, and the
+history names the change *Archived copies*. Below publication (``requested`` /
+``detected``) nothing is versioned, so the copy is stored on its own. A paste
+equal to the copy the link already carries changes nothing and files nothing,
+compared through :func:`same_snapshot` so a non-canonical spelling of the
+stored copy is not read as a correction.
 
 One copy per link, from whichever provider produced it. Two snapshots of one
 link is redundancy the reader never asked for, and the read surface renders a
@@ -58,14 +59,12 @@ from urllib.parse import urlparse, urlunparse
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.models.event import SOURCE_URL_MAX_LENGTH, STATUS_GEOLOCATED, Event
+from app.models.event import SOURCE_URL_MAX_LENGTH, Event
 from app.models.source_archive import (
     SourceArchive,
     SourceArchiveOrigin,
     SourceArchiveProvider,
 )
-from app.models.user import User
-from app.services import versions
 from app.services.sanitize import extract_link_hrefs, normalised_host, safe_link_href
 
 # Every host a snapshot may live on, and the provider each one is. The
@@ -135,9 +134,9 @@ def collect_links(event: Event) -> list[tuple[str, SourceArchiveOrigin]]:
     the post a machine detection came from, then a proof citation. That is
     the strongest provenance the event carries for the URL.
 
-    Both halves of the archival contract read this: it is the set the detail
-    surface offers an archive affordance for, and the set
-    :func:`record_snapshot` accepts an ``original_url`` from.
+    Both halves of the archival contract read this: it is the set the forms
+    offer an archive affordance for, and the set :func:`reconcile_source_archive`
+    re-files a stored row against when the source URL moves.
     """
     links: list[tuple[str, SourceArchiveOrigin]] = []
     seen: set[str] = set()
@@ -164,9 +163,9 @@ def collect_links(event: Event) -> list[tuple[str, SourceArchiveOrigin]]:
 def origin_of(event: Event, url: str) -> SourceArchiveOrigin | None:
     """Where ``url`` sits on ``event``, or ``None`` when it sits nowhere.
 
-    The membership test the endpoint runs and the origin it stores, in one
-    call: both answers come from the same walk, so a link cannot be accepted
-    under one rule and labelled under another.
+    The membership test and the origin to store, in one call: both answers come
+    from the same walk, so a link cannot be accepted under one rule and
+    labelled under another.
     """
     for candidate, origin in collect_links(event):
         if candidate == url:
@@ -195,6 +194,27 @@ def _normalised_target(url: str) -> tuple[str, str, str] | None:
     # Safe to parse again: ``normalised_host`` already proved the value parses.
     parsed = urlparse(url)
     return host, parsed.path.rstrip("/"), parsed.query
+
+
+def same_snapshot(stored: str | None, pasted: str) -> bool:
+    """Whether ``pasted`` names the copy a link already holds.
+
+    The no-change leg of an edit that carries archived copies. A snapshot URL
+    reaches the form through a browser, which is where a trailing slash or a
+    host in another case comes from, so comparing the raw strings would read a
+    re-paste of the stored copy as a correction and file a version for it. The
+    fold is :func:`_normalised_target`, the same one that decides whether a
+    Wayback replay URL names the link it claims to archive, so one notion of
+    "the same URL" serves both.
+
+    ``None`` (the link holds no copy) is never the same as a paste.
+    """
+    if stored is None:
+        return False
+    if stored == pasted:
+        return True
+    left = _normalised_target(stored)
+    return left is not None and left == _normalised_target(pasted)
 
 
 def _wayback_target(path: str, query: str, fragment: str) -> str | None:
@@ -323,11 +343,10 @@ def stage_source_snapshot(db: Session, *, event: Event, snapshot_url: str) -> No
 
     What the submit and edit forms post as ``source_snapshot_url``: the analyst
     archived the source while filling the form, so the copy is filed against
-    the source URL the same write stores, under origin ``source_url``. The
-    membership walk :func:`record_snapshot` runs is not needed here, since the
-    link is the one being written, but the snapshot check is the same
-    :func:`validate_snapshot` and raises the same :class:`SnapshotRejected`
-    codes, so a paste is judged identically wherever it arrives.
+    the source URL the same write stores, under origin ``source_url``. No
+    membership walk is needed, since the link is the one being written, and the
+    snapshot check is :func:`validate_snapshot`, so a paste is judged
+    identically wherever it arrives.
 
     Call it before the caller's own commit and after ``event.id`` exists; the
     row rides that transaction.
@@ -341,6 +360,32 @@ def stage_source_snapshot(db: Session, *, event: Event, snapshot_url: str) -> No
         event=event,
         original_url=event.source_url,
         origin="source_url",
+        snapshot_url=snapshot_url,
+    )
+
+
+def stage_detected_from_snapshot(db: Session, *, event: Event, snapshot_url: str) -> None:
+    """Stage the copy of ``event.detected_from_url`` an edit carried with it.
+
+    The provenance twin of :func:`stage_source_snapshot`. The post a machine
+    detection came from carries the geolocation claim, and it rots exactly as
+    the footage source does, so the edit form renders the archive mark on that
+    locked field too and the paste posts as ``detected_from_snapshot_url``,
+    filed under origin ``detected_from``.
+
+    The link is immutable, so there is nothing to reconcile: it either exists
+    on the row, in which case the copy is filed against it, or it does not, in
+    which case the paste names a link the event does not carry.
+    """
+    if event.detected_from_url is None:
+        raise SnapshotRejected(
+            "original_url_not_on_event", "That link is not one of this event's sources."
+        )
+    stage_snapshot(
+        db,
+        event=event,
+        original_url=event.detected_from_url,
+        origin="detected_from",
         snapshot_url=snapshot_url,
     )
 
@@ -411,64 +456,25 @@ def reconcile_source_archive(db: Session, *, event: Event) -> None:
             row.origin = origin
 
 
-def record_snapshot(
-    db: Session, *, event: Event, original_url: str, snapshot_url: str, recorded_by: User
-) -> SourceArchive:
-    """Store the archived copy an analyst recorded for one of the event's links.
+def drop_mirror_archives(db: Session, *, event: Event, kept: list[str]) -> None:
+    """Delete the copies of the mirrors a write no longer carries.
 
-    ``original_url`` has to be a link the event actually carries
-    (:func:`origin_of`), and ``snapshot_url`` has to pass
-    :func:`validate_snapshot`; either failing raises
-    :class:`SnapshotRejected` with the code the router turns into a 400.
+    The mirror twin of :func:`reconcile_source_archive`. The submitted list
+    replaces the stored one wholesale, so a mirror the analyst removed is gone
+    from the event, and a row filed under origin ``secondary_source`` for a link
+    the event no longer declares archives nothing the record shows. A row whose
+    URL survives elsewhere is left alone: only ``source_url`` demands a
+    re-file, since it is the one origin the read surface reads by slot.
 
-    The write itself is :func:`stage_snapshot`, committed here: this is the
-    standalone endpoint, whose whole transaction is the one row.
-
-    **On a published row the copy is a new version.** A ``geolocated`` event is
-    the vouched record, and what it says about its own evidence includes which
-    of its links are archived, so this write files the superseded version first
-    (``services/versions.file_version``, credited to ``recorded_by``, with no
-    note: the diff names the change) and the row takes the next number. It runs
-    under the same row lock and in the same order as ``services/events.save_version``,
-    so a copy recorded while an edit is in flight takes its number after that
-    edit rather than racing it. Nothing is filed when the stored copy of the
-    link is already this snapshot, since that write moves nothing, and nothing
-    is filed below publication, where no version exists to supersede.
+    ``kept`` is the normalized mirror list this write stores. Call it after the
+    version this write supersedes is filed, so that version keeps the copies it
+    held, and before the caller's commit: the rows go with the rest of the
+    write if anything downstream fails.
     """
-    # Serialize on the row and re-read it under the lock, ``save_version``'s
-    # discipline: the status and the current version number both decide what
-    # this write does, so both are read after the lock rather than off the row
-    # the router resolved.
-    event = db.query(Event).filter(Event.id == event.id).populate_existing().with_for_update().one()
-    origin = origin_of(event, original_url)
-    if origin is None:
-        raise SnapshotRejected(
-            "original_url_not_on_event", "That link is not one of this event's sources."
-        )
-    # Checked before anything is staged, so a rejected paste files no version.
-    validate_snapshot(original_url=original_url, snapshot_url=snapshot_url)
-    stored = archive_row_for(event, original_url)
-    if event.status == STATUS_GEOLOCATED and (
-        stored is None or stored.snapshot_url != snapshot_url
-    ):
-        versions.file_version(db, geo=event, edited_by=recorded_by, note=None)
-    stage_snapshot(
-        db, event=event, original_url=original_url, origin=origin, snapshot_url=snapshot_url
-    )
-    db.commit()
-    # The collection was loaded before the upsert, so it still holds whatever
-    # row the link had, or nothing at all. Expiring it is what makes a caller
-    # that serialises the event next read the copy just recorded, and what makes
-    # the read below return the stored row rather than a stale one.
-    db.expire(event, ["archives"])
-    return (
-        db.query(SourceArchive)
-        .filter(
-            SourceArchive.event_id == event.id,
-            SourceArchive.original_url == original_url,
-        )
-        .one()
-    )
+    surviving = set(kept)
+    for row in list(event.archives):
+        if row.origin == "secondary_source" and row.original_url not in surviving:
+            db.delete(row)
 
 
 def archive_row_for(event: Event, url: str | None) -> SourceArchive | None:
@@ -492,9 +498,11 @@ __all__ = [
     "SnapshotRejected",
     "archive_row_for",
     "collect_links",
+    "drop_mirror_archives",
     "origin_of",
     "reconcile_source_archive",
-    "record_snapshot",
+    "same_snapshot",
+    "stage_detected_from_snapshot",
     "stage_secondary_snapshots",
     "stage_snapshot",
     "stage_source_snapshot",

@@ -11,7 +11,7 @@ none imports another:
   (including the users and social routers, which import from here), and
 * the small projection helpers (:func:`coords_or_none`, :func:`thumbnail_media`)
   every serializer leans on, and :func:`resolve_live_event`, the by-id fetch
-  the ``item`` and ``archives`` sub-routers share.
+  the write sub-routers share.
 """
 
 import uuid
@@ -46,9 +46,8 @@ SecondarySourceUrl = Annotated[str, StringConstraints(max_length=SOURCE_URL_MAX_
 # Every ``SnapshotRejected`` code is the same verdict about the same two
 # fields: what the analyst pasted is not a snapshot of the link they named. 400
 # across the board, with the code telling them which check it failed. Shared by
-# the archives endpoint and the two write forms that carry
-# ``source_snapshot_url``, so one paste is answered the same way wherever it
-# arrives.
+# every write form that carries a snapshot field, so one paste is answered the
+# same way wherever it arrives.
 ARCHIVE_ERROR_STATUS: dict[str, int] = {
     "original_url_not_on_event": 400,
     "snapshot_url_invalid": 400,
@@ -93,9 +92,9 @@ def raise_version_error(exc: VersionLimitError) -> NoReturn:
     """Translate a refused version into its 409.
 
     Its own envelope rather than an entry in :data:`_EVENT_ERROR_STATUS`,
-    because the ceiling is raised by ``services/versions`` and met by both
-    writers that produce a version: the owner's edit and an archived copy
-    recorded on a published row, which is not an events-service call at all.
+    because the ceiling is raised by ``services/versions`` and
+    :class:`VersionLimitError` is not an :class:`EvidenceIntakeError`, which is
+    the one base :func:`_raise_event_error` catches.
     """
     raise_typed_error(exc, _VERSION_ERROR_STATUS)
 
