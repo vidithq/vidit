@@ -556,9 +556,7 @@ async def test_drain_exception_requeues_the_claimed_row(db, monkeypatch):
 async def test_gesture_budget_spans_drain_passes(db, linked_owner, monkeypatch):
     # The caps are wall-clock (seeded from the ledger's trailing hour), not
     # per drain pass: a second pass minutes later must not mint fresh budget.
-    import app.services.bot as bot_service
-
-    monkeypatch.setattr(bot_service, "_MAX_REPLIES_PER_HOUR", 1)
+    monkeypatch.setattr(settings, "bot_max_replies_per_hour", 1)
 
     _post_payload(
         {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(BARE_ID)]}

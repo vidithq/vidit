@@ -588,15 +588,16 @@ async def test_failure_reply_loop_guard_on_replies_to_the_bot(db, linked_owner):
     assert ledger.reply_tweet_id is None
 
 
-@pytest.mark.parametrize("cap", ["_MAX_REPLIES_PER_HOUR", "_MAX_REPLIES_PER_AUTHOR_PER_HOUR"])
+@pytest.mark.parametrize("cap", ["bot_max_replies_per_hour", "bot_max_replies_per_author_per_hour"])
 async def test_reply_budget_cap_skips_reply_but_detection_still_lands(
     db, linked_owner, monkeypatch, cap
 ):
     # Either cap spent, in total or on this one author: detection is unbilled,
-    # so the detection still lands and only the gesture is skipped.
-    import app.services.bot as bot_service
-
-    monkeypatch.setattr(bot_service, cap, 0)
+    # so the detection still lands and only the gesture is skipped. The caps
+    # are settings (BOT_MAX_REPLIES_PER_HOUR /
+    # BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR), so an operator raises them for a
+    # traffic spike without a code change.
+    monkeypatch.setattr(settings, cap, 0)
     outcome, _, posted, liked = await _run(db, [TAGGED_ID])
 
     assert posted == []

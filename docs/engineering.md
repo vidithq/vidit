@@ -396,9 +396,16 @@ The three services in the table above are built from the backend image with Root
 
 All three take `DATABASE_URL=${{backend.DATABASE_URL}}` and `JWT_SECRET=${{backend.JWT_SECRET}}`, because [`config.py`](../backend/app/config.py)'s boot check refuses the placeholder secret against a non-local database. Set `SENTRY_DSN` on each so a failure pages instead of sitting in the logs.
 
-**`backend-import-worker`**, always-on, no exposed port. Start command `uv run python scripts/run_import_worker.py`. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials, since it posts the webhook path's bot replies. What it drains: [`ingestion.md`](ingestion.md#archive-import-worker).
+**`backend-import-worker`**, always-on, no exposed port. Start command `uv run python scripts/run_import_worker.py`. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials and the two `BOT_MAX_REPLIES_*` caps below, since it posts the webhook path's bot replies. What it drains: [`ingestion.md`](ingestion.md#archive-import-worker).
 
 **`backend-x-bot`**, cron `0 * * * *`, since the webhook owns latency and the cron only reconciles. Start command `uv run python scripts/run_bot.py`. It also takes the six `X_*` credentials and `X_WEBHOOK_ENABLED` (see `backend/.env.example`): a bearer token and bot user ID to read, and the four OAuth 1.0a values to post. Without the OAuth values, the bot processes mentions but posts nothing. The process makes one pass, then exits; a failed mentions pull exits non-zero. A missed run is harmless, because the next pass resumes from the ledger. What it runs: [`ingestion.md`](ingestion.md#the-bot).
+
+Two variables set the billed-reply ceilings on both services, and each is an integer count over the trailing hour:
+
+- `BOT_MAX_REPLIES_PER_HOUR`: total replies the bot posts per trailing hour. Default `40`.
+- `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR`: replies the bot posts per trailing hour to any one author. Default `10`.
+
+Raise both before a traffic spike such as a promo tweet, then set them back. Past a ceiling the detection still lands and only the reply is skipped ([`ingestion.md`](ingestion.md#the-bot)).
 
 **`backend-conflicts`**, a cron. Schedule, start command and behaviour: [`conflicts.md`](conflicts.md).
 
