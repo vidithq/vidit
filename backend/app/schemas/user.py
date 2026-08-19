@@ -1,5 +1,7 @@
+import re
 import uuid
 from datetime import datetime
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -38,12 +40,88 @@ def _normalise_url(value: str | None, *, field: str) -> str | None:
     return cleaned
 
 
+# The platform rules, one home for both the validator below and the profile
+# surfaces that mirror it (``frontend/src/lib/users.ts``). Canonical host first:
+# that is the one a stored handle expands to when the frontend links it.
+SOCIAL_PROFILE_HOSTS: dict[str, tuple[str, ...]] = {
+    "x": ("x.com", "twitter.com"),
+    "github": ("github.com",),
+}
+
+# Each platform's own account-name rule. ``discord`` has no profile URL, so it
+# appears here and not in the host map.
+SOCIAL_HANDLE_PATTERNS: dict[str, re.Pattern[str]] = {
+    "x": re.compile(r"^[A-Za-z0-9_]{1,15}$"),
+    "github": re.compile(r"^[A-Za-z0-9-]{1,39}$"),
+    # The trailing group is the legacy discriminator (``ana#1234``), which
+    # accounts made before the username migration still carry.
+    "discord": re.compile(r"^[A-Za-z0-9_.]{2,32}(#[0-9]{4})?$"),
+}
+
+
+def _url_path_handle(value: str, hosts: tuple[str, ...]) -> str | None:
+    """The one path segment of a profile URL on ``hosts``, or ``None``.
+
+    Rejects a URL that carries a query, a fragment, or anything other than a
+    single path segment, so a status URL (``/ana/status/1``) and a product path
+    (``/i/flow``) never pass as an account name.
+    """
+    parts = urlsplit(value)
+    if parts.scheme.lower() not in ("http", "https"):
+        return None
+    if parts.query or parts.fragment:
+        return None
+    host = parts.hostname or ""
+    if host.removeprefix("www.") not in hosts:
+        return None
+    segments = [segment for segment in parts.path.split("/") if segment]
+    if len(segments) != 1:
+        return None
+    return segments[0].removeprefix("@")
+
+
+def _normalise_handle(value: str | None, *, field: str) -> str | None:
+    """Validate one account name and store it as the bare handle.
+
+    ``x`` and ``github`` take a handle (``ana``, ``@ana``) or a profile URL on
+    the platform's own hosts, and both store the handle alone: one form on the
+    column means a reader never has to parse two. ``discord`` takes a username
+    only, since the platform exposes no profile URL to link to.
+    """
+    cleaned = _normalise_optional(value, max_len=HANDLE_MAX_LEN, field=field)
+    if cleaned is None:
+        return None
+
+    hosts = SOCIAL_PROFILE_HOSTS.get(field)
+    if hosts is None:
+        if cleaned.lower().startswith("http") or set("/:") & set(cleaned):
+            raise ValueError(f"{field} must be a username, not a link")
+        handle = cleaned.removeprefix("@")
+    elif cleaned.lower().startswith(("http://", "https://")):
+        from_url = _url_path_handle(cleaned, hosts)
+        if from_url is None:
+            raise ValueError(f"{field} must be a handle or a profile URL on {hosts[0]}")
+        handle = from_url
+    else:
+        handle = cleaned.removeprefix("@")
+
+    if not SOCIAL_HANDLE_PATTERNS[field].match(handle):
+        if hosts is None:
+            raise ValueError(f"{field} must be a Discord username")
+        raise ValueError(f"{field} must be a handle or a profile URL on {hosts[0]}")
+    return handle
+
+
 class ExternalLinks(BaseModel):
     """Linktree-style external account links rendered on the profile.
 
-    Stored as JSONB on ``users.external_links``. Each value is a free-form
-    string (handle *or* URL — Discord/X handles often aren't URLs); the frontend
-    decides whether to render it as a link by sniffing for an http scheme.
+    Stored as JSONB on ``users.external_links``. Each platform validates its own
+    shape on the way in and stores one form: ``x`` and ``github`` take a handle
+    or a profile URL on the platform's own hosts (:data:`SOCIAL_PROFILE_HOSTS`)
+    and store the bare handle, ``discord`` takes a username, and ``website``
+    takes an http(s) URL. A value that fits none of those raises, so the profile
+    surfaces render an account name the platform's own rules
+    (:data:`SOCIAL_HANDLE_PATTERNS`) admit rather than free-form text.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -56,7 +134,7 @@ class ExternalLinks(BaseModel):
     @field_validator("x", "discord", "github")
     @classmethod
     def _handle(cls, v: str | None, info) -> str | None:
-        return _normalise_optional(v, max_len=HANDLE_MAX_LEN, field=info.field_name)
+        return _normalise_handle(v, field=info.field_name)
 
     @field_validator("website")
     @classmethod
@@ -110,7 +188,7 @@ class UserProfile(BaseModel):
     ``geolocations_count`` counts the analyst's published geolocations, the
     same set ``GET /users/{username}/events`` serves, so the profile's share
     card and the feed on the page print one number. For the whole body of
-    live work, drafts included, read ``total_events`` on
+    live work, detections included, read ``total_events`` on
     :class:`UserStatsRead`.
     """
 
@@ -152,7 +230,7 @@ class UserStatsRead(BaseModel):
     One population throughout: the analyst's live events (``deleted_at IS
     NULL``, ``hidden_at IS NULL``) in the three worked statuses, ``geolocated``
     + ``detected`` + ``closed``. That set is ``total_events``, and every other
-    field here describes it, drafts included. An open ``requested`` call for
+    field here describes it, detections included. An open ``requested`` call for
     help is not documented work and takes part in no aggregate.
 
     ``source_hosts`` breaks the same set down by the host of ``source_url``,

@@ -1,4 +1,4 @@
-"""Unit tests for the tweet-parsing service.
+"""Unit tests for the pure text and URL bricks, plus the syndication read.
 
 Scope: extractors + URL normalisation only. The route-level integration
 (auth, CSRF, 400/404/502 mapping) lives in ``tests/events/test_import.py``
@@ -6,8 +6,6 @@ so the cookie/CSRF fixtures stay in one place.
 """
 
 from __future__ import annotations
-
-from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -17,15 +15,14 @@ from app.services.tweet_ingest import (
     TweetFetchFailed,
     TweetNotAccessible,
     TweetUpstreamBusy,
-    acquire,
     clean_proof_text,
     derive_title,
     extract_coords,
     is_trusted_media_url,
     normalise_tweet_url,
-    parse_tweet,
     syndication,
 )
+from app.services.tweet_ingest.urls import canonical_tweet_url
 
 # ── URL normalisation ─────────────────────────────────────────────────────
 
@@ -67,9 +64,11 @@ from app.services.tweet_ingest import (
 )
 def test_normalise_accepts_valid_tweet_urls(raw, canonical, handle, tweet_id):
     n = normalise_tweet_url(raw)
-    assert n.canonical == canonical
     assert n.handle == handle
     assert n.tweet_id == tweet_id
+    # Parsed once here, built back once there: every spelling of one post round
+    # trips to the same canonical URL.
+    assert canonical_tweet_url(n.tweet_id, n.handle) == canonical
 
 
 @pytest.mark.parametrize(
@@ -263,14 +262,6 @@ def test_extract_coords_dedupes_across_extractors():
     assert len(coords) == 1
 
 
-def test_extract_coords_caps_at_three_candidates():
-    text = (
-        "48.111111, 37.111111\n48.222222, 37.222222\n48.333333, 37.333333\n48.444444, 37.444444\n"
-    )
-    coords = extract_coords(text)
-    assert len(coords) == 3
-
-
 # ── Title heuristic ───────────────────────────────────────────────────────
 
 
@@ -280,14 +271,16 @@ def test_title_first_non_empty_line():
     )
 
 
-def test_title_strips_hashtags_and_urls():
+def test_title_keeps_hashtags_and_inline_urls():
+    # Taken verbatim: a line is skipped only when coordinates and links are all
+    # it carries, and the analyst rewrites a bad title at review.
     text = "Strike on depot https://example.com #ukraine #war"
-    assert derive_title(text) == "Strike on depot"
+    assert derive_title(text) == text
 
 
-def test_title_empty_when_only_hashtags_or_urls():
-    assert derive_title("#ukraine #war") == ""
+def test_title_skips_a_url_only_line():
     assert derive_title("https://example.com") == ""
+    assert derive_title("https://example.com\nStrike on depot") == "Strike on depot"
     assert derive_title("") == ""
 
 
@@ -312,20 +305,20 @@ def test_title_hard_cuts_unbroken_token():
 
 
 @pytest.mark.parametrize(
-    "raw,expected",
+    "raw",
     [
-        ("1. Strike near the depot", "Strike near the depot"),
-        ("2) Strike near the depot", "Strike near the depot"),
-        ("- Strike near the depot", "Strike near the depot"),
-        ("• Strike near the depot", "Strike near the depot"),
+        "1. Strike near the depot",
+        "- Strike near the depot",
+        "• Strike near the depot",
     ],
 )
-def test_title_strips_leading_list_marker(raw, expected):
-    assert derive_title(raw) == expected
+def test_title_keeps_a_leading_list_marker(raw):
+    assert derive_title(raw) == raw
 
 
-def test_title_strips_bare_coordinates_from_line():
-    assert derive_title("Strike on depot 48.012345, 37.802411") == "Strike on depot"
+def test_title_keeps_a_coordinate_inside_prose():
+    line = "Strike on depot 48.012345, 37.802411"
+    assert derive_title(line) == line
 
 
 def test_title_skips_coordinate_only_first_line():
@@ -337,36 +330,68 @@ def test_title_empty_when_only_coordinates():
     assert derive_title("48.012345, 37.802411") == ""
 
 
-def test_title_removes_empty_brackets_left_by_coord_strip():
-    assert derive_title("Strike (48.012345, 37.802411) hit") == "Strike hit"
+def test_title_skips_every_coordinate_spelling_alone_on_its_line():
+    for line in ("48.012345, 37.802411", "33.1°N 35.5°E", "48°00'45\"N 37°48'08\"E"):
+        assert derive_title(f"{line}\nDepot strike") == "Depot strike"
 
 
-def test_title_trims_dangling_label_punctuation():
-    # The bare-coord strip leaves "Coordinates:"; the trailing colon is trimmed.
-    assert derive_title("Coordinates: 48.012345, 37.802411") == "Coordinates"
+@pytest.mark.parametrize(
+    "line",
+    [
+        # A coordinate and the maps link it came from, the commonest pairing.
+        "48.012345, 37.802411 https://www.google.com/maps/@48.012345,37.802411,15z",
+        # Punctuation between the two carries no text of its own.
+        "48.012345, 37.802411 - https://t.co/abc123",
+        # Two coordinates on one line.
+        "48.012345, 37.802411 | 50.450100, 30.523400",
+        # A list-marked coordinate: an enumerated dump, not a headline.
+        "1. 48.012345, 37.802411",
+        # Links alone, several tokens, which is how X appends its media wrapper.
+        "https://example.com https://t.co/abc123",
+    ],
+)
+def test_title_skips_a_line_of_coordinates_and_links(line):
+    # Neither a coordinate nor a link is text, so a line made only of them,
+    # whatever punctuation or marker sits around them, is not a headline.
+    assert derive_title(f"{line}\nDepot strike") == "Depot strike"
 
 
-def test_title_skips_line_with_no_word_after_cleanup():
-    # Emoji + coordinate only → no real word → fall through to the next line.
-    assert derive_title("📍 48.012345, 37.802411\nDepot strike") == "Depot strike"
+def test_title_keeps_a_line_pairing_a_coordinate_with_words():
+    # One word beyond the coordinate and the link is enough, and the line is
+    # then the title as written.
+    line = "48.012345, 37.802411 depot https://t.co/abc123"
+    assert derive_title(line) == line
+
+
+def test_title_empty_when_every_line_is_coordinates_and_links():
+    text = "48.012345, 37.802411\nhttps://t.co/abc123\n50.450100, 30.523400 https://example.com"
+    assert derive_title(text) == ""
+
+
+def test_title_collapses_whitespace():
+    assert derive_title("  Strike   on  the depot  ") == "Strike on the depot"
 
 
 # ── Proof text cleanup ────────────────────────────────────────────────────
 
 
-def test_clean_proof_strips_coords_tco_and_markers():
+def test_clean_proof_keeps_the_text_and_drops_the_media_wrapper():
+    # Only the wrappers of attached media go: everything the analyst wrote
+    # stays, coordinate lines and list markers included.
     raw = (
         "1. Strike on the depot 48.012345, 37.802411\n"
         "Footage via https://t.co/abc123\n"
         "- second angle 33.1°N 35.5°E"
     )
-    assert clean_proof_text(raw) == "Strike on the depot\nFootage via\nsecond angle"
+    assert clean_proof_text(raw) == (
+        "1. Strike on the depot 48.012345, 37.802411\nFootage via\n- second angle 33.1°N 35.5°E"
+    )
 
 
 def test_clean_proof_drops_lines_emptied_by_removal():
-    # A line that is only a coordinate / only a shortlink leaves nothing.
+    # A line that is only a media wrapper leaves nothing behind.
     raw = "48.012345, 37.802411\nReal narrative here\nhttps://t.co/xyz"
-    assert clean_proof_text(raw) == "Real narrative here"
+    assert clean_proof_text(raw) == "48.012345, 37.802411\nReal narrative here"
 
 
 def test_clean_proof_collapses_internal_whitespace():
@@ -376,7 +401,7 @@ def test_clean_proof_collapses_internal_whitespace():
 
 def test_clean_proof_empty_input():
     assert clean_proof_text("") == ""
-    assert clean_proof_text("48.012345, 37.802411\n\nhttps://t.co/x") == ""
+    assert clean_proof_text("\n\nhttps://t.co/x") == ""
 
 
 # ── Trusted media host ────────────────────────────────────────────────────
@@ -409,250 +434,6 @@ def test_is_trusted_media_url(url, expected):
     assert is_trusted_media_url(url) is expected
 
 
-# ── parse_tweet end-to-end ────────────────────────────────────────────────
-
-
-def _stub_syndication(monkeypatch, body: dict) -> None:
-    """Replace ``fetch_syndication`` with a constant-returning stub.
-
-    The real ``fetch_syndication`` makes a network call; these tests
-    exercise everything *around* the fetch so we keep them hermetic.
-    """
-
-    def _stub(tweet_id: str, client: object | None = None) -> dict:
-        return body
-
-    monkeypatch.setattr(syndication, "fetch_syndication", _stub)
-    # ``acquire`` binds ``fetch_syndication`` at import (``from .syndication
-    # import ...``), and both parse + the machine path fetch through it, so the
-    # module-level patch above doesn't reach that call site: patch it too.
-    monkeypatch.setattr(acquire, "fetch_syndication", _stub)
-
-
-def _user_block(handle: str) -> dict:
-    return {"id_str": "1", "screen_name": handle}
-
-
-def _photo_media(filename: str) -> dict:
-    return {"type": "photo", "media_url_https": f"https://pbs.twimg.com/media/{filename}"}
-
-
-def _video_media(url: str) -> dict:
-    return {
-        "type": "video",
-        "video_info": {
-            "variants": [{"content_type": "video/mp4", "bitrate": 2_000_000, "url": url}]
-        },
-    }
-
-
-def test_parse_tweet_source_url_prefers_quoted_tweet(monkeypatch):
-    """When the OP quote-retweets, ``source_url`` points at the quoted
-    tweet — that's the OSINT-correct attribution. The OP's URL is
-    kept on ``original_tweet_url`` so the form can still credit the
-    analyst in the proof body."""
-    _stub_syndication(
-        monkeypatch,
-        {
-            "user": _user_block("alice"),
-            "created_at": "2026-05-01T00:00:00.000Z",
-            "text": "Strike near Konstyantynivka — 48.012345, 37.802411",
-            "entities": {
-                "urls": [
-                    {"expanded_url": "https://t.me/realsource/9"},
-                ]
-            },
-            "mediaDetails": [_photo_media("op.jpg")],
-            "quoted_tweet": {
-                "id_str": "9999",
-                "user": _user_block("victim"),
-                "text": "footage of an attack",
-                "mediaDetails": [_video_media("https://video.twimg.com/v.mp4")],
-            },
-        },
-    )
-    parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    assert parsed.source_url == "https://x.com/victim/status/9999"
-    assert parsed.original_tweet_url == "https://x.com/alice/status/1234567890"
-    assert parsed.quoted_tweet is not None
-    assert parsed.quoted_tweet.author_handle == "victim"
-    # The Telegram link the quote outranked is a mirror, not a discard: it
-    # prefills the form's secondary-source rows.
-    assert parsed.secondary_source_urls == ["https://t.me/realsource/9"]
-
-
-def test_parse_tweet_source_url_falls_back_to_external_url(monkeypatch):
-    """No quote → first non-X URL in ``entities.urls`` wins. Catches
-    the OSINT convention of typing ``Source: https://t.me/...`` in
-    the body."""
-    _stub_syndication(
-        monkeypatch,
-        {
-            "user": _user_block("alice"),
-            "created_at": "2026-05-01T00:00:00.000Z",
-            "text": "Strike — Source: https://t.co/abc",
-            "entities": {
-                "urls": [
-                    {"expanded_url": "https://t.me/somechannel/100"},
-                ]
-            },
-            "mediaDetails": [_photo_media("op.jpg")],
-        },
-    )
-    parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    assert parsed.source_url == "https://t.me/somechannel/100"
-    assert parsed.quoted_tweet is None
-    # The sole link took the source slot, so nothing is left to mirror it.
-    assert parsed.secondary_source_urls == []
-
-
-def test_parse_tweet_secondary_sources_skip_non_footage_links(monkeypatch):
-    """A profile link and a maps pin are not mirrors of the footage any more
-    than they are sources: only footage-host links prefill the secondary rows."""
-    _stub_syndication(
-        monkeypatch,
-        {
-            "user": _user_block("alice"),
-            "created_at": "2026-05-01T00:00:00.000Z",
-            "text": "Strike 48.012345, 37.802411, credit https://t.co/abc",
-            "entities": {
-                "urls": [
-                    {"expanded_url": "https://t.me/somechannel/100"},
-                    {"expanded_url": "https://x.com/Osinttechnical"},
-                    {"expanded_url": "https://maps.google.com/?q=48.01,37.80"},
-                    {"expanded_url": "https://www.youtube.com/watch?v=MIRROR001"},
-                ]
-            },
-            "mediaDetails": [_photo_media("op.jpg")],
-        },
-    )
-    parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    # Two footage candidates make the source ambiguous, so both stay for review.
-    assert parsed.source_url is None
-    assert parsed.secondary_source_urls == [
-        "https://t.me/somechannel/100",
-        "https://www.youtube.com/watch?v=MIRROR001",
-    ]
-
-
-def test_parse_tweet_source_posted_at_from_quoted_date(monkeypatch):
-    """The quoted tweet carries the true source post instant, so
-    ``source_posted_at`` is the quote's date parsed to an aware UTC datetime."""
-    _stub_syndication(
-        monkeypatch,
-        {
-            "user": _user_block("alice"),
-            "created_at": "2026-05-01T00:00:00.000Z",
-            "text": "Strike 48.012345, 37.802411",
-            "mediaDetails": [_photo_media("op.jpg")],
-            "quoted_tweet": {
-                "id_str": "9999",
-                "user": _user_block("victim"),
-                "text": "footage of an attack",
-                "created_at": "2026-04-30T09:15:00.000Z",
-            },
-        },
-    )
-    parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    assert parsed.source_url == "https://x.com/victim/status/9999"
-    assert parsed.source_posted_at == datetime(2026, 4, 30, 9, 15, tzinfo=UTC)
-
-
-def test_parse_tweet_source_url_none_without_quote_or_link(monkeypatch):
-    """No quote and no footage link: the tweet declared no source, so
-    ``source_url`` is None and the form field starts empty. No date is
-    fabricated from the OP's own post time either. The OP's own URL is
-    provenance (``original_tweet_url``), never a deduced source."""
-    _stub_syndication(
-        monkeypatch,
-        {
-            "user": _user_block("alice"),
-            "created_at": "2026-05-01T00:00:00.000Z",
-            "text": "Strike at 48.012345, 37.802411 — no link",
-            "entities": {"urls": []},
-            "mediaDetails": [_photo_media("op.jpg")],
-        },
-    )
-    parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    assert parsed.source_url is None
-    assert parsed.source_posted_at is None
-    assert parsed.original_tweet_url == "https://x.com/alice/status/1234567890"
-
-
-def test_parse_tweet_merges_op_and_quote_media_with_origin_tags(monkeypatch):
-    """OP media is tagged ``origin="op"``, quoted-tweet media
-    ``origin="quote"`` — informational only on the frontend but
-    used in the proof-body attribution and for future smarter
-    splits."""
-    _stub_syndication(
-        monkeypatch,
-        {
-            "user": _user_block("alice"),
-            "created_at": "2026-05-01T00:00:00.000Z",
-            "text": "annotated screenshots",
-            "entities": {"urls": []},
-            "mediaDetails": [_photo_media("a.jpg"), _photo_media("b.jpg")],
-            "quoted_tweet": {
-                "id_str": "9999",
-                "user": _user_block("victim"),
-                "text": "the actual footage",
-                "mediaDetails": [_video_media("https://video.twimg.com/v.mp4")],
-            },
-        },
-    )
-    parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    op_media = [m for m in parsed.media if m.origin == "op"]
-    quote_media = [m for m in parsed.media if m.origin == "quote"]
-    assert len(op_media) == 2
-    assert all(m.kind == "image" for m in op_media)
-    assert len(quote_media) == 1
-    assert quote_media[0].kind == "video"
-
-
-def test_parse_tweet_coord_extraction_falls_back_to_quoted_text(monkeypatch):
-    """If the OP text has no recognised coordinates, the extractor
-    re-runs over the quoted tweet's text. Real OSINT posts sometimes
-    say "here ↓" and let the quoted source carry the coords."""
-    _stub_syndication(
-        monkeypatch,
-        {
-            "user": _user_block("alice"),
-            "created_at": "2026-05-01T00:00:00.000Z",
-            "text": "here ↓",
-            "entities": {"urls": []},
-            "mediaDetails": [],
-            "quoted_tweet": {
-                "id_str": "9999",
-                "user": _user_block("victim"),
-                "text": "footage at 48.012345, 37.802411",
-                "mediaDetails": [],
-            },
-        },
-    )
-    parsed = parse_tweet("https://x.com/alice/status/1234567890")
-    assert len(parsed.parsed_coords) == 1
-    assert parsed.parsed_coords[0].lat == pytest.approx(48.012345)
-    assert parsed.parsed_coords[0].lng == pytest.approx(37.802411)
-
-
-def test_parse_tweet_missing_created_at_stays_a_fetch_failure(monkeypatch):
-    """A body with no tombstone and no ``created_at`` is upstream schema
-    drift, and stays a ``TweetFetchFailed`` (the route's 502, which the
-    operator is alerted on). Restricted tweets are classified earlier, in
-    ``fetch_syndication``, so they never reach this guard."""
-    _stub_syndication(
-        monkeypatch,
-        {
-            "user": _user_block("alice"),
-            "text": "Strike at 48.012345, 37.802411",
-            "entities": {"urls": []},
-            "mediaDetails": [],
-        },
-    )
-    with pytest.raises(TweetFetchFailed):
-        parse_tweet("https://x.com/alice/status/1234567890")
-
-
 # ── Restricted tweets (tombstone) ─────────────────────────────────────────
 
 
@@ -681,7 +462,7 @@ def test_fetch_syndication_tombstone_is_not_accessible(tombstone):
     ):
         syndication.fetch_syndication("1657834636792287232", client=client)
     assert str(excinfo.value) == (
-        "Tweet not readable without an X login (age-restricted or withheld), fill the form manually"
+        "Post not readable without an X login (age-restricted or withheld)"
     )
 
 

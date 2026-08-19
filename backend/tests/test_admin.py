@@ -25,7 +25,7 @@ from app.models.media import Media
 from app.models.user import User
 from app.services import storage as storage_module
 from app.services.auth import hash_password
-from tests._fixtures import TINY_JPEG
+from tests._fixtures import TINY_JPEG, store_bytes
 from tests.conftest import login_as
 
 client = TestClient(app)
@@ -123,12 +123,9 @@ def test_create_invite_code_persists_and_returns_active(admin_user, db):
     )
     assert response.status_code == 201
     body = response.json()
-    # Codes are single-use by policy — every code names exactly one analyst.
-    assert body["max_uses"] == 1
-    assert body["use_count"] == 0
+    # Codes are single-use by policy: every code names exactly one analyst.
     assert body["status"] == "active"
     assert body["expires_at"] is not None
-    assert body["revoked_at"] is None
     assert body["redeemer"] is None
 
     invite = db.query(InviteCode).filter(InviteCode.id == uuid.UUID(body["id"])).first()
@@ -153,18 +150,6 @@ def test_create_invite_code_writes_admin_event(admin_user, db):
     )
     assert event is not None
     assert event.target == {"invite_code_id": str(invite_id)}
-
-
-def test_create_invite_code_ignores_max_uses_in_body(admin_user, db):
-    # The schema doesn't accept ``max_uses``; it's silently ignored and the
-    # service still hardcodes 1.
-    response = client.post(
-        "/api/v1/admin/invite-codes",
-        json={"max_uses": 50},
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 201
-    assert response.json()["max_uses"] == 1
 
 
 def test_create_invite_code_binds_x_handle_stripped_and_lowercased(admin_user, db):
@@ -298,7 +283,6 @@ def test_revoke_invite_code_marks_revoked(admin_user):
     assert revoke_response.status_code == 200
     body = revoke_response.json()
     assert body["status"] == "revoked"
-    assert body["revoked_at"] is not None
 
 
 def test_revoke_invite_code_returns_404_for_unknown_id(admin_user):
@@ -316,8 +300,6 @@ def test_list_invite_codes_carries_redeemer_onboarding_stats(admin_user, regular
         code=f"code{uuid.uuid4().hex[:12]}",
         used_by=regular_user.id,
         used_at=datetime.now(UTC),
-        max_uses=1,
-        use_count=1,
     )
     job = ArchiveImportJob(
         owner_id=regular_user.id, zip_key=f"staging/{uuid.uuid4().hex}.zip", status="done"
@@ -325,12 +307,12 @@ def test_list_invite_codes_carries_redeemer_onboarding_stats(admin_user, regular
     mention = BotMention(
         mention_tweet_id=uuid.uuid4().hex[:19],
         author_handle=handle.upper(),
-        outcome="drafted",
+        outcome="created",
         events_created=3,
     )
     detected = Event(
         owner_id=regular_user.id,
-        title=f"Draft {uuid.uuid4().hex[:8]}",
+        title=f"Detection {uuid.uuid4().hex[:8]}",
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
         event_coords=from_shape(Point(34.5, 48.5), srid=4326),
@@ -367,10 +349,10 @@ def test_list_invite_codes_carries_redeemer_onboarding_stats(admin_user, regular
         db.commit()
 
 
-def test_purge_detected_events_sweeps_drafts_and_keeps_the_rest(admin_user, regular_user, db):
+def test_purge_detected_events_sweeps_detections_and_keeps_the_rest(admin_user, regular_user, db):
     detected = Event(
         owner_id=regular_user.id,
-        title=f"Draft {uuid.uuid4().hex[:8]}",
+        title=f"Detection {uuid.uuid4().hex[:8]}",
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
     )
@@ -817,7 +799,7 @@ def test_hard_delete_user_sweeps_their_avatar(admin_user, regular_user, db, monk
 
     storage = storage_module.get_storage()
     key = f"avatars/{regular_user.id}/{uuid.uuid4()}.jpg"
-    storage.put_bytes_sync(TINY_JPEG, key, "image/jpeg")
+    store_bytes(TINY_JPEG, key)
     stored = tmp_path / key
     assert stored.is_file()
 
@@ -1457,8 +1439,8 @@ def test_reject_rate_ignores_human_submits(admin_user, regular_user, events_clea
 
 
 def test_pending_quality_counts_missing_pieces(admin_user, regular_user, events_cleanup, db):
-    """The pending counts flag live ``detected`` drafts missing a source media, a
-    proof image, or a source URL. A draft with all three present lifts only the
+    """The pending counts flag live detections missing a source media, a
+    proof image, or a source URL. A detection with all three present lifts only the
     ``pending`` total."""
     before = _detection_stats(admin_user)
 
@@ -1530,24 +1512,24 @@ def test_pending_counts_exclude_soft_deleted(admin_user, regular_user, events_cl
     assert after["pending_missing_source_media"] == before["pending_missing_source_media"]
 
 
-def test_reject_rate_counts_soft_deleted_draft(admin_user, regular_user, events_cleanup, db):
+def test_reject_rate_counts_soft_deleted_detection(admin_user, regular_user, events_cleanup, db):
     """A machine detection soft-deleted while still ``detected`` was judged and
     thrown out, so it counts as a reject whichever door it left through: both
     ``machine_total`` and ``machine_rejected`` move."""
     before = _detection_stats(admin_user)
 
     now = datetime.now(UTC)
-    soft_deleted_draft = Event(
+    soft_deleted_detection = Event(
         owner_id=regular_user.id,
-        title=f"Soft-deleted draft {uuid.uuid4().hex[:8]}",
+        title=f"Soft-deleted detection {uuid.uuid4().hex[:8]}",
         status=STATUS_DETECTED,
         detected_at=now,
         detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
         deleted_at=now,
     )
-    db.add(soft_deleted_draft)
+    db.add(soft_deleted_detection)
     db.commit()
-    events_cleanup.append(soft_deleted_draft.id)
+    events_cleanup.append(soft_deleted_detection.id)
 
     after = _detection_stats(admin_user)
     assert after["machine_total"] == before["machine_total"] + 1
@@ -1582,7 +1564,7 @@ def test_reject_rate_ignores_soft_deleted_geolocated(admin_user, regular_user, e
 def test_pending_proof_video_counts_as_missing_proof_image(
     admin_user, regular_user, events_cleanup, db
 ):
-    """A pending draft whose only proof media is a video still lacks a proof
+    """A pending detection whose only proof media is a video still lacks a proof
     *image*, so it counts toward ``pending_missing_proof_image``."""
     before = _detection_stats(admin_user)
 

@@ -12,9 +12,9 @@ The contract we want to lock in:
   expiry. Re-registering with the same address while pending is in
   flight returns a friendly "in flight" error rather than an opaque
   500 on a unique-constraint violation.
-* The invite is held by the pending row (the FK) but its ``use_count``
-  is only incremented at confirmation — an abandoned signup must NOT
-  burn the invite.
+* The invite is held by the pending row (the FK) but its ``used_at``
+  is only stamped at confirmation: an abandoned signup must NOT burn
+  the invite.
 * The reaper drops expired rows.
 * All errors map to a documented HTTP status; the soft-verify
   ``/auth/verify-email`` endpoint is gone.
@@ -143,11 +143,11 @@ def test_register_does_not_set_session_cookie(client, invite_code, email_recorde
 
 
 def test_register_does_not_consume_invite(client, invite_code, email_recorder, db):
-    """An abandoned signup must NOT burn the invite. The use_count is
-    bumped at confirmation time, not register time."""
+    """An abandoned signup must NOT burn the invite. ``used_at`` is
+    stamped at confirmation time, not register time."""
     client.post("/api/v1/auth/register", json=_unique_payload(invite_code))
     db.refresh(invite_code)
-    assert invite_code.use_count == 0
+    assert invite_code.used_at is None
     assert invite_code.used_by is None
 
 
@@ -297,7 +297,7 @@ def test_confirm_creates_user_and_signs_them_in(client, invite_code, email_recor
     )
 
     db.refresh(invite_code)
-    assert invite_code.use_count == 1
+    assert invite_code.used_at is not None
     assert invite_code.used_by == user.id
 
     db.delete(user)
@@ -398,7 +398,7 @@ def test_confirm_with_already_consumed_invite_returns_400_and_releases_pending(
     token = _extract_token(email_recorder[0].text)
 
     # Simulate another path having consumed the invite.
-    invite_code.use_count = invite_code.max_uses
+    invite_code.used_at = datetime.now(UTC)
     db.commit()
 
     response = client.post("/api/v1/auth/confirm-registration", json={"token": token})
@@ -587,11 +587,11 @@ def test_consume_invite_code_does_not_over_consume_under_race(db, invite_code):
     """A single-use invite must not be consumable twice.
 
     Two threads calling ``consume_invite_code`` against the same
-    ``max_uses=1`` invite under READ COMMITTED would, with the
-    previous read-modify-write pattern, both observe ``use_count=0``
-    and both bump to ``1`` — the headline C1 regression. The atomic
-    ``UPDATE ... WHERE use_count < max_uses RETURNING`` guarantees
-    one winner.
+    invite under READ COMMITTED would, with the previous
+    read-modify-write pattern, both observe it unredeemed and both
+    stamp it, the headline C1 regression. The atomic
+    ``UPDATE ... WHERE used_at IS NULL RETURNING`` guarantees one
+    winner.
     """
     import threading
 

@@ -41,17 +41,17 @@ function formatBytes(n: number): string {
 
 /** The finished run in one line: what landed, what moved, what was left alone.
  *  Only the non-zero counts appear, so a first import reads as plainly as a
- *  re-import that updated a handful of drafts. */
+ *  re-import that updated a handful of detections. */
 function importSummary(job: ArchiveImportJob): string {
   const parts: string[] = [];
   if (job.created > 0) {
     parts.push(
-      `${job.created.toLocaleString()} draft${job.created === 1 ? "" : "s"} ready for review`
+      `${job.created.toLocaleString()} detection${job.created === 1 ? "" : "s"} ready for review`
     );
   }
   if (job.updated > 0) {
     parts.push(
-      `${job.updated.toLocaleString()} draft${job.updated === 1 ? "" : "s"} updated`
+      `${job.updated.toLocaleString()} detection${job.updated === 1 ? "" : "s"} updated`
     );
   }
   if (job.skipped > 0) {
@@ -245,8 +245,8 @@ export function ImportArchivePanel({ username }: { username: string }) {
             <ShieldCheck size={14} strokeWidth={1.8} className="text-neutral-500" />
             Even if you skip the trim, your browser keeps only your posts and their media before uploading; DMs, email, and phone never leave your device.
           </span>
-          <Link href="/archive" className={TEXT_LINK}>
-            Archive guide
+          <Link href="/import#archive" className={TEXT_LINK}>
+            Import guide
           </Link>
           <a
             href={X_ARCHIVE_HELP}
@@ -382,7 +382,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
                   label: IMPORT_STEP_LABELS[4],
                   keepDetail: true,
                   // A run that wrote nothing leaves the receipt to the outcome
-                  // message below; a "0 drafts ready for review" line would
+                  // message below; a "0 detections ready for review" line would
                   // fight it.
                   ...(phase === "done" &&
                   liveJob &&

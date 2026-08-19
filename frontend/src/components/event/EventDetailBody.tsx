@@ -5,7 +5,6 @@ import Link from "next/link";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
 import type { ArchivedLink, EventDetail } from "@/types";
-import { useAuth } from "@/contexts/AuthContext";
 import { formatDate, formatInstant, safeHostname } from "@/lib/format";
 import { formatCoordinates } from "@/lib/coordinates";
 import { conflictLabel } from "@/lib/conflicts";
@@ -20,7 +19,6 @@ import {
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
-import { FieldHelp } from "@/components/ui/FieldHelp";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ProofSection } from "@/components/ui/ProofSection";
@@ -111,18 +109,11 @@ function DetailRows({
   compact: boolean;
   detailExtras?: ReactNode;
 }) {
-  const { user } = useAuth();
-  const viewerId = user?.id;
   // Conflicts (their own referential) and curated capture-source tags get
   // their own labelled rows so they read as structured facts, not free-form
   // chips lost in one row.
   const captureTags = geo.tags.filter((t) => t.category === "capture_source");
   const freeTags = geo.tags.filter((t) => t.category === "free");
-  // Archiving a link is the owner's own act, so the affordance is offered to
-  // exactly the analyst the endpoint would accept it from. A draft is included:
-  // archival is no longer tied to publication, and a draft's source rots while
-  // it waits.
-  const canArchive = viewerId === geo.owner.id;
   const sourceMaxWidth = compact ? "max-w-[200px]" : "max-w-[300px]";
   const sourceClass = compact ? "ml-4" : "text-sm ml-4";
   const tagRow = (name: string, tags: EventDetailBodyData["tags"], concept?: Concept) =>
@@ -197,10 +188,7 @@ function DetailRows({
           {geo.source_url && (
             <ArchivedCopies
               copy={geo.archived_source}
-              url={geo.source_url}
-              eventId={geo.id}
               describes={PRIMARY_SOURCE_DESCRIPTION}
-              canArchive={canArchive}
             />
           )}
         </span>
@@ -212,8 +200,6 @@ function DetailRows({
         <SecondarySourcesRow
           urls={geo.secondary_source_urls}
           archived={geo.archived_secondary_sources}
-          eventId={geo.id}
-          canArchive={canArchive}
           compact={compact}
           maxWidthClass={sourceMaxWidth}
         />
@@ -236,10 +222,7 @@ function DetailRows({
                 the provenance of the claim, and it rots the same way. */}
             <ArchivedCopies
               copy={geo.archived_detected_from}
-              url={geo.detected_from_url}
-              eventId={geo.id}
               describes={DETECTED_FROM_DESCRIPTION}
-              canArchive={canArchive}
             />
           </span>
         </DetailRow>
@@ -330,8 +313,9 @@ function DetailRows({
  * The Secondary sources row: a count that expands into the list. Rendered only
  * for a non-empty list (the caller guards), so the Details block gains nothing
  * on an event that declares no mirror. Each link is a `SourceLabel` trailed by
- * its `ArchivedCopies` pair, the same affordance the Source row above renders,
- * so the primary and its mirrors read alike.
+ * its `ArchivedCopies` mark, the same affordance the Source row above renders,
+ * so the primary and its mirrors read alike. The row's own `?` explains that
+ * mark once for the whole list.
  *
  * `archived` is index-aligned with `urls` (the payload's contract), so mirror
  * `i` takes record `i`.
@@ -339,15 +323,11 @@ function DetailRows({
 function SecondarySourcesRow({
   urls,
   archived,
-  eventId,
-  canArchive,
   compact,
   maxWidthClass,
 }: {
   urls: string[];
   archived: (ArchivedLink | null)[];
-  eventId: string;
-  canArchive: boolean;
   compact: boolean;
   maxWidthClass: string;
 }) {
@@ -361,29 +341,24 @@ function SecondarySourcesRow({
       align="start"
     >
       <div className="flex flex-col items-end gap-1 ml-4">
-        <span className="inline-flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            aria-expanded={open}
-            className={`inline-flex items-center gap-1 ${textSize} ${TEXT_LINK}`}
-          >
-            {open ? (
-              <>
-                Hide
-                <ChevronUp size={12} />
-              </>
-            ) : (
-              <>
-                {urls.length} more source{urls.length === 1 ? "" : "s"}
-                <ChevronDown size={12} />
-              </>
-            )}
-          </button>
-          {/* One `?` for the whole expanded list, not one per mirror: ten
-              mirrors would otherwise carry ten copies of the same sentence. */}
-          {open && <FieldHelp concept="archived_copies" size={12} />}
-        </span>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className={`inline-flex items-center gap-1 ${textSize} ${TEXT_LINK}`}
+        >
+          {open ? (
+            <>
+              Hide
+              <ChevronUp size={12} />
+            </>
+          ) : (
+            <>
+              {urls.length} more source{urls.length === 1 ? "" : "s"}
+              <ChevronDown size={12} />
+            </>
+          )}
+        </button>
         {open &&
           urls.map((url, index) => (
             // Index key: two mirrors may repeat a URL, and the archival record
@@ -402,11 +377,7 @@ function SecondarySourcesRow({
                   URL with no host to show). */}
               <ArchivedCopies
                 copy={archived[index] ?? null}
-                url={url}
-                eventId={eventId}
                 describes={mirrorDescription(safeHostname(url), index, urls.length)}
-                canArchive={canArchive}
-                help={false}
               />
             </span>
           ))}

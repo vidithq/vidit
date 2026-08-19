@@ -30,16 +30,12 @@ export const FIELD_HELP = {
     label: "What is the camera position?",
   },
   source_url: {
-    text: "Where the footage was first published (the original post or channel). Not your own geolocation tweet.",
+    text: "Where the footage was first published (the original post or channel). Not your own geolocation tweet. The archive mark beside the link is its archived copy, so the evidence survives the original being deleted: orange opens the stored copy, grey means there is none yet. Recording one happens from the edit form: the mark there offers the Wayback Machine with the link filled in and accepts a snapshot you took at archive.ph or archive.today.",
     label: "What is the source?",
   },
   secondary_source_urls: {
-    text: "Optional. Mirrors of the same media: the same footage posted on another network, or another post of it from the same point of view. The Source above stays the first place it was published.",
+    text: "Optional. Mirrors of the same media: the same footage posted on another network, or another post of it from the same point of view. The Source above stays the first place it was published. Each mirror carries the same archive mark as the Source: orange opens its stored copy, grey means there is none yet, and its owner records one from the edit form.",
     label: "What are secondary sources?",
-  },
-  archived_copies: {
-    text: "An archived copy of a source link, so the evidence survives the original being deleted. You make it yourself: on your own events the greyed icon opens the Wayback Machine with the link filled in, and you paste the snapshot it gives you back. A snapshot you took at archive.ph or archive.today is accepted in the same field. Orange means a copy exists and opens it; grey means none yet.",
-    label: "What are the archived copies?",
   },
   source_media: {
     text: "The footage being located. Not a map screenshot or an annotated export.",
@@ -54,7 +50,7 @@ export const FIELD_HELP = {
     label: "What is the event time?",
   },
   source_posted_at: {
-    text: "When the source posted the media (the Telegram / X post date and time, UTC). Required to publish; a machine-detected draft can still have it blank when the source's post time wasn't resolved, and you fill it in before submitting. Not when the event happened, nor when you submitted it here.",
+    text: "When the source posted the media (the Telegram / X post date and time, UTC). Required to publish; a detection can still have it blank when the source's post time wasn't resolved, and you fill it in before submitting. Not when the event happened, nor when you submitted it here.",
     label: "What is the source post time?",
   },
   added: {
@@ -65,12 +61,8 @@ export const FIELD_HELP = {
     text: "Requested: an open call to geolocate this footage. Detected: machine output from a tweet, shown marked until its owner submits it. Geolocated: a person vouched for it (via the form, or by submitting a reviewed detection), not independently verified. Closed: the request was withdrawn, or the detection was rejected.",
     label: "What does the status mean?",
   },
-  request_status: {
-    text: "Requested: waiting for an analyst to geolocate it. Once someone does, it becomes a geolocation. Closed: the author withdrew it.",
-    label: "What does the status mean?",
-  },
   detected_from: {
-    text: "The post this detection was imported from. Its provenance, kept distinct from Source (the footage origin).",
+    text: "The post this detection was imported from. Its provenance, kept distinct from Source (the footage origin). It carries the same archive mark as the Source: orange opens its stored copy, grey means there is none yet, and its owner records one from the edit form.",
     label: "What is 'detected from'?",
   },
   requested_by: {
@@ -87,7 +79,7 @@ export const FIELD_HELP = {
     label: "What goes in Location?",
   },
   section_import: {
-    text: "Paste a public tweet to pre-fill the form: title, source, date, media, and best-effort coordinates. You review everything before submitting.",
+    text: "Vidit reads one of your own X posts into a detection you review before publishing; the import guide states what it reads.",
     label: "What does importing do?",
   },
   section_details: {
@@ -104,12 +96,22 @@ export const FIELD_HELP = {
   },
   // Detections queue: the filter over the page.
   detection_queue_filter: {
-    text: "Ready: the import left the draft with every piece of evidence a publish needs, so a review adds the conflict and the capture source, then publishes it. Incomplete: the import left a required piece missing (the source URL, the coordinates, the source media, or a proof image), so it needs a manual pass on the form before it can be published.",
+    text: "Ready: the import left the detection with every piece of evidence a publish needs, so a review adds the conflict and the capture source, then publishes it. Incomplete: the import left a required piece missing (the source URL, the coordinates, the source media, or a proof image), so it needs a manual pass on the form before it can be published.",
     label: "What does this filter select?",
+  },
+  // Why the two anchor fields are read-only once an event is published.
+  evidence_anchor: {
+    text: "The source link and the source media are what the published geolocation rests on, so they can't be edited afterwards. Everything else is editable, and each edit is kept as a version. If the source itself is wrong, contact an admin: a published event can't be closed, so correcting its source is theirs to do.",
+    label: "Why can't I change the source?",
+  },
+  // What a version note is for.
+  version_note: {
+    text: "Optional. One line on what you changed and why, kept with the version this edit replaces so a reader can follow the correction.",
+    label: "What is the version note?",
   },
   // Detection submit action, spelled out here.
   action_submit: {
-    text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it). Submitting freezes the event, so it can no longer be edited. Give it a full read first, then click Submit twice to confirm.",
+    text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it). It becomes public, and from then on every change you make is kept as a new version, with the source fixed as it stands now. Give it a full read first, then click Submit twice to confirm.",
     label: "What does Submit do?",
   },
 } as const;

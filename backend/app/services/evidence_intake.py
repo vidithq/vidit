@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.event import Event
 from app.models.media import Media
+from app.services import versions
 from app.services.evidence_processing import EvidenceProcessingError
 from app.services.sanitize import PROOF_PLACEHOLDER_PREFIX, extract_image_srcs
 from app.services.storage import (
@@ -151,6 +152,100 @@ def _match_proof_files(
     return pairs
 
 
+def _displayed_proof_srcs(doc: dict[str, Any] | None) -> set[str]:
+    """The already-uploaded proof-image URLs a proof body displays.
+
+    Placeholder srcs name uploads that have not landed yet, so only real URLs
+    participate.
+    """
+    return {s for s in extract_image_srcs(doc) if not s.startswith(PROOF_PLACEHOLDER_PREFIX)}
+
+
+def _history_pinned_srcs(db: Session, event: Event) -> set[str]:
+    """The proof-image URLs this event's readable snapshots display.
+
+    The second leg of what a write keeps: a proof image a past version still
+    shows survives, row and object, once the current body drops it, because
+    history has to stay renderable and the snapshots are the only thing pointing
+    at that URL by then.
+
+    Asked only of a row that has a history at all (version 1 has no snapshot to
+    protect), so the ordinary write pays no query. The precondition is that
+    ``services/versions.file_version`` has already bumped ``version_no`` and
+    staged this write's own snapshot before the intake runs: the count is what
+    decides whether the query happens, and the snapshot the edit just filed is
+    among the rows it reads, which is what keeps an image the superseded version
+    still displays from being swept by the same write.
+    """
+    if event.version_no <= 1:
+        return set()
+    return versions.referenced_media_urls(db, event.id)
+
+
+def _reject_foreign_proof_srcs(event: Event, displayed_srcs: set[str]) -> None:
+    """Refuse a proof body that displays another event's stored image.
+
+    The sanitiser checks that an image src points at the media host
+    (``services/sanitize._safe_image_src``), which says where a URL lives, not
+    whose it is. Ownership is decided here: an src this storage layer wrote
+    (``key_from_url`` resolves it to a key) has to be one of THIS event's own
+    media rows. Without the check, event B could embed event A's proof image,
+    and A's next edit or redact would then sweep the object out from under B.
+
+    Both roles count as own. A proof body legitimately cites the event's own
+    source image (a frame of the footage being located, annotated in place), and
+    that object is only ever deleted with the event that owns it, so refusing it
+    would reject a body naming nothing but its own evidence. Only the ``proof``
+    rows are diffed against the body below, so a cited source row is never swept
+    for going unreferenced.
+
+    Srcs the storage layer did not write (relative paths, a dev deployment's
+    external https) resolve to no key and no row of any event, so they are left
+    to the sanitiser.
+    """
+    storage = get_storage()
+    own = {m.storage_url for m in event.media}
+    foreign = sorted(
+        src for src in displayed_srcs if src not in own and storage.key_from_url(src) is not None
+    )
+    if foreign:
+        raise InvalidFileError("A proof image belongs to another event: " + ", ".join(foreign))
+
+
+def _drop_unreferenced_proof_media(db: Session, event: Event, kept_srcs: set[str]) -> list[str]:
+    """Delete the ``proof`` media rows outside ``kept_srcs``; return their keys.
+
+    Rows only, staged in the caller's transaction. The S3 objects are swept
+    after the commit lands, so a rolled-back write never orphans a file the
+    rows still point at.
+    """
+    storage = get_storage()
+    removed_keys: list[str] = []
+    for m in list(event.media):
+        if m.role != "proof" or m.storage_url in kept_srcs:
+            continue
+        key = storage.key_from_url(m.storage_url)
+        if key is not None:
+            removed_keys.append(key)
+        db.delete(m)
+    return removed_keys
+
+
+def prune_unreferenced_proof_media(db: Session, event: Event) -> list[str]:
+    """Drop the proof rows nothing renders any more; return their S3 keys.
+
+    The standalone form of the diff :func:`attach_evidence_and_commit` runs as
+    part of a write, for the one caller that changes what the history displays
+    without touching the event itself: redacting a version
+    (``services/versions.redact_version``) can leave an image no readable version and
+    no current body points at.
+
+    Staged, not committed. The caller commits, then sweeps the returned keys.
+    """
+    kept = _displayed_proof_srcs(event.proof) | _history_pinned_srcs(db, event)
+    return _drop_unreferenced_proof_media(db, event, kept)
+
+
 def _rewrite_image_srcs(doc: dict[str, Any], mapping: dict[str, str]) -> None:
     """Swap image srcs per ``mapping``, in place, across the whole tree."""
 
@@ -194,7 +289,17 @@ async def attach_evidence_and_commit(
       src is rewritten to the public URL, and a ``Media(role='proof')`` row
       lands. Already-uploaded S3 URLs in the doc pass through untouched (the
       edit flow), and existing ``role='proof'`` rows whose URL no longer
-      appears in the final doc are deleted, their objects swept post-commit.
+      appears in the final doc, and that no readable snapshot displays, are
+      deleted, their objects swept post-commit. An already-uploaded src has to
+      name one of this event's own proof images (see
+      :func:`_reject_foreign_proof_srcs`).
+
+    ``max_proof_images_per_event`` is checked twice, both times before anything
+    reaches S3: once on ``proof_files`` alone, ahead of the per-file validation
+    loop, since a batch already over the ceiling cannot pass whatever the body
+    keeps and should not cost a decode per file; then on what the final proof
+    body displays (its already-uploaded images plus the new uploads), which is
+    the check that actually bounds the event.
 
     Every file is validated up front so a bad file can't strand its siblings
     in S3. The commit is inside the try, so a commit-time failure (FK
@@ -202,16 +307,22 @@ async def attach_evidence_and_commit(
     objects; an ``IntegrityError`` on ``uq_media_source_per_event`` surfaces
     as the 409-shaped :class:`SourceMediaConflictError`, not a 500.
 
-    Raises :class:`TooManyFilesError` (proof batch over
-    ``max_proof_images_per_event``), :class:`InvalidFileError` (a file fails
-    ``validate_file``, or a non-image in ``proof_files``),
+    Raises :class:`TooManyFilesError` (the proof body would display more than
+    ``max_proof_images_per_event`` images), :class:`InvalidFileError` (a file
+    fails ``validate_file``, a non-image in ``proof_files``, or a proof src
+    naming another event's stored image),
     :class:`ProofFilesMismatchError`, or
     :class:`EvidenceProcessingFailedError` (the uploader raises
     ``EvidenceProcessingError``).
     """
+    # The batch's own size first, before a single file is read. One request
+    # carrying more proof images than an event may ever display cannot pass the
+    # event-wide check below whatever the body keeps, so it is answered without
+    # spending a decode per file on a payload that is already over.
     if len(proof_files) > settings.max_proof_images_per_event:
         raise TooManyFilesError(
-            f"At most {settings.max_proof_images_per_event} proof images per event"
+            f"At most {settings.max_proof_images_per_event} proof images per event; "
+            f"this request carries {len(proof_files)}"
         )
 
     # Validate every file before any upload — a 400 on file #3 shouldn't
@@ -237,24 +348,34 @@ async def attach_evidence_and_commit(
     proof_pairs = _match_proof_files(proof_doc, proof_files)
 
     # Diff the kept proof rows against the FINAL doc (incoming when provided,
-    # else what the row already holds). Placeholder srcs resolve to new
-    # uploads, so only real URLs participate.
+    # else what the row already holds), plus what the history still displays.
     final_doc = proof_doc if proof_doc is not None else event.proof
-    kept_srcs = {
-        s for s in extract_image_srcs(final_doc) if not s.startswith(PROOF_PLACEHOLDER_PREFIX)
-    }
-    storage = get_storage()
-    removed_proof_keys: list[str] = []
-    for m in list(event.media):
-        if m.role != "proof" or m.storage_url in kept_srcs:
-            continue
-        key = storage.key_from_url(m.storage_url)
-        if key is not None:
-            removed_proof_keys.append(key)
-        db.delete(m)
+    displayed_srcs = _displayed_proof_srcs(final_doc)
+    _reject_foreign_proof_srcs(event, displayed_srcs)
+    kept_srcs = displayed_srcs | _history_pinned_srcs(db, event)
+
+    # The cap is on what the new body displays, not on one request: the images
+    # it still shows plus the files it adds. Counting the batch alone let an
+    # event grow past the ceiling a few images at a time; counting the rows the
+    # write keeps charged the owner for images pinned only because an old version
+    # renders them, so swapping an image across versions ate the quota for good
+    # with nothing left to free.
+    displayed_proof_rows = sum(
+        1 for m in event.media if m.role == "proof" and m.storage_url in displayed_srcs
+    )
+    total_displayed = displayed_proof_rows + len(proof_files)
+    if total_displayed > settings.max_proof_images_per_event:
+        raise TooManyFilesError(
+            f"At most {settings.max_proof_images_per_event} proof images per event; "
+            f"this proof body would display {total_displayed} "
+            f"({displayed_proof_rows} already uploaded, {len(proof_files)} new)"
+        )
+
+    removed_proof_keys = _drop_unreferenced_proof_media(db, event, kept_srcs)
     # Flush deletes before the inserts below (same discipline as the caller's
     # source swap) so a same-URL re-add can't collide mid-flush.
     db.flush()
+    storage = get_storage()
 
     # Track uploaded S3 keys so a mid-batch failure can sweep them on
     # rollback — otherwise file #1 lands, file #2 throws, the txn rolls

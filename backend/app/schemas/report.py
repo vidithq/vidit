@@ -45,7 +45,6 @@ class ContentReportRead(BaseModel):
     created_at: datetime
     resolved_at: datetime | None
     resolution: ContentReportResolution | None
-    resolved_by: uuid.UUID | None
 
 
 class ContentReportUpdate(BaseModel):

@@ -9,7 +9,7 @@ import {
   type EventFieldsState,
 } from "./events";
 
-// A fully-complete geolocation draft, each test knocks one field out. The proof
+// A fully-complete detection, each test knocks one field out. The proof
 // carries an image node, since a geolocation's proof must (proofHasImage).
 const complete: EventFieldsState = {
   title: "Strike on depot",
@@ -34,7 +34,7 @@ describe("missingEventFields", () => {
     expect(labels(complete)).toEqual([]);
   });
 
-  it("lists every miss at once for an empty draft", () => {
+  it("lists every miss at once for an empty detection", () => {
     expect(
       labels({
         title: "",
@@ -84,7 +84,7 @@ describe("missingEventFields", () => {
     );
   });
 
-  it("skips the tag floor when tags aren't required (partial draft save)", () => {
+  it("skips the tag floor when tags aren't required (partial detection save)", () => {
     expect(
       labels(
         { ...complete, hasConflictTag: false, hasCaptureSourceTag: false },
@@ -107,10 +107,10 @@ describe("missingEventFields", () => {
 });
 
 describe("batchCompletionBlockers", () => {
-  // A draft as the import leaves it: coordinates, a source, its footage, and a
+  // A detection as the import leaves it: coordinates, a source, its footage, and a
   // proof body carrying the annotation image. Only the capture source is
   // missing, and the batch supplies that.
-  const importedDraft = {
+  const importedDetection = {
     event_coords: { lat: 48.5, lng: 37.8 },
     source_url: "https://x.com/a/status/1",
     proof: {
@@ -120,14 +120,14 @@ describe("batchCompletionBlockers", () => {
     media: [{ role: "source" as const }],
   };
 
-  it("clears a draft the import filled", () => {
-    expect(batchCompletionBlockers(importedDraft)).toEqual([]);
+  it("clears a detection the import filled", () => {
+    expect(batchCompletionBlockers(importedDetection)).toEqual([]);
   });
 
   it("flags the row whose thread carried no annotation image", () => {
     expect(
       batchCompletionBlockers({
-        ...importedDraft,
+        ...importedDetection,
         proof: { type: "doc", content: [{ type: "paragraph" }] },
       })
     ).toEqual(["Proof image"]);
@@ -139,7 +139,7 @@ describe("batchCompletionBlockers", () => {
     // rows and still misses it.
     expect(
       batchCompletionBlockers({
-        ...importedDraft,
+        ...importedDetection,
         media: [{ role: "proof" as const }],
       })
     ).toEqual(["Source media"]);
@@ -158,15 +158,15 @@ describe("batchCompletionBlockers", () => {
 
   it("ignores what a batch never writes (title, source post time)", () => {
     // The batch posts no fields, so those requirements belong to the submit
-    // form, not here: a draft missing them still publishes.
-    expect(batchCompletionBlockers({ ...importedDraft, source_url: "  " })).toEqual([
+    // form, not here: a detection missing them still publishes.
+    expect(batchCompletionBlockers({ ...importedDetection, source_url: "  " })).toEqual([
       "Source URL",
     ]);
   });
 
   // The readiness rule has three expressions: this one, the server floor in
-  // `services/events._publish_draft`, and the SQL the queue's `readiness`
-  // filter pages on (`services/events.draft_ready_predicate`). The queue
+  // `services/events._publish_detection`, and the SQL the queue's `readiness`
+  // filter pages on (`services/events.detection_ready_predicate`). The queue
   // labels rows from here and asks the server which rows to show, so a
   // disagreement shows up as a row badged Ready that the Ready filter hides.
   //
@@ -201,18 +201,18 @@ describe("batchCompletionBlockers", () => {
     };
     // An image node with no `src`. The server counts srcs, not nodes, so it
     // does not satisfy the floor; a node-type-only test here would badge the
-    // draft Ready and then never find it under the Ready filter.
+    // detection Ready and then never find it under the Ready filter.
     const proofImageWithoutSrc = { type: "doc", content: [{ type: "image" }] };
 
     const cases: [string, Parameters<typeof batchCompletionBlockers>[0], boolean][] = [
-      ["ready", importedDraft, true],
-      ["ready_with_a_nested_proof_image", { ...importedDraft, proof: proofImageNested }, true],
-      ["no_source_url", { ...importedDraft, source_url: null }, false],
-      ["blank_source_url", { ...importedDraft, source_url: " \t\n " }, false],
-      ["no_coordinates", { ...importedDraft, event_coords: null }, false],
-      ["no_source_media", { ...importedDraft, media: [] }, false],
-      ["no_proof_image", { ...importedDraft, proof: proofTextOnly }, false],
-      ["proof_image_without_a_src", { ...importedDraft, proof: proofImageWithoutSrc }, false],
+      ["ready", importedDetection, true],
+      ["ready_with_a_nested_proof_image", { ...importedDetection, proof: proofImageNested }, true],
+      ["no_source_url", { ...importedDetection, source_url: null }, false],
+      ["blank_source_url", { ...importedDetection, source_url: " \t\n " }, false],
+      ["no_coordinates", { ...importedDetection, event_coords: null }, false],
+      ["no_source_media", { ...importedDetection, media: [] }, false],
+      ["no_proof_image", { ...importedDetection, proof: proofTextOnly }, false],
+      ["proof_image_without_a_src", { ...importedDetection, proof: proofImageWithoutSrc }, false],
       [
         "missing_everything_but_the_title",
         { event_coords: null, source_url: null, proof: proofTextOnly, media: [] },
@@ -220,8 +220,8 @@ describe("batchCompletionBlockers", () => {
       ],
     ];
 
-    it.each(cases)("%s", (_name, draft, ready) => {
-      expect(batchCompletionBlockers(draft).length === 0).toBe(ready);
+    it.each(cases)("%s", (_name, detection, ready) => {
+      expect(batchCompletionBlockers(detection).length === 0).toBe(ready);
     });
   });
 });

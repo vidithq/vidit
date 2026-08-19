@@ -1,0 +1,20 @@
+{
+  "id_str": "9600000000000000001",
+  "created_at": "2026-05-12T09:12:00.000Z",
+  "user": { "screen_name": "relay_stoat" },
+  "text": "The ministry says the plant caught fire overnight.\nhttps://t.co/fakeMINISTRY",
+  "entities": {
+    "urls": [
+      {
+        "url": "https://t.co/fakeMINISTRY",
+        "expanded_url": "https://x.com/ministry_wire/status/9600000000000000011"
+      }
+    ]
+  },
+  "quoted_tweet": {
+    "id_str": "9600000000000000011",
+    "created_at": "2026-05-11T18:40:00.000Z",
+    "user": { "screen_name": "ministry_wire" },
+    "text": "Statement on the overnight fire at the plant"
+  }
+}

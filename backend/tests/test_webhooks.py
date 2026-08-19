@@ -33,10 +33,10 @@ BOT_USER_ID = "999000"
 CONSUMER_SECRET = "test-consumer-secret"
 HANDLE = f"owl{uuid.uuid4().hex[:8]}"
 
-COORD_ID = "9400000000000000001"
-BARE_ID = "9400000000000000002"
-BARE2_ID = "9400000000000000003"
-SOURCE_ID = "9400000000000000042"
+COORD_ID = "1940000000000000001"
+BARE_ID = "1940000000000000002"
+BARE2_ID = "1940000000000000003"
+SOURCE_ID = "1940000000000000042"
 
 BODIES = {
     # A strict-format mention: T: / C: / S: markers plus a proof line.
@@ -423,7 +423,7 @@ def test_reply_carries_in_reply_to_user_id(db):
 # ── Queue drain through the shared pipeline ────────────────────────────────
 
 
-async def test_drain_creates_draft_and_replies(db, linked_owner):
+async def test_drain_creates_detection_and_replies(db, linked_owner):
     _post_payload(
         {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(COORD_ID)]}
     )
@@ -556,9 +556,7 @@ async def test_drain_exception_requeues_the_claimed_row(db, monkeypatch):
 async def test_gesture_budget_spans_drain_passes(db, linked_owner, monkeypatch):
     # The caps are wall-clock (seeded from the ledger's trailing hour), not
     # per drain pass: a second pass minutes later must not mint fresh budget.
-    import app.services.bot as bot_service
-
-    monkeypatch.setattr(bot_service, "_MAX_REPLIES_PER_HOUR", 1)
+    monkeypatch.setattr(settings, "bot_max_replies_per_hour", 1)
 
     _post_payload(
         {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(BARE_ID)]}

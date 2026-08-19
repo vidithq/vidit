@@ -31,7 +31,7 @@ from tests.events._helpers import (
 
 
 def _detected(db, author, **kwargs):
-    # Sourced by default; pass ``source_url=None`` for a source-less draft.
+    # Sourced by default; pass ``source_url=None`` for a source-less detection.
     kwargs.setdefault("source_url", "https://x.com/a/status/1")
     return _make_geo(
         db,
@@ -164,7 +164,7 @@ def test_geolocate_unknown_remove_id_is_ignored(db, author, conflict, capture_so
 
 
 def test_geolocate_rejects_blank_source_url(db, author, conflict, capture_source_tag):
-    """The source floor at promotion: a ``detected`` draft may be born
+    """The source floor at promotion: a detection may be born
     source-less, but geolocating it with a blank ``source_url`` form value is
     refused (400 ``source_url_required``) before any S3 work. The row stays a
     source-less detection."""

@@ -200,13 +200,3 @@ def list_possible_duplicates(
         )
         for geo, row_lat, row_lng, dist in rows
     ]
-
-
-# ── Import-from-tweet ────────────────────────────────────────────────────
-#
-# Paste a tweet URL, get structured data to pre-fill the submit form
-# (title / source / event date / media / best-effort coordinates). The
-# analyst always reviews + submits; this route never creates a row.
-#
-# Sits before `/{geolocation_id}` so the literal path doesn't collide with
-# the UUID matcher.

@@ -10,7 +10,13 @@ from app.models.admin_event import AdminEvent
 from app.models.archive_import_job import ArchiveImportJob
 from app.models.auth_event import EVENT_LOGIN, AuthEvent
 from app.models.bot_mention import BotMention
-from app.models.event import STATUS_CLOSED, STATUS_DETECTED, STATUS_GEOLOCATED, Event
+from app.models.event import (
+    STATUS_CLOSED,
+    STATUS_DETECTED,
+    STATUS_GEOLOCATED,
+    Event,
+    EventVersion,
+)
 from app.models.invite_code import InviteCode
 from app.models.media import Media
 from app.models.user import User
@@ -19,8 +25,9 @@ from app.schemas.admin import (
     AdminInviteCodeRead,
     AdminInviteRedeemerRead,
 )
+from app.services import versions
 from app.services.auth import bump_token_version, generate_invite_code, invite_code_status
-from app.services.evidence_intake import collect_media_keys
+from app.services.evidence_intake import collect_media_keys, prune_unreferenced_proof_media
 from app.services.pagination import keyset_before, take_page
 from app.services.storage import avatar_key_of, sweep_keys
 
@@ -46,6 +53,12 @@ class EventNotFoundError(AdminError):
 
 class XHandleConflictError(AdminError):
     code = "x_handle_conflict"
+
+
+class VersionNotFoundError(AdminError):
+    """The event carries no version under that number."""
+
+    code = "version_not_found"
 
 
 def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInviteRedeemerRead]:
@@ -124,10 +137,7 @@ def serialize_invite_codes(db: Session, invites: list[InviteCode]) -> list[Admin
         AdminInviteCodeRead(
             id=invite.id,
             code=invite.code,
-            max_uses=invite.max_uses,
-            use_count=invite.use_count,
             expires_at=invite.expires_at,
-            revoked_at=invite.revoked_at,
             created_at=invite.created_at,
             status=invite_code_status(invite),
             redeemer=redeemers.get(invite.used_by) if invite.used_by else None,
@@ -179,9 +189,8 @@ def create_invite_code(
 ) -> InviteCode:
     """Mint a single-use invite code, optionally bound to an X handle.
 
-    ``max_uses`` is locked to 1 so every code's audit trail (``used_by`` /
-    ``used_at``) names exactly one analyst. The column accepts higher
-    values; the admin API doesn't expose them.
+    Every code is single-use, so its audit trail (``used_by`` / ``used_at``)
+    names exactly one analyst.
 
     A bound ``x_handle`` (already normalized by the schema) is copied onto
     the account at redemption; minting against a handle a user already
@@ -192,7 +201,6 @@ def create_invite_code(
     expires_at = datetime.now(UTC) + timedelta(days=expires_in_days) if expires_in_days else None
     invite = InviteCode(
         code=generate_invite_code(),
-        max_uses=1,
         expires_at=expires_at,
         x_handle=x_handle,
     )
@@ -392,6 +400,68 @@ def hard_delete_geolocation(
     return target
 
 
+def redact_version(
+    db: Session,
+    *,
+    actor_id: uuid.UUID,
+    geolocation_id: uuid.UUID,
+    version_no: int,
+) -> EventVersion:
+    """Blank one filed version of an event, keeping the row and its number.
+
+    The moderation exit for a version whose content the record must stop
+    serving. ``event_versions`` is append-only, so nothing is dropped: the
+    snapshot and the note are blanked in place and the row is stamped
+    ``redacted_at`` / ``redacted_by_id``. ``version_no`` and ``created_at``
+    stay, so ``/vN`` addressing never shifts.
+
+    A redacted version displays no images, so this is also the one write
+    outside an edit that can free a proof image: any image no readable version
+    and no current proof body points at is deleted here, row and object, on the
+    commit-then-sweep discipline the media paths share.
+
+    Idempotent: a second call on an already-redacted version changes nothing and
+    writes no audit row, matching ``services/reports.set_event_moderation``.
+    Raises :class:`EventNotFoundError` (404) for an unknown or soft-deleted
+    event and :class:`VersionNotFoundError` (404) for a version the event does
+    not carry.
+    """
+    # Locked like the event a moderation verdict mutates: the prune below reads
+    # this event's media and its history, so a concurrent edit must not be
+    # interleaving its own proof diff with this one.
+    event = (
+        db.query(Event)
+        .filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
+        .populate_existing()
+        .with_for_update()
+        .first()
+    )
+    if event is None:
+        raise EventNotFoundError("Event not found")
+    row = versions.get_version(db, event_id=event.id, version_no=version_no)
+    if row is None:
+        raise VersionNotFoundError("Version not found")
+    if not versions.redact_version(db, version=row, actor_id=actor_id):
+        return row
+
+    removed_keys = prune_unreferenced_proof_media(db, event)
+    log_admin_event(
+        db,
+        actor_id=actor_id,
+        action="event_version_redacted",
+        target={
+            "geolocation_id": str(event.id),
+            "version_no": version_no,
+            "removed_media_count": len(removed_keys),
+        },
+    )
+    db.commit()
+    db.refresh(row)
+
+    sweep_keys(removed_keys, context=f"event {event.id} version {version_no} redaction")
+    return row
+
+
 def soft_delete_user(
     db: Session,
     *,
@@ -531,11 +601,11 @@ def purge_detected_events(
     actor_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> dict[str, Any]:
-    """Hard-delete every ``detected`` draft a user owns, keeping the account.
+    """Hard-delete every detection a user owns, keeping the account.
 
-    The broken-archive repair: a bad import can mint hundreds of junk drafts;
+    The broken-archive repair: a bad import can mint hundreds of junk detections;
     this sweeps them (rows + S3 objects via :func:`collect_media_keys`,
-    derivatives included, soft-deleted drafts included) without touching the
+    derivatives included, soft-deleted detections included) without touching the
     account, its geolocations, or its requests. ``closed`` rows that were once
     detected stay (the owner explicitly acted on those). Same
     commit-then-sweep ordering as :func:`hard_delete_user`.
@@ -544,24 +614,24 @@ def purge_detected_events(
     if user is None:
         raise UserNotFoundError("User not found")
 
-    drafts = (
+    detections = (
         db.query(Event)
         .options(joinedload(Event.media))
         .filter(Event.owner_id == user.id, Event.status == STATUS_DETECTED)
         .all()
     )
     media_keys: list[str] = []
-    for draft in drafts:
-        media_keys.extend(collect_media_keys(list(draft.media)))
+    for detection in detections:
+        media_keys.extend(collect_media_keys(list(detection.media)))
 
     target = {
         "user_id": str(user.id),
         "username": user.username,
-        "deleted_events": len(drafts),
+        "deleted_events": len(detections),
         "media_count": len(media_keys),
     }
-    for draft in drafts:
-        db.delete(draft)
+    for detection in detections:
+        db.delete(detection)
     log_admin_event(db, actor_id=actor_id, action="detected_events_purged", target=target)
     db.commit()
 
@@ -578,15 +648,15 @@ def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
 
     1. Reject-rate over every machine detection (``detected_from_url`` set):
        the ``count(*) FILTER (WHERE ...)`` of dismissed
-       drafts over the total. A machine detection dismissed while still a draft
-       counts as a reject whichever door it left through: an owner close off
+       detections over the total. A machine detection dismissed before it was
+       published counts as a reject whichever door it left through: an owner close off
        ``detected`` or an admin soft-delete that never left ``detected``. A
        soft-deleted ``geolocated`` row is not a reject (it was vouched before
        removal). Both shapes are ones
        :func:`app.services.detection._row_disposition` refuses to re-import,
        since each records a judgment a re-import must not undo.
     2. The live ``detected`` queue (``deleted_at IS NULL``, human rows
-       excluded), counting the drafts missing a source media, a proof image,
+       excluded), counting the detections missing a source media, a proof image,
        or a source URL, the pieces the geolocate floor will demand.
     """
     machine = Event.detected_from_url.isnot(None)

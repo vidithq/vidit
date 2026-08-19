@@ -1,0 +1,20 @@
+{
+  "id_str": "1783000000000000001",
+  "created_at": "2026-03-18T10:40:00.000Z",
+  "user": { "screen_name": "grid_martin" },
+  "text": "T: Strike on the depot\nC: 48.123456, 37.654321\nS: https://t.co/fakeMARK\n@viditbot",
+  "mediaDetails": [
+    {
+      "type": "photo",
+      "media_url_https": "https://pbs.twimg.com/media/FAKEOP12.jpg"
+    }
+  ],
+  "entities": {
+    "urls": [
+      {
+        "url": "https://t.co/fakeMARK",
+        "expanded_url": "https://x.com/warfootage/status/1783000000000000002"
+      }
+    ]
+  }
+}

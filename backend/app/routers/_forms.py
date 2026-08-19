@@ -115,3 +115,16 @@ def parse_iso_datetime(raw: str, *, field: str) -> datetime:
             detail=f"{field} must be an ISO-8601 datetime (YYYY-MM-DDTHH:MM)",
         ) from exc
     return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+
+
+def parse_optional_iso_datetime(raw: str | None, *, field: str) -> datetime | None:
+    """Parse an optional ISO-8601 datetime form field. Empty → ``None``.
+
+    The optional twin of :func:`parse_iso_datetime`, for the writes whose row
+    may legitimately carry no value: a machine detection can be published
+    without a resolved source post time, so an edit of that row must be able to
+    leave the column NULL rather than invent an instant.
+    """
+    if not raw:
+        return None
+    return parse_iso_datetime(raw, field=field)

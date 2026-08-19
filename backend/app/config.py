@@ -121,6 +121,18 @@ class Settings(BaseSettings):
     # subscribe succeed against prod. Gates the poll's gap detector: while
     # false, a mention arriving via the cron is nominal and raises no warning.
     x_webhook_enabled: bool = False
+    # Billed-spend ceilings on the write side. The mention surface is public:
+    # any stranger can tag the bot on a coordinate tweet, and each posted reply
+    # is billed. The window posts at most this many replies (success + failure),
+    # in total and per author; past a ceiling the detection still lands
+    # (detecting is unbilled) but the reply is skipped and logged, so a flood
+    # burns nothing but its own posting effort. The window is wall-clock (the
+    # trailing hour, read from the ledger), not per pass: the worker drains
+    # every few seconds, so a per-pass budget would multiply the caps hundreds
+    # of times an hour. Raise both for a traffic spike (a promo tweet) without
+    # a redeploy of code.
+    bot_max_replies_per_hour: int = 40
+    bot_max_replies_per_author_per_hour: int = 10
 
     model_config = {"env_file": ".env"}
 

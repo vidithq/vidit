@@ -4,12 +4,12 @@ import { MediaThumb } from "@/components/ui/EntityCard";
 import { Pill } from "@/components/ui/Pill";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { TAPPABLE_HOVER } from "@/components/ui/styles";
-import { batchCompletionBlockers, draftEditPath } from "@/lib/events";
+import { batchCompletionBlockers, detectionEditPath } from "@/lib/events";
 import { formatDate } from "@/lib/format";
-import type { EventDetail } from "@/types";
+import type { DetectedVia, EventDetail } from "@/types";
 
 /**
- * The badge text for a draft still short of the evidence floor. One missing
+ * The badge text for a detection still short of the evidence floor. One missing
  * piece is named, since that is the common case and the name is what tells the
  * analyst whether it is worth opening. Several collapse to a count: three names
  * joined into one badge outgrew the row, and the review flow and the edit form
@@ -21,25 +21,38 @@ function missingLabel(blockers: string[]): string {
     : `Missing: ${blockers.length} pieces`;
 }
 
+/** Where a detection came in from, as the metadata line says it. One word beside
+ *  the date and the source host, in the same secondary text: the three entries
+ *  read one engine, so this answers "how did this reach me", not "how good is
+ *  it". A detection imported before the column existed carries no value and the
+ *  segment is simply absent, like a missing event date. Keyed on the generated
+ *  `detected_via` union, so a fourth entry added on the backend fails type-check
+ *  here instead of rendering a blank segment. */
+const ENTRY_LABELS: Record<DetectedVia, string> = {
+  bot: "Tagged the bot",
+  paste: "Pasted",
+  archive: "From your archive",
+};
+
 /**
  * One row of the Detections queue: a thumbnail, the title, the event date, the
  * source host, and one state badge. Deliberately denser and quieter than
  * `<EntityCard>` (no byline, no coordinates, no tags): the queue is a triage
  * list read top to bottom, and the judgment happens in the review flow, not
  * here. There are no inline controls, so the whole row stays one click, to the
- * full edit form, which is where a draft the review flow can't finish gets its
+ * full edit form, which is where a detection the review flow can't finish gets its
  * manual pass.
  *
  * The badge is the only state on the row, and it describes the *evidence*, not
  * completeness: **Ready to review** means the machine found everything it could
- * and the draft is waiting on the judgment a review supplies (the conflict and
- * the capture source), never that the draft is finished. It carries the softer
+ * and the detection is waiting on the judgment a review supplies (the conflict and
+ * the capture source), never that the detection is finished. It carries the softer
  * outline tone for that reason, so it cannot be read as a published or
  * complete state. What the two states mean is the queue filter's `?`, one for
  * the page: the row itself stays a label and a click.
  */
-export function DetectionQueueRow({ draft }: { draft: EventDetail }) {
-  const blockers = batchCompletionBlockers(draft);
+export function DetectionQueueRow({ detection }: { detection: EventDetail }) {
+  const blockers = batchCompletionBlockers(detection);
   const ready = blockers.length === 0;
   return (
     <div
@@ -47,16 +60,16 @@ export function DetectionQueueRow({ draft }: { draft: EventDetail }) {
     >
       {/* Stretched link, same click model as every other catalogue row: the
           whole row navigates, and nothing inside it competes for the click. It
-          opens the draft inside a review pass, starting where it was clicked,
-          since reaching a draft through the queue is reviewing the queue. */}
+          opens the detection inside a review pass, starting where it was clicked,
+          since reaching a detection through the queue is reviewing the queue. */}
       <Link
-        href={draftEditPath(draft.id, true)}
-        aria-label={draft.title}
+        href={detectionEditPath(detection.id, true)}
+        aria-label={detection.title}
         className="absolute inset-0 z-10 rounded-[inherit]"
       />
       <MediaThumb
-        media={draft.thumbnail ?? undefined}
-        isGraphic={draft.is_graphic}
+        media={detection.thumbnail ?? undefined}
+        isGraphic={detection.is_graphic}
         className="w-16"
       />
       {/* The badge shares the row from `sm` up and drops under the text on a
@@ -67,13 +80,16 @@ export function DetectionQueueRow({ draft }: { draft: EventDetail }) {
           {/* Two lines, not one: a phone's column is narrow enough that a
               single truncated line cuts most machine titles mid-phrase. */}
           <h3 className="line-clamp-2 text-sm font-medium text-neutral-100 group-hover:text-orange-400">
-            {draft.title}
+            {detection.title}
           </h3>
           <div className="flex flex-wrap items-center gap-x-3 text-[11px] text-neutral-500">
             <span>
-              {draft.event_date ? formatDate(draft.event_date) : "No event date"}
+              {detection.event_date ? formatDate(detection.event_date) : "No event date"}
             </span>
-            <SourceLabel variant="inline" url={draft.source_url} />
+            <SourceLabel variant="inline" url={detection.source_url} />
+            {detection.detected_via !== null && detection.detected_via !== undefined && (
+              <span>{ENTRY_LABELS[detection.detected_via]}</span>
+            )}
           </div>
         </div>
         {/* Nothing on the row takes a pointer of its own, so the badge sits

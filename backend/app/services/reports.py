@@ -287,7 +287,7 @@ def resolve_report(
     event-mutating verdict against a deleted event.
     """
     # Lock the report row FIRST, then re-check the verdict under the lock, the
-    # ``_publish_draft`` pattern: two admins resolving the same report
+    # ``_publish_detection`` pattern: two admins resolving the same report
     # serialize here and the loser reads the winner's verdict, so the
     # documented 409 holds under concurrency instead of both writes landing.
     # ``populate_existing()`` is load-bearing whenever the row is already in

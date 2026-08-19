@@ -82,6 +82,9 @@ async def create_event(
     # Mirrors of the same media elsewhere, repeated once per link. Optional and
     # ordered; the service normalizes and caps them.
     secondary_source_urls: list[SecondarySourceUrl] = Form([]),
+    # The archived copy of each mirror, repeated once per entry above and
+    # aligned with it by position; blank where that mirror was not archived.
+    secondary_snapshot_urls: list[SecondarySourceUrl] = Form([]),
     # Optional: the footage doesn't always establish when the depicted event
     # happened; NULL reads as "Unknown". No ``max_length``:
     # ``date.fromisoformat`` is the source of truth (and implicitly bounds
@@ -113,9 +116,10 @@ async def create_event(
     ``services/events.create_with_evidence``.
 
     ``source_snapshot_url`` records the event's archived source in the same
-    write: the same checks ``POST /events/{id}/archives`` runs, so a paste that
-    is not a snapshot of ``source_url`` is a 400 carrying the failing check's
-    code, and no event is created.
+    write, and ``secondary_snapshot_urls`` records one copy per mirror, on the
+    checks every archived-copy field runs (``services/source_archive``): a paste
+    that is not a snapshot of the link it sits beside is a 400 carrying the
+    failing check's code, and no event is created.
     """
     proof_files = proof_files or []
 
@@ -146,6 +150,7 @@ async def create_event(
             source_url=source_url,
             source_snapshot_url=source_snapshot_url,
             secondary_source_urls=secondary_source_urls,
+            secondary_snapshot_urls=secondary_snapshot_urls,
             event_date=parsed_event_date,
             event_time=parsed_event_time,
             source_posted_at=parsed_source_posted_at,
@@ -180,8 +185,10 @@ async def create_event_request(
     # The archived copy of ``source_url``, as on the direct-create form: one
     # form posts either shape, so the analyst's paste is kept on both.
     source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
-    # Mirrors of the same media elsewhere, as on the direct-create form.
+    # Mirrors of the same media elsewhere, as on the direct-create form, and
+    # the archived copy of each, aligned with them by position.
     secondary_source_urls: list[SecondarySourceUrl] = Form([]),
+    secondary_snapshot_urls: list[SecondarySourceUrl] = Form([]),
     proof: str | None = Form(None),
     # An approximate guess is allowed on a request (both halves or neither).
     lat: float | None = Form(None),
@@ -250,6 +257,7 @@ async def create_event_request(
             file=file,
             proof_files=proof_files,
             source_snapshot_url=source_snapshot_url,
+            secondary_snapshot_urls=secondary_snapshot_urls,
         )
     except EvidenceIntakeError as exc:
         _raise_event_error(exc)

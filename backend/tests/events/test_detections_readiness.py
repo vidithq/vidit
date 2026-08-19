@@ -1,7 +1,7 @@
 """The readiness rule has one home, and this suite is what holds it there.
 
-``services.events.draft_ready_predicate`` is a SQL projection of the floor
-``services.events._publish_draft`` enforces row by row. Two expressions of one
+``services.events.detection_ready_predicate`` is a SQL projection of the floor
+``services.events._publish_detection`` enforces row by row. Two expressions of one
 rule can drift silently, so every shape in ``_readiness_cases`` is put through
 both and the verdicts must match exactly, per row, not just in aggregate.
 
@@ -13,13 +13,13 @@ The third implementation, ``batchCompletionBlockers`` in
 from __future__ import annotations
 
 from app.models.event import STATUS_DETECTED, Event
-from app.services.events import _publish_draft, draft_ready_predicate
+from app.services.events import _publish_detection, detection_ready_predicate
 from app.services.evidence_intake import EvidenceIntakeError
 from tests.events._helpers import _make_geo
 from tests.events._readiness_cases import READINESS_CASES, READY_CASE_NAMES
 
 
-def _draft(db, author, overrides):
+def _detection(db, author, overrides):
     return _make_geo(
         db,
         author=author,
@@ -32,15 +32,15 @@ def _draft(db, author, overrides):
 
 def test_sql_predicate_and_publish_floor_agree_row_by_row(db, author, conflict, capture_source_tag):
     """One rule, two expressions: the queue filter and the publish door must
-    admit exactly the same drafts.
+    admit exactly the same detections.
 
-    The SQL verdicts are collected first, then every draft is offered to
-    ``_publish_draft`` with the two judgment calls a review supplies (a
+    The SQL verdicts are collected first, then every detection is offered to
+    ``_publish_detection`` with the two judgment calls a review supplies (a
     conflict and a capture source), so the only thing that can turn a row away
     is the evidence floor itself.
     """
     rows = {
-        name: _draft(db, author, dict(overrides))
+        name: _detection(db, author, dict(overrides))
         for name, (overrides, _) in READINESS_CASES.items()
     }
     names_by_id = {geo.id: name for name, geo in rows.items()}
@@ -50,14 +50,14 @@ def test_sql_predicate_and_publish_floor_agree_row_by_row(db, author, conflict, 
         for (row_id,) in db.query(Event.id).filter(
             Event.id.in_(list(names_by_id)),
             Event.status == STATUS_DETECTED,
-            draft_ready_predicate(),
+            detection_ready_predicate(),
         )
     }
 
     floor_ready = set()
     for name, geo in rows.items():
         try:
-            _publish_draft(
+            _publish_detection(
                 db,
                 event_id=geo.id,
                 current_user=author,
@@ -76,16 +76,16 @@ def test_sql_predicate_and_publish_floor_agree_row_by_row(db, author, conflict, 
 
 
 def test_incomplete_is_the_exact_complement(db, author):
-    """No draft falls out of both halves.
+    """No detection falls out of both halves.
 
     Every leg of the predicate is strictly true or false, never SQL NULL, so
     ``NOT`` of it is the real complement. A NULL-valued leg (a bare comparison
     against a nullable column) would drop rows from both the ready and the
     incomplete queue, and an analyst would never see them again.
     """
-    rows = [_draft(db, author, dict(overrides)) for overrides, _ in READINESS_CASES.values()]
+    rows = [_detection(db, author, dict(overrides)) for overrides, _ in READINESS_CASES.values()]
     ids = [geo.id for geo in rows]
-    ready = draft_ready_predicate()
+    ready = detection_ready_predicate()
 
     in_ready = {r for (r,) in db.query(Event.id).filter(Event.id.in_(ids), ready)}
     in_incomplete = {r for (r,) in db.query(Event.id).filter(Event.id.in_(ids), ~ready)}

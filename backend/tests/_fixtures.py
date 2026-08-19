@@ -1,4 +1,5 @@
-"""Shared upload-path test fixtures.
+"""Shared test fixtures: upload bytes, the X-export file every archive test
+writes, and the two direct reads / writes of the local storage root.
 
 Real (non-stub) image bytes. The previous ``b"\\xff\\xd8\\xff\\xd9"`` 4-byte
 JPEG stub passed content-type sniffing but Pillow rejects it as
@@ -13,6 +14,57 @@ generated once via:
 """
 
 from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+from app.config import settings
+
+
+def stored_path(key: str) -> Path:
+    """Where ``LocalStorage`` puts the object named ``key``.
+
+    Read at call time, so a test that repoints ``local_storage_dir`` at its own
+    ``tmp_path`` is followed.
+    """
+    return Path(settings.local_storage_dir) / key
+
+
+def stored_bytes(key: str) -> bytes:
+    """What storage holds at ``key``, read off the local root.
+
+    The production protocol has no whole-object read (a staged archive runs to
+    4 GB, so ``get_to_path`` streams instead), and a test that wants to know
+    whether an object survived a sweep needs one. Raises ``FileNotFoundError``
+    on a key holding nothing, which is what the miss assertions expect.
+    """
+    return stored_path(key).read_bytes()
+
+
+def store_bytes(data: bytes, key: str) -> None:
+    """Put ``data`` at ``key`` on the local root, skipping the upload path.
+
+    For tests that need an object staged before the call under test, not tests
+    of the upload itself.
+    """
+    path = stored_path(key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+
+
+def write_archive_js(dest: Path, entries: list[dict[str, Any]]) -> None:
+    """Write ``tweets.js`` under ``dest`` wrapping ``entries`` in the export shape.
+
+    Each entry is a raw X-export tweet dict; the reader unwraps
+    ``window.YTD.tweets.part0 = [{"tweet": ...}, ...]``.
+    """
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / "tweets.js").write_text(
+        "window.YTD.tweets.part0 = " + json.dumps([{"tweet": e} for e in entries]),
+        encoding="utf-8",
+    )
+
 
 # 1×1 red JPEG, ~635 bytes, no EXIF, no ICC. Round-trips through any
 # image decoder (Pillow, libvips, browser, OS preview) cleanly.

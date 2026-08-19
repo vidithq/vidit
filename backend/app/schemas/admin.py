@@ -28,10 +28,8 @@ InviteCodeStatus = Literal["active", "exhausted", "revoked", "expired"]
 class AdminInviteCodeCreate(BaseModel):
     """Body for `POST /admin/invite-codes`.
 
-    The service hardcodes ``max_uses=1`` so each code maps to exactly one
-    analyst and the audit trail (`used_by`, `used_at`) is unambiguous. The
-    `invite_codes.max_uses INT` column stays for forward-compat with bulk
-    invites, but the API doesn't expose it today.
+    Every code is single-use, so each one maps to exactly one analyst and the
+    audit trail (`used_by`, `used_at`) is unambiguous.
 
     ``x_handle`` optionally binds the code to an X handle: redemption copies
     it onto the new account (the bot-attribution link). Same normalization
@@ -64,11 +62,11 @@ class AdminInviteRedeemerRead(BaseModel):
     # ``done`` archive-import jobs (a queued / failed upload is not an import).
     archives_imported: int
     # Sum of ``bot_mentions.events_created`` for the account's X handle: how
-    # many drafts the bot minted for them, ever. Historical by design: a
-    # draft deleted later still counted as bot activity.
+    # many detections the bot minted for them, ever. Historical by design: a
+    # detection deleted later still counted as bot activity.
     bot_detection_count: int
-    # Live ``detected`` drafts they own right now. The purge endpoint sweeps
-    # soft-deleted drafts too, so it may remove more than this counter shows.
+    # Live detections they own right now. The purge endpoint sweeps
+    # soft-deleted detections too, so it may remove more than this counter shows.
     detected_count: int
     # Live ``geolocated`` events they own.
     geolocated_count: int
@@ -89,18 +87,13 @@ class AdminInviteCodeRead(BaseModel):
 
     id: uuid.UUID
     code: str
-    max_uses: int
-    use_count: int
     expires_at: datetime | None
-    revoked_at: datetime | None
     created_at: datetime
     status: InviteCodeStatus
     # The X handle the code binds, copied onto the account at redemption.
     x_handle: str | None
-    # The *first* consumer, if any, with their onboarding stats. For
-    # single-use codes (the default) it's the only one; multi-use codes still
-    # surface only the first — a full per-use audit would need an
-    # `invite_code_uses` junction table.
+    # The account that redeemed the code, with its onboarding stats. NULL
+    # while the code is unredeemed, and again once that account is erased.
     redeemer: AdminInviteRedeemerRead | None
     used_at: datetime | None
 
@@ -204,7 +197,7 @@ class AdminEventModerationRead(BaseModel):
 class AdminPurgeDetectedResponse(BaseModel):
     """Response for `DELETE /admin/users/{id}/detected-events`.
 
-    The broken-archive repair: every ``detected`` draft the user owns is
+    The broken-archive repair: every detection the user owns is
     hard-deleted (rows + S3 media), the account itself untouched. The counts
     are the copy-pasteable record of what was swept.
     """
@@ -243,10 +236,10 @@ class AdminMaintenanceResponse(BaseModel):
     expired: int | None = None
     old_consumed: int | None = None
     pending_registrations_deleted: int | None = None
-    # Completion digest: analysts written to, the drafts those messages
+    # Completion digest: analysts written to, the detections those messages
     # covered, and the sends the provider rejected.
     analysts_notified: int | None = None
-    drafts_pending: int | None = None
+    detections_pending: int | None = None
     digest_send_failures: int | None = None
 
 
@@ -256,9 +249,9 @@ class AdminDetectionStatsRead(BaseModel):
     A machine detection is a row imported from X, ``detected_from_url`` set
     (the archive backfill / the bot); a human submit always carries NULL there.
 
-    Reject-rate: of every machine detection, the fraction dismissed while still
-    a draft, whichever door they left through. A machine detection counts as a
-    reject if either an owner closed it straight out of ``detected``
+    Reject-rate: of every machine detection, the fraction dismissed before it
+    was published, whichever door they left through. A machine detection counts
+    as a reject if either an owner closed it straight out of ``detected``
     (``status = 'closed'`` with ``before_closed_status = 'detected'``) or an
     admin soft-deleted it while it was still ``detected``
     (``deleted_at IS NOT NULL`` with ``status = 'detected'``). A detection the
@@ -273,12 +266,12 @@ class AdminDetectionStatsRead(BaseModel):
 
     Two counting edges the metric accepts, both favouring over-counting
     dismissals over under-counting them: an owner hard-delete
-    (``DELETE /events/{id}`` on an own draft) removes the row from both counts
+    (``DELETE /events/{id}`` on an own detection) removes the row from both counts
     entirely; an account-departure cascade soft-delete counts that account's
-    pending drafts as rejects.
+    pending detections as rejects.
 
     The ``pending_*`` counts profile the live ``detected`` queue (awaiting
-    review, ``deleted_at IS NULL``, machine rows only): how many drafts are
+    review, ``deleted_at IS NULL``, machine rows only): how many detections are
     missing a piece the geolocate floor will demand, so a low-quality
     extraction run is visible before an analyst opens the queue.
     """

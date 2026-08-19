@@ -12,7 +12,7 @@ analysts will land on the day they get the invite. Contracts to lock in:
   apply the same filter, otherwise the pager counts rows it never
   serves. `geolocations_count` on the profile payload counts the same
   set: it is what the Insights card's Geolocated tile prints, directly
-  above that feed, so a tile counting machine drafts makes the page
+  above that feed, so a tile counting machine detections makes the page
   contradict itself. `GET /users/{u}/stats` is where the analyst's
   documented work is reported: the three worked statuses, minus the
   requests they withdrew, split by status and summed as `total_events`.
@@ -258,12 +258,12 @@ def test_feed_serves_published_work_only(db, live_user):
     `closed`-off-`detected` row is one they threw out, so listing either
     as their submission misrepresents them to every visitor. A
     `requested` row is an open call for help, an ask rather than an
-    answer, so it is out too. The drafts stay reachable: the owner works
+    answer, so it is out too. The detections stay reachable: the owner works
     them from their detections queue, and the coverage map still plots
     them beside the published rows with a split count.
     """
     published = _make_geo(db, author=live_user, title="published")
-    draft = _make_geo(db, author=live_user, title="draft", status=STATUS_DETECTED)
+    detection = _make_geo(db, author=live_user, title="detection", status=STATUS_DETECTED)
     rejected = _make_geo(
         db,
         author=live_user,
@@ -277,7 +277,7 @@ def test_feed_serves_published_work_only(db, live_user):
     body = client.get(f"/api/v1/users/{live_user.username}/events").json()
 
     assert [row["id"] for row in body["items"]] == [str(published.id)]
-    excluded = {str(draft.id), str(rejected.id), str(request.id), str(removed.id)}
+    excluded = {str(detection.id), str(rejected.id), str(request.id), str(removed.id)}
     assert excluded.isdisjoint({row["id"] for row in body["items"]})
     # The pager must not count rows it will never serve: a `total` of 5
     # over one served row is how a "Show more" that leads nowhere ships.
@@ -291,12 +291,12 @@ def test_profile_count_counts_published_work_only(db, live_user):
     It is the Insights card's Geolocated tile number, and the tile sits
     above a Recent submissions block and a coverage split that both count
     published rows. An analyst who ran an archive import owns hundreds of
-    machine drafts, so counting those here tiles a figure an order of
+    machine detections, so counting those here tiles a figure an order of
     magnitude above everything under it and credits them with claims they
     never made.
     """
     _make_geo(db, author=live_user, title="published")
-    _make_geo(db, author=live_user, title="draft", status=STATUS_DETECTED)
+    _make_geo(db, author=live_user, title="detection", status=STATUS_DETECTED)
     _make_geo(
         db,
         author=live_user,
@@ -348,7 +348,7 @@ def test_profile_count_and_stats_report_different_numbers(db, live_user):
 
 def test_feed_orders_published_rows_newest_event_date_first(db, live_user):
     """Order is over the filtered set, not a filtered slice of a wider
-    ordering: a draft dated between two published rows must not consume
+    ordering: a detection dated between two published rows must not consume
     a page slot or reshuffle what survives it."""
     _make_geo(db, author=live_user, event_date=date(2025, 1, 1), title="old")
     _make_geo(db, author=live_user, event_date=date(2026, 12, 1), title="new")
@@ -357,7 +357,7 @@ def test_feed_orders_published_rows_newest_event_date_first(db, live_user):
         db,
         author=live_user,
         event_date=date(2026, 9, 1),
-        title="draft",
+        title="detection",
         status=STATUS_DETECTED,
     )
 
@@ -431,7 +431,68 @@ def test_patch_me_replaces_external_links_wholesale(live_user, db):
 
     db.expire_all()
     refreshed = db.query(User).filter(User.id == live_user.id).first()
-    assert refreshed.external_links == {"github": "@me-gh-2"}
+    assert refreshed.external_links == {"github": "me-gh-2"}
+
+
+@pytest.mark.parametrize(
+    ("field", "sent", "stored"),
+    [
+        ("x", "@ana", "ana"),
+        ("x", "ana", "ana"),
+        ("x", "https://x.com/ana", "ana"),
+        ("x", "https://twitter.com/ana/", "ana"),
+        ("x", "https://www.x.com/ana", "ana"),
+        ("github", "https://github.com/vidithq", "vidithq"),
+        ("github", "@vidit-hq", "vidit-hq"),
+        ("discord", "@ana", "ana"),
+        ("discord", "ana#1234", "ana#1234"),
+    ],
+)
+def test_patch_me_stores_the_handle_alone(live_user, db, field, sent, stored):
+    """Both accepted forms land on the column as the bare handle.
+
+    One form on the column is what lets every reader print the account name
+    without parsing a URL, and it is why the profile can link an ``x`` value to
+    the platform without trusting the host the analyst typed.
+    """
+    response = client.patch(
+        "/api/v1/users/me",
+        json={"external_links": {field: sent}},
+        headers=login_as(client, live_user),
+    )
+    assert response.status_code == 200
+    assert response.json()["external_links"] == {field: stored}
+
+    db.expire_all()
+    refreshed = db.query(User).filter(User.id == live_user.id).first()
+    assert refreshed.external_links == {field: stored}
+
+
+@pytest.mark.parametrize(
+    ("field", "sent"),
+    [
+        # A post is not an account, and neither is a product path.
+        ("x", "https://x.com/ana/status/1"),
+        ("x", "https://x.com/i/flow"),
+        # A mirror names the platform's account on a host the platform does
+        # not own, so linking it would send readers somewhere else entirely.
+        ("x", "https://evil.example/ana"),
+        # Neither a handle nor a URL: the message says which two forms exist.
+        ("x", "x.com/ana"),
+        ("x", "some user"),
+        ("x", "sixteencharacters"),
+        ("github", "https://github.com/orgs/vidithq/people"),
+        ("discord", "https://discord.gg/abc"),
+        ("discord", "ana/1234"),
+    ],
+)
+def test_patch_me_rejects_a_value_that_is_not_an_account(live_user, field, sent):
+    response = client.patch(
+        "/api/v1/users/me",
+        json={"external_links": {field: sent}},
+        headers=login_as(client, live_user),
+    )
+    assert response.status_code == 422
 
 
 def test_patch_me_omitted_fields_preserved(live_user, db):
@@ -450,7 +511,7 @@ def test_patch_me_omitted_fields_preserved(live_user, db):
     db.expire_all()
     refreshed = db.query(User).filter(User.id == live_user.id).first()
     assert refreshed.bio == "seeded bio"
-    assert refreshed.external_links == {"x": "@edited"}
+    assert refreshed.external_links == {"x": "edited"}
 
 
 def test_patch_me_empty_string_clears_bio(live_user, db):

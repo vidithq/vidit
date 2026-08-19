@@ -9,15 +9,11 @@ import {
 } from "react";
 
 /**
- * The pin + dismiss + placement machinery shared by the anchored popovers
- * (`FieldHelp`, `OverflowMenu`): shown from JS hover state on the anchor (not a
- * CSS `group-hover`, so a surrounding `.group` can't trigger it), pinned on
- * click (touch devices don't hover), closed by outside-click, Escape, scroll,
- * resize, or pointer-leave. Pass `hover: false` for a click-only popover
- * (`OverflowMenu`: a menu holding a delete must not open under a passing
- * pointer, and must not open on a tab through the trigger either), which drops
- * the hover and focus handlers and leaves the click toggle, `close`, and every
- * dismissal path in place.
+ * The pin + dismiss + placement machinery behind an anchored popover
+ * (`FieldHelp`): shown from JS hover state on the anchor (not a CSS
+ * `group-hover`, so a surrounding `.group` can't trigger it), pinned on click
+ * (touch devices don't hover), closed by outside-click, Escape, scroll, resize,
+ * or pointer-leave.
  *
  * The popover is meant to render in a portal with `position: fixed`
  * (`popoverStyle`) so an `overflow` ancestor (e.g. the map detail side panel)
@@ -29,7 +25,7 @@ import {
  * Callers spread `wrapperProps` / `anchorProps` / `popoverProps` on their own
  * markup and keep full control of icon, content, and classes.
  */
-export function usePinnedPopover({ hover = true }: { hover?: boolean } = {}) {
+export function usePinnedPopover() {
   const [pinned, setPinned] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
@@ -127,27 +123,19 @@ export function usePinnedPopover({ hover = true }: { hover?: boolean } = {}) {
       // out). Leaving un-pins so a desktop click-then-move-away dismisses
       // naturally; touch never fires mouseleave, so a tapped pin stays until
       // an outside tap.
-      ...(hover
-        ? {
-            onMouseEnter: () => {
-              cancelClose();
-              setHovered(true);
-            },
-            onMouseLeave: () => {
-              setPinned(false);
-              scheduleClose();
-            },
-          }
-        : {}),
+      onMouseEnter: () => {
+        cancelClose();
+        setHovered(true);
+      },
+      onMouseLeave: () => {
+        setPinned(false);
+        scheduleClose();
+      },
     },
     anchorProps: {
       ref: anchorRef,
-      ...(hover
-        ? {
-            onFocus: () => setHovered(true),
-            onBlur: () => setHovered(false),
-          }
-        : {}),
+      onFocus: () => setHovered(true),
+      onBlur: () => setHovered(false),
       onClick: (e: React.MouseEvent) => {
         // The anchor often sits inside a clickable card / label, so do not let
         // the click bubble to the parent.

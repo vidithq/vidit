@@ -6,8 +6,9 @@ loop, proof-image intake, the DB commit, and the post-commit S3 sweep on
 rollback. The write verbs map one-to-one onto the lifecycle:
 :func:`create_with_evidence` births a ``geolocated`` row, :func:`create_request`
 a ``requested`` one, :func:`geolocate` is the one generalized transition to
-``geolocated`` (fulfil a request, vouch a detection), and :func:`close` is the
-terminal withdraw / reject.
+``geolocated`` (fulfil a request, vouch a detection), :func:`save_version` corrects a
+published row and files the superseded state as a version, and :func:`close`
+is the terminal withdraw / reject.
 
 Errors are typed `EventError` subclasses with stable `.code`
 strings, translated to HTTP via the same `{code, message}` envelope as
@@ -47,7 +48,7 @@ from app.models.event import (
 from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
-from app.services import source_archive
+from app.services import source_archive, versions
 from app.services.event_filters import visible_events
 from app.services.evidence_intake import (
     EvidenceIntakeError,
@@ -92,7 +93,7 @@ class InvalidCoordinatesError(EventError):
 class CoordinatesRequiredError(EventError):
     """The transition requires coordinates and the row carries none.
 
-    A machine ``detected`` draft may be born without a point (the import found
+    A machine detection may be born without a point (the import found
     no location in the thread), so the requirement bites at the promotion, the
     same shape as :class:`SourceUrlRequiredError`. Maps to 400.
     """
@@ -115,7 +116,7 @@ class ProofImageRequiredError(EventError):
 class SourceUrlRequiredError(EventError):
     """The geolocate promotion requires a source URL.
 
-    A machine ``detected`` draft may be born without one (the imported tweet
+    A machine detection may be born without one (the imported tweet
     declared no source), so the requirement bites at the transition: a
     ``geolocated`` row always carries its footage source (the same invariant
     ``ck_events_source_url_status`` pins at the DB). Maps to 400.
@@ -152,12 +153,27 @@ class EventStateError(EventError):
     """The event's lifecycle state forbids the requested transition.
 
     Raised when a geolocate targets a row that isn't ``requested`` /
-    ``detected`` (a ``geolocated`` row is frozen, ``closed`` is terminal), or a
-    close targets a row already past those states. Maps to 409: the request is
-    well-formed but conflicts with the row's current state.
+    ``detected`` (a ``geolocated`` row is past that transition, ``closed`` is
+    terminal), when a close targets a row already past those states, or when a
+    :func:`save_version` targets a row that is not ``geolocated`` (there is no version to
+    supersede before publication). Maps to 409: the request is well-formed but
+    conflicts with the row's current state.
     """
 
     code = "invalid_state"
+
+
+class NothingChangedError(EventError):
+    """The edit would file a version carrying the state the live row carries.
+
+    A version spends a number in a public address space and prints a row in the
+    history, so an edit that moves no versioned field is refused rather than
+    recorded: the record must not claim a correction that did not happen. The
+    note is not a versioned field, so a note on its own does not lift this.
+    Maps to 409, like the other "the row's state forbids this" verdicts.
+    """
+
+    code = "nothing_changed"
 
 
 def validate_coordinates(lat: float, lng: float) -> None:
@@ -214,6 +230,28 @@ def truncate_secondary_source_urls(urls: list[str], source_url: str | None) -> l
     hand if they matter.
     """
     return _clean_secondary_source_urls(urls, source_url)[:MAX_SECONDARY_SOURCE_LINKS]
+
+
+def pair_secondary_snapshots(urls: list[str], snapshots: list[str]) -> dict[str, str]:
+    """Map each submitted mirror to the archived copy posted beside it.
+
+    The forms post two aligned repeated fields, ``secondary_source_urls`` and
+    ``secondary_snapshot_urls``, one entry each per row, blank where the analyst
+    archived nothing. Position is how they arrive and the link is how they are
+    stored, so the pairing happens here, on the raw lists, before
+    :func:`normalize_secondary_source_urls` drops the blank, duplicate and
+    primary-equal rows that would shift every later index.
+
+    A short or absent snapshot list pairs what it covers and leaves the rest
+    unarchived, so a client that posts no copies posts nothing extra. The first
+    entry wins on a repeated mirror, matching the one the normalization keeps.
+    """
+    paired: dict[str, str] = {}
+    for url, snapshot in zip(urls, snapshots, strict=False):
+        link, copy = url.strip(), snapshot.strip()
+        if link and copy:
+            paired.setdefault(link, copy)
+    return paired
 
 
 def build_source_link_rows(urls: list[str]) -> list[EventSourceLink]:
@@ -308,15 +346,15 @@ _PROOF_IMAGE_JSONPATH = '$.** ? (@.type == "image" && @.attrs.src.type() == "str
 # The queue filter values ``GET /events/detections`` accepts, ``all`` being no
 # narrowing at all. Sibling of ``event_filters.VIEWS``: the router validates
 # against it and answers 422 on anything else.
-DRAFT_READINESS = frozenset({"all", "ready", "incomplete"})
+DETECTION_READINESS = frozenset({"all", "ready", "incomplete"})
 
 
-def draft_ready_predicate() -> ColumnElement[bool]:
-    """The publish floor of :func:`_publish_draft`, as one SQL predicate.
+def detection_ready_predicate() -> ColumnElement[bool]:
+    """The publish floor of :func:`_publish_detection`, as one SQL predicate.
 
-    A ``detected`` draft is *ready* when everything the analyst cannot supply
+    A detection is *ready* when everything the analyst cannot supply
     from the review form's two picks is already on the row, leg for leg the
-    checks :func:`_publish_draft` runs before it flips the status:
+    checks :func:`_publish_detection` runs before it flips the status:
 
     1. a non-blank ``source_url``, there a ``strip()`` test, here non-NULL and
        holding a non-space character;
@@ -326,7 +364,7 @@ def draft_ready_predicate() -> ColumnElement[bool]:
     4. :func:`_require_proof_image`, here :data:`_PROOF_IMAGE_JSONPATH`.
 
     The two remaining floor legs (a conflict, a ``capture_source`` tag) are the
-    judgment the review supplies per row, so a draft missing them is still
+    judgment the review supplies per row, so a detection missing them is still
     ready in this sense. That is the same line ``batchCompletionBlockers``
     (``frontend/src/lib/events.ts``) draws, and the three implementations are
     held to one verdict by ``tests/events/test_detections_readiness.py``.
@@ -342,7 +380,7 @@ def draft_ready_predicate() -> ColumnElement[bool]:
         Event.source_url.isnot(None),
         Event.source_url.regexp_match("[^[:space:]]"),
         Event.event_coords.isnot(None),
-        # ``.any()`` lowers to EXISTS, so a draft with several attachments is
+        # ``.any()`` lowers to EXISTS, so a detection with several attachments is
         # not row-multiplied into the count.
         Event.media.any(Media.role == "source"),
         func.jsonb_path_exists(Event.proof, _PROOF_IMAGE_JSONPATH),
@@ -393,6 +431,7 @@ async def create_with_evidence(
     file: UploadFile,
     proof_files: list[UploadFile],
     source_snapshot_url: str | None = None,
+    secondary_snapshot_urls: list[str] | None = None,
 ) -> Event:
     """Create a ``geolocated`` event row + its evidence (a direct geolocate).
 
@@ -409,8 +448,9 @@ async def create_with_evidence(
     (the camera point) are optional, both-or-neither.
 
     ``source_snapshot_url`` is the archived copy of ``source_url`` the analyst
-    made while filling the form: optional, checked by
-    ``services/source_archive`` and stored as the event's archived source in
+    made while filling the form, and ``secondary_snapshot_urls`` carries the
+    same per mirror, aligned with ``secondary_source_urls``: optional, checked
+    by ``services/source_archive`` and stored as the event's archived copies in
     this same transaction, so a rejected paste (:class:`SnapshotRejected`,
     raised before any upload) creates no event.
 
@@ -435,6 +475,10 @@ async def create_with_evidence(
     """
     validate_coordinates(lat, lng)
     capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
+    # Paired off the raw list, before normalization renumbers it.
+    mirror_snapshots = pair_secondary_snapshots(
+        secondary_source_urls, secondary_snapshot_urls or []
+    )
     secondary_links = normalize_secondary_source_urls(secondary_source_urls, source_url)
 
     # Every event needs its footage: exactly one source file.
@@ -474,11 +518,13 @@ async def create_with_evidence(
     # row so the owner-among-geolocators invariant lives in one place.
     _credit_geolocator(db, geo, current_user)
 
-    # The copy of the source the analyst archived while filling the form. The
-    # row needs the event's id, so it is staged after the flush, and still
-    # before the first upload: a rejected paste costs no S3 round-trip.
+    # The copies the analyst archived while filling the form, the source's and
+    # the mirrors'. The rows need the event's id, so they are staged after the
+    # flush, and still before the first upload: a rejected paste costs no S3
+    # round-trip.
     if source_snapshot_url:
         source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
+    source_archive.stage_secondary_snapshots(db, event=geo, snapshots=mirror_snapshots)
 
     await attach_evidence_and_commit(
         db,
@@ -515,6 +561,7 @@ async def create_request(
     file: UploadFile,
     proof_files: list[UploadFile],
     source_snapshot_url: str | None = None,
+    secondary_snapshot_urls: list[str] | None = None,
 ) -> Event:
     """Create a ``requested`` event row + its source media (an open call).
 
@@ -535,10 +582,11 @@ async def create_request(
     geolocate path. Unlike a geolocation there is no proof-image floor, so a
     blank request stays imageless.
 
-    ``source_snapshot_url`` is the archived copy of ``source_url``, on the same
-    terms as :func:`create_with_evidence`: the poster archives the source while
-    filling the one form that posts either shape, so the paste is kept whichever
-    button they press.
+    ``source_snapshot_url`` and ``secondary_snapshot_urls`` are the archived
+    copies of the declared links, on the same terms as
+    :func:`create_with_evidence`: the poster archives them while filling the one
+    form that posts either shape, so the pastes are kept whichever button they
+    press.
 
     Failure modes: :class:`InvalidCoordinatesError` on a bad / half-typed
     guess, :class:`MediaRequiredError` with no file,
@@ -549,6 +597,9 @@ async def create_request(
     """
     guess_point = _optional_point(lat, lng, field="event_coords")
     capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
+    mirror_snapshots = pair_secondary_snapshots(
+        secondary_source_urls, secondary_snapshot_urls or []
+    )
     secondary_links = normalize_secondary_source_urls(secondary_source_urls, source_url)
 
     _require_submission_media(file is not None)
@@ -589,6 +640,7 @@ async def create_request(
     # before the first upload.
     if source_snapshot_url:
         source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
+    source_archive.stage_secondary_snapshots(db, event=geo, snapshots=mirror_snapshots)
 
     await attach_evidence_and_commit(
         db,
@@ -626,6 +678,7 @@ async def geolocate(
     files: list[UploadFile],
     proof_files: list[UploadFile],
     source_snapshot_url: str | None = None,
+    secondary_snapshot_urls: list[str] | None = None,
 ) -> Event:
     """Transition a ``requested`` or ``detected`` event to ``geolocated``.
 
@@ -634,10 +687,12 @@ async def geolocate(
     the whole state (title, coordinates, source URL, event date + time, source
     post time, the graphic-content flag, proof + its images, tags, and the
     source media: ``files`` added, ``remove_media_ids`` dropped), and on
-    success the row becomes
-    ``geolocated`` and frozen, stamped ``geolocated_at``, with the caller
-    credited in ``event_geolocators``. ``detected_from_url`` (the provenance
-    anchor) and ``status`` carry no form field.
+    success the row becomes ``geolocated``, stamped ``geolocated_at``, with the
+    caller credited in ``event_geolocators``. From there it is corrected through
+    :func:`save_version`, which files each superseded version; what publication
+    fixes is the evidence anchor (``source_url`` and the source media), not the
+    record. ``detected_from_url`` (the provenance anchor) and ``status`` carry
+    no form field.
 
     ``is_graphic`` is the one field the form cannot lower: it ratchets, so a
     posted false leaves an already-flagged event flagged. Clearing it is
@@ -651,7 +706,7 @@ async def geolocate(
 
     Permissions differ by the source state:
 
-    * ``detected``: a machine draft, owner-only: ``current_user`` must be its
+    * ``detected``: a machine detection, owner-only: ``current_user`` must be its
       ``owner_id`` (403 otherwise). It stays the owner.
     * ``requested``: an open call anyone may answer: ``owner_id`` (the
       edit-rights owner) transfers to ``current_user``, the fulfiller.
@@ -667,7 +722,7 @@ async def geolocate(
 
     The evidence floor a direct create meets is enforced here, before any S3
     work, since a request / machine detection is born incomplete: a non-blank
-    source URL (a ``detected`` draft may be born without one), exactly one
+    source URL (a detection may be born without one), exactly one
     source media (kept or new), at least one proof image in the final proof
     body, a conflict, and the curated ``capture_source`` tag.
 
@@ -677,8 +732,9 @@ async def geolocate(
     mirrors, not the evidence origin, so a fulfiller correcting them is an
     edit, not a rewrite of the requester's claim.
 
-    ``source_snapshot_url`` is the archived copy of the stored source URL, same
-    field the submit form carries: optional, checked by
+    ``source_snapshot_url`` is the archived copy of the stored source URL and
+    ``secondary_snapshot_urls`` carries one per submitted mirror, the same
+    fields the submit form carries: optional, checked by
     ``services/source_archive``, and stored in this transaction. Whether or not
     the form carries one, ``reconcile_source_archive`` runs, so an edit that
     changes the source URL never leaves a copy of the old one filed as the
@@ -711,7 +767,7 @@ async def geolocate(
     keep_requester_source_url = geo.status == STATUS_REQUESTED
 
     # The source floor at promotion: a ``geolocated`` row always carries its
-    # footage source. A ``detected`` draft may be born source-less, so the form
+    # footage source. A detection may be born source-less, so the form
     # value (required but possibly blank) must be a real URL here; a requested
     # fulfilment keeps the requester's value, non-NULL by
     # ``ck_events_source_url_status``, checked all the same.
@@ -721,6 +777,9 @@ async def geolocate(
 
     validate_coordinates(lat, lng)
     capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
+    mirror_snapshots = pair_secondary_snapshots(
+        secondary_source_urls, secondary_snapshot_urls or []
+    )
     # Normalized against the source URL that will actually be stored, so a
     # fulfiller who repeats the requester's anchor among the mirrors has it
     # dropped rather than stored twice.
@@ -792,12 +851,15 @@ async def geolocate(
 
     # The archived source follows the source URL this write stores: a copy of a
     # URL that is no longer the source is re-filed or dropped, and the paste the
-    # form carried fills the slot. Both run before the upload, so a rejected
-    # paste costs no S3 round-trip, and inside this transaction, so a failure
-    # takes them back with everything else.
+    # form carried fills the slot. The mirrors' copies file against the links
+    # ``replace_source_links`` just wrote, so a snapshot posted beside a mirror
+    # this write dropped is dropped with it. All of it runs before the upload,
+    # so a rejected paste costs no S3 round-trip, and inside this transaction,
+    # so a failure takes it back with everything else.
     source_archive.reconcile_source_archive(db, event=geo)
     if source_snapshot_url:
         source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
+    source_archive.stage_secondary_snapshots(db, event=geo, snapshots=mirror_snapshots)
 
     # Upload new files + commit everything atomically; rollback-sweeps the new
     # uploads on failure. Empty ``files`` still commits the field + removal edits.
@@ -817,22 +879,280 @@ async def geolocate(
     return geo
 
 
+async def save_version(
+    db: Session,
+    *,
+    geo: Event,
+    current_user: User,
+    title: str,
+    lat: float,
+    lng: float,
+    capture_source_lat: float | None,
+    capture_source_lng: float | None,
+    secondary_source_urls: list[str],
+    event_date: date | None,
+    event_time: time | None,
+    source_posted_at: datetime | None,
+    proof_data: dict | None,
+    tag_ids: list,
+    conflict_ids: list,
+    is_graphic: bool = False,
+    proof_files: list[UploadFile],
+    note: str | None = None,
+    source_snapshot_url: str | None = None,
+    secondary_snapshot_urls: list[str] | None = None,
+    detected_from_snapshot_url: str | None = None,
+) -> Event:
+    """Correct a published event, filing the superseded state as a version.
+
+    Owner-only, and only on a ``geolocated`` row: before publication a row is
+    still being written (a detection is machine output its owner submits, a
+    request is an open call anyone answers), so there is no vouched version for
+    an edit to supersede. The pre-edit state is snapshotted into
+    ``event_versions`` at the current ``version_no``, the edit is applied, and
+    the row takes the next number, all in one transaction under the same row
+    lock :func:`close` and :func:`geolocate` take.
+
+    **The evidence anchor is immutable.** ``source_url`` and the ``source``
+    media are what the published claim rests on, so this write accepts neither.
+    A published row is past :func:`close` (that verb is the withdraw / reject
+    for a ``requested`` or ``detected`` row), so a wrong source on a published
+    event is an admin matter: the owner has no path to it. Everything else the
+    publish form wrote is editable and versioned: title, both coordinate sets,
+    the event date and hour, the source post time, the graphic-content flag,
+    tags, conflicts, the proof body and its inline images, and the secondary
+    source links (mirrors, outside the anchor).
+
+    ``source_posted_at`` is optional, matching what publication accepts: a
+    detection whose source post time was never resolved publishes through
+    :func:`_publish_detection` with the column NULL, so an edit of that row must
+    be able to leave it NULL rather than be forced to invent an instant. ``None``
+    therefore means "keep what the row holds": an owner who blanks the input
+    leaves the stored instant alone, and only a parsed value replaces it.
+
+    ``is_graphic`` ratchets exactly as on :func:`geolocate`: a posted false
+    leaves an already-flagged event flagged, and only ``PATCH
+    /admin/events/{id}/moderation`` clears it.
+
+    ``source_snapshot_url`` records the archived copy of the event's stored
+    source URL, ``detected_from_snapshot_url`` the copy of the post a machine
+    detection came from, and ``secondary_snapshot_urls`` one copy per submitted
+    mirror. All three archive a link rather than changing it, which is why the
+    two immutable ones are accepted here at all, and all three are staged after
+    the version this edit supersedes is filed, so one call files one version and
+    the new one carries the copies. A mirror this write drops takes its stored
+    copy with it (``source_archive.drop_mirror_archives``), since a copy filed
+    against a link the event no longer declares archives nothing the record
+    shows.
+
+    The evidence floor a publication met is re-checked against the post-edit
+    state, so an edit cannot drop a published row below it: a ``source`` media
+    on the row, at least one proof image in the final proof body, a conflict,
+    and the curated ``capture_source`` tag. Proof images ride in ``proof_files``
+    and resolve against the doc's ``placeholder://`` srcs, exactly as on the
+    publish forms; an image the new body drops is deleted only if no readable
+    version displays it (see ``services/versions.referenced_media_urls``).
+
+    **A version has to change something.** The incoming state is compared
+    against the live row on the versioned fields
+    (``services/versions.COMPARED_FIELDS``, plus the archived copies), and an
+    edit that moves none of them raises :class:`NothingChangedError` before the
+    version is filed and before any upload runs.
+
+    **A save that only archives is exempt from the version ceiling.** An event
+    stops at ``MAX_VERSIONS_PER_EVENT`` versions, but a save whose only change
+    is archived copies files its version regardless: preserving evidence is what
+    the catalog is for, and a source that dies while the row sits at the ceiling
+    would be unarchivable for good.
+
+    Raises :class:`EventStateError` (409) off ``geolocated``, the 403 of
+    ``ensure_owner`` for anyone but the owner, :class:`NothingChangedError`
+    (409) on an edit that moves nothing,
+    ``services/versions.VersionLimitError`` (409) on an edit to a row already at
+    ``MAX_VERSIONS_PER_EVENT``, :class:`InvalidCoordinatesError` /
+    :class:`InvalidProofError` / :class:`ProofImageRequiredError` /
+    :class:`MediaRequiredError` / :class:`TagRequirementsError` /
+    :class:`TooManySourceLinksError` (400) on a bad value or an unmet floor, and
+    the shared file-validation errors. Returns the refreshed row, one version
+    further on.
+    """
+    # Same lock discipline as ``geolocate`` and ``close``: serialize on the row,
+    # then re-read status and ownership under the lock. ``populate_existing()``
+    # is what makes the re-read real, since the router already put this row in
+    # the session identity map. Two concurrent edits therefore take their
+    # ``version_no`` in a defined order rather than both snapshotting version N.
+    geo = db.query(Event).filter(Event.id == geo.id).populate_existing().with_for_update().one()
+    ensure_owner(geo, current_user)
+    if geo.status != STATUS_GEOLOCATED:
+        raise EventStateError("Only a geolocated event can be edited")
+
+    validate_coordinates(lat, lng)
+    capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
+    mirror_snapshots = pair_secondary_snapshots(
+        secondary_source_urls, secondary_snapshot_urls or []
+    )
+    # Normalized against the stored anchor, which this write cannot change, so a
+    # mirror equal to the source URL is dropped rather than stored twice.
+    secondary_links = normalize_secondary_source_urls(secondary_source_urls, geo.source_url)
+
+    proof_data = _sanitize_proof(proof_data, allow_placeholders=True)
+
+    # The published floor, re-checked before any S3 work against the post-edit
+    # state. The source-media leg reads the row rather than a form field: the
+    # anchor is immutable here, so the only way it could fail is a row that was
+    # already broken.
+    _require_submission_media(any(m.role == "source" for m in geo.media))
+    _require_proof_image(proof_data if proof_data is not None else geo.proof)
+    effective_tags = _resolve_tags(db, tag_ids)
+    effective_conflicts = _resolve_conflicts(db, conflict_ids)
+    _require_submission_floor(effective_tags, effective_conflicts)
+
+    # An edit that moves nothing is refused before anything is staged. A version
+    # spends a number in a public address space (``/events/{id}/vN``) and prints
+    # a row in the history, so one carrying the state the live row already
+    # carries tells a reader that a correction happened when none did. Compared
+    # on the incoming values against the row under the lock, so a refused edit
+    # files no version and uploads no file. The note is not part of the
+    # comparison: it annotates a change, and on its own there is none to
+    # annotate.
+    proposed = {
+        "title": title,
+        "event_coords": {"lat": lat, "lng": lng},
+        "capture_source_coords": versions.point_shape(capture_point),
+        "event_date": event_date.isoformat() if event_date is not None else None,
+        "event_time": event_time.isoformat() if event_time is not None else None,
+        # ``None`` keeps what the row holds, so the proposed value is the stored
+        # one; anything else is what the write would store.
+        "source_posted_at": (
+            source_posted_at.isoformat()
+            if source_posted_at is not None
+            else (geo.source_posted_at.isoformat() if geo.source_posted_at is not None else None)
+        ),
+        # Ratcheted, exactly as the write below ratchets it: a posted false on a
+        # flagged row changes nothing.
+        "is_graphic": geo.is_graphic or is_graphic,
+        "secondary_source_urls": secondary_links,
+        "tags": versions.tag_entries(effective_tags),
+        "conflicts": versions.conflict_entries(effective_conflicts),
+        "proof": proof_data if proof_data is not None else geo.proof,
+    }
+    # The archived copies are their own leg: a paste is a change only where it
+    # differs from the copy that link already holds, and only for a link the
+    # post-edit row still carries, since a paste beside a dropped mirror is
+    # dropped with it. A dropped mirror is a change the list above already names.
+    # The comparison runs through ``source_archive.same_snapshot``, the writer's
+    # own fold, so a re-paste of the stored copy that picked up a trailing slash
+    # on its way through a browser reads as the copy it is.
+    stored_copies = versions.archived_pairs(geo)
+    pasted_copies = {
+        link: mirror_snapshots[link] for link in secondary_links if link in mirror_snapshots
+    }
+    if source_snapshot_url and geo.source_url is not None:
+        pasted_copies[geo.source_url] = source_snapshot_url
+    if detected_from_snapshot_url and geo.detected_from_url is not None:
+        pasted_copies[geo.detected_from_url] = detected_from_snapshot_url
+    copies_move = any(
+        not source_archive.same_snapshot(stored_copies.get(link), snapshot)
+        for link, snapshot in pasted_copies.items()
+    )
+    # Built once, here: the same object answers the no-change check and becomes
+    # the filed snapshot below, so one save reads the row's collections once.
+    current_snapshot = versions.build_snapshot(geo)
+    fields_move = not versions.matches_current(current_snapshot, proposed)
+    if not fields_move and not copies_move:
+        raise NothingChangedError(f"Nothing changed since version {geo.version_no}.")
+
+    # File the version this edit supersedes BEFORE any field moves: the snapshot
+    # reads the live collections, so it has to run against the pre-edit row. It
+    # is also what protects that version's images from the intake's proof diff
+    # below, which is why it is staged first: the diff reads the snapshots, this
+    # one included, and keeps every image a readable version still displays.
+    # The row becomes the next version in the same call, so the archived copy
+    # staged further down lands in the new version rather than in the filed one.
+    # The ceiling binds an edit and spares a save that only archives, so an
+    # original dying at version 100 can still be preserved.
+    versions.file_version(
+        db,
+        geo=geo,
+        edited_by=current_user,
+        note=note,
+        snapshot=current_snapshot,
+        enforce_ceiling=fields_move,
+    )
+
+    # Same autoflush suppression as ``geolocate``: the collection assignments
+    # lazy-load the current sets, which would flush a half-edited row.
+    with db.no_autoflush:
+        geo.title = title
+        geo.event_coords = from_shape(Point(lng, lat), srid=4326)
+        geo.capture_source_coords = capture_point
+        geo.event_date = event_date
+        geo.event_time = event_time
+        # None means keep, never clear. The form posts the whole state and an
+        # empty datetime input arrives indistinguishable from an absent field,
+        # so assigning unconditionally wiped the stored instant of a published
+        # record on an edit that never touched it.
+        if source_posted_at is not None:
+            geo.source_posted_at = source_posted_at
+        geo.is_graphic = geo.is_graphic or is_graphic
+        geo.tags = effective_tags
+        geo.conflicts = effective_conflicts
+
+    replace_source_links(db, geo, secondary_links)
+
+    # A mirror this edit removed is gone from the event, so the copy filed
+    # against it archives a link the record no longer declares. Dropped before
+    # the pastes below and after ``file_version`` above, so the filed version
+    # keeps the copies it held while the new one carries only live links. No
+    # ``reconcile_source_archive``: the source URL and the provenance link
+    # cannot move here, so neither can strand its copy.
+    source_archive.drop_mirror_archives(db, event=geo, kept=secondary_links)
+
+    # The archived copies of the two immutable links and of the submitted
+    # mirrors, filed in this same transaction and after ``file_version`` above,
+    # so they land in the version this edit produces rather than in the one it
+    # supersedes.
+    if source_snapshot_url:
+        source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
+    if detected_from_snapshot_url:
+        source_archive.stage_detected_from_snapshot(
+            db, event=geo, snapshot_url=detected_from_snapshot_url
+        )
+    source_archive.stage_secondary_snapshots(db, event=geo, snapshots=mirror_snapshots)
+
+    # No source files: the anchor is immutable, so the intake only uploads the
+    # proof body's new images and commits everything atomically.
+    await attach_evidence_and_commit(
+        db,
+        event=geo,
+        source_files=[],
+        proof_doc=proof_data,
+        proof_files=proof_files,
+        sweep_context=f"event {geo.id} save_version rollback",
+    )
+
+    db.refresh(geo)
+    # The coordinates may have moved, so the map's point cache is stale.
+    points_cache.invalidate()
+    return geo
+
+
 # The one per-row code that is not a floor verdict: a database failure on that
 # row, caught so it cannot take the rest of the batch down with it. Published as
 # part of the contract (``docs/api.md``) because a client has to be able to tell
-# "this draft is incomplete" from "retry this draft".
+# "this detection is incomplete" from "retry this detection".
 ROW_INTERNAL_ERROR_CODE = "internal_error"
 
 
 @dataclass(frozen=True)
-class DraftCompletion:
+class DetectionCompletion:
     """One row's outcome in a batch completion.
 
     ``code`` is ``None`` on a published row and the failing
     :class:`EventError`'s stable code otherwise (or
     :data:`ROW_INTERNAL_ERROR_CODE` on a database failure), with ``message`` the
     human sentence the queue renders next to that row. A failed row is
-    untouched: it stays a ``detected`` draft its owner can finish by hand.
+    untouched: it stays a detection its owner can finish by hand.
     """
 
     event_id: uuid.UUID
@@ -844,7 +1164,7 @@ def _assert_owns_all(db: Session, *, event_ids: list[uuid.UUID], current_user: U
     """403 the whole call if any targeted row belongs to someone else.
 
     Run before the first row commits, so a batch that reaches for another
-    analyst's draft publishes nothing. Ownership is the one condition treated
+    analyst's detection publishes nothing. Ownership is the one condition treated
     this way: the ids come from the caller's own queue, so a foreign one is a
     broken client rather than a row-level data problem, and the per-row results
     stay about the evidence floor. A row that no longer exists is NOT an
@@ -858,7 +1178,7 @@ def _assert_owns_all(db: Session, *, event_ids: list[uuid.UUID], current_user: U
         ensure_owner(row, current_user)
 
 
-def _publish_draft(
+def _publish_detection(
     db: Session,
     *,
     event_id: uuid.UUID,
@@ -866,7 +1186,7 @@ def _publish_draft(
     capture_source_tag: Tag | None,
     conflicts: list[Conflict],
 ) -> None:
-    """Promote one ``detected`` draft to ``geolocated`` on the evidence it
+    """Promote one detection to ``geolocated`` on the evidence it
     already carries plus the two judgment calls the batch supplies.
 
     The completion counterpart of :func:`geolocate`: no field edits, no uploads,
@@ -878,11 +1198,11 @@ def _publish_draft(
     the point: a batch must not be a second, looser door to ``geolocated``.
 
     Locked with ``with_for_update()`` + ``populate_existing()`` like
-    :func:`geolocate`, so a batch racing a hand-submit of the same draft
+    :func:`geolocate`, so a batch racing a hand-submit of the same detection
     serializes and the loser sees the state error. Commits on success.
 
     The floor below is also what the detections queue filters on, projected
-    into SQL by :func:`draft_ready_predicate`: change a leg here and change it
+    into SQL by :func:`detection_ready_predicate`: change a leg here and change it
     there.
 
     Raises the typed floor errors, :class:`EventStateError` off ``detected``,
@@ -892,30 +1212,29 @@ def _publish_draft(
     """
     geo = (
         db.query(Event)
-        # A withheld draft is frozen for its owner (same as the single-row
+        # A withheld detection is frozen for its owner (same as the single-row
         # :func:`geolocate`, which resolves through ``_resolve_live_event``):
         # while an admin holds a row down, its owner does not get to move it on
-        # to a published state. Not an archival guarantee, since the queue
-        # filters on ``deleted_at`` alone (see :func:`source_archive.claim_next`).
+        # to a published state.
         .filter(Event.id == event_id, *visible_events())
         .populate_existing()
         .with_for_update()
         .first()
     )
     if geo is None:
-        raise EventNotFoundError("This draft no longer exists")
-    # Re-checked here, not only in ``complete_drafts``: the helper owns the
+        raise EventNotFoundError("This detection no longer exists")
+    # Re-checked here, not only in ``complete_detections``: the helper owns the
     # whole promotion, so it must be safe to call from a future entry point.
     ensure_owner(geo, current_user)
     if geo.status != STATUS_DETECTED:
-        raise EventStateError("Only a detected draft can be completed in a batch")
+        raise EventStateError("Only a detection can be completed in a batch")
 
     # The floor, in the order that puts the cheapest read first. Each miss is a
     # row the analyst has to open by hand, so the message names what to fix.
     if geo.source_url is None or not geo.source_url.strip():
         raise SourceUrlRequiredError("A source URL is required to geolocate an event")
     if geo.event_coords is None:
-        raise CoordinatesRequiredError("This draft carries no coordinates")
+        raise CoordinatesRequiredError("This detection carries no coordinates")
     _require_submission_media(any(m.role == "source" for m in geo.media))
     # The proof-image leg: satisfied already when the import carried annotation
     # media, and the reason a row drops out of the batch when it did not.
@@ -924,7 +1243,7 @@ def _publish_draft(
         raise TagRequirementsError("A capture source tag is required")
 
     # The batch sets exactly one capture source per row, so an imported one is
-    # replaced rather than added to; every other tag the draft carries survives.
+    # replaced rather than added to; every other tag the detection carries survives.
     effective_tags = [t for t in geo.tags if t.category != "capture_source"]
     effective_tags.append(capture_source_tag)
     _require_submission_floor(effective_tags, conflicts)
@@ -941,25 +1260,25 @@ def _publish_draft(
     db.refresh(geo)
 
 
-def complete_drafts(
+def complete_detections(
     db: Session,
     *,
     current_user: User,
     conflict_ids: list[uuid.UUID],
     rows: list[tuple[uuid.UUID, uuid.UUID]],
-) -> list[DraftCompletion]:
-    """Publish a selection of ``detected`` drafts in one call, row by row.
+) -> list[DetectionCompletion]:
+    """Publish a selection of detections in one call, row by row.
 
     The batch shape the import queue needs: an import is usually dominated by
     one conflict, so ``conflict_ids`` is set once for the whole selection, while
-    the capture source varies draft to draft and rides per row (``rows`` is
+    the capture source varies detection to detection and rides per row (``rows`` is
     ordered ``(event_id, capture_source_tag_id)`` pairs). Everything else the
     floor demands is already on the row, which is what makes publishing an
-    import cost one dropdown per draft instead of a form.
+    import cost one dropdown per detection instead of a form.
 
-    One transaction PER ROW, deliberately: a draft that fails the floor rolls
-    back alone and stays a draft, and the rest of the selection still publishes.
-    The result list mirrors ``rows`` order, one :class:`DraftCompletion` each.
+    One transaction PER ROW, deliberately: a detection that fails the floor rolls
+    back alone and stays a detection, and the rest of the selection still publishes.
+    The result list mirrors ``rows`` order, one :class:`DetectionCompletion` each.
 
     Two conditions fail the whole call instead, both before anything commits: an
     empty / unresolvable ``conflict_ids`` (:class:`TagRequirementsError`, since
@@ -979,11 +1298,11 @@ def complete_drafts(
     # floor, not the call.
     tags_by_id = {tag.id: tag for tag in _resolve_tags(db, list({tag_id for _, tag_id in rows}))}
 
-    outcomes: list[DraftCompletion] = []
+    outcomes: list[DetectionCompletion] = []
     published = 0
     for event_id, tag_id in rows:
         try:
-            _publish_draft(
+            _publish_detection(
                 db,
                 event_id=event_id,
                 current_user=current_user,
@@ -996,7 +1315,7 @@ def complete_drafts(
         # floor miss.
         except EvidenceIntakeError as exc:
             db.rollback()
-            outcomes.append(DraftCompletion(event_id=event_id, code=exc.code, message=str(exc)))
+            outcomes.append(DetectionCompletion(event_id=event_id, code=exc.code, message=str(exc)))
             continue
         # Per-row isolation has to cover the unexpected too. A database failure
         # escaping here would 500 the whole call and throw away the verdicts of
@@ -1006,15 +1325,15 @@ def complete_drafts(
             db.rollback()
             logger.exception("batch completion failed on event %s", event_id)
             outcomes.append(
-                DraftCompletion(
+                DetectionCompletion(
                     event_id=event_id,
                     code=ROW_INTERNAL_ERROR_CODE,
-                    message="This draft could not be published; try it again.",
+                    message="This detection could not be published; try it again.",
                 )
             )
             continue
         published += 1
-        outcomes.append(DraftCompletion(event_id=event_id))
+        outcomes.append(DetectionCompletion(event_id=event_id))
 
     if published:
         points_cache.invalidate()
@@ -1025,15 +1344,16 @@ def close(db: Session, *, geo: Event, current_user: User, close_reason: str) -> 
     """Close an event: withdraw a request or reject a detection, in one verb.
 
     Owner-only. The row stays publicly visible (transparency: the queue tried
-    and didn't produce a geolocation, or a machine draft was judged wrong).
+    and didn't produce a geolocation, or a machine detection was judged wrong).
     ``before_closed_status`` records which state it left so the badge, the
     requested-view routing, and detection re-import can tell the two apart. A
     closed detection is re-importable (see ``detection._disposition``);
     removing a row for good is the hard ``DELETE``.
 
-    Raises :class:`EventStateError` (409) off ``requested`` / ``detected``
-    (``geolocated`` is frozen, ``closed`` is terminal). Commits, invalidates
-    the points cache, returns the refreshed row.
+    Raises :class:`EventStateError` (409) off ``requested`` / ``detected``. A
+    ``geolocated`` row is past this verb, corrected through
+    :func:`save_version` instead, and ``closed`` is terminal. Commits,
+    invalidates the points cache, returns the refreshed row.
     """
     # Serialize on the row like ``geolocate``: a ``requested`` event is
     # fulfillable by anyone, so a concurrent geolocate (a different actor) could

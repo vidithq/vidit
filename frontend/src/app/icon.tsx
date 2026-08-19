@@ -34,9 +34,17 @@ export function generateImageMetadata() {
   ];
 }
 
-export default function Icon({ id }: { id: string }) {
+// Next hands `id` to the handler as a Promise (the route template passes
+// `ctx.params.then(p => p.__metadata_id__)`), so the handler is async and
+// awaits it. A sync `id === "android-512"` compares a Promise to a string,
+// never matches, and every variant ships 32px while the `<link sizes>`
+// claims 192 / 512: Google's favicon crawler drops icons under 48px, so
+// search results keep the generic globe. `/favicon.ico` calls this with a
+// plain string, hence the union.
+export default async function Icon({ id }: { id: string | Promise<string> }) {
+  const resolved = await id;
   const size =
-    id === "android-512" ? 512 : id === "android-192" ? 192 : 32;
+    resolved === "android-512" ? 512 : resolved === "android-192" ? 192 : 32;
 
   return new ImageResponse(
     (

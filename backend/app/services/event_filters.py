@@ -43,11 +43,10 @@ def visible_events() -> tuple[ColumnElement[bool], ColumnElement[bool]]:
     spreads this into its filter (``*visible_events()``), so a third
     visibility axis added later lands here instead of at every call site.
 
-    Three deliberate non-callers: the event detail read, which hands a
-    withheld row to an admin (:func:`routers.events.item.get_event`);
+    Two deliberate non-callers: the event detail read, which hands a
+    withheld row to an admin (:func:`routers.events.item.get_event`); and
     :func:`services.reports.set_event_moderation`, which has to reach a
-    withheld row to lift the takedown; and the archival worker, which filters
-    ``deleted_at`` alone by decision (see :func:`source_archive.claim_next`).
+    withheld row to lift the takedown.
     """
     return Event.deleted_at.is_(None), Event.hidden_at.is_(None)
 
@@ -69,14 +68,14 @@ def published_events() -> ColumnElement[bool]:
     * ``detected`` is machine output (archive import or the bot) the analyst
       has not vouched for. Attributing it to them as a submission credits
       them with a claim they never made.
-    * ``closed`` off ``detected`` is a draft the analyst threw out. Listing a
+    * ``closed`` off ``detected`` is a detection the analyst threw out. Listing a
       rejected row as their work inverts the decision they took.
     * ``requested`` is an open call for help, an ask rather than an answer.
       It carries no vouched location, anyone may fulfil it, and it lives on
       its own read view (see :data:`VIEWS`). ``closed`` off ``requested`` is
       a withdrawn ask, out for both reasons.
 
-    Deliberate non-callers: the ``located`` catalog view, which shows drafts
+    Deliberate non-callers: the ``located`` catalog view, which shows detections
     beside vouched rows on purpose (:func:`view_predicate`); the profile
     coverage map, which plots both and splits the count; and
     :func:`services.user_stats.get_user_stats`, which reports each of the three

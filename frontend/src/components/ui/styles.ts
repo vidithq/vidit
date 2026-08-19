@@ -78,7 +78,7 @@ export const HOVER_REVEAL =
 // while it waits: a ring plus a neutral plate, so the button reads as changed
 // without moving or resizing anything around it. One look for every armed
 // control that is not the loud red point of no return (that one is
-// `DANGER_CONFIRM` in ./Button): the event share row's draft-link pair, the
+// `DANGER_CONFIRM` in ./Button): the event share row's detection-link pair, the
 // detection form's Submit. Pair with `useConfirmAction`, which owns the arming
 // itself; the label change stays at the call site.
 export const ARMED_RING = "bg-neutral-800 ring-1 ring-neutral-500";

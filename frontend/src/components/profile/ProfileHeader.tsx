@@ -4,13 +4,13 @@ import { Pencil } from "lucide-react";
 
 import { formatDate } from "@/lib/format";
 import type { PublicProfile } from "@/lib/users";
-import FollowButton from "./FollowButton";
-import { CopyProfileLink } from "./CopyProfileLink";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { FileManager } from "@/components/ui/FileManager";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
+import FollowButton from "./FollowButton";
+import { LinkedAccountsLine } from "./LinkedAccounts";
 import type { ProfileEditState } from "./useProfileEdit";
 
 /** The page title: avatar + handle. The analyst is what the page is about, so
@@ -80,6 +80,9 @@ export function ProfileTitle({
  * Each segment holds together on its own line, so the row wraps between
  * segments rather than inside one at 375 px. Passing `null` drops the line,
  * which is what edit mode does: the page collapses to the form there.
+ *
+ * One `space-y-1` on the wrapper owns the spacing between every line here, so a
+ * line that drops out leaves no gap behind it.
  */
 export function ProfileIdentity({
   bio,
@@ -99,12 +102,10 @@ export function ProfileIdentity({
     : [];
 
   return (
-    <>
+    <div className="space-y-1">
       {bio && <p>{bio}</p>}
       {segments.length > 0 && (
-        <p
-          className={`flex flex-wrap items-center text-xs text-neutral-500 ${bio ? "mt-1" : ""}`}
-        >
+        <p className="flex flex-wrap items-center text-xs text-neutral-500">
           {segments.map((segment, i) => (
             <span key={segment} className="whitespace-nowrap">
               {i > 0 && (
@@ -117,19 +118,29 @@ export function ProfileIdentity({
           ))}
         </p>
       )}
-      {/* `mt-1` only when a line precedes it: alone it is the slot's only
-          line and needs no lead. */}
-      {email && (
-        <p className={`text-xs text-neutral-500 ${bio || segments.length ? "mt-1" : ""}`}>
-          {email}
-        </p>
-      )}
-    </>
+      {email && <p className="text-xs text-neutral-500">{email}</p>}
+    </div>
   );
 }
 
-/** The header action cluster: share on every profile, plus Follow (someone
- *  else's) or the edit / save pair (your own). */
+/** The header action cluster: the icon row (the linked accounts, then Edit
+ *  profile on your own profile), and Follow on someone else's or the save pair
+ *  while editing.
+ *
+ *  Reaching the analyst is an action on the page rather than a line of the
+ *  identity, so the marks sit where every other page keeps the controls that
+ *  act on the thing the page is about, right of the title. One shape for the
+ *  whole row: ghost icon buttons, the owner's Edit profile included, so the
+ *  header offers one kind of control rather than four marks beside a button.
+ *  The row's `gap-1.5` is the event page's action-cluster spacing, so two rows
+ *  of icon controls on two pages sit the same distance apart; the cluster's own
+ *  `gap-2` separates the row from whatever button sits at the far right. The
+ *  cluster wraps and right-aligns, the shape every page-level action cluster
+ *  uses, so the marks and the button break onto separate lines on a phone
+ *  instead of widening the header.
+ *
+ *  Editing drops the row: the links are the inputs below for the duration, and
+ *  the page is already in the mode Edit profile would enter. */
 export function ProfileActions({
   profile,
   isOwn,
@@ -140,38 +151,48 @@ export function ProfileActions({
   edit: ProfileEditState;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <CopyProfileLink username={profile.username} />
-      {isOwn ? (
-        edit.editing ? (
-          <>
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      {!edit.editing && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <LinkedAccountsLine profile={profile} />
+          {isOwn && (
             <Button
+              icon
               variant="ghost"
-              onClick={edit.cancelEditing}
-              disabled={edit.saving}
+              onClick={edit.startEditing}
+              aria-label="Edit profile"
+              title="Edit profile"
             >
-              Cancel
+              <Pencil size={14} />
             </Button>
-            <Button
-              variant="primary"
-              onClick={edit.saveEdits}
-              disabled={edit.saving || edit.bioOver}
-            >
-              {edit.saving ? "Saving…" : "Save"}
-            </Button>
-          </>
-        ) : (
-          <Button variant="secondary" onClick={edit.startEditing}>
-            <Pencil size={12} />
-            Edit profile
-          </Button>
-        )
-      ) : (
-        <FollowButton
-          username={profile.username}
-          initialFollowing={profile.is_following}
-        />
+          )}
+        </div>
       )}
+      {isOwn
+        ? edit.editing && (
+            <>
+              <Button
+                variant="ghost"
+                onClick={edit.cancelEditing}
+                disabled={edit.saving}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={edit.saveEdits}
+                disabled={edit.saving || edit.bioOver}
+              >
+                {edit.saving ? "Saving…" : "Save"}
+              </Button>
+            </>
+          )
+        : (
+            <FollowButton
+              username={profile.username}
+              initialFollowing={profile.is_following}
+            />
+          )}
     </div>
   );
 }

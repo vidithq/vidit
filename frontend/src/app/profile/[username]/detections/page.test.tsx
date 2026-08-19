@@ -21,7 +21,7 @@ import type { EventDetail } from "@/types";
 
 import DetectionsPage from "./page";
 
-function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
+function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   return {
     id: "d1",
     title: "Strike near Bakhmut",
@@ -33,11 +33,12 @@ function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
     status: "detected",
+    version_no: 1,
     is_graphic: false,
     close_reason: null,
     before_closed_status: null,
     detected_from_url: "https://x.com/analyst/status/1",
-    detected_post_at: "2026-05-30T15:00:00Z",
+    detected_via: null,
     owner: { id: "u1", username: "ana" },
     tags: [],
     conflicts: [],
@@ -49,9 +50,6 @@ function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
       content: [{ type: "image", attrs: { src: "https://cdn.test/p.jpg" } }],
     },
     created_at: "2026-06-02T10:00:00Z",
-    updated_at: "2026-06-02T10:00:00Z",
-    requested_at: null,
-    detected_at: "2026-06-02T10:00:00Z",
     geolocated_at: null,
     closed_at: null,
     media: [
@@ -71,7 +69,7 @@ function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
 
 function payload(overrides: Record<string, unknown> = {}) {
   return {
-    items: [draftFixture()],
+    items: [detectionFixture()],
     total: 1,
     page: 1,
     per_page: 10,
@@ -106,7 +104,7 @@ describe("DetectionsPage queue filter", () => {
   it("asks the server for the filtered queue instead of hiding loaded rows", () => {
     // The bug this replaces: the toggle filtered the ten rows on screen while
     // the pager cut pages server-side, so an analyst whose first page happened
-    // to hold ten incomplete drafts read "no ready drafts" over a queue that
+    // to hold ten incomplete detections read "no ready detections" over a queue that
     // held hundreds of them.
     useApiResource.mockReturnValue({ data: payload(), error: null });
     render(<DetectionsPage />);
@@ -180,7 +178,7 @@ describe("DetectionsPage queue filter", () => {
     render(<DetectionsPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Ready" }));
-    expect(screen.getByText("No ready drafts.")).toBeInTheDocument();
+    expect(screen.getByText("No ready detections.")).toBeInTheDocument();
     // The queue itself is not empty, so the import pitch stays away and the
     // toggle stays on screen to switch back with.
     expect(screen.queryByText("No detections to submit.")).not.toBeInTheDocument();

@@ -25,7 +25,7 @@ type ActionableUser = Omit<AdminUser, "created_at">;
 type DangerMode = "soft" | "hard" | "purge";
 
 /** One user's admin actions: X-handle link, soft/hard delete, and the
- *  detected-drafts purge. Shared between the Manage-analysts search and the
+ *  detections purge. Shared between the Manage-analysts search and the
  *  onboarding table so the two never drift. */
 export function UserActionsCard({
   user,
@@ -35,7 +35,7 @@ export function UserActionsCard({
   onPurged,
 }: {
   user: ActionableUser;
-  /** Live `detected` drafts, shown on the purge button when known. */
+  /** Live detections, shown on the purge button when known. */
   detectedCount?: number;
   onUpdated: (u: AdminUser) => void;
   onDeleted: (userId: string, response: AdminUserDeleteResponse) => void;
@@ -70,7 +70,7 @@ export function UserActionsCard({
   );
 
   const purgeMutation = useMutation(() => purgeDetectedEvents(user.id), {
-    fallback: "Failed to purge detected drafts",
+    fallback: "Failed to purge detections",
     onSuccess: (response) => {
       onPurged?.(response);
       setDangerMode(null);
@@ -268,8 +268,8 @@ export function UserActionsCard({
             </p>
           ) : (
             <p>
-              Purging drops every <strong>detected</strong> draft @
-              {user.username} owns (rows + media, dismissed drafts included, so
+              Purging drops every <strong>detection</strong> @
+              {user.username} owns (rows + media, dismissed detections included, so
               the sweep can exceed the counter), and keeps the account, its
               geolocations and its requests. The broken-archive repair.{" "}
               {!confirmDanger.armed && "Click “Confirm” to proceed."}

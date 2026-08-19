@@ -8,6 +8,7 @@ import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { cleanNumber } from "@/lib/coordinates";
 import {
+  archivedCopies,
   createEvent,
   createEventRequest,
   FIELD_LABELS,
@@ -23,8 +24,8 @@ import { toDatetimeLocalUTC } from "@/lib/format";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import type { EventDetail } from "@/types";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
-import { TweetImportBanner } from "@/components/event/TweetImportBanner";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
+import { ImportPostPanel } from "@/components/geolocations/ImportPostPanel";
 import { Archive, Check, Circle, MapPin, Megaphone } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
@@ -42,15 +43,14 @@ import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
 import { SourceMediaField } from "@/components/geolocations/SourceMediaField";
 import { TitleField } from "@/components/geolocations/TitleField";
 import { ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel";
-import { useTweetImport } from "@/components/geolocations/new/useTweetImport";
 
 // Three entry paths, picked at the top: they differ only in where the work
-// starts from. `single` is one event by hand, `xpost` is the same form with the
-// import banner above it (paste your own X post, the form comes back filled),
-// `bulk` is the archive on-ramp that backfills many. There is no geolocation vs
-// request pick: the analyst fills what they have and the two publish actions
-// unlock from the content (a placed coordinate plus evidence publishes a
-// geolocation, the bare footage posts a request for others to locate).
+// starts from. `single` is one event by hand, `xpost` reads one of your own X
+// posts into a detection you review, `bulk` is the archive on-ramp that backfills
+// many. There is no geolocation vs request pick on the form: the analyst fills
+// what they have and the two publish actions unlock from the content (a placed
+// coordinate plus evidence publishes a geolocation, the bare footage posts a
+// request for others to locate).
 type Mode = "single" | "xpost" | "bulk";
 
 // A publish-floor requirement, shown as a tick in the readiness list. `keys` are
@@ -154,6 +154,12 @@ function SubmitForm() {
   // Optional mirrors of the same media (other networks, other same-POV posts),
   // ordered. Never part of either publish floor.
   const [secondarySourceUrls, setSecondarySourceUrls] = useState<string[]>([]);
+  // One archived-copy paste per mirror, index-aligned with the list above:
+  // `LinkListInput` moves both together, so a removed row takes its copy with
+  // it. Optional per row, like the source's.
+  const [secondarySnapshotUrls, setSecondarySnapshotUrls] = useState<string[]>(
+    []
+  );
   const [eventDate, setEventDate] = useState("");
   // Optional event time-of-day (HH:MM, UTC).
   const [eventTime, setEventTime] = useState("");
@@ -185,28 +191,6 @@ function SubmitForm() {
   // tick-list is the standing summary.
   const { invalidKeys, flagIncomplete, clearIncomplete } = useIncompleteForm();
 
-  const {
-    importedFrom,
-    importGen,
-    extraCoordCandidates,
-    importedProofFiles,
-    applyTweetImport,
-    clearImportedTweet,
-    swapCoordCandidate,
-  } = useTweetImport({
-    lat,
-    lng,
-    setTitle,
-    setLat,
-    setLng,
-    setSourceUrl,
-    setSecondarySourceUrls,
-    setEventDate,
-    setSourcePostedAt,
-    setFiles,
-    setProof,
-  });
-
   // Load the request being fulfilled to pre-fill + lock inherited fields.
   // On fulfilment the server forces only `source_url` + media from the request;
   // the other inherited fields (title, dates, proof, tags) are form-sourced, so
@@ -230,6 +214,9 @@ function SubmitForm() {
         // The request's mirrors carry over too: the fulfilment replaces the
         // whole list server-side, so anything not re-posted here is dropped.
         setSecondarySourceUrls(b.secondary_source_urls);
+        // Blank pastes, one per carried-over mirror: the copies the request
+        // already holds are shown by the rows rather than re-posted.
+        setSecondarySnapshotUrls(b.secondary_source_urls.map(() => ""));
         // Carry the request's optional metadata into the form: the dates the
         // poster knew, and the in-progress proof so the analyst continues from
         // it instead of a blank editor. The form mounts only after the request
@@ -247,7 +234,7 @@ function SubmitForm() {
   }, [requestIdParam]);
 
   const lockedFromRequest = request !== null;
-  // Import (post pre-fill or bulk archive) is offered only on a fresh create,
+  // Import (a pasted post or a bulk archive) is offered only on a fresh create,
   // not while fulfilling someone else's request.
   const canImport = !lockedFromRequest;
 
@@ -260,6 +247,7 @@ function SubmitForm() {
         source_url: sourceUrl.trim(),
         source_snapshot_url: sourceSnapshotUrl,
         secondary_source_urls: secondarySourceUrls,
+        secondary_snapshot_urls: secondarySnapshotUrls,
         proof,
         // Optional approximate guess, both-or-neither, same strict parse as the
         // camera point below (no silent truncation of a half-typed coordinate).
@@ -301,6 +289,7 @@ function SubmitForm() {
           source_url: sourceUrl,
           source_snapshot_url: sourceSnapshotUrl,
           secondary_source_urls: secondarySourceUrls,
+          secondary_snapshot_urls: secondarySnapshotUrls,
           event_date: eventDate || undefined,
           event_time: eventTime || undefined,
           source_posted_at: sourcePostedAt,
@@ -321,6 +310,7 @@ function SubmitForm() {
         source_url: sourceUrl,
         source_snapshot_url: sourceSnapshotUrl,
         secondary_source_urls: secondarySourceUrls,
+        secondary_snapshot_urls: secondarySnapshotUrls,
         event_date: eventDate || undefined,
         event_time: eventTime || undefined,
         source_posted_at: sourcePostedAt,
@@ -409,11 +399,14 @@ function SubmitForm() {
     clearIncomplete();
   };
 
-  // A pasted snapshot that cannot be one, caught before the upload: the field
-  // flags itself red, and the publish it would have failed says why. Not a
-  // missing field (the archive is optional), so it never enters the tick-list.
+  // A pasted snapshot that cannot be one, on the source or on any mirror,
+  // caught before the upload: the field flags itself red, and the publish it
+  // would have failed says why. Not a missing field (every archive here is
+  // optional), so it never enters the tick-list.
   const snapshotUnusable =
-    sourceSnapshotUrl.trim() !== "" && !isSnapshotUrl(sourceSnapshotUrl);
+    [sourceSnapshotUrl, ...secondarySnapshotUrls].some(
+      (pasted) => pasted.trim() !== "" && !isSnapshotUrl(pasted)
+    );
 
   const publishGeolocation = async () => {
     resetActions();
@@ -476,7 +469,11 @@ function SubmitForm() {
   // action.
   const pageTitle = lockedFromRequest ? "Geolocate a request" : "Submit";
 
+  // Both import entries swap the one-event form out for their own panel: each
+  // writes detections server-side and leaves through the review queue, so the form
+  // below has nothing to do until the analyst comes back to it.
   const showBulk = canImport && mode === "bulk";
+  const showXPost = canImport && mode === "xpost";
   // On a fulfilment, media is supplied by the request, so it drops out of the
   // geolocation floor shown to the fulfiller.
   const geoFulfilReqs = [
@@ -528,8 +525,14 @@ function SubmitForm() {
         </div>
       )}
 
-      {/* Archive on-ramp swaps in for the form; the form stays mounted (hidden)
+      {/* Both on-ramps swap in for the form; the form stays mounted (hidden)
           so its draft survives switching back. */}
+      {showXPost && (
+        <div className="mt-4">
+          <ImportPostPanel />
+        </div>
+      )}
+
       {showBulk && (
         <div className="mt-4">
           <ImportArchivePanel username={user.username} />
@@ -541,33 +544,9 @@ function SubmitForm() {
           posting. `noValidate` keeps the browser's native bubbles from firing. */}
       <form
         onSubmit={(e) => e.preventDefault()}
-        className={showBulk ? "hidden" : "mt-4 space-y-6"}
+        className={showBulk || showXPost ? "hidden" : "mt-4 space-y-6"}
         noValidate
       >
-        {/* The X-post entry path front-loads the form with the import banner:
-            paste your own geolocation post and the fields below come back
-            filled. Once an import has landed the banner stays rendered in
-            Single too: it carries the provenance ("Imported from @x"), the
-            authorship warning, and the Clear action, all of which belong with
-            the imported content wherever the analyst finishes it. */}
-        {canImport && (mode === "xpost" || importedFrom !== null) && (
-          <TweetImportBanner
-            onImported={(parsed) => {
-              // The editor remounts on import (its key changes); its inline
-              // images are real URLs, so drop any locally-staged proof files so
-              // the staged set matches the freshly-mounted doc.
-              setProofFiles([]);
-              applyTweetImport(parsed);
-            }}
-            onClear={() => {
-              setProofFiles([]);
-              clearImportedTweet();
-            }}
-            importedFrom={importedFrom}
-            linkedX={user?.external_links?.x ?? null}
-          />
-        )}
-
         {/* Title leads, mirroring the detail page where it's the heading. */}
         <TitleField
           value={title}
@@ -602,8 +581,6 @@ function SubmitForm() {
           setCaptureLat={setCaptureLat}
           captureLng={captureLng}
           setCaptureLng={setCaptureLng}
-          extraCoordCandidates={extraCoordCandidates}
-          onSwapCandidate={swapCoordCandidate}
           invalid={invalidKeys.has("coordinates")}
         />
 
@@ -615,6 +592,9 @@ function SubmitForm() {
           archivedSource={request?.archived_source ?? null}
           secondarySourceUrls={secondarySourceUrls}
           setSecondarySourceUrls={setSecondarySourceUrls}
+          secondarySnapshotUrls={secondarySnapshotUrls}
+          setSecondarySnapshotUrls={setSecondarySnapshotUrls}
+          archivedCopies={request ? archivedCopies(request) : undefined}
           eventDate={eventDate}
           setEventDate={setEventDate}
           eventTime={eventTime}
@@ -646,12 +626,9 @@ function SubmitForm() {
             (named in the readiness list); a request may attach images (work in
             progress) or stay imageless. */}
         <ProofEditorPanel
-          importedFrom={importedFrom}
-          importGen={importGen}
           proof={proof}
           onChange={setProof}
           onProofFilesChange={setProofFiles}
-          initialProofFiles={importedProofFiles}
           invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
         />
 

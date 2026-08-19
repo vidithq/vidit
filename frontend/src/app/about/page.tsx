@@ -10,8 +10,7 @@ import {
   BookOpen,
   Compass,
   Crosshair,
-  Bot,
-  FileArchive,
+  Import,
   FileLock,
   Scale,
   type LucideIcon,
@@ -110,16 +109,10 @@ const GUIDES = [
     href: "/methodology",
   },
   {
-    icon: Bot,
-    label: "Bot guide",
-    value: "Import by tagging @ViditBot",
-    href: "/bot",
-  },
-  {
-    icon: FileArchive,
-    label: "Archive guide",
-    value: "Import your X archive",
-    href: "/archive",
+    icon: Import,
+    label: "Import guide",
+    value: "Import your work from X",
+    href: "/import",
   },
 ];
 

@@ -7,17 +7,24 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
-# What one mention pull did with a tagged tweet. ``created``: at least one
-# ``detected`` row landed. ``no_detection``: the thread yielded no coordinate
-# (recorded silently, no reply, so a courtesy reply to the bot can't loop it
-# into answering itself). ``no_account``: no live Vidit account carries the
-# tagged author's ``x_handle`` (admin-linked), so nothing was created and no
-# reply posted. ``skipped``: every detection deduped against an existing row.
+# What one mention did with a tagged tweet. ``created``: at least one
+# ``detected`` row landed. ``updated``: no row was created, and the newer parse
+# overwrote at least one open detection the analyst already held, which is an answer
+# to the tag and earns the success reply just as a creation does.
+# ``no_detection``: the thread yielded no coordinate,
+# which a linked author gets the failure reply for (unless the tagged tweet is
+# itself a reply to the bot, the loop guard in ``services/bot``).
+# ``no_account``: no live Vidit account carries the tagged author's
+# ``x_handle`` (admin-linked), so nothing was created and no reply posted.
+# ``skipped``: every detection deduped against an existing row and moved
+# nothing on it.
 # ``self``: the bot's own post surfaced in its mentions timeline (recorded so
 # the ``since_id`` cursor advances past it instead of re-billing it every
 # pull). ``failed``: processing raised (captured to Sentry; delete the row to
 # retry that mention on the next run).
-BotMentionOutcome = Literal["created", "no_detection", "no_account", "skipped", "self", "failed"]
+BotMentionOutcome = Literal[
+    "created", "updated", "no_detection", "no_account", "skipped", "self", "failed"
+]
 
 
 class BotMention(Base):
@@ -42,9 +49,10 @@ class BotMention(Base):
     author_handle: Mapped[str] = mapped_column(String(50), nullable=False)
     outcome: Mapped[BotMentionOutcome] = mapped_column(String(20), nullable=False)
     events_created: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    # The bot's in-thread reply, when one was posted. NULL when nothing was
-    # created, reply credentials are absent, or the post failed (fail-soft:
-    # the detection is durable even when the reply isn't).
+    # The bot's in-thread reply, when one was posted: the success reply, or the
+    # failure reply naming the refusal. NULL when no reply was owed, reply
+    # credentials are absent, the budget was spent, or the post failed
+    # (fail-soft: the detection is durable even when the reply isn't).
     reply_tweet_id: Mapped[str | None] = mapped_column(String(25), nullable=True)
     processed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

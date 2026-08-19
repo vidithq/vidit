@@ -6,25 +6,15 @@ import { FIELD_HELP } from "@/lib/fieldHelp";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { EventDetail } from "@/types";
 
-// Who is looking decides whether the archive affordance is offered, and the
-// body reads that off the auth context. The default is a signed-out reader;
-// `asOwner` is the one test that needs the owner's view.
-const viewer: { id: string | null } = { id: null };
+// The body writes nothing, so who is looking changes none of it: the owner's
+// own view is asserted below through the same render every reader gets.
+const OWNER_ID = "u1";
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: viewer.id ? { id: viewer.id } : null }),
+  useAuth: () => ({ user: { id: OWNER_ID } }),
 }));
 
-function asOwner<T>(run: () => T): T {
-  viewer.id = "u1";
-  try {
-    return run();
-  } finally {
-    viewer.id = null;
-  }
-}
-
 // The media gallery's alt text, which is the event title. Named because the
-// detail rows carry archive glyphs of their own, so a media assertion has to
+// detail rows carry archive marks of their own, so a media assertion has to
 // say which image it means.
 const TITLE = "Strike on ammunition depot";
 
@@ -40,11 +30,12 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     source_posted_at: "2026-05-30T14:32:00Z",
     is_graphic: false,
     status: "geolocated",
+    version_no: 1,
     close_reason: null,
     before_closed_status: null,
     detected_from_url: null,
+    detected_via: null,
     archived_detected_from: null,
-    detected_post_at: null,
     owner: {
       id: "u1",
       username: "ana",
@@ -74,10 +65,7 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
       ],
     },
     created_at: "2026-06-02T10:00:00Z",
-    updated_at: "2026-06-02T10:00:00Z",
-    requested_at: null,
-    detected_at: null,
-    geolocated_at: "2026-06-02T10:00:00Z",
+    geolocated_at: "2026-06-03T10:00:00Z",
     closed_at: null,
     media: [
       {
@@ -348,7 +336,7 @@ describe("EventDetailBody", () => {
   });
 
   it("shows a dash on the Source posted row when the instant is unknown", () => {
-    // A machine `detected` draft whose source is an undated footage link
+    // A machine detection whose source is an undated footage link
     // (or has no source at all) leaves source_posted_at null.
     render(
       <EventDetailBody
@@ -361,7 +349,7 @@ describe("EventDetailBody", () => {
   });
 
   it("shows the muted 'To confirm' label on the Source row when no source is declared", () => {
-    // A machine `detected` draft is partial by definition: its tweet may
+    // A machine detection is partial by definition: its tweet may
     // declare no source at all.
     render(
       <EventDetailBody
@@ -417,7 +405,7 @@ describe("EventDetailBody", () => {
         variant="page"
       />
     );
-    // Named per service and per target, since every glyph on the page looks
+    // Named per service and per target, since every mark on the page looks
     // alike and a screen reader has nothing else to tell them apart by.
     expect(
       screen.getByRole("link", { name: "Wayback Machine copy of the source" })
@@ -426,71 +414,44 @@ describe("EventDetailBody", () => {
     expect(screen.getByRole("link", { name: "t.me" })).toBeInTheDocument();
   });
 
-  it("shows a reader that no copy exists, without offering them the action", () => {
-    render(<EventDetailBody geo={geoFixture()} variant="page" />);
-    expect(
-      screen.getByRole("img", { name: "No archived copy of the source" })
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /^Archive / })
-    ).not.toBeInTheDocument();
-  });
-
-  it("offers the owner the archive action on every unarchived link row", () => {
-    asOwner(() =>
-      render(
-        <EventDetailBody
-          geo={geoFixture({
-            detected_from_url: "https://x.com/ana/status/123",
-            secondary_source_urls: ["https://t.me/mirror/1"],
-            archived_secondary_sources: [null],
-          })}
-          variant="page"
-        />
-      )
+  // Every unarchived link row states the absence and offers nothing, the
+  // event's own owner included: recording a copy is an edit, filed through the
+  // edit form, so no detail surface writes one.
+  it("states a missing copy on every link row, offering no action to anyone", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          detected_from_url: "https://x.com/ana/status/123",
+          secondary_source_urls: ["https://t.me/mirror/1"],
+          archived_secondary_sources: [null],
+        })}
+        variant="page"
+      />
     );
     fireEvent.click(screen.getByRole("button", { name: /1 more source/ }));
-    expect(screen.getByRole("button", { name: "Archive the source" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Archive t.me" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
-        name: "Archive the post it was detected from",
-      })
-    ).toBeInTheDocument();
+    for (const name of [
+      "No archived copy of the source",
+      "No archived copy of t.me",
+      "No archived copy of the post it was detected from",
+    ]) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    }
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 
-  it("offers a draft's owner the same action, publication being no longer the trigger", () => {
-    asOwner(() =>
-      render(
-        <EventDetailBody
-          geo={geoFixture({
-            status: "detected",
-            detected_at: "2026-06-02T09:00:00Z",
-            geolocated_at: null,
-          })}
-          variant="page"
-        />
-      )
+  it("shows no archival affordance on a detection that declares no source", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          status: "detected",
+          geolocated_at: null,
+          source_url: null,
+        })}
+        variant="page"
+      />
     );
-    expect(screen.getByRole("button", { name: "Archive the source" })).toBeInTheDocument();
-  });
-
-  it("shows no archival affordance on a draft that declares no source", () => {
-    asOwner(() =>
-      render(
-        <EventDetailBody
-          geo={geoFixture({
-            status: "detected",
-            detected_at: "2026-06-02T09:00:00Z",
-            geolocated_at: null,
-            source_url: null,
-          })}
-          variant="page"
-        />
-      )
-    );
-    // There is no link to archive, so the affordance would be about nothing.
-    expect(screen.queryByRole("button", { name: /^Archive / })).not.toBeInTheDocument();
+    // There is no link, so the mark would be about nothing.
+    expect(screen.queryByRole("img", { name: /archived copy/ })).not.toBeInTheDocument();
   });
 
   it("omits the Secondary sources row when the event declares no mirror", () => {
@@ -523,12 +484,14 @@ describe("EventDetailBody", () => {
     // Same new-tab affordance as the primary Source row.
     expect(link).toHaveAttribute("target", "_blank");
     expect(screen.getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
-    // One `?` for the whole expanded list, hoisted off the mirrors: ten mirrors
-    // must not carry ten copies of the same sentence. The Source row keeps its
-    // own, one per group, so the page shows exactly two.
+    // The archive marks carry no `?` of their own: ten mirrors must not carry
+    // ten copies of one sentence, so the row's own Secondary sources tooltip
+    // explains the mark for the whole list.
     expect(
-      screen.getAllByRole("button", { name: FIELD_HELP.archived_copies.label })
-    ).toHaveLength(2);
+      screen.getByRole("button", {
+        name: FIELD_HELP.secondary_source_urls.label,
+      })
+    ).toBeInTheDocument();
   });
 
   it("keeps each mirror's archived copy on its own mirror", () => {
@@ -568,8 +531,8 @@ describe("EventDetailBody", () => {
     expect(archived).toHaveAttribute("rel", "noopener noreferrer");
     // The uncopied mirror says so rather than showing nothing.
     expect(
-      screen.getByRole("img", { name: "No archived copy of mirror 1, x.com" })
-    ).toBeInTheDocument();
+      screen.getByRole("button", { name: "No archived copy of mirror 1, x.com" })
+    ).toBeDisabled();
     // The mirror itself stays the primary link either way.
     expect(screen.getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
   });
@@ -588,7 +551,7 @@ describe("EventDetailBody", () => {
       />
     );
     // Named apart from the source: the provenance link is the analyst's own
-    // post, not the footage origin, and both rows carry the same glyph.
+    // post, not the footage origin, and both rows carry the same mark.
     expect(
       screen.getByRole("link", {
         name: "Wayback Machine copy of the post it was detected from",

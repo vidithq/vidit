@@ -10,21 +10,27 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
   detectionsReviewPath,
-  draftEditPath,
+  detectionEditPath,
   QUEUE_PARAM,
   type PaginatedEventDetails,
 } from "@/lib/events";
 import type { EventDetail } from "@/types";
 
 /**
- * Owner edit of one machine draft, and one step of a review pass over the
- * queue when the URL carries `?queue=1`.
+ * Owner edit of one event: confirming a machine detection, or correcting a
+ * published geolocation. One address for both, since the fields are the same
+ * form; `EventEditForm` reads the row's state and offers the write that state
+ * allows. A row in any other state has no owner edit, so it says so and links
+ * to the event.
+ *
+ * The page is also one step of a review pass over the detections queue when the
+ * URL carries `?queue=1`.
  *
  * The flag makes a review a walk over real URLs rather than a session in
- * component state: each draft is its own address, so a reload keeps its place
- * and the browser's Back steps back one draft. The page reads the owner's queue
- * (the list the queue page reads), places this draft in it, and hands the form
- * the position plus where to go next. Past the last draft, the walk ends on the
+ * component state: each detection is its own address, so a reload keeps its place
+ * and the browser's Back steps back one detection. The page reads the owner's queue
+ * (the list the queue page reads), places this detection in it, and hands the form
+ * the position plus where to go next. Past the last detection, the walk ends on the
  * queue list.
  */
 export default function EditEventPage() {
@@ -38,13 +44,13 @@ export default function EditEventPage() {
     user && id ? `/events/${id}` : null
   );
 
-  // The queue is read only for a draft the viewer owns and asked to review, so
+  // The queue is read only for a detection the viewer owns and asked to review, so
   // an ordinary edit costs no extra request.
   const inQueue = searchParams.get(QUEUE_PARAM) === "1";
-  const isOwnDraft =
+  const isOwnDetection =
     !!geo && !!user && user.id === geo.owner.id && geo.status === "detected";
   const { data: queueData } = useApiResource<PaginatedEventDetails>(
-    inQueue && isOwnDraft ? detectionsReviewPath() : null
+    inQueue && isOwnDetection ? detectionsReviewPath() : null
   );
 
   if (authLoading || !user) {
@@ -59,14 +65,14 @@ export default function EditEventPage() {
     return <PageLoading />;
   }
 
-  // The submit flow is owner-only and state-gated to ``detected``, the same
-  // gate the backend enforces (403 / 409). Surface it before the form rather
-  // than letting a PATCH bounce.
+  // Both writes are owner-only and state-gated, the same gates the backend
+  // enforces (403 / 409). Surface them before the form rather than letting the
+  // post bounce.
   if (user.id !== geo.owner.id) {
     return (
-      <PageShell back title="Edit detection">
+      <PageShell back title="Edit event">
         <p className="text-sm text-neutral-400">
-          You can only edit your own detections.{" "}
+          You can only edit your own events.{" "}
           <Link
             href={`/events/${geo.id}`}
             className={TEXT_LINK}
@@ -79,11 +85,14 @@ export default function EditEventPage() {
     );
   }
 
-  if (geo.status !== "detected") {
+  // A detection is confirmed here and a published geolocation is edited here.
+  // The states in between are handled elsewhere: a `requested` event is
+  // answered through the submit form, and a `closed` one is terminal.
+  if (geo.status !== "detected" && geo.status !== "geolocated") {
     return (
-      <PageShell back title="Edit detection">
+      <PageShell back title="Edit event">
         <p className="text-sm text-neutral-400">
-          This geolocation is geolocated and frozen, it can no longer be edited.{" "}
+          This event is {geo.status}, so it has no edit form.{" "}
           <Link
             href={`/events/${geo.id}`}
             className={TEXT_LINK}
@@ -96,10 +105,15 @@ export default function EditEventPage() {
     );
   }
 
-  const queueHref = `/profile/${user.username}/detections`;
+  // Where the form returns to when it is done: the detections queue after a
+  // confirmation, the event itself after a version.
+  const doneHref =
+    geo.status === "geolocated"
+      ? `/events/${geo.id}`
+      : `/profile/${user.username}/detections`;
 
-  // The position is read off the live queue, so a draft published or rejected
-  // a moment ago is out of both the count and the walk. A draft the queue no
+  // The position is read off the live queue, so a detection published or rejected
+  // a moment ago is out of both the count and the walk. A detection the queue no
   // longer holds carries no position: the page is a plain edit again.
   const items = queueData?.items ?? [];
   const index = items.findIndex((e) => e.id === geo.id);
@@ -107,13 +121,13 @@ export default function EditEventPage() {
   const queue =
     index >= 0
       ? {
-          position: `Draft ${index + 1} of ${queueData?.total ?? items.length}`,
+          position: `Detection ${index + 1} of ${queueData?.total ?? items.length}`,
           onAdvance: () =>
-            router.push(next ? draftEditPath(next.id, true) : queueHref),
+            router.push(next ? detectionEditPath(next.id, true) : doneHref),
         }
       : undefined;
 
   return (
-    <EventEditForm geo={geo} redirectTo={queueHref} queue={queue} />
+    <EventEditForm geo={geo} redirectTo={doneHref} queue={queue} />
   );
 }

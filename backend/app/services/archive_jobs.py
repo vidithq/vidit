@@ -233,9 +233,21 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
     owner, and re-raises for the caller's Sentry capture; the staged object
     is deleted on both outcomes.
     """
+    # The same liveness the two live entries require of an import's owner
+    # (``detection.linked_owner``, which the bot and the paste both read): a
+    # soft-deleted or deactivated account's work is hidden or suspended, so a
+    # job queued before the suspension must not land detections under it.
     owner = db.get(User, job.owner_id)
-    if owner is None or owner.deleted_at is not None:
+    if owner is None or owner.deleted_at is not None or not owner.is_active:
         _finish(db, job, status="failed", error="owner gone")
+        return
+    # The export is imported under the owner's linked handle: every provenance
+    # permalink is written from it and the own-status exclusion compares links
+    # against it. There is no fallback onto the username, which would fabricate
+    # links to an account that may be someone else's.
+    if owner.x_handle is None:
+        _finish(db, job, status="failed", error="owner has no linked X handle")
+        _notify_failure_best_effort(db, job)
         return
 
     # Claim-time re-check of the enqueue's HEAD gate: the presign window stays
@@ -267,7 +279,7 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
             archive_zip.extract_allowlisted(zip_path, archive_dir)
 
             def stamp_progress(done: int, total: int) -> None:
-                # Fires between per-row transactions (see assemble_detections),
+                # Fires between per-row transactions (see persist_detections),
                 # so the commit here never splits one. Batched: an UPDATE per
                 # PROGRESS_EVERY rows plus the boundaries.
                 if done == total or done == 1 or done % PROGRESS_EVERY == 0:
@@ -299,8 +311,8 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
         stop_heartbeat.set()
         heartbeat.join(timeout=5)
     job.created_count = len(outcome.created)
-    job.updated_count = outcome.updated
-    job.skipped_count = outcome.skipped
+    job.updated_count = len(outcome.updated)
+    job.skipped_count = len(outcome.skipped)
     job.failed_count = outcome.failed
     _finish(db, job, status="done")
     if owner.email is None:
@@ -312,6 +324,7 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
             updated=job.updated_count,
             skipped=job.skipped_count,
             failed=job.failed_count,
+            warnings=outcome.warnings,
             detections_link=email.detections_link(owner.username),
         )
     )

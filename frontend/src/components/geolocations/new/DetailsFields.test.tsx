@@ -19,6 +19,8 @@ const baseProps = {
   setSourcePostedAt: () => {},
   sourceSnapshotUrl: "",
   setSourceSnapshotUrl: () => {},
+  secondarySnapshotUrls: [] as string[],
+  setSecondarySnapshotUrls: () => {},
   isGraphic: false,
   setIsGraphic: () => {},
   sourceUrlLocked: false,
@@ -27,7 +29,8 @@ const baseProps = {
 // The locked box's muted text colour, the one token the link overrides.
 const MUTED = "text-neutral-400";
 const SOURCE_PLACEHOLDER = "https://t.me/channel/12345";
-const SNAPSHOT_PLACEHOLDER = "https://web.archive.org/web/…";
+const SNAPSHOT_PLACEHOLDER =
+  "Paste a snapshot link (web.archive.org, archive.ph, archive.today)";
 
 describe("DetailsFields", () => {
   it("renders the Details heading, the date + source fields, and their ? help", () => {
@@ -125,6 +128,44 @@ describe("DetailsFields", () => {
       expect(screen.getByText(/provenance, can't change/)).toBeInTheDocument();
     });
 
+    it("archives the provenance link where the write path takes the paste", () => {
+      // Locked names the link, not its archived copy: the post rots like any
+      // other source, so the field carries the same mark and the same line as
+      // the Source URL above it.
+      const setter = vi.fn();
+      render(
+        <DetailsFields
+          {...baseProps}
+          detectedFromUrl="https://x.com/analyst/status/1"
+          setDetectedFromSnapshotUrl={setter}
+        />
+      );
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Archive the post it was detected from",
+        })
+      );
+      const field = screen.getByPlaceholderText(SNAPSHOT_PLACEHOLDER);
+      fireEvent.change(field, { target: { value: "https://archive.ph/abcde" } });
+      expect(setter).toHaveBeenCalledWith("https://archive.ph/abcde");
+    });
+
+    it("leaves the provenance link bare where nothing would take the paste", () => {
+      // The submit form's own write declares no field for it, so offering the
+      // mark there would open a line whose value goes nowhere.
+      render(
+        <DetailsFields
+          {...baseProps}
+          detectedFromUrl="https://x.com/analyst/status/1"
+        />
+      );
+      expect(
+        screen.queryByRole("button", {
+          name: "Archive the post it was detected from",
+        })
+      ).toBeNull();
+    });
+
     it("keeps an editable source URL an editable field, not a link", () => {
       render(<DetailsFields {...baseProps} sourceUrl="https://t.me/c/1" />);
       expect(screen.queryByRole("link", { name: "https://t.me/c/1" })).toBeNull();
@@ -200,57 +241,50 @@ describe("DetailsFields", () => {
     );
   });
 
-  // ── the archival affordance under the source URL ──────────────────────
+  // ── the archival affordance, inside the field holding the link ────────
 
-  it("offers the archival field, marked optional, with its ? help", () => {
-    render(<DetailsFields {...baseProps} />);
+  it("archives from a mark in the source URL field, with no block under it", () => {
+    render(<DetailsFields {...baseProps} sourceUrl="https://t.me/c/1" />);
+    // Nothing under the field until it is asked for: no label, no optional
+    // marker, no sentence, no paste field.
+    expect(screen.queryByPlaceholderText(SNAPSHOT_PLACEHOLDER)).toBeNull();
+    expect(screen.queryByText("Archived copy")).toBeNull();
+    expect(screen.queryByText("optional")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive the source" }));
     expect(screen.getByPlaceholderText(SNAPSHOT_PLACEHOLDER)).toBeInTheDocument();
-    expect(screen.getByText("Archived copy").closest("label")).toHaveTextContent(
-      "optional"
-    );
-    expect(
-      screen.getByRole("button", { name: "What are the archived copies?" })
-    ).toBeInTheDocument();
   });
 
-  it("offers no provider link until the source URL is a usable one", () => {
+  it("leaves the door inert until the source URL is a usable one", () => {
     render(<DetailsFields {...baseProps} sourceUrl="t.me/c/1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Archive the source" }));
+    // The one state on a form where a control is grey: a dead door is worse
+    // than an inert one, and the name says what to do first.
     expect(screen.queryByRole("link", { name: /Wayback Machine/ })).toBeNull();
     expect(
-      screen.getByText("Fill in the source URL above to archive it.")
-    ).toBeInTheDocument();
-    // The three accepted hosts do not wait on a source URL: with no link to
-    // open, this sentence is the only thing saying an archive.today snapshot is
-    // welcome in the field below.
-    expect(
-      screen.getByText(/paste a snapshot from archive\.ph or archive\.today/)
-    ).toBeInTheDocument();
+      screen.getByRole("button", { name: "Fill in the source to archive it" })
+    ).toBeDisabled();
   });
 
   it("prefills one provider page with the source URL as typed", () => {
-    render(
-      <DetailsFields {...baseProps} sourceUrl="https://t.me/c/1?x=2 " />
-    );
+    render(<DetailsFields {...baseProps} sourceUrl="https://t.me/c/1?x=2 " />);
+    fireEvent.click(screen.getByRole("button", { name: "Archive the source" }));
     // Wayback carries the link as a path, where the scheme separator stays
     // readable.
     expect(
-      screen.getByRole("link", { name: "Open Wayback Machine" })
-    ).toHaveAttribute(
-      "href",
-      "https://web.archive.org/save/https://t.me/c/1?x=2"
-    );
-    // The second link is gone: the field offers exactly one provider page. The
-    // other hosts are still accepted, and the sentence beside the link says so
-    // rather than opening a page for each.
+      screen.getByRole("link", {
+        name: "Open the Wayback Machine for the source",
+      })
+    ).toHaveAttribute("href", "https://web.archive.org/save/https://t.me/c/1?x=2");
+    // Exactly one provider page. The other hosts are still accepted, and the
+    // field's own placeholder says so rather than opening a page for each.
     expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByRole("link", { name: "Open archive.today" })).toBeNull();
-    expect(
-      screen.getByText(/paste a snapshot from archive\.ph or archive\.today/)
-    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(SNAPSHOT_PLACEHOLDER)).toBeInTheDocument();
   });
 
   it("prefills a fragment-bearing source URL, fragment and all", () => {
     render(<DetailsFields {...baseProps} sourceUrl="https://t.me/c/1#note" />);
+    fireEvent.click(screen.getByRole("button", { name: "Archive the source" }));
     // `encodeURI` leaves `#` alone, so the fragment rides along and the browser
     // reads it as the fragment of the web.archive.org URL: what Save Page Now
     // captures is the link without it. That is by design. The server compares a
@@ -258,12 +292,26 @@ describe("DetailsFields", () => {
     // (`source_archive._normalised_target`) and ignores the fragment on both
     // sides, so the copy still files against the source it was taken for.
     expect(
-      screen.getByRole("link", { name: "Open Wayback Machine" })
+      screen.getByRole("link", {
+        name: "Open the Wayback Machine for the source",
+      })
     ).toHaveAttribute("href", "https://web.archive.org/save/https://t.me/c/1#note");
+  });
+
+  it("opens the paste line by itself on a value already staged", () => {
+    // A snapshot the form is holding has to be visible: one nothing displays is
+    // one nobody can correct.
+    render(
+      <DetailsFields {...baseProps} sourceSnapshotUrl="https://archive.ph/abcde" />
+    );
+    expect(screen.getByPlaceholderText(SNAPSHOT_PLACEHOLDER)).toHaveValue(
+      "https://archive.ph/abcde"
+    );
   });
 
   it("flags a paste that cannot be a snapshot, and only once one is typed", () => {
     const { rerender } = render(<DetailsFields {...baseProps} />);
+    fireEvent.click(screen.getByRole("button", { name: "Archive the source" }));
     expect(screen.queryByText(/A snapshot link is an https link/)).toBeNull();
 
     rerender(
@@ -287,18 +335,16 @@ describe("DetailsFields", () => {
   it("reports the paste as the analyst types it", () => {
     const setSourceSnapshotUrl = vi.fn();
     render(
-      <DetailsFields
-        {...baseProps}
-        setSourceSnapshotUrl={setSourceSnapshotUrl}
-      />
+      <DetailsFields {...baseProps} setSourceSnapshotUrl={setSourceSnapshotUrl} />
     );
+    fireEvent.click(screen.getByRole("button", { name: "Archive the source" }));
     fireEvent.change(screen.getByPlaceholderText(SNAPSHOT_PLACEHOLDER), {
       target: { value: "https://archive.ph/abcde" },
     });
     expect(setSourceSnapshotUrl).toHaveBeenCalledWith("https://archive.ph/abcde");
   });
 
-  it("shows the copy the event already carries, and that pasting replaces it", () => {
+  it("opens the copy the event already carries, and still offers to replace it", () => {
     render(
       <DetailsFields
         {...baseProps}
@@ -312,12 +358,92 @@ describe("DetailsFields", () => {
     expect(
       screen.getByRole("link", { name: "archive.today copy of the source" })
     ).toHaveAttribute("href", "https://archive.ph/abcde");
-    expect(screen.getByText(/paste another to replace it/)).toBeInTheDocument();
+    // One link holds one copy, so the second mark is how a wrong paste is
+    // corrected rather than a competing copy.
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Replace the archived copy of the source",
+      })
+    );
+    expect(screen.getByPlaceholderText(SNAPSHOT_PLACEHOLDER)).toBeInTheDocument();
   });
 
   it("shows no existing copy on a fresh submit", () => {
     render(<DetailsFields {...baseProps} sourceUrl="https://t.me/c/1" />);
-    expect(screen.queryByText(/paste another to replace it/)).toBeNull();
+    expect(screen.queryByRole("link", { name: /copy of the source/ })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Archive the source" })
+    ).toBeInTheDocument();
+  });
+
+  // ── the same affordance on every mirror ───────────────────────────────
+
+  it("gives every secondary source its own mark and its own paste line", () => {
+    const setSecondarySnapshotUrls = vi.fn();
+    render(
+      <DetailsFields
+        {...baseProps}
+        secondarySourceUrls={["https://t.me/c/2", "https://t.me/c/3"]}
+        secondarySnapshotUrls={["", ""]}
+        setSecondarySnapshotUrls={setSecondarySnapshotUrls}
+      />
+    );
+    // Named for the mirror each covers, so two rows on one host stay tellable
+    // apart in the accessible names.
+    expect(
+      screen.getByRole("button", { name: "Archive mirror 1, t.me" })
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Archive mirror 2, t.me" })
+    );
+    const second = screen.getByLabelText("Archived copy of mirror 2, t.me");
+    fireEvent.change(second, { target: { value: "https://archive.ph/abcde" } });
+    expect(setSecondarySnapshotUrls).toHaveBeenCalledWith([
+      "",
+      "https://archive.ph/abcde",
+    ]);
+  });
+
+  it("prefills the provider page with the mirror, not the source", () => {
+    render(
+      <DetailsFields
+        {...baseProps}
+        sourceUrl="https://t.me/c/1"
+        secondarySourceUrls={["https://t.me/c/2"]}
+        secondarySnapshotUrls={[""]}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Archive the source" }));
+    fireEvent.click(screen.getByRole("button", { name: "Archive t.me" }));
+    expect(
+      screen
+        .getAllByRole("link", { name: /^Open the Wayback Machine for/ })
+        .map((link) => link.getAttribute("href"))
+    ).toEqual([
+      "https://web.archive.org/save/https://t.me/c/1",
+      "https://web.archive.org/save/https://t.me/c/2",
+    ]);
+  });
+
+  it("shows the copy a mirror already carries", () => {
+    render(
+      <DetailsFields
+        {...baseProps}
+        secondarySourceUrls={["https://t.me/c/2"]}
+        secondarySnapshotUrls={[""]}
+        archivedCopies={
+          new Map([
+            [
+              "https://t.me/c/2",
+              { url: "https://archive.ph/abcde", provider: "archive_today" },
+            ],
+          ])
+        }
+      />
+    );
+    expect(
+      screen.getByRole("link", { name: "archive.today copy of t.me" })
+    ).toHaveAttribute("href", "https://archive.ph/abcde");
   });
 
   it("keeps the secondary sources editable while the primary is locked", () => {

@@ -47,7 +47,7 @@ export function groupStacks<T>(
     const { lat, lng } = coord(item);
     const latCell = Math.round(lat / STACK_EPSILON);
     const lngCell = Math.round(lng / STACK_EPSILON);
-    const key = `${latCell},${lngCell}`;
+    const key = stackCellKey(lat, lng);
     const cell = cells.get(key);
     if (cell) cell.items.push(item);
     else cells.set(key, { latCell, lngCell, items: [item] });

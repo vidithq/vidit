@@ -1,8 +1,16 @@
 """Load typology fixtures and assemble them into records / a test archive.
 
-Two consumers: the unit test builds a single ``TweetRecord`` (or a stitched
-thread) per typology and resolves it; the archive test builds one consolidated
-X export from the disk-only typologies and runs the real backfill over it.
+Four consumers over one catalogue of typologies: the resolve test resolves each
+typology's thread, the bot and paste tests run their own entry over the same
+bodies, and the archive test builds one consolidated X export from the
+disk-only typologies and runs the real backfill over it.
+
+A typology ships ``body.json`` (the post an entry is pointed at, in syndication
+shape, or raw archive entries under ``thread`` for the archive-only shapes),
+``expected.json``, and any further body the acquisition or a chase reads:
+``parent_<id>.json`` for the post a reply hangs under, ``chased_<id>.json`` for
+a linked status. :func:`syndication_client` serves all of them by id and 404s
+everything else, so every path runs offline.
 """
 
 from __future__ import annotations
@@ -15,9 +23,10 @@ from typing import Any
 
 import httpx
 
-from app.services.tweet_ingest import read_tweets, record_from_syndication
+from app.services.tweet_ingest import Resolution, acquire_thread, read_tweets, stitch
 from app.services.tweet_ingest.records import TweetRecord
 from app.services.tweet_ingest.syndication import _cache_clear
+from tests._fixtures import write_archive_js
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -45,10 +54,66 @@ def load_expected(typology: str) -> dict[str, Any]:
     return json.loads((FIXTURES_DIR / typology / "expected.json").read_text(encoding="utf-8"))
 
 
+def typologies_for_path(path: str) -> list[str]:
+    """Every typology one entry path runs, so a gap has to be declared.
+
+    A typology is in unless its ``expected.json`` carries ``paths.<path>.skip``
+    with the reason that entry cannot be pointed at it. Reading the list off the
+    catalogue rather than a hand-kept Python list is what makes a newly added
+    typology enter every entry's run by default: skipping it takes a written
+    reason beside the fixture, not a name quietly left out of a test module.
+    """
+    return [
+        typology
+        for typology in typology_names()
+        if "skip" not in load_expected(typology).get("paths", {}).get(path, {})
+    ]
+
+
 def load_chased(typology: str, tweet_id: str) -> dict[str, Any]:
     return json.loads(
         (FIXTURES_DIR / typology / f"chased_{tweet_id}.json").read_text(encoding="utf-8")
     )
+
+
+def expected_for_path(typology: str, path: str) -> dict[str, Any]:
+    """``expected.json`` as one entry path sees it.
+
+    The three entries answer one grammar, so the shared expectation at the top
+    level is the whole answer. A ``paths.<path>`` block holds only what is that
+    entry's own vocabulary (the bot's failure reason) or a ``skip`` marking a
+    typology that entry cannot be pointed at (an archive-only shape).
+    """
+    expected = load_expected(typology)
+    overrides = expected.get("paths", {}).get(path, {})
+    return {**expected, **overrides}
+
+
+def assert_resolution_matches(typology: str, path: str, resolution: Resolution) -> None:
+    """Assert one entry's resolution answers the typology's expectation.
+
+    The shared assertion every consumer runs: one detection per coordinate, and
+    every detection carrying the title, source, mirrors, warnings and media split
+    the expectation names. A ``paths.<path>.reason`` override pins the refusal
+    that entry reports.
+    """
+    block = load_expected(typology).get("paths", {}).get(path, {})
+    expected = expected_for_path(typology, path)
+
+    assert len(resolution.detections) == len(expected["coords"]), typology
+    if "reason" in block:
+        assert resolution.reason == block["reason"], typology
+    for detection in resolution.detections:
+        assert detection.title == expected["title"], typology
+        assert detection.source_url == expected["source_url"], typology
+        assert detection.secondary_source_urls == expected["secondary_source_urls"], typology
+        assert detection.warnings == expected["warnings"], typology
+        assert [[m.kind, m.origin] for m in detection.source_media] == [
+            list(pair) for pair in expected["source_media"]
+        ], typology
+        assert [[m.kind, m.origin] for m in detection.proof_media] == [
+            list(pair) for pair in expected["proof_media"]
+        ], typology
 
 
 def is_self_thread(body: dict[str, Any]) -> bool:
@@ -62,20 +127,59 @@ def owner_url(body: dict[str, Any]) -> str:
     return f"https://x.com/{handle}/status/{body['id_str']}"
 
 
-def record_from_body(body: dict[str, Any]) -> TweetRecord:
-    """Build the geoloc tweet's ``TweetRecord`` from its syndication body.
+def load_bodies(typology: str) -> dict[str, dict[str, Any]]:
+    """Every syndication body the typology ships, keyed by tweet id.
 
-    Fetches through a ``MockTransport`` client that returns ``body`` for the
-    single syndication call ``record_from_syndication`` makes.
+    ``body.json`` plus each ``parent_<id>.json`` / ``chased_<id>.json`` beside
+    it, which is what an entry path reads when it follows a reply edge or
+    chases a linked status.
     """
+    bodies: dict[str, dict[str, Any]] = {}
+    body = load_body(typology)
+    if not is_self_thread(body):
+        bodies[body["id_str"]] = body
+    for path in sorted((FIXTURES_DIR / typology).glob("*.json")):
+        if path.name in ("body.json", "expected.json"):
+            continue
+        extra = json.loads(path.read_text(encoding="utf-8"))
+        bodies[extra["id_str"]] = extra
+    return bodies
+
+
+def syndication_client(typology: str) -> httpx.Client:
+    """A syndication transport serving the typology's bodies, 404 elsewhere.
+
+    A 404 is X's answer for a post no unauthenticated reader can see, which is
+    how a chase outside the fixture degrades: fail-soft, no network. The
+    process-wide fetch cache is cleared first so a body cached by another
+    typology cannot answer here.
+    """
+    bodies = load_bodies(typology)
     _cache_clear()
-    client = httpx.Client(
-        transport=httpx.MockTransport(lambda _req: httpx.Response(200, json=body))
-    )
-    try:
-        return record_from_syndication(owner_url(body), client=client)
-    finally:
-        client.close()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = bodies.get(request.url.params.get("id", ""))
+        return httpx.Response(200, json=body) if body is not None else httpx.Response(404)
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def thread_for(typology: str, tmp_path: Path) -> list[TweetRecord]:
+    """The typology's thread, as the live acquisition reads it.
+
+    ``acquire_thread`` over the fixture bodies for a syndication typology (so a
+    self-reply brings its parent in), the throwaway archive for an
+    archive-only one.
+    """
+    body = load_body(typology)
+    if is_self_thread(body):
+        threads = stitch(thread_from_self_thread(typology, tmp_path))
+        assert len(threads) == 1, f"{typology}: expected one stitched thread"
+        return threads[0]
+    with syndication_client(typology) as client:
+        return acquire_thread(
+            body["id_str"], handle=body["user"]["screen_name"], client=client
+        ).records
 
 
 # The handle the unit-path ``self_thread`` archive is read under. The unit
@@ -239,19 +343,6 @@ def archive_tweet_from_thread_entry(
                 ArchiveMediaFile(relative_path=f"tweets_media/{tweet_id}-{basename}", data=TINY_MP4)
             )
     return files
-
-
-def write_archive_js(dest: Path, entries: list[dict[str, Any]]) -> None:
-    """Write ``tweets.js`` under ``dest`` wrapping ``entries`` in the export shape.
-
-    Each entry is a raw X-export tweet dict; the reader unwraps
-    ``window.YTD.tweets.part0 = [{"tweet": ...}, ...]``.
-    """
-    dest.mkdir(parents=True, exist_ok=True)
-    (dest / "tweets.js").write_text(
-        "window.YTD.tweets.part0 = " + json.dumps([{"tweet": e} for e in entries]),
-        encoding="utf-8",
-    )
 
 
 def build_consolidated_archive(typologies: list[str], dest: Path) -> None:

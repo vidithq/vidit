@@ -10,7 +10,7 @@ All responses are JSON.
 
 **Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side effect: `login` on success, `failed_login` on any rejected login (with `user_id` set only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches, so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL because no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches, so the audit trail carries a rate-of-requests signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best effort inside a SAVEPOINT. An audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `x_handle_conflict`); every `POST /events/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `report_not_found`, `report_already_resolved`, `report_event_gone`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`. `POST /events/{id}/archives` adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_original_mismatch` and `snapshot_not_a_snapshot_code`; the same codes answer a rejected `source_snapshot_url` on the three write paths, which run the same checks. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `version_not_found`, `x_handle_conflict`); every `POST /events/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `report_not_found`, `report_already_resolved`, `report_event_gone`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`; `POST /events/{id}/versions` adds it when the row is not `geolocated`, plus `nothing_changed` (the edit moves no versioned field) and `version_limit` (the event already carries 100 versions). `POST /events/import-from-tweet` adds `invalid_tweet_url`, `not_your_post`, `post_unreadable`, `upstream_unreadable` and `upstream_busy`. Every write path carrying an archived-copy field (`source_snapshot_url`, `secondary_snapshot_urls`, `detected_from_snapshot_url`) adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_original_mismatch` and `snapshot_not_a_snapshot_code`; they run the same checks, so one paste is answered the same way wherever it arrives. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
 ---
 
 ## Endpoints at a glance
@@ -33,20 +33,21 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events` | 🌐 | List one lifecycle view, `located` (default) or `requested` (ex `/requests`) |
 | GET | `/events/points` | 🌐 | Compact map-points tuples for one viewport (`bbox` required, cached) |
 | GET | `/events/possible-duplicates` | 🔒 | Soft-warning probe for the submit form |
-| POST | `/events/import-from-tweet` | 🔒 | Parse a tweet URL into a submit-form pre-fill payload |
-| GET | `/events/import-from-tweet/media` | 🔒 | Proxy fetch an X CDN media URL |
+| POST | `/events/import-from-tweet` | 🔒 | Import your own X post as detections |
 | POST | `/events/import-archive/presign` | 🔒 | Mint a presigned direct-to-storage upload for your X data archive |
 | POST | `/events/import-archive` | 🔒 | Enqueue your staged archive (by `upload_key`) for the backfill worker |
-| GET | `/events/import-archive/{job_id}` | 🔒 | Poll your import job (status + assemble counts) |
+| GET | `/events/import-archive/{job_id}` | 🔒 | Poll your import job (status + import counts) |
 | GET | `/events/{id}` | 🌐 | Full event detail, any lifecycle state |
 | POST | `/events/{id}/report` | 🌐 | Report an event for moderation (anonymous allowed) |
 | POST | `/events` | 🔒 | Create an event born `geolocated` (multipart, uploads media) |
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event (ex `POST /requests`) |
 | DELETE | `/events/{id}` | 🔒 | Owner-only hard delete + S3 sweep |
 | POST | `/events/{id}/geolocate` | 🔒 | Give an event a vouched location: `requested` \| `detected` → `geolocated` |
-| POST | `/events/batch-complete` | 🔒 | Publish a selection of your `detected` drafts in one call (per-row verdicts) |
+| POST | `/events/batch-complete` | 🔒 | Publish a selection of your detections in one call (per-row verdicts) |
+| POST | `/events/{id}/versions` | 🔒 | Correct a published event, owner only; files the version it supersedes |
+| GET | `/events/{id}/versions` | 🌐 | The event's superseded versions, newest first |
+| GET | `/events/{id}/versions/{version_no}` | 🌐 | One superseded version, by its number |
 | POST | `/events/{id}/close` | 🔒 | Withdraw a request or reject a detection, owner only (→ `closed`) |
-| POST | `/events/{id}/archives` | 🔒 | Record the archived copy of one of your event's links |
 | GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated, filterable on readiness) |
 | **Search** | | | |
 | GET | `/search` | 🌐 | Free-text search across geolocations / requests / users |
@@ -76,14 +77,15 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST/GET/DELETE | `/admin/invite-codes[/{id}]` | 🛡️ | Mint / list / revoke invite codes |
 | GET | `/admin/users` | 🛡️ | Substring search on username/email |
 | DELETE | `/admin/users/{id}` | 🛡️ | Soft delete (default) or `?hard=true` GDPR erasure |
-| DELETE | `/admin/users/{id}/detected-events` | 🛡️ | Purge every `detected` draft the user owns, account untouched |
+| DELETE | `/admin/users/{id}/detected-events` | 🛡️ | Purge every detection the user owns, account untouched |
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
 | PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
 | GET | `/admin/reports` | 🛡️ | The moderation queue: open reports first, then newest first |
 | POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to the event |
 | PATCH | `/admin/events/{id}/moderation` | 🛡️ | Set an event's graphic flag / takedown directly, no report behind it |
+| POST | `/admin/events/{id}/versions/{version_no}/redact` | 🛡️ | Blank one filed version, keeping its number |
 | POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, pending regs) |
-| POST | `/admin/maintenance/send-completion-digests` | 🛡️ | Email each analyst the count of drafts awaiting completion |
+| POST | `/admin/maintenance/send-completion-digests` | 🛡️ | Email each analyst the count of detections awaiting completion |
 
 ---
 
@@ -106,19 +108,17 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | `POST /auth/reset-password` | 10/hour |
 | `POST /auth/change-password` | 10/hour (keyed per session) |
 | **Events** | |
-| `GET /events`, `GET /events/{id}`, `GET /events/detections` | 120/min |
+| `GET /events`, `GET /events/{id}`, `GET /events/{id}/versions`, `GET /events/{id}/versions/{version_no}`, `GET /events/detections` | 120/min |
 | `GET /events/points` | 60/min |
 | `GET /events/possible-duplicates` | 60/min |
 | `POST /events/import-from-tweet` | 30/min |
-| `GET /events/import-from-tweet/media` | 60/min |
 | `POST /events/import-archive/presign` | 10/hour |
 | `POST /events/import-archive` | 10/hour |
 | `GET /events/import-archive/{job_id}` | 60/min |
 | `POST /events`, `POST /events/requests`, `DELETE /events/{id}` | 30/min |
-| `POST /events/{id}/geolocate` | 30/min |
+| `POST /events/{id}/geolocate`, `POST /events/{id}/versions` | 30/min |
 | `POST /events/batch-complete` | 10/min |
 | `POST /events/{id}/close` | 60/min |
-| `POST /events/{id}/archives` | 60/hour |
 | `POST /events/{id}/report` | 10/hour (anonymous allowed; reporting has no per-account tier, only the per-IP one) |
 | **Search / Tags** | |
 | `GET /search`, `GET /search/authors` | 60/min |
@@ -133,7 +133,7 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
-| `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` | 60/hour |
+| `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` | 60/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
 
 The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/reports` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: the POST verifies the HMAC signature over the raw body (one HMAC, cheaper than any limiter bookkeeping), and the GET only ever signs tokens matching X's URL-safe CRC shape, the charset gate that keeps the responder from being a signing oracle for forged webhook bodies.
@@ -148,7 +148,7 @@ The key is `User.id`, read from the signature-verified session cookie. A forged 
 
 This quota is defense in depth, not a wall on its own. Ten of the thirteen paths answer anonymously, so if you drop the session cookie, you leave the quota behind and fall back to the per-IP limits alone. The quota adds a ceiling the per-IP table cannot express: a bound on how much one account pulls, however many addresses it pulls from. Governing the anonymous catalog surface is the per-IP table's job.
 
-Anonymous callers are exempt from the quota and keep the per-IP limits alone. So is every authenticated read absent from the list above, including `GET /auth/me` and the read-only admin probes. Two endpoints are absent by decision rather than by nature: `GET /events/import-archive/{job_id}` and `GET /events/import-from-tweet/media`. A single import flow polls both hard enough to drain a shared budget on one import. Exempting them cannot widen the catalog surface, because neither returns catalog rows. The archive poll returns one job's own progress counters, and the media proxy returns bytes for a URL you already hold, one attachment per call, with no listing, search, or enumeration to walk.
+Anonymous callers are exempt from the quota and keep the per-IP limits alone. So is every authenticated read absent from the list above, including `GET /auth/me` and the read-only admin probes. One endpoint is absent by decision rather than by nature: `GET /events/import-archive/{job_id}`. A single import polls it hard enough to drain a shared budget on its own. Exempting it cannot widen the catalog surface, because it returns no catalog rows: one job's own progress counters, with no listing, search, or enumeration to walk.
 
 ---
 
@@ -479,9 +479,11 @@ Inputs are tolerated gracefully:
 
 ### `POST /events/import-from-tweet` 🔒
 
-Parse a public tweet URL into a pre-fill payload for the submit form. Read-only: it never creates a row. You submit the form afterward. Rate-limited to 30/min/IP.
+Import one of your own X posts. The route runs the shared detection engine over the post and writes what it reads as detections owned by you, one per coordinate the post carries. It is the same engine and the same write path the bot and the archive backfill run, so a post produces the same detections whichever entry read it (see [`ingestion.md`](ingestion.md#the-contract)). Rate-limited to 30/min/IP.
 
-Data source is X's public *syndication* endpoint (the same backend the embeddable `<blockquote class="twitter-tweet">` widget uses). It's unauthenticated and undocumented; the route surfaces upstream failures as `502` with a fixed error string the frontend renders verbatim ("Couldn't read tweet, fill the form manually"), and separates a throttled or wobbling upstream as `503`. Responses are cached in-memory for 1h per tweet ID to bound repeat fetches.
+**Own posts only.** The post's author must equal the X handle linked to your account (`users.x_handle`, compared case-insensitively). A post by anyone else, or a caller with no linked handle, returns `400 not_your_post`. Third-party footage goes through [`POST /events`](#post-events) with a `source_url` instead.
+
+Acquisition reads one hop: the pasted post plus, when it replies to one of its own author's posts, that parent. A reply posted under the pasted post is not read, so paste the reply itself to include it. Data source is X's public *syndication* endpoint (the same backend the embeddable `<blockquote class="twitter-tweet">` widget uses). It is unauthenticated and undocumented; responses are cached in-memory for 1h per post ID to bound repeat fetches.
 
 **Request body:**
 ```json
@@ -493,95 +495,33 @@ Accepts both `x.com` and `twitter.com` (with or without `www.`), tolerates query
 **Response 200:**
 ```json
 {
-  "source_url": "https://x.com/source_handle/status/1234567890123456789",
-  "secondary_source_urls": ["https://t.me/mirror_channel/456"],
-  "original_tweet_url": "https://x.com/analyst_handle/status/1234567890123456790",
-  "posted_at": "2025-11-12T14:33:00.000Z",
-  "author_handle": "analyst_handle",
-  "tweet_text": "<full OP tweet text>",
-  "suggested_title": "<first non-empty line, trimmed to 120 chars>",
-  "parsed_coords": [
-    { "lat": 48.012345, "lng": 37.802411 }
-  ],
-  "media": [
-    { "kind": "video", "remote_url": "https://video.twimg.com/...", "content_type": "video/mp4", "origin": "quote" },
-    { "kind": "image", "remote_url": "https://pbs.twimg.com/...", "content_type": "image/jpeg", "origin": "op" }
-  ],
-  "quoted_tweet": {
-    "source_url": "https://x.com/source_handle/status/1234567890123456789",
-    "author_handle": "source_handle",
-    "tweet_text": "<full quoted tweet text>"
-  },
-  "detected": [
-    {
-      "lat": 48.012345,
-      "lng": 37.802411,
-      "title": "<derived title>",
-      "proof_text": "<cleaned tweet text>",
-      "detected_from_url": "https://x.com/analyst_handle/status/1234567890123456790",
-      "event_date": "2025-11-12",
-      "secondary_source_urls": ["https://t.me/mirror_channel/456"],
-      "media": [
-        { "kind": "image", "remote_url": "https://pbs.twimg.com/...", "content_type": "image/jpeg", "origin": "op" }
-      ]
-    }
-  ]
+  "created": ["9a2b…"],
+  "updated": [],
+  "skipped": [],
+  "warnings": [{ "code": "several_coordinates", "message": "Several coordinates, one detection each" }],
+  "reason": null,
+  "failed": 0
 }
 ```
 
-`detected` is the **machine path's** view of the same tweet: the `DetectedGeoloc`s the assemble pipeline would produce, surfaced for inspection with **zero DB writes** (no row, no media fetch). One entry per parsed coordinate; empty when none parse. It's distinct from the human pre-fill above (`parsed_coords` + `media`): `parsed_coords` is candidates for you to pick from, and `detected` is what the machine would persist as a `detected` row if this tweet were tagged or backfilled.
+`created`, `updated` and `skipped` carry event ids in the order the engine produced them: new detections, open detections a re-import overwrote, and rows the import left alone. Open the first id you get. Re-importing is safe and idempotent: the match key is `(the thread's post ids OR source_url, coordinate)` scoped to you, so a post already imported through the bot or an archive backfill lands on the detection it already produced, and what happens to a matched row follows the [re-import matrix](ingestion.md#re-import), so a published or closed row is skipped rather than overwritten.
 
-Every field is best-effort. `parsed_coords` runs four coordinate extractors (decimal, decimal + hemisphere, DMS, Google-Maps URL) over the OP then the quoted tweet, capped at 3 candidates. `suggested_title` is the OP's first usable line (leading hashtags / URLs / list markers / bare coordinates stripped), truncated to 120 chars on a word boundary; empty when nothing usable remains. `media[].remote_url` is always `pbs.twimg.com` or `video.twimg.com`.
+`warnings` carries what review still has to answer on these detections, each entry a `{code, message}` pair. Three codes say what the engine could not settle from the post: `several_coordinates` (one thread, one detection per coordinate), `source_ambiguous` (several candidate links, so the source is left empty) and `source_missing` (no candidate link and no quote). Four say what the detections ended up with: `source_footage_missing` (no footage stored from the source), `source_fetch_failed` (the source could not be read this time, so importing the post again later may fill it), `source_date_unknown` (the source's post date came back unknown) and `duplicate_media` (the media already exists on another event). See [`ingestion.md`](ingestion.md#warnings). They are warnings, not refusals: the detections landed.
 
-`source_url` and `source_posted_at` are both nullable: they fill only on an explicit signal, never as a guess. See [`ingestion.md`](ingestion.md) for the full contract shared with the machine detection path. `source_url` resolution priority:
+`reason` names the refusal when the post produced no detection at all, in the same `{code, message}` shape, and is null whenever detections were produced: `coords_missing` (no coordinate in the author's own text, which also covers a retweet, since a retweet produces nothing) or `coords_invalid` (a coordinate-shaped string outside the world). `failed` counts detections that raised mid-persist; the detections that did land are unaffected.
 
-1. **Quoted tweet's URL**: when the OP quote-retweets, the quoted tweet is the source. `quoted_tweet` carries its metadata so the frontend can render the credit in the proof body. `source_posted_at` is the quote's post date.
-2. **First X / Telegram / YouTube link in the OP's `entities.urls`**: catches the OSINT convention of typing `Source: https://t.me/<channel>/<id>` in the body. `source_posted_at` stays `null`, the link carries no date. A coordinate link (Google Maps) or any other host is not a footage source.
+Branch on `code`, which is the stable half. `message` is the one sentence the platform says for that code everywhere it is surfaced, so the page can render it as it arrives; it is prose and may be reworded.
 
-Without either signal, `source_url` and `source_posted_at` are both `null` and the form field starts empty. The OP's own URL is never a fallback.
+Media travels with the detections: the engine fetches the post's own attachments from the X CDN, stores the footage in the source slot and the analyst's images as proof, and inlines the proof images into the detection's proof document. A detection whose media could not be fetched lands media-incomplete and is completed at review.
 
-`secondary_source_urls` carries the footage links the OP declared that the `source_url` slot didn't take (mirrors on other networks, or other posts of the same footage), ordered and already capped at the secondary-link ceiling; empty when the post declared nothing else. It prefills the submit form's secondary-source rows. `detected[].secondary_source_urls` is the same list on the machine path's view. See [`ingestion.md`](ingestion.md) for how the two slots are decided from the same candidate set.
+**Errors:** all four carry the typed `{"code", "message"}` envelope.
 
-`original_tweet_url` is always the OP's canonical URL, kept separately so the proof body can credit the analyst even when `source_url` points at the source.
-
-`media[].origin` (`op` = own attachment, `quote` = quoted tweet) is informational; the frontend routes by media type:
-
-- `kind: "video"` → **primary** (lands in `files[]` on the submit form).
-- `kind: "image"` → **proof** (loaded into the Tiptap proof body inline; it uploads as one of the create/geolocate multipart's `proof_files[]` at publish, see [`POST /events`](#post-events)).
-- No video in the response → no primary media is loaded; you attach the source media manually.
-
-The syndication endpoint doesn't expose reply-chain media, so a video the original poster added as a self-reply on the same thread is invisible to this route.
-
-**Errors:**
 | Code | Case |
 |------|------|
-| 400 | Not a tweet URL (wrong host, profile / list / search path, malformed) |
-| 404 | Tweet not accessible: deleted, protected, never existed, or readable only behind an X login (age-restricted, withheld in a jurisdiction). The frontend renders `detail` verbatim, so it names the case and tells you to fill the form manually |
-| 502 | Syndication endpoint timeout or schema drift (an unknown payload shape, or the empty body X returns when it rejects the request token), frontend renders the "fill the form manually" banner |
-| 503 | X declined to serve the request for now: it rate-limited us (429) or answered with its own 5xx. `detail` tells you to retry in a minute or fill the form manually |
-
----
-
-### `GET /events/import-from-tweet/media?u=<url>` 🔒
-
-Thin proxy that fetches a single X CDN media URL and streams the bytes back.
-
-Requires auth. The `u` host is whitelisted to `pbs.twimg.com` / `video.twimg.com`; any other host returns 400 (SSRF guard). The per-stream byte cap (~110 MB) matches the upload pipeline's video ceiling plus HTTP framing overhead.
-
-**Query params:**
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `u` | string | yes | Absolute X CDN URL (`pbs.twimg.com` / `video.twimg.com`, `https://` only). |
-
-**Response 200:** the upstream bytes, with the upstream `Content-Type` preserved and `Cache-Control: private, max-age=300`.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 400 | `u` host not in the whitelist |
-| 404 | The media URL no longer resolves: the CDN answered 404, 403 or 410. X rotates and expires `video.twimg.com` URLs, so re-import the tweet to get fresh ones |
-| 502 | Upstream transport error, 5xx, or response above the size cap |
-| 503 | The CDN rate-limited us (429) |
+| 400 | `invalid_tweet_url`: not a post URL (wrong host, profile / list / search path, malformed). `not_your_post`: the post's author is not the X handle linked to your account, or your account has none. `message` names both handles |
+| 404 | `post_unreadable`: deleted, protected, never existed, or readable only behind an X login (age-restricted, withheld in a jurisdiction). The code and the sentence the bot's failure reply names for the same case |
+| 502 | `upstream_unreadable`: syndication timeout or schema drift (an unknown payload shape, or the empty body X returns when it rejects the request token) |
+| 503 | `upstream_busy`: X declined to serve for now, either rate-limiting us (429) or answering with its own 5xx. Retry in a minute |
 
 ---
 
@@ -608,13 +548,13 @@ Step one of the archive import: mint a staging key and a presigned direct-to-sto
 
 ### `POST /events/import-archive` 🔒
 
-Step two: enqueue the staged archive for the backfill worker. The upload **is the consent**: every geolocation lands `detected`, attributed to you (no handle-ownership check in this version). The request verifies the staged object (your own `upload_key`, present, under the size guard; a storage HEAD, the zip is never opened here) and returns a **`queued` job (202)**: the worker service (see [`ingestion.md`](ingestion.md#archive-import-worker)) runs the import off the request path and emails you the outcome. Poll the job (below) for the counts. A malformed zip therefore surfaces as a `failed` job plus a failure email, not a synchronous 4xx. The browser strip catches the common shapes before upload.
+Step two: enqueue the staged archive for the backfill worker. The upload **is the consent**: every geolocation lands `detected`, attributed to you. The job runs under the X handle linked to your account, which is what every provenance permalink is written from; a job whose owner carries no linked handle lands `failed`. The request verifies the staged object (your own `upload_key`, present, under the size guard; a storage HEAD, the zip is never opened here) and returns a **`queued` job (202)**: the worker service (see [`ingestion.md`](ingestion.md#archive-import-worker)) runs the import off the request path and emails you the outcome. Poll the job (below) for the counts. A malformed zip therefore surfaces as a `failed` job plus a failure email, not a synchronous 4xx. The browser strip catches the common shapes before upload.
 
-**Tweets-only intake guard.** The backend extracts only the allowlisted entries (`tweets.js`, `tweets_media/`); everything else (DMs, email, account data, `deleted-*`) is never read. The allowlist is anchored on the export root the `tweets.js` sits in, so a sibling directory whose name contains `tweets_media/` (`deleted_tweets_media/`, the media of deleted posts) and the media of a second export nested in the same zip stay outside it. The browser strip anchors the same way before upload. Extraction is hardened against zip-slip and zip-bombs; the per-media caps at assemble time are the product limits (see [`ingestion.md`](ingestion.md#archive-import-worker)).
+**Tweets-only intake guard.** The backend extracts only the allowlisted entries (`tweets.js`, `tweets_media/`); everything else (DMs, email, account data, `deleted-*`) is never read. The allowlist is anchored on the export root the `tweets.js` sits in, so a sibling directory whose name contains `tweets_media/` (`deleted_tweets_media/`, the media of deleted posts) and the media of a second export nested in the same zip stay outside it. The browser strip anchors the same way before upload. Extraction is hardened against zip-slip and zip-bombs; the per-media caps applied when a detection is persisted are the product limits (see [`ingestion.md`](ingestion.md#archive-import-worker)).
 
-Idempotent on `(detected_from_url, coordinate)`, so a re-upload is a free catch-up. A detection with no recoverable media persists media-incomplete; you add media before submitting.
+Idempotent on the thread's post ids plus the coordinate (see [re-import](ingestion.md#re-import)), so a re-upload is a free catch-up and so is an export of posts the bot or the paste already imported. A detection with no recoverable media persists media-incomplete; you add media before submitting.
 
-A tweet that references its footage only through a linked status (`Source: x.com/.../status/...`) has that footage chased via syndication. An unreachable status still lands the tweet, without a source. A tweet whose footage is a Telegram post (`Source: t.me/<channel>/<id>`) has that post's public embed chased for its date and, when the embed serves it, its media. A sensitive post degrades to link and date.
+A thread whose sole source candidate is an X status has that footage chased via syndication. An unreachable status still lands the tweet, without a source. A sole `t.me/<channel>/<id>` candidate has that post's public embed chased for its date and, when the embed serves it, its media; a sensitive post degrades to link and date. Several candidates leave the source empty and chase nothing (see [`ingestion.md`](ingestion.md#the-contract)).
 
 **Request:** JSON. `upload_key` from the presign; `post_estimate` (optional, ≥ 1) is the browser strip's cosmetic volume hint for the queued display (the worker stamps the exact totals).
 ```json
@@ -631,9 +571,7 @@ A tweet that references its footage only through a linked status (`Source: x.com
   "progress_total": null,
   "created": 0, "updated": 0, "skipped": 0, "failed": 0,
   "error": null,
-  "created_at": "2026-07-17T12:00:00Z",
-  "started_at": null,
-  "finished_at": null
+  "created_at": "2026-07-17T12:00:00Z"
 }
 ```
 
@@ -651,9 +589,9 @@ A tweet that references its footage only through a linked status (`Source: x.com
 
 One archive-import job. Owner only: someone else's job ID reads as 404, indistinguishable from unknown. The upload page polls this endpoint until `status` is terminal. The completion email is the durable signal for an analyst who has since left.
 
-`status` walks `queued` → `running` → `done` | `failed`. `post_estimate` is a free zip-metadata volume hint stamped at enqueue (declared `tweets.js` size over a per-record average; a display hint, not a promise); once the worker's parse has the exact detection count it stamps `progress_total` and batches `progress_done` as rows land, the upload page's live "137 / 412". The counts are final once `done`, and every detection lands in exactly one of them: `created` is new `detected` rows; `updated` an open `detected` draft the import overwrote with a newer parse; `skipped` a detection whose matched row the import leaves alone (published, rejected, withheld, removed, or already up to date); `failed` a detection that raised mid-persist (the rest still land). The [re-import rule](ingestion.md#re-import) states which row gets which. A `failed` **job** keeps whatever landed before the failure (re-uploading skips it and continues); `error` is a terse operator-facing reason. Rate-limited to 60/min/IP.
+`status` walks `queued` → `running` → `done` | `failed`. `post_estimate` is a free zip-metadata volume hint stamped at enqueue (declared `tweets.js` size over a per-record average; a display hint, not a promise); once the worker's parse has the exact detection count it stamps `progress_total` and batches `progress_done` as rows land, the upload page's live "137 / 412". The counts are final once `done`, and every detection lands in exactly one of them: `created` is new `detected` rows; `updated` an open detection the import overwrote with a newer parse; `skipped` a detection whose matched row the import leaves alone (published, rejected, withheld, removed, or already up to date); `failed` a detection that raised mid-persist (the rest still land). The [re-import rule](ingestion.md#re-import) states which row gets which. A `failed` **job** keeps whatever landed before the failure (re-uploading skips it and continues); `error` is a terse operator-facing reason. Rate-limited to 60/min/IP.
 
-**Response 200:** the job payload above, counts and timestamps filled per status.
+**Response 200:** the job payload above, counts filled per status.
 
 ---
 
@@ -684,18 +622,16 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
   "event_time": "14:30:00",
   "source_posted_at": "2026-03-14T18:05:00Z",
   "created_at": "2026-03-16T09:42:00Z",
-  "updated_at": "2026-03-16T09:42:00Z",
-  "requested_at": null,
-  "detected_at": null,
   "geolocated_at": "2026-03-16T09:42:00Z",
   "closed_at": null,
   "is_graphic": false,
   "status": "geolocated",
+  "version_no": 1,
   "close_reason": null,
   "before_closed_status": null,
   "detected_from_url": null,
+  "detected_via": null,
   "archived_detected_from": null,
-  "detected_post_at": null,
   "owner": {
     "id": "uuid",
     "username": "kalush"
@@ -731,7 +667,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 }
 ```
 
-`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source` is the archived copy of that `source_url`: `url` is the snapshot and `provider` (`wayback` or `archive_today`) is the service holding it. One copy per link, whichever service produced it. The field is `null` when no copy has been recorded, which is every link's starting state, since archival is an act the event's owner performs (see [`ingestion.md`](ingestion.md#source-archival) and [`POST /events/{id}/archives`](#post-eventsidarchives)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `archived_secondary_sources` is the same list's archived copies, same length and same order: entry `i` covers mirror `i`, with the same shape and the same `null` conditions as `archived_source`, and the detail surface renders each beside its mirror. `archived_detected_from` is the archived copy of `detected_from_url`, on the same terms again, and `null` for a human submit, which carries no provenance link. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`). `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick. `is_graphic` is `true` when the footage is flagged as showing death, injury or human remains; every media surface that renders this event's images or video covers them behind [`GraphicContentGate`](design.md#components) while it is.
+`event_coords` is the subject point, `null` on a coordinate-less `requested` event; every `geolocated` row carries it. `capture_source_coords` is the optional camera position, `null` unless the submitter set it. `source_url` / `source_posted_at` are `null` on a `detected` row with no declared source (see [`ingestion.md`](ingestion.md)); a `requested` or `geolocated` row always carries a `source_url`. `archived_source` is the archived copy of that `source_url`: `url` is the snapshot and `provider` (`wayback` or `archive_today`) is the service holding it. One copy per link, whichever service produced it. The field is `null` when no copy has been recorded, which is every link's starting state, since archival is an act the event's owner performs (see [`archival.md`](archival.md)). `secondary_source_urls` is the ordered list of optional mirrors (same footage on another network, or another post of it from the same point of view), always present and empty when the event declares none; unlike `source_url` it carries no requester protection, a fulfiller's `geolocate` call replaces the whole list. `archived_secondary_sources` is the same list's archived copies, same length and same order: entry `i` covers mirror `i`, with the same shape and the same `null` conditions as `archived_source`, and the detail surface renders each beside its mirror. `archived_detected_from` is the archived copy of `detected_from_url`, on the same terms again, and `null` for a human submit, which carries no provenance link. `detected_via` names the ingest entry that produced a machine detection, `bot`, `paste` or `archive` (see [`ingestion.md`](ingestion.md)); it is read-only, stamped once at creation, and `null` for a human submit and for machine rows that predate it. `requested_by` is the analyst who opened the request, `null` on a directly-created event (no request preceded it). `geolocators` is the durable credit list (who vouched the location, oldest first; empty until the first `geolocate`). `version_no` is which version of the event this payload is: `1` until its owner corrects it, and one higher per correction (see [`POST /events/{id}/versions`](#post-eventsidversions)). `geolocated_at` is when the row became `geolocated`, `null` before publication; the version history credits version 1 to that instant, every later version to the edit that produced it. `close_reason` / `before_closed_status` are `null` while the event is open. `media` carries only the event's `source` attachment(s); a `proof` image never appears here, it lives inline in the `proof` document as a URL. `thumbnail` is the picked card thumbnail (the `source` attachment, else the first `proof` image, else `null`; same rule as [`GET /events`](#get-events)), so previews built on this payload (the map pin hover) render it without re-deriving the pick. `is_graphic` is `true` when the footage is flagged as showing death, injury or human remains; every media surface that renders this event's images or video covers them behind [`GraphicContentGate`](design.md#components) while it is.
 
 **Errors:**
 | Code | Case |
@@ -764,8 +700,7 @@ Report an event for moderation. Open to anonymous viewers: the people a piece of
   "reporter_user_id": null,
   "created_at": "2026-08-12T09:14:00Z",
   "resolved_at": null,
-  "resolution": null,
-  "resolved_by": null
+  "resolution": null
 }
 ```
 
@@ -790,8 +725,9 @@ Create an event directly, born `geolocated`. To open a request without coordinat
 | `capture_source_lat` | float | no | Latitude of the camera position (where the footage was shot from). Both-or-neither with `capture_source_lng`. |
 | `capture_source_lng` | float | no | Longitude of the camera position. |
 | `source_url` | string | yes | Original source URL, ≤2000 chars. |
-| `source_snapshot_url` | string | no | The archived copy of `source_url`, ≤2000 chars, if you archived it while filling the form. Checked and stored exactly as [`POST /events/{id}/archives`](#post-eventsidarchives) does, in the same transaction as the event: a paste that is not a snapshot of `source_url` is a 400 and no event is created. |
+| `source_snapshot_url` | string | no | The archived copy of `source_url`, ≤2000 chars, if you archived it while filling the form. Checked and stored in the same transaction as the event, on the terms [`archival.md`](archival.md) states: a paste that is not a snapshot of `source_url` is a 400 and no event is created. |
 | `secondary_source_urls` | string[] (repeated field) | no | Optional mirrors of the same media (another network, or another post from the same point of view), one form field per link, each ≤2000 chars. Normalized server-side (stripped, blanks dropped, duplicates dropped, an entry equal to `source_url` dropped, order preserved); more than 10 after normalization is `too_many_source_links`. |
+| `secondary_snapshot_urls` | string[] (repeated field) | no | The archived copy of each mirror, one form field per entry of `secondary_source_urls` and aligned with it by position; send an empty value for a mirror you did not archive. Each is checked against the mirror it sits beside and stored under origin `secondary_source`, on the contract `source_snapshot_url` follows. The pairing happens before normalization, so a copy stays on the link it was posted under; a copy whose mirror normalization drops is dropped with it. |
 | `event_date` | string (YYYY-MM-DD) | no | When the depicted event happened. Omitted / empty → stored NULL (the footage doesn't always establish the date; renders as *Unknown*). |
 | `event_time` | string (HH:MM) | no | Optional time-of-day for the event (UTC). Omitted / empty → stored NULL. |
 | `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | yes | When the source posted the media, a full instant, read as UTC. Required on this path; you supply it, since an off-platform source doesn't always carry a machine-readable date. Distinct from `event_date` and the submission time. |
@@ -809,7 +745,7 @@ Create an event directly, born `geolocated`. To open a request without coordinat
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | Typed `{code, message}` branch: `invalid_coordinates`, `media_required` (no source file), `invalid_proof` (sanitizer rejection), `proof_image_required` (no proof image), `tag_requirements_not_met` (missing conflict or `capture_source` tag), `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), `invalid_file` (disallowed MIME / size), `evidence_processing_failed`, or `proof_files_mismatch` (a `placeholder://` src with no matching `proof_files` upload, or vice versa), or a rejected `source_snapshot_url` (the `snapshot_*` codes of [`POST /events/{id}/archives`](#post-eventsidarchives)) |
+| 400 | Typed `{code, message}` branch: `invalid_coordinates`, `media_required` (no source file), `invalid_proof` (sanitizer rejection), `proof_image_required` (no proof image), `tag_requirements_not_met` (missing conflict or `capture_source` tag), `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), `invalid_file` (disallowed MIME / size), `evidence_processing_failed`, or `proof_files_mismatch` (a `placeholder://` src with no matching `proof_files` upload, or vice versa), or a rejected `source_snapshot_url` / `secondary_snapshot_urls` entry (the `snapshot_*` codes listed under [*Error envelope*](#api-reference)) |
 | 409 | `source_media_conflict`, a concurrent request raced past the one-source-per-event index |
 | 413 | Request body exceeds the platform body-size cap (`max_video_size + max_proof_images_per_event × max_image_size + 10 MB` headroom). Pre-checked by the HTTP-layer middleware before any bytes touch the worker; 413 responses traverse CORS so cross-origin callers see a clean status instead of a CORS error. |
 | 422 | Malformed input: `event_date` (not a YYYY-MM-DD date), `event_time` (not HH:MM), `source_posted_at` (not an ISO datetime), **more than `max_proof_images_per_event` files** in `proof_files` (`too_many_files`), `title` over 255 chars, `source_url` or a single `secondary_source_urls` item over 2000 chars. All match the same-shape rejection on `GET /events` filter params and `_parse_bbox`. |
@@ -839,9 +775,9 @@ Your "Detections" queue: your machine-`detected` events awaiting a geolocate, ne
 |-------|------|-------------|
 | `page` | int | Page number (default 1). Below 1 or non-numeric returns 422. |
 | `per_page` | int | Rows per page (default 20). Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
-| `readiness` | string | Which drafts to page through: `all` (default), `ready`, or `incomplete`. Any other value returns 422. |
+| `readiness` | string | Which detections to page through: `all` (default), `ready`, or `incomplete`. Any other value returns 422. |
 
-**Readiness.** A draft is `ready` when it carries every piece of evidence a publish needs and waits only on the two judgments a review supplies (a conflict and a `capture_source` tag): a `source` media row, a non-blank `source_url`, coordinates, and a proof body embedding at least one image. `incomplete` is the exact complement, so the two sets partition the queue and no draft falls out of both. The filter runs in SQL over the whole queue, not over the page you loaded, so `readiness=ready` on page 1 answers about every draft you hold.
+**Readiness.** A detection is `ready` when it carries every piece of evidence a publish needs and waits only on the two judgments a review supplies (a conflict and a `capture_source` tag): a `source` media row, a non-blank `source_url`, coordinates, and a proof body embedding at least one image. `incomplete` is the exact complement, so the two sets partition the queue and no detection falls out of both. The filter runs in SQL over the whole queue, not over the page you loaded, so `readiness=ready` on page 1 answers about every detection you hold.
 
 **Response 200:** each item is the same shape as `GET /events/{id}`.
 ```json
@@ -878,6 +814,7 @@ Opens a request: creates a `requested` event with no coordinates yet (ex `POST /
 | `source_url` | string | yes | URL where the media was found. Max 2000 chars. |
 | `source_snapshot_url` | string | no | The archived copy of `source_url`, same contract as [`POST /events`](#post-events). One form posts either shape, so a snapshot taken while filling it is kept whichever you publish. |
 | `secondary_source_urls` | string[] (repeated field) | no | Optional mirrors, same normalization and cap as [`POST /events`](#post-events). |
+| `secondary_snapshot_urls` | string[] (repeated field) | no | The archived copy of each mirror, same contract as [`POST /events`](#post-events). |
 | `proof` | string (JSON) | no | In-progress proof (Tiptap document); sanitized server-side and image-free (no `proof_files` on this path, inline images are dropped by the sanitizer) |
 | `lat` | float | no | Latitude of an approximate guess. Both-or-neither with `lng`. |
 | `lng` | float | no | Longitude of an approximate guess. |
@@ -895,7 +832,7 @@ Opens a request: creates a `requested` event with no coordinates yet (ex `POST /
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | Plain-string validation (empty / whitespace-only `title` or `source_url`) **or** a typed `{code, message}` branch: `invalid_coordinates` (a half-typed guess pair), `media_required` (no file), `invalid_proof`, `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), `invalid_file`, `evidence_processing_failed`, or a rejected `source_snapshot_url` (the `snapshot_*` codes of [`POST /events/{id}/archives`](#post-eventsidarchives)) |
+| 400 | Plain-string validation (empty / whitespace-only `title` or `source_url`) **or** a typed `{code, message}` branch: `invalid_coordinates` (a half-typed guess pair), `media_required` (no file), `invalid_proof`, `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), `invalid_file`, `evidence_processing_failed`, or a rejected `source_snapshot_url` / `secondary_snapshot_urls` entry (the `snapshot_*` codes listed under [*Error envelope*](#api-reference)) |
 | 413 | Request body exceeds the platform body-size cap, same middleware as `POST /events` |
 | 422 | `title` over 255 chars / `source_url` or a single `secondary_source_urls` item over 2000 chars, malformed `event_date` / `event_time` / `source_posted_at`, missing required `source_posted_at`, or `event_time` without `event_date` |
 
@@ -903,7 +840,7 @@ Opens a request: creates a `requested` event with no coordinates yet (ex `POST /
 
 ### `POST /events/{id}/geolocate` 🔒
 
-Gives an event a vouched location: transitions `requested` | `detected` → `geolocated` in one atomic request, writing your whole edited form. This is the **single** fulfil / geolocate path. A `detected` row is immutable machine output, so this is the **only** write to it, and it stays owner-only. A `requested` event is answerable by anyone, and you become its `owner` (`requested_by` keeps the original poster). **Multipart**, mirroring `POST /events`: the form posts the whole row state, and the server applies the field updates, media removals, and new-media uploads, then freezes the row as `geolocated`, in one transaction under a row lock (a concurrent geolocate on the same row serializes, and the loser gets 409). Allowed **only while `requested` / `detected`**: a `geolocated` row is frozen.
+Gives an event a vouched location: transitions `requested` | `detected` → `geolocated` in one atomic request, writing your whole edited form. This is the **single** fulfil / geolocate path. A `detected` row is immutable machine output, so this is the **only** write to it, and it stays owner-only. A `requested` event is answerable by anyone, and you become its `owner` (`requested_by` keeps the original poster). **Multipart**, mirroring `POST /events`: the form posts the whole row state, and the server applies the field updates, media removals, and new-media uploads, then publishes the row as `geolocated`, in one transaction under a row lock (a concurrent geolocate on the same row serializes, and the loser gets 409). Allowed **only while `requested` / `detected`**: past publication a row is corrected through [`POST /events/{id}/versions`](#post-eventsidversions), which files the version it supersedes.
 
 **Request body (`multipart/form-data`):**
 | Field | Type | Description |
@@ -913,9 +850,10 @@ Gives an event a vouched location: transitions `requested` | `detected` → `geo
 | `lng` | float | Longitude (-180 to 180) of the subject |
 | `capture_source_lat` | float | Latitude of the camera position. Both-or-neither with `capture_source_lng`. |
 | `capture_source_lng` | float | Longitude of the camera position. |
-| `source_url` | string | ≤2000 chars, the footage origin. A `detected` draft may start with no declared source (`null`, see [`ingestion.md`](ingestion.md)): a blank value here 400s as `source_url_required`, since a `geolocated` row always carries one. Fulfilling a `requested` event ignores this field and keeps the request's `source_url`, so you can't rewrite the requester's evidence anchor |
-| `source_snapshot_url` | string | The archived copy of the source URL this write stores, ≤2000 chars, same contract as [`POST /events`](#post-events). On a `requested` fulfilment it is checked against the request's own `source_url`, the one that is kept. Whether or not you send it, a write that changes `source_url` never keeps a copy of the old one filed as the archived source: see [`ingestion.md`](ingestion.md#source-archival). |
+| `source_url` | string | ≤2000 chars, the footage origin. A detection may start with no declared source (`null`, see [`ingestion.md`](ingestion.md)): a blank value here 400s as `source_url_required`, since a `geolocated` row always carries one. Fulfilling a `requested` event ignores this field and keeps the request's `source_url`, so you can't rewrite the requester's evidence anchor |
+| `source_snapshot_url` | string | The archived copy of the source URL this write stores, ≤2000 chars, same contract as [`POST /events`](#post-events). On a `requested` fulfilment it is checked against the request's own `source_url`, the one that is kept. Whether or not you send it, a write that changes `source_url` never keeps a copy of the old one filed as the archived source: see [`archival.md`](archival.md). |
 | `secondary_source_urls` | string[] (repeated field) | Optional mirrors, same normalization and cap as [`POST /events`](#post-events). Unlike `source_url`, this field is **not** ignored on a `requested` fulfilment: the submitted list replaces whatever the row held, since the mirrors sit outside the frozen evidence anchor. |
+| `secondary_snapshot_urls` | string[] (repeated field) | The archived copy of each mirror, same contract as [`POST /events`](#post-events). Filed against the links this write stores, so a copy posted beside a mirror the write drops is dropped with it. |
 | `event_date` | string (YYYY-MM-DD) | When the depicted event happened. Optional, mirroring create: empty / omitted stores NULL (renders as *Unknown*) |
 | `event_time` | string (HH:MM) | Optional time-of-day for the event (UTC); empty / omitted clears it |
 | `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | When the source posted the media, a full instant (UTC). Required on this path; you supply it, since an off-platform source doesn't always carry a machine-readable date |
@@ -934,21 +872,21 @@ Gives an event a vouched location: transitions `requested` | `detected` → `geo
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required` (no proof image in the final body), `tag_requirements_not_met`, `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), a rejected file (`invalid_file` / `evidence_processing_failed`), no surviving source media (`media_required`), `proof_files_mismatch`, `source_url_required` (a `detected` draft with no declared source, geolocated with a blank `source_url` field), or a rejected `source_snapshot_url` (the `snapshot_*` codes of [`POST /events/{id}/archives`](#post-eventsidarchives)) |
-| 403 | You are not the owner of a `detected` draft (a `requested` event is answerable by anyone) |
+| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required` (no proof image in the final body), `tag_requirements_not_met`, `too_many_source_links` (more than 10 `secondary_source_urls` after normalization), a rejected file or a proof src naming another event's image (`invalid_file` / `evidence_processing_failed`), no surviving source media (`media_required`), `proof_files_mismatch`, `source_url_required` (a detection with no declared source, geolocated with a blank `source_url` field), or a rejected `source_snapshot_url` / `secondary_snapshot_urls` entry (the `snapshot_*` codes listed under [*Error envelope*](#api-reference)) |
+| 403 | You are not the owner of a detection (a `requested` event is answerable by anyone) |
 | 404 | Event not found (incl. soft-deleted) |
-| 409 | Row is not `requested` / `detected` (`invalid_state`, a `geolocated` row is frozen), or `source_media_conflict` (a concurrent edit raced past the one-source cap) |
-| 422 | Kept + new source media over one (`too_many_files`), more than `max_proof_images_per_event` proof files, or a single `secondary_source_urls` item over 2000 chars |
+| 409 | Row is not `requested` / `detected` (`invalid_state`; a published row is corrected through [`POST /events/{id}/versions`](#post-eventsidversions)), or `source_media_conflict` (a concurrent edit raced past the one-source cap) |
+| 422 | Kept + new source media over one (`too_many_files`), a proof body that would display more than `max_proof_images_per_event` images (its already-uploaded images plus the new files), or a single `secondary_source_urls` item over 2000 chars |
 
 ---
 
 ### `POST /events/batch-complete` 🔒
 
-Publish a selection of your own `detected` drafts in one call: the bulk door onto the same `detected` → `geolocated` transition [`POST /events/{id}/geolocate`](#post-eventsidgeolocate) performs one row at a time. **JSON, not multipart**: nothing uploads here and no field is written. A machine draft already carries its title, coordinates, source and (when the imported thread had annotation media) its proof images, so the call supplies only what the machine can't judge: the **conflict**, once for the whole selection, and one **`capture_source` tag per row**.
+Publish a selection of your own detections in one call: the bulk door onto the same `detected` → `geolocated` transition [`POST /events/{id}/geolocate`](#post-eventsidgeolocate) performs one row at a time. **JSON, not multipart**: nothing uploads here and no field is written. A machine detection already carries its title, coordinates, source and (when the imported thread had annotation media) its proof images, so the call supplies only what the machine can't judge: the **conflict**, once for the whole selection, and one **`capture_source` tag per row**.
 
-Each row runs in its **own transaction** against the **same evidence floor** as the single-row transition: one source media, at least one proof image in the stored proof body, a conflict, a `capture_source` tag, plus the coordinates and `source_url` a `geolocated` row always carries. A row that fails rolls back alone and stays a `detected` draft. The rest of the selection still publishes. Publishing a row credits you in `event_geolocators`, exactly as a single geolocate does.
+Each row runs in its **own transaction** against the **same evidence floor** as the single-row transition: one source media, at least one proof image in the stored proof body, a conflict, a `capture_source` tag, plus the coordinates and `source_url` a `geolocated` row always carries. A row that fails rolls back alone and stays a detection. The rest of the selection still publishes. Publishing a row credits you in `event_geolocators`, exactly as a single geolocate does.
 
-Owner only: every targeted draft must belong to you. There is no fulfil-someone-else's-row path here, unlike `requested` events.
+Owner only: every targeted detection must belong to you. There is no fulfil-someone-else's-row path here, unlike `requested` events.
 
 **Request body:**
 ```json
@@ -963,8 +901,8 @@ Owner only: every targeted draft must belong to you. There is no fulfil-someone-
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `conflict_ids` | UUID[] | 1-10 [conflicts](#conflicts), applied to every row. Replaces whatever conflicts the drafts held |
-| `rows` | object[] | 1-100 drafts, one row per `event_id` (a repeated id is a 422). `event_id` is a `detected` row you own; `capture_source_tag_id` is one curated `capture_source` tag, replacing an imported one rather than adding to it. Other tags on the draft survive |
+| `conflict_ids` | UUID[] | 1-10 [conflicts](#conflicts), applied to every row. Replaces whatever conflicts the detections held |
+| `rows` | object[] | 1-100 detections, one row per `event_id` (a repeated id is a 422). `event_id` is a `detected` row you own; `capture_source_tag_id` is one curated `capture_source` tag, replacing an imported one rather than adding to it. Other tags on the detection survive |
 
 **Response 200:** verdicts in the order the rows were submitted.
 ```json
@@ -983,14 +921,14 @@ A `200` does **not** mean everything published; read `published` / `failed`. A f
 
 | `code` | Case |
 |--------|------|
-| `source_url_required` | The draft carries no source URL |
-| `coordinates_required` | The import found no location in the thread, so the draft carries no point |
-| `media_required` | The draft carries no `source` media row |
+| `source_url_required` | The detection carries no source URL |
+| `coordinates_required` | The import found no location in the thread, so the detection carries no point |
+| `media_required` | The detection carries no `source` media row |
 | `proof_image_required` | The stored proof body holds no image (the imported thread carried no annotation media) |
 | `tag_requirements_not_met` | The row's `capture_source_tag_id` is unknown or is not a `capture_source` tag |
 | `invalid_state` | The row is no longer `detected` |
 | `event_not_found` | Hard-deleted, or soft-deleted by an admin |
-| `internal_error` | A database failure on that row alone. Every other row's verdict still stands, and the draft is untouched, so the row is retriable as-is |
+| `internal_error` | A database failure on that row alone. Every other row's verdict still stands, and the detection is untouched, so the row is retriable as-is |
 
 The first six are the same stable codes the single-row geolocate answers with, and they are checked in the order above.
 
@@ -998,14 +936,155 @@ The first six are the same stable codes the single-row geolocate answers with, a
 | Code | Case |
 |------|------|
 | 400 | `tag_requirements_not_met`: no `conflict_ids` entry resolves to a live conflict, so no row could clear the floor |
-| 403 | A targeted draft belongs to another analyst; nothing is published |
+| 403 | A targeted detection belongs to another analyst; nothing is published |
 | 422 | Empty `conflict_ids` / `rows`, over 10 conflicts, over 100 rows, the same `event_id` in two rows, or a malformed UUID |
+
+---
+
+### `POST /events/{id}/versions` 🔒
+
+Correct a published event. Owner-only, and only while `geolocated`: the state a correction applies to is the vouched record, so before publication a row is edited through its own path ([`POST /events/{id}/geolocate`](#post-eventsidgeolocate) for a detection or a request). The write files the pre-edit state as a version, applies your form, and moves the event to the next `version_no`, all in one transaction under a row lock. Two concurrent edits therefore take their numbers in order rather than racing. **Multipart**, mirroring geolocate.
+
+**Editability contract.** After publication the **evidence anchor is immutable**: `source_url` and the source media are what the published claim rests on, so this endpoint declares no field for either, and sending one changes nothing. A wrong source on a published event is an admin matter: [`POST /events/{id}/close`](#post-eventsidclose) rejects a `geolocated` row, so its owner has no path to the anchor. Everything else the publish form wrote is editable and versioned: the title, both coordinate sets, the event date and hour, the source post time, the graphic-content flag, the tags, the conflicts, the proof body with its inline images, and the secondary source links, which are mirrors rather than the evidence origin and sit outside the anchor.
+
+**This is also where a published record's archived copies are recorded.** `source_snapshot_url`, `detected_from_snapshot_url` and `secondary_snapshot_urls` archive a link without changing it, which is why the two immutable links carry the field at all. Each lands in the version this call produces, so one call files one version carrying the edit and the copies. Which of a record's links are archived is part of what the record says, so a save whose only change is a copy is a version like any other, and the changed-field list names it *Archived copies*. See [`archival.md`](archival.md).
+
+**Request body (`multipart/form-data`):**
+| Field | Type | Description |
+|-------|------|-------------|
+| `title` | string | 1-255 chars |
+| `lat` | float | Latitude (-90 to 90) of the subject |
+| `lng` | float | Longitude (-180 to 180) of the subject |
+| `capture_source_lat` | float | Latitude of the camera position. Both-or-neither with `capture_source_lng`. |
+| `capture_source_lng` | float | Longitude of the camera position. |
+| `source_snapshot_url` | string | The archived copy of the event's stored source URL, ≤2000 chars, checked as every archived-copy field is (see [`archival.md`](archival.md)). Accepted here because it archives the anchor rather than changing it. It lands in the version this edit produces, so one call files one version carrying both |
+| `detected_from_snapshot_url` | string | The archived copy of `detected_from_url`, the post a machine detection came from, ≤2000 chars and on the same terms. Accepted for the same reason: the provenance link is immutable, and archiving it is not a change to it. A 400 (`original_url_not_on_event`) on a row carrying no provenance link |
+| `secondary_source_urls` | string[] (repeated field) | Optional mirrors, same normalization and cap as [`POST /events`](#post-events). The submitted list replaces whatever the row held |
+| `secondary_snapshot_urls` | string[] (repeated field) | The archived copy of each mirror, same contract as [`POST /events`](#post-events). Lands in the version this edit produces, so one call files one version carrying the edit and the copies |
+| `event_date` | string (YYYY-MM-DD) | When the depicted event happened. Empty / omitted stores NULL (renders as *Unknown*) |
+| `event_time` | string (HH:MM) | Optional time-of-day for the event (UTC); empty / omitted clears it |
+| `source_posted_at` | string (`YYYY-MM-DDTHH:MM`) | When the source posted the media, a full instant (UTC). Optional: empty / omitted keeps the instant the row holds, NULL included (a detection whose source post time was never resolved publishes with it NULL through [`POST /events/batch-complete`](#post-eventsbatch-complete)). Only a value replaces it, so an edit that leaves the field blank never clears a stored instant |
+| `proof` | JSON string | Tiptap document (sanitized); its `placeholder://` srcs resolve against `proof_files`, already-uploaded URLs pass through untouched |
+| `tag_ids` | JSON string (UUID[]) | Replaces the tag set wholesale |
+| `conflict_ids` | JSON string (UUID[]) | Replaces the event's [conflict](#conflicts) set wholesale |
+| `is_graphic` | boolean | The graphic-content declaration. Ratchets exactly as on geolocate: `true` sets the flag, `false` leaves an already-flagged event flagged. To clear it, use [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation) |
+| `note` | string | Optional, ≤280 chars. Your own words about this edit, stored on the version it supersedes and read back by [`GET /events/{id}/versions`](#get-eventsidversions) |
+| `proof_files` | file[] | New proof images referenced by `placeholder://` srcs in `proof` |
+
+The published evidence floor is re-checked against the post-edit state, so a correction cannot drop the row below what publishing it required: a source media on the row, at least one proof image in the final proof body, one conflict, and one `capture_source` tag.
+
+**A version has to change something.** The form posts the whole editable state, so an edit that moves none of the versioned fields (the ones listed under *Editability contract*, plus the archived copies) is refused with `nothing_changed` rather than filed: a version spends a number in a public address space and prints a row in the history, and one identical to the row it supersedes would claim a correction that never happened. The `note` is not a versioned field, so a note on its own does not make a version. The check runs before any file is uploaded.
+
+**An event carries at most 100 versions.** An edit that would produce version 101 is refused with `version_limit`: past that count the history has stopped recording corrections and started recording a loop, and every version costs a snapshot row plus the proof images it pins alive. **A save whose only change is archived copies is exempt** and files its version regardless. Preserving evidence is what the catalog is for, and an original that dies while the row sits at the ceiling would be unarchivable for good, which is a worse record than one more version. A save that also moves a field is an edit, and meets the ceiling.
+
+**Media and history.** A proof image the new body no longer references is normally deleted, row and object. It is kept instead when a readable past version displays it, so that version stays renderable after the image left the current body. A version records the images its own proof body referenced, so an image no version ever displayed is not held alive by the history, and a [redacted](#post-admineventsidversionsversion_noredact) version holds nothing alive at all.
+
+**Proof-image ceiling.** `max_proof_images_per_event` bounds what the new proof body displays, not what one request sends: the already-uploaded images the body still references plus the files it adds. An image kept only because a past version displays it does not count, so swapping images across corrections never exhausts the ceiling. The check runs before anything reaches S3.
+
+**Image ownership.** An already-uploaded src in `proof` must be one of this event's own proof images. A URL naming another event's stored image is rejected (`invalid_file`): the owning event's next correction or [redaction](#post-admineventsidversionsversion_noredact) deletes that file, so a body pointing at it would render a hole.
+
+**Response 200:** same shape as `GET /events/{id}`, with `version_no` one higher.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | `invalid_coordinates`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `too_many_source_links`, `media_required` (the row carries no source media), a rejected file or a proof src naming another event's image (`invalid_file` / `evidence_processing_failed`), `proof_files_mismatch`, or a rejected `source_snapshot_url` / `secondary_snapshot_urls` entry (the `snapshot_*` codes listed under [*Error envelope*](#api-reference)) |
+| 403 | You are not the owner |
+| 404 | Event not found (incl. soft-deleted) |
+| 409 | Row is not `geolocated` (`invalid_state`), the save moves no versioned field and no archived copy (`nothing_changed`), or the event already carries 100 versions and the save is an edit rather than an archive-only one (`version_limit`) |
+| 422 | `note` over 280 chars, a proof body that would display more than `max_proof_images_per_event` images (its already-uploaded images plus the new files), or a single `secondary_source_urls` item over 2000 chars |
+
+---
+
+### `GET /events/{id}/versions` 🌐
+
+The event's superseded versions, newest first. Public, like the event itself: a corrected record is auditable only when its corrections are readable. The live row is the current version and is not listed here, so an event nobody has corrected answers with an empty list.
+
+Paged like every list endpoint: 50 rows a page by default, capped at 100 however large `limit` is, and a caller reading past the first page follows the `cursor` in the `Link: rel="next"` header. `total` is the whole history, not the page. Rows come back in `version_no` order, which is also what the cursor keys on: the number is unique per event and taken under the event's row lock, so it orders the history without a tiebreaker.
+
+**Query parameters:**
+| Name | Type | Description |
+|------|------|-------------|
+| `limit` | int | Rows per page, clamped to 100. Default 50 |
+| `cursor` | string | Opaque cursor from a previous response's `Link: rel="next"` header |
+
+**Response 200:**
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "version_no": 1,
+      "edited_by": { "id": "uuid", "username": "kalush" },
+      "note": "Coordinates were off by a block.",
+      "created_at": "2026-03-18T11:20:00Z",
+      "redacted": false,
+      "snapshot": {
+        "title": "Strike on depot, Donetsk",
+        "event_coords": { "lat": 48.123, "lng": 37.456 },
+        "capture_source_coords": null,
+        "event_date": "2026-03-15",
+        "event_time": "14:30:00",
+        "source_posted_at": "2026-03-14T18:05:00+00:00",
+        "is_graphic": false,
+        "secondary_source_urls": [],
+        "tags": [{ "id": "uuid", "name": "Drone", "category": "capture_source" }],
+        "conflicts": [{ "id": "uuid", "name": "Russian invasion of Ukraine" }],
+        "proof": { "type": "doc", "content": [] },
+        "proof_media": [
+          {
+            "id": "uuid",
+            "storage_url": "https://d10w3bld05vsky.cloudfront.net/proof/.../overlay.jpg",
+            "media_type": "image",
+            "original_filename": "overlay.jpg"
+          }
+        ],
+        "archives": [
+          {
+            "original_url": "https://t.me/channel/12345",
+            "origin": "source_url",
+            "snapshot_url": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345",
+            "provider": "wayback",
+            "created_at": "2026-03-16T09:45:00+00:00"
+          }
+        ]
+      }
+    }
+  ],
+  "total": 1
+}
+```
+
+`version_no` is the version the row **holds**, not the one that replaced it: an event whose `version_no` is 3 answers with snapshots 2 and 1, and the live row is version 3. `edited_by` is the analyst whose edit superseded that version, `null` once their account is erased. `note` is their optional line about the edit, `null` when they left none. `created_at` is when the edit happened. `redacted` is `true` on a version an admin blanked (see [`POST /admin/events/{id}/versions/{version_no}/redact`](#post-admineventsidversionsversion_noredact)); such a row keeps its number, its `created_at` and its `edited_by`, and serves `{}` as its `snapshot` with `note` `null`.
+
+`snapshot` carries the editable fields as they stood. Tags and conflicts carry their names alongside their ids, so a version stays readable after a referential row is renamed. `proof_media` carries enough to render the snapshot's images. `archives` carries the archived copies the record held at that version, one entry per link, sorted by `original_url`; recording a copy on a published event files a version of its own (see [`POST /events/{id}/versions`](#post-eventsidversions)). The evidence anchor is absent by design: no edit can move `source_url` or the source media, so the live row is authoritative for both at every version.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | Event not found, soft-deleted, or withheld (an admin still reads a withheld row's history, as they do the row itself) |
+| 422 | Malformed `cursor`, or `limit` below 1 |
+
+---
+
+### `GET /events/{id}/versions/{version_no}` 🌐
+
+One superseded version by its number, the direct read behind a `/events/{id}/vN` address: a reader opening one version reads that version instead of walking the history until the page holding it comes back. Public and visibility-gated exactly like the list above.
+
+The live row is the current version and is not filed, so its own number answers 404: [`GET /events/{id}`](#get-eventsid) is where the current version is read. A redacted version answers 200 with its blanked shape rather than 404, since the version exists and the record still shows that it does.
+
+**Response 200:** one version, the same shape as an item of [`GET /events/{id}/versions`](#get-eventsidversions).
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | Event not found, soft-deleted, or withheld (an admin still reads a withheld row's history); or the event carries no version under that number, the current version's own number included |
 
 ---
 
 ### `POST /events/{id}/close` 🔒
 
-Close an event: withdraw a `requested` row or reject a `detected` draft, owner-only, in one verb. The row stays publicly visible (transparency: a queue entry that didn't produce a geolocation, or a machine draft judged wrong); `before_closed_status` records which state it left (drives the requested-view routing). A re-import leaves a closed `detected` row closed, so a rejection does not have to be made twice. Distinct from `DELETE`, which removes the row for good.
+Close an event: withdraw a `requested` row or reject a detection, owner-only, in one verb. The row stays publicly visible (transparency: a queue entry that didn't produce a geolocation, or a machine detection judged wrong); `before_closed_status` records which state it left (drives the requested-view routing). A re-import leaves a closed `detected` row closed, so a rejection does not have to be made twice. Distinct from `DELETE`, which removes the row for good.
 
 **Request body:**
 ```json
@@ -1022,38 +1101,6 @@ Close an event: withdraw a `requested` row or reject a `detected` draft, owner-o
 | 404 | Event not found (incl. soft-deleted) |
 | 409 | Row is not `requested` / `detected` (`invalid_state`, `geolocated` and `closed` are both terminal here) |
 | 422 | `close_reason` missing or over 2000 chars |
-
----
-
-### `POST /events/{id}/archives` 🔒
-
-Record the archived copy of one of the event's links, owner-only. The capture is not attempted server side: the event page opens the provider's own submit page in the analyst's browser, prefilled with the link, and this is where the snapshot URL it produced comes back (see [`ingestion.md`](ingestion.md#source-archival) for why).
-
-This is the path for an event that already exists, and for any link it carries. A copy of the source made while the event is being written travels with that write instead, as `source_snapshot_url` on [`POST /events`](#post-events), [`POST /events/requests`](#post-eventsrequests) and [`POST /events/{id}/geolocate`](#post-eventsidgeolocate). Both run the same checks and fill the same slot.
-
-**Request body:**
-```json
-{
-  "original_url": "https://t.me/channel/12345",
-  "snapshot_url": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345"
-}
-```
-`original_url` must be one of the links the event carries: its `source_url`, one of its `secondary_source_urls`, its `detected_from_url`, or an `http(s)` href in its proof body. `snapshot_url` must be `https` on exactly one of `web.archive.org`, `archive.ph`, `archive.today`; a `web.archive.org` URL must be a replay URL (`/web/<timestamp>/<original>`) whose embedded original names the same page as `original_url`, and an `archive.ph` / `archive.today` URL a bare snapshot code (`/<code>`). The provider is inferred from the host.
-
-One copy per link: a second call for the same `original_url` replaces the copy rather than adding one, which is how the owner corrects a wrong paste.
-
-**Response 200:**
-```json
-{ "url": "https://web.archive.org/web/20260316094500/https://t.me/channel/12345", "provider": "wayback" }
-```
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 400 | `original_url` is not a link this event carries (`original_url_not_on_event`), or `snapshot_url` failed a check (`snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_original_mismatch`, `snapshot_not_a_snapshot_code`) |
-| 403 | You are not the owner |
-| 404 | Event not found (incl. soft-deleted) |
-| 422 | A field is missing, empty, or over 2000 chars |
 
 ---
 
@@ -1149,7 +1196,6 @@ Any active filter empties the users group: the filters are event predicates, and
 **Errors:**
 | Code | Case |
 |------|------|
-| 401 | Unauthenticated |
 | 422 | `type` outside the allowed set, or `limit` outside [1, 50] |
 
 ---
@@ -1223,7 +1269,7 @@ Create a tag. Only `free` tags are creatable; `capture_source` is server-managed
 
 ### `GET /conflicts`
 
-List the conflict referential, ordered `ongoing` first then by name. Server-managed (the daily Wikipedia sync, the one-shot Wikidata seed, operator rows; see [`ingestion.md`](ingestion.md#conflict-referential-sync)): there is no create endpoint. The default returns **every** row, ongoing and ended alike, so the submit picker can offer ended conflicts for archival footage. Returned whole rather than paged, and bounded by the referential ceiling rather than the 100-row list cap (see [Pagination](#pagination)). Rate-limited to 60/min/IP.
+List the conflict referential, ordered `ongoing` first then by name. Server-managed (the daily Wikipedia sync, the one-shot Wikidata seed, operator rows; see [`conflicts.md`](conflicts.md)): there is no create endpoint. The default returns **every** row, ongoing and ended alike, so the submit picker can offer ended conflicts for archival footage. Returned whole rather than paged, and bounded by the referential ceiling rather than the 100-row list cap (see [Pagination](#pagination)). Rate-limited to 60/min/IP.
 
 **Query params:**
 | Param | Type | Description |
@@ -1258,7 +1304,7 @@ Public profile of an analyst.
   "bio": "OSINT analyst tracking armoured movement in Eastern Ukraine.",
   "avatar_url": "https://<cloudfront-domain>/avatars/<user_id>/<uuid>.jpg",
   "external_links": {
-    "x": "@kalush",
+    "x": "kalush",
     "discord": null,
     "website": "https://kalush.example.com",
     "github": null
@@ -1271,9 +1317,9 @@ Public profile of an analyst.
 }
 ```
 
-`bio` and `external_links` are self-set via `PATCH /users/me`; `avatar_url` is written by `PUT` / `DELETE /users/me/avatar`. Defaults are `null` / `null` / `{}`. `is_following` is `true` only when you are authenticated and follow this user; anonymous viewers and self-views always get `false`. Email is never on this shape.
+`bio` and `external_links` are self-set via `PATCH /users/me`, which is also where the per-platform rules for each link value live; `avatar_url` is written by `PUT` / `DELETE /users/me/avatar`. Defaults are `null` / `null` / `{}`. `is_following` is `true` only when you are authenticated and follow this user; anonymous viewers and self-views always get `false`. Email is never on this shape.
 
-`geolocations_count` counts the analyst's published geolocations: live rows with `status = "geolocated"`. It equals the `total` on [`GET /users/{username}/events`](#get-usersusernameevents), which serves the same set. For the analyst's whole body of live work, machine drafts included, read `total_events` on [`GET /users/{username}/stats`](#get-usersusernamestats).
+`geolocations_count` counts the analyst's published geolocations: live rows with `status = "geolocated"`. It equals the `total` on [`GET /users/{username}/events`](#get-usersusernameevents), which serves the same set. For the analyst's whole body of live work, machine detections included, read `total_events` on [`GET /users/{username}/stats`](#get-usersusernamestats).
 
 **Errors:**
 | Code | Case |
@@ -1303,11 +1349,11 @@ Aggregated shape of an analyst's work. Pure aggregation over existing columns; d
 }
 ```
 
-Every field describes one population: the analyst's visible events (`deleted_at IS NULL`, `hidden_at IS NULL`) in the three worked statuses, `geolocated` + `detected` + `closed`. That set is `total_events`, and it includes drafts. A `requested` row is an open call for help rather than documented work, so it takes part in no aggregate here.
+Every field describes one population: the analyst's visible events (`deleted_at IS NULL`, `hidden_at IS NULL`) in the three worked statuses, `geolocated` + `detected` + `closed`. That set is `total_events`, and it includes detections. A `requested` row is an open call for help rather than documented work, so it takes part in no aggregate here.
 
 `top_conflicts` and `capture_sources` are capped at 5, ordered by count desc then name.
 
-`source_hosts` breaks the same set down by the host of `source_url`, folded to lower case with a leading `www.` removed, so `www.tiktok.com` and `tiktok.com` are one entry. Capped at 5 and ordered by count desc then host; `other_hosts_count` carries every event on a host past the fifth, and `no_source_count` the events whose `source_url` is null or names no readable host (a machine `detected` draft whose post declared no source). The five counts plus those two totals add up to `total_events`.
+`source_hosts` breaks the same set down by the host of `source_url`, folded to lower case with a leading `www.` removed, so `www.tiktok.com` and `tiktok.com` are one entry. Capped at 5 and ordered by count desc then host; `other_hosts_count` carries every event on a host past the fifth, and `no_source_count` the events whose `source_url` is null or names no readable host (a machine detection whose post declared no source). The five counts plus those two totals add up to `total_events`.
 
 `activity` buckets `event_date`, the date the documented event happened, one bucket per calendar month across the span this analyst's own events cover: from their earliest dated event to their latest, oldest bucket first, zero-filled in between. `period` is `YYYY-MM`. Events with no `event_date` count in the status split and take no bucket. The list is empty when no event carries a date.
 
@@ -1337,7 +1383,16 @@ Edit your own bio and Linktree-style external account handles.
 }
 ```
 
-`bio` is capped at 500 characters. `external_links` is **wholesale-replaced**, not deep-merged: send the full panel each time. Per-platform values are 200 chars max; values are free-form strings (handle or URL).
+`bio` is capped at 500 characters. `external_links` is **wholesale-replaced**, not deep-merged: send the full panel each time. Each platform validates its own shape and stores one form:
+
+| Field | Accepted | Stored |
+|-------|----------|--------|
+| `x` | a handle (`ana` or `@ana`: 1 to 15 characters of `A-Za-z0-9_`), or a profile URL on `x.com` or `twitter.com` with exactly one path segment (`https://x.com/ana`, optional `www.`, optional trailing slash, no query and no fragment) | the handle alone, without the `@` |
+| `github` | a user or organization name (`vidithq` or `@vidithq`: 1 to 39 characters of `A-Za-z0-9-`), or a profile URL on `github.com` with exactly one path segment | the name alone, without the `@` |
+| `discord` | a username, never a link: 2 to 32 characters of `A-Za-z0-9_.`, optionally followed by the legacy `#0000` discriminator | the username, without a leading `@` |
+| `website` | an http or https URL | the URL as sent, whitespace trimmed |
+
+The three handle fields cap at 200 characters and `website` at 500. A value that fits none of the accepted forms is a 422: a status URL (`https://x.com/ana/status/1`), a product path (`https://x.com/i/flow`), a URL on another host, a scheme-less `x.com/ana`, and an `x` or `github` handle carrying a space or a dot are all rejected. A stored value can also be a full URL on the platform, so a client that reads a profile handles both forms.
 
 The body rejects unknown fields, `avatar_url` among them. The profile picture is server-minted, so it changes only through the two endpoints below.
 
@@ -1347,7 +1402,7 @@ The body rejects unknown fields, `avatar_url` among them. The profile picture is
 | Code | Case |
 |------|------|
 | 401 | Not authenticated |
-| 422 | Validation failure (bio too long, non-http(s) website, unknown field) |
+| 422 | Validation failure (bio too long, non-http(s) website, a link value that is neither a handle nor a profile URL on the platform, unknown field) |
 
 ---
 
@@ -1386,7 +1441,7 @@ Remove your profile picture. Clears `users.avatar_url` and deletes the stored ob
 
 An analyst's published geolocations, newest event date first, ties broken by `created_at DESC, id DESC`.
 
-Serves `status = "geolocated"` only, the rows the analyst vouched for and froze. A `detected` draft is machine output they have not stood behind, a `closed` row off `detected` is one they rejected, and a `requested` row is an open call for help rather than an answer, so none of the three appear here. The filter applies to `total` as well as to the rows, so the pager never counts a row the feed will not serve. `geolocations_count` on [`GET /users/{username}`](#get-usersusername) counts the same set, so `total` and the profile's count agree. The drafts stay reachable: [`GET /users/{username}/stats`](#get-usersusernamestats) tallies them alongside the published work, and the owner works their own drafts from [`GET /events/detections`](#get-eventsdetections).
+Serves `status = "geolocated"` only, the rows the analyst vouched for and froze. A detection is machine output they have not stood behind, a `closed` row off `detected` is one they rejected, and a `requested` row is an open call for help rather than an answer, so none of the three appear here. The filter applies to `total` as well as to the rows, so the pager never counts a row the feed will not serve. `geolocations_count` on [`GET /users/{username}`](#get-usersusername) counts the same set, so `total` and the profile's count agree. The detections stay reachable: [`GET /users/{username}/stats`](#get-usersusernamestats) tallies them alongside the published work, and the owner works their own detections from [`GET /events/detections`](#get-eventsdetections).
 
 Offset-paged, not cursor-paged: the ordering this feed reads by is `event_date`, a nullable and editable column, so it cannot key a cursor (see [Pagination](#pagination)). The tiebreaker makes the ordering total, so a page cannot repeat a row the previous page served.
 
@@ -1491,11 +1546,11 @@ Returns 403 for non-admins, 401 for anonymous callers.
 
 Quality signal on the machine-extraction pipeline. A **machine detection** is an event imported from X (the archive backfill or the bot), identified by `detected_from_url` being set; a human submit always carries `detected_from_url = null`. Read-only, no audit row (a metric read is not an administrative act).
 
-**Reject-rate** is the share of machine detections dismissed while still a draft, whichever door they left through. A machine detection counts as a reject if either an owner closed it straight out of `detected` (`status = "closed"` with `before_closed_status = "detected"`) or an admin soft-deleted it while it was still `detected` (`deleted_at` set with `status = "detected"`). A detection the owner vouched (promoted to `geolocated`) is **not** a reject, even once soft-deleted (it was vouched before removal); one still awaiting review is **not** a reject yet. `reject_rate` is `machine_rejected / machine_total` as a 0..1 ratio (`0` when there are no machine detections). Counted over every machine row, soft-deleted or not: the metric measures what the pipeline produced.
+**Reject-rate** is the share of machine detections dismissed before publication, whichever door they left through. A machine detection counts as a reject if either an owner closed it straight out of `detected` (`status = "closed"` with `before_closed_status = "detected"`) or an admin soft-deleted it while it was still `detected` (`deleted_at` set with `status = "detected"`). A detection the owner vouched (promoted to `geolocated`) is **not** a reject, even once soft-deleted (it was vouched before removal); one still awaiting review is **not** a reject yet. `reject_rate` is `machine_rejected / machine_total` as a 0..1 ratio (`0` when there are no machine detections). Counted over every machine row, soft-deleted or not: the metric measures what the pipeline produced.
 
-Two counting edges the metric accepts, both favouring over-counting dismissals over under-counting them: an owner **hard-delete** (`DELETE /events/{id}` on an own draft) removes the row from both counts entirely; an **account-departure cascade** soft-delete counts that account's pending drafts as rejects.
+Two counting edges the metric accepts, both favouring over-counting dismissals over under-counting them: an owner **hard-delete** (`DELETE /events/{id}` on an own detection) removes the row from both counts entirely; an **account-departure cascade** soft-delete counts that account's pending detections as rejects.
 
-The `pending_*` counts profile the **live** `detected` queue (`deleted_at IS NULL`, machine rows only): drafts missing a piece the geolocate floor will demand (a source media, a proof-role image, or a `source_url`), so a low-quality extraction run is visible before an analyst opens the queue.
+The `pending_*` counts profile the **live** `detected` queue (`deleted_at IS NULL`, machine rows only): detections missing a piece the geolocate floor will demand (a source media, a proof-role image, or a `source_url`), so a low-quality extraction run is visible before an analyst opens the queue.
 
 **Response 200:**
 ```json
@@ -1522,17 +1577,14 @@ Mint a new invite code. Audited via `admin_events` (`action = "invite_created"`)
 }
 ```
 
-`max_uses` is server-fixed at `1` and is not accepted in the request body. `expires_in_days` is optional (omit / `null` for "never expires"), max `365`. `x_handle` is optional: it binds the code to an X handle, normalized like `PATCH /admin/users/{id}/x-handle` (single leading `@` stripped, lowercased, `^[a-z0-9_]{1,15}$`); redemption copies it onto the new account as its bot-attribution link (fail-soft: if the handle got linked elsewhere meanwhile, the account is still created without it).
+Every code is single-use. `expires_in_days` is optional (omit / `null` for "never expires"), max `365`. `x_handle` is optional: it binds the code to an X handle, normalized like `PATCH /admin/users/{id}/x-handle` (single leading `@` stripped, lowercased, `^[a-z0-9_]{1,15}$`); redemption copies it onto the new account as its bot-attribution link (fail-soft: if the handle got linked elsewhere meanwhile, the account is still created without it).
 
 **Response 201:**
 ```json
 {
   "id": "8e67f0…",
   "code": "abc123xyz",
-  "max_uses": 1,
-  "use_count": 0,
   "expires_at": "2026-05-23T10:00:00Z",
-  "revoked_at": null,
   "created_at": "2026-05-09T10:00:00Z",
   "status": "active",
   "redeemer": null,
@@ -1541,7 +1593,7 @@ Mint a new invite code. Audited via `admin_events` (`action = "invite_created"`)
 }
 ```
 
-`status` is one of `active | exhausted | revoked | expired`, computed at read time. `redeemer` is the first consumer with their onboarding stats (see the list endpoint); `null` until the code is used.
+`status` is one of `active | exhausted | revoked | expired`, computed at read time. `redeemer` is the account that redeemed the code, with its onboarding stats (see the list endpoint); `null` until the code is used.
 
 **Response 409:** `x_handle` already linked to a user (`{"code": "x_handle_conflict", …}`).
 
@@ -1549,7 +1601,7 @@ Mint a new invite code. Audited via `admin_events` (`action = "invite_created"`)
 
 ### `GET /admin/invite-codes` 🛡️
 
-List invite codes (newest first), including exhausted / revoked / expired ones. Feeds the admin onboarding table: each used code nests its `redeemer`, the first consumer with acting fields plus read-side onboarding counters, batched in one grouped aggregate per source table (no per-row queries).
+List invite codes (newest first), including exhausted / revoked / expired ones. Feeds the admin onboarding table: each used code nests its `redeemer`, the redeeming account with acting fields plus read-side onboarding counters, batched in one grouped aggregate per source table (no per-row queries).
 
 Capped and cursor-paged like the catalog lists (the table is append-only, one row per invite ever issued).
 
@@ -1565,8 +1617,8 @@ Capped and cursor-paged like the catalog lists (the table is append-only, one ro
 ```json
 [
   {
-    "id": "…", "code": "…", "status": "exhausted", "max_uses": 1, "use_count": 1,
-    "expires_at": null, "revoked_at": null, "created_at": "…", "used_at": "…", "x_handle": "osint_hawk",
+    "id": "…", "code": "…", "status": "exhausted",
+    "expires_at": null, "created_at": "…", "used_at": "…", "x_handle": "osint_hawk",
     "redeemer": {
       "user_id": "…",
       "username": "osint_hawk",
@@ -1583,7 +1635,7 @@ Capped and cursor-paged like the catalog lists (the table is append-only, one ro
 ]
 ```
 
-`archives_imported` counts `done` archive-import jobs. `bot_detection_count` sums `bot_mentions.events_created` for the account's X handle (case-insensitive), a historical total that survives later deletes. `detected_count` / `geolocated_count` are the live events they own in that status; the purge endpoint below also sweeps soft-deleted drafts, so its `deleted_events` can exceed `detected_count`. `last_login_at` is the newest `login` auth event, `null` for an account that has never logged in since the audit log existed.
+`archives_imported` counts `done` archive-import jobs. `bot_detection_count` sums `bot_mentions.events_created` for the account's X handle (case-insensitive), a historical total that survives later deletes. `detected_count` / `geolocated_count` are the live events they own in that status; the purge endpoint below also sweeps soft-deleted detections, so its `deleted_events` can exceed `detected_count`. `last_login_at` is the newest `login` auth event, `null` for an account that has never logged in since the audit log existed.
 
 ### `DELETE /admin/invite-codes/{id}` 🛡️
 
@@ -1637,7 +1689,7 @@ Remove a user. Default is soft delete (sets `users.deleted_at` *and* cascade-sof
 
 ### `DELETE /admin/users/{id}/detected-events` 🛡️
 
-Hard-delete every `detected` draft the user owns (rows + media rows + S3 objects with hero/thumb derivatives, soft-deleted drafts included), keeping the account, its geolocations and its requests. The broken-archive repair: a bad import can mint hundreds of junk drafts; this sweeps them without a full account delete. `closed` rows that were once detected stay (the owner explicitly acted on those). Invalidates the points cache. Audited via `admin_events` (`action = "detected_events_purged"`). Same commit-then-sweep ordering as the user hard delete. `media_count` counts swept storage objects, derivatives included.
+Hard-delete every detection the user owns (rows + media rows + S3 objects with hero/thumb derivatives, soft-deleted detections included), keeping the account, its geolocations and its requests. The broken-archive repair: a bad import can mint hundreds of junk detections; this sweeps them without a full account delete. `closed` rows that were once detected stay (the owner explicitly acted on those). Invalidates the points cache. Audited via `admin_events` (`action = "detected_events_purged"`). Same commit-then-sweep ordering as the user hard delete. `media_count` counts swept storage objects, derivatives included.
 
 **Response 200:**
 ```json
@@ -1713,8 +1765,7 @@ The moderation queue: open reports first, then newest first within each group. R
       "reporter_user_id": null,
       "created_at": "2026-08-12T09:14:00Z",
       "resolved_at": null,
-      "resolution": null,
-      "resolved_by": null
+      "resolution": null
     }
   ],
   "total": 1,
@@ -1723,7 +1774,7 @@ The moderation queue: open reports first, then newest first within each group. R
 }
 ```
 
-`resolved_at` / `resolution` / `resolved_by` are all `null` while a report is open and all set once it is resolved, so `resolved_at is null` is the open test on the wire too. `event_id` is `null` when the reported event was hard-deleted after the report was filed: the report outlives it, and the admin panel renders those rows as *Event deleted* with `dismissed` as the only verdict on offer.
+`resolved_at` and `resolution` are both `null` while a report is open and both set once it is resolved, so `resolved_at is null` is the open test on the wire too. The admin who resolved it is recorded on the row and in `admin_events`, not on the wire. `event_id` is `null` when the reported event was hard-deleted after the report was filed: the report outlives it, and the admin panel renders those rows as *Event deleted* with `dismissed` as the only verdict on offer.
 
 ### `POST /admin/reports/{id}/resolve` 🛡️
 
@@ -1736,7 +1787,7 @@ Close one report with a verdict, applying it to the reported event. Reports are 
 
 `resolution` is one of `marked_graphic` (sets the event's `is_graphic` over the author's declaration), `hidden` (withholds the event from every public read, stamping `hidden_at`), or `dismissed` (closes the report, event untouched).
 
-**Response 200:** the resolved `ContentReportRead` (same shape as the queue item above, now carrying `resolved_at` / `resolution` / `resolved_by`).
+**Response 200:** the resolved `ContentReportRead` (same shape as the queue item above, now carrying `resolved_at` / `resolution`).
 
 **Errors:**
 | Code | Case |
@@ -1774,6 +1825,24 @@ Set an event's moderation state directly, with no report behind it. The one verb
 
 Rate-limited to 60/hour.
 
+### `POST /admin/events/{id}/versions/{version_no}/redact` 🛡️
+
+Blank one filed version of an event's history. [`event_versions`](data-model.md#event_versions) is append-only and a version number is a public address, so a version carrying material the record must stop serving is blanked rather than removed: `snapshot` becomes `{}` and `note` becomes `null`, while the row, its `version_no`, its `created_at` and its `edited_by` stay. [`GET /events/{id}/versions`](#get-eventsidversions) keeps listing it with `redacted: true`, so `/vN` addressing never shifts and the history still shows that a version existed.
+
+A redacted version displays nothing, so it stops holding proof images alive: an image no readable version and no current proof body points at is deleted with the redaction, row and object. Audited via `admin_events` (`action = "event_version_redacted"`).
+
+Idempotent: redacting an already-redacted version returns it unchanged and appends no audit row.
+
+**Response 200:** one version, same shape as an item of [`GET /events/{id}/versions`](#get-eventsidversions), with `redacted: true`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | Not an admin (the event's owner included: redaction is moderation, not an owner action) |
+| 404 | `geolocation_not_found`: unknown or soft-deleted event. `version_not_found`: the event carries no version under that number |
+
+Rate-limited to 60/hour.
+
 ### `POST /admin/maintenance/reap-auth-tokens` 🛡️
 
 Drop expired and old-consumed `auth_tokens` rows. Replaces the cron that previously lived in `scripts/reap_auth_tokens.py`. Audited as `maintenance_reap_auth_tokens`.
@@ -1794,11 +1863,11 @@ Drop expired `pending_registrations` rows. Sweeps expired pending rows that the 
 
 ### `POST /admin/maintenance/send-completion-digests` 🛡️
 
-Email every analyst holding unpublished `detected` drafts: one message per analyst carrying the count and a link to their own Detections queue, where [`POST /events/batch-complete`](#post-eventsbatch-complete) publishes them. The other half of the completion flow, since the import-complete email scrolls away while the backlog does not. Selection: live drafts only (never soft-deleted, published or closed rows), and the owner must be a live, active account with an address. Ordered by backlog and cut at 200 analysts, one provider round-trip each, so a click stays bounded; the tail is covered by clicking again. A provider failure on one address is counted, not raised, and the digest is re-sendable on the next run. Audited as `maintenance_send_completion_digests`.
+Email every analyst holding unpublished detections: one message per analyst carrying the count and a link to their own Detections queue, where [`POST /events/batch-complete`](#post-eventsbatch-complete) publishes them. The other half of the completion flow, since the import-complete email scrolls away while the backlog does not. Selection: live detections only (never soft-deleted, published or closed rows), and the owner must be a live, active account with an address. Ordered by backlog and cut at 200 analysts, one provider round-trip each, so a click stays bounded; the tail is covered by clicking again. A provider failure on one address is counted, not raised, and the digest is re-sendable on the next run. Audited as `maintenance_send_completion_digests`.
 
-**Response 200:** `drafts_pending` counts the drafts the *delivered* messages covered, so a failed send adds to `digest_send_failures` and to neither other count.
+**Response 200:** `detections_pending` counts the detections the *delivered* messages covered, so a failed send adds to `digest_send_failures` and to neither other count.
 ```json
-{ "analysts_notified": 4, "drafts_pending": 137, "digest_send_failures": 0 }
+{ "analysts_notified": 4, "detections_pending": 137, "digest_send_failures": 0 }
 ```
 
 </details>
@@ -1807,7 +1876,7 @@ Email every analyst holding unpublished `detected` drafts: one message per analy
 
 ## Webhooks
 
-The X Account Activity webhook, the bot's nominal mention delivery (see [`ingestion.md`](ingestion.md#bot-format)). **Unauthenticated by design**: X calls it, and the HMAC signature over the raw body (the app's consumer secret, held only by X and the deployment) is the gate.
+The X Account Activity webhook, the bot's nominal mention delivery (see [`ingestion.md`](ingestion.md#the-bot)). **Unauthenticated by design**: X calls it, and the HMAC signature over the raw body (the app's consumer secret, held only by X and the deployment) is the gate.
 
 ### `GET /webhooks/x`
 
@@ -1841,7 +1910,7 @@ One Account Activity delivery. The `x-twitter-webhooks-signature` header must ca
 
 ### Pagination
 
-**Every list response is capped at 100 rows**, whatever `limit` / `per_page` you request. Asking for more is clamped, not rejected: `?limit=500` answers 200 with 100 rows. Values that are not a usable page (below 1, non-numeric) return 422, and so does a malformed `cursor` (one that does not decode to a `(created_at, id)` pair). A cursor that decodes cleanly is honored whether or not the server minted it: it names a position in an ordering, carries no authorization, and every filter on the request still applies. The cap and the cursor live in [`services/pagination.py`](../backend/app/services/pagination.py).
+**Every list response is capped at 100 rows**, whatever `limit` / `per_page` you request. Asking for more is clamped, not rejected: `?limit=500` answers 200 with 100 rows. Values that are not a usable page (below 1, non-numeric) return 422, and so does a malformed `cursor` (one that does not decode to the position its list pages on). A cursor that decodes cleanly is honored whether or not the server minted it: it names a position in an ordering, carries no authorization, and every filter on the request still applies. The cap and the cursor live in [`services/pagination.py`](../backend/app/services/pagination.py).
 
 **Reading past the first page** means following a cursor. A capped response whose next page holds at least one row carries a `Link` header:
 
@@ -1849,9 +1918,9 @@ One Account Activity delivery. The `x-twitter-webhooks-signature` header must ca
 Link: <https://api.vidit.app/api/v1/events?view=requested&cursor=WyIyMDI2LTA4LTExVDA5OjE0OjIyKzAwOjAwIiwiOWY0…Il0>; rel="next"
 ```
 
-The URL carries the whole query the page was minted under, so a walk stays inside one filter set. No header means no further rows. The header is on the CORS `Access-Control-Expose-Headers` list, so a browser client can read it. The cursor is opaque: it encodes the `(created_at, id)` of the page's last row, and it's not a value you need to construct.
+The URL carries the whole query the page was minted under, so a walk stays inside one filter set. No header means no further rows. The header is on the CORS `Access-Control-Expose-Headers` list, so a browser client can read it. The cursor is opaque: it encodes the position of the page's last row in that list's ordering, and it's not a value you need to construct.
 
-Cursor-paged: [`GET /events`](#get-events) and `GET /admin/invite-codes`. Both order by `created_at DESC, id DESC`. That ordering is total and immutable, which is what makes a walk safe: rows inserted mid-walk land ahead of the cursor, on pages already served, so no row is served twice and none is skipped, the way an `OFFSET` walk does both when the set shifts under it.
+Cursor-paged: [`GET /events`](#get-events), `GET /admin/invite-codes` and [`GET /events/{id}/versions`](#get-eventsidversions). The first two order by `created_at DESC, id DESC`; the version history orders by `version_no DESC`, a number unique per event. Either ordering is total and immutable, which is what makes a walk safe: rows inserted mid-walk land ahead of the cursor, on pages already served, so no row is served twice and none is skipped, the way an `OFFSET` walk does both when the set shifts under it.
 
 Endpoints that page return this envelope, `total` being the pre-cap match count:
 ```json

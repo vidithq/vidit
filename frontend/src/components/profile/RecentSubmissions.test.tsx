@@ -70,7 +70,7 @@ describe("RecentSubmissions", () => {
   });
 
   it("expands into the same published set the block shows", () => {
-    // Search's located group otherwise widens to machine drafts, so the
+    // Search's located group otherwise widens to machine detections, so the
     // status filter travels with the link.
     render(
       <RecentSubmissions

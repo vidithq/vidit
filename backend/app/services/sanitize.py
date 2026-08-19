@@ -69,6 +69,10 @@ def _safe_image_src(value: Any, *, allow_placeholders: bool = False) -> str | No
 
     ``allow_placeholders`` additionally admits ``placeholder://<filename>``
     srcs, intake-time only, never persisted (see ``PROOF_PLACEHOLDER_PREFIX``).
+
+    This decides where an image may live, not whose it is. Whether a stored
+    image belongs to the event whose body carries it is an intake question, and
+    ``services/evidence_intake._reject_foreign_proof_srcs`` answers it.
     """
     if not isinstance(value, str):
         return None
@@ -259,7 +263,7 @@ def tiptap_doc_from_text(text: str) -> dict[str, Any]:
     """Build a minimal Tiptap proof document from plain text.
 
     One paragraph node per non-blank line; blank lines drop out. Used by the
-    machine-detection assemble step to wrap a tweet / thread's cleaned text
+    machine-detection write path to wrap a tweet / thread's cleaned text
     (from ``clean_proof_text``) into the JSONB proof shape every row carries.
     Empty or all-blank input yields an empty document
     (``{"type": "doc", "content": []}``).

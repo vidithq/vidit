@@ -412,7 +412,6 @@ def test_create_succeeds_with_full_floor(
     assert {t["category"] for t in body["tags"]} == {"capture_source"}
     assert [c["name"] for c in body["conflicts"]] == [conflict.name]
     assert body["status"] == "geolocated"
-    assert body["geolocated_at"] is not None
     assert body["event_coords"] == {"lat": 48.5, "lng": 34.5}
     assert body["capture_source_coords"] == {"lat": 48.6, "lng": 34.6}
     # The creator is the owner AND the first geolocator (durable credit).

@@ -45,7 +45,7 @@ def _make_geo(
     *,
     author: User,
     # ``lat=None`` (or ``lng=None``) models a row without a subject point: a
-    # ``detected`` draft may carry none (``ck_events_coords_status``), and the
+    # detection may carry none (``ck_events_coords_status``), and the
     # detections queue's readiness filter turns on exactly that.
     lat: float | None = 48.5,
     lng: float | None = 34.5,
@@ -60,7 +60,7 @@ def _make_geo(
     conflicts: list[Conflict] | None = None,
     status: str | None = None,
     detected_from_url: str | None = None,
-    # None models a source-less machine draft; only valid with status
+    # None models a source-less machine detection; only valid with status
     # ``detected`` (``ck_events_source_url_status``).
     source_url: str | None = "https://example.com/source",
     secondary_source_urls: list[str] | None = None,

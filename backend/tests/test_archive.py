@@ -2,26 +2,43 @@
 
 Runs against the committed synthetic archive (``tests/data/
 synthetic_archive/``) — fully fake content (synthetic in-bounds coords, fake
-handles), never real tweet data.
+handles), never real tweet data. The grammar the export resolves to is pinned
+typology by typology in ``tests/ingest_contract``; what is left here is the
+export reader itself, the chase it spends per thread, and the media fetch.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import httpx
 
 from app.services.tweet_ingest import (
+    Detection,
     ParsedMedia,
+    TweetRecord,
     archive_media_fetcher,
-    detect,
+    chase_thread,
     read_tweets,
+    resolve_threads,
     stitch,
 )
-from app.services.tweet_ingest.resolve import resolve_thread
+from tests._fixtures import write_archive_js
 
 ARCHIVE = Path(__file__).parent / "data" / "synthetic_archive"
+
+
+def _detection(records: list[TweetRecord]) -> Detection:
+    """The single detection a one-coordinate thread resolves to."""
+    [detection] = resolve_threads([records]).detections
+    return detection
+
+
+def _chased(archive: Path, *, handle: str) -> list[TweetRecord]:
+    """The export's records with every stitched thread chased, the chain the
+    backfill runs: a pure-disk read, then the one chase step per thread."""
+    threads = stitch(read_tweets(archive, handle=handle))
+    return [record for thread in threads for record in chase_thread(thread)]
 
 
 def test_read_tweets_parses_records():
@@ -32,7 +49,7 @@ def test_read_tweets_parses_records():
     # Twitter created_at normalized to ISO 8601.
     assert by_id["1001"].created_at.startswith("2025-11-12")
     # Permalink derives from the verified handle, not the archive.
-    assert by_id["1001"].permalink == "https://x.com/ana/status/1001"
+    assert by_id["1001"].handle == "ana"
     # Reply edges survive inline — what stitch needs and syndication can't give.
     assert by_id["2002"].in_reply_to_status_id == "2001"
     assert by_id["1001"].in_reply_to_status_id is None
@@ -41,35 +58,31 @@ def test_read_tweets_parses_records():
     assert by_id["3001"].media == []
 
 
-def test_stitch_and_detect_over_archive():
+def test_stitch_and_resolve_over_archive():
     records = read_tweets(ARCHIVE, handle="ana")
-    detections = [d for thread in stitch(records) for d in detect(thread)]
+    detections = resolve_threads(stitch(records)).detections
     # 1001(1) + thread 2001/2002(1) + 3001 DMS(1) + 4001 hemi(1) + 5001(0)
     # + 6001 multi-coord(2) + 7001 retweet, dropped(0) + 8001(0) = 6.
     assert len(detections) == 6
     # The self-thread detection carries the head's media (as proof: the thread
     # declares no source) + the head permalink, even though the coordinate
     # lived in the reply.
-    thread_det = next(d for d in detections if d.detected_from_url.endswith("/2001"))
-    assert thread_det.source_url is None
-    assert thread_det.source_media == []
-    assert [m.remote_url for m in thread_det.proof_media] == ["tweets_media/2001-BBB2.jpg"]
+    thread_detection = next(d for d in detections if d.detected_from_url.endswith("/2001"))
+    assert thread_detection.source_url is None
+    assert thread_detection.source_media == []
+    assert [m.remote_url for m in thread_detection.proof_media] == ["tweets_media/2001-BBB2.jpg"]
 
 
 async def test_archive_media_fetcher_reads_present_and_misses_absent():
     fetch = archive_media_fetcher(ARCHIVE)
 
-    present = ParsedMedia(
-        kind="image", remote_url="tweets_media/1001-AAA1.jpg", content_type="image/jpeg"
-    )
+    present = ParsedMedia(kind="image", remote_url="tweets_media/1001-AAA1.jpg")
     got = await fetch(present)
     assert got is not None
     data, content_type = got
     assert content_type == "image/jpeg" and len(data) > 0
 
-    absent = ParsedMedia(
-        kind="image", remote_url="tweets_media/nope.jpg", content_type="image/jpeg"
-    )
+    absent = ParsedMedia(kind="image", remote_url="tweets_media/nope.jpg")
     assert await fetch(absent) is None
 
 
@@ -79,10 +92,10 @@ def test_read_tweets_maps_video_media(tmp_path):
     mp4 variant (query string stripped). An entry with no usable mp4 variant is
     dropped, not crashed on."""
     archive = tmp_path / "arc"
-    archive.mkdir()
-    payload = [
-        {
-            "tweet": {
+    write_archive_js(
+        archive,
+        [
+            {
                 "id_str": "7001",
                 "full_text": "clip",
                 "created_at": "Wed Nov 12 14:33:00 +0000 2025",
@@ -126,10 +139,7 @@ def test_read_tweets_maps_video_media(tmp_path):
                     ]
                 },
             }
-        }
-    ]
-    (archive / "tweets.js").write_text(
-        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
+        ],
     )
     [record] = read_tweets(archive, handle="ana")
     assert [(m.kind, m.remote_url, m.content_type) for m in record.media] == [
@@ -142,13 +152,12 @@ def test_read_tweets_skips_non_numeric_id(tmp_path):
     """A crafted ``id_str`` carrying path metacharacters is dropped, so it never
     reaches the ``tweets_media/<id>-...`` path built from it."""
     archive = tmp_path / "arc"
-    archive.mkdir()
-    payload = [
-        {"tweet": {"id_str": "12345", "full_text": "a", "created_at": ""}},
-        {"tweet": {"id_str": "../../../../etc/passwd", "full_text": "b", "created_at": ""}},
-    ]
-    (archive / "tweets.js").write_text(
-        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
+    write_archive_js(
+        archive,
+        [
+            {"id_str": "12345", "full_text": "a", "created_at": ""},
+            {"id_str": "../../../../etc/passwd", "full_text": "b", "created_at": ""},
+        ],
     )
     records = read_tweets(archive, handle="ana")
     assert [r.tweet_id for r in records] == ["12345"]
@@ -159,103 +168,32 @@ def test_read_tweets_drops_retweets(tmp_path):
     stranger's geolocation to the account running the import. Discriminator, and
     why the text prefix is it: ``_RETWEET_PREFIX_RE`` in ``archive.py``."""
     archive = tmp_path / "arc"
-    archive.mkdir()
-    payload = [
-        {
-            "tweet": {
+    write_archive_js(
+        archive,
+        [
+            {
                 "id_str": "9001",
                 "created_at": "Wed Nov 12 14:33:00 +0000 2025",
                 "retweeted": False,
                 "full_text": "RT @other_osint: Strike 48.012345, 37.802411 confirmed",
-            }
-        },
-        {
-            "tweet": {
+            },
+            {
                 "id_str": "9002",
                 "created_at": "Wed Nov 12 15:00:00 +0000 2025",
                 "full_text": "Worth an RT @other_osint: same sector 50.450100, 30.523400",
-            }
-        },
-        # ``text`` instead of ``full_text``: the same prefix still decides.
-        {"tweet": {"id_str": "9003", "created_at": "", "text": "RT @a: relayed"}},
-        # A non-string ``full_text`` must not mask the ``text`` that identifies
-        # this as a retweet.
-        {"tweet": {"id_str": "9004", "created_at": "", "full_text": 123, "text": "RT @a: relayed"}},
-    ]
-    (archive / "tweets.js").write_text(
-        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
+            },
+            # ``text`` instead of ``full_text``: the same prefix still decides.
+            {"id_str": "9003", "created_at": "", "text": "RT @a: relayed"},
+            # A non-string ``full_text`` must not mask the ``text`` that
+            # identifies this as a retweet.
+            {"id_str": "9004", "created_at": "", "full_text": 123, "text": "RT @a: relayed"},
+        ],
     )
     records = read_tweets(archive, handle="ana")
     assert [r.tweet_id for r in records] == ["9002"]
     # Nothing downstream ever sees the retweet's coordinate.
-    detections = [d for thread in stitch(records) for d in detect(thread)]
+    detections = resolve_threads(stitch(records)).detections
     assert [d.detected_from_url for d in detections] == ["https://x.com/ana/status/9002"]
-
-
-def test_self_reference_link_excluded_last_third_party_status_wins(tmp_path, monkeypatch):
-    """Regression (the "previous geolocation" tower tweets): the geoloc tweet's
-    entities.urls carries, in order, the analyst's own earlier status (a
-    cross-reference, in the archive itself), a profile link (no ``/status/``),
-    then the third-party status that is the actual quote. The own-status id is
-    excluded via ``by_id`` (the archive's own tweets); among what's left, the
-    single remaining status candidate is chased as the source, not the
-    self-reference."""
-    import app.services.tweet_ingest.acquire as acquire_mod
-
-    archive = tmp_path / "arc"
-    archive.mkdir()
-    payload = [
-        {
-            "tweet": {
-                "id_str": "111",
-                "created_at": "Wed Nov 12 10:00:00 +0000 2025",
-                "full_text": "Previous geolocation here",
-            }
-        },
-        {
-            "tweet": {
-                "id_str": "222",
-                "created_at": "Wed Nov 12 14:33:00 +0000 2025",
-                "full_text": (
-                    "Seems the same site was struck again. Previous geolocation "
-                    "here: https://x.com/analyst/status/111 | C: 26.564389, "
-                    "57.087644 | S: https://x.com/CENTCOM "
-                    "https://x.com/CENTCOM/status/999"
-                ),
-                "entities": {
-                    "urls": [
-                        {
-                            "url": "https://t.co/prev",
-                            "expanded_url": "https://x.com/analyst/status/111",
-                        },
-                        {"url": "https://t.co/profile", "expanded_url": "https://x.com/CENTCOM"},
-                        {
-                            "url": "https://t.co/status",
-                            "expanded_url": "https://x.com/CENTCOM/status/999",
-                        },
-                    ]
-                },
-            }
-        },
-    ]
-    (archive / "tweets.js").write_text(
-        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
-    )
-
-    def fake_fetch(tweet_id, *, client=None):
-        assert tweet_id == "999"  # never chases the self-reference (111)
-        return {
-            "user": {"screen_name": "CENTCOM"},
-            "text": "footage",
-            "created_at": "2025-11-12T09:00:00.000Z",
-        }
-
-    monkeypatch.setattr(acquire_mod, "fetch_syndication", fake_fetch)
-    records = read_tweets(archive, handle="analyst", chase=True)
-    geoloc = next(r for r in records if r.tweet_id == "222")
-    assert geoloc.quoted is not None
-    assert geoloc.quoted.tweet_id == "999"
-    assert geoloc.quoted.handle == "CENTCOM"
 
 
 def test_several_third_party_status_links_are_ambiguous_no_chase(tmp_path, monkeypatch):
@@ -263,13 +201,13 @@ def test_several_third_party_status_links_are_ambiguous_no_chase(tmp_path, monke
     is ambiguous, so nothing is chased and the record carries no source tweet
     (the source stays empty for review); the same id linked twice remains one
     candidate and is chased."""
-    import app.services.tweet_ingest.acquire as acquire_mod
+    import app.services.tweet_ingest.chase.x as x_chase_mod
 
     archive = tmp_path / "arc"
-    archive.mkdir()
-    payload = [
-        {
-            "tweet": {
+    write_archive_js(
+        archive,
+        [
+            {
                 "id_str": "1",
                 "created_at": "Wed Nov 12 14:33:00 +0000 2025",
                 "full_text": (
@@ -277,40 +215,23 @@ def test_several_third_party_status_links_are_ambiguous_no_chase(tmp_path, monke
                 ),
                 "entities": {
                     "urls": [
-                        {
-                            "url": "https://t.co/a",
-                            "expanded_url": "https://x.com/other/status/777",
-                        },
-                        {
-                            "url": "https://t.co/b",
-                            "expanded_url": "https://x.com/other/status/888",
-                        },
+                        {"url": "https://t.co/a", "expanded_url": "https://x.com/other/status/777"},
+                        {"url": "https://t.co/b", "expanded_url": "https://x.com/other/status/888"},
                     ]
                 },
-            }
-        },
-        {
-            "tweet": {
+            },
+            {
                 "id_str": "2",
                 "created_at": "Wed Nov 12 15:00:00 +0000 2025",
                 "full_text": "Source: https://x.com/other/status/888 (again: same link)",
                 "entities": {
                     "urls": [
-                        {
-                            "url": "https://t.co/c",
-                            "expanded_url": "https://x.com/other/status/888",
-                        },
-                        {
-                            "url": "https://t.co/d",
-                            "expanded_url": "https://x.com/other/status/888",
-                        },
+                        {"url": "https://t.co/c", "expanded_url": "https://x.com/other/status/888"},
+                        {"url": "https://t.co/d", "expanded_url": "https://x.com/other/status/888"},
                     ]
                 },
-            }
-        },
-    ]
-    (archive / "tweets.js").write_text(
-        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
+            },
+        ],
     )
 
     seen_ids: list[str] = []
@@ -323,8 +244,8 @@ def test_several_third_party_status_links_are_ambiguous_no_chase(tmp_path, monke
             "created_at": "2025-11-12T09:00:00.000Z",
         }
 
-    monkeypatch.setattr(acquire_mod, "fetch_syndication", fake_fetch)
-    records = read_tweets(archive, handle="ana", chase=True)
+    monkeypatch.setattr(x_chase_mod, "fetch_syndication", fake_fetch)
+    records = _chased(archive, handle="ana")
     ambiguous = next(r for r in records if r.tweet_id == "1")
     assert ambiguous.quoted is None
     deduped = next(r for r in records if r.tweet_id == "2")
@@ -336,15 +257,15 @@ def test_several_third_party_status_links_are_ambiguous_no_chase(tmp_path, monke
 def test_embedded_x_status_in_foreign_host_is_not_chased(tmp_path, monkeypatch):
     """Host gate: a non-X URL (an archive.org capture, a common OSINT citation)
     that merely carries ``x.com/<w>/status/<id>`` inside its path is not an X
-    status link, so it is never chased. The candidate rule keys on the real host
-    via ``classify_source_host``, not a raw substring match on the whole URL."""
-    import app.services.tweet_ingest.acquire as acquire_mod
+    status link, so it is never chased. The candidate rule keys on the real
+    host, never on a substring match over the whole URL."""
+    import app.services.tweet_ingest.chase.x as x_chase_mod
 
     archive = tmp_path / "arc"
-    archive.mkdir()
-    payload = [
-        {
-            "tweet": {
+    write_archive_js(
+        archive,
+        [
+            {
                 "id_str": "1",
                 "created_at": "Wed Nov 12 14:33:00 +0000 2025",
                 "full_text": "Cited https://t.co/fakearchive",
@@ -360,160 +281,24 @@ def test_embedded_x_status_in_foreign_host_is_not_chased(tmp_path, monkeypatch):
                     ]
                 },
             }
-        }
-    ]
-    (archive / "tweets.js").write_text(
-        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
+        ],
     )
 
     def fake_fetch(tweet_id, *, client=None):
         raise AssertionError("a non-X host must never be chased")
 
-    monkeypatch.setattr(acquire_mod, "fetch_syndication", fake_fetch)
-    [record] = read_tweets(archive, handle="ana", chase=True)
+    monkeypatch.setattr(x_chase_mod, "fetch_syndication", fake_fetch)
+    [record] = _chased(archive, handle="ana")
     assert record.quoted is None
 
 
-def test_x_status_plus_telegram_link_is_ambiguous_no_chase(tmp_path, monkeypatch):
-    """A tweet linking BOTH an X status and a Telegram post is ambiguous at
-    resolve (two footage candidates across hosts), so neither is chased: the X
-    status must not materialise as a quote and win precedence over the empty
-    resolved source."""
-    import app.services.tweet_ingest.acquire as acquire_mod
-    import app.services.tweet_ingest.archive as archive_mod
-
-    archive = tmp_path / "arc"
-    archive.mkdir()
-    payload = [
-        {
-            "tweet": {
-                "id_str": "1",
-                "created_at": "Wed Nov 12 14:33:00 +0000 2025",
-                "full_text": "Source: https://x.com/src/status/999 also https://t.me/chan/42",
-                "entities": {
-                    "urls": [
-                        {"url": "https://t.co/x", "expanded_url": "https://x.com/src/status/999"},
-                        {"url": "https://t.co/tg", "expanded_url": "https://t.me/chan/42"},
-                    ]
-                },
-            }
-        }
-    ]
-    (archive / "tweets.js").write_text(
-        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
-    )
-
-    def fake_fetch(tweet_id, *, client=None):
-        raise AssertionError("ambiguous source must not chase the X status")
-
-    def fake_embed(url, *, client=None):
-        raise AssertionError("ambiguous source must not chase the Telegram post")
-
-    monkeypatch.setattr(acquire_mod, "fetch_syndication", fake_fetch)
-    monkeypatch.setattr(archive_mod, "fetch_telegram_embed", fake_embed)
-    [record] = read_tweets(archive, handle="ana", chase=True)
-    assert record.quoted is None
-    assert record.telegram is None
-
-
-def test_designated_x_status_is_chased_past_the_ambiguity(tmp_path, monkeypatch):
-    """A ``Source:`` line naming an X status designates it explicitly, so the
-    chase runs even though a second footage link would otherwise leave the source
-    ambiguous. The designated status, not the other candidate, is fetched."""
-    import app.services.tweet_ingest.acquire as acquire_mod
-
-    archive = tmp_path / "arc"
-    archive.mkdir()
-    payload = [
-        {
-            "tweet": {
-                "id_str": "1",
-                "created_at": "Wed Nov 12 14:33:00 +0000 2025",
-                "full_text": (
-                    "Geolocated the depot\nMirror: https://t.co/tg\nSource: https://t.co/x"
-                ),
-                "entities": {
-                    "urls": [
-                        {"url": "https://t.co/tg", "expanded_url": "https://t.me/chan/42"},
-                        {"url": "https://t.co/x", "expanded_url": "https://x.com/src/status/999"},
-                    ]
-                },
-            }
-        }
-    ]
-    (archive / "tweets.js").write_text(
-        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
-    )
-
-    seen_ids: list[str] = []
-
-    def fake_fetch(tweet_id, *, client=None):
-        seen_ids.append(tweet_id)
-        return {
-            "user": {"screen_name": "src"},
-            "text": "footage",
-            "created_at": "2025-11-12T09:00:00.000Z",
-        }
-
-    monkeypatch.setattr(acquire_mod, "fetch_syndication", fake_fetch)
-    [record] = read_tweets(archive, handle="ana", chase=True)
-    assert seen_ids == ["999"]
-    assert record.quoted is not None
-    assert record.quoted.handle == "src"
-
-
-def test_designated_off_vocabulary_link_is_never_fetched(tmp_path, monkeypatch):
-    """The designation is host-blind for storage and host-bound for fetching: an
-    Instagram link designated on a ``Source:`` line chases nothing, so the source
-    stays link-only."""
-    import app.services.tweet_ingest.acquire as acquire_mod
-    import app.services.tweet_ingest.archive as archive_mod
-
-    archive = tmp_path / "arc"
-    archive.mkdir()
-    payload = [
-        {
-            "tweet": {
-                "id_str": "1",
-                "created_at": "Wed Nov 12 14:33:00 +0000 2025",
-                "full_text": "Geolocated the depot\nSource: https://t.co/ig",
-                "entities": {
-                    "urls": [
-                        {
-                            "url": "https://t.co/ig",
-                            "expanded_url": "https://www.instagram.com/reel/FAKEREEL01/",
-                        }
-                    ]
-                },
-            }
-        }
-    ]
-    (archive / "tweets.js").write_text(
-        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
-    )
-
-    def no_fetch(tweet_id, *, client=None):
-        raise AssertionError("an off-vocabulary designation must not be chased")
-
-    def no_embed(url, *, client=None):
-        raise AssertionError("an off-vocabulary designation must not be chased")
-
-    monkeypatch.setattr(acquire_mod, "fetch_syndication", no_fetch)
-    monkeypatch.setattr(archive_mod, "fetch_telegram_embed", no_embed)
-    [record] = read_tweets(archive, handle="ana", chase=True)
-    assert record.quoted is None and record.telegram is None
-    resolved = resolve_thread([record])
-    assert resolved is not None
-    assert resolved.source_url == "https://www.instagram.com/reel/FAKEREEL01/"
-    assert resolved.source_posted_at is None
-
-
-def _designation_archive(dest: Path, text: str, urls: list[dict], media_url: str) -> None:
+def _one_tweet_archive(dest: Path, text: str, urls: list[dict], media_url: str) -> None:
     """One export entry: ``text``, its ``entities.urls``, and one attached photo
     whose ``t.co`` wrapper is ``media_url`` (the production shape)."""
-    payload = [
-        {
-            "tweet": {
+    write_archive_js(
+        dest,
+        [
+            {
                 "id_str": "1",
                 "created_at": "Wed Nov 12 14:33:00 +0000 2025",
                 "full_text": text,
@@ -523,205 +308,60 @@ def _designation_archive(dest: Path, text: str, urls: list[dict], media_url: str
                         {
                             "type": "photo",
                             "url": media_url,
-                            "expanded_url": "https://twitter.com/ana/status/1/photo/1",
-                            "media_url_https": "https://pbs.twimg.com/media/OWN.jpg",
+                            "media_url_https": "https://pbs.twimg.com/media/FAKEOP.jpg",
                         }
                     ]
                 },
             }
-        }
-    ]
-    (dest / "tweets.js").write_text(
-        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
+        ],
     )
 
 
-def test_archive_designation_survives_the_posts_own_media_wrapper(tmp_path, monkeypatch):
-    """The production shape: the analyst wrote one ``Source:`` token and X
-    appended the wrapper of the post's own photo behind it. The export names that
-    wrapper in ``extended_entities.media``, so the designation reads as written,
-    and the Telegram chase runs on it."""
-    import app.services.tweet_ingest.archive as archive_mod
-    from app.services.tweet_ingest.telegram import TelegramEmbed
+def test_a_sole_telegram_link_is_chased_beside_the_posts_own_media(tmp_path, monkeypatch):
+    """The production shape: one link the analyst wrote plus the wrapper X
+    appended for the post's own photo. The wrapper binds to no entity, so it is
+    neither a candidate nor proof content, and the Telegram chase runs on the
+    one real link."""
+    import app.services.tweet_ingest.chase.telegram as telegram_mod
+    from app.services.tweet_ingest.records import ChasedPost, ChaseResult
 
     archive = tmp_path / "arc"
-    archive.mkdir()
-    _designation_archive(
+    _one_tweet_archive(
         archive,
-        "Geolocated the depot\nSource: https://t.co/tg https://t.co/ownPhoto",
+        "Geolocated 48.012345, 37.802411\nSource: https://t.co/tg https://t.co/ownPhoto",
         [{"url": "https://t.co/tg", "expanded_url": "https://t.me/chan/42"}],
         "https://t.co/ownPhoto",
     )
 
     chased: list[str] = []
 
-    def fake_embed(url, *, client=None):
-        chased.append(url)
-        return TelegramEmbed(posted_at="2025-11-11T08:00:00+00:00", media=[])
+    def fake_chase(target, *, client=None):
+        chased.append(target)
+        return ChaseResult(
+            outcome="chased",
+            post=ChasedPost(url=target, posted_at="2025-11-11T08:00:00+00:00"),
+        )
 
-    monkeypatch.setattr(archive_mod, "fetch_telegram_embed", fake_embed)
-    [record] = read_tweets(archive, handle="ana", chase=True)
-    assert record.media_shortlinks == ["https://t.co/ownPhoto"]
+    monkeypatch.setattr(telegram_mod, "chase", fake_chase)
+    [record] = _chased(archive, handle="ana")
     assert chased == ["https://t.me/chan/42"]
-    resolved = resolve_thread([record])
-    assert resolved is not None
-    assert resolved.source_url == "https://t.me/chan/42"
+    detection = _detection([record])
+    assert detection.source_url == "https://t.me/chan/42"
+    assert "t.co" not in detection.proof_text
 
 
-def test_archive_designation_of_two_written_links_stays_ambiguous(tmp_path, monkeypatch):
-    """Same two-token line through the archive, but both tokens are links the
-    analyst wrote: the designation is ambiguous, nothing is chased, and the
-    sole-candidate rule declines two footage links too."""
-    import app.services.tweet_ingest.archive as archive_mod
-
+def test_a_link_written_inside_prose_is_a_candidate(tmp_path):
+    """No label grammar: where the analyst wrote the link does not matter, only
+    how many candidates the thread carries."""
     archive = tmp_path / "arc"
-    archive.mkdir()
-    _designation_archive(
+    _one_tweet_archive(
         archive,
-        "Geolocated the depot\nSource: https://t.co/tg https://t.co/x",
-        [
-            {"url": "https://t.co/tg", "expanded_url": "https://t.me/chan/42"},
-            {"url": "https://t.co/x", "expanded_url": "https://x.com/src/status/999"},
-        ],
-        "https://t.co/ownPhoto",
-    )
-
-    def no_embed(url, *, client=None):
-        raise AssertionError("an ambiguous designation must not be chased")
-
-    monkeypatch.setattr(archive_mod, "fetch_telegram_embed", no_embed)
-    [record] = read_tweets(archive, handle="ana", chase=True)
-    assert record.telegram is None
-    resolved = resolve_thread([record])
-    assert resolved is not None
-    assert resolved.source_url is None
-
-
-def test_archive_bare_source_label_takes_the_next_line(tmp_path, monkeypatch):
-    """The two-line habit through the archive, in the production shape: the label
-    alone on its line, the URL on the next one, and X's own-media wrapper behind
-    it because that is where the post ends. The designation reads as written and
-    the Telegram chase runs on it."""
-    import app.services.tweet_ingest.archive as archive_mod
-    from app.services.tweet_ingest.telegram import TelegramEmbed
-
-    archive = tmp_path / "arc"
-    archive.mkdir()
-    _designation_archive(
-        archive,
-        "Geolocated the depot\nSource:\nhttps://t.co/tg https://t.co/ownPhoto",
-        [{"url": "https://t.co/tg", "expanded_url": "https://t.me/chan/42"}],
-        "https://t.co/ownPhoto",
-    )
-
-    chased: list[str] = []
-
-    def fake_embed(url, *, client=None):
-        chased.append(url)
-        return TelegramEmbed(posted_at="2025-11-11T08:00:00+00:00", media=[])
-
-    monkeypatch.setattr(archive_mod, "fetch_telegram_embed", fake_embed)
-    [record] = read_tweets(archive, handle="ana", chase=True)
-    assert chased == ["https://t.me/chan/42"]
-    resolved = resolve_thread([record])
-    assert resolved is not None
-    assert resolved.source_url == "https://t.me/chan/42"
-
-
-def test_archive_bare_source_label_with_prose_on_the_next_line_is_not_read(tmp_path, monkeypatch):
-    """The continuation line must be the URL and nothing else: a word beside the
-    link refuses the designation, nothing is chased, and the Instagram link stays
-    out of the slot the sole-candidate rule never offers host ``other``."""
-    import app.services.tweet_ingest.archive as archive_mod
-
-    archive = tmp_path / "arc"
-    archive.mkdir()
-    _designation_archive(
-        archive,
-        "Geolocated the depot\nSource:\nfilmed by https://t.co/ig",
-        [
-            {
-                "url": "https://t.co/ig",
-                "expanded_url": "https://www.instagram.com/reel/FAKEREEL01/",
-            }
-        ],
-        "https://t.co/ownPhoto",
-    )
-
-    def no_embed(url, *, client=None):
-        raise AssertionError("a refused designation must not be chased")
-
-    monkeypatch.setattr(archive_mod, "fetch_telegram_embed", no_embed)
-    [record] = read_tweets(archive, handle="ana", chase=True)
-    resolved = resolve_thread([record])
-    assert resolved is not None
-    assert resolved.source_url is None
-
-
-def test_archive_designation_inside_prose_is_not_read(tmp_path):
-    """The whole-line anchor is untouched by the wrapper drop: a ``Source:``
-    written mid-sentence stays a proof reference, wrapper or no wrapper."""
-    archive = tmp_path / "arc"
-    archive.mkdir()
-    _designation_archive(
-        archive,
-        "Filmed by the crew, Source: https://t.co/ig and mirrored elsewhere https://t.co/ownPhoto",
-        [
-            {
-                "url": "https://t.co/ig",
-                "expanded_url": "https://www.instagram.com/reel/FAKEREEL01/",
-            }
-        ],
+        "Filmed by the crew at 48.012345, 37.802411, see https://t.co/ig https://t.co/ownPhoto",
+        [{"url": "https://t.co/ig", "expanded_url": "https://www.instagram.com/reel/FAKEREEL01/"}],
         "https://t.co/ownPhoto",
     )
     [record] = read_tweets(archive, handle="ana")
-    resolved = resolve_thread([record])
-    assert resolved is not None
-    assert resolved.source_url is None
-
-
-def test_handleless_own_status_link_chased_then_thrown(tmp_path, monkeypatch):
-    """A link to the owner's OWN status in the handle-less ``i/web/status`` form,
-    absent from the export (deleted / truncated), slips both the ``by_id`` and the
-    URL-handle exclusions. Once chased, the syndication handle reveals it as the
-    owner's own post, so the result is thrown out rather than materialised as
-    third-party footage."""
-    import app.services.tweet_ingest.acquire as acquire_mod
-
-    archive = tmp_path / "arc"
-    archive.mkdir()
-    payload = [
-        {
-            "tweet": {
-                "id_str": "1",
-                "created_at": "Wed Nov 12 14:33:00 +0000 2025",
-                "full_text": "Reposting my earlier one https://t.co/self",
-                "entities": {
-                    "urls": [
-                        {
-                            "url": "https://t.co/self",
-                            "expanded_url": "https://x.com/i/web/status/999",
-                        }
-                    ]
-                },
-            }
-        }
-    ]
-    (archive / "tweets.js").write_text(
-        "window.YTD.tweets.part0 = " + json.dumps(payload), encoding="utf-8"
-    )
-
-    def fake_fetch(tweet_id, *, client=None):
-        assert tweet_id == "999"
-        return {
-            "user": {"screen_name": "Analyst"},  # the owner's handle, different case
-            "text": "my own footage",
-            "created_at": "2025-11-12T09:00:00.000Z",
-        }
-
-    monkeypatch.setattr(acquire_mod, "fetch_syndication", fake_fetch)
-    [record] = read_tweets(archive, handle="analyst", chase=True)
-    assert record.quoted is None
+    assert _detection([record]).source_url == "https://www.instagram.com/reel/FAKEREEL01/"
 
 
 def _cdn_client_factory(handler):
@@ -747,9 +387,7 @@ async def test_fetch_cdn_media_caps_oversized_stream(monkeypatch):
         "AsyncClient",
         _cdn_client_factory(lambda _req: httpx.Response(200, content=b"x" * 64)),
     )
-    parsed = ParsedMedia(
-        kind="video", remote_url="https://video.twimg.com/big.mp4", content_type="video/mp4"
-    )
+    parsed = ParsedMedia(kind="video", remote_url="https://video.twimg.com/big.mp4")
     assert await archive_mod.fetch_cdn_media(parsed) is None
 
 
@@ -761,10 +399,43 @@ async def test_fetch_cdn_media_returns_within_cap(monkeypatch):
         "AsyncClient",
         _cdn_client_factory(lambda _req: httpx.Response(200, content=b"tiny-mp4-bytes")),
     )
-    parsed = ParsedMedia(
-        kind="video", remote_url="https://video.twimg.com/ok.mp4", content_type="video/mp4"
-    )
+    parsed = ParsedMedia(kind="video", remote_url="https://video.twimg.com/ok.mp4")
     assert await archive_mod.fetch_cdn_media(parsed) == (b"tiny-mp4-bytes", "video/mp4")
+
+
+async def test_fetch_cdn_media_retries_a_throttled_cdn(monkeypatch, retry_sleeps):
+    """The footage is the point of the detection, so a CDN refusing to serve right
+    now is sat out on the package's one schedule (``tweet_ingest.retry``) rather
+    than persisted as a media-incomplete row."""
+    import app.services.tweet_ingest.archive as archive_mod
+    from app.services.tweet_ingest import retry
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, content=b"tiny-mp4-bytes") if seen[1:] else httpx.Response(503)
+
+    monkeypatch.setattr(httpx, "AsyncClient", _cdn_client_factory(handler))
+    parsed = ParsedMedia(kind="video", remote_url="https://video.twimg.com/ok.mp4")
+
+    assert await archive_mod.fetch_cdn_media(parsed) == (b"tiny-mp4-bytes", "video/mp4")
+    assert len(seen) == 2
+    assert retry_sleeps == [retry.BACKOFF_S[0]]
+
+
+async def test_fetch_cdn_media_degrades_once_the_retries_are_spent(monkeypatch, retry_sleeps):
+    """Fail-soft is unchanged past the schedule: the detection lands
+    media-incomplete, and the warning on it is what names the unreachable
+    source."""
+    import app.services.tweet_ingest.archive as archive_mod
+    from app.services.tweet_ingest import retry
+
+    monkeypatch.setattr(httpx, "AsyncClient", _cdn_client_factory(lambda _req: httpx.Response(503)))
+    parsed = ParsedMedia(kind="video", remote_url="https://video.twimg.com/ok.mp4")
+
+    assert await archive_mod.fetch_cdn_media(parsed) is None
+    assert retry_sleeps == list(retry.BACKOFF_S)
 
 
 async def test_archive_media_fetcher_rejects_path_traversal(tmp_path):
@@ -775,9 +446,5 @@ async def test_archive_media_fetcher_rejects_path_traversal(tmp_path):
     # A real file just outside the archive dir, reachable only by escaping it.
     (tmp_path / "secret.png").write_bytes(b"\x89PNG not yours")
     fetch = archive_media_fetcher(archive)
-    escaping = ParsedMedia(
-        kind="image",
-        remote_url="tweets_media/../../secret.png",
-        content_type="image/png",
-    )
+    escaping = ParsedMedia(kind="image", remote_url="tweets_media/../../secret.png")
     assert await fetch(escaping) is None

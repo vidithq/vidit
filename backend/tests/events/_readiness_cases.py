@@ -1,4 +1,4 @@
-"""The mixed draft set the detections-queue readiness suites share.
+"""The mixed detection set the detections-queue readiness suites share.
 
 One table of shapes, one expected verdict each, used by the SQL-vs-floor
 agreement test (``test_detections_readiness.py``) and by the endpoint suite
@@ -50,7 +50,7 @@ PROOF_IMAGE_WITHOUT_SRC: dict[str, Any] = {
     "content": [{"type": "image"}],
 }
 
-# name -> (``_make_geo`` overrides on top of a plain detected draft, ready?)
+# name -> (``_make_geo`` overrides on top of a plain detection, ready?)
 READINESS_CASES: dict[str, tuple[dict[str, Any], bool]] = {
     "ready": ({"with_media": True, "proof": PROOF_WITH_IMAGE}, True),
     "ready_with_a_nested_proof_image": (

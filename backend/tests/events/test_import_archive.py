@@ -5,8 +5,9 @@ mints the key, the client POSTs the zip to the returned URL (the dev upload
 endpoint against ``LocalStorage``, standing in for S3's POST policy), and the
 JSON ``POST /import-archive`` verifies the staged object and returns a
 ``queued`` job (202); the worker (``services/archive_jobs``) claims it and
-drives the real backfill (extract guard → read_tweets → stitch → detect →
-assemble). Tests drain the queue inline with ``run_once``, so the whole
+drives the real backfill (extract guard → read_tweets → stitch →
+resolve_threads → persist_detections). Tests drain the queue inline with
+``run_once``, so the whole
 seam runs synchronously. The happy-path tweet carries a coordinate but no
 media, so a ``detected`` row lands with zero S3 work.
 """
@@ -27,6 +28,7 @@ from app.models.event import STATUS_CLOSED, STATUS_DETECTED, Event
 from app.services import archive_jobs
 from app.services.storage import get_storage
 from app.services.tweet_ingest import archive_zip
+from tests._fixtures import store_bytes, stored_bytes
 from tests.conftest import login_as
 from tests.events._helpers import client
 
@@ -44,6 +46,18 @@ def _clean_jobs(db):
     yield
     db.query(ArchiveImportJob).delete(synchronize_session=False)
     db.commit()
+
+
+@pytest.fixture(autouse=True)
+def _linked_handle(db, author):
+    """The caller with their X account linked, which every import assumes.
+
+    The backfill writes each provenance permalink from the owner's handle and
+    compares own-status links against it, so it refuses to run under a Vidit
+    username; a job whose owner has none lands ``failed``, pinned below."""
+    author.x_handle = f"arch{uuid.uuid4().hex[:8]}"
+    db.commit()
+    return author
 
 
 @pytest.fixture
@@ -167,7 +181,7 @@ def test_enqueue_returns_queued_job_for_staged_upload(db, author):
     job = db.get(ArchiveImportJob, uuid.UUID(body["id"]))
     assert job is not None and job.owner_id == author.id
     # The staged object is where the job row points.
-    assert get_storage().get_bytes(job.zip_key)
+    assert stored_bytes(job.zip_key)
 
 
 def test_job_poll_is_owner_only(db, author, second_user):
@@ -209,7 +223,7 @@ def test_enqueue_rejects_key_with_no_staged_object(author):
 
 def test_enqueue_rejects_oversized_staged_object(author, monkeypatch):
     key = archive_jobs.mint_staging_key(author.id)
-    get_storage().put_bytes_sync(_zip_bytes({"tweets.js": _TWEETS}), key, "application/zip")
+    store_bytes(_zip_bytes({"tweets.js": _TWEETS}), key)
     monkeypatch.setattr(archive_zip, "MAX_UPLOAD_BYTES", 10)
     resp = _enqueue(author, key)
     assert resp.status_code == 413
@@ -257,7 +271,7 @@ def test_import_creates_detected_rows_owned_by_caller(db, author, sent_emails):
     assert author.email == sent_emails[0].to
     row = db.get(ArchiveImportJob, uuid.UUID(job["id"]))
     with pytest.raises(FileNotFoundError):
-        get_storage().get_bytes(row.zip_key)
+        stored_bytes(row.zip_key)
 
 
 def test_reimport_is_idempotent(db, author, sent_emails):
@@ -333,6 +347,42 @@ def test_worker_fails_job_whose_staged_object_vanished(db, author, sent_emails):
     assert [e.subject for e in sent_emails] == ["Your X archive import failed"]
 
 
+def test_worker_fails_a_job_whose_owner_was_deactivated(db, author, sent_emails):
+    """The archive twin of the bot's ``no_account`` rule: a suspended account
+    accrues no detections. The bot reads ``detection.linked_owner`` (live and
+    active) and the paste goes through ``get_current_user``; the worker gate is
+    the third spelling of the same requirement, and a job queued before the
+    suspension lands ``failed`` rather than importing under it."""
+    accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
+    author.is_active = False
+    db.commit()
+
+    assert _drain(db) == 1
+    job = db.get(ArchiveImportJob, uuid.UUID(accepted.json()["id"]))
+    db.refresh(job)
+    assert job.status == "failed"
+    assert job.error == "owner gone"
+    assert db.query(Event).filter(Event.owner_id == author.id).all() == []
+
+
+def test_worker_fails_a_job_whose_owner_has_no_linked_handle(db, author, sent_emails):
+    """No fallback onto the Vidit username: the handle is what every provenance
+    permalink is written from and what the own-status exclusion reads, so an
+    import under a username would fabricate links to an account that may be
+    someone else's, and would credit a stranger's status as footage."""
+    accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
+    author.x_handle = None
+    db.commit()
+
+    assert _drain(db) == 1
+    job = db.get(ArchiveImportJob, uuid.UUID(accepted.json()["id"]))
+    db.refresh(job)
+    assert job.status == "failed"
+    assert job.error == "owner has no linked X handle"
+    assert db.query(Event).filter(Event.owner_id == author.id).all() == []
+    assert [e.subject for e in sent_emails] == ["Your X archive import failed"]
+
+
 def test_failed_run_lands_failed_and_notifies(db, author, sent_emails, monkeypatch):
     async def _boom(*args, **kwargs):
         raise RuntimeError("backfill exploded")
@@ -348,7 +398,7 @@ def test_failed_run_lands_failed_and_notifies(db, author, sent_emails, monkeypat
     assert [e.subject for e in sent_emails] == ["Your X archive import failed"]
     # Failed jobs release their staged zip too.
     with pytest.raises(FileNotFoundError):
-        get_storage().get_bytes(job.zip_key)
+        stored_bytes(job.zip_key)
 
 
 def test_worker_reclaims_stale_running_job_and_caps_attempts(db, author, sent_emails):

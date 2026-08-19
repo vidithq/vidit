@@ -46,7 +46,7 @@ type Win = { from: number; to: number };
 const IMPORT_WINDOWS: Win[] = [
   { from: I("modeClick", 1.1) - 0.6, to: I("importClick", 8.9) + 0.8 },
   { from: I("scanVisible", 11.8) - 0.4, to: I("scanVisible", 11.8) + 2.2 },
-  { from: I("queueRedirect", 14.8) - 0.2, to: I("draftOpen", 18.9) + 2.0 },
+  { from: I("queueRedirect", 14.8) - 0.2, to: I("detectionOpen", 18.9) + 2.0 },
 ];
 const importFrames = IMPORT_WINDOWS.reduce(
   (acc, w) => acc + Math.round((w.to - w.from) * COMP_FPS),
@@ -186,7 +186,7 @@ export const FeatureImport: React.FC = () => {
                 {segs}
                 <Caption
                   eyebrow="Step 2"
-                  title="Upload it. Every coordinate you ever posted becomes a draft."
+                  title="Upload it. Every coordinate you ever posted becomes a detection."
                   durationInFrames={total}
                 />
               </SceneFade>

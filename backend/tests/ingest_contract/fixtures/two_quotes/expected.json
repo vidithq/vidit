@@ -1,0 +1,33 @@
+{
+  "description": "Two quotes in one thread: the analyst quotes a statement post carrying no media, then replies to themselves quoting the footage post that carries the video, with the coordinate in the reply. Two quoted posts are two candidates, so the source slot stays empty, both quoted statuses land as secondary links and the detection warns source_ambiguous. The footage post's video stays out of the source slot, which no longer names it; the analyst's own photo is the proof media. Hand-built rather than recorded from a live post: replace it with a recording when one is captured.",
+  "head_tweet_id": "9600000000000000001",
+  "coords": [
+    [
+      47.507336,
+      34.632705
+    ]
+  ],
+  "source_url": null,
+  "secondary_source_urls": [
+    "https://x.com/ministry_wire/status/9600000000000000011",
+    "https://x.com/night_lens/status/9600000000000000012"
+  ],
+  "source_posted_at": null,
+  "event_date": "2026-05-12",
+  "title": "The ministry says the plant caught fire overnight.",
+  "source_media": [],
+  "proof_media": [
+    [
+      "image",
+      "op"
+    ]
+  ],
+  "warnings": [
+    "source_ambiguous"
+  ],
+  "paths": {
+    "archive": {
+      "skip": "Quote shape: an archive resolves a quote by an in-archive join or by the chase, and the consolidated export the backfill test builds carries neither quoted post nor a stubbed fetch. The archive's quote paths have their own tests in test_archive_contract."
+    }
+  }
+}

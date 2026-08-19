@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { DetectionQueueRow } from "./DetectionQueueRow";
 import type { EventDetail } from "@/types";
 
-function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
+function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   return {
     id: "d1",
     title: "Strike near Bakhmut",
@@ -16,11 +16,12 @@ function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     event_time: null,
     source_posted_at: "2026-05-30T14:32:00Z",
     status: "detected",
+    version_no: 1,
     is_graphic: false,
     close_reason: null,
     before_closed_status: null,
     detected_from_url: "https://x.com/analyst/status/1",
-    detected_post_at: "2026-05-30T15:00:00Z",
+    detected_via: null,
     owner: { id: "u1", username: "ana" },
     tags: [],
     conflicts: [],
@@ -32,9 +33,6 @@ function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
       content: [{ type: "image", attrs: { src: "https://cdn.test/p.jpg" } }],
     },
     created_at: "2026-06-02T10:00:00Z",
-    updated_at: "2026-06-02T10:00:00Z",
-    requested_at: null,
-    detected_at: "2026-06-02T10:00:00Z",
     geolocated_at: null,
     closed_at: null,
     media: [
@@ -58,9 +56,9 @@ function draftFixture(overrides: Partial<EventDetail> = {}): EventDetail {
 }
 
 describe("DetectionQueueRow", () => {
-  it("badges a draft carrying the whole evidence floor as ready to review", () => {
-    render(<DetectionQueueRow draft={draftFixture()} />);
-    // "Ready to review", never a bare "Ready": the draft still needs the
+  it("badges a detection carrying the whole evidence floor as ready to review", () => {
+    render(<DetectionQueueRow detection={detectionFixture()} />);
+    // "Ready to review", never a bare "Ready": the detection still needs the
     // conflict and the capture source, which a review supplies. What the state
     // means is the queue filter's own `?`, so the row carries the label and
     // nothing to hover or press.
@@ -71,17 +69,29 @@ describe("DetectionQueueRow", () => {
     // Title, event date and source host: the whole row, nothing else.
     expect(screen.getByText("Strike near Bakhmut")).toBeInTheDocument();
     expect(screen.getByText("t.me")).toBeInTheDocument();
-    // One click, to the form, inside a review pass starting at this draft.
+    // One click, to the form, inside a review pass starting at this detection.
     expect(screen.getByRole("link", { name: "Strike near Bakhmut" })).toHaveAttribute(
       "href",
       "/events/d1/edit?queue=1"
     );
   });
 
-  it("names the one piece a draft is missing", () => {
+  it("says which entry the detection came in from, beside the date and the host", () => {
+    render(<DetectionQueueRow detection={detectionFixture({ detected_via: "archive" })} />);
+    expect(screen.getByText("From your archive")).toBeInTheDocument();
+  });
+
+  it("says nothing about the entry when the detection predates the record", () => {
+    render(<DetectionQueueRow detection={detectionFixture({ detected_via: null })} />);
+    // Absent rather than "Unknown": the row is a triage line, and a segment
+    // saying nothing is worse than one segment fewer.
+    expect(screen.queryByText(/archive|Pasted|bot/)).toBeNull();
+  });
+
+  it("names the one piece a detection is missing", () => {
     render(
       <DetectionQueueRow
-        draft={draftFixture({ proof: { type: "doc", content: [{ type: "paragraph" }] } })}
+        detection={detectionFixture({ proof: { type: "doc", content: [{ type: "paragraph" }] } })}
       />
     );
     expect(screen.queryByText("Ready to review")).not.toBeInTheDocument();
@@ -93,7 +103,7 @@ describe("DetectionQueueRow", () => {
   it("collapses several missing pieces to a count", () => {
     render(
       <DetectionQueueRow
-        draft={draftFixture({
+        detection={detectionFixture({
           proof: { type: "doc", content: [{ type: "paragraph" }] },
           media: [],
         })}
@@ -104,15 +114,15 @@ describe("DetectionQueueRow", () => {
     expect(screen.getByText("Missing: 2 pieces")).toBeInTheDocument();
   });
 
-  it("says so when the draft declares no source and no event date", () => {
+  it("says so when the detection declares no source and no event date", () => {
     render(
       <DetectionQueueRow
-        draft={draftFixture({ source_url: null, event_date: null })}
+        detection={detectionFixture({ source_url: null, event_date: null })}
       />
     );
     expect(screen.getByText("Missing: Source URL")).toBeInTheDocument();
     expect(screen.getByText("No event date")).toBeInTheDocument();
-    // A source-less draft says so rather than rendering an empty host.
+    // A source-less detection says so rather than rendering an empty host.
     expect(screen.getByText("To confirm")).toBeInTheDocument();
   });
 });

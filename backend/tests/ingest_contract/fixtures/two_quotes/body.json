@@ -1,0 +1,46 @@
+{
+  "id_str": "9600000000000000002",
+  "created_at": "2026-05-12T09:15:00.000Z",
+  "user": { "screen_name": "relay_stoat" },
+  "text": "Fire geolocated 47.507336, 34.632705 north yard\nhttps://t.co/fakeFOOTAGE",
+  "in_reply_to_status_id_str": "9600000000000000001",
+  "in_reply_to_user_id_str": "9600000000000000099",
+  "mediaDetails": [
+    {
+      "type": "photo",
+      "media_url_https": "https://pbs.twimg.com/media/FAKEOP14.jpg"
+    }
+  ],
+  "entities": {
+    "urls": [
+      {
+        "url": "https://t.co/fakeFOOTAGE",
+        "expanded_url": "https://x.com/night_lens/status/9600000000000000012"
+      }
+    ]
+  },
+  "quoted_tweet": {
+    "id_str": "9600000000000000012",
+    "created_at": "2026-05-11T21:05:00.000Z",
+    "user": { "screen_name": "night_lens" },
+    "text": "Flames over the plant, filmed from the road",
+    "mediaDetails": [
+      {
+        "type": "video",
+        "video_info": {
+          "variants": [
+            {
+              "content_type": "application/x-mpegURL",
+              "url": "https://video.twimg.com/ext_tw_video/96/pl/FAKEPLAYLIST.m3u8"
+            },
+            {
+              "bitrate": "2176000",
+              "content_type": "video/mp4",
+              "url": "https://video.twimg.com/ext_tw_video/96/vid/720x1280/FAKEHIGH.mp4?tag=14"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

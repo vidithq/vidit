@@ -48,7 +48,7 @@ class ArchiveImportJob(Base):
     post_estimate: Mapped[int | None] = mapped_column(Integer, nullable=True)
     progress_done: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     progress_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # Assemble counts, final once ``done`` (see ``AssembleOutcome``).
+    # Import counts, final once ``done`` (see ``detection.Outcome``).
     created_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     updated_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

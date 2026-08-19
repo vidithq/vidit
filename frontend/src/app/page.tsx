@@ -98,12 +98,12 @@ const FEATURE_GROUPS: {
       {
         icon: Import,
         title: "Your history, imported in one step",
-        body: "Upload your official X archive and every geolocation you've already published is backfilled as drafts you review and vouch for. No manual re-entry.",
+        body: "Upload your official X archive and every geolocation you've already published is backfilled as detections you review and vouch for. No manual re-entry.",
       },
       {
         icon: AtSign,
         title: "Tag @ViditBot, it's archived",
-        body: "Tag @ViditBot under a geolocation post on X and it lands here as a structured draft, with an in-thread reply telling you what was captured. You never leave your workflow.",
+        body: "Tag @ViditBot under a geolocation post on X and it lands here as a structured detection, with an in-thread reply telling you what was captured. You never leave your workflow.",
       },
       {
         icon: Archive,
@@ -138,13 +138,13 @@ const ROADMAP: {
     version: "v0.5",
     state: "current",
     title: "Analyst portfolio",
-    body: "Your body of work becomes a first-class object: a public profile that reads as a portfolio, rich link previews wherever you share it, batch completion of imported drafts, a mobile pass on the pages readers land on, and sources archived when you publish so the work outlives its tweets.",
+    body: "Your body of work becomes a first-class object: a public profile that reads as a portfolio, rich link previews wherever you share it, batch completion of imported detections, a mobile pass on the pages readers land on, and sources archived when you publish so the work outlives its tweets.",
   },
   {
     version: "v0.6",
     state: "upcoming",
     title: "Collaboration & reviews",
-    body: "Notifications, shared credit on events, edit history on published geolocations, and the request board as a shared queue. Organisations get a verified profile with members and roles, and an analyst or an organisation can approve a geolocation at a given revision.",
+    body: "Notifications, shared credit on events, edit history on published geolocations, and the request board as a shared queue. Organisations get a verified profile with members and roles, and an analyst or an organisation can approve a geolocation at a given version.",
   },
   {
     version: "v1.0",

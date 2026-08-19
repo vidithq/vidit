@@ -9,7 +9,7 @@ import { TEXT_LINK } from "@/components/ui/styles";
  * bug.
  */
 type SourceLabelProps = {
-  /** Null on a machine ``detected`` draft whose tweet declared no source:
+  /** Null on a machine detection whose tweet declared no source:
    *  renders the muted "To confirm" label instead of a link. */
   url: string | null;
   /** Appended Tailwind classes. The atom sets palette + affordance; the caller
@@ -34,7 +34,7 @@ type SourceLabelProps = {
 /**
  * Source-URL display that reduces a stored URL to its host, with italic
  * fallbacks for the two cases that have no link to offer. A null ``url`` (a
- * machine ``detected`` draft whose tweet declared no source) renders "To
+ * machine detection whose tweet declared no source) renders "To
  * confirm"; a value the parser gives no host for renders "no source". One edit
  * point for the rendering, which had already drifted (``text-neutral-500`` vs
  * ``-600``).

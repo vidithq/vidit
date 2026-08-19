@@ -1,4 +1,4 @@
-"""X I/O — URL normalisation, syndication fetch, schema mappers.
+"""X I/O: the syndication fetch, its cache, and the payload mappers.
 
 Data source
 -----------
@@ -8,20 +8,24 @@ X's public *syndication* endpoint:
     https://cdn.syndication.twimg.com/tweet-result?id=<id>&token=<token>&lang=en
 
 The same backend the embeddable ``<blockquote class="twitter-tweet">``
-widget uses — unauthenticated, unofficial, no documented contract; X can
-change the schema or move it anytime. The route surfaces failures as `502`
-so the frontend shows a "fill the form manually" banner and stays usable
-even when this service is fully broken. The ``token`` algorithm is copied
-verbatim from Vercel's `react-tweet` (MIT) — a deterministic hash X
-requires on every request.
+widget uses: unauthenticated, unofficial, no documented contract; X can
+change the schema or move it anytime. The paste route surfaces failures as a
+`502` naming the upstream, so the rest of the app stays usable even when this
+service is fully broken. The ``token`` algorithm is copied verbatim from
+Vercel's `react-tweet` (MIT), a deterministic hash X requires on every request.
+
+Fetch and payload reading only. What a URL *means* is
+:mod:`tweet_ingest.urls`, and what a media *is* is
+:class:`tweet_ingest.records.ParsedMedia`, so the pure bricks read that
+vocabulary without importing this module.
 
 Caching
 -------
 
 In-memory TTL cache keyed by tweet ID, 1h. Analysts commonly click "Import"
 twice (paste, restart, re-paste); X is rate-sensitive so the second click
-shouldn't pay the round trip. Process-local; restarts wipe it — fine, we're
-not authoritative storage for tweets.
+shouldn't pay the round trip. Process-local; restarts wipe it, which is fine:
+we're not authoritative storage for tweets.
 """
 
 from __future__ import annotations
@@ -33,68 +37,18 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Literal
-from urllib.parse import urlparse
 
 import httpx
 
-from .errors import InvalidTweetUrl, TweetFetchFailed, TweetNotAccessible, TweetUpstreamBusy
-
-# ── URL normalisation ─────────────────────────────────────────────────────
-
-
-_TWEET_ID_PATTERN = re.compile(r"^\d{5,25}$")
-_TWITTER_HOSTS = frozenset({"x.com", "www.x.com", "twitter.com", "www.twitter.com"})
-
-
-@dataclass(frozen=True)
-class NormalisedTweetUrl:
-    canonical: str  # e.g. "https://x.com/handle/status/1234567890"
-    tweet_id: str
-    handle: str
-
-
-def normalise_tweet_url(raw: str) -> NormalisedTweetUrl:
-    """Validate a tweet URL and return canonical form + extracted parts.
-
-    Accepts ``x.com`` / ``twitter.com`` (± ``www.``), strips query +
-    fragment, reduces the path to ``/<handle>/status/<id>``. Anything else
-    (profiles, lists, search, home feed, unrelated host) raises
-    ``InvalidTweetUrl``. The handle isn't validated for existence — that's
-    the syndication endpoint's 404 → ``TweetNotAccessible``.
-    """
-    parsed = urlparse(raw.strip())
-    if parsed.scheme not in ("http", "https"):
-        raise InvalidTweetUrl("Not a tweet URL")
-    host = (parsed.hostname or "").lower()
-    if host not in _TWITTER_HOSTS:
-        raise InvalidTweetUrl("Not a tweet URL")
-
-    # Path shape: /<handle>/status/<id> — also tolerate the older
-    # /i/web/status/<id> form some clients emit with no handle context.
-    parts = [p for p in parsed.path.split("/") if p]
-    tweet_id: str | None = None
-    handle: str | None = None
-    if len(parts) >= 3 and parts[1] == "status":
-        handle = parts[0]
-        tweet_id = parts[2]
-    elif len(parts) >= 4 and parts[0] == "i" and parts[1] == "web" and parts[2] == "status":
-        # /i/web/status/<id> — no handle in the URL. Mark it with the "i"
-        # sentinel so the caller sources the real handle from the response;
-        # the canonical URL keeps the ``/i/web/status/`` path so a
-        # round-trip stays a valid tweet page (``x.com/i/status/<id>`` 404s).
-        handle = "i"
-        tweet_id = parts[3]
-    if tweet_id is None or handle is None:
-        raise InvalidTweetUrl("Not a tweet URL")
-    if not _TWEET_ID_PATTERN.match(tweet_id):
-        raise InvalidTweetUrl("Not a tweet URL")
-
-    if handle == "i":
-        canonical = f"https://x.com/i/web/status/{tweet_id}"
-    else:
-        canonical = f"https://x.com/{handle}/status/{tweet_id}"
-    return NormalisedTweetUrl(canonical=canonical, tweet_id=tweet_id, handle=handle)
-
+from .errors import (
+    TweetFetchFailed,
+    TweetNotAccessible,
+    TweetUpstreamBusy,
+    TweetUpstreamUnreachable,
+)
+from .records import MediaKind, ParsedMedia
+from .retry import parse_retry_after, retrying
+from .urls import T_CO_HOST_RE, hostname, is_trusted_media_url
 
 # ── Syndication fetch ─────────────────────────────────────────────────────
 
@@ -220,13 +174,30 @@ def fetch_syndication(tweet_id: str, *, client: httpx.Client | None = None) -> d
       (a ``TweetTombstone`` body) tweets.
     * ``TweetUpstreamBusy`` on a 429 or an X 5xx, the throttled / wobbling
       upstream the route answers ``503``.
-    * ``TweetFetchFailed`` on timeout, any other non-2xx, or a body we can't
-      use (unparseable, non-object, empty, unknown ``__typename``).
+    * ``TweetUpstreamUnreachable`` on a timeout or a transport error, and
+      ``TweetFetchFailed`` on any other non-2xx or a body we can't use
+      (unparseable, non-object, empty, unknown ``__typename``).
+
+    A throttled or unreachable upstream is retried on the package's one
+    schedule (:mod:`tweet_ingest.retry`) before it comes back; the failures a
+    retry cannot fix are raised on the first attempt. The cache sits outside
+    the retried round trip, so a hit still costs nothing and only a body worth
+    keeping is stored.
     """
     cached = _cache_get(tweet_id)
     if cached is not None:
         return cached
+    body = retrying(lambda: _read_syndication(tweet_id, client=client), what=f"tweet {tweet_id}")
+    _cache_put(tweet_id, body)
+    return body
 
+
+def _read_syndication(tweet_id: str, *, client: httpx.Client | None) -> dict[str, Any]:
+    """One round trip to the syndication endpoint, mapped to a body or a raise.
+
+    The unit :func:`fetch_syndication` retries: everything about a single
+    attempt, and nothing about the cache, so a retry cannot half-fill it.
+    """
     params = {
         "id": tweet_id,
         "token": _syndication_token(tweet_id),
@@ -241,15 +212,19 @@ def fetch_syndication(tweet_id: str, *, client: httpx.Client | None = None) -> d
         else:
             resp = client.get(_SYNDICATION_ENDPOINT, params=params, headers=headers)
     except httpx.HTTPError as exc:
-        raise TweetFetchFailed(f"transport error: {exc}") from exc
+        raise TweetUpstreamUnreachable(f"transport error: {exc}") from exc
 
     if resp.status_code == 404:
         raise TweetNotAccessible("Tweet not accessible")
     # Throttling and an X-side wobble are their own failure, ahead of the
     # catch-all below: the budget is unauthenticated and shared, so a 429 is an
-    # expected outcome that says "retry", not "the payload changed shape".
+    # expected outcome that says "retry", not "the payload changed shape". The
+    # ``Retry-After`` X sends with it is the delay the retry policy honours.
     if resp.status_code == 429 or resp.status_code >= 500:
-        raise TweetUpstreamBusy(f"upstream returned {resp.status_code}")
+        raise TweetUpstreamBusy(
+            f"upstream returned {resp.status_code}",
+            retry_after=parse_retry_after(resp.headers.get("Retry-After")),
+        )
     if resp.status_code >= 300:
         raise TweetFetchFailed(f"upstream returned {resp.status_code}")
 
@@ -273,13 +248,13 @@ def fetch_syndication(tweet_id: str, *, client: httpx.Client | None = None) -> d
     # A tombstone is a 200 carrying no tweet: X answers this for a tweet only
     # readable behind a login (age-restricted, withheld in a jurisdiction). The
     # ``tombstone`` object may be empty or carry a human string under
-    # ``tombstone.text.text``, so only ``__typename`` is trusted. Raised before
-    # ``_cache_put`` on purpose: the restriction can be lifted upstream, and a
-    # cached tombstone would keep answering "not readable" for an hour after.
+    # ``tombstone.text.text``, so only ``__typename`` is trusted. A raise never
+    # reaches ``_cache_put`` on purpose: the restriction can be lifted upstream,
+    # and a cached tombstone would keep answering "not readable" for an hour
+    # after.
     if typename == "TweetTombstone":
         raise TweetNotAccessible(
-            "Tweet not readable without an X login (age-restricted or withheld), "
-            "fill the form manually"
+            "Post not readable without an X login (age-restricted or withheld)"
         )
 
     # Any other named shape is a case this module has never seen. It stays a
@@ -291,260 +266,118 @@ def fetch_syndication(tweet_id: str, *, client: httpx.Client | None = None) -> d
     if isinstance(typename, str) and typename != "Tweet":
         raise TweetFetchFailed(f"upstream returned __typename {typename!r}, not a tweet")
 
-    _cache_put(tweet_id, body)
     return body
 
 
-# ── Media extraction ──────────────────────────────────────────────────────
+# ── Payload mappers ───────────────────────────────────────────────────────
 
 
-# Allowlist of hosts the backend will fetch media from. The media-proxy
-# route uses the same list — keep them aligned so a hostile tweet payload
-# (or X schema change) can't trick the proxy into an arbitrary outbound
-# request (SSRF).
-TWITTER_MEDIA_HOSTS = frozenset({"pbs.twimg.com", "video.twimg.com"})
-
-# Registrable bases Telegram serves footage from: its own CDN (the apex
-# ``cdn-telegram.org`` plus its ``cdnN.cdn-telegram.org`` shards) and
-# ``telesco.pe``. Matched by strict dot-boundary suffix (see
-# :func:`_host_matches_base`), never a substring, so a look-alike like
-# ``evil-cdn-telegram.org`` is rejected.
-TELEGRAM_MEDIA_BASE_HOSTS = frozenset({"cdn-telegram.org", "telesco.pe"})
-
-# Byte cap on a single remote-media fetch, shared by every path that streams an
-# allowlisted CDN URL into memory: the media-proxy route and the archive /
-# Telegram chase (``archive.fetch_cdn_media``). Sized for the upload ceilings
-# (10 MB image / 95 MiB video) plus HTTP-framing overhead. Anything bigger is an
-# unexpected upstream response or a hostile content-length lie; cap and bail so a
-# fetch can't buffer an unbounded stream in memory.
-MEDIA_FETCH_MAX_BYTES = 110 * 1024 * 1024
-
-
-def _host_matches_base(host: str, base: str) -> bool:
-    """Whether ``host`` is ``base`` itself or a subdomain of it.
-
-    A dot-boundary suffix test, not a substring: ``cdn4.cdn-telegram.org``
-    matches ``cdn-telegram.org`` while ``evil-cdn-telegram.org`` (shares the
-    trailing string but not the ``.`` boundary) does not.
-    """
-    return host == base or host.endswith("." + base)
-
-
-@dataclass(frozen=True)
-class ParsedMedia:
-    kind: Literal["image", "video"]
-    remote_url: str
-    content_type: str
-    # Where this media came from in the payload. The frontend's
-    # primary-vs-proof split is by ``kind`` (videos = source footage,
-    # images = annotated screenshots), so ``origin`` is informational only
-    # (proof-body attribution, debugging, a future smarter split). Don't add
-    # consumers that assume one origin maps to one bucket.
-    origin: Literal["op", "quote"] = "op"
-
-
-def is_trusted_media_url(url: str) -> bool:
-    """Allowlist check used by both the response builder and the proxy.
-
-    Single source of truth: ``parse_tweet`` (filtering what we advertise), the
-    archive / Telegram chases (before fetching a CDN media), and the media-proxy
-    route (validating ``u=`` before opening a socket) all call this. Drift would
-    silently drop legitimate media or open the proxy to SSRF. Admits the X CDN
-    (``TWITTER_MEDIA_HOSTS``, exact) and the Telegram CDN
-    (``TELEGRAM_MEDIA_BASE_HOSTS``, strict dot-boundary suffix so a look-alike
-    host can't slip through), ``https`` only.
-    """
+def _bitrate(variant: dict[str, Any]) -> int:
+    """A variant's bitrate as an int; an export serialises it as a string."""
     try:
-        parsed = urlparse(url)
-    except ValueError:
-        return False
-    if parsed.scheme != "https":
-        return False
-    host = (parsed.hostname or "").lower()
-    if host in TWITTER_MEDIA_HOSTS:
-        return True
-    return any(_host_matches_base(host, base) for base in TELEGRAM_MEDIA_BASE_HOSTS)
+        return int(variant.get("bitrate") or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
-def _extract_media(
+def _best_mp4_url(entry: dict[str, Any]) -> str | None:
+    """The highest-bitrate mp4 variant a video entry declares, or ``None``.
+
+    The quality the embed widget serves, which is what the analyst expects in
+    the preview, and the same one the export saved to disk.
+    """
+    info = entry.get("video_info")
+    variants = info.get("variants") if isinstance(info, dict) else None
+    if not isinstance(variants, list):
+        return None
+    best: dict[str, Any] | None = None
+    for variant in variants:
+        if not isinstance(variant, dict) or variant.get("content_type") != "video/mp4":
+            continue
+        if not isinstance(variant.get("url"), str) or not variant["url"]:
+            continue
+        if best is None or _bitrate(variant) > _bitrate(best):
+            best = variant
+    return str(best["url"]) if best is not None else None
+
+
+def media_entry(entry: Any) -> tuple[MediaKind, str] | None:
+    """One media entry's kind and the URL it declares, ``None`` when unusable.
+
+    The one reader of a media entry, for the two payload shapes the ingestion
+    sees. Past their container key (``mediaDetails`` in a syndication body,
+    ``extended_entities.media`` in an export entry) the two spell an entry the
+    same: ``type``, plus ``media_url_https`` for a photo and
+    ``video_info.variants`` for a video or an animated gif.
+
+    What the URL is *for* stays the caller's business: a live path fetches it
+    from the CDN, the export reader keeps its basename and reads the file the
+    export saved under that name. An unknown type, a photo with no URL and a
+    video with no usable mp4 variant all read as ``None``.
+    """
+    if not isinstance(entry, dict):
+        return None
+    if entry.get("type") == "photo":
+        url = entry.get("media_url_https")
+        return ("image", url) if isinstance(url, str) and url else None
+    if entry.get("type") not in ("video", "animated_gif"):
+        return None
+    mp4 = _best_mp4_url(entry)
+    return ("video", mp4) if mp4 is not None else None
+
+
+def _cdn_media(kind: MediaKind, url: str, origin: Literal["op", "quote"]) -> ParsedMedia:
+    """One media the live paths fetch straight from the X CDN."""
+    return ParsedMedia(kind=kind, remote_url=url, origin=origin)
+
+
+def extract_media(
     syndication: dict[str, Any],
     *,
     origin: Literal["op", "quote"] = "op",
 ) -> list[ParsedMedia]:
-    media: list[ParsedMedia] = []
+    """The media a syndication body carries, as CDN URLs on trusted hosts.
 
-    # Images live under ``mediaDetails`` (and the older ``photos`` on some
-    # shapes). ``mediaDetails`` is primary — it carries videos too — with
-    # ``photos`` as the image-only fallback.
+    ``mediaDetails`` is primary, since it carries videos too; the older
+    ``photos`` is the image-only fallback some shapes serve instead.
+
+    Public because two modules outside this one read a syndication body: the
+    acquisition (:mod:`acquire`) for the post and its inline quote, and the X
+    chaser (:mod:`chase.x`) for the post a footage link names.
+    """
     details = syndication.get("mediaDetails")
-    if isinstance(details, list):
-        for entry in details:
-            if not isinstance(entry, dict):
-                continue
-            etype = entry.get("type")
-            if etype == "photo":
-                url = entry.get("media_url_https")
-                if isinstance(url, str) and is_trusted_media_url(url):
-                    media.append(
-                        ParsedMedia(
-                            kind="image",
-                            remote_url=url,
-                            content_type="image/jpeg",
-                            origin=origin,
-                        )
-                    )
-            elif etype in ("video", "animated_gif"):
-                # Highest-bitrate mp4 variant — the quality the embed widget
-                # surfaces, which is what the analyst expects in the preview.
-                variants = entry.get("video_info", {}).get("variants", [])
-                best: dict[str, Any] | None = None
-                if isinstance(variants, list):
-                    for v in variants:
-                        if not isinstance(v, dict):
-                            continue
-                        if v.get("content_type") != "video/mp4":
-                            continue
-                        if best is None or (v.get("bitrate", 0) or 0) > (
-                            best.get("bitrate", 0) or 0
-                        ):
-                            best = v
-                if best is not None and isinstance(best.get("url"), str):
-                    url = best["url"]
-                    if is_trusted_media_url(url):
-                        media.append(
-                            ParsedMedia(
-                                kind="video",
-                                remote_url=url,
-                                content_type="video/mp4",
-                                origin=origin,
-                            )
-                        )
-
-    if not media:
-        photos = syndication.get("photos")
-        if isinstance(photos, list):
-            for entry in photos:
-                if not isinstance(entry, dict):
-                    continue
-                url = entry.get("url")
-                if isinstance(url, str) and is_trusted_media_url(url):
-                    media.append(
-                        ParsedMedia(
-                            kind="image",
-                            remote_url=url,
-                            content_type="image/jpeg",
-                            origin=origin,
-                        )
-                    )
-
-    return media
+    media = [
+        _cdn_media(*read, origin)
+        for entry in (details if isinstance(details, list) else [])
+        if (read := media_entry(entry)) is not None and is_trusted_media_url(read[1])
+    ]
+    if media:
+        return media
+    photos = syndication.get("photos")
+    return [
+        _cdn_media("image", url, origin)
+        for entry in (photos if isinstance(photos, list) else [])
+        if isinstance(entry, dict)
+        and isinstance(url := entry.get("url"), str)
+        and is_trusted_media_url(url)
+    ]
 
 
-@dataclass(frozen=True)
-class ParsedQuotedTweet:
-    """The tweet quoted by the OP, when present.
+def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str | None]]:
+    """Every URL the post links, from ``entities.urls``, as
+    ``(expanded_url, shortlink)`` pairs.
 
-    In OSINT workflows an analyst geolocating someone else's footage
-    quote-tweets the original and attaches annotated screenshots, so the
-    quoted tweet is the actual *source* and the OP is just commentary. When
-    a quote is detected, the frontend uses the quote URL as ``source_url``
-    rather than the OP's (which would credit the analyst, not the source).
-    """
-
-    source_url: str
-    author_handle: str
-    tweet_text: str
-
-
-_TWITTER_URL_HOST_RE = re.compile(r"^(?:www\.)?(?:x|twitter)\.com$", re.IGNORECASE)
-_T_CO_HOST_RE = re.compile(r"^t\.co$", re.IGNORECASE)
-_YOUTUBE_HOST_RE = re.compile(r"^(?:www\.|m\.)?(?:youtube\.com|youtu\.be)$", re.IGNORECASE)
-_TELEGRAM_HOST_RE = re.compile(r"^(?:www\.)?t\.me$", re.IGNORECASE)
-
-# A tweet status path: ``/<handle>/status/<id>`` or the handle-less
-# ``/i/web/status/<id>``. Single source of truth for "this X link is footage":
-# a profile link (no ``/status/``) is not chaseable footage, only a status is.
-# ``archive._sole_linked_x_status`` reuses this same pattern to extract the id,
-# and ``resolve._status_link_handle`` reuses it to extract the handle.
-_X_STATUS_URL_RE = re.compile(
-    r"(?:x|twitter)\.com/(?:\w+/status|i/web/status)/(\d+)", re.IGNORECASE
-)
-
-
-def classify_source_host(url: str) -> str:
-    """Coarse host class for a source URL: ``x`` / ``telegram`` / ``youtube`` /
-    ``other``. Drives whether the footage is retrievable (X, chaseable) or
-    off-platform (Telegram / YouTube, link only).
-
-    An X host only classifies as ``x`` when the path is a status
-    (``_X_STATUS_URL_RE``): a bare profile link is not footage, so it falls
-    through to ``other`` like any unrelated link.
-    """
-    try:
-        host = (urlparse(url).hostname or "").lower()
-    except ValueError:
-        return "other"
-    if _TWITTER_URL_HOST_RE.match(host):
-        return "x" if _X_STATUS_URL_RE.search(url) else "other"
-    if _TELEGRAM_HOST_RE.match(host):
-        return "telegram"
-    if _YOUTUBE_HOST_RE.match(host):
-        return "youtube"
-    return "other"
-
-
-def extract_media_shortlinks(payload: dict[str, Any]) -> list[str]:
-    """Every ``t.co`` wrapper the payload's own attached media occupies in its text.
-
-    X appends one wrapper per attachment to the end of a post's text, expanding
-    to a photo / video permalink of that same status. The designation rules must
-    not count it as a link the analyst wrote (see ``records.written_tokens``),
-    and it is read here from the media entities rather than guessed from the
-    text, so a genuine shortened link is never mistaken for one.
-
-    Shape-agnostic on purpose, since both acquire adapters feed it: an export
-    entry carries the wrappers under ``extended_entities.media`` /
-    ``entities.media``, a syndication body under ``mediaDetails``. Deduplicated,
-    order preserved: a multi-photo post shares one wrapper across its entries.
-    """
-    containers: list[Any] = []
-    for key in ("extended_entities", "entities"):
-        container = payload.get(key)
-        if isinstance(container, dict):
-            containers.append(container.get("media"))
-    containers.append(payload.get("mediaDetails"))
-
-    out: list[str] = []
-    seen: set[str] = set()
-    for entries in containers:
-        if not isinstance(entries, list):
-            continue
-        for entry in entries:
-            if not isinstance(entry, dict):
-                continue
-            wrapper = entry.get("url")
-            if isinstance(wrapper, str) and wrapper and wrapper not in seen:
-                seen.add(wrapper)
-                out.append(wrapper)
-    return out
-
-
-def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str, str | None]]:
-    """Every host-classified source URL from ``entities.urls``, as
-    ``(expanded_url, host, shortlink)`` triples.
-
-    The analyst's ``Source: <url>`` links. Resolves through ``expanded_url``
-    (never a bare ``t.co`` target) and de-dupes, preserving order. Keeps X
-    status links (a status is a chaseable source; a bare profile link is not).
-    ``shortlink`` is the entity's ``url`` field, the ``t.co`` token as it sits
-    in the raw text; it lets a caller bind a token found in the text to its
-    expanded entity (the bot's ``S:`` line), ``None`` when absent.
+    Host-blind: which of these links can be a source is the resolution's rule,
+    not this adapter's. Resolves through ``expanded_url`` (never a bare ``t.co``
+    target) and de-dupes, preserving order. ``shortlink`` is the entity's
+    ``url`` field, the ``t.co`` token as it sits in the raw text, which is what
+    expands the link back to a readable URL in the proof; ``None`` when absent.
     """
     entities = syndication.get("entities")
     urls = entities.get("urls") if isinstance(entities, dict) else None
     if not isinstance(urls, list):
         return []
-    out: list[tuple[str, str, str | None]] = []
+    out: list[tuple[str, str | None]] = []
     seen: set[str] = set()
     for entry in urls:
         if not isinstance(entry, dict):
@@ -552,19 +385,9 @@ def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str, st
         expanded = entry.get("expanded_url")
         if not isinstance(expanded, str) or not expanded or expanded in seen:
             continue
-        try:
-            host = (urlparse(expanded).hostname or "").lower()
-        except ValueError:
-            continue
-        if _T_CO_HOST_RE.match(host):
+        if T_CO_HOST_RE.match(hostname(expanded)):
             continue
         seen.add(expanded)
         wrapper = entry.get("url")
-        out.append(
-            (
-                expanded,
-                classify_source_host(expanded),
-                wrapper if isinstance(wrapper, str) and wrapper else None,
-            )
-        )
+        out.append((expanded, wrapper if isinstance(wrapper, str) and wrapper else None))
     return out

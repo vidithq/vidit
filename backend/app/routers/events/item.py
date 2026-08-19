@@ -1,5 +1,5 @@
-"""Single-event ops by id: detail, delete, and the lifecycle verbs
-(geolocate, close)."""
+"""Single-event ops by id: detail, delete, the lifecycle verbs (geolocate,
+close), and the published-row correction path (save_version + its version history)."""
 
 import uuid
 
@@ -10,7 +10,9 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     Request,
+    Response,
     UploadFile,
     status,
 )
@@ -33,6 +35,7 @@ from app.routers._forms import (
     parse_iso_datetime,
     parse_json_id_list,
     parse_optional_iso_date,
+    parse_optional_iso_datetime,
     parse_optional_iso_time,
     parse_optional_json_object,
 )
@@ -40,15 +43,31 @@ from app.routers.events._common import (
     SecondarySourceUrl,
     _raise_event_error,
     build_event_read,
+    build_version_read,
     raise_archive_error,
+    raise_version_error,
     resolve_live_event,
 )
-from app.schemas.event import EventCloseRequest, EventRead
+from app.schemas.event import (
+    VERSION_NOTE_MAX_LENGTH,
+    EventCloseRequest,
+    EventRead,
+    EventVersionList,
+    EventVersionRead,
+)
 from app.schemas.report import ContentReportCreate, ContentReportRead
 from app.services import events as events_service
 from app.services import permissions
 from app.services import reports as reports_service
+from app.services import versions as versions_service
 from app.services.evidence_intake import EvidenceIntakeError, collect_media_keys
+from app.services.pagination import (
+    decode_ordinal_cursor,
+    encode_ordinal_cursor,
+    next_link,
+    page_size,
+    take_page,
+)
 from app.services.source_archive import SnapshotRejected
 from app.services.storage import (
     sweep_keys,
@@ -201,9 +220,10 @@ def delete_event(
 # ── Lifecycle verbs ───────────────────────────────────────────────────
 # Geolocate writes the caller's edits and moves a ``requested`` or
 # ``detected`` event to ``geolocated``; close is the terminal withdraw /
-# reject. A ``detected`` draft is owner-only; a ``requested`` event is
-# answerable by anyone (the fulfiller becomes the owner). A ``geolocated``
-# row is frozen (409). See ``api.md``.
+# reject. A detection is owner-only; a ``requested`` event is
+# answerable by anyone (the fulfiller becomes the owner). Past the geolocate a
+# row is corrected through ``save_version``, owner-only, which files the superseded
+# version rather than overwriting it. See ``api.md``.
 
 
 @router.post("/{geolocation_id}/geolocate", response_model=EventRead)
@@ -229,6 +249,13 @@ async def geolocate_event(
     # the row held, on a requested fulfilment too: unlike ``source_url`` these
     # carry no requester protection (see the service docstring).
     secondary_source_urls: list[SecondarySourceUrl] = Form([]),
+    # The archived copy of each mirror, aligned with the list above by position
+    # and blank where that mirror was not archived. The alignment is the
+    # contract: the client posts one entry here per entry there, blank included,
+    # so a copy never arrives without the link it covers and
+    # ``pair_secondary_snapshots`` can key the two by position before
+    # normalization drops any row.
+    secondary_snapshot_urls: list[SecondarySourceUrl] = Form([]),
     # Optional, mirroring create: the footage doesn't always establish when the
     # depicted event happened; NULL reads as "Unknown".
     event_date: str | None = Form(None),
@@ -255,20 +282,22 @@ async def geolocate_event(
     form (title, coordinates, source URL, dates, the graphic-content flag,
     proof + its images, tags, and the source media: ``files`` added,
     ``remove_media_ids`` dropped), and on
-    success the row is written and frozen as ``geolocated``, with the caller
-    credited as a geolocator. Only ``detected_from_url`` (provenance) and
-    ``status`` carry no field. A ``detected`` draft is owner-only (403
+    success the row is written and published as ``geolocated``, with the caller
+    credited as a geolocator; from there it is corrected through ``save_version``,
+    which files each superseded version. Only ``detected_from_url`` (provenance) and
+    ``status`` carry no field. A detection is owner-only (403
     otherwise); a ``requested`` event is answerable by anyone, and the
     fulfiller becomes its owner (``requested_by`` keeps the original poster).
     Blocked until the evidence floor is met (one source media, a proof image,
     a conflict, and the ``capture_source`` tag, 400 otherwise). Off
     ``requested`` / ``detected`` → 409. Soft-deleted rows read as 404.
 
-    ``source_snapshot_url`` records the archived source in the same write, on
-    the terms ``POST /events/{id}/archives`` applies (a paste that is not a
-    snapshot of the stored source URL is a 400, and nothing is written). An
-    edit that changes the source URL and pastes no new snapshot leaves the
-    event with no archived source rather than the old one's copy.
+    ``source_snapshot_url`` records the archived source in the same write and
+    ``secondary_snapshot_urls`` records one copy per mirror, on the checks every
+    archived-copy field runs (a paste that is not a snapshot of the link it sits
+    beside is a 400, and nothing is written). An edit that changes the source URL
+    and pastes no new snapshot leaves the event with no archived source rather
+    than the old one's copy.
     """
     files = files or []
     proof_files = proof_files or []
@@ -296,6 +325,7 @@ async def geolocate_event(
             source_url=source_url,
             source_snapshot_url=source_snapshot_url,
             secondary_source_urls=secondary_source_urls,
+            secondary_snapshot_urls=secondary_snapshot_urls,
             event_date=parsed_event_date,
             event_time=parsed_event_time,
             source_posted_at=parsed_source_posted_at,
@@ -312,6 +342,218 @@ async def geolocate_event(
     except SnapshotRejected as exc:
         raise_archive_error(exc)
     return _serialize_event(db, geolocated)
+
+
+@router.post("/{geolocation_id}/versions", response_model=EventRead)
+@limiter.limit("30/minute")
+async def save_event_version(
+    request: Request,
+    geolocation_id: uuid.UUID,
+    # Multipart, mirroring geolocate: the form posts the whole editable state
+    # and the service writes it, plus the superseded version, atomically. The
+    # evidence anchor takes NO field here: ``source_url``, ``files`` and
+    # ``remove_media_ids`` are absent by design, so the endpoint cannot be asked
+    # to move what the published claim rests on.
+    title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
+    lat: float = Form(...),
+    lng: float = Form(...),
+    capture_source_lat: float | None = Form(None),
+    capture_source_lng: float | None = Form(None),
+    # The archived copy of the event's stored source URL. Accepted because it
+    # archives the anchor rather than changing it.
+    source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
+    # The archived copy of the post a machine detection came from, on the same
+    # terms: the provenance link is immutable, and archiving it is not a change
+    # to it. Absent on a human submit, which carries no provenance link.
+    detected_from_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
+    # The mirrors, repeated once per link. Outside the anchor, so the submitted
+    # list replaces whatever the row held; the archived copy of each rides
+    # beside it, aligned by position. The two lists are index-aligned by
+    # contract: the client posts one ``secondary_snapshot_urls`` entry per
+    # ``secondary_source_urls`` entry, blank where that mirror carries no copy,
+    # so a copy is never posted without the link it covers.
+    secondary_source_urls: list[SecondarySourceUrl] = Form([]),
+    secondary_snapshot_urls: list[SecondarySourceUrl] = Form([]),
+    event_date: str | None = Form(None),
+    event_time: str | None = Form(None),
+    # Optional, unlike on geolocate: a detection whose source post time was
+    # never resolved publishes with the column NULL, so an edit of that row must
+    # be able to leave it NULL. Absent or empty keeps whatever the row holds
+    # (NULL included), a value replaces it.
+    source_posted_at: str | None = Form(None),
+    proof: str | None = Form(None),
+    tag_ids: str | None = Form(None),
+    conflict_ids: str | None = Form(None),
+    # Ratchets exactly as on geolocate: a posted false leaves a flagged event
+    # flagged, and only the admin moderation endpoint clears one.
+    is_graphic: bool = Form(False),
+    # The editor's own words about this edit, stored on the version it
+    # supersedes. Optional.
+    note: str | None = Form(None, max_length=VERSION_NOTE_MAX_LENGTH),
+    # The proof body's new inline images, matched to its ``placeholder://``
+    # srcs. Source media carry no field: the anchor is immutable.
+    proof_files: list[UploadFile] | None = File(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Correct a published event, keeping the version it replaces readable.
+
+    Owner-only, and only while ``geolocated`` (409 otherwise): a correction to a
+    vouched record must not silently rewrite it, so the pre-edit state is filed
+    as an ``event_versions`` row and the event moves to the next
+    ``version_no``, in one transaction under a row lock.
+
+    The evidence anchor is immutable: ``source_url`` and the source media take
+    no field. A published row is past ``POST /events/{id}/close``, so a wrong
+    source on one is an admin matter rather than an owner action. Everything
+    else the publish form wrote is editable and versioned, the secondary source
+    links included. The published evidence floor is re-checked on the post-edit
+    state, so a version cannot drop the row below it. Soft-deleted rows read as
+    404.
+
+    This is also where an archived copy of one of the row's links is recorded:
+    ``source_snapshot_url``, ``detected_from_snapshot_url`` and
+    ``secondary_snapshot_urls`` archive a link without changing it, and land in
+    the version this call produces. A save whose only change is a copy is
+    accepted even at the version ceiling, since evidence preservation never
+    waits on a quota.
+    """
+    proof_files = proof_files or []
+    parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
+    parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
+    parsed_source_posted_at = parse_optional_iso_datetime(
+        source_posted_at, field="source_posted_at"
+    )
+    proof_data = parse_optional_json_object(proof, field="proof")
+    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids", as_uuid=True)
+    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
+
+    # Not owner-gated at the router: the service re-checks ownership and status
+    # under the row lock, where the decision is race-free.
+    geo = resolve_live_event(db, geolocation_id)
+    try:
+        edited = await events_service.save_version(
+            db,
+            geo=geo,
+            current_user=current_user,
+            title=title,
+            lat=lat,
+            lng=lng,
+            capture_source_lat=capture_source_lat,
+            capture_source_lng=capture_source_lng,
+            source_snapshot_url=source_snapshot_url,
+            detected_from_snapshot_url=detected_from_snapshot_url,
+            secondary_source_urls=secondary_source_urls,
+            secondary_snapshot_urls=secondary_snapshot_urls,
+            event_date=parsed_event_date,
+            event_time=parsed_event_time,
+            source_posted_at=parsed_source_posted_at,
+            proof_data=proof_data,
+            tag_ids=parsed_tag_ids,
+            conflict_ids=parsed_conflict_ids,
+            is_graphic=is_graphic,
+            proof_files=proof_files,
+            note=note,
+        )
+    except EvidenceIntakeError as exc:
+        _raise_event_error(exc)
+    except SnapshotRejected as exc:
+        raise_archive_error(exc)
+    except versions_service.VersionLimitError as exc:
+        raise_version_error(exc)
+    return _serialize_event(db, edited)
+
+
+def _readable_event(db: Session, geolocation_id: uuid.UUID, current_user: User | None) -> Event:
+    """The event a history read is allowed to serve, or a 404.
+
+    Soft-deleted rows are invisible to everyone; a withheld row is invisible to
+    everyone but an admin, who still needs to read what was taken down in order
+    to judge the report that took it down. The same branch ``GET /{id}`` takes,
+    shared by the two history reads so one of them cannot start serving a
+    takedown the other hides.
+    """
+    query = db.query(Event).filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
+    if current_user is None or not current_user.is_admin:
+        query = query.filter(Event.hidden_at.is_(None))
+    geo = query.first()
+    if geo is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return geo
+
+
+@router.get("/{geolocation_id}/versions", response_model=EventVersionList)
+@authenticated_read_quota
+@limiter.limit("120/minute")
+def list_event_versions(
+    request: Request,
+    response: Response,
+    geolocation_id: uuid.UUID,
+    limit: int = Query(versions_service.HISTORY_PAGE_SIZE, ge=1),
+    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
+):
+    """The event's superseded versions, newest first.
+
+    Public, like the event itself: a corrected record is only auditable if the
+    corrections are readable. The live row is the current version and is not
+    listed here, so an event nobody has edited answers with an empty list.
+    Soft-deleted rows read as 404; a withheld row does too for everyone but an
+    admin, who still needs to read what was taken down in order to judge the
+    report that took it down (the same branch ``GET /{id}`` takes).
+
+    Paged like every other list: ``services/versions.HISTORY_PAGE_SIZE`` rows by
+    default, capped at 100 however large ``limit`` is, and a caller reading past
+    the first page follows the ``cursor`` in the ``Link: rel="next"`` header.
+    ``total`` is the whole history, not the page.
+    """
+    geo = _readable_event(db, geolocation_id, current_user)
+
+    size = page_size(limit)
+    window = versions_service.list_versions(
+        db,
+        geo.id,
+        limit=size,
+        cursor=decode_ordinal_cursor(cursor) if cursor is not None else None,
+    )
+    rows, has_next = take_page(window, size)
+    if has_next:
+        last = rows[-1]
+        response.headers["Link"] = next_link(request, encode_ordinal_cursor(last.version_no))
+    return EventVersionList(
+        items=[build_version_read(row) for row in rows],
+        total=versions_service.count_versions(db, geo.id),
+    )
+
+
+@router.get("/{geolocation_id}/versions/{version_no}", response_model=EventVersionRead)
+@authenticated_read_quota
+@limiter.limit("120/minute")
+def get_event_version(
+    request: Request,
+    geolocation_id: uuid.UUID,
+    version_no: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
+):
+    """One superseded version of an event, by its number.
+
+    The direct read behind the ``/vN`` address: a reader opening one version
+    reads that version, rather than walking the history until the page holding
+    it comes back. Public and visibility-gated exactly like the list above.
+
+    The live row is the current version and is not filed here, so its number
+    answers 404: ``GET /{id}`` is where the current version is read. A number
+    the event never carried answers 404 too, and a redacted version answers
+    with its blanked shape rather than a 404, since the version exists and the
+    record still shows that it does.
+    """
+    geo = _readable_event(db, geolocation_id, current_user)
+    row = versions_service.get_version(db, event_id=geo.id, version_no=version_no)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+    return build_version_read(row)
 
 
 @router.post("/{geolocation_id}/close", response_model=EventRead)

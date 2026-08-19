@@ -1,15 +1,17 @@
-"""Telegram footage chase: a t.me post's public embed to its date (+ maybe media).
+"""Chase a Telegram post: its public embed, for the date and any served media.
 
-Off-platform OSINT sources are frequently Telegram posts (``Source:
-https://t.me/<channel>/<id>``). Telegram serves a public, auth-less embed for a
-post at ``https://t.me/<channel>/<id>?embed=1&mode=tme``; the HTML carries the
+Off-platform OSINT sources are frequently Telegram posts
+(``https://t.me/<channel>/<id>``). Telegram serves a public, auth-less embed for
+a post at ``https://t.me/<channel>/<id>?embed=1&mode=tme``; the HTML carries the
 post date almost always and the footage only sometimes (a sensitive post serves
-neither the video nor the photo, only the date). This brick chases that embed
-for the date, taking the media as a bonus when the embed ships it.
+neither the video nor the photo, only the date). This chaser reads that embed
+for the date, taking the media as a bonus when the embed ships it. A t.me post
+has no author or text this model holds, so what comes back is a link with a
+date, which the resolution stores as off-platform footage.
 
 Everything is fail-soft: an HTTP error, an unavailable embed, or unexpected HTML
-yields ``None`` / an empty media list, never a raised exception. A sensitive
-post (date, no media) is a valid result, not a failure.
+yields a footage-less :class:`ChaseResult` naming the failure, never a raised
+exception. A sensitive post (date, no media) is a valid result, not a failure.
 
 SSRF guard: :func:`_telegram_post_url` is the only gate to the fetch, and it
 admits nothing but a public ``t.me`` post URL (a known channel host plus a
@@ -22,19 +24,21 @@ from __future__ import annotations
 import html
 import logging
 import re
-from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 import httpx
 
-from .syndication import _TELEGRAM_HOST_RE, ParsedMedia, is_trusted_media_url
+from ..errors import TweetImportError, TweetUpstreamBusy, TweetUpstreamUnreachable
+from ..records import ChasedPost, ChaseResult, ParsedMedia
+from ..retry import is_transient, parse_retry_after, retrying
+from ..urls import TELEGRAM_HOST_RE, is_trusted_media_url
 
 logger = logging.getLogger(__name__)
 
 # A public t.me post path: ``/<channel>/<id>``, channel a bare username, id
 # numeric. New shape (no existing regex covers the post path; the *host* match
-# reuses ``_TELEGRAM_HOST_RE``, the single source of truth classify_source_host
-# is built on). Excludes the private ``/c/<n>/<m>`` and ``/joinchat/...`` forms
+# reuses ``TELEGRAM_HOST_RE``, the one home for "this link is a t.me post",
+# shared with the source rule). Excludes the private ``/c/<n>/<m>`` and ``/joinchat/...`` forms
 # (extra path segments / non-numeric id), which have no public embed anyway.
 _TELEGRAM_POST_PATH_RE = re.compile(r"^/([A-Za-z0-9_]{1,64})/(\d{1,19})$")
 
@@ -70,24 +74,11 @@ _MEDIA_WITHHELD_RE = re.compile(
 )
 
 
-@dataclass(frozen=True)
-class TelegramEmbed:
-    """What a t.me post's public embed resolves to.
-
-    ``posted_at`` is the post's ISO 8601 instant (``None`` when the embed omits
-    it); ``media`` is the footage the embed served, empty for a sensitive post
-    or one whose media the embed withheld.
-    """
-
-    posted_at: str | None
-    media: list[ParsedMedia] = field(default_factory=list)
-
-
 def _telegram_post_url(url: str) -> str | None:
     """The canonical ``https://t.me/<channel>/<id>`` post URL, or ``None``.
 
     The SSRF gate: returns a URL only for a public Telegram post (a ``t.me``
-    host per :data:`_TELEGRAM_HOST_RE`, a bare channel, a numeric id). A private
+    host per :data:`TELEGRAM_HOST_RE`, a bare channel, a numeric id). A private
     ``t.me/c/...`` link, a ``joinchat`` invite, a channel-only link, embedded
     credentials, a non-standard port, or any non-Telegram host all yield
     ``None`` and are never fetched.
@@ -100,7 +91,7 @@ def _telegram_post_url(url: str) -> str | None:
         return None
     if parsed.username or parsed.password or parsed.port:
         return None
-    if _TELEGRAM_HOST_RE.match((parsed.hostname or "").lower()) is None:
+    if TELEGRAM_HOST_RE.match((parsed.hostname or "").lower()) is None:
         return None
     match = _TELEGRAM_POST_PATH_RE.match(parsed.path)
     if match is None:
@@ -110,7 +101,19 @@ def _telegram_post_url(url: str) -> str | None:
 
 
 def _fetch_embed_html(post_url: str, *, client: httpx.Client | None) -> str | None:
-    """GET the embed HTML for a canonical post URL, or ``None`` on any failure.
+    """The embed HTML for a canonical post URL, ``None`` when there is none to
+    have.
+
+    A throttled or unreachable Telegram is retried on the package's one schedule
+    (:mod:`tweet_ingest.retry`) and, once that is spent, raised, so the caller
+    can tell "not readable right now" from "no such post". Every other refusal
+    is ``None`` on the first attempt.
+    """
+    return retrying(lambda: _read_embed(post_url, client=client), what=post_url)
+
+
+def _read_embed(post_url: str, *, client: httpx.Client | None) -> str | None:
+    """One GET of the embed: the HTML, ``None``, or a transient raise.
 
     Redirects are not followed: :func:`_telegram_post_url` vets only the first
     hop, so a 3xx to another host would slip the guard. A redirect therefore
@@ -125,8 +128,13 @@ def _fetch_embed_html(post_url: str, *, client: httpx.Client | None) -> str | No
                 resp = own_client.get(target, headers=headers)
         else:
             resp = client.get(target, headers=headers)
-    except httpx.HTTPError:
-        return None
+    except httpx.HTTPError as exc:
+        raise TweetUpstreamUnreachable(f"transport error: {exc}") from exc
+    if resp.status_code == 429 or resp.status_code >= 500:
+        raise TweetUpstreamBusy(
+            f"upstream returned {resp.status_code}",
+            retry_after=parse_retry_after(resp.headers.get("Retry-After")),
+        )
     if resp.status_code != 200:
         return None
     return resp.text
@@ -144,7 +152,7 @@ def _extract_media(embed_html: str) -> list[ParsedMedia]:
     can't point the downstream fetch at an arbitrary host.
     """
     videos = [
-        ParsedMedia(kind="video", remote_url=src, content_type="video/mp4", origin="quote")
+        ParsedMedia(kind="video", remote_url=src, origin="quote")
         for src in (html.unescape(m.group(1)) for m in _VIDEO_RE.finditer(embed_html))
         if is_trusted_media_url(src)
     ]
@@ -153,40 +161,49 @@ def _extract_media(embed_html: str) -> list[ParsedMedia]:
     if _MEDIA_WITHHELD_RE.search(embed_html) is not None:
         return []
     return [
-        ParsedMedia(kind="image", remote_url=src, content_type="image/jpeg", origin="quote")
+        ParsedMedia(kind="image", remote_url=src, origin="quote")
         for src in (html.unescape(m.group(1)) for m in _PHOTO_RE.finditer(embed_html))
         if is_trusted_media_url(src)
     ]
 
 
-def fetch_telegram_embed(url: str, *, client: httpx.Client | None = None) -> TelegramEmbed | None:
-    """Chase a Telegram post's public embed for its date and any served footage.
+def chase(target: str, *, client: httpx.Client | None = None) -> ChaseResult:
+    """The Telegram post ``target`` names, read through its public embed.
 
-    Returns a :class:`TelegramEmbed` when the embed yields at least a date or a
-    media, else ``None``. Never raises: a bad URL, an HTTP error, an unavailable
-    embed, or unexpected HTML all degrade to ``None``. ``client`` is for tests.
+    ``chased`` when the embed yields at least a date or a media, ``no_target``
+    when ``target`` is not a public t.me post at all, ``transient_failure`` when
+    Telegram throttled us or never answered with the retry schedule already
+    spent, and ``not_accessible`` for an embed that is gone or serves nothing
+    this parser can read. Never raises: unexpected HTML and anything else
+    unforeseen degrade to ``not_accessible``. ``client`` is for tests.
     """
     try:
-        return _fetch_telegram_embed(url, client=client)
+        return _chase(target, client=client)
+    except TweetImportError as exc:
+        return ChaseResult(outcome="transient_failure" if is_transient(exc) else "not_accessible")
     except Exception:
         # Last-resort net over an external-network + untrusted-HTML boundary:
         # this brick's contract is that a chase can never fail the ingestion, so
         # anything unforeseen degrades to "no date, no media", logged for
         # visibility.
-        logger.debug("Telegram embed chase failed for %s", url, exc_info=True)
-        return None
+        logger.debug("Telegram embed chase failed for %s", target, exc_info=True)
+        return ChaseResult(outcome="not_accessible")
 
 
-def _fetch_telegram_embed(url: str, *, client: httpx.Client | None) -> TelegramEmbed | None:
-    post_url = _telegram_post_url(url)
+def _chase(target: str, *, client: httpx.Client | None) -> ChaseResult:
+    post_url = _telegram_post_url(target)
     if post_url is None:
-        return None
+        return ChaseResult(outcome="no_target")
     embed_html = _fetch_embed_html(post_url, client=client)
     if embed_html is None or _MESSAGE_RE.search(embed_html) is None:
-        return None
+        return ChaseResult(outcome="not_accessible")
     time_match = _TIME_RE.search(embed_html)
     posted_at = html.unescape(time_match.group(1)) if time_match is not None else None
     media = _extract_media(embed_html)
     if posted_at is None and not media:
-        return None
-    return TelegramEmbed(posted_at=posted_at, media=media)
+        return ChaseResult(outcome="not_accessible")
+    # ``url`` is the target as the post wrote it, not the canonical form: the
+    # resolution matches this footage back onto the link the analyst declared.
+    return ChaseResult(
+        outcome="chased", post=ChasedPost(url=target, posted_at=posted_at, media=media)
+    )

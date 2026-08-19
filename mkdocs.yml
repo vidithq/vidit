@@ -49,6 +49,8 @@ nav:
   - API: api.md
   - Data model: data-model.md
   - Ingestion: ingestion.md
+  - Archival: archival.md
+  - Conflicts: conflicts.md
   - Engineering: engineering.md
   - Design: design.md
   - Backups: backups.md

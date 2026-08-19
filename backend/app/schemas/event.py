@@ -5,7 +5,11 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.archive_import_job import ArchiveImportJobStatus
-from app.models.event import SOURCE_URL_MAX_LENGTH, BeforeClosedStatus, EventStatus
+from app.models.event import (
+    BeforeClosedStatus,
+    DetectedVia,
+    EventStatus,
+)
 from app.models.source_archive import SourceArchiveProvider
 from app.schemas.conflict import ConflictRead
 from app.schemas.media import MediaRead
@@ -48,7 +52,7 @@ class ArchiveImportJobRead(BaseModel):
     ``status`` walks ``queued`` → ``running`` → ``done`` | ``failed``. The
     counts are the assemble outcome, final once ``done`` (zero until then):
     ``created`` is new ``detected`` rows; ``updated`` an open ``detected``
-    draft the import overwrote with a newer parse; ``skipped`` a detection the
+    detection the import overwrote with a newer parse; ``skipped`` a detection the
     import left alone, either because the row it matched is not one to touch
     or because that row was already up to date; ``failed`` a detection that
     raised mid-persist and was rolled back (the others still land). ``error``
@@ -70,8 +74,6 @@ class ArchiveImportJobRead(BaseModel):
     failed: int = Field(validation_alias="failed_count")
     error: str | None
     created_at: datetime
-    started_at: datetime | None
-    finished_at: datetime | None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -104,17 +106,54 @@ class ArchivedLinkRead(BaseModel):
     provider: SourceArchiveProvider
 
 
-class EventArchiveCreate(BaseModel):
-    """Body of ``POST /events/{event_id}/archives``.
+# How long the note an editor may attach to one version runs. Short on
+# purpose: it says what changed and why, and the argument itself belongs in the
+# proof body. The column stays unbounded ``Text``; this is the boundary cap, so
+# an over-long note is a 422 on the field rather than a database error.
+VERSION_NOTE_MAX_LENGTH = 280
 
-    ``original_url`` names which of the event's links the copy is of, and has
-    to be one the event actually carries; ``snapshot_url`` is what the provider
-    handed the analyst back. Both ceilings match the columns behind them, so an
-    oversized paste is a 422 on the field rather than a database error.
+
+class EventVersionRead(BaseModel):
+    """One superseded version of an event.
+
+    ``version_no`` is the version this row holds, not the version that replaced
+    it: an event at ``version_no`` 3 answers with snapshots 2 and 1, and the
+    live row is version 3. ``snapshot`` carries the editable fields as they
+    stood (see ``services/versions.build_snapshot``); the evidence anchor
+    (``source_url`` and the source media) is absent because no edit can move it,
+    so the live row is authoritative for it at every version.
     """
 
-    original_url: str = Field(min_length=1, max_length=SOURCE_URL_MAX_LENGTH)
-    snapshot_url: str = Field(min_length=1, max_length=SOURCE_URL_MAX_LENGTH)
+    id: uuid.UUID
+    version_no: int
+    # Who made the edit that superseded this version. NULL once that account is
+    # erased, or when it was soft-deleted (the serializer drops it for the same
+    # reason ``EventRead.requested_by`` does).
+    edited_by: AuthorRef | None
+    # The editor's own words about the edit. NULL when they left none, and on a
+    # redacted version, whose note is blanked with its snapshot.
+    note: str | None
+    # When the edit that superseded this version happened.
+    created_at: datetime
+    # The editable fields as they stood, and ``{}`` on a redacted version.
+    snapshot: dict[str, Any]
+    # Whether an admin blanked this version's content. The row and its number
+    # stay either way, so ``/vN`` addressing never shifts and the history still
+    # shows that a version existed.
+    redacted: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EventVersionList(BaseModel):
+    """An event's history: the superseded versions, newest first.
+
+    Paged like every other list (``Link: rel="next"``, opaque cursor);
+    ``total`` is the whole history, not the page.
+    """
+
+    items: list[EventVersionRead]
+    total: int
 
 
 class EventCloseRequest(BaseModel):
@@ -130,7 +169,7 @@ class EventCloseRequest(BaseModel):
 # the service layer.
 DETECTIONS_MAX_PER_PAGE = 100
 
-# How many drafts one batch completion may carry: a full page of the queue, so
+# How many detections one batch completion may carry: a full page of the queue, so
 # whatever the analyst can see they can publish in one call, and no client can
 # ask for an unbounded loop of row-level transactions.
 MAX_COMPLETION_ROWS = DETECTIONS_MAX_PER_PAGE
@@ -141,7 +180,7 @@ MAX_COMPLETION_CONFLICTS = 10
 
 
 class BatchCompletionRowCreate(BaseModel):
-    """One draft in a batch completion: which row, and the capture source its
+    """One detection in a batch completion: which row, and the capture source its
     analyst picked for it."""
 
     event_id: uuid.UUID
@@ -163,11 +202,11 @@ class BatchCompletionCreate(BaseModel):
     def _reject_duplicate_events(
         cls, rows: list[BatchCompletionRowCreate]
     ) -> list[BatchCompletionRowCreate]:
-        """One row per draft: a repeated ``event_id`` is a 422, not a retry.
+        """One row per detection: a repeated ``event_id`` is a 422, not a retry.
 
-        The second occurrence can only fail (the first published the draft, so
+        The second occurrence can only fail (the first published the detection, so
         the row is no longer ``detected``), which would inflate ``failed`` and
-        report a state error against a draft that did publish. A client sending
+        report a state error against a detection that did publish. A client sending
         the same id twice is asking two different things of one row anyway,
         since each occurrence carries its own capture source.
         """
@@ -180,7 +219,7 @@ class BatchCompletionCreate(BaseModel):
 
 
 class BatchCompletionRowRead(BaseModel):
-    """One row's outcome. ``code`` / ``message`` are NULL when the draft
+    """One row's outcome. ``code`` / ``message`` are NULL when the detection
     published; otherwise they carry the same stable error code the single-row
     geolocate would have answered with, so the queue can render the reason
     against that row."""
@@ -211,7 +250,7 @@ class EventRead(BaseModel):
     event_coords: CoordsRead | None
     # The camera point: where the footage was shot from. Always optional.
     capture_source_coords: CoordsRead | None
-    # The declared footage source. NULL only on a machine ``detected`` draft
+    # The declared footage source. NULL only on a machine detection
     # (the imported tweet declared none); ``requested`` / ``geolocated`` rows
     # always carry one (``ck_events_source_url_status``). Required-nullable
     # like ``event_coords``: the key is always serialised.
@@ -242,11 +281,12 @@ class EventRead(BaseModel):
     # Required-nullable: the key is always serialised.
     source_posted_at: datetime | None
     created_at: datetime
-    updated_at: datetime
-    # Per-state entry stamps; each is NULL until the event enters that state.
-    requested_at: datetime | None
-    detected_at: datetime | None
+    # When the row became ``geolocated``: the date version 1 of a published
+    # event is credited to on the version history and the version pages (every
+    # later version takes its date from the edit that produced it). NULL until
+    # publication.
     geolocated_at: datetime | None
+    # NULL until the event is closed.
     closed_at: datetime | None
     # TRUE when the footage shows death, injury or human remains, set by the
     # author on the write forms and overridable by an admin. Plain ``bool``: the
@@ -255,6 +295,11 @@ class EventRead(BaseModel):
     # The 4-value lifecycle: ``requested`` / ``detected`` / ``geolocated`` /
     # ``closed``. See ``models.event.STATUS_*``.
     status: EventStatus
+    # Which version of the event this payload is. 1 until the owner edits it;
+    # each edit files the superseded state and increments this. Every state
+    # carries it (the column is NOT NULL), but only a ``geolocated`` row can
+    # move past 1, since ``save_version`` is the published-row correction path.
+    version_no: int
     # Free-text reason the event was closed; NULL while it is open.
     close_reason: str | None
     # The status held just before ``closed`` (withdrawn vs rejected); drives the
@@ -263,13 +308,15 @@ class EventRead(BaseModel):
     # The post a machine detection was imported from, a provenance link
     # distinct from ``source_url`` (footage origin). NULL for human submits.
     detected_from_url: str | None
+    # Which of the three ingest entries produced the detection: ``bot``, ``paste``
+    # or ``archive``. Read-only, stamped at creation and never moved, so a
+    # re-import through another entry does not rewrite it. NULL for human
+    # submits and for machine rows that predate the column.
+    detected_via: DetectedVia | None
     # The archived copy of ``detected_from_url``, same shape and same NULL
     # conditions as ``archived_source``: the provenance link is archivable on
     # the same terms as the footage source.
     archived_detected_from: ArchivedLinkRead | None
-    # When the analyst posted this geolocation on X (the imported tweet's time);
-    # NULL for human submits. The "who geolocated first" precedence signal.
-    detected_post_at: datetime | None
     owner: AuthorRef
     # Who opened the request, preserved across fulfilment. NULL for a
     # directly-submitted geolocation (no request preceded it).
@@ -330,7 +377,7 @@ class PaginatedEventDetails(BaseModel):
     Mirrors ``PaginatedEvents`` but carries ``EventRead`` items
     (media + tags + provenance) rather than the lightweight ``EventList``
     card: the Detections queue needs the media to judge a detection and the
-    tags + conflicts to name what a draft is still missing without a per-row
+    tags + conflicts to name what a detection is still missing without a per-row
     round-trip.
 
     ``total`` counts the set the ``readiness`` filter selected, so the page

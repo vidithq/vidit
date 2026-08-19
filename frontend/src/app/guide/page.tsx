@@ -12,7 +12,7 @@ import { TEXT_LINK } from "@/components/ui/styles";
 // `PUBLIC_PREFIXES` in `proxy.ts`). This is where the platform's overall
 // loop is taught: the pages themselves carry no explanatory subtitles, so a
 // reader sizing up Vidit learns the whole cycle here and the two deeper
-// guides (`/methodology`, `/bot`) pick up from it. Linked from the about
+// guides (`/methodology`, `/import`) pick up from it. Linked from the about
 // page's Guides section and from the landing. Server component for SEO,
 // composed from the same PageShell + Card primitives as the methodology
 // guide.
@@ -56,9 +56,9 @@ const STEPS: NumberedStep[] = [
         </Link>
         : every located event is a pin you can open. Each event carries a
         status, so you always know what you are reading. Geolocated means a
-        person placed it and stands behind it. Detected is a machine-imported
-        draft, flagged as machine-detected everywhere until its owner reviews
-        and publishes it. Requested is footage nobody has placed yet.{" "}
+        person placed it and stands behind it. Detected is a detection the
+        machine imported, flagged as machine-read everywhere until its owner
+        reviews and publishes it. Requested is footage nobody has placed yet.{" "}
         <Link href="/search" className={TEXT_LINK}>
           Search
         </Link>{" "}
@@ -124,20 +124,20 @@ const STEPS: NumberedStep[] = [
           </li>
           <li>
             Your X archive: upload the official export and every geolocation you
-            already published is backfilled as drafts you review and vouch for,
+            already published is backfilled as detections you review and vouch for,
             no manual re-entry (the{" "}
-            <Link href="/archive" className={TEXT_LINK}>
-              archive guide
+            <Link href="/import#archive" className={TEXT_LINK}>
+              import guide
             </Link>{" "}
             covers what is read and what is never touched).
           </li>
           <li>
             The bot: tag @ViditBot under a geolocation post on X and it lands
-            here as a structured draft waiting in your queue (the{" "}
-            <Link href="/bot" className={TEXT_LINK}>
-              bot guide
+            here as a structured detection waiting in your queue (the{" "}
+            <Link href="/import#bot" className={TEXT_LINK}>
+              import guide
             </Link>{" "}
-            has the format). You never leave your feed.
+            covers it). You never leave your feed.
           </li>
         </ul>
       </>

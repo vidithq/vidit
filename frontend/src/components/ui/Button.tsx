@@ -12,9 +12,10 @@ import { cn } from "@/lib/cn";
 // pass `type="submit"` explicitly where it should.
 // Five variants on two axes: tone (accent or danger) and emphasis (filled,
 // outline, text). Everything clickable is the accent colour; red is only for
-// destructive or alerting. There is no grey button (grey lives in the <Pill>
-// neutral tone + disabled states), since a grey clickable reads as
-// not-clickable.
+// destructive or alerting. There is no grey button, since a grey clickable
+// reads as not-clickable: grey lives in the <Pill> neutral tone, and in the
+// disabled state, which is neutral grey text on a neutral border rather than a
+// faded accent, because a control carries colour exactly while it acts.
 //   primary      accent, filled    the one main action of a view
 //   secondary    accent, outline   a secondary action
 //   ghost        accent, text      quiet: cancel, dismiss, dense rows, icons
@@ -32,8 +33,16 @@ export type ButtonVariant =
   | "danger"
   | "dangerGhost";
 
-const BASE =
-  "inline-flex items-center justify-center rounded-md transition-colors disabled:opacity-50";
+// Disabled is neutral grey, not a faded version of the variant's colour: on
+// this site colour means a control acts and grey means it cannot, so a
+// half-opacity accent would read as an accent that needs a brighter screen
+// rather than as a button that refuses the click. The rules restate the hover
+// treatments as well as the resting ones, so they win over every variant's
+// `hover:` (equal specificity, and `disabled:hover:` lands last).
+const DISABLED =
+  "disabled:cursor-not-allowed disabled:text-neutral-600 disabled:border-neutral-800 disabled:bg-transparent disabled:hover:bg-transparent disabled:hover:text-neutral-600 disabled:hover:border-neutral-800";
+
+const BASE = `inline-flex items-center justify-center rounded-md transition-colors ${DISABLED}`;
 // The text shape (the default) versus the square icon-only shape. `icon` keeps
 // the same hover/colour treatment but drops the text padding for a compact
 // square affordance (share, a × close), so a bare icon button doesn't have to

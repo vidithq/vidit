@@ -234,7 +234,6 @@ def test_detail_returns_full_shape(db, author, free_tag):
     assert body["source_url"] == request.source_url
     assert body["status"] == STATUS_REQUESTED
     assert body["event_coords"] is None
-    assert body["requested_at"] is not None
     assert body["owner"]["username"] == author.username
     assert any(tag["name"] == free_tag.name for tag in body["tags"])
     assert len(body["media"]) == 1
@@ -396,7 +395,6 @@ def test_create_happy_path(db, author, free_tag):
     assert response.status_code == 201, response.text
     body = response.json()
     assert body["status"] == STATUS_REQUESTED
-    assert body["requested_at"] is not None
     assert body["event_coords"] is None
     assert body["owner"]["username"] == author.username
     assert body["requested_by"]["username"] == author.username
@@ -776,7 +774,6 @@ def test_geolocate_fulfils_requested_and_transfers_ownership(
     assert body["id"] == str(request_id)
     assert body["status"] == "geolocated"
     assert body["event_coords"] == {"lat": 48.5, "lng": 34.5}
-    assert body["geolocated_at"] is not None
     # Ownership transferred to the fulfiller; the poster stays on requested_by.
     assert body["owner"]["username"] == second_user.username
     assert body["requested_by"]["username"] == author.username

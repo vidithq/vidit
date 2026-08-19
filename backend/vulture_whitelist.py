@@ -24,11 +24,24 @@
 # relationship's string order_by ("EventSourceLink.position").
 position  # app/models/event.py EventSourceLink
 original_filename  # app/models/media.py, and schemas/media.py
-processed_at  # app/models/bot_mention.py — audit stamp, written at insert only
-# Stamped by services/reports.resolve_report and read on the wire only (the
-# column, the ContentReportRead field, and the assignment all collapse here).
-resolved_by  # app/models/content_report.py + app/schemas/report.py
+processed_at  # app/models/bot_mention.py, audit stamp written at insert only
+# Set at construction in services/versions.file_version and read only through
+# the `edited_by` relationship the history serializer walks.
+edited_by_id  # app/models/event.py EventVersion
 email_verified_at  # app/models/user.py, audit stamp written at registration only
+
+# ── Write-only audit columns ──────────────────────────────────────────────────
+# Stamped by app code, queried by an operator over SQL. They carry no wire
+# field and no app read, so every mention collapses onto the column and its
+# assignment. The lifecycle stamps below are also what ties `events.status` to
+# its CHECK constraints, so the row cannot be reconstructed without them; see
+# docs/data-model.md.
+resolved_by  # app/models/content_report.py, stamped by services/reports.resolve_report
+updated_at  # app/models/event.py, SQLAlchemy ``onupdate`` stamp
+requested_at  # app/models/event.py, state-entry stamp
+detected_at  # app/models/event.py, state-entry stamp
+geolocated_at  # app/models/event.py, state-entry stamp
+finished_at  # app/models/archive_import_job.py, stamped by services/archive_jobs
 
 # ── ASGI middleware override ──────────────────────────────────────────────────
 # Starlette's BaseHTTPMiddleware calls dispatch(); it is never referenced by name.
@@ -45,7 +58,7 @@ deleted_events  # schemas/admin.py AdminPurgeDetectedResponse
 media_count  # schemas/admin.py
 pending_registrations_deleted  # schemas/admin.py
 analysts_notified  # schemas/admin.py AdminMaintenanceResponse
-drafts_pending  # schemas/admin.py AdminMaintenanceResponse
+detections_pending  # schemas/admin.py AdminMaintenanceResponse
 digest_send_failures  # schemas/admin.py AdminMaintenanceResponse
 archived_source  # schemas/event.py EventRead
 archived_secondary_sources  # schemas/event.py EventRead
@@ -78,19 +91,17 @@ no_source_count  # schemas/user.py UserStatsRead
 # keyword arguments for getattr / hasattr / %-format only, so a keyword name at
 # a call site is never a use. Every wire field above is here for that reason.
 period  # schemas/user.py ActivityBucket (wire field)
-finished_at  # models/archive_import_job.py + schemas/event.py ArchiveImportJobRead: written by the worker, read on the wire only
 progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
-
-# ── Dataclass fields set at construction, read via attribute access ───────────
-owner_handle  # services/tweet_ingest/detect.py DetectedGeoloc
-in_reply_to_user_id  # services/tweet_ingest/records.py TweetRecord
+redacted  # schemas/event.py EventVersionRead (wire field, built in routers/events/_common.py)
+# Written by ``services/versions.redact_version``, read by nothing in ``app/``: the
+# column is the row-level record of who redacted a version, and the readable
+# trail is the ``admin_events`` row the same write files.
+redacted_by_id  # models/event.py EventVersion
 
 # ── Test-only helper ──────────────────────────────────────────────────────────
 # Called from tests/, which the gate does not scan, so it reads as unused here.
 _cache_clear  # services/tweet_ingest/syndication.py
-_.get_bytes  # services/storage.py, both backends
-_.put_bytes_sync  # services/storage.py, both backends
 
 # ── Starlette request-body cache, written by us, read by the framework ────────
 # The body-size middleware caches the streamed body onto ``request._body`` so

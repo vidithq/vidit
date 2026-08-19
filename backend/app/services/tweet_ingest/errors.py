@@ -1,9 +1,8 @@
 """Failures surfaced by the tweet-ingest package.
 
-Shared by every path: ``syndication`` raises them on fetch / URL problems,
-``parse`` re-raises ``TweetFetchFailed`` on a malformed response, and the
-greenfield ``archive`` / ``detect`` paths will raise the same set — a leaf
-module so any of them can import without a cycle.
+Shared by every path: ``syndication`` raises them on fetch problems, ``urls``
+on a string that names no post, and ``acquire`` re-raises both. A leaf module,
+so any brick can raise them without a cycle.
 """
 
 from __future__ import annotations
@@ -35,9 +34,9 @@ class TweetNotAccessible(TweetImportError):
 class TweetFetchFailed(TweetImportError):
     """The syndication endpoint was unreachable / 5xx / schema drift.
 
-    Routes turn this into a ``502``: the frontend's "fill the form
-    manually" banner doesn't distinguish transport blips from schema drift
-    (operationally identical — "retry later or do it by hand").
+    Routes turn this into a ``502``: the import panel renders the one message
+    without distinguishing a transport blip from schema drift, which are
+    operationally identical (retry later, or fill the form by hand).
     """
 
 
@@ -50,8 +49,27 @@ class TweetUpstreamBusy(TweetFetchFailed):
     apart from the ``502`` that means the payload drifted under us. Both stay
     5xx, so both keep reaching Sentry, as two issues instead of one bucket.
 
+    ``retry_after`` is the delay the upstream asked for in its ``Retry-After``
+    header, in seconds, ``None`` when it sent none or sent a date instead. The
+    retry policy (:mod:`tweet_ingest.retry`) reads it; nothing else does.
+
     A subclass of ``TweetFetchFailed`` on purpose: every fail-soft caller
-    (``acquire.quoted_from_syndication``, ``detect.fetch_relay_parent``) keeps
+    (``acquire._self_reply_parent``, the chasers under ``chase/``) keeps
     degrading exactly as before, and only a caller that wants the distinction
     catches this class first.
+    """
+
+    def __init__(self, message: str, *, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+class TweetUpstreamUnreachable(TweetFetchFailed):
+    """The request got no answer at all: a timeout, or a transport error.
+
+    Its own class next to :class:`TweetUpstreamBusy` so the retry policy can
+    name the two failures worth a second attempt without also catching the ones
+    a retry cannot fix (a payload that drifted, a body that will not parse).
+    A subclass of ``TweetFetchFailed``, so routes keep answering ``502`` and
+    every fail-soft caller keeps degrading as before.
     """
