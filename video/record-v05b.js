@@ -88,7 +88,7 @@ const ARCHIVE = path.join(__dirname, "out", "x-archive-trimmed.zip");
 // carry the whole read on its own: the comp keeps this beat at 1x and then
 // speeds through the import wait behind the same caption, so the line is on
 // screen far longer than it is held here.
-const PRIVACY_HOLD_MS = 2600;
+const PRIVACY_HOLD_MS = 2400;
 
 // The floor a draft's source media has to clear to be filmed, as a mean luma
 // out of 255. A night clip is a black rectangle at promo size, which makes the
@@ -205,10 +205,11 @@ function sourceLuma(url) {
 // The review beat opens a draft off the queue's Ready filter, so the click
 // lands on the page the filter beat just produced. Four further conditions:
 // the draft has to clear the submit floor, it has to sit inside the batch the
-// review pass walks with something after it (that batch is what gives the form
-// its "Detection n of m" position, and the submit beat films it handing over
-// the next draft), its coordinates have to fall inside a conflict box the take
-// can name, and its source media has to read on camera.
+// review pass walks with something carrying footage after it (that batch is
+// what gives the form its "Detection n of m" position, and the submit beat
+// films it handing over the next draft, which the film ends on), its
+// coordinates have to fall inside a conflict box the take can name, and its
+// source media has to read on camera.
 //
 // The brightest qualifying draft wins rather than the first one. The conflict
 // rule is untouched by that ordering: a draft outside the boxes is still not
@@ -237,6 +238,14 @@ async function pickReviewTarget(auth) {
     if (!query) continue;
     const media = (row.media || []).find((m) => m.role === "source");
     if (!media?.storage_url) continue;
+    // The draft the form hands over after the submit is the film's last
+    // product frame, so it has to carry footage of its own: a media-less row
+    // closes the film on an empty "Add media" box under a caption about the
+    // next detection opening. Best effort by nature, since the queue can move
+    // between this pick and the submit, but it is what makes the ordinary case
+    // land on a filled form.
+    const following = walk.items[position + 1];
+    if (!(following.media || []).some((m) => m.role === "source" && m.storage_url)) continue;
     candidates.push({
       row,
       query,
@@ -348,37 +357,43 @@ async function clipImportReview(auth) {
     // The opening is the tightest part of the film: staging a file is the least
     // interesting thing the product does, and its caption is up from the first
     // frame, so the guide, the dialog and the staged card each hold just long
-    // enough to be read. What is left there is cursor travel, which is the one
-    // thing that cannot be cut without the pointer teleporting.
+    // enough to be read.
+    //
+    // The cursor is paced the same way throughout. Every glide names its own
+    // `steps` and `settle` rather than taking the helper's defaults, because
+    // the pointer crossing the screen is dead time in a film that has none to
+    // spare: it has to arrive quickly enough not to be watched and slowly
+    // enough to be followed. The holds that carry a caption are what the beats
+    // are made of, so those stay generous.
 
     // 1. The import panel: the export guide, then the picker opening.
     console.log("→ the import panel");
     rec.mark("panel");
-    await wait(1000);
+    await wait(900);
 
     const chooseBtn = page.getByText("Choose your X archive", { exact: false }).first();
-    await slowScrollToLocator(page, chooseBtn, 800);
-    await wait(200);
+    await slowScrollToLocator(page, chooseBtn, 700);
+    await wait(150);
 
     console.log("→ open the mock Finder dialog");
     page.on("filechooser", () => {}); // headless: swallow the real chooser
     rec.mark("finderOpen");
-    await glideAndClick(page, chooseBtn, { steps: 40, settle: 250 });
+    await glideAndClick(page, chooseBtn, { steps: 26, settle: 170 });
     await injectFinder(page, zipName, zipBytes);
-    await wait(700);
+    await wait(550);
 
     console.log("→ pick the archive");
     const rowBox = await page.locator("#__finder_zip_row__").boundingBox();
     const rowX = rowBox.x + rowBox.width * 0.3;
     const rowY = rowBox.y + rowBox.height / 2;
-    await page.mouse.move(rowX, rowY, { steps: 35 });
-    await wait(250);
+    await page.mouse.move(rowX, rowY, { steps: 24 });
+    await wait(170);
     await page.mouse.click(rowX, rowY); // select, the row highlights
-    await wait(350);
+    await wait(250);
     rec.mark("finderPick");
     await page.mouse.dblclick(rowX, rowY);
     await closeFinder(page);
-    await wait(200);
+    await wait(150);
 
     const zipInput = page.locator('input[type="file"][accept*="zip"]').first();
     // By path, not by buffer: Playwright caps an in-memory payload at 50 MB
@@ -386,14 +401,14 @@ async function clipImportReview(auth) {
     // from the file itself.
     await zipInput.setInputFiles(ARCHIVE);
     rec.mark("filePicked");
-    await wait(800); // the file card ("ready to import") breathes
+    await wait(650); // the file card ("ready to import") breathes
 
     // 2. The progress steps. The privacy line carries `keepDetail`, so it
     //    stays on screen for the whole run; the hold is what the storyboard
     //    pins, not the step's own lifetime.
     console.log("→ import, then hold on the privacy line");
     const importBtn = page.getByRole("button", { name: /^import archive$/i }).first();
-    await glideAndClick(page, importBtn, { steps: 44, settle: 380 });
+    await glideAndClick(page, importBtn, { steps: 28, settle: 250 });
     rec.mark("importClick");
     await wait(400);
     await slowScrollToLocator(
@@ -424,16 +439,16 @@ async function clipImportReview(auth) {
       .innerText()
       .catch(() => "");
     console.log(`  the Done step reads: ${summary.replace(/\s+/g, " ").trim()}`);
-    await wait(2600); // the finished stepper and its outcome line read
+    await wait(2400); // the finished stepper and its outcome line read
 
     // 3. The queue: the rows the import produced sit on top, the badges say
     //    what each row still needs, and the filter counts the whole queue.
     console.log("→ the detections queue");
     const ctaBox = await reviewCta.boundingBox();
     if (!ctaBox || ctaBox.y < 0 || ctaBox.y + ctaBox.height > 700) {
-      await smoothScrollIntoView(page, reviewCta, 900);
+      await smoothScrollIntoView(page, reviewCta, 700);
     }
-    await glideAndClick(page, reviewCta, { steps: 48 });
+    await glideAndClick(page, reviewCta, { steps: 30, settle: 280 });
     await page.waitForURL(/\/profile\/[^/]+\/detections/, {
       timeout: 30000,
       waitUntil: "domcontentloaded",
@@ -443,36 +458,49 @@ async function clipImportReview(auth) {
     rec.mark("queueUrl");
     await page.waitForSelector('a[href^="/events/"][href$="?queue=1"]', { timeout: 20000 });
     rec.mark("queueOpen");
-    await wait(2800);
+    await wait(2500);
 
     console.log("→ the readiness filter");
     rec.mark("filterReady");
     await glideAndClick(
       page,
       page.locator('[aria-label="Filter the queue"]').getByRole("button", { name: "Ready" }),
-      { steps: 40 }
+      { steps: 26, settle: 280 }
     );
-    await wait(2600); // the narrowed page and its counts read
+    await wait(2300); // the narrowed page and its counts read
 
     // 4. One draft, opened into the review pass. The draft was chosen in the
     //    setup pass, so this beat is the paging and the click. Paging is
     //    ordinary use of the queue rather than a detour: the pager says how
     //    deep the queue runs, which is the same claim the counts make.
-    for (let p = 1; p < queuePage; p++) {
-      console.log(`→ page ${p + 1} of the queue`);
-      await glideAndClick(page, page.getByRole("button", { name: "Next" }).first(), {
-        steps: 34,
-        settle: 260,
-      });
-      await wait(900);
-    }
+    //
+    //    It pages until the card is ON SCREEN rather than to a page number
+    //    worked out in advance. The queue reads newest first and the import
+    //    that runs between the pick and this beat can put rows above the one
+    //    the take is after, which moves it down by a page without changing
+    //    anything a viewer could see. `queuePage` is what the pick expected;
+    //    the loop is what the queue actually shows.
     const card = page.locator(`a[href="/events/${target.id}/edit?queue=1"]`).first();
-    await card.waitFor({ timeout: 15000 });
-    await wait(300);
-    console.log("→ open the draft");
-    await smoothScrollIntoView(page, card, 800);
+    const nextPage = page.getByRole("button", { name: "Next" }).first();
+    console.log(`→ paging to the card (expected on page ${queuePage})`);
+    let onScreen = await card.isVisible().catch(() => false);
+    for (let p = 1; !onScreen && p < QUEUE_PAGES_SCANNED; p++) {
+      // The pager sits under ten rows, which puts it below the fold at this
+      // viewport. `glideAndClick` drives the real mouse at page coordinates and
+      // does not scroll the way a locator click would, so without this the
+      // pointer clicks empty space off screen and the queue never moves.
+      await smoothScrollIntoView(page, nextPage, 600);
+      await glideAndClick(page, nextPage, { steps: 22, settle: 180 });
+      await wait(650);
+      onScreen = await card.isVisible().catch(() => false);
+      console.log(`  · page ${p + 1}${onScreen ? " (the card is here)" : ""}`);
+    }
+    await card.waitFor({ timeout: 10000 });
     await wait(200);
-    await glideClickStretchedCard(page, card, target.id);
+    console.log("→ open the draft");
+    await smoothScrollIntoView(page, card, 600);
+    await wait(150);
+    await glideClickStretchedCard(page, card, target.id, { steps: 48, settle: 430 });
     await page.waitForURL(new RegExp(`/events/${target.id}/edit`), {
       timeout: 30000,
       waitUntil: "domcontentloaded",
@@ -484,59 +512,59 @@ async function clipImportReview(auth) {
       .waitForFunction(() => [...document.images].every((i) => i.complete), { timeout: 20000 })
       .catch(() => {});
     rec.mark("draftOpen");
-    await wait(2400); // the position, the title and the media
+    await wait(2200); // the position, the title and the media
 
     console.log("→ scroll the draft: media, the point, the proof");
     rec.mark("draftScroll");
     await slowScrollToLocator(
       page,
       page.locator('input[aria-label="Search conflicts"]').first(),
-      2200,
+      1800,
       420
     );
-    await wait(1100);
+    await wait(900);
 
     // 5. The human's part on camera: the conflict and the capture source.
     console.log("→ the conflict and the capture source");
     const conflictInput = page.locator('input[aria-label="Search conflicts"]').first();
     rec.mark("tagFill");
-    await glideAndClick(page, conflictInput, { steps: 42, settle: 380 });
-    await page.keyboard.type(query, { delay: 45 });
-    await wait(500);
+    await glideAndClick(page, conflictInput, { steps: 28, settle: 260 });
+    await page.keyboard.type(query, { delay: 35 });
+    await wait(400);
     // `conflictLabel` may append the years, so anchor on the start of the name
     // rather than on the whole label.
     const suggestion = page
       .getByRole("button", { name: new RegExp(`^${query}(\\s*\\(|$)`, "i") })
       .first();
     await suggestion.waitFor({ timeout: 10000 });
-    await glideAndClick(page, suggestion, { steps: 30, settle: 350 });
-    await wait(600);
+    await glideAndClick(page, suggestion, { steps: 20, settle: 240 });
+    await wait(450);
 
     const captureChip = page.getByRole("button", { name: /^Unknown$/ }).first();
-    await slowScrollToLocator(page, captureChip, 900, 340).catch(() => {});
-    await wait(300);
-    await glideAndClick(page, captureChip, { steps: 34, settle: 380 });
-    await wait(700);
+    await slowScrollToLocator(page, captureChip, 700, 340).catch(() => {});
+    await wait(200);
+    await glideAndClick(page, captureChip, { steps: 22, settle: 260 });
+    await wait(500);
 
     console.log("→ Submit (arm, then confirm), the next draft opens itself");
     await slowScrollToY(
       page,
       await page.evaluate(() => document.documentElement.scrollHeight),
-      1500
+      1200
     );
-    await wait(400);
+    await wait(300);
     // Located by type rather than by name: the label walks Submit -> Confirm
     // submit -> Submitting… across the two clicks. The second click has to
     // land inside ARM_MS (3s), so the settle stays short.
     const submitBtn = page.locator('form button[type="submit"]').first();
     rec.mark("submitClick");
-    await glideAndClick(page, submitBtn, { steps: 38, settle: 520 });
+    await glideAndClick(page, submitBtn, { steps: 26, settle: 420 });
     await page
       .getByRole("button", { name: /confirm submit/i })
       .first()
       .waitFor({ timeout: 5000 });
-    await wait(650); // the armed ring reads before the confirming click
-    await glideAndClick(page, submitBtn, { steps: 10, settle: 260 });
+    await wait(500); // the armed ring reads before the confirming click
+    await glideAndClick(page, submitBtn, { steps: 8, settle: 220 });
     // Whatever draft the form hands over, not one named in advance. Which row
     // comes next is the queue's business at that instant, and the queue moves:
     // the import between the pick and this click can update rows, and the
@@ -575,14 +603,25 @@ async function clipImportReview(auth) {
     // wait the review beat opens with. This is the last product frame in the
     // film, and media popping into an empty box halfway through the closing
     // hold reads as the page still loading rather than as the pass continuing.
+    // A poster frame is not an image, so waiting on `document.images` alone
+    // closes the film on a black player whenever the row carries video: the
+    // element is there, decoded to nothing. `readyState >= 2` is the frame.
+    const tNext = Date.now();
     await page
-      .waitForFunction(() => [...document.images].every((i) => i.complete), { timeout: 15000 })
+      .waitForFunction(
+        () => {
+          const v = document.querySelector("video");
+          return [...document.images].every((i) => i.complete) && (!v || v.readyState >= 2);
+        },
+        { timeout: 15000 }
+      )
       .catch(() => {});
+    console.log(`  · the next draft settled after ${Date.now() - tNext}ms`);
     // The last thing the take films: the queue handing over the next draft on
     // its own. The film ends here, on the pass continuing rather than on a
     // closing flourish, and the bot beat follows in the comp.
     rec.mark("nextDraft");
-    await wait(2600);
+    await wait(2400);
   });
 }
 

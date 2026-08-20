@@ -376,7 +376,10 @@ into and out of the recorded part. The one exception is the import wait,
 which the comp compresses without a cut: the segment between the privacy
 hold and the Done step plays at a higher rate between two normal-speed
 segments over the same source, each starting on the frame the previous one
-ended, so the progress steps tick through and the screen never jumps.
+ended, so the progress steps tick through and the screen never jumps. The
+compression has a floor, `RAMP_MIN_RATE` at 1.5: under it the wait plays at
+life speed instead, so a fast import gives a slightly shorter film rather than
+a stretched wait.
 
 ```bash
 make promo-v05b      # record + render + both outputs
@@ -413,7 +416,7 @@ card follows it:
 | 4 | The queue | The queue on `All`, where `Ready to review` and `Missing: …` badges sit side by side, then the readiness filter with the server's whole-queue counts, and the pager if the draft the pass opens is not on the first page. |
 | 5 | The review pass | `Detection n of m`, the footage, the coordinates and the source, then the conflict typeahead and the capture source. |
 | 6 | Submit | The proof, both submit clicks, and the next detection opening on its own, which is the last product frame in the film. |
-| 7 | @viditbot | The official X embed (dark) of the reply that tags the bot on a geolocation: a hold on the post and its coordinates, an eased drift down the thread, a hold on the tag. |
+| 7 | @viditbot | The official X embed (dark) of the bot's own reply, conversation shown: the tag that asks for it above, `1 detection saved · ref …` under it. |
 | 8 | Closing card | `OutroV04`, shared with the other promos. |
 
 ### The bot beat is a plate, not part of the take
@@ -424,12 +427,18 @@ the take's own fade-out. `BotBeat` plays it inside the same browser chrome the
 rest of the film uses.
 
 The picture is `public/clips/bot-embed.mp4`: the official X embed, dark theme,
-rendered by platform.twitter.com in a real browser and recorded as a plate. The
-embed is recorded with the conversation shown, so a reply that tags the bot
-brings the geolocation it answers with it, and the plate is paced rather than
-still: a thread runs taller than the frame, and the coordinates at the top and
-the tag at the bottom are too far apart to hold at once at a size anyone can
-read. The plate holds on the head, drifts down once, and holds on the foot.
+rendered by platform.twitter.com in a real browser and recorded as a plate. It
+films the BOT'S reply with the conversation shown, so both halves of the claim
+are on camera: the tag that asks for a detection above, and the bot's
+confirmation under it.
+
+How the plate is paced follows from what the status brings with it, and the
+recorder decides it from the rendered height rather than from a constant. A
+short exchange is drawn large enough to fill the frame and held still, which is
+what a tag and a one-line confirmation want. A status that drags a whole
+geolocation post along with it runs taller than the frame however it is drawn,
+and its two ends are too far apart to read at once, so the plate holds on the
+head, drifts down once, and holds on the foot.
 
 Record it with the v0.4 pipeline, which needs no instance and no session for
 this clip and leaves the detections queue untouched:
@@ -441,12 +450,12 @@ PROMO_BOT_TWEET=https://x.com/…/status/… node record-v04.js bot-embed
 ```
 
 `BOT_EMBED_TWEET` in `record-v04.js` is the default status, and
-`PROMO_BOT_TWEET` overrides it for a shoot. Two things decide which status to
-film, and both are checked on the frames rather than argued: X sometimes
-refuses to render an embed headless, which leaves a blank iframe, and a status
-whose author tags `@viditbot` in the post itself puts the caption's claim on
-screen instead of beside it. `bot_mentions` is where the real exchanges are
-recorded, so a status the bot actually replied to can be looked up there.
+`PROMO_BOT_TWEET` overrides it for a shoot. Which status to film is checked on
+the frames rather than argued: X sometimes refuses to render an embed headless,
+which leaves a blank iframe, and how much of a thread the embed brings with it
+decides whether the plate ends up large and still or tall and drifting.
+`bot_mentions` records every exchange the bot has had, `reply_tweet_id` beside
+each mention, so the bot's own reply to a real tag is one query away.
 
 Without the plate on the machine the beat drops out and the take runs straight
 into the closing card, rather than the render failing.

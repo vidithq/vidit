@@ -60,12 +60,12 @@ export const RECORDED: Record<string, RecordedClip> = {
   "bot-embed": {
     "src": "clips/bot-embed.mp4",
     "fps": 60,
-    "durationSec": 7.832,
+    "durationSec": 6.382,
     "marks": {
-      "embedX": 468,
-      "embedY": 10,
-      "embedW": 343.2,
-      "embedH": 965.64
+      "embedX": 222,
+      "embedY": 30,
+      "embedW": 836,
+      "embedH": 659.3
     }
   },
   "portfolio": {
@@ -90,24 +90,24 @@ export const RECORDED: Record<string, RecordedClip> = {
   "import-review": {
     "src": "clips/import-review.mp4",
     "fps": 60,
-    "durationSec": 69.981,
+    "durationSec": 56.459,
     "marks": {
       "panel": 0,
-      "finderOpen": 2.048,
-      "finderPick": 6.071,
-      "filePicked": 6.555,
-      "importClick": 9.187,
-      "privacyHold": 10.656,
-      "importDone": 30.664,
-      "queueUrl": 35.358,
-      "queueOpen": 35.431,
-      "filterReady": 38.234,
-      "draftUrl": 47.125,
-      "draftOpen": 47.284,
-      "draftScroll": 49.685,
-      "tagFill": 53.049,
-      "submitClick": 63.695,
-      "nextDraft": 66.966
+      "finderOpen": 1.785,
+      "finderPick": 3.363,
+      "filePicked": 3.791,
+      "importClick": 4.94,
+      "privacyHold": 6.41,
+      "importDone": 28.744,
+      "queueUrl": 31.733,
+      "queueOpen": 31.811,
+      "filterReady": 34.312,
+      "draftUrl": 40.599,
+      "draftOpen": 40.843,
+      "draftScroll": 43.044,
+      "tagFill": 45.809,
+      "submitClick": 51.836,
+      "nextDraft": 53.649
     }
   }
 };

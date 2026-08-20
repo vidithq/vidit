@@ -88,10 +88,22 @@ const TAKE_TO = srcFrame(clip?.durationSec ?? 0);
 // races. RAMP_SCREEN is what that middle costs on screen.
 const RAMP_LEAD_IN = 1.5;
 const RAMP_LEAD_OUT = 1.0;
-const RAMP_SCREEN = 4.2;
+// What the middle of the wait costs on screen. It is the one number that trades
+// the film's length against how hard the compression reads: the shorter it is,
+// the faster the stepper ticks. Around nine seconds the steps go by at roughly
+// three times life, which is quick enough to be obviously compressed and slow
+// enough to follow, and it leaves the privacy line up for the whole run.
+const RAMP_SCREEN = 9.0;
 
-const RAMP_FROM = srcFrame(mark("privacyHold", 7.77) + RAMP_LEAD_IN);
-const RAMP_TO = srcFrame(mark("importDone", 32.85) - RAMP_LEAD_OUT);
+// Below this the compression is not worth having: the point of the ramp is to
+// spend less film on the wait than the wait took, and a rate near 1 buys
+// nothing while a rate under 1 would stretch it. How long the worker takes
+// varies from run to run, so which side of this a take falls on is decided
+// here rather than assumed.
+const RAMP_MIN_RATE = 1.5;
+
+const RAMP_FROM = srcFrame(mark("privacyHold", 6.41) + RAMP_LEAD_IN);
+const RAMP_TO = srcFrame(mark("importDone", 28.74) - RAMP_LEAD_OUT);
 const RAMP_FRAMES = Math.round(RAMP_SCREEN * COMP_FPS);
 
 type Segment = {
@@ -117,10 +129,15 @@ const SEGMENTS: Segment[] = (() => {
     out.push({ startFrom, frames, rate, start });
     start += frames;
   };
-  const rampable = RAMP_FROM > TAKE_FROM && RAMP_TO > RAMP_FROM && RAMP_TO < TAKE_TO;
+  const rampable =
+    RAMP_FROM > TAKE_FROM &&
+    RAMP_TO > RAMP_FROM &&
+    RAMP_TO < TAKE_TO &&
+    RAMP_TO - RAMP_FROM >= RAMP_FRAMES * RAMP_MIN_RATE;
   if (!rampable) {
-    // No usable import wait in the marks: play the take straight rather than
-    // invent a ramp.
+    // No usable import wait in the marks, or one short enough that racing
+    // through it would save nothing: play the take straight rather than invent
+    // a ramp.
     add(TAKE_FROM, TAKE_TO - TAKE_FROM, 1);
     return out;
   }
@@ -165,7 +182,7 @@ const CUES: CaptionCue[] = [
     // The product's own sentence, on the frame that carries it. It holds at
     // 1x for a moment and then rides the compressed wait, so it is the
     // longest line in the film.
-    at: cueAt("privacyHold", 7.77),
+    at: cueAt("privacyHold", 6.41),
     eyebrow: "Before the upload, in your browser",
     title: "DMs, messages and account data never leave your device.",
   },
@@ -174,24 +191,24 @@ const CUES: CaptionCue[] = [
     // export, so the outcome line reads as updates rather than as a haul, and
     // the caption says exactly that: it is the v0.5.2 upsert seen from
     // outside.
-    at: cueAt("importDone", 32.85),
+    at: cueAt("importDone", 28.74),
     eyebrow: "Import it again tomorrow",
     title: "It recognises the detections it already made.",
   },
   {
-    at: cueAt("queueOpen", 36.45),
+    at: cueAt("queueOpen", 31.81),
     eyebrow: "The queue",
     title: "Every machine detection, and what each one still needs.",
   },
   {
-    at: cueAt("draftOpen", 45.53),
+    at: cueAt("draftOpen", 40.84),
     eyebrow: "The review pass",
     title: "One form: the footage, the coordinates, the classification.",
   },
   {
     // From the click that arms Submit, so the line covers both clicks and the
     // next draft opening on its own, which is where the take ends.
-    at: cueAt("submitClick", 59.35),
+    at: cueAt("submitClick", 51.84),
     eyebrow: "Submit",
     title: "Two clicks to freeze it, and the next detection opens itself.",
   },
@@ -202,8 +219,8 @@ const CUES: CaptionCue[] = [
 // instant the route changed.
 const URL_CUES: { at: number; url: string }[] = [
   { at: cueAt("panel", 0), url: SUBMIT_URL },
-  { at: cueAt("queueUrl", 36.36), url: QUEUE_URL },
-  { at: cueAt("draftUrl", 45.3), url: REVIEW_URL },
+  { at: cueAt("queueUrl", 31.73), url: QUEUE_URL },
+  { at: cueAt("draftUrl", 40.60), url: REVIEW_URL },
 ];
 
 const pickAt = <T extends { at: number }>(cues: T[], frame: number): T =>

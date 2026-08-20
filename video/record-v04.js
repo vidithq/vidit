@@ -53,18 +53,17 @@ function ensureRealArchive() {
   return REAL_ARCHIVE;
 }
 
-// The real tweet the bot beat's X embed renders: the reply that tags
-// @viditbot on a geolocation of the analyst's own, chosen because it puts the
-// beat's whole claim on screen. The embed is recorded with the conversation
-// shown, so the frame carries the geolocation it answers (text, date,
-// coordinates, the annotated image) above the tag itself.
+// The real tweet the bot beat's X embed renders: the BOT'S OWN reply to a
+// mention, chosen because it puts both halves of the beat's claim on screen.
+// The embed is recorded with the conversation shown, so the frame carries the
+// tag it answers above it and the bot's confirmation under it.
 //
 // PROMO_BOT_TWEET swaps it for a shoot: X renders whichever public status it
 // is given, and which one reads best is a question for the frames rather than
 // for this constant.
 const BOT_EMBED_TWEET =
   process.env.PROMO_BOT_TWEET ||
-  "https://x.com/geo_lego_2/status/2090117133510361154";
+  "https://x.com/viditbot/status/2090117164045062547";
 
 const {
   wait,
@@ -1133,17 +1132,21 @@ async function clipDemo(auth, hero, zipPath) {
 // the tag reply + like + bot reply as an overlay below it, and the whole
 // beat is replaced verbatim by public/clips/bot-x-capture.mp4 once the
 // real end-to-end exchange exists on X.
-// How the plate is paced: the head of the thread, an eased drift down, then
-// the foot. A thread with the conversation shown runs taller than the frame,
-// and the two things the beat has to carry (the coordinates near the top, the
-// @viditbot tag at the bottom) are too far apart to hold at once at a size
-// anyone can read. Reading it beats shrinking it.
+// How the plate is paced, which depends on what the status brings with it. A
+// short exchange (a tag and the bot's answer) is drawn large enough to fill the
+// frame and held still, so both halves are readable for the whole beat. A
+// thread that carries the geolocation post as well runs taller than the frame
+// however it is drawn, and its two ends are too far apart to hold at once at a
+// size anyone can read, so the plate holds on the head, drifts down once, and
+// holds on the foot. Reading it beats shrinking it.
 const PLATE_HOLD_TOP_MS = 2400;
 const PLATE_PAN_MS = 2400;
 const PLATE_HOLD_FOOT_MS = 2600;
-// The largest the embed is drawn at. Above this the tweet's own type outgrows
+// The largest the embed is drawn at. Past this the tweet's own type outgrows
 // the frame it is composed into.
-const PLATE_MAX_SCALE = 0.78;
+const PLATE_MAX_SCALE = 1.9;
+// Frame left around a plate that fits, so the card is not welded to the edges.
+const PLATE_MARGIN_PX = 60;
 
 async function clipBotEmbed() {
   await recordClip("bot-embed", { cookies: null }, async (page, rec) => {
@@ -1180,25 +1183,29 @@ async function clipBotEmbed() {
     );
     await wait(2500); // media inside the embed finishes loading
 
-    // Draw it as large as the cap allows, centred, and make the page exactly
-    // as tall as the drawn embed so the drift below is an ordinary scroll.
-    const plate = await page.evaluate((maxScale) => {
+    // Draw it as large as it can be read at, centred, and make the page exactly
+    // as tall as the drawn embed so any drift below is an ordinary scroll. A
+    // short exchange grows to fill the height and is centred in the frame; a
+    // tall one shrinks only as far as the cap and rides the drift instead.
+    const plate = await page.evaluate(({ maxScale, margin }) => {
       const frame = document.querySelector('iframe[id^="twitter-widget"]');
       const natural = frame.getBoundingClientRect().height; // holder still 1:1
-      const scale = Math.min(maxScale, 1);
+      const scale = Math.min(maxScale, (window.innerHeight - margin) / natural);
       const holder = document.getElementById("holder");
       holder.style.transform = `scale(${scale})`;
       holder.style.left = `${Math.round((window.innerWidth - 440 * scale) / 2)}px`;
       const drawn = natural * scale;
-      document.body.style.height = `${Math.round(drawn) + 20}px`;
+      const fits = drawn + margin <= window.innerHeight;
+      holder.style.top = fits ? `${Math.round((window.innerHeight - drawn) / 2)}px` : "10px";
+      document.body.style.height = fits ? "100%" : `${Math.round(drawn) + 20}px`;
       const r = frame.getBoundingClientRect();
       return {
         natural: Math.round(natural),
-        scale,
-        travel: Math.max(0, Math.round(drawn + 20 - window.innerHeight)),
+        scale: Number(scale.toFixed(3)),
+        travel: fits ? 0 : Math.round(drawn + 20 - window.innerHeight),
         box: { x: Math.round(r.x), y: Math.round(r.y), w: r.width, h: r.height },
       };
-    }, PLATE_MAX_SCALE);
+    }, { maxScale: PLATE_MAX_SCALE, margin: PLATE_MARGIN_PX });
     console.log(
       `  embed ${plate.natural}px tall at ${plate.scale}, ` +
         `${plate.travel ? `${plate.travel}px to drift` : "fits the frame"}`
@@ -1206,11 +1213,15 @@ async function clipBotEmbed() {
     await wait(400);
 
     rec.start();
-    await wait(PLATE_HOLD_TOP_MS);
     if (plate.travel > 0) {
+      await wait(PLATE_HOLD_TOP_MS);
       await slowScrollToY(page, plate.travel, PLATE_PAN_MS);
+      await wait(PLATE_HOLD_FOOT_MS);
+    } else {
+      // Nothing to travel to: the whole exchange is in frame, so the beat is
+      // one hold long enough to read both halves of it.
+      await wait(PLATE_HOLD_TOP_MS + PLATE_HOLD_FOOT_MS + 1000);
     }
-    await wait(PLATE_HOLD_FOOT_MS);
 
     // Stash the embed geometry (CSS px in the 1280×720 page) as marks: what
     // the plate was drawn at, for whoever frames something against it next.

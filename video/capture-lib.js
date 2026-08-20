@@ -252,13 +252,16 @@ async function smoothScrollIntoView(page, locator, settleMs = 1200) {
   await wait(settleMs);
 }
 
-// Click an EntityCard through its stretched link. Parts of the card's
+// Click an EntityCard through its stretched link. `steps` / `settle` pace the
+// approach; the defaults are the pace promo A was cut at, so a caller that
+// wants a brisker cursor asks for it rather than changing it for everyone.
+// Parts of the card's
 // surface (byline, badge, some spans) hit-test OUTSIDE the link, so probe a
 // few points and click one that resolves into an <a> whose href carries the
 // event id. One click only; callers follow with a patient waitForURL (the
 // dev server compiles a route on first nav, which is a pending navigation,
 // not a miss).
-async function glideClickStretchedCard(page, locator, eventId) {
+async function glideClickStretchedCard(page, locator, eventId, { steps = 75, settle = 650 } = {}) {
   let box = await locator.boundingBox();
   if (!box) throw new Error("card not visible");
   const vp = page.viewportSize();
@@ -285,8 +288,8 @@ async function glideClickStretchedCard(page, locator, eventId) {
       break;
     }
   }
-  await page.mouse.move(pt.x, pt.y, { steps: 75 });
-  await wait(650);
+  await page.mouse.move(pt.x, pt.y, { steps });
+  await wait(settle);
   await page.mouse.click(pt.x, pt.y);
 }
 
