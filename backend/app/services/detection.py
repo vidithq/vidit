@@ -195,8 +195,10 @@ def _disposition(db: Session, owner: User, detection: Detection) -> tuple[Verdic
     (``x.com`` or ``twitter.com``, the handle in any case, the handle-less
     ``/i/web/status/`` form). Not the anchor alone, because the entries anchor
     differently on one self-thread: an export stitches A→B→C whole and anchors on
-    A, while a bot tag or a paste on C reads one hop and anchors on B, so one
-    geolocation imported through two entries would land as two detections. The rows
+    A, while a bot tag or a paste on C anchors on the head of what the
+    acquisition read, B for a post carrying content of its own and higher for a
+    bare tag that climbs, so one geolocation imported through two entries would
+    land as two detections. The rows
     whose thread shares a post with the incoming one are the match, an array
     overlap, which holds whichever entry ran first. The anchor equality stays for
     the rows written before the array existed.
@@ -949,9 +951,10 @@ async def import_pasted_post(
     shared syndication budget.
 
     The pasted post is read alone and its author checked before the rest of the
-    hop runs: the parent leg and the chase each fetch a post the pasted URL only
-    points at, so a linked account pasting a stranger's post would otherwise
-    drive syndication reads of third-party posts on the shared budget.
+    acquisition runs: the parents leg (one hop, or the climb above a bare tag)
+    and the chase each fetch posts the pasted URL only points at, so a linked
+    account pasting a stranger's post would otherwise drive syndication reads of
+    third-party posts on the shared budget.
 
     Raises what the acquisition raises (``InvalidTweetUrl`` on a URL that names
     no post, ``TweetNotAccessible`` when X serves nothing, ``TweetFetchFailed``
@@ -1006,7 +1009,7 @@ async def backfill_from_archive(
     ``outcome.refusals`` under the same code the bot names back.
 
     ``chase`` runs the one chase step over each stitched thread, the same step
-    the live acquisition runs over its one hop. Off, the read is pure disk and a
+    the live acquisition runs over the thread it read. Off, the read is pure disk and a
     footage link is stored as a link, with no date and no media.
 
     Precondition: ``owner.x_handle`` is set. The handle is what every provenance

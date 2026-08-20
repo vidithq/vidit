@@ -37,7 +37,7 @@ flowchart LR
   end
 
   hop["`**acquire_thread**
-  one hop: the post plus the same-author post it replies to`"]:::shared
+  one hop: the post plus the same-author post it replies to; a bare tag climbs to the coordinate post`"]:::shared
   chase["`**chase_thread**
   the sole source candidate: X status or Telegram embed, retries`"]:::shared
   resolve["`**resolve_threads**
@@ -68,7 +68,7 @@ flowchart LR
 
 `Detection` is the only shape travelling between [`resolve_threads`](../backend/app/services/tweet_ingest/resolve.py) and [`detection.persist_detections`](../backend/app/services/detection.py). Each region of the diagram has a section below: [the contract](#the-contract) is what the engine reads, the [grammar table](#grammar-table) pins it shape by shape, and the entries are [the bot](#the-bot), [the pasted-tweet import](#the-pasted-tweet-import) and [the archive backfill](#archive-formats). The analyst-facing projection is [`/import`](../frontend/src/app/import/page.tsx), one section per entry (`#bot`, `#paste`, `#archive`); `/bot` and `/archive` redirect into it.
 
-**Module layout.** [`tweet_ingest/`](../backend/app/services/tweet_ingest) splits on whether a module fetches: `records`, `extract`, `stitch` and `resolve` fetch nothing, and `urls` is the URL vocabulary they read, the one place a post URL is written back from an id. `syndication` is the X read, `chase/` holds one chaser per technology behind one dispatcher, `acquire` is the live one-hop acquisition, `archive` reads the export off disk, and `retry` is the schedule every fetch runs under. [`test_ingest_boundaries.py`](../backend/tests/test_ingest_boundaries.py) pins the direction: no pure module imports `syndication`, and only `acquire` imports `chase/`.
+**Module layout.** [`tweet_ingest/`](../backend/app/services/tweet_ingest) splits on whether a module fetches: `records`, `extract`, `stitch` and `resolve` fetch nothing, and `urls` is the URL vocabulary they read, the one place a post URL is written back from an id. `syndication` is the X read, `chase/` holds one chaser per technology behind one dispatcher, `acquire` is the live acquisition, `archive` reads the export off disk, and `retry` is the schedule every fetch runs under. [`test_ingest_boundaries.py`](../backend/tests/test_ingest_boundaries.py) pins the direction: no pure module imports `syndication`, and only `acquire` imports `chase/`.
 
 ## The contract
 
@@ -89,7 +89,7 @@ flowchart LR
   end
 
   text["`**own_posts**
-  the analyst's own text only: the post, its same-author parent, the self-thread; a retweet is dropped`"]:::shared
+  the analyst's own text only: the post, the same-author posts above it, the self-thread; a retweet is dropped`"]:::shared
   coords["`**scan_coords**
   four formats, position-free, deduplicated at six decimals`"]:::shared
   refuse["`**refusal**
@@ -111,7 +111,7 @@ flowchart LR
   src --> sec --> detection
 ```
 
-**In**: the threads the entry acquired. One hop and never across authors ([`acquire.py`](../backend/app/services/tweet_ingest/acquire.py)), so an analyst posts the coordinate and replies to themselves with the source link, and provenance anchors on the parent whichever of the two the entry was pointed at. The archive reads its threads from the export, which carries every reply edge inline. Acquisition runs [the chase](#the-chase), so resolution does no I/O.
+**In**: the threads the entry acquired. Never across authors, and one hop for a post with content of its own ([see what acquisition reads](#what-acquisition-reads)), so an analyst posts the coordinate and replies to themselves with the source link, and provenance anchors on the parent whichever of the two the entry was pointed at. The archive reads its threads from the export, which carries every reply edge inline. Acquisition runs [the chase](#the-chase), so resolution does no I/O.
 
 **Out**: one `Detection` per coordinate, or one refusal for the thread. `post_unreadable` (X served no body), `coords_missing` (no coordinate in the analyst's own text) and `coords_invalid` (a coordinate-shaped string outside the world) are all the engine tells apart.
 
@@ -139,6 +139,60 @@ Each derived field fills on a signal in that text, or stays empty:
 **Attribution.** A detection is owned by the existing Vidit account whose `x_handle` an admin linked ([`detection.linked_owner`](../backend/app/services/detection.py), the one map from a handle to an account), and no entry creates a user. The link binds to the invite code at mint time and copies onto the account at registration; `PATCH /admin/users/{id}/x-handle` (see [`api.md`](api.md)) repairs and backfills it, and self-serve linking is a later gate (see [`planning/next.md`](../planning/next.md)). A post quoting someone else's footage credits the importer, and contested attribution goes through the claim/dispute pipeline.
 
 **Coverage is text-only.** On a 48.5k-tweet external OSINT corpus (853 analysts), reading coordinates from post text recovers about 86% of the geolocations at about 0% false positives. The remaining 14% carry the coordinate only inside the image, which would take vision over every backfilled media item and is out of scope. The import panel states the limit when a pasted post produces no detection.
+
+### What acquisition reads
+
+The two live entries read the analyst's own posts through one function ([`acquire.py`](../backend/app/services/tweet_ingest/acquire.py)). What it reads depends on whether the post it is pointed at says anything of its own.
+
+```mermaid
+flowchart TD
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`what the thread ends up holding`"]:::spec
+    l2["`a fetch, one per parent`"]:::shared
+    l3["`the decisive rule`"]:::core
+    l1 ~~~ l2 ~~~ l3
+  end
+
+  post["`**the post an entry names**
+  the tagged post, or the pasted URL`"]:::spec
+  bare{"`**bare tag?**
+  mentions only: no other text, no media, no quote`"}:::core
+  hop["`**one hop**
+  the same-author post it replies to`"]:::shared
+  climb["`**climb one parent**
+  same author only, at most 3 fetches, each parent joins the thread`"]:::shared
+  coord{"`**scan_coords**
+  does the climbed post carry a coordinate, in its expanded text?`"}:::core
+  above["`**one post above**
+  the footage the coordinate post replies to; joined only when it carries media and no coordinate of its own`"]:::shared
+  out["`**the thread**
+  parents first, then the named post`"]:::spec
+
+  post --> bare
+  bare -- "no: content is read where it sits" --> hop --> out
+  bare -- "yes: a pointer at the thread above" --> climb --> coord
+  coord -- "no, and a fetch is left" --> climb
+  coord -- "no, and the cap is spent" --> out
+  coord -- "yes, and a fetch is left" --> above --> out
+  coord -- "yes, with media of its own, or the cap spent" --> out
+```
+
+**One hop.** A post carrying text, media or a quote is content, and content is read where it sits: the post plus the same-author post it replies to, nothing further.
+
+**The bare tag.** A reply whose text is mentions and whitespace, with no media and no quoted post, says only "read the thread above me". It is the shape an analyst produces by dropping `@ViditBot` under the last post of their own geolocation thread, where the coordinate sits two or more posts up. Acquisition re-anchors on it: it climbs the same author's parents and every post it climbs through joins the thread, so a source line between the tag and the coordinate still reaches the resolution.
+
+**Where the climb stops.** The climb stops on the first parent carrying a coordinate ([`scan_coords`](../backend/app/services/tweet_ingest/extract.py)). It scans the expanded text, the same text the engine resolves, so a coordinate carried by a Google Maps link stops it exactly as a typed one does. A coordinate-shaped string outside the world stops it too, which is what turns a typo into the `coords_invalid` the analyst can act on.
+
+What follows depends on that post. A coordinate post carrying media of its own is the footage carrier, so the read ends there. A coordinate post carrying none reads a single post further, the footage it replies to, and joins that post only when it carries media and no coordinate of its own: a post with a coordinate of its own is a separate geolocation whose footage sits elsewhere, and a post with neither adds only its links, which can leave the thread's source ambiguous.
+
+Three parent fetches is the ceiling, the footage read included, which bounds what one pointer costs the shared syndication budget. A coordinate met on the third fetch therefore ends the read there and the post above it is not fetched. A climb that spends the ceiling without meeting a coordinate keeps what it read and refuses `coords_missing` on it; that refusal does not distinguish a thread carrying no coordinate from one whose coordinate sits above the ceiling or behind a parent fetch that failed.
+
+**One author.** A parent by another author never joins the thread and ends the climb, on both legs. That is also the loop guard: a courtesy bare tag under the bot's own reply climbs nothing, because the bot is another author.
 
 ### The chase
 
@@ -218,6 +272,7 @@ Each row is one input shape and the outcome the engine produces for it. The thre
 | Coordinate in the post, quoted post carries a video (`quoted_video`) | 1 detection, source is the quote, its video as source media |
 | Own video, coordinate, no link and no quote (`self_video_no_signal`) | 1 detection, source empty, the video as source media |
 | Coordinate in the post, source link in the analyst's own reply (`self_reply_geo_then_source`) | 1 detection, source is the reply's link |
+| Bare `@ViditBot` reply under the analyst's own thread, coordinate two or more posts up | 1 detection, read from the posts [the climb](#what-acquisition-reads) re-anchors on; `n/a` for the archive, which reads every edge off the export |
 | Self-thread, video in the head, coordinate in the reply (`self_thread`) | 1 detection, source empty, the head video as source media; archive only, `n/a` for the two live entries |
 | Parent by another author carries the coordinate | `0`, no coordinate (`coords_missing`); `n/a` for the archive, whose export holds the analyst's own tweets only |
 | Retweet, text opening `RT @<handle>:` | `0`, dropped; the archive drops it before detection, the live entries read no coordinate (`coords_missing`) |

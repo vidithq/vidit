@@ -1,7 +1,7 @@
 """The engine: threads of ``TweetRecord`` resolve to a ``Resolution``.
 
 A "thread" is a list of ``TweetRecord``: ``stitch``'s output for the archive, or
-the one hop ``acquire.acquire_thread`` reads for the bot and the paste.
+what ``acquire.acquire_thread`` reads for the bot and the paste.
 :func:`resolve_threads` is the single core every entry runs, so the bot, the
 pasted import and the archive backfill cannot drift on coordinates, source,
 dates, or media. It is pure: no network, no database. Each thread yields one
@@ -427,7 +427,8 @@ class Detection:
     detected_from_url: str
     # Every post id of the thread this detection was read from, the anchor included
     # and in thread order. The entries anchor differently on one self-thread
-    # (the archive stitches it whole, the two live entries read one hop), so
+    # (the archive stitches it whole, the two live entries read from the post
+    # they were pointed at upwards), so
     # this is what lets the write path recognise the same geolocation whichever
     # entry read it. Non-numeric ids are dropped, like the anchor's.
     thread_tweet_ids: tuple[int, ...]

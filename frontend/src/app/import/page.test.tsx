@@ -55,12 +55,17 @@ describe("/import", () => {
   it("states the coordinate rule at the one hop the bot and the paste read", () => {
     // Two of the three entries read the post plus the post it directly replies
     // to, and nothing further, so a rule promising "the same thread" would send
-    // an analyst tagging the bot three replies down away empty-handed. Only the
-    // archive reads a whole self thread, and its section is where that is said.
+    // an analyst tagging the bot three replies down away empty-handed. The bare
+    // tag is the one shape that reads further, and an analyst who does not know
+    // it writes the coordinate into every reply to be safe. Only the archive
+    // reads a whole self thread, and its section is where that is said.
     render(<ImportGuidePage />);
 
     expect(
       screen.getByText(/your own post it directly replies to/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/says nothing but @ViditBot points at the thread above/i),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/the only entry that stitches full self\s+threads/i),

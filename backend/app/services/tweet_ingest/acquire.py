@@ -1,11 +1,16 @@
-"""Acquire a tweet, and the post it replies to, via syndication → ``TweetRecord``.
+"""Acquire a tweet, and the posts above it, via syndication → ``TweetRecord``.
 
 The syndication sibling of ``archive.read_tweets``. ``acquire_thread`` is the
 one acquisition the live entries share (the bot's tagged mention and the pasted
 tweet): it reads the post named by a tweet id plus, when that post replies to
-one of its own author's, that parent. Exactly one hop, and only within one
-author, so the result is a thread ``resolve_threads`` reads as the analyst's own
-work. It then runs ``chase.chase_thread`` over that thread, the same one chase
+one of its own author's, that parent. A post carrying content of its own stops
+there, one hop. A post carrying nothing but mentions is a pointer rather than
+content (the bare ``@ViditBot`` tag an analyst drops under their own thread), so
+it re-anchors: the climb follows same-author parents until one of them carries a
+coordinate, then reads one post further for the footage when the coordinate post
+carries no media of its own, capped at :data:`_BARE_TAG_MAX_CLIMB` fetches.
+Either way the climb stays inside one author, so the result is a thread
+``resolve_threads`` reads as the analyst's own work. It then runs ``chase.chase_thread`` over that thread, the same one chase
 step the archive backfill runs over each stitched self-thread, so the resolution
 downstream is pure and neither knows which technology answered. The archive
 keeps its own reader: an export carries every reply edge inline, so it stitches
@@ -21,7 +26,8 @@ import httpx
 
 from .chase import chase_thread
 from .errors import TweetImportError
-from .records import QuotedTweet, SourceLink, TweetRecord
+from .extract import is_mentions_only, scan_coords
+from .records import QuotedTweet, SourceLink, TweetRecord, expand_shortlinks
 from .syndication import extract_media, extract_source_links, fetch_syndication
 from .urls import normalise_tweet_url
 
@@ -96,9 +102,9 @@ def record_by_id(tweet_id: str, *, handle: str, client: httpx.Client | None = No
 
 @dataclass(frozen=True)
 class AcquiredThread:
-    """What one hop of acquisition yields.
+    """What one acquisition yields.
 
-    ``records`` is the thread ``resolve_threads`` reads, parent first then the
+    ``records`` is the thread ``resolve_threads`` reads, parents first then the
     post, so the head is the earliest post and carries the provenance.
     ``post`` is the record for the id the caller named, which the paste reads
     to check the post's author against the caller's linked handle.
@@ -129,31 +135,125 @@ def _self_reply_parent(
     return parent
 
 
+# How many parent fetches a bare tag may spend climbing. Three is the field
+# shape it exists for: the tag under a source reply, the coordinate post above
+# that, and the footage post the coordinate post itself replies to. It bounds
+# what one pointer costs the shared syndication budget, and a climb that spends
+# it without meeting a coordinate keeps what it read, so the resolution refuses
+# ``coords_missing`` on what it did read. The cap is the bound on both legs: a
+# coordinate met on the last permitted fetch ends the read there, so the
+# footage post above it is not fetched.
+_BARE_TAG_MAX_CLIMB = 3
+
+
+def _is_bare_tag(post: TweetRecord) -> bool:
+    """Whether ``post`` carries nothing of its own beyond mentions.
+
+    Addressing is not content: a reply whose text is mentions and whitespace
+    (:func:`extract.is_mentions_only`), with no media and no quoted post, says
+    only "read the thread above me". Any text the analyst wrote around the tag
+    (a coordinate, a source line, a correction) makes the post content, and
+    content is read where it sits.
+
+    Residue keeps a post contentful by design, which is the conservative
+    direction: a dot-mention (``.@viditbot``, the habit that makes a reply
+    visible to a whole timeline) leaves its period behind, so it reads as
+    content and takes one hop rather than the climb. Reading a pointer as
+    content costs the analyst a refusal they can fix by tagging again; reading
+    content as a pointer spends fetches on posts they did not point at.
+    """
+    return not post.media and post.quoted_status_id is None and is_mentions_only(post.text)
+
+
+def _carries_coordinate(record: TweetRecord) -> bool:
+    """Whether ``record`` is a post the analyst wrote a coordinate in.
+
+    The scan runs over the expanded text, the text ``resolve_threads`` reads:
+    a coordinate carried by a Google Maps link is an opaque ``t.co`` token in
+    the raw text, so scanning the raw text would walk straight past the post
+    that carries it. A coordinate-shaped string outside the world counts as
+    carried (``CoordScan.out_of_bounds``): it is still the post the analyst
+    geolocated in, and reading it is what turns a typo into the actionable
+    ``coords_invalid`` instead of a walk past it.
+    """
+    scan = scan_coords(expand_shortlinks(record.text, record.external_sources))
+    return bool(scan.coords) or scan.out_of_bounds
+
+
+def _climb_to_coords(post: TweetRecord, *, client: httpx.Client | None = None) -> list[TweetRecord]:
+    """The same-author posts above a bare tag, earliest first.
+
+    One fetch per parent, and :data:`_BARE_TAG_MAX_CLIMB` is the whole budget.
+    The climb stops on the first parent carrying a coordinate
+    (:func:`_carries_coordinate`), and what follows depends on that post. One
+    carrying media of its own is the footage carrier, so the read ends there and
+    spends nothing further. One carrying none reads a single post above it, the
+    footage the coordinate post replies to, and joins it only when it carries
+    media and no coordinate: a post with a coordinate of its own is a separate
+    geolocation whose footage sits elsewhere, and a post with neither adds only
+    its links, which can leave the thread's source ambiguous.
+
+    Every post the climb goes through joins the thread, so a source line between
+    the tag and the coordinate still reaches the resolution. Same-author only
+    (:func:`_self_reply_parent`), which is what stops the climb at someone
+    else's post and what keeps a courtesy tag under the bot's own reply from
+    climbing at all.
+    """
+    climbed: list[TweetRecord] = []
+    current = post
+    remaining = _BARE_TAG_MAX_CLIMB
+    anchored = False
+    while remaining > 0 and not anchored:
+        remaining -= 1
+        parent = _self_reply_parent(current, client=client)
+        if parent is None:
+            break
+        climbed.append(parent)
+        current = parent
+        anchored = _carries_coordinate(parent)
+    if anchored and not current.media and remaining > 0:
+        above = _self_reply_parent(current, client=client)
+        if above is not None and above.media and not _carries_coordinate(above):
+            climbed.append(above)
+    climbed.reverse()
+    return climbed
+
+
 def acquire_from_post(post: TweetRecord, *, client: httpx.Client | None = None) -> AcquiredThread:
-    """The rest of the one hop over a post already read: the same author's
-    parent, then the chase.
+    """The rest of the acquisition over a post already read: the same author's
+    posts above it, then the chase.
+
+    A post with content of its own takes one hop, its same-author parent. A bare
+    tag (:func:`_is_bare_tag`) takes the climb instead (:func:`_climb_to_coords`),
+    because the analyst pointed at the thread rather than typing in it.
 
     Split from :func:`acquire_thread` so a caller holding an ownership rule can
     settle it on ``post`` alone, before this spends anything further. Both legs
     are fail-soft: a parent that will not fetch reads as no parent, and a
     footage link that will not chase reads as no footage.
     """
-    parent = _self_reply_parent(post, client=client)
-    records = chase_thread([parent, post] if parent is not None else [post], client=client)
+    if _is_bare_tag(post):
+        above = _climb_to_coords(post, client=client)
+    else:
+        parent = _self_reply_parent(post, client=client)
+        above = [parent] if parent is not None else []
+    records = chase_thread([*above, post], client=client)
     return AcquiredThread(records=records, post=post)
 
 
 def acquire_thread(
     tweet_id: str, *, handle: str, client: httpx.Client | None = None
 ) -> AcquiredThread:
-    """The post ``tweet_id``, plus the same author's post it replies to, with the
+    """The post ``tweet_id``, plus the same author's posts above it, with the
     thread's sole source candidate chased.
 
     The one acquisition the bot and the pasted-tweet import share, so a
     coordinate in a post and a source link in its author's own reply reach the
-    resolution together whichever entry read them. Exactly one hop: a parent's
-    own parent is never read, and a parent by another author is never joined to
-    the thread, whatever it holds.
+    resolution together whichever entry read them. A post with content of its
+    own reads one hop and no further. A bare tag reads the climb
+    (:func:`acquire_from_post`), at most :data:`_BARE_TAG_MAX_CLIMB` parents. A
+    parent by another author is never joined to the thread whatever it holds,
+    and it ends the climb.
 
     ``handle`` is the author handle the caller already holds; see
     :func:`record_by_id`. The post itself raises what ``fetch_syndication``
@@ -178,8 +278,8 @@ def acquire_pasted_thread(url: str, *, client: httpx.Client | None = None) -> Ac
     """The thread behind a pasted post URL.
 
     The paste's twin of the bot's ``acquire_tagged_thread``: the URL is parsed
-    once, the post is read, then the shared one hop adds the same author's post
-    it replies to. ``detection.import_pasted_post`` runs the two halves itself,
+    once, the post is read, then the shared acquisition adds the same author's
+    posts above it. ``detection.import_pasted_post`` runs the two halves itself,
     with the own-post check between them; this composition is what the paste's
     contract test reads.
     """

@@ -557,9 +557,10 @@ async def test_an_archive_thread_then_a_bot_tag_on_its_tail_is_one_detection(db,
     """The cross-entry case the anchor alone could not see.
 
     A 3-post self-thread A→B→C with the coordinate in C. The export stitches it
-    whole and anchors the detection on A; a bot tag on C reads one hop and anchors
-    on B. Two anchors, one geolocation, so the match reads the threads' post ids
-    and finds the row whichever entry ran first.
+    whole and anchors the detection on A; a bot tag on C carries content of its
+    own, so it reads one hop and anchors on B. Two anchors, one geolocation, so
+    the match reads the threads' post ids and finds the row whichever entry ran
+    first.
     """
     archive = _detection(
         url="https://x.com/own/status/101",

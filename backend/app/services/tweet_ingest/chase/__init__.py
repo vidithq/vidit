@@ -88,7 +88,7 @@ def chase_thread(
     """``records`` with the thread's one chase target resolved onto it.
 
     The one chase step, run once a thread's records are built: the live
-    acquisition on its one hop, the archive backfill on each stitched
+    acquisition on what it read, the archive backfill on each stitched
     self-thread. At most one fetch per thread, and the thread names its target
     one of two ways.
 

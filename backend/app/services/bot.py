@@ -15,8 +15,11 @@ feed the same per-mention pipeline (:func:`process_single_mention`):
 The bot runs the same engine as the pasted import and the archive backfill;
 nothing about the grammar lives here. Acquisition is
 :func:`tweet_ingest.acquire_thread`, shared with the paste: the tagged post plus
-the same author's post it replies to, one hop and no further, with the one chase
-step run over the pair. ``tweet_ingest.resolve_threads`` then reads that thread
+the same author's post it replies to, one hop and no further, unless the tag is
+bare (nothing but mentions), in which case it climbs the same author's parents
+to the coordinate post, plus the footage post above it when that post carries
+media and the coordinate post does not. The one chase step runs over what
+comes back. ``tweet_ingest.resolve_threads`` then reads that thread
 and ``detection.persist_detections`` writes what it read, owned by the account
 ``detection.linked_owner`` maps the tagged author's handle to, read once per
 mention (the bot never mints users: an unknown handle is ledgered
@@ -225,9 +228,12 @@ def acquire_tagged_thread(
 
     :func:`tweet_ingest.acquire_thread` reads the tagged post plus, when it
     replies to one of its author's own posts, that parent, which is the same one
-    hop the pasted import reads. A parent by another author never joins the
-    thread, so a tag under someone else's post reads only the tag itself, and so
-    does the courtesy reply to the bot's own reply.
+    hop the pasted import reads. A tag carrying nothing but mentions is a
+    pointer at the thread above it, so it climbs the same author's parents to
+    the coordinate post instead of stopping one hop up. A parent by another
+    author never joins the thread and ends the climb, so a tag under someone
+    else's post reads only the tag itself, and so does the courtesy reply to the
+    bot's own reply.
 
     Raises ``TweetNotAccessible`` when X serves nothing for the tagged post.
 

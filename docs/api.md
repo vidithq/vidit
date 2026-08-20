@@ -482,7 +482,7 @@ Import one of your own X posts. The route runs the shared detection engine over 
 
 **Own posts only.** The post's author must equal the X handle linked to your account (`users.x_handle`, compared case-insensitively). A post by anyone else, or a caller with no linked handle, returns `400 not_your_post`. Third-party footage goes through [`POST /events`](#post-events) with a `source_url` instead.
 
-Acquisition reads one hop: the pasted post plus, when it replies to one of its own author's posts, that parent. A reply posted under the pasted post is not read, so paste the reply itself to include it. Data source is X's public *syndication* endpoint (the same backend the embeddable `<blockquote class="twitter-tweet">` widget uses). It is unauthenticated and undocumented; responses are cached in-memory for 1h per post ID to bound repeat fetches.
+Acquisition reads one hop for a post carrying content of its own: the pasted post plus, when it replies to one of its own author's posts, that parent. A pasted post whose text is nothing but mentions is a pointer at the thread above it, so acquisition climbs the same author's parents to the post carrying the coordinate, three fetches at most (see [`ingestion.md`](ingestion.md#what-acquisition-reads)). A reply posted under the pasted post is not read, so paste the reply itself to include it. Data source is X's public *syndication* endpoint (the same backend the embeddable `<blockquote class="twitter-tweet">` widget uses). It is unauthenticated and undocumented; responses are cached in-memory for 1h per post ID to bound repeat fetches.
 
 **Request body:**
 ```json

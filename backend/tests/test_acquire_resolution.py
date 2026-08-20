@@ -1,16 +1,19 @@
-"""Acquisition: link extraction, the one hop, the chase.
+"""Acquisition: link extraction, the one hop, the bare-tag climb, the chase.
 
 Tests over canned syndication bodies (no network, a ``MockTransport``):
 ``entities.urls`` must reach the record as expanded URLs bound to their
-wrappers, and ``acquire_thread`` must read the post plus its same-author parent,
-nothing further, then chase the thread's sole source candidate. What the
+wrappers, ``acquire_thread`` must read a contentful post plus its same-author
+parent and nothing further, a bare tag must climb its author's parents to the
+coordinate post, and the thread's sole source candidate must be chased. What the
 acquired thread then resolves to is pinned by ``tests/ingest_contract``.
 """
 
 import httpx
 import pytest
 
-from app.services.tweet_ingest import TweetNotAccessible, acquire_thread
+import app.services.tweet_ingest.chase.telegram as telegram_mod
+from app.services.tweet_ingest import TweetNotAccessible, acquire_thread, resolve_threads
+from app.services.tweet_ingest.records import ChasedPost, ChaseResult
 from app.services.tweet_ingest.syndication import (
     _cache_clear,
     extract_source_links,
@@ -153,6 +156,217 @@ def test_acquire_thread_raises_when_the_post_itself_is_unreadable():
         acquire_thread(_POST_ID, handle="analyst", client=client)
 
 
+# ── The bare tag: a pointer at the thread above it ────────────────────────
+#
+# The field shape: the analyst posts the coordinate (and the footage above it),
+# replies to themselves with the source, then drops a bare ``@ViditBot`` under
+# the last post of their own thread. The tag itself says nothing, so it
+# re-anchors on the coordinate rather than reading one hop and refusing.
+
+_CLIMB_IDS = [f"19400000000000005{n:02d}" for n in range(6)]
+_COORD_TEXT = "POV: 57.567596, 39.935483"
+_EARLIER_COORD_TEXT = "Earlier: 48.012345, 37.802411"
+
+
+def _photo() -> list[dict]:
+    """One photo entry, the syndication shape ``extract_media`` reads."""
+    return [{"type": "photo", "media_url_https": "https://pbs.twimg.com/media/x.jpg"}]
+
+
+def _chain(*, texts: list[str], handle: str = "analyst") -> dict[str, dict]:
+    """Bodies for a reply chain, ``texts[0]`` the post the caller is pointed at
+    and each next text its parent, so the last one is the thread head."""
+    bodies: dict[str, dict] = {}
+    for index, text in enumerate(texts):
+        parent = _CLIMB_IDS[index + 1] if index + 1 < len(texts) else None
+        bodies[_CLIMB_IDS[index]] = _body(
+            _CLIMB_IDS[index], handle=handle, text=text, reply_to=parent
+        )
+    return bodies
+
+
+def test_a_bare_tag_climbs_past_the_source_reply_to_the_coordinate_post():
+    # The reproduced case: the tag replies to a "Source:" post, which replies to
+    # the post carrying the coordinate and the media.
+    bodies = _chain(texts=["@viditbot", "Source: https://example.org/clip", _COORD_TEXT])
+    seen: list[str] = []
+    with _client(bodies, seen) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert [r.tweet_id for r in acquired.records] == [_CLIMB_IDS[2], _CLIMB_IDS[1], _CLIMB_IDS[0]]
+    assert seen == [_CLIMB_IDS[0], _CLIMB_IDS[1], _CLIMB_IDS[2]]
+
+    [detection] = resolve_threads([acquired.records]).detections
+    assert detection.coordinate.lat == pytest.approx(57.567596)
+    assert detection.coordinate.lng == pytest.approx(39.935483)
+
+
+def test_the_climb_joins_the_footage_post_above_the_coordinate_post():
+    # The numbered shape: footage in the head, the coordinate in the reply under
+    # it. The post above the coordinate carries the media the coordinate post
+    # lacks, so it joins; the one above that is not read.
+    bodies = _chain(
+        texts=[
+            "@viditbot",
+            f"2 | 2 {_COORD_TEXT}",
+            "1 | 2 footage",
+            "unrelated earlier post",
+        ]
+    )
+    bodies[_CLIMB_IDS[2]]["mediaDetails"] = _photo()
+    seen: list[str] = []
+    with _client(bodies, seen) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert [r.tweet_id for r in acquired.records] == [_CLIMB_IDS[2], _CLIMB_IDS[1], _CLIMB_IDS[0]]
+    assert seen == [_CLIMB_IDS[0], _CLIMB_IDS[1], _CLIMB_IDS[2]]
+
+
+def test_the_climb_drops_a_post_above_that_carries_no_media():
+    # The extra read is for footage. A post above carrying none is a comment, a
+    # sign-off or a link the thread did not need, and joining it can only blur
+    # the resolution: one stray link there leaves the source ambiguous.
+    bodies = _chain(texts=["@viditbot", _COORD_TEXT, "just some words"])
+    seen: list[str] = []
+    with _client(bodies, seen) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert [r.tweet_id for r in acquired.records] == [_CLIMB_IDS[1], _CLIMB_IDS[0]]
+    assert seen == [_CLIMB_IDS[0], _CLIMB_IDS[1], _CLIMB_IDS[2]]
+
+
+def test_a_coordinate_post_carrying_its_own_media_ends_the_read():
+    # The coordinate post is its own footage carrier, so there is nothing above
+    # it to look for and the fetch is not spent.
+    bodies = _chain(texts=["@viditbot", _COORD_TEXT, "the footage above"])
+    bodies[_CLIMB_IDS[1]]["mediaDetails"] = _photo()
+    seen: list[str] = []
+    with _client(bodies, seen) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert [r.tweet_id for r in acquired.records] == [_CLIMB_IDS[1], _CLIMB_IDS[0]]
+    assert seen == [_CLIMB_IDS[0], _CLIMB_IDS[1]]
+
+
+def test_serial_coordinate_posts_produce_one_detection():
+    # A thread geolocating one place per post: the post above the tagged
+    # coordinate carries a coordinate of its own, so it is a separate
+    # geolocation with its own footage, not this one's. Media there does not
+    # buy it in.
+    bodies = _chain(texts=["@viditbot", _COORD_TEXT, _EARLIER_COORD_TEXT])
+    bodies[_CLIMB_IDS[2]]["mediaDetails"] = _photo()
+    with _client(bodies) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert [r.tweet_id for r in acquired.records] == [_CLIMB_IDS[1], _CLIMB_IDS[0]]
+
+    [detection] = resolve_threads([acquired.records]).detections
+    assert detection.coordinate.lat == pytest.approx(57.567596)
+
+
+def test_a_coordinate_carried_only_by_a_maps_link_stops_the_climb():
+    # The coordinate grammar includes a Google Maps ``@lat,lng`` link, which
+    # reaches the raw text as an opaque ``t.co`` token. The climb scans the
+    # expanded text, the text the resolution reads, so it stops here instead of
+    # walking past the post the analyst geolocated in.
+    maps_url = "https://www.google.com/maps/@48.012345,37.802411,15z"
+    bodies = _chain(texts=["@viditbot", "Geolocated https://t.co/mapsLINK", _COORD_TEXT])
+    bodies[_CLIMB_IDS[1]]["entities"] = {
+        "urls": [{"url": "https://t.co/mapsLINK", "expanded_url": maps_url}]
+    }
+    with _client(bodies) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert [r.tweet_id for r in acquired.records] == [_CLIMB_IDS[1], _CLIMB_IDS[0]]
+
+    [detection] = resolve_threads([acquired.records]).detections
+    assert detection.coordinate.lat == pytest.approx(48.012345)
+
+
+def test_an_out_of_bounds_coordinate_stops_the_climb_and_refuses():
+    # A typo'd coordinate is still the post the analyst geolocated in. Stopping
+    # there is what turns it into the refusal they can act on; climbing past it
+    # would mint a detection at a place they never wrote.
+    bodies = _chain(texts=["@viditbot", "Grid 233.500000, 999.900000", _COORD_TEXT])
+    with _client(bodies) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert [r.tweet_id for r in acquired.records] == [_CLIMB_IDS[1], _CLIMB_IDS[0]]
+    assert resolve_threads([acquired.records]).reason == "coords_invalid"
+
+
+def test_a_coordinate_further_up_than_the_cap_is_never_fetched():
+    # The cap bounds what one pointer costs: three parent fetches beyond the
+    # tag, whatever the thread's depth. What was climbed is kept and the
+    # coordinate sitting above the cap is neither read nor detected.
+    bodies = _chain(texts=["@viditbot", "one", "two", "three", "four", _COORD_TEXT])
+    seen: list[str] = []
+    with _client(bodies, seen) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert seen == _CLIMB_IDS[:4]
+    assert [r.tweet_id for r in acquired.records] == list(reversed(_CLIMB_IDS[:4]))
+    assert resolve_threads([acquired.records]).reason == "coords_missing"
+
+
+def test_the_cap_bounds_the_footage_read_too():
+    # The coordinate met on the last permitted fetch: the footage post above it
+    # would be a fourth, so the read ends on the coordinate post. The cap is the
+    # bound on both legs.
+    bodies = _chain(texts=["@viditbot", "one", "two", _COORD_TEXT, "the footage above"])
+    bodies[_CLIMB_IDS[4]]["mediaDetails"] = _photo()
+    seen: list[str] = []
+    with _client(bodies, seen) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert seen == _CLIMB_IDS[:4]
+    assert [r.tweet_id for r in acquired.records] == list(reversed(_CLIMB_IDS[:4]))
+
+
+def test_a_bare_tag_under_another_authors_post_acquires_the_tag_alone():
+    # The same-author guard ends the climb, which is also the loop guard: a
+    # courtesy bare tag under the bot's own reply climbs nothing.
+    bodies = _chain(texts=["@viditbot", _COORD_TEXT])
+    bodies[_CLIMB_IDS[1]]["user"]["screen_name"] = "someone_else"
+    with _client(bodies) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert acquired.records == [acquired.post]
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param({"text": "@viditbot geolocated below"}, id="text"),
+        pytest.param({"mediaDetails": _photo()}, id="media"),
+        pytest.param(
+            {
+                "quoted_tweet": {
+                    "id_str": "1940000000000000900",
+                    "user": {"screen_name": "front_cam"},
+                    "text": "raw footage",
+                    "created_at": "2026-03-11T11:00:00.000Z",
+                }
+            },
+            id="quote",
+        ),
+    ],
+)
+def test_a_tag_carrying_content_of_its_own_reads_one_hop_only(content):
+    # Content beside the tag is content, and content is read where it sits. Text
+    # of its own, media of its own and a quoted post each say the analyst wrote
+    # this post rather than pointed with it.
+    bodies = _chain(texts=["@viditbot", "one", _COORD_TEXT])
+    bodies[_CLIMB_IDS[0]].update(content)
+    seen: list[str] = []
+    with _client(bodies, seen) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert [r.tweet_id for r in acquired.records] == [_CLIMB_IDS[1], _CLIMB_IDS[0]]
+    assert seen == [_CLIMB_IDS[0], _CLIMB_IDS[1]]
+
+
+def test_a_dot_mention_tag_is_content_and_reads_one_hop_only():
+    # The deliberate exclusion: the leading period of ``.@viditbot`` is residue,
+    # so the post reads as content. The conservative direction, since reading a
+    # pointer as content costs a refusal the analyst fixes by tagging again.
+    bodies = _chain(texts=[".@viditbot", "one", _COORD_TEXT])
+    seen: list[str] = []
+    with _client(bodies, seen) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert [r.tweet_id for r in acquired.records] == [_CLIMB_IDS[1], _CLIMB_IDS[0]]
+    assert seen == [_CLIMB_IDS[0], _CLIMB_IDS[1]]
+
+
 # ── The chase: the thread's sole source candidate, at most one fetch ───────
 
 
@@ -216,9 +430,6 @@ def test_a_chased_status_that_turns_out_to_be_the_analysts_own_is_dropped():
 
 
 def test_the_sole_telegram_candidate_is_chased_into_the_telegram_slot(monkeypatch):
-    import app.services.tweet_ingest.chase.telegram as telegram_mod
-    from app.services.tweet_ingest.records import ChasedPost, ChaseResult
-
     def fake_chase(target: str, *, client=None) -> ChaseResult:
         assert target == _TG_URL
         return ChaseResult(
@@ -245,10 +456,6 @@ def test_a_chase_that_found_nothing_reports_its_class_to_the_resolution(
     error. The class of it still travels, on the record that declared the
     target: only a transient one is worth importing again later, and the
     resolution is what turns that into the detection's warning."""
-    import app.services.tweet_ingest.chase.telegram as telegram_mod
-    from app.services.tweet_ingest import resolve_threads
-    from app.services.tweet_ingest.records import ChaseResult
-
     monkeypatch.setattr(
         telegram_mod, "chase", lambda target, *, client=None: ChaseResult(outcome=outcome)
     )
@@ -264,8 +471,6 @@ def test_a_chase_that_found_nothing_reports_its_class_to_the_resolution(
 
 
 def test_nothing_is_chased_when_the_candidates_are_ambiguous(monkeypatch):
-    import app.services.tweet_ingest.chase.telegram as telegram_mod
-
     def fail(*args, **kwargs):
         raise AssertionError("an ambiguous thread must not chase")
 

@@ -8,7 +8,9 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-_Nothing yet._
+### Fixed
+
+- A bare `@ViditBot` reply under the analyst's own thread now climbs to the coordinate post instead of refusing `coords_missing`; the pasted import follows the same rule (#303)
 
 ## v0.5.7, 2026-08-20
 
