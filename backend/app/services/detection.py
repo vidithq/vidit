@@ -1006,7 +1006,7 @@ async def backfill_from_archive(
     ``outcome.refusals`` under the same code the bot names back.
 
     ``chase`` runs the one chase step over each stitched thread, the same step
-    the live acquisition runs over its one hop. Off, the read is pure disk and a
+    the live acquisition runs over the thread it read. Off, the read is pure disk and a
     footage link is stored as a link, with no date and no media.
 
     Precondition: ``owner.x_handle`` is set. The handle is what every provenance

@@ -1,16 +1,17 @@
-"""Acquisition: link extraction, the one hop, the chase.
+"""Acquisition: link extraction, the one hop, the bare-tag climb, the chase.
 
 Tests over canned syndication bodies (no network, a ``MockTransport``):
 ``entities.urls`` must reach the record as expanded URLs bound to their
-wrappers, and ``acquire_thread`` must read the post plus its same-author parent,
-nothing further, then chase the thread's sole source candidate. What the
+wrappers, ``acquire_thread`` must read a contentful post plus its same-author
+parent and nothing further, a bare tag must climb its author's parents to the
+coordinate post, and the thread's sole source candidate must be chased. What the
 acquired thread then resolves to is pinned by ``tests/ingest_contract``.
 """
 
 import httpx
 import pytest
 
-from app.services.tweet_ingest import TweetNotAccessible, acquire_thread
+from app.services.tweet_ingest import TweetNotAccessible, acquire_thread, resolve_threads
 from app.services.tweet_ingest.syndication import (
     _cache_clear,
     extract_source_links,
@@ -153,6 +154,108 @@ def test_acquire_thread_raises_when_the_post_itself_is_unreadable():
         acquire_thread(_POST_ID, handle="analyst", client=client)
 
 
+# ── The bare tag: a pointer at the thread above it ────────────────────────
+#
+# The field shape: the analyst posts the coordinate (and the footage above it),
+# replies to themselves with the source, then drops a bare ``@ViditBot`` under
+# the last post of their own thread. The tag itself says nothing, so it
+# re-anchors on the coordinate rather than reading one hop and refusing.
+
+_CLIMB_IDS = [f"19400000000000005{n:02d}" for n in range(6)]
+_COORD_TEXT = "POV: 57.567596, 39.935483"
+
+
+def _chain(*, texts: list[str], handle: str = "analyst") -> dict[str, dict]:
+    """Bodies for a reply chain, ``texts[0]`` the post the caller is pointed at
+    and each next text its parent, so the last one is the thread head."""
+    bodies: dict[str, dict] = {}
+    for index, text in enumerate(texts):
+        parent = _CLIMB_IDS[index + 1] if index + 1 < len(texts) else None
+        bodies[_CLIMB_IDS[index]] = _body(
+            _CLIMB_IDS[index], handle=handle, text=text, reply_to=parent
+        )
+    return bodies
+
+
+def test_a_bare_tag_climbs_past_the_source_reply_to_the_coordinate_post():
+    # The reproduced case: the tag replies to a "Source:" post, which replies to
+    # the post carrying the coordinate and the media.
+    bodies = _chain(texts=["@viditbot", "Source: https://example.org/clip", _COORD_TEXT])
+    seen: list[str] = []
+    with _client(bodies, seen) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert [r.tweet_id for r in acquired.records] == [_CLIMB_IDS[2], _CLIMB_IDS[1], _CLIMB_IDS[0]]
+    assert seen == [_CLIMB_IDS[0], _CLIMB_IDS[1], _CLIMB_IDS[2]]
+
+    [detection] = resolve_threads([acquired.records]).detections
+    assert detection.coordinate.lat == pytest.approx(57.567596)
+    assert detection.coordinate.lng == pytest.approx(39.935483)
+
+
+def test_the_climb_stops_on_the_coordinate_post_and_reads_one_post_above_it():
+    # The numbered shape: footage in the head, the coordinate in the reply under
+    # it. The post above the coordinate is read so its media reaches the
+    # resolution; the one above that is not.
+    bodies = _chain(
+        texts=[
+            "@viditbot",
+            f"2 | 2 {_COORD_TEXT}",
+            "1 | 2 footage",
+            "unrelated earlier post",
+        ]
+    )
+    seen: list[str] = []
+    with _client(bodies, seen) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert [r.tweet_id for r in acquired.records] == [_CLIMB_IDS[2], _CLIMB_IDS[1], _CLIMB_IDS[0]]
+    assert seen == [_CLIMB_IDS[0], _CLIMB_IDS[1], _CLIMB_IDS[2]]
+
+
+def test_a_bare_tag_with_no_coordinate_stops_at_the_cap_and_still_refuses():
+    # The cap bounds what one pointer costs: three parent fetches beyond the
+    # tag, whatever the thread's depth. What was climbed is kept, so the refusal
+    # is the analyst's own text, not the limit.
+    bodies = _chain(texts=["@viditbot", "one", "two", "three", "four", _COORD_TEXT])
+    seen: list[str] = []
+    with _client(bodies, seen) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert seen == _CLIMB_IDS[:4]
+    assert [r.tweet_id for r in acquired.records] == list(reversed(_CLIMB_IDS[:4]))
+    assert resolve_threads([acquired.records]).reason == "coords_missing"
+
+
+def test_a_bare_tag_under_another_authors_post_acquires_the_tag_alone():
+    # The same-author guard ends the climb, which is also the loop guard: a
+    # courtesy bare tag under the bot's own reply climbs nothing.
+    bodies = _chain(texts=["@viditbot", _COORD_TEXT])
+    bodies[_CLIMB_IDS[1]]["user"] = {"screen_name": "someone_else"}
+    with _client(bodies) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert acquired.records == [acquired.post]
+
+
+def test_a_tag_carrying_text_of_its_own_reads_one_hop_only():
+    # Content beside the tag is content, and content is read where it sits.
+    bodies = _chain(texts=["@viditbot geolocated below", "one", _COORD_TEXT])
+    seen: list[str] = []
+    with _client(bodies, seen) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert [r.tweet_id for r in acquired.records] == [_CLIMB_IDS[1], _CLIMB_IDS[0]]
+    assert seen == [_CLIMB_IDS[0], _CLIMB_IDS[1]]
+
+
+def test_a_tag_carrying_media_reads_one_hop_only():
+    bodies = _chain(texts=["@viditbot", "one", _COORD_TEXT])
+    bodies[_CLIMB_IDS[0]]["mediaDetails"] = [
+        {"type": "photo", "media_url_https": "https://pbs.twimg.com/media/x.jpg"}
+    ]
+    seen: list[str] = []
+    with _client(bodies, seen) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert [r.tweet_id for r in acquired.records] == [_CLIMB_IDS[1], _CLIMB_IDS[0]]
+    assert seen == [_CLIMB_IDS[0], _CLIMB_IDS[1]]
+
+
 # ── The chase: the thread's sole source candidate, at most one fetch ───────
 
 
@@ -246,7 +349,6 @@ def test_a_chase_that_found_nothing_reports_its_class_to_the_resolution(
     target: only a transient one is worth importing again later, and the
     resolution is what turns that into the detection's warning."""
     import app.services.tweet_ingest.chase.telegram as telegram_mod
-    from app.services.tweet_ingest import resolve_threads
     from app.services.tweet_ingest.records import ChaseResult
 
     monkeypatch.setattr(
