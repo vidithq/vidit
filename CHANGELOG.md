@@ -8,9 +8,13 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+_Nothing yet._
+
+## v0.5.8, 2026-08-20
+
 ### Fixed
 
-- A bare `@ViditBot` reply under the analyst's own thread now climbs to the coordinate post instead of refusing `coords_missing`; the pasted import follows the same rule (#303)
+- **A bare `@ViditBot` reply under the analyst's own thread now climbs to the coordinate post** ([`backend/app/services/tweet_ingest/acquire.py`](backend/app/services/tweet_ingest/acquire.py), [`docs/ingestion.md`](docs/ingestion.md#what-acquisition-reads)) (#303). Acquisition read the tagged post plus one same-author parent, so a bare tag dropped under the last post of a geolocation thread saw the source reply and never the coordinate, and refused `coords_missing`. A tag carrying nothing but mentions now re-anchors: same-author parents are climbed until one carries a coordinate (scanned over shortlink-expanded text, and an out-of-bounds pair stops the climb so `coords_invalid` stays actionable), then the post above joins as footage only, all capped at three parent fetches. A tagged post with content of its own keeps the one-hop read, and the pasted import follows the same rule.
 
 ## v0.5.7, 2026-08-20
 
