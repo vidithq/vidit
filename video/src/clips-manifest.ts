@@ -60,9 +60,9 @@ export const RECORDED: Record<string, RecordedClip> = {
   "bot-embed": {
     "src": "clips/bot-embed.mp4",
     "fps": 60,
-    "durationSec": 9.379,
+    "durationSec": 9.382,
     "marks": {
-      "embedX": 84,
+      "embedX": 482,
       "embedY": 10,
       "embedW": 316.8,
       "embedH": 699.84

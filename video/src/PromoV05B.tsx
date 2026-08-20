@@ -6,11 +6,12 @@ import {
   useCurrentFrame,
 } from "remotion";
 import { Background } from "./components/Background";
+import { BotBeat } from "./components/BotBeat";
 import { Caption } from "./components/Caption";
 import { Intro } from "./components/Intro";
 import { OutroV04 } from "./components/OutroV04";
 import { VideoChrome } from "./components/VideoChrome";
-import { RECORDED } from "./clips-manifest";
+import { RECORDED, type DropInClip } from "./clips-manifest";
 import { RELEASE } from "./build-version";
 
 // The v0.5 promo B, "import and review": the brand intro, then ONE unbroken
@@ -33,6 +34,10 @@ import { RELEASE } from "./build-version";
 //
 // Beat 1 opens mid-form rather than on a still, so the intro carries the poster
 // frame a tweet shows before anyone presses play.
+//
+// After the take, and outside it, comes the bot beat: X, where the work starts
+// for most analysts. It is the one change of world in the film, so it gets a
+// dissolve of its own, the same length as the two around the take.
 
 const COMP_FPS = 60;
 // Long enough to read as a dissolve rather than a cut.
@@ -217,10 +222,47 @@ const URL_CUES: { at: number; url: string }[] = [
 const pickAt = <T extends { at: number }>(cues: T[], frame: number): T =>
   cues.reduce((cur, c) => (frame >= c.at ? c : cur), cues[0]);
 
+// ── the bot beat ──────────────────────────────────────────────────────────
+//
+// The last thing before the closing card, and the only part of the film that
+// is not the product: the official X embed (dark) of a real coordinate tweet,
+// rendered by platform.twitter.com in a real browser and recorded by
+// `node record-v04.js bot-embed`. `BotBeat` plays it inside the same browser
+// chrome the rest of the film uses, and it is handed over as that component's
+// drop-in capture because that is what it is: a recording of a real X surface
+// rather than a mock of one. Only `src` is read from the clip; the size is the
+// plate's own, recorded at the capture viewport times its DPR.
+//
+// Without the plate on this machine the beat drops out and the take runs
+// straight into the closing card, rather than the render failing.
+const PLATE = RECORDED["bot-embed"];
+const BOT_PLATE: DropInClip | null = PLATE
+  ? {
+      src: PLATE.src,
+      fps: PLATE.fps,
+      durationSec: PLATE.durationSec,
+      width: 2560,
+      height: 1440,
+    }
+  : null;
+// Long enough to read the tweet, its coordinates and the caption's claim, and
+// no longer: the plate is a still shot of someone else's post.
+const BOT_SECONDS = BOT_PLATE ? Math.min(BOT_PLATE.durationSec, 7) : 0;
+const BOT_FRAMES = Math.round(BOT_SECONDS * COMP_FPS);
+// The v0.4 promo's line for this beat, unchanged: one claim, one beat, and the
+// same words wherever the bot is explained.
+const BOT_CAPTION = {
+  eyebrow: "@viditbot",
+  title: "Tag @viditbot on a new geolocation and it lands in your detections.",
+};
+
 // ── timeline ──────────────────────────────────────────────────────────────
 
 const TAKE_START = INTRO_FRAMES - INTRO_LEAD - CROSSFADE;
-const OUTRO_START = TAKE_START + TAKE_FRAMES - CROSSFADE;
+// The bot beat mixes in over the take's own fade-out, so the two crossfades
+// are one dissolve rather than a dip through the background.
+const BOT_START = TAKE_START + TAKE_FRAMES - CROSSFADE;
+const OUTRO_START = BOT_FRAMES > 0 ? BOT_START + BOT_FRAMES - CROSSFADE : BOT_START;
 export const PROMO_V05B_DURATION = OUTRO_START + OUTRO_FRAMES;
 
 const TakeStage: React.FC = () => {
@@ -267,6 +309,32 @@ const TakeStage: React.FC = () => {
   );
 };
 
+// The plate carries its own entry fade (`BotBeat`), so only the exit is added
+// here: the closing card has no ground of its own, and the wordmark must not
+// rise over a live tweet.
+const BotStage: React.FC = () => {
+  const frame = useCurrentFrame();
+  const opacity = interpolate(frame, [BOT_FRAMES - CROSSFADE, BOT_FRAMES], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  return (
+    <AbsoluteFill style={{ opacity }}>
+      <div
+        style={{
+          position: "absolute",
+          left: CHROME_LEFT,
+          top: CHROME_TOP,
+          width: CHROME_WIDTH,
+          height: CHROME_HEIGHT,
+        }}
+      >
+        <BotBeat width={CHROME_WIDTH} height={CHROME_HEIGHT} capture={BOT_PLATE} />
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 export const PromoV05B: React.FC = () => {
   return (
     <AbsoluteFill>
@@ -304,6 +372,25 @@ export const PromoV05B: React.FC = () => {
           </Sequence>
         );
       })}
+
+      {BOT_FRAMES > 0 && (
+        <>
+          <Sequence from={BOT_START} durationInFrames={BOT_FRAMES}>
+            <BotStage />
+          </Sequence>
+          {/* Anchored to the beat rather than to a mark: this beat is not part
+              of the take, so it has none. It starts where the take's last
+              caption ends and clears before the closing card. */}
+          <Sequence from={BOT_START} durationInFrames={BOT_FRAMES - CROSSFADE}>
+            <Caption
+              eyebrow={BOT_CAPTION.eyebrow}
+              title={BOT_CAPTION.title}
+              fontSize={CAPTION_FONT_SIZE}
+              durationInFrames={BOT_FRAMES - CROSSFADE}
+            />
+          </Sequence>
+        </>
+      )}
 
       <Sequence from={OUTRO_START} durationInFrames={OUTRO_FRAMES}>
         <OutroV04 durationInFrames={OUTRO_FRAMES} />

@@ -54,8 +54,11 @@ function ensureRealArchive() {
 }
 
 // The real tweet the bot beat's X embed renders (same analyst + tweet the
-// 0.3 pipeline used; see record-submit.js TWEET_URL).
-const BOT_EMBED_TWEET = "https://x.com/geo27752/status/2060086984513626223";
+// 0.3 pipeline used; see record-submit.js TWEET_URL). PROMO_BOT_TWEET swaps
+// it for a shoot: X renders whichever public status it is given, and which one
+// reads best is a question for the frames rather than for this constant.
+const BOT_EMBED_TWEET =
+  process.env.PROMO_BOT_TWEET || "https://x.com/geo27752/status/2060086984513626223";
 
 const {
   wait,
@@ -1131,9 +1134,11 @@ async function clipBotEmbed() {
       `<!doctype html><html><head><meta charset="utf-8"><style>
          html,body { margin:0; background:#000; height:100%; overflow:hidden; }
          /* The real tweet (with its quoted tweet) renders ~970px tall at
-            width 440; scale it to fit the 720px viewport with the reply
-            column composed to its right by the Remotion overlay. */
-         #holder { position:absolute; left:84px; top:10px; width:440px;
+            width 440; scale it to fit the 720px viewport. Centred, because
+            the plate is the whole picture now: BotBeat plays it inside the
+            browser chrome on its own, where an off-centre column would leave
+            two thirds of the frame black. 482 = (1280 - 440 x 0.72) / 2. */
+         #holder { position:absolute; left:482px; top:10px; width:440px;
                    transform: scale(0.72); transform-origin: top left; }
          .twitter-tweet { margin: 0 !important; }
        </style></head><body>
@@ -1177,21 +1182,28 @@ async function clipBotEmbed() {
 // ─── main ────────────────────────────────────────────────────────────────
 
 (async () => {
-  const which = (process.argv[2] || "demo,bot-embed").split(",");
+  const which = (process.argv[2] || "demo,bot-embed").split(",").map((w) => w.trim());
 
-  const auth = await mintCookies("analyst@vidit.app", "analyst");
-  const zipPath = ensureRealArchive();
+  // The bot-embed plate is an X embed and nothing else: no session, no
+  // archive, no instance. A run that asks for the plate alone therefore signs
+  // in to nothing and leaves the queue exactly as it found it, which is what
+  // lets the other pipelines borrow the plate without their own field being
+  // rearranged under them.
+  if (which.some((w) => w !== "bot-embed")) {
+    const auth = await mintCookies("analyst@vidit.app", "analyst");
+    const zipPath = ensureRealArchive();
 
-  // Real-data setup: promoted hero + empty open queue (see setupRealData).
-  // The queue-clearing half only matters when a take that needs a clean
-  // field (map) or that re-imports (import) is being recorded; a partial
-  // run of queue/promote alone must keep the existing detections.
-  const needsCleanField = which.includes("demo");
-  const hero = needsCleanField
-    ? await setupRealData(auth)
-    : (await findHeroEvent(auth)) ?? (await setupRealData(auth));
+    // Real-data setup: promoted hero + empty open queue (see setupRealData).
+    // The queue-clearing half only matters when a take that needs a clean
+    // field (map) or that re-imports (import) is being recorded; a partial
+    // run of queue/promote alone must keep the existing detections.
+    const needsCleanField = which.includes("demo");
+    const hero = needsCleanField
+      ? await setupRealData(auth)
+      : (await findHeroEvent(auth)) ?? (await setupRealData(auth));
 
-  if (which.includes("demo")) await clipDemo(auth, hero, zipPath);
+    if (which.includes("demo")) await clipDemo(auth, hero, zipPath);
+  }
   if (which.includes("bot-embed")) await clipBotEmbed();
 
   console.log("\n✓ all requested clips recorded");

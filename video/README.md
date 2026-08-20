@@ -195,7 +195,7 @@ Two beats are meant to be REAL X screen recordings, captured manually:
 
 | Slot file | Used by | Until it exists |
 |---|---|---|
-| `public/clips/bot-x-capture.mp4` | `PromoV04` bot beat (tweet → tag `@viditbot` → like → reply) | the interim composite renders: the real X embed recording (`bot-embed.mp4`) plus an overlay of the tag reply, like, and bot reply in X's dark idiom |
+| `public/clips/bot-x-capture.mp4` | `PromoV04` bot beat (tweet → tag `@viditbot` → like → reply) | `BotBeat` renders its mock instead: an X-dark card of a geolocation tweet carrying the strict bot format inline, then the bot's in-thread reply with the real `compose_reply` copy. It draws the two avatars and the proof still from `public/clips/`, which are fetched assets rather than recorded ones |
 | `public/clips/x-export-capture.mp4` | `FeatureImport` opening (Settings → "Download an archive of your data") | a styled placeholder card renders instead |
 
 Drop the file in, re-run `node gen-clips-manifest.js`, re-render. The
@@ -401,7 +401,8 @@ VIDIT_DEMO_PASSWORD=… npm run record:v05b   # → public/clips/import-review.m
 npm run render:v05b                          # → out/promo-v05b.mp4
 ```
 
-The beats, all windows of the one take:
+The beats. Beats 1 to 7 are one continuous take; the bot beat is a separate
+plate, and the closing card follows it:
 
 | # | Beat | What is on camera |
 |---|---|---|
@@ -412,7 +413,37 @@ The beats, all windows of the one take:
 | 5 | The review pass | `Detection n of m`, the footage, the coordinates and the source, then the conflict typeahead and the capture source. |
 | 6 | Submit | The proof, both submit clicks, and the next detection opening on its own. |
 | 7 | The map | The camera easing onto the field the pass just worked. |
-| 8 | Closing card | `OutroV04`, shared with the other promos. |
+| 8 | @viditbot | The official X embed (dark) of a real coordinate tweet, held for 7 seconds under the v0.4 promo's own line for this beat. |
+| 9 | Closing card | `OutroV04`, shared with the other promos. |
+
+### The bot beat is a plate, not part of the take
+
+Beat 8 leaves the product for X, which is where the work starts for most
+analysts, so it is the one change of world in the film and it dissolves in over
+the take's own fade-out. `BotBeat` plays it inside the same browser chrome the
+rest of the film uses.
+
+The picture is `public/clips/bot-embed.mp4`: the official X embed, dark theme,
+rendered by platform.twitter.com in a real browser and recorded as a plate.
+Record it with the v0.4 pipeline, which needs no instance and no session for
+this clip and leaves the detections queue untouched:
+
+```bash
+cd video
+node record-v04.js bot-embed          # → public/clips/bot-embed.mp4
+PROMO_BOT_TWEET=https://x.com/…/status/… node record-v04.js bot-embed
+```
+
+`BOT_EMBED_TWEET` in `record-v04.js` is the default status, and
+`PROMO_BOT_TWEET` overrides it for a shoot. Two things decide which status to
+film, and both are checked on the frames rather than argued: X sometimes
+refuses to render an embed headless, which leaves a blank iframe, and a status
+whose author tags `@viditbot` in the post itself puts the caption's claim on
+screen instead of beside it. `bot_mentions` is where the real exchanges are
+recorded, so a status the bot actually replied to can be looked up there.
+
+Without the plate on the machine the beat drops out and the take runs straight
+into the closing card, rather than the render failing.
 
 ### This take writes to the instance
 
