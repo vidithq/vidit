@@ -2,5 +2,5 @@
 // BUILD_VERSION mirrors what frontend/next.config.mjs bakes into the
 // app's version pill; RELEASE is the part a promo names.
 
-export const BUILD_VERSION = "v0.5.6-14-g8a2b121-dirty";
+export const BUILD_VERSION = "v0.5.6-15-ga1bf2d3-dirty";
 export const RELEASE = "0.5";
