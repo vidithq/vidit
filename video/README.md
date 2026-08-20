@@ -369,11 +369,14 @@ snapshot URL that does not resolve is worse than an empty glyph.
 
 ## v0.5 promo B, import and review (`PromoV05B`)
 
-About 31 seconds of take between the brand intro and the closing card: an
-archive import and a review pass, recorded **signed in** as the analyst who
-consented to appear. One continuous take, and the beats dissolve into each
-other rather than cutting, because a hard cut between two frames of the same
-session reads as a glitch.
+One unbroken take between the brand intro and the closing card: an archive
+import and a review pass, recorded **signed in** as the analyst who consented
+to appear. The comp plays the whole take as one window and crossfades only
+into and out of the recorded part. The one exception is the import wait,
+which the comp compresses without a cut: the segment between the privacy
+hold and the Done step plays at a higher rate between two normal-speed
+segments over the same source, each starting on the frame the previous one
+ended, so the progress steps tick through and the screen never jumps.
 
 ```bash
 make promo-v05b      # record + render + both outputs
