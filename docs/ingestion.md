@@ -167,9 +167,9 @@ flowchart TD
   climb["`**climb one parent**
   same author only, at most 3 fetches, each parent joins the thread`"]:::shared
   coord{"`**scan_coords**
-  does the climbed post carry a coordinate?`"}:::core
+  does the climbed post carry a coordinate, in its expanded text?`"}:::core
   above["`**one post above**
-  the footage the coordinate post replies to`"]:::shared
+  the footage the coordinate post replies to; joined only when it carries media and no coordinate of its own`"]:::shared
   out["`**the thread**
   parents first, then the named post`"]:::spec
 
@@ -178,14 +178,19 @@ flowchart TD
   bare -- "yes: a pointer at the thread above" --> climb --> coord
   coord -- "no, and a fetch is left" --> climb
   coord -- "no, and the cap is spent" --> out
-  coord -- "yes" --> above --> out
+  coord -- "yes, and a fetch is left" --> above --> out
+  coord -- "yes, with media of its own, or the cap spent" --> out
 ```
 
 **One hop.** A post carrying text, media or a quote is content, and content is read where it sits: the post plus the same-author post it replies to, nothing further.
 
 **The bare tag.** A reply whose text is mentions and whitespace, with no media and no quoted post, says only "read the thread above me". It is the shape an analyst produces by dropping `@ViditBot` under the last post of their own geolocation thread, where the coordinate sits two or more posts up. Acquisition re-anchors on it: it climbs the same author's parents and every post it climbs through joins the thread, so a source line between the tag and the coordinate still reaches the resolution.
 
-**Where the climb stops.** The climb stops on the first parent whose text carries a coordinate ([`scan_coords`](../backend/app/services/tweet_ingest/extract.py)) and then reads one post further, since the coordinate post replies to the footage it geolocates. Three parent fetches is the ceiling, the extra read included, which bounds what one pointer costs the shared syndication budget. A climb that spends the ceiling without meeting a coordinate keeps what it read, so the refusal comes from the analyst's own text (`coords_missing`) rather than from the limit.
+**Where the climb stops.** The climb stops on the first parent carrying a coordinate ([`scan_coords`](../backend/app/services/tweet_ingest/extract.py)). It scans the expanded text, the same text the engine resolves, so a coordinate carried by a Google Maps link stops it exactly as a typed one does. A coordinate-shaped string outside the world stops it too, which is what turns a typo into the `coords_invalid` the analyst can act on.
+
+What follows depends on that post. A coordinate post carrying media of its own is the footage carrier, so the read ends there. A coordinate post carrying none reads a single post further, the footage it replies to, and joins that post only when it carries media and no coordinate of its own: a post with a coordinate of its own is a separate geolocation whose footage sits elsewhere, and a post with neither adds only its links, which can leave the thread's source ambiguous.
+
+Three parent fetches is the ceiling, the footage read included, which bounds what one pointer costs the shared syndication budget. A coordinate met on the third fetch therefore ends the read there and the post above it is not fetched. A climb that spends the ceiling without meeting a coordinate keeps what it read and refuses `coords_missing` on it; that refusal does not distinguish a thread carrying no coordinate from one whose coordinate sits above the ceiling or behind a parent fetch that failed.
 
 **One author.** A parent by another author never joins the thread and ends the climb, on both legs. That is also the loop guard: a courtesy bare tag under the bot's own reply climbs nothing, because the bot is another author.
 

@@ -144,7 +144,10 @@ export default function ImportGuidePage() {
           from the X handle linked to your Vidit account, and a retweet does not
           count. It carries a coordinate: anywhere in its text, or in the text
           of your own post it directly replies to. A coordinate that appears
-          only in a post you quote does not count.
+          only in a post you quote does not count. One exception reads further:
+          a reply that says nothing but @ViditBot points at the thread above it,
+          so the bot climbs your own posts, up to three, until it finds the one
+          carrying the coordinate.
         </p>
         <h2 className={SECTION}>What the detection carries</h2>
         <ul className={LIST}>

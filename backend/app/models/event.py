@@ -306,8 +306,10 @@ class Event(Base):
     # Every post id of the thread the detection was read from, the anchor included.
     # The re-import match reads it so the three entries land on one row for one
     # geolocation: an archive stitches a self-thread A→B→C whole and anchors on
-    # A, while a bot tag or a paste on C reads one hop and anchors on B, so
-    # matching the anchor alone would file one geolocation as two detections. Written
+    # A, while a bot tag or a paste on C anchors on the head of what the
+    # acquisition read, B for a post carrying content of its own and higher for a
+    # bare tag that climbs, so matching the anchor alone would file one
+    # geolocation as two detections. Written
     # once, at creation: it is provenance, not import-owned state. NULL for human
     # submits; rows written before the column carry their anchor id alone.
     detected_thread_tweet_ids: Mapped[list[int] | None] = mapped_column(

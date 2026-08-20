@@ -7,10 +7,10 @@ one of its own author's, that parent. A post carrying content of its own stops
 there, one hop. A post carrying nothing but mentions is a pointer rather than
 content (the bare ``@ViditBot`` tag an analyst drops under their own thread), so
 it re-anchors: the climb follows same-author parents until one of them carries a
-coordinate, then takes one more parent above it, capped at
-:data:`_BARE_TAG_MAX_CLIMB` fetches. Either way the climb stays inside one
-author, so the result is a thread ``resolve_threads`` reads as the analyst's own
-work. It then runs ``chase.chase_thread`` over that thread, the same one chase
+coordinate, then reads one post further for the footage when the coordinate post
+carries no media of its own, capped at :data:`_BARE_TAG_MAX_CLIMB` fetches.
+Either way the climb stays inside one author, so the result is a thread
+``resolve_threads`` reads as the analyst's own work. It then runs ``chase.chase_thread`` over that thread, the same one chase
 step the archive backfill runs over each stitched self-thread, so the resolution
 downstream is pure and neither knows which technology answered. The archive
 keeps its own reader: an export carries every reply edge inline, so it stitches
@@ -19,7 +19,6 @@ whole self-threads without a fetch.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,8 +26,8 @@ import httpx
 
 from .chase import chase_thread
 from .errors import TweetImportError
-from .extract import scan_coords
-from .records import QuotedTweet, SourceLink, TweetRecord
+from .extract import is_mentions_only, scan_coords
+from .records import QuotedTweet, SourceLink, TweetRecord, expand_shortlinks
 from .syndication import extract_media, extract_source_links, fetch_syndication
 from .urls import normalise_tweet_url
 
@@ -136,61 +135,86 @@ def _self_reply_parent(
     return parent
 
 
-# A mention as X writes it: ``@`` plus 1 to 15 word characters, the handle
-# grammar the platform enforces.
-_MENTION_RE = re.compile(r"@[A-Za-z0-9_]{1,15}")
-
 # How many parent fetches a bare tag may spend climbing. Three is the field
 # shape it exists for: the tag under a source reply, the coordinate post above
 # that, and the footage post the coordinate post itself replies to. It bounds
 # what one pointer costs the shared syndication budget, and a climb that spends
 # it without meeting a coordinate keeps what it read, so the resolution refuses
-# ``coords_missing`` on the analyst's own words rather than on a fetch limit.
+# ``coords_missing`` on what it did read. The cap is the bound on both legs: a
+# coordinate met on the last permitted fetch ends the read there, so the
+# footage post above it is not fetched.
 _BARE_TAG_MAX_CLIMB = 3
 
 
 def _is_bare_tag(post: TweetRecord) -> bool:
     """Whether ``post`` carries nothing of its own beyond mentions.
 
-    Addressing is not content: a reply whose text is mentions and whitespace,
-    with no media and no quoted post, says only "read the thread above me". Any
-    text the analyst wrote around the tag (a coordinate, a source line, a
-    correction) makes the post content, and content is read where it sits.
+    Addressing is not content: a reply whose text is mentions and whitespace
+    (:func:`extract.is_mentions_only`), with no media and no quoted post, says
+    only "read the thread above me". Any text the analyst wrote around the tag
+    (a coordinate, a source line, a correction) makes the post content, and
+    content is read where it sits.
+
+    Residue keeps a post contentful by design, which is the conservative
+    direction: a dot-mention (``.@viditbot``, the habit that makes a reply
+    visible to a whole timeline) leaves its period behind, so it reads as
+    content and takes one hop rather than the climb. Reading a pointer as
+    content costs the analyst a refusal they can fix by tagging again; reading
+    content as a pointer spends fetches on posts they did not point at.
     """
-    return (
-        not post.media
-        and post.quoted_status_id is None
-        and not _MENTION_RE.sub("", post.text).strip()
-    )
+    return not post.media and post.quoted_status_id is None and is_mentions_only(post.text)
+
+
+def _carries_coordinate(record: TweetRecord) -> bool:
+    """Whether ``record`` is a post the analyst wrote a coordinate in.
+
+    The scan runs over the expanded text, the text ``resolve_threads`` reads:
+    a coordinate carried by a Google Maps link is an opaque ``t.co`` token in
+    the raw text, so scanning the raw text would walk straight past the post
+    that carries it. A coordinate-shaped string outside the world counts as
+    carried (``CoordScan.out_of_bounds``): it is still the post the analyst
+    geolocated in, and reading it is what turns a typo into the actionable
+    ``coords_invalid`` instead of a walk past it.
+    """
+    scan = scan_coords(expand_shortlinks(record.text, record.external_sources))
+    return bool(scan.coords) or scan.out_of_bounds
 
 
 def _climb_to_coords(post: TweetRecord, *, client: httpx.Client | None = None) -> list[TweetRecord]:
     """The same-author posts above a bare tag, earliest first.
 
-    One fetch per parent, capped at :data:`_BARE_TAG_MAX_CLIMB`. The climb stops
-    on the first parent whose text carries a coordinate and then reads one post
-    further, since the coordinate post replies to the footage it geolocates in
-    the thread shape this serves; that extra read is inside the cap. Every post
-    climbed through joins the thread, so a source line between the tag and the
-    coordinate still reaches the resolution. Same-author only
+    One fetch per parent, and :data:`_BARE_TAG_MAX_CLIMB` is the whole budget.
+    The climb stops on the first parent carrying a coordinate
+    (:func:`_carries_coordinate`), and what follows depends on that post. One
+    carrying media of its own is the footage carrier, so the read ends there and
+    spends nothing further. One carrying none reads a single post above it, the
+    footage the coordinate post replies to, and joins it only when it carries
+    media and no coordinate: a post with a coordinate of its own is a separate
+    geolocation whose footage sits elsewhere, and a post with neither adds only
+    its links, which can leave the thread's source ambiguous.
+
+    Every post the climb goes through joins the thread, so a source line between
+    the tag and the coordinate still reaches the resolution. Same-author only
     (:func:`_self_reply_parent`), which is what stops the climb at someone
     else's post and what keeps a courtesy tag under the bot's own reply from
     climbing at all.
     """
     climbed: list[TweetRecord] = []
     current = post
-    for spent in range(_BARE_TAG_MAX_CLIMB):
+    remaining = _BARE_TAG_MAX_CLIMB
+    anchored = False
+    while remaining > 0 and not anchored:
+        remaining -= 1
         parent = _self_reply_parent(current, client=client)
         if parent is None:
             break
         climbed.append(parent)
         current = parent
-        if scan_coords(parent.text).coords:
-            if spent + 1 < _BARE_TAG_MAX_CLIMB:
-                above = _self_reply_parent(parent, client=client)
-                if above is not None:
-                    climbed.append(above)
-            break
+        anchored = _carries_coordinate(parent)
+    if anchored and not current.media and remaining > 0:
+        above = _self_reply_parent(current, client=client)
+        if above is not None and above.media and not _carries_coordinate(above):
+            climbed.append(above)
     climbed.reverse()
     return climbed
 

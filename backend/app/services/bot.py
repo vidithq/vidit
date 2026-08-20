@@ -17,7 +17,8 @@ nothing about the grammar lives here. Acquisition is
 :func:`tweet_ingest.acquire_thread`, shared with the paste: the tagged post plus
 the same author's post it replies to, one hop and no further, unless the tag is
 bare (nothing but mentions), in which case it climbs the same author's parents
-to the coordinate post and one post above it. The one chase step runs over what
+to the coordinate post, plus the footage post above it when that post carries
+media and the coordinate post does not. The one chase step runs over what
 comes back. ``tweet_ingest.resolve_threads`` then reads that thread
 and ``detection.persist_detections`` writes what it read, owned by the account
 ``detection.linked_owner`` maps the tagged author's handle to, read once per

@@ -208,6 +208,12 @@ def extract_coords(text: str) -> list[ParsedCoord]:
 # ── Retweet rule ──────────────────────────────────────────────────────────
 
 
+# The X handle grammar the platform enforces: 1 to 15 word characters. One
+# home, read by the retweet prefix below and by the mention pattern of
+# :func:`is_mentions_only`.
+_HANDLE = r"[A-Za-z0-9_]{1,15}"
+
+
 # The retweet discriminator, and the one home for why the text is the only
 # reliable signal. An export entry carries no flag worth trusting: there is no
 # ``retweeted_status`` object (the exporter drops it) and the ``retweeted``
@@ -219,7 +225,7 @@ def extract_coords(text: str) -> list[ParsedCoord]:
 # variants like a lowercase ``rt`` or a missing colon are out of scope, and a
 # post the owner hand-typed with the canonical prefix is dropped along with real
 # retweets, its content being someone else's either way.
-_RETWEET_PREFIX_RE = re.compile(r"^RT @[A-Za-z0-9_]{1,15}:")
+_RETWEET_PREFIX_RE = re.compile(rf"^RT @{_HANDLE}:")
 
 
 def is_retweet(text: str) -> bool:
@@ -234,6 +240,22 @@ def is_retweet(text: str) -> bool:
 
 
 # ── Bot tag ───────────────────────────────────────────────────────────────
+
+
+# A mention as X writes it: ``@`` plus a handle.
+_MENTION_RE = re.compile(rf"@{_HANDLE}")
+
+
+def is_mentions_only(text: str) -> bool:
+    """Whether ``text`` says nothing beyond the accounts it addresses.
+
+    Every ``@handle`` comes out and what is left is what the analyst wrote, so
+    mentions and whitespace alone answer true. Any other residue answers false,
+    a dot-mention's leading period (``.@viditbot``) included; the acquisition
+    reads that answer to tell a post that points at a thread from a post that
+    says something (:func:`acquire._is_bare_tag`).
+    """
+    return not _MENTION_RE.sub("", text).strip()
 
 
 def strip_bot_tag(text: str, handle: str) -> str:
