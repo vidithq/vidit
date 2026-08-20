@@ -60,12 +60,54 @@ export const RECORDED: Record<string, RecordedClip> = {
   "bot-embed": {
     "src": "clips/bot-embed.mp4",
     "fps": 60,
-    "durationSec": 9.379,
+    "durationSec": 6.382,
     "marks": {
-      "embedX": 84,
-      "embedY": 10,
-      "embedW": 316.8,
-      "embedH": 699.84
+      "embedX": 222,
+      "embedY": 30,
+      "embedW": 836,
+      "embedH": 659.3
+    }
+  },
+  "portfolio": {
+    "src": "clips/portfolio.mp4",
+    "fps": 60,
+    "durationSec": 32.085,
+    "marks": {
+      "identity": 0,
+      "coverage": 1.961,
+      "insights": 7.364,
+      "submissions": 14.199,
+      "cardClick": 16.965,
+      "eventUrl": 18.316,
+      "eventOpen": 18.411,
+      "eventScroll": 20.412,
+      "archiveHover": 23.482,
+      "mapNav": 25.841,
+      "mapUrl": 26.6,
+      "mapOpen": 28.272
+    }
+  },
+  "import-review": {
+    "src": "clips/import-review.mp4",
+    "fps": 60,
+    "durationSec": 56.459,
+    "marks": {
+      "panel": 0,
+      "finderOpen": 1.785,
+      "finderPick": 3.363,
+      "filePicked": 3.791,
+      "importClick": 4.94,
+      "privacyHold": 6.41,
+      "importDone": 28.744,
+      "queueUrl": 31.733,
+      "queueOpen": 31.811,
+      "filterReady": 34.312,
+      "draftUrl": 40.599,
+      "draftOpen": 40.843,
+      "draftScroll": 43.044,
+      "tagFill": 45.809,
+      "submitClick": 51.836,
+      "nextDraft": 53.649
     }
   }
 };

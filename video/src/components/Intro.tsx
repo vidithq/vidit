@@ -13,8 +13,14 @@ import { MONTSERRAT } from "../fonts";
 // The whole wordmark "Vidit" is a single inline string; the leading V
 // gets the brand orange + glow, the rest stays white. Animating both
 // as one element means the V can't desync from the rest of the word.
-export const Intro: React.FC<{ durationInFrames: number }> = ({
+//
+// `release` names the release the video is about ("0.5"). It rides the
+// wordmark's own spring rather than the tagline's later fade, so the release
+// is legible in the very first frame, which is the poster a tweet shows
+// before anyone presses play. Omit it and the intro is the plain wordmark.
+export const Intro: React.FC<{ durationInFrames: number; release?: string }> = ({
   durationInFrames,
+  release,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -67,6 +73,22 @@ export const Intro: React.FC<{ durationInFrames: number }> = ({
           V
         </span>
         <span style={{ color: "#fafafa" }}>idit</span>
+        {release && (
+          <span
+            style={{
+              // Two thirds of the wordmark's weight and a little over a
+              // third of its size, so it reads as a version beside the name
+              // rather than as part of it.
+              fontSize: 54,
+              fontWeight: 600,
+              letterSpacing: -1,
+              marginLeft: 20,
+              color: "#fb923c",
+            }}
+          >
+            {release}
+          </span>
+        )}
       </div>
       <div
         style={{
