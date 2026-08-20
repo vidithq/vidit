@@ -8,6 +8,10 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+_Nothing yet._
+
+## v0.5.7, 2026-08-20
+
 ### Added
 - **The v0.5 promo pipelines, A and B, on a shared capture harness** ([`video/README.md`](video/README.md), [`video/capture-lib.js`](video/capture-lib.js), [`video/record-v05.js`](video/record-v05.js), [`video/record-v05b.js`](video/record-v05b.js), [`video/prep-review-take.py`](video/prep-review-take.py)) (#280). Promo A films an analyst's public portfolio in one logged-out take; promo B films an archive import and a review pass in one signed-in take, with the incompressible import wait compressed by a floored speed ramp and the bot's confirmation reply closing the film. The takes launch the installed Chrome, share one capture library, and refuse to record a frame that would misattribute or fabricate.
 
