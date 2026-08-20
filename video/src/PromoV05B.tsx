@@ -67,7 +67,6 @@ const QUEUE_URL = "vidit.app/profile/MPGeoint/detections";
 // queue's Ready filter that clears the submit floor), so the faked address bar
 // stays at the route rather than naming an id the next re-record invalidates.
 const REVIEW_URL = "vidit.app/events/…/edit?queue=1";
-const MAP_URL = "vidit.app/map";
 
 // ── the recorded window, and the one stretch of it that is compressed ──────
 //
@@ -78,13 +77,10 @@ const MAP_URL = "vidit.app/map";
 const srcFrame = (sec: number) => Math.round(sec * COMP_FPS);
 
 const TAKE_FROM = srcFrame(mark("panel", 0));
-const TAKE_TO = srcFrame(
-  Math.min(
-    clip?.durationSec ?? 0,
-    // the closing camera ease, then a short hold
-    mark("mapEase", 68.43) + 2.4 + 1.2
-  )
-);
+// The take now ends where the film ends: on the hold after the next draft
+// opens itself. The encoder's own tail (a repeated final frame) falls inside
+// the exit crossfade, so nothing is trimmed by hand here.
+const TAKE_TO = srcFrame(clip?.durationSec ?? 0);
 
 // The compressed stretch. It starts after the privacy line has been read at
 // real speed and stops before the Done step lands, so both ends of the wait
@@ -94,8 +90,8 @@ const RAMP_LEAD_IN = 1.5;
 const RAMP_LEAD_OUT = 1.0;
 const RAMP_SCREEN = 4.2;
 
-const RAMP_FROM = srcFrame(mark("privacyHold", 11.23) + RAMP_LEAD_IN);
-const RAMP_TO = srcFrame(mark("importDone", 33.77) - RAMP_LEAD_OUT);
+const RAMP_FROM = srcFrame(mark("privacyHold", 7.77) + RAMP_LEAD_IN);
+const RAMP_TO = srcFrame(mark("importDone", 32.85) - RAMP_LEAD_OUT);
 const RAMP_FRAMES = Math.round(RAMP_SCREEN * COMP_FPS);
 
 type Segment = {
@@ -169,7 +165,7 @@ const CUES: CaptionCue[] = [
     // The product's own sentence, on the frame that carries it. It holds at
     // 1x for a moment and then rides the compressed wait, so it is the
     // longest line in the film.
-    at: cueAt("privacyHold", 11.23),
+    at: cueAt("privacyHold", 7.77),
     eyebrow: "Before the upload, in your browser",
     title: "DMs, messages and account data never leave your device.",
   },
@@ -178,34 +174,26 @@ const CUES: CaptionCue[] = [
     // export, so the outcome line reads as updates rather than as a haul, and
     // the caption says exactly that: it is the v0.5.2 upsert seen from
     // outside.
-    at: cueAt("importDone", 33.77),
+    at: cueAt("importDone", 32.85),
     eyebrow: "Import it again tomorrow",
     title: "It recognises the detections it already made.",
   },
   {
-    at: cueAt("queueOpen", 37.4),
+    at: cueAt("queueOpen", 36.45),
     eyebrow: "The queue",
     title: "Every machine detection, and what each one still needs.",
   },
   {
-    at: cueAt("draftOpen", 46.45),
+    at: cueAt("draftOpen", 45.53),
     eyebrow: "The review pass",
     title: "One form: the footage, the coordinates, the classification.",
   },
   {
     // From the click that arms Submit, so the line covers both clicks and the
-    // next draft opening on its own.
-    at: cueAt("submitClick", 60.26),
+    // next draft opening on its own, which is where the take ends.
+    at: cueAt("submitClick", 59.35),
     eyebrow: "Submit",
     title: "Two clicks to freeze it, and the next detection opens itself.",
-  },
-  {
-    // `mapUrl`, not `mapNav`: the take stamps `mapNav` before the cursor
-    // starts for the sidebar, which would put the closing line up while the
-    // review form is still on screen.
-    at: cueAt("mapUrl", 65.61),
-    eyebrow: "The map",
-    title: "The work, gathered on one map.",
   },
 ];
 
@@ -214,9 +202,8 @@ const CUES: CaptionCue[] = [
 // instant the route changed.
 const URL_CUES: { at: number; url: string }[] = [
   { at: cueAt("panel", 0), url: SUBMIT_URL },
-  { at: cueAt("queueUrl", 37.3), url: QUEUE_URL },
-  { at: cueAt("draftUrl", 46.28), url: REVIEW_URL },
-  { at: cueAt("mapUrl", 65.61), url: MAP_URL },
+  { at: cueAt("queueUrl", 36.36), url: QUEUE_URL },
+  { at: cueAt("draftUrl", 45.3), url: REVIEW_URL },
 ];
 
 const pickAt = <T extends { at: number }>(cues: T[], frame: number): T =>
@@ -245,9 +232,11 @@ const BOT_PLATE: DropInClip | null = PLATE
       height: 1440,
     }
   : null;
-// Long enough to read the tweet, its coordinates and the caption's claim, and
-// no longer: the plate is a still shot of someone else's post.
-const BOT_SECONDS = BOT_PLATE ? Math.min(BOT_PLATE.durationSec, 7) : 0;
+// The plate is paced as the beat in `record-v04.js` (a hold on the
+// geolocation, a drift down the thread, a hold on the @viditbot tag), so the
+// beat is the plate's own length; the cap is a guard against a longer one
+// being dropped in, not a trim.
+const BOT_SECONDS = BOT_PLATE ? Math.min(BOT_PLATE.durationSec, 8) : 0;
 const BOT_FRAMES = Math.round(BOT_SECONDS * COMP_FPS);
 // The v0.4 promo's line for this beat, unchanged: one claim, one beat, and the
 // same words wherever the bot is explained.

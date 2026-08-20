@@ -53,12 +53,18 @@ function ensureRealArchive() {
   return REAL_ARCHIVE;
 }
 
-// The real tweet the bot beat's X embed renders (same analyst + tweet the
-// 0.3 pipeline used; see record-submit.js TWEET_URL). PROMO_BOT_TWEET swaps
-// it for a shoot: X renders whichever public status it is given, and which one
-// reads best is a question for the frames rather than for this constant.
+// The real tweet the bot beat's X embed renders: the reply that tags
+// @viditbot on a geolocation of the analyst's own, chosen because it puts the
+// beat's whole claim on screen. The embed is recorded with the conversation
+// shown, so the frame carries the geolocation it answers (text, date,
+// coordinates, the annotated image) above the tag itself.
+//
+// PROMO_BOT_TWEET swaps it for a shoot: X renders whichever public status it
+// is given, and which one reads best is a question for the frames rather than
+// for this constant.
 const BOT_EMBED_TWEET =
-  process.env.PROMO_BOT_TWEET || "https://x.com/geo27752/status/2060086984513626223";
+  process.env.PROMO_BOT_TWEET ||
+  "https://x.com/geo_lego_2/status/2090117133510361154";
 
 const {
   wait,
@@ -1127,23 +1133,35 @@ async function clipDemo(auth, hero, zipPath) {
 // the tag reply + like + bot reply as an overlay below it, and the whole
 // beat is replaced verbatim by public/clips/bot-x-capture.mp4 once the
 // real end-to-end exchange exists on X.
+// How the plate is paced: the head of the thread, an eased drift down, then
+// the foot. A thread with the conversation shown runs taller than the frame,
+// and the two things the beat has to carry (the coordinates near the top, the
+// @viditbot tag at the bottom) are too far apart to hold at once at a size
+// anyone can read. Reading it beats shrinking it.
+const PLATE_HOLD_TOP_MS = 2400;
+const PLATE_PAN_MS = 2400;
+const PLATE_HOLD_FOOT_MS = 2600;
+// The largest the embed is drawn at. Above this the tweet's own type outgrows
+// the frame it is composed into.
+const PLATE_MAX_SCALE = 0.78;
+
 async function clipBotEmbed() {
   await recordClip("bot-embed", { cookies: null }, async (page, rec) => {
     console.log("→ render the official X embed (dark)");
     await page.setContent(
       `<!doctype html><html><head><meta charset="utf-8"><style>
-         html,body { margin:0; background:#000; height:100%; overflow:hidden; }
-         /* The real tweet (with its quoted tweet) renders ~970px tall at
-            width 440; scale it to fit the 720px viewport. Centred, because
-            the plate is the whole picture now: BotBeat plays it inside the
-            browser chrome on its own, where an off-centre column would leave
-            two thirds of the frame black. 482 = (1280 - 440 x 0.72) / 2. */
-         #holder { position:absolute; left:482px; top:10px; width:440px;
-                   transform: scale(0.72); transform-origin: top left; }
+         html,body { margin:0; background:#000; }
+         /* Centred, because the plate is the whole picture: BotBeat plays it
+            inside the browser chrome on its own, where an off-centre column
+            would leave two thirds of the frame black. The scale and the left
+            offset are set once the embed has rendered, since only then is its
+            height known. */
+         #holder { position:absolute; left:0; top:10px; width:440px;
+                   transform-origin: top left; }
          .twitter-tweet { margin: 0 !important; }
        </style></head><body>
          <div id="holder">
-           <blockquote class="twitter-tweet" data-theme="dark" data-dnt="true" data-width="440" data-conversation="none">
+           <blockquote class="twitter-tweet" data-theme="dark" data-dnt="true" data-width="440" data-conversation="all">
              <a href="${BOT_EMBED_TWEET}"></a>
            </blockquote>
          </div>
@@ -1161,21 +1179,45 @@ async function clipBotEmbed() {
       { timeout: 45000 }
     );
     await wait(2500); // media inside the embed finishes loading
-    const box = await page.evaluate(() => {
-      const f = document.querySelector('iframe[id^="twitter-widget"]');
-      const r = f.getBoundingClientRect();
-      return { x: r.x, y: r.y, w: r.width, h: r.height };
-    });
-    console.log(`  embed box: ${JSON.stringify(box)}`);
+
+    // Draw it as large as the cap allows, centred, and make the page exactly
+    // as tall as the drawn embed so the drift below is an ordinary scroll.
+    const plate = await page.evaluate((maxScale) => {
+      const frame = document.querySelector('iframe[id^="twitter-widget"]');
+      const natural = frame.getBoundingClientRect().height; // holder still 1:1
+      const scale = Math.min(maxScale, 1);
+      const holder = document.getElementById("holder");
+      holder.style.transform = `scale(${scale})`;
+      holder.style.left = `${Math.round((window.innerWidth - 440 * scale) / 2)}px`;
+      const drawn = natural * scale;
+      document.body.style.height = `${Math.round(drawn) + 20}px`;
+      const r = frame.getBoundingClientRect();
+      return {
+        natural: Math.round(natural),
+        scale,
+        travel: Math.max(0, Math.round(drawn + 20 - window.innerHeight)),
+        box: { x: Math.round(r.x), y: Math.round(r.y), w: r.width, h: r.height },
+      };
+    }, PLATE_MAX_SCALE);
+    console.log(
+      `  embed ${plate.natural}px tall at ${plate.scale}, ` +
+        `${plate.travel ? `${plate.travel}px to drift` : "fits the frame"}`
+    );
+    await wait(400);
+
     rec.start();
-    // Static plate: the overlay animation happens in the comp.
-    await wait(9000);
-    // Stash the embed geometry (CSS px in the 1280×720 page) as marks so
-    // the comp can place the reply overlay right under the real embed.
-    rec.set("embedX", box.x);
-    rec.set("embedY", box.y);
-    rec.set("embedW", box.w);
-    rec.set("embedH", box.h);
+    await wait(PLATE_HOLD_TOP_MS);
+    if (plate.travel > 0) {
+      await slowScrollToY(page, plate.travel, PLATE_PAN_MS);
+    }
+    await wait(PLATE_HOLD_FOOT_MS);
+
+    // Stash the embed geometry (CSS px in the 1280×720 page) as marks: what
+    // the plate was drawn at, for whoever frames something against it next.
+    rec.set("embedX", plate.box.x);
+    rec.set("embedY", plate.box.y);
+    rec.set("embedW", plate.box.w);
+    rec.set("embedH", plate.box.h);
   });
 }
 

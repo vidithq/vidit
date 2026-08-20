@@ -401,30 +401,36 @@ VIDIT_DEMO_PASSWORD=… npm run record:v05b   # → public/clips/import-review.m
 npm run render:v05b                          # → out/promo-v05b.mp4
 ```
 
-The beats. Beats 1 to 7 are one continuous take; the bot beat is a separate
-plate, and the closing card follows it:
+The beats. Beats 1 to 6 are one continuous take, which ends on the queue
+handing over the next draft; the bot beat is a separate plate, and the closing
+card follows it:
 
 | # | Beat | What is on camera |
 |---|---|---|
 | 1 | Bulk import | The export guide on `/submit`, the mock open dialog, the staged file with its real name and byte size. |
 | 2 | Privacy | The live progress steps, held on `DMs, messages and account data never leave your device.` |
 | 3 | Idempotence | The finished run and its outcome line. |
-| 4 | The queue | The queue on `All`, where `Ready to review` and `Missing: …` badges sit side by side, then the readiness filter with the server's whole-queue counts. |
+| 4 | The queue | The queue on `All`, where `Ready to review` and `Missing: …` badges sit side by side, then the readiness filter with the server's whole-queue counts, and the pager if the draft the pass opens is not on the first page. |
 | 5 | The review pass | `Detection n of m`, the footage, the coordinates and the source, then the conflict typeahead and the capture source. |
-| 6 | Submit | The proof, both submit clicks, and the next detection opening on its own. |
-| 7 | The map | The camera easing onto the field the pass just worked. |
-| 8 | @viditbot | The official X embed (dark) of a real coordinate tweet, held for 7 seconds under the v0.4 promo's own line for this beat. |
-| 9 | Closing card | `OutroV04`, shared with the other promos. |
+| 6 | Submit | The proof, both submit clicks, and the next detection opening on its own, which is the last product frame in the film. |
+| 7 | @viditbot | The official X embed (dark) of the reply that tags the bot on a geolocation: a hold on the post and its coordinates, an eased drift down the thread, a hold on the tag. |
+| 8 | Closing card | `OutroV04`, shared with the other promos. |
 
 ### The bot beat is a plate, not part of the take
 
-Beat 8 leaves the product for X, which is where the work starts for most
+Beat 7 leaves the product for X, which is where the work starts for most
 analysts, so it is the one change of world in the film and it dissolves in over
 the take's own fade-out. `BotBeat` plays it inside the same browser chrome the
 rest of the film uses.
 
 The picture is `public/clips/bot-embed.mp4`: the official X embed, dark theme,
-rendered by platform.twitter.com in a real browser and recorded as a plate.
+rendered by platform.twitter.com in a real browser and recorded as a plate. The
+embed is recorded with the conversation shown, so a reply that tags the bot
+brings the geolocation it answers with it, and the plate is paced rather than
+still: a thread runs taller than the frame, and the coordinates at the top and
+the tag at the bottom are too far apart to hold at once at a size anyone can
+read. The plate holds on the head, drifts down once, and holds on the foot.
+
 Record it with the v0.4 pipeline, which needs no instance and no session for
 this clip and leaves the detections queue untouched:
 
@@ -444,6 +450,31 @@ recorded, so a status the bot actually replied to can be looked up there.
 
 Without the plate on the machine the beat drops out and the take runs straight
 into the closing card, rather than the render failing.
+
+### What the take needs from the instance
+
+The review beat opens a real draft, so `pickReviewTarget` chooses one before a
+frame is recorded and refuses to film a beat it cannot finish. A draft is
+filmable when it clears `missingEventFields` except the two tags the take fills
+on camera, when its coordinates fall inside a conflict box (see the editorial
+rules below), when its proof carries at most `max_proof_images_per_event`
+images, and when its source media is bright enough to read on camera. The last
+two are what an archive of long threads and a database restored from production
+break most often: a proof of fifteen images arms the submit button and is
+refused by the server on the second click, and a media row that still points at
+the CDN answers 403 and films an empty player. `sourceLuma` probes each
+candidate with ffmpeg, which catches both the unreachable and the merely dark.
+
+The queue reads newest first, so the head of it is whatever the last import
+produced. The take therefore scans the first few pages of the Ready filter,
+takes the nearest draft that clears the floor, and clicks the pager on camera
+to reach it.
+
+One limit governs how often this take can run: `POST
+/events/import-archive/presign` is rate limited to 10 an hour per account. A
+shoot that re-records more often than that stalls on `Uploading your archive`
+with `Rate limit exceeded` in the panel, and the take waits out its Done step
+for nothing.
 
 ### This take writes to the instance
 

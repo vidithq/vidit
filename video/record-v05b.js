@@ -4,7 +4,7 @@
 //   import-review.mp4  the bulk-import panel -> the archive picker -> the
 //                      progress steps -> the detections queue with its
 //                      readiness filter -> one draft opened in the review pass
-//                      -> submit -> the next draft -> the map.
+//                      -> submit -> the next draft opening on its own.
 //
 // The clip lands in public/clips/ next to the other takes, with its marks in
 // meta.json; `gen-clips-manifest.js` compiles those into src/clips-manifest.ts
@@ -60,7 +60,6 @@ const {
   slowScrollToLocator,
   smoothScrollIntoView,
   glideClickStretchedCard,
-  easeCamera,
   injectFinder,
   closeFinder,
   createRecorder,
@@ -96,15 +95,18 @@ const PRIVACY_HOLD_MS = 2600;
 // review beat look like a broken player rather than like footage.
 const MEDIA_LUMA_FLOOR = 45;
 
-// How many rows the queue's first page renders. Mirrors `DETECTIONS_PER_PAGE`
-// in frontend/src/lib/events.ts: the take clicks a card on the page the filter
-// beat just produced, so a draft further down the ready list is one the cursor
-// would never reach without paging.
+// How many rows the queue's page renders. Mirrors `DETECTIONS_PER_PAGE` in
+// frontend/src/lib/events.ts: the take clicks a card, so it has to know which
+// page that card is on.
 const QUEUE_PAGE_SIZE = 10;
 
-// The closing camera. The take eases to the point it just published so the
-// closing frame carries that work rather than an arbitrary view.
-const CLOSING_ZOOM = 5.4;
+// How deep into the ready list the take is willing to walk for a filmable
+// draft, in pages. The queue reads newest first, so the head of it is whatever
+// the last import produced, and on an instance that has been imported into
+// repeatedly that head is mostly near-duplicate rows of one long thread. Each
+// page past the first costs one click on camera, which is why this is small:
+// the beat is a review pass, not a tour of the pager.
+const QUEUE_PAGES_SCANNED = 4;
 
 const recordClip = createRecorder({
   clipsDir: CLIPS_DIR,
@@ -118,22 +120,33 @@ const api = (auth, method, pathname, body) => apiCall(API, auth, method, pathnam
 
 // ─── the draft the review beat opens ─────────────────────────────────────
 
-function proofHasImage(node) {
-  if (!node || typeof node !== "object") return false;
-  if (node.type === "image") return true;
-  return (node.content || []).some(proofHasImage);
+function proofImageCount(node) {
+  if (!node || typeof node !== "object") return 0;
+  const here = node.type === "image" ? 1 : 0;
+  return here + (node.content || []).reduce((sum, c) => sum + proofImageCount(c), 0);
 }
 
-// Everything `missingEventFields` asks for except the two tags, which the
-// take fills on camera. A draft short of any of it cannot be submitted, and
-// the submit button would refuse to arm mid-beat.
+// The server's cap on the proof body, mirroring `max_proof_images_per_event`
+// in backend/app/config.py. A draft over it is refused at publish, which on
+// camera is a red banner and a submit that never advances: the archive's
+// long threads carry proofs of a dozen images and more, so the queue really
+// does hold rows the review pass cannot finish.
+const MAX_PROOF_IMAGES = 10;
+
+// Everything `missingEventFields` asks for except the two tags, which the take
+// fills on camera, plus the one limit the server enforces at publish rather
+// than the form at arm time. A draft short of any of it cannot be submitted:
+// short of a field the button refuses to arm mid-beat, over the proof cap it
+// arms, refuses on the second click and leaves a red banner on camera.
 function clearsSubmitFloor(draft) {
+  const images = proofImageCount(draft.proof);
   return (
     !!draft.title?.trim() &&
     !!draft.event_coords &&
     !!draft.source_url?.trim() &&
     !!draft.source_posted_at &&
-    proofHasImage(draft.proof) &&
+    images > 0 &&
+    images <= MAX_PROOF_IMAGES &&
     (draft.media || []).some((m) => m.role === "source")
   );
 }
@@ -192,9 +205,10 @@ function sourceLuma(url) {
 // The review beat opens a draft off the queue's Ready filter, so the click
 // lands on the page the filter beat just produced. Four further conditions:
 // the draft has to clear the submit floor, it has to sit inside the batch the
-// review pass walks (that batch is what gives the form its "Detection n of m"
-// position and its next draft), its coordinates have to fall inside a conflict
-// box the take can name, and its source media has to read on camera.
+// review pass walks with something after it (that batch is what gives the form
+// its "Detection n of m" position, and the submit beat films it handing over
+// the next draft), its coordinates have to fall inside a conflict box the take
+// can name, and its source media has to read on camera.
 //
 // The brightest qualifying draft wins rather than the first one. The conflict
 // rule is untouched by that ordering: a draft outside the boxes is still not
@@ -211,11 +225,11 @@ async function pickReviewTarget(auth) {
   const ready = await api(
     auth,
     "GET",
-    `/events/detections?page=1&per_page=${QUEUE_PAGE_SIZE}&readiness=ready`
+    `/events/detections?page=1&per_page=${QUEUE_PAGE_SIZE * QUEUE_PAGES_SCANNED}&readiness=ready`
   );
 
   const candidates = [];
-  for (const row of ready.items) {
+  for (const [readyIndex, row] of ready.items.entries()) {
     const position = walkIds.get(row.id);
     if (position === undefined || position >= walk.items.length - 1) continue;
     if (!clearsSubmitFloor(row)) continue;
@@ -223,7 +237,14 @@ async function pickReviewTarget(auth) {
     if (!query) continue;
     const media = (row.media || []).find((m) => m.role === "source");
     if (!media?.storage_url) continue;
-    candidates.push({ row, next: walk.items[position + 1], query, position, media });
+    candidates.push({
+      row,
+      query,
+      position,
+      media,
+      // Which page of the queue the cursor has to be on to see this card.
+      queuePage: Math.floor(readyIndex / QUEUE_PAGE_SIZE) + 1,
+    });
   }
   if (!candidates.length) {
     throw new Error(
@@ -234,29 +255,44 @@ async function pickReviewTarget(auth) {
   // `card.waitFor` in the take is what enforces this in practice: a draft the
   // first page does not render is a draft the cursor cannot click.
 
-  console.log(`→ probing the source media of ${candidates.length} candidates`);
+  // Probed in queue order and stopped at the first draft that clears the
+  // floor, so the take films the nearest filmable row rather than the
+  // brightest one three pages in. Brightness is a threshold here, not a score:
+  // past the floor the footage reads, and a page click costs more screen time
+  // than a brighter clip buys.
+  console.log(`→ probing the source media of ${candidates.length} candidates, in queue order`);
+  let best = null;
   for (const c of candidates) {
     c.luma = await sourceLuma(c.media.storage_url);
     console.log(
       `  ${c.luma === null ? "unreadable" : `luma ${c.luma.toFixed(0).padStart(3)}`}` +
-        `  ${c.row.title}`
+        `  page ${c.queuePage}  ${c.row.title}`
     );
+    if (c.luma !== null && c.luma >= MEDIA_LUMA_FLOOR) {
+      best = c;
+      break;
+    }
   }
-  const readable = candidates.filter((c) => c.luma !== null);
-  const pool = readable.length ? readable : candidates;
-  pool.sort((a, b) => (b.luma ?? -1) - (a.luma ?? -1));
-  const best = pool[0];
-  if (best.luma === null) {
-    console.warn("  (no candidate's source media could be read; filming the first anyway)");
-  } else if (best.luma < MEDIA_LUMA_FLOOR) {
+  if (!best) {
+    const readable = candidates.filter((c) => c.luma !== null);
+    if (!readable.length) {
+      throw new Error(
+        `no draft in the first ${QUEUE_PAGES_SCANNED} pages of the Ready filter has source ` +
+          "media this instance can serve. The rows carry CDN links the local " +
+          "backend does not hold, so the review beat would film an empty player."
+      );
+    }
+    readable.sort((a, b) => b.luma - a.luma);
+    best = readable[0];
     console.warn(
-      `  (the brightest candidate reads ${best.luma.toFixed(0)}, under the ${MEDIA_LUMA_FLOOR} floor; ` +
-        "the footage will be dark on camera)"
+      `  (nothing clears the ${MEDIA_LUMA_FLOOR} floor; filming the brightest at ` +
+        `${best.luma.toFixed(0)}, the footage will be dark on camera)`
     );
   }
   console.log(
     `  review target: ${best.row.title} (${best.row.id})` +
       `  ·  Detection ${best.position + 1} of ${walk.total}` +
+      `  ·  queue page ${best.queuePage}` +
       `  ·  conflict search "${best.query}"`
   );
   return best;
@@ -284,7 +320,7 @@ async function clipImportReview(auth) {
     // product being slow. The draft the review beat opens is chosen here too,
     // media probe included, so the recorded pass spends no time deciding.
     console.log("→ setup pass: pick the draft, warm the routes");
-    const { row: target, next, query } = await pickReviewTarget(auth);
+    const { row: target, query, queuePage } = await pickReviewTarget(auth);
     await openImportPanel();
     await page.goto(`${BASE}/profile/${USERNAME}/detections`, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Detections" }).waitFor({ timeout: 25000 });
@@ -308,35 +344,41 @@ async function clipImportReview(auth) {
     // screen time and every beat has to earn its own. The only stretch the comp
     // compresses is the import wait itself (`privacyHold` to `importDone`),
     // which is the worker's real time and cannot be shortened here.
+    //
+    // The opening is the tightest part of the film: staging a file is the least
+    // interesting thing the product does, and its caption is up from the first
+    // frame, so the guide, the dialog and the staged card each hold just long
+    // enough to be read. What is left there is cursor travel, which is the one
+    // thing that cannot be cut without the pointer teleporting.
 
     // 1. The import panel: the export guide, then the picker opening.
     console.log("→ the import panel");
     rec.mark("panel");
-    await wait(2000);
+    await wait(1000);
 
     const chooseBtn = page.getByText("Choose your X archive", { exact: false }).first();
-    await slowScrollToLocator(page, chooseBtn, 1200);
-    await wait(400);
+    await slowScrollToLocator(page, chooseBtn, 800);
+    await wait(200);
 
     console.log("→ open the mock Finder dialog");
     page.on("filechooser", () => {}); // headless: swallow the real chooser
     rec.mark("finderOpen");
-    await glideAndClick(page, chooseBtn, { steps: 48, settle: 400 });
+    await glideAndClick(page, chooseBtn, { steps: 40, settle: 250 });
     await injectFinder(page, zipName, zipBytes);
-    await wait(1000);
+    await wait(700);
 
     console.log("→ pick the archive");
     const rowBox = await page.locator("#__finder_zip_row__").boundingBox();
     const rowX = rowBox.x + rowBox.width * 0.3;
     const rowY = rowBox.y + rowBox.height / 2;
-    await page.mouse.move(rowX, rowY, { steps: 45 });
-    await wait(400);
+    await page.mouse.move(rowX, rowY, { steps: 35 });
+    await wait(250);
     await page.mouse.click(rowX, rowY); // select, the row highlights
-    await wait(500);
+    await wait(350);
     rec.mark("finderPick");
     await page.mouse.dblclick(rowX, rowY);
     await closeFinder(page);
-    await wait(300);
+    await wait(200);
 
     const zipInput = page.locator('input[type="file"][accept*="zip"]').first();
     // By path, not by buffer: Playwright caps an in-memory payload at 50 MB
@@ -344,14 +386,14 @@ async function clipImportReview(auth) {
     // from the file itself.
     await zipInput.setInputFiles(ARCHIVE);
     rec.mark("filePicked");
-    await wait(1500); // the file card ("ready to import") breathes
+    await wait(800); // the file card ("ready to import") breathes
 
     // 2. The progress steps. The privacy line carries `keepDetail`, so it
     //    stays on screen for the whole run; the hold is what the storyboard
     //    pins, not the step's own lifetime.
     console.log("→ import, then hold on the privacy line");
     const importBtn = page.getByRole("button", { name: /^import archive$/i }).first();
-    await glideAndClick(page, importBtn);
+    await glideAndClick(page, importBtn, { steps: 44, settle: 380 });
     rec.mark("importClick");
     await wait(400);
     await slowScrollToLocator(
@@ -413,7 +455,17 @@ async function clipImportReview(auth) {
     await wait(2600); // the narrowed page and its counts read
 
     // 4. One draft, opened into the review pass. The draft was chosen in the
-    //    setup pass, so this beat is nothing but the click.
+    //    setup pass, so this beat is the paging and the click. Paging is
+    //    ordinary use of the queue rather than a detour: the pager says how
+    //    deep the queue runs, which is the same claim the counts make.
+    for (let p = 1; p < queuePage; p++) {
+      console.log(`→ page ${p + 1} of the queue`);
+      await glideAndClick(page, page.getByRole("button", { name: "Next" }).first(), {
+        steps: 34,
+        settle: 260,
+      });
+      await wait(900);
+    }
     const card = page.locator(`a[href="/events/${target.id}/edit?queue=1"]`).first();
     await card.waitFor({ timeout: 15000 });
     await wait(300);
@@ -485,29 +537,52 @@ async function clipImportReview(auth) {
       .waitFor({ timeout: 5000 });
     await wait(650); // the armed ring reads before the confirming click
     await glideAndClick(page, submitBtn, { steps: 10, settle: 260 });
-    await page.waitForURL(new RegExp(`/events/${next.id}/edit`), { timeout: 40000 });
+    // Whatever draft the form hands over, not one named in advance. Which row
+    // comes next is the queue's business at that instant, and the queue moves:
+    // the import between the pick and this click can update rows, and the
+    // submit itself takes one out. Waiting on a precomputed id makes the take
+    // fail on a detail no viewer can see.
+    const advanced = await page
+      .waitForURL(
+        (url) =>
+          /\/events\/[0-9a-f-]{36}\/edit/.test(url.pathname) &&
+          !url.pathname.includes(target.id),
+        { timeout: 40000 }
+      )
+      .then(() => true)
+      .catch(() => false);
+    if (!advanced) {
+      // A submit that does not advance is the one failure this take cannot
+      // recover from, and the reason is always on screen. Say what it says
+      // rather than making the next run guess from a timeout.
+      // `FORM_ERROR_BANNER` in the frontend's form styles: what a refused
+      // write says on this form.
+      const banner = await page
+        .locator("div.text-red-300, div.text-red-200, [role='alert']")
+        .first()
+        .innerText()
+        .catch(() => "");
+      const shot = path.join(__dirname, "out", "submit-failure.png");
+      await page.screenshot({ path: shot, fullPage: false }).catch(() => {});
+      throw new Error(
+        `the submit never handed over the next draft (still at ${page.url()}). ` +
+          `On screen: ${banner.replace(/\s+/g, " ").trim() || "(no banner)"}. ` +
+          `Frame saved to ${shot}`
+      );
+    }
     await page.getByRole("heading", { name: "Submit detection" }).waitFor({ timeout: 30000 });
+    // Let the next draft's own footage arrive before the beat starts, the same
+    // wait the review beat opens with. This is the last product frame in the
+    // film, and media popping into an empty box halfway through the closing
+    // hold reads as the page still loading rather than as the pass continuing.
+    await page
+      .waitForFunction(() => [...document.images].every((i) => i.complete), { timeout: 15000 })
+      .catch(() => {});
+    // The last thing the take films: the queue handing over the next draft on
+    // its own. The film ends here, on the pass continuing rather than on a
+    // closing flourish, and the bot beat follows in the comp.
     rec.mark("nextDraft");
-    await wait(2400);
-
-    // 6. The map, eased onto the point the take just published.
-    console.log("→ the map");
-    rec.mark("mapNav");
-    await glideAndClick(page, page.locator('aside a[href="/map"]').first(), { steps: 48 });
-    await page.waitForURL(/\/map/, { timeout: 30000, waitUntil: "domcontentloaded" });
-    rec.mark("mapUrl");
-    await page.waitForSelector(".maplibregl-canvas", { timeout: 30000 });
-    await page.waitForFunction(() => !!window.__viditMap, { timeout: 30000 });
-    await wait(1800); // tiles and the points fetch settle
-    rec.mark("mapOpen");
-    await wait(900);
-    rec.mark("mapEase");
-    await easeCamera(page, {
-      center: [target.event_coords.lng, target.event_coords.lat],
-      zoom: CLOSING_ZOOM,
-      durationMs: 2400,
-    });
-    await wait(1300);
+    await wait(2600);
   });
 }
 

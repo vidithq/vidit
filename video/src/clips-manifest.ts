@@ -60,12 +60,12 @@ export const RECORDED: Record<string, RecordedClip> = {
   "bot-embed": {
     "src": "clips/bot-embed.mp4",
     "fps": 60,
-    "durationSec": 9.382,
+    "durationSec": 7.832,
     "marks": {
-      "embedX": 482,
+      "embedX": 468,
       "embedY": 10,
-      "embedW": 316.8,
-      "embedH": 699.84
+      "embedW": 343.2,
+      "embedH": 965.64
     }
   },
   "portfolio": {
@@ -90,28 +90,24 @@ export const RECORDED: Record<string, RecordedClip> = {
   "import-review": {
     "src": "clips/import-review.mp4",
     "fps": 60,
-    "durationSec": 72.954,
+    "durationSec": 69.981,
     "marks": {
       "panel": 0,
-      "finderOpen": 3.643,
-      "finderPick": 6.792,
-      "filePicked": 7.372,
-      "importClick": 9.756,
-      "privacyHold": 11.232,
-      "importDone": 33.768,
-      "queueUrl": 37.303,
-      "queueOpen": 37.396,
-      "filterReady": 40.197,
-      "draftUrl": 46.281,
-      "draftOpen": 46.448,
-      "draftScroll": 48.849,
-      "tagFill": 52.216,
-      "submitClick": 60.263,
-      "nextDraft": 62.305,
-      "mapNav": 64.705,
-      "mapUrl": 65.605,
-      "mapOpen": 67.526,
-      "mapEase": 68.427
+      "finderOpen": 2.048,
+      "finderPick": 6.071,
+      "filePicked": 6.555,
+      "importClick": 9.187,
+      "privacyHold": 10.656,
+      "importDone": 30.664,
+      "queueUrl": 35.358,
+      "queueOpen": 35.431,
+      "filterReady": 38.234,
+      "draftUrl": 47.125,
+      "draftOpen": 47.284,
+      "draftScroll": 49.685,
+      "tagFill": 53.049,
+      "submitClick": 63.695,
+      "nextDraft": 66.966
     }
   }
 };
