@@ -559,7 +559,11 @@ function snapshotArchivedCopies(
     const original = asNullableString(entry?.original_url);
     const url = asNullableString(entry?.snapshot_url);
     const provider = entry?.provider;
-    if (original && url && (provider === "wayback" || provider === "archive_today")) {
+    if (
+      original &&
+      url &&
+      (provider === "wayback" || provider === "archive_today" || provider === "ghostarchive")
+    ) {
       copies.set(original, { url, provider });
     }
   }

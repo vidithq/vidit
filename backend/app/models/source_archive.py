@@ -23,10 +23,12 @@ from app.database import Base
 SourceArchiveOrigin = Literal["source_url", "secondary_source", "detected_from", "proof_link"]
 
 # Which service holds the snapshot, inferred from its host when the row is
-# written: ``web.archive.org`` is ``wayback``, ``archive.ph`` / ``archive.today``
-# are ``archive_today``. A discriminator on one stored URL, not a pair of slots:
-# the read surface renders one icon and picks its glyph from this.
-SourceArchiveProvider = Literal["wayback", "archive_today"]
+# written: ``web.archive.org`` is ``wayback``, archive.today's six interchangeable
+# domains are ``archive_today``, and ``ghostarchive.org`` is ``ghostarchive``.
+# ``services/source_archive.PROVIDER_HOSTS`` is the host-to-provider map. A
+# discriminator on one stored URL, not a slot per service: the read surface
+# renders one icon and names it from this.
+SourceArchiveProvider = Literal["wayback", "archive_today", "ghostarchive"]
 
 
 class SourceArchive(Base):
@@ -85,7 +87,7 @@ class SourceArchive(Base):
             name="ck_source_archives_origin_valid",
         ),
         CheckConstraint(
-            "provider IN ('wayback', 'archive_today')",
+            "provider IN ('wayback', 'archive_today', 'ghostarchive')",
             name="ck_source_archives_provider_valid",
         ),
     )

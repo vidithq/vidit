@@ -902,7 +902,7 @@ export default function PalettePage() {
 
           <Item
             name="<ArchiveSnapshotField>"
-            usage="The line the mark opens, directly under the URL field it archives: one field and nothing else. No label, no optional marker, no sentence, because the placeholder states the whole contract and reads the accepted hosts off SNAPSHOT_HOSTS. The trailing mark opens web.archive.org/save/<link> for the value currently typed above, so archiving a corrected URL is a re-click; it is the one place on a form a mark goes grey, since a link that does not parse has no page to open. isSnapshotUrl / SNAPSHOT_HINT are the client-side check (https + the three archive hosts) and the one sentence explaining it, reused by the forms to refuse a publish before the upload. Nothing is written here: the paste travels with the form as `source_snapshot_url` or as this row's `secondary_snapshot_urls` entry."
+            usage="The line the mark opens, directly under the URL field it archives: one field and nothing else. No label, no optional marker, no sentence, because the placeholder states the whole contract and names the three archiving services behind SNAPSHOT_HOSTS. The trailing mark opens web.archive.org/save/<link> for the value currently typed above, so archiving a corrected URL is a re-click; it is the one place on a form a mark goes grey, since a link that does not parse has no page to open. isSnapshotUrl / SNAPSHOT_HINT are the client-side check (https + an allowed archive host) and the one sentence explaining it, reused by the forms to refuse a publish before the upload. Under the field, at most one more line: a red refusal for a value that cannot be a snapshot, or an amber WARNING_CALLOUT naming both URLs when the paste reads as a Wayback copy of a different link (snapshotArchivesAnotherLink). The warning blocks nothing, which is why its comparison may be loose; the server checks where a snapshot lives, never what it captured. Nothing is written here: the paste travels with the form as `source_snapshot_url` or as this row's `secondary_snapshot_urls` entry."
           >
             <div className="w-full max-w-sm space-y-2">
               <Variant label="a link is typed: the door is live">
@@ -926,6 +926,14 @@ export default function PalettePage() {
                   link="https://t.me/channel/12345"
                   describes={PRIMARY_SOURCE_DESCRIPTION}
                   value="https://example.com/not-an-archive"
+                  onChange={() => {}}
+                />
+              </Variant>
+              <Variant label="a snapshot of some other link: a warning, not a refusal">
+                <ArchiveSnapshotField
+                  link="https://t.me/channel/12345"
+                  describes={PRIMARY_SOURCE_DESCRIPTION}
+                  value="https://web.archive.org/web/20260601120000/https://t.me/channel/999"
                   onChange={() => {}}
                 />
               </Variant>

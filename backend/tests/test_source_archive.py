@@ -3,8 +3,8 @@
 Nothing here talks to an archiving service, because nothing in the module does:
 the capture happens in the analyst's browser and the server only checks and
 stores what comes back. What is under test is therefore the two halves of that
-check (is this one of the event's links, and is this URL a snapshot of it) and
-the one-slot write.
+check (is this one of the event's links, and is this URL a snapshot address on a
+provider we accept) and the one-slot write.
 """
 
 from __future__ import annotations
@@ -231,115 +231,132 @@ def test_origin_of_answers_membership_and_label_together(db, event):
 # ── snapshot validation ────────────────────────────────────────────────
 
 
-def _reject_code(original: str, snapshot: str) -> str:
+def _reject_code(snapshot: str) -> str:
     with pytest.raises(source_archive.SnapshotRejected) as excinfo:
-        source_archive.validate_snapshot(original_url=original, snapshot_url=snapshot)
+        source_archive.validate_snapshot(snapshot)
     return excinfo.value.code
 
 
-def test_a_wayback_replay_url_of_the_link_is_accepted():
+def test_a_wayback_replay_url_is_accepted():
+    assert source_archive.validate_snapshot(WAYBACK_SNAPSHOT) == "wayback"
+
+
+def test_a_well_formed_replay_url_is_accepted_whatever_it_replays():
+    """The contract: validation says where a snapshot lives, never what it
+    captured. A replay URL naming another link is accepted, because the embedded
+    original is spelled in whatever form the source platform used at capture time
+    (a ``youtu.be`` short link, ``twitter.com`` before it became ``x.com``,
+    ``t.me/s/`` for a channel preview) and comparing it against the stored link
+    refused correct snapshots every time a platform moved its own URLs. The
+    analyst owns what the snapshot shows; the form warns them before it posts."""
+    for embedded in (
+        "https://elsewhere.test/x",
+        "https://youtu.be/dQw4w9WgXcQ",
+        "https://twitter.com/analyst/status/9876543210",
+    ):
+        snapshot = f"https://web.archive.org/web/{CAPTURE_TS}/{embedded}"
+        assert source_archive.validate_snapshot(snapshot) == "wayback"
+
+
+def test_a_replay_modifier_is_accepted():
+    """The Wayback player appends a replay modifier to the timestamp; a link
+    copied out of it is still a snapshot of the page."""
     assert (
-        source_archive.validate_snapshot(original_url=SOURCE, snapshot_url=WAYBACK_SNAPSHOT)
+        source_archive.validate_snapshot(f"https://web.archive.org/web/{CAPTURE_TS}id_/{SOURCE}")
         == "wayback"
     )
 
 
 def test_an_archive_today_code_is_accepted():
     """The short code embeds nothing, so the shape is the whole check."""
+    assert source_archive.validate_snapshot(ARCHIVE_TODAY_SNAPSHOT) == "archive_today"
+    assert source_archive.validate_snapshot("https://archive.today/xY9k2/") == "archive_today"
+
+
+def test_every_archive_today_mirror_is_the_same_provider():
+    """One service serves these snapshots under six interchangeable domains, and
+    which one an analyst is handed depends on where they are, so refusing four of
+    them refuses valid pastes."""
+    for host in (
+        "archive.ph",
+        "archive.today",
+        "archive.is",
+        "archive.md",
+        "archive.li",
+        "archive.vn",
+    ):
+        assert source_archive.validate_snapshot(f"https://{host}/abcde") == "archive_today"
+
+
+def test_an_archive_today_capture_url_is_accepted():
+    """The service addresses one capture two ways, the short code and the long
+    ``/<timestamp>/<original url>`` its own result pages link."""
     assert (
-        source_archive.validate_snapshot(original_url=SOURCE, snapshot_url=ARCHIVE_TODAY_SNAPSHOT)
+        source_archive.validate_snapshot(f"https://archive.ph/{CAPTURE_TS}/{SOURCE}")
         == "archive_today"
     )
+
+
+def test_an_archive_today_lookup_is_still_refused():
+    """``archive.ph/newest/<url>`` resolves to whatever the service holds today
+    rather than to one fixed capture, and a timestamp is digits where ``newest``
+    is not, so widening to the capture URL does not admit it."""
+    assert _reject_code(f"https://archive.ph/newest/{SOURCE}") == "snapshot_not_a_snapshot_code"
+    assert _reject_code("https://archive.ph/") == "snapshot_not_a_snapshot_code"
+
+
+def test_both_ghostarchive_shapes_are_accepted():
+    """A page capture and a video one, the latter addressed by the YouTube video
+    id it archived."""
     assert (
-        source_archive.validate_snapshot(
-            original_url=SOURCE, snapshot_url="https://archive.today/xY9k2/"
-        )
-        == "archive_today"
+        source_archive.validate_snapshot("https://ghostarchive.org/archive/aBcD1") == "ghostarchive"
+    )
+    assert (
+        source_archive.validate_snapshot("https://ghostarchive.org/varchive/dQw4w9WgXcQ")
+        == "ghostarchive"
+    )
+
+
+def test_a_ghostarchive_url_of_another_shape_is_refused():
+    assert _reject_code("https://ghostarchive.org/") == "snapshot_not_a_snapshot_code"
+    assert (
+        _reject_code(f"https://ghostarchive.org/search/{SOURCE}") == "snapshot_not_a_snapshot_code"
     )
 
 
 def test_http_is_refused():
     assert (
-        _reject_code(SOURCE, f"http://web.archive.org/web/{CAPTURE_TS}/{SOURCE}")
+        _reject_code(f"http://web.archive.org/web/{CAPTURE_TS}/{SOURCE}")
         == "snapshot_url_not_https"
     )
 
 
 def test_a_host_outside_the_allowlist_is_refused():
     """The allowlist is the abuse bound: the catalog renders the value as an
-    outbound link, so a lookalike host is not "an archiving service"."""
-    for host in ("archive.org", "web-archive.org.evil.example", "archive.ph.evil.example"):
+    outbound link, so a lookalike host is not "an archiving service". The check
+    parses the hostname rather than matching a prefix, so a subdomain trick and a
+    suffix trick both land here."""
+    for host in (
+        "archive.org",
+        "web-archive.org.evil.example",
+        "archive.ph.evil.example",
+        "archive.today.evil.example",
+        "ghostarchive.org.evil.example",
+        "evil-archive.is",
+    ):
         assert (
-            _reject_code(SOURCE, f"https://{host}/web/{CAPTURE_TS}/{SOURCE}")
+            _reject_code(f"https://{host}/web/{CAPTURE_TS}/{SOURCE}")
             == "snapshot_provider_not_allowed"
         )
 
 
 def test_a_wayback_url_that_is_not_a_replay_url_is_refused():
-    assert _reject_code(SOURCE, "https://web.archive.org/about/") == "snapshot_not_a_replay_url"
-
-
-def test_a_wayback_replay_of_another_link_is_refused():
-    """The embedded original is what makes the snapshot this link's."""
-    assert (
-        _reject_code(SOURCE, f"https://web.archive.org/web/{CAPTURE_TS}/https://elsewhere.test/x")
-        == "snapshot_original_mismatch"
-    )
-
-
-@pytest.mark.parametrize(
-    "embedded",
-    [
-        # Wayback settles on its own scheme for the crawled URL.
-        "http://newsdesk.example/post/1234567890",
-        # A copied link picks up or loses a trailing slash on the way through
-        # a browser.
-        "https://newsdesk.example/post/1234567890/",
-        # The host is folded to lower case, and ``www.`` is not an identity.
-        "https://WWW.Newsdesk.Example/post/1234567890",
-    ],
-)
-def test_a_replay_url_naming_the_same_page_is_accepted(embedded):
-    """A difference that names the same page is not a different link. Rejecting
-    these would refuse correct snapshots for spelling alone."""
-    snapshot = f"https://web.archive.org/web/{CAPTURE_TS}/{embedded}"
-    assert source_archive.validate_snapshot(original_url=SOURCE, snapshot_url=snapshot) == "wayback"
-
-
-def test_a_replay_url_keeps_the_originals_query_string():
-    """The embedded original's query is parsed off the replay URL, so it has to
-    be put back before the two are compared."""
-    original = "https://newsdesk.example/post?id=42"
-    snapshot = f"https://web.archive.org/web/{CAPTURE_TS}/{original}"
-    assert (
-        source_archive.validate_snapshot(original_url=original, snapshot_url=snapshot) == "wayback"
-    )
-    assert (
-        _reject_code(original, f"https://web.archive.org/web/{CAPTURE_TS}/{original}&extra=1")
-        == "snapshot_original_mismatch"
-    )
-
-
-def test_a_replay_modifier_is_accepted():
-    """The Wayback player appends a replay modifier to the timestamp; a link
-    copied out of it is still a snapshot of the page."""
-    snapshot = f"https://web.archive.org/web/{CAPTURE_TS}id_/{SOURCE}"
-    assert source_archive.validate_snapshot(original_url=SOURCE, snapshot_url=snapshot) == "wayback"
-
-
-def test_an_archive_today_url_carrying_a_path_is_refused():
-    """``archive.ph/newest/<url>`` is a lookup, not a snapshot: it resolves to
-    whatever the service holds today rather than to a fixed capture."""
-    assert (
-        _reject_code(SOURCE, f"https://archive.ph/newest/{SOURCE}")
-        == "snapshot_not_a_snapshot_code"
-    )
-    assert _reject_code(SOURCE, "https://archive.ph/") == "snapshot_not_a_snapshot_code"
+    assert _reject_code("https://web.archive.org/about/") == "snapshot_not_a_replay_url"
 
 
 def test_an_oversized_snapshot_is_refused():
     oversized = "https://archive.ph/" + "a" * SOURCE_URL_MAX_LENGTH
-    assert _reject_code(SOURCE, oversized) == "snapshot_url_too_long"
+    assert _reject_code(oversized) == "snapshot_url_too_long"
 
 
 # ── storing a copy ─────────────────────────────────────────────────────
@@ -417,8 +434,8 @@ def test_archive_row_for_matches_a_link_by_url(db, event):
 
 def test_a_re_paste_of_the_stored_copy_is_the_same_snapshot():
     """A snapshot URL reaches the form through a browser, which is where a
-    trailing slash and a host in another case come from. The fold is the one
-    ``validate_snapshot`` uses, so the two never disagree about "same URL"."""
+    trailing slash and a host in another case come from, so the no-change leg
+    folds both sides before it calls a re-paste a correction."""
     assert source_archive.same_snapshot(WAYBACK_SNAPSHOT, WAYBACK_SNAPSHOT)
     assert source_archive.same_snapshot(WAYBACK_SNAPSHOT, f"{WAYBACK_SNAPSHOT}/")
     assert source_archive.same_snapshot(

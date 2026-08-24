@@ -1916,7 +1916,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "wayback" | "archive_today";
+            provider: "wayback" | "archive_today" | "ghostarchive";
             /** Url */
             url: string;
         };

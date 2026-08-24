@@ -5,6 +5,8 @@ import { Archive, ArchiveRestore, ExternalLink } from "lucide-react";
 import type { ArchivedLink } from "@/types";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { WARNING_CALLOUT } from "@/components/ui/styles";
+import { snapshotArchivesAnotherLink, WAYBACK_HOST } from "@/lib/snapshots";
 
 interface ArchivedCopiesProps {
   /** The link's archived copy, or null while it has none. */
@@ -27,13 +29,14 @@ interface ArchivedCopiesProps {
  * drawn. Keyed by the provider union, so a provider the API adds is a build
  * error here rather than a copy with no name.
  *
- * Both entries stay whatever the affordance opens: the field takes a snapshot
- * from any of the three allowed hosts, so a stored archive.today copy has to
+ * Every entry stays whatever the affordance opens: the field takes a snapshot
+ * from any allowed host, so a stored archive.today or Ghostarchive copy has to
  * render under its own name.
  */
 const PROVIDER_LABELS: Record<ArchivedLink["provider"], string> = {
   wayback: "Wayback Machine",
   archive_today: "archive.today",
+  ghostarchive: "Ghostarchive",
 };
 
 /**
@@ -54,33 +57,47 @@ const ArchiveMark = Archive;
  *  it produces, so the link and the copy it yields read as one thing. */
 const SAVE_PAGE_LABEL = PROVIDER_LABELS.wayback;
 
-/** The host that link archives on, and the first of the accepted three. */
-const SAVE_PAGE_HOST = "web.archive.org";
-
 /**
  * The one provider page the affordance opens, prefilled with the link.
  *
  * The Wayback Machine rather than archive.today, on two grounds: Save Page Now
- * works from a browser and mints a replay URL that embeds the link it captured,
- * which is what lets `source_archive.validate_snapshot` check the paste against
- * the link it claims to archive, while an archive.today code embeds nothing and
- * the server must not fetch it to find out; and archive.today throttles or
- * blocks bursts. The link carries the URL as a path segment, where `encodeURI`
- * keeps the scheme separator readable.
+ * works from a browser and mints a replay URL that says which link it captured,
+ * which is what lets the paste line warn about an obvious mis-paste, while an
+ * archive.today code and a Ghostarchive id say nothing and the server must not
+ * fetch them to find out; and archive.today throttles or blocks bursts. The link
+ * carries the URL as a path segment, where `encodeURI` keeps the scheme
+ * separator readable.
  *
- * One door, not one accepted provider: an analyst who prefers archive.today
+ * One door, not one accepted provider: an analyst who prefers another service
  * goes there themselves and pastes the result into the same field.
  */
 function savePageUrl(url: string): string {
-  return `https://${SAVE_PAGE_HOST}/save/${encodeURI(url)}`;
+  return `https://${WAYBACK_HOST}/save/${encodeURI(url)}`;
 }
 
 /** Every host a snapshot may live on. Mirrors the keys of `PROVIDER_HOSTS` in
- *  `services/source_archive.py`; change it with its backend counterpart. */
-export const SNAPSHOT_HOSTS = [SAVE_PAGE_HOST, "archive.ph", "archive.today"];
+ *  `services/source_archive.py`; change it with its backend counterpart.
+ *  archive.today serves one set of snapshots under six interchangeable domains,
+ *  and which one an analyst is handed depends on where they are, so all six are
+ *  here. */
+export const SNAPSHOT_HOSTS = [
+  WAYBACK_HOST,
+  "archive.today",
+  "archive.ph",
+  "archive.is",
+  "archive.md",
+  "archive.li",
+  "archive.vn",
+  "ghostarchive.org",
+];
 
-/** "a, b or c", so every sentence naming the hosts reads them off
- *  `SNAPSHOT_HOSTS` instead of spelling them out again. */
+/** The three services behind those hosts, for the sentences that have to fit in
+ *  a field: eight hosts name three places to archive, and the placeholder says
+ *  where to go rather than what parses. */
+const SNAPSHOT_SERVICES = [WAYBACK_HOST, "archive.today", "ghostarchive.org"];
+
+/** "a, b or c", so every sentence naming the hosts reads them off a list
+ *  instead of spelling them out again. */
 function hostList(hosts: readonly string[]): string {
   const rest = hosts.slice(0, -1).join(", ");
   const last = hosts.slice(-1).join("");
@@ -88,25 +105,24 @@ function hostList(hosts: readonly string[]): string {
 }
 
 /** What the paste field asks for, and the whole instruction the line carries:
- *  the field has no label and no sentence under it, so the three hosts it takes
- *  are named here. One door is prefilled beside it, which is why the placeholder
+ *  the field has no label and no sentence under it, so the services it takes are
+ *  named here. One door is prefilled beside it, which is why the placeholder
  *  states all three rather than the one. */
-const SNAPSHOT_PLACEHOLDER = `Paste a snapshot link (${SNAPSHOT_HOSTS.join(", ")})`;
+const SNAPSHOT_PLACEHOLDER = `Paste a snapshot link (${SNAPSHOT_SERVICES.join(", ")})`;
 
 /** What a snapshot link looks like, said once: the field's own hint under the
  *  input, and the banner a form shows when it refuses to publish a paste that
- *  cannot be one. */
+ *  cannot be one. Every host, not the three services: a refusal is where the
+ *  analyst needs to know exactly what parses. */
 export const SNAPSHOT_HINT = `A snapshot link is an https link on ${hostList(SNAPSHOT_HOSTS)}.`;
 
 /**
- * Whether a pasted value can be a snapshot at all: `https` on one of the three
+ * Whether a pasted value can be a snapshot at all: `https` on one of the
  * archive hosts.
  *
  * The first two checks of `source_archive.validate_snapshot`, run here so a
- * typo costs no round-trip. Deliberately no further: whether a Wayback replay
- * URL embeds *this* link, and whether an archive.today path is a snapshot code,
- * stay server side, where the stored source URL is what the snapshot is
- * compared against. A value this returns true for can still be a 400.
+ * typo costs no round-trip. Deliberately no further: the per-provider path
+ * shapes stay server side. A value this returns true for can still be a 400.
  */
 export function isSnapshotUrl(value: string): boolean {
   try {
@@ -267,7 +283,7 @@ export function ArchiveAdornment({
  *
  * A field and nothing else. It carries no label, no optional marker and no
  * sentence, because the placeholder already says the whole contract (paste a
- * snapshot, from one of these three hosts) and the line only exists while the
+ * snapshot, from one of these services) and the line only exists while the
  * analyst asked for it. The accepted hosts read off `SNAPSHOT_HOSTS`, so the
  * check and the instruction cannot drift.
  *
@@ -279,6 +295,13 @@ export function ArchiveAdornment({
  *
  * `isSnapshotUrl` runs as the analyst types, so a typo costs no round trip; the
  * refusal under the field is the same sentence the form's banner carries.
+ *
+ * Under it, one more line and no more: a paste that reads as a Wayback copy of
+ * some other link raises an amber warning naming both URLs
+ * (`snapshotArchivesAnotherLink`). It is the seatbelt for a check the server no
+ * longer makes, and it blocks nothing, which is what lets the comparison be
+ * loose. The two lines are exclusive: a value that cannot be a snapshot at all
+ * gets the refusal, not a second opinion about what it archives.
  */
 export function ArchiveSnapshotField({
   link,
@@ -299,6 +322,7 @@ export function ArchiveSnapshotField({
   // Flagged only once something is typed: an empty field is the ordinary state
   // of an optional one, not a mistake.
   const invalid = pasted !== "" && !isSnapshotUrl(pasted);
+  const archivesAnother = invalid ? null : snapshotArchivesAnotherLink(link, pasted);
 
   return (
     <div className="space-y-1">
@@ -313,6 +337,14 @@ export function ArchiveSnapshotField({
         trailing={<SavePageDoor target={target} describes={describes} />}
       />
       {invalid && <p className="text-xs text-red-400">{SNAPSHOT_HINT}</p>}
+      {archivesAnother && (
+        <p className={`rounded-md px-2 py-1 text-xs ${WARNING_CALLOUT}`}>
+          That snapshot looks like a copy of{" "}
+          <span className="break-all">{archivesAnother}</span>, not of{" "}
+          <span className="break-all">{link.trim()}</span>. Nothing is blocked: save it if
+          that is what you meant.
+        </p>
+      )}
     </div>
   );
 }
