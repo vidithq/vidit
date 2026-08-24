@@ -276,8 +276,8 @@ def test_revoke_invite_code_marks_revoked(admin_user):
     )
     invite_id = create_response.json()["id"]
 
-    revoke_response = client.delete(
-        f"/api/v1/admin/invite-codes/{invite_id}",
+    revoke_response = client.post(
+        f"/api/v1/admin/invite-codes/{invite_id}/revoke",
         headers=login_as(client, admin_user),
     )
     assert revoke_response.status_code == 200
@@ -286,6 +286,80 @@ def test_revoke_invite_code_marks_revoked(admin_user):
 
 
 def test_revoke_invite_code_returns_404_for_unknown_id(admin_user):
+    response = client.post(
+        f"/api/v1/admin/invite-codes/{uuid.uuid4()}/revoke",
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 404
+
+
+def test_delete_invite_code_drops_an_unused_row(admin_user, db):
+    headers = login_as(client, admin_user)
+    created = client.post("/api/v1/admin/invite-codes", json={}, headers=headers).json()
+    invite_id = uuid.UUID(created["id"])
+
+    response = client.delete(f"/api/v1/admin/invite-codes/{invite_id}", headers=headers)
+
+    assert response.status_code == 204
+    assert response.content == b""
+    db.expire_all()
+    assert db.query(InviteCode).filter(InviteCode.id == invite_id).first() is None
+
+
+def test_delete_invite_code_writes_admin_event_carrying_the_code(admin_user, db):
+    headers = login_as(client, admin_user)
+    created = client.post("/api/v1/admin/invite-codes", json={}, headers=headers).json()
+
+    client.delete(f"/api/v1/admin/invite-codes/{created['id']}", headers=headers)
+
+    db.expire_all()
+    event = (
+        db.query(AdminEvent)
+        .filter(AdminEvent.actor_id == admin_user.id, AdminEvent.action == "invite_deleted")
+        .one()
+    )
+    assert event.target == {"invite_code_id": created["id"], "code": created["code"]}
+
+
+def test_delete_invite_code_revoked_but_unused_is_allowed(admin_user, db):
+    headers = login_as(client, admin_user)
+    created = client.post("/api/v1/admin/invite-codes", json={}, headers=headers).json()
+    invite_id = uuid.UUID(created["id"])
+    client.post(f"/api/v1/admin/invite-codes/{invite_id}/revoke", headers=headers)
+
+    response = client.delete(f"/api/v1/admin/invite-codes/{invite_id}", headers=headers)
+
+    assert response.status_code == 204
+    db.expire_all()
+    assert db.query(InviteCode).filter(InviteCode.id == invite_id).first() is None
+
+
+def test_delete_invite_code_409_when_redeemed(admin_user, regular_user, db):
+    invite = InviteCode(
+        code=f"code{uuid.uuid4().hex[:12]}",
+        used_by=regular_user.id,
+        used_at=datetime.now(UTC),
+    )
+    db.add(invite)
+    db.commit()
+    invite_id = invite.id
+    try:
+        response = client.delete(
+            f"/api/v1/admin/invite-codes/{invite_id}",
+            headers=login_as(client, admin_user),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "invite_code_used"
+        db.expire_all()
+        assert db.query(InviteCode).filter(InviteCode.id == invite_id).first() is not None
+    finally:
+        db.expire_all()
+        db.query(InviteCode).filter(InviteCode.id == invite_id).delete()
+        db.commit()
+
+
+def test_delete_invite_code_returns_404_for_unknown_id(admin_user):
     response = client.delete(
         f"/api/v1/admin/invite-codes/{uuid.uuid4()}",
         headers=login_as(client, admin_user),

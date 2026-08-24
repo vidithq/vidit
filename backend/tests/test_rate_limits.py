@@ -613,6 +613,7 @@ _DOCUMENTED_LIMITS = [
     _Case("delete", "/api/v1/users/no-such-user/follow", 60),
     # Admin.
     _Case("post", "/api/v1/admin/invite-codes", 30, "admin", {"json": {}}),
+    _Case("post", f"/api/v1/admin/invite-codes/{_MISSING_ID}/revoke", 60, "admin"),
     _Case("delete", f"/api/v1/admin/invite-codes/{_MISSING_ID}", 60, "admin"),
     _Case(
         "patch",

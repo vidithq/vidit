@@ -117,8 +117,9 @@ export interface paths {
          * List Invite Codes
          * @description Invite codes, newest first, capped at 100 per page.
          *
-         *     The table is append-only, so the admin console reads it a page at a time
-         *     through the ``Link: rel="next"`` cursor like every other list.
+         *     The table grows one row per invite issued, so the admin console reads it a
+         *     page at a time through the ``Link: rel="next"`` cursor like every other
+         *     list.
          */
         get: operations["list_invite_codes_api_v1_admin_invite_codes_get"];
         put?: never;
@@ -140,8 +141,31 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Revoke Invite Code */
-        delete: operations["revoke_invite_code_api_v1_admin_invite_codes__invite_id__delete"];
+        /**
+         * Delete Invite Code
+         * @description Drop the row of a code no account was created from. 409 once it was.
+         */
+        delete: operations["delete_invite_code_api_v1_admin_invite_codes__invite_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/invite-codes/{invite_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Invite Code
+         * @description Retire a code while keeping its row. The list still shows it.
+         */
+        post: operations["revoke_invite_code_api_v1_admin_invite_codes__invite_id__revoke_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -3297,7 +3321,38 @@ export interface operations {
             };
         };
     };
-    revoke_invite_code_api_v1_admin_invite_codes__invite_id__delete: {
+    delete_invite_code_api_v1_admin_invite_codes__invite_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invite_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_invite_code_api_v1_admin_invite_codes__invite_id__revoke_post: {
         parameters: {
             query?: never;
             header?: never;
