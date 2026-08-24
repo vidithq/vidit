@@ -2,6 +2,78 @@
 
 Source tweets get deleted and accounts get suspended, which destroys exactly the evidence the catalog preserves. An archived copy keeps a dead original readable, and the analyst who owns the event is who makes it.
 
+```mermaid
+flowchart TD
+  classDef provider fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef reject fill:#fbe9e7,stroke:#b3261e,color:#8c1d18
+  classDef stored fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`a check`"]
+    l2["`a provider's path shape`"]:::provider
+    l3["`a rejection code, 400`"]:::reject
+    l4["`what gets stored`"]:::stored
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  paste["`**validate_snapshot**
+  the pasted snapshot URL`"]
+  len{"`2000 bytes or fewer?`"}
+  parse{"`parses as a URL?`"}
+  https{"`scheme is https?`"}
+  host{"`host in **PROVIDER_HOSTS**?`"}
+  shape{"`which provider?`"}
+
+  subgraph shapes [The path shape the host's own service mints]
+    direction TB
+    wb["`**wayback**
+    web.archive.org
+    /web/&lt;timestamp&gt;/&lt;link&gt;`"]:::provider
+    at["`**archive_today**
+    six mirror hosts
+    /&lt;code&gt; or /&lt;timestamp&gt;/&lt;link&gt;
+    /newest/ is a lookup, not a capture`"]:::provider
+    ga["`**ghostarchive**
+    ghostarchive.org
+    /archive/&lt;id&gt; or /varchive/&lt;id&gt;`"]:::provider
+    e5["`snapshot_not_a_replay_url`"]:::reject
+    e6["`snapshot_not_a_snapshot_code`"]:::reject
+    wb -- "shape fails" --> e5
+    at -- "shape fails" --> e6
+    ga -- "shape fails" --> e6
+  end
+
+  member{"`**origin_of**
+  the link is one the event carries?`"}
+  store["`**stage_snapshot**
+  upsert on event_id plus original_url; on a published event the edit files a version`"]:::stored
+
+  e1["`snapshot_url_too_long`"]:::reject
+  e2["`snapshot_url_invalid`"]:::reject
+  e3["`snapshot_url_not_https`"]:::reject
+  e4["`snapshot_provider_not_allowed`"]:::reject
+  e7["`original_url_not_on_event`"]:::reject
+
+  note["`nothing verifies **what** the snapshot captured; the form warns, without blocking, on a Wayback paste that visibly replays another link`"]
+
+  paste --> len
+  len -- no --> e1
+  len -- yes --> parse
+  parse -- no --> e2
+  parse -- yes --> https
+  https -- no --> e3
+  https -- yes --> host
+  host -- no --> e4
+  host -- yes --> shape
+  shape --> wb --> member
+  shape --> at --> member
+  shape --> ga --> member
+  member -- no --> e7
+  member -- yes --> store
+  store -.- note
+```
+
 **The capture happens in the analyst's browser, not on the server.** Roughly nine in ten sources here are `x.com`, which Save Page Now refuses structurally (`We're currently facing some limitations when it comes to archiving this site`), and archive.today has no API and answers a burst of server-side submissions by banning the submitting host. Both services work from a browser, which is how the OSINT community uses them. So the form hands the analyst one prefilled submit page, `https://web.archive.org/save/<link>`, and takes back the snapshot URL the service produced. The Wayback Machine is the page it opens because Save Page Now runs from a browser and mints a replay URL that names the link it captured, which is what lets the paste field warn about an obvious mis-paste; an analyst who prefers another service opens it themselves and pastes the snapshot into the same field, which takes every host in the table below.
 
 **Scope.** The table tracks the event's `source_url`, its [secondary source links](data-model.md#event_source_links) (the analyst-submitted mirrors, which carry the same link-rot risk as the primary), its `detected_from_url` (the analyst's own post a machine detection came from, which is the provenance of the geolocation claim), and every `http(s)` href carried by a link mark in the proof body's Tiptap document. [`source_archive.collect_links`](../backend/app/services/source_archive.py) is the one home for that walk, reading the proof body through [`sanitize.extract_link_hrefs`](../backend/app/services/sanitize.py). Each row records where its link came from in `origin` (`source_url`, `secondary_source`, `detected_from`, `proof_link`); a URL reachable from more than one is one link, kept under the first of those it appears in. Every link goes through [`sanitize.safe_link_href`](../backend/app/services/sanitize.py) (the same allowlist the proof editor writes against) plus a 2000-byte ceiling matching the `source_url` column. Analyst profile external links are out of scope, since they represent identity rather than evidence.
@@ -16,7 +88,7 @@ Source tweets get deleted and accounts get suspended, which destroys exactly the
 
 **A copy always matches the source URL it is filed against.** The source URL is editable at every point of the lifecycle, a correction on a published row included, so an edit can leave a snapshot describing a link the event no longer declares. Every write that stores a source URL therefore reconciles the copy filed under origin `source_url`: if that copy's `original_url` is no longer the event's `source_url`, it is re-filed under the origin the URL now has (the analyst moved it to the mirrors, or cited it in the proof) or deleted when the event no longer carries the URL at all. An edit that changes the source and pastes no new snapshot thus leaves the event with **no** archived source rather than a stale one; pasting a `source_snapshot_url` with the same write fills the slot back in. The reconcile reads the links the event carries at that moment, so the mirrors are the submitted ones while the proof body is still the stored one (a write applies its new proof at commit).
 
-**What counts as a snapshot.** The server checks where a snapshot lives, not what it captured. A paste must be `https`, no longer than the 2000-byte ceiling the `source_url` column carries, on an allowed host, and shaped the way that host's service addresses one capture. The host is also what infers the provider.
+**What counts as a snapshot.** The server checks where a snapshot lives, not what it captured. The byte ceiling matches the one the `source_url` column carries. The host is also what infers the provider.
 
 | Provider | Hosts | Path shape |
 |---|---|---|
@@ -32,7 +104,7 @@ archive.today serves one set of snapshots under six interchangeable domains, and
 
 **Treat an archive.today snapshot as a convenience link rather than integrity-bearing evidence.** The service's operator has demonstrated tampering with the snapshots it serves, and English Wikipedia banned links to it in February 2026. The Wayback Machine is the provider the affordance prefills for that reason.
 
-Every rejection is a 400 carrying the code for the check it failed: `snapshot_url_too_long` (past the byte ceiling above), `snapshot_url_invalid` (the value does not parse as a URL at all), `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_not_a_snapshot_code` (an archive.today or Ghostarchive path that addresses no capture), `original_url_not_on_event`.
+Every rejection is a 400 carrying the code for the check it failed, as the diagram names them: `snapshot_url_too_long`, `snapshot_url_invalid`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_not_a_snapshot_code`, `original_url_not_on_event`.
 
 **Read surface.** `EventRead.archived_source` carries the archived copy of the event's own `source_url` as `{url, provider}`. `archived_secondary_sources` carries the same per mirror, index-aligned with `secondary_source_urls`, and `archived_detected_from` carries it for the provenance link (see [`api.md`](api.md#get-eventsid)). All three are `null` when no copy has been recorded, which is every link's starting state. The event detail surface, both the full page and the map side panel, renders each as one small icon beside the link it covers, using [`ArchivedCopies`](../frontend/src/components/ui/ArchivedCopies.tsx) as the one component for the primary source, the mirrors and the provenance link. It reads and never writes: the icon is accent-coloured and opens the copy where one exists, and grey and inert where none does, for every reader including the event's owner. Recording a copy is an edit, so it happens on the forms, which carry the affordance as a mark inside the Source URL field, inside every secondary source row and, on the published-row edit, inside the locked *Detected from* field ([`ArchiveAdornment`](../frontend/src/components/ui/ArchivedCopies.tsx)), opening the paste line under that field ([`ArchiveSnapshotField`](../frontend/src/components/ui/ArchivedCopies.tsx)); a link that already carries a copy shows the mark that opens it beside the mark that replaces it. Detections carry the field too, since a detection's source rots while it waits. Proof-link copies are stored but not rendered inline.
 
