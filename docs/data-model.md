@@ -1,6 +1,71 @@
 # Data model
 
-## Overview
+One `events` row carries a geolocation for its whole life. The status it holds says how far along it is, three writes move it, and the tables below hang off it rather than copy it.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`a write that moves the row`"]:::spec
+    l2["`where the row comes from`"]:::shared
+    l3["`a status the one row holds`"]:::core
+    l4[("`a table that hangs off it`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  ask["`**POST /events/requests**
+  an open call to geolocate`"]:::shared
+  submit["`**POST /events**
+  a finished geolocation, born published`"]:::shared
+  engine["`**persist_detections**
+  the ingest engine: bot, paste or archive`"]:::shared
+
+  requested["`**requested**
+  requested_at; a coordinate is optional, so the ask may carry a guess`"]:::core
+  detected["`**detected**
+  detected_at; source_url optional, public from the moment it lands`"]:::core
+  geolocated["`**geolocated**
+  geolocated_at; ck_events_coords_status and ck_events_source_url_status make the coordinate and the source NOT NULL here`"]:::core
+  closed["`**closed**
+  closed_at, close_reason, and before_closed_status: withdrawn, rejected or retracted`"]:::core
+
+  vouch["`**services/events.geolocate**
+  a person vouches: coordinate, source_url, one proof image. owner_id moves to the fulfiller`"]:::spec
+  version["`**POST /events/{id}/versions**
+  every later correction; refused past 100 versions`"]:::spec
+  close["`**close**
+  the owner takes the row back, from any live status`"]:::spec
+
+  credit[("`**event_geolocators**
+  durable credit, owner included`")]:::store
+  versions[("`**event_versions**
+  the superseded state, as version_no moves on`")]:::store
+  reports[("`**content_reports**
+  any viewer, signed in or not`")]:::store
+
+  ask --> requested
+  engine --> detected
+  submit --> vouch
+  requested --> vouch
+  detected --> vouch
+  vouch --> geolocated --> version --> geolocated
+  vouch --> credit
+  version --> versions
+  requested --> close
+  detected --> close
+  geolocated --> close
+  close --> closed
+  geolocated --> reports
+```
+
+The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The three writes are `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched, [`event_versions`](#event_versions) holds what a correction superseded, and [`content_reports`](#content_reports) holds what a viewer flagged.
+
+## Schema overview
 
 ```mermaid
 erDiagram
