@@ -8,7 +8,7 @@ import { useAdmin } from "@/hooks/useAdmin";
 import { DetectionStatsPanel } from "@/components/admin/DetectionStatsPanel";
 import { EventDeletePanel } from "@/components/admin/EventDeletePanel";
 import { EventModerationPanel } from "@/components/admin/EventModerationPanel";
-import { RecentSubmissionsPanel } from "@/components/admin/RecentSubmissionsPanel";
+import { CatalogueFeedPanel } from "@/components/admin/CatalogueFeedPanel";
 import { ReportsPanel } from "@/components/admin/ReportsPanel";
 import { OnboardingPanel } from "@/components/admin/OnboardingPanel";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
@@ -42,7 +42,7 @@ export default function AdminPage() {
     <PageShell title="Admin">
       <OnboardingPanel />
       <DetectionStatsPanel />
-      <RecentSubmissionsPanel />
+      <CatalogueFeedPanel />
       <ManageAnalystsPanel />
       {/* Moderation reads top to bottom: the queue says what was reported,
           the panel under it is the same two axes moved by hand. */}
