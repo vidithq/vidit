@@ -71,7 +71,14 @@ markdown_extensions:
       pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
+  # The mermaid custom fence is what makes ```mermaid blocks render as
+  # diagrams on docs.vidit.app instead of as code listings. Material ships
+  # the renderer; the fence hands it the block.
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
 
 plugins:
   - search

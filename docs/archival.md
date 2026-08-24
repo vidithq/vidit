@@ -2,6 +2,48 @@
 
 Source tweets get deleted and accounts get suspended, which destroys exactly the evidence the catalog preserves. An archived copy keeps a dead original readable, and the analyst who owns the event is who makes it.
 
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`what happens in the analyst's browser`"]:::spec
+    l2["`a step of the write`"]:::shared
+    l3["`the check that decides`"]:::core
+    l4[("`a store`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  links["`**source_archive.collect_links**
+  the four origins: source_url, secondary_source, detected_from, proof_link`"]:::shared
+  mark["`**ArchiveAdornment**
+  the mark inside the field holding the link`"]:::spec
+  save["`**web.archive.org/save/&lt;link&gt;**
+  opened prefilled, in the analyst's own browser; archive.today is opened by hand`"]:::spec
+  paste["`**ArchiveSnapshotField**
+  the snapshot pasted back under that field`"]:::spec
+  post["`**the write carrying it**
+  source_snapshot_url, secondary_snapshot_urls, detected_from_snapshot_url`"]:::shared
+  check["`**validate_snapshot**
+  https, three hosts, the replay URL's embedded original or the code's shape; a rejection is a 400 and nothing publishes`"]:::core
+  row[("`**source_archives**
+  UNIQUE (event_id, original_url): one copy per link, provider inferred from the host`")]:::store
+  version["`**file_version**
+  on a published row: files the superseded version, changed field Archived copies`"]:::shared
+  read["`**ArchivedCopies**
+  accent where a copy exists and it opens it, grey and inert where none does`"]:::spec
+
+  links --> mark --> save --> paste --> post --> check --> row
+  post --> version
+  row --> read
+```
+
+Each paragraph below takes one region of the diagram, left to right: which links are in scope, why the capture runs in the browser, which writes carry a paste, what the check accepts, and what a reader sees.
+
 **The capture happens in the analyst's browser, not on the server.** Roughly nine in ten sources here are `x.com`, which Save Page Now refuses structurally (`We're currently facing some limitations when it comes to archiving this site`), and archive.today has no API and answers a burst of server-side submissions by banning the submitting host. Both services work from a browser, which is how the OSINT community uses them. So the form hands the analyst one prefilled submit page, `https://web.archive.org/save/<link>`, and takes back the snapshot URL the service produced. The Wayback Machine is the page it opens because Save Page Now runs from a browser and mints a replay URL that embeds the link it captured, which is what `validate_snapshot` checks a paste against; an analyst who prefers archive.today opens it themselves and pastes the snapshot into the same field, which takes all three hosts.
 
 **Scope.** The table tracks the event's `source_url`, its [secondary source links](data-model.md#event_source_links) (the analyst-submitted mirrors, which carry the same link-rot risk as the primary), its `detected_from_url` (the analyst's own post a machine detection came from, which is the provenance of the geolocation claim), and every `http(s)` href carried by a link mark in the proof body's Tiptap document. [`source_archive.collect_links`](../backend/app/services/source_archive.py) is the one home for that walk, reading the proof body through [`sanitize.extract_link_hrefs`](../backend/app/services/sanitize.py). Each row records where its link came from in `origin` (`source_url`, `secondary_source`, `detected_from`, `proof_link`); a URL reachable from more than one is one link, kept under the first of those it appears in. Every link goes through [`sanitize.safe_link_href`](../backend/app/services/sanitize.py) (the same allowlist the proof editor writes against) plus a 2000-byte ceiling matching the `source_url` column. Analyst profile external links are out of scope, since they represent identity rather than evidence.
@@ -14,7 +56,47 @@ Source tweets get deleted and accounts get suspended, which destroys exactly the
 
 **Archival starts at the submit form, not after publication.** A link is most archivable while the analyst still has it open, so every link the form declares carries the affordance inside the field holding it: an archive mark in the field's trailing slot, which opens one line under that field with a paste field taking the snapshot back from any of the three accepted hosts and a door onto `https://web.archive.org/save/<link>` prefilled with the value currently typed. A link that already has a copy carries the mark opening that copy as well, since one link holds one copy and replacing a wrong paste is what the second mark is for. The source URL carries it, and so does each secondary source row, since a mirror rots the same way; on the published-row edit the locked *Detected from* field carries it too, because a link being immutable says nothing about whether it rots. The pastes post as `source_snapshot_url`, as `secondary_snapshot_urls` (one entry per mirror, aligned with `secondary_source_urls` by position) and as `detected_from_snapshot_url`, which only [`POST /events/{id}/versions`](api.md#post-eventsidversions) declares. Each runs `validate_snapshot` against the link it sits beside and lands in the same transaction as the event, filed under origin `source_url`, `secondary_source` or `detected_from`. The pairing runs before the mirrors are normalized, so a copy stays on the link it was pasted under; a copy whose mirror the write drops is dropped with it, and a copy filed against a mirror an edit removes is deleted with that mirror, the version it superseded keeping it readable. A rejected paste publishes nothing: the analyst fixes it and submits the same form again. The fields are optional and sit in no publish floor.
 
-**A copy always matches the source URL it is filed against.** The source URL is editable at every point of the lifecycle, a correction on a published row included, so an edit can leave a snapshot describing a link the event no longer declares. Every write that stores a source URL therefore reconciles the copy filed under origin `source_url`: if that copy's `original_url` is no longer the event's `source_url`, it is re-filed under the origin the URL now has (the analyst moved it to the mirrors, or cited it in the proof) or deleted when the event no longer carries the URL at all. An edit that changes the source and pastes no new snapshot thus leaves the event with **no** archived source rather than a stale one; pasting a `source_snapshot_url` with the same write fills the slot back in. The reconcile reads the links the event carries at that moment, so the mirrors are the submitted ones while the proof body is still the stored one (a write applies its new proof at commit).
+**A copy always matches the source URL it is filed against.**
+
+```mermaid
+flowchart TB
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`what the event ends up carrying`"]:::spec
+    l2["`a step`"]:::shared
+    l3["`the decisive question`"]:::core
+    l1 ~~~ l2 ~~~ l3
+  end
+
+  write["`**any write storing a source URL**
+  submit, geolocate, or a version on a published row`"]:::shared
+  held["`**the copy filed under origin source_url**
+  the one the event carried before this write`"]:::shared
+  q1{"`**is its original_url still the event's source_url?**`"}:::core
+  keep["`**a copy that matches**
+  the slot holds a snapshot of the link the event now declares`"]:::spec
+  q2{"`**does the event still carry that URL at all?**
+  a mirror, or a citation in the proof body`"}:::core
+  refile["`**re-filed**
+  origin becomes secondary_source or proof_link`"]:::spec
+  drop["`**deleted**
+  no stale copy survives an edit that moved the source`"]:::spec
+  fresh["`**a source_snapshot_url pasted with the same write**
+  fills the slot back in`"]:::shared
+
+  write --> held --> q1
+  q1 -- "yes" --> keep
+  q1 -- "no" --> q2
+  q2 -- "yes" --> refile
+  q2 -- "no" --> drop
+  write --> fresh --> keep
+```
+
+The source URL is editable at every point of the lifecycle, a correction on a published row included, so an edit can leave a snapshot describing a link the event no longer declares. Every write that stores a source URL therefore reconciles the copy filed under origin `source_url`: if that copy's `original_url` is no longer the event's `source_url`, it is re-filed under the origin the URL now has (the analyst moved it to the mirrors, or cited it in the proof) or deleted when the event no longer carries the URL at all. An edit that changes the source and pastes no new snapshot thus leaves the event with **no** archived source rather than a stale one; pasting a `source_snapshot_url` with the same write fills the slot back in. The reconcile reads the links the event carries at that moment, so the mirrors are the submitted ones while the proof body is still the stored one (a write applies its new proof at commit).
 
 **What counts as a snapshot.** `https` only, no longer than the 2000-byte ceiling the `source_url` column carries, on exactly three hosts: `web.archive.org`, `archive.ph`, `archive.today`. The host is also what infers the provider. A `web.archive.org` URL must be a replay URL (`/web/<timestamp>/<original>`) whose embedded original names the same page as `original_url`; the comparison drops the scheme, the host case, a leading `www.` and a trailing slash, because Wayback stores the URL it crawled rather than the string the analyst submitted. An `archive.ph` / `archive.today` URL is a short code (`/<code>`) that embeds nothing, so only the code's shape is checked. The server deliberately does not fetch the page to verify it: fetching archive.today from a server is what gets the deployment's IP banned. The paste comes from the authenticated owner of the event, whose own catalog entry a wrong code degrades, and the host allowlist plus the code shape is what bounds the abuse. Every rejection is a 400 carrying the code for the check it failed: `snapshot_url_too_long` (past the byte ceiling above), `snapshot_url_invalid` (the value does not parse as a URL at all), `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_original_mismatch`, `snapshot_not_a_snapshot_code`, `original_url_not_on_event`.
 
