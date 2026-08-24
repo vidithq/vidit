@@ -1,6 +1,67 @@
 # Engineering
 
-This page describes the tech stack, repository layout, local environment, deployment process, and particularities of the Vidit codebase.
+Vidit runs as one API, one frontend, four scheduler services and three buckets. This page describes that system, the repository it is built from, the conventions its code follows, and how a change reaches it.
+
+```mermaid
+flowchart TB
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`an edge a browser meets`"]:::spec
+    l2["`a scheduler service`"]:::shared
+    l3["`the one service taking traffic`"]:::core
+    l4[("`a store`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  subgraph traffic [What a reader's browser reaches]
+    direction TB
+    reader["`**a browser**
+    vidit.app`"]:::spec
+    vercel["`**Vercel: vidit-frontend**
+    Next.js App Router; **proxy.ts** canonicalises the host and runs the default-deny auth wall`"]:::spec
+    cf["`**Cloudflare: the vidit.app zone**
+    api proxied, apex and www DNS-only`"]:::spec
+    api["`**Railway: backend**
+    FastAPI on uvicorn; **alembic upgrade head** runs as the pre-deploy hook`"]:::core
+    reader --> vercel --> cf --> api
+  end
+
+  subgraph sched [Scheduler services, same image, no port]
+    direction TB
+    worker["`**backend-import-worker**
+    always-on: archive_import_jobs, then bot_webhook_events`"]:::shared
+    bot["`**backend-x-bot**
+    hourly: run_bot.py reconciles the mentions timeline`"]:::shared
+    conf["`**backend-conflicts**
+    daily: sync_conflicts.py`"]:::shared
+    backup["`**backend-backup**
+    daily: pg_dump`"]:::shared
+  end
+
+  db[("`**postgres-db**
+  PostgreSQL 16 + PostGIS 3, public networking off`")]:::store
+  s3[("`**media bucket + CloudFront**
+  evidence objects, versioned and Object-Locked`")]:::store
+  bak[("`**backup bucket**
+  write-only IAM, daily dumps`")]:::store
+
+  reader -- "media reads" --> s3
+  api --> db
+  api --> s3
+  worker --> db
+  bot --> db
+  conf --> db
+  worker --> s3
+  backup --> db
+  backup --> bak
+```
+
+Each region of the diagram has a section below. What each piece is and why it was picked is [the tech stack](#tech-stack); the code they all run is [the repository layout](#repository-layout-monorepo) and [the backend conventions](#backend-conventions); the four services in the lower band are [scheduler services](#scheduler-services); the stores and the hosts in front of them are [deployment](#deployment), with the backup bucket's runbook in [`backups.md`](backups.md). The path a change takes to reach the diagram is [CI/CD](#cicd). [Local environment](#local-environment) is the same shape on one machine, with a Docker container standing in for `postgres-db` and `LocalStorage` for the buckets.
 
 ---
 
@@ -250,11 +311,42 @@ The [Probot DCO App](https://github.com/apps/dco) enforces DCO sign-off. It isn'
 
 ### Layered structure
 
-```
-HTTP request → router → service → model / DB
-                 ↕         ↕
-              schema    database.py
-           (validation) (session)
+A request crosses the layers in one direction, and each layer knows only the one under it.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`what crosses a boundary`"]:::spec
+    l2["`a layer`"]:::shared
+    l3["`where the business logic lives`"]:::core
+    l1 ~~~ l2 ~~~ l3
+  end
+
+  req["`**HTTP request**`"]:::spec
+  router["`**routers/**
+  endpoints only; calls a service and returns a schema`"]:::shared
+  errors["`**routers/_errors.raise_typed_error**
+  maps a service error's code to a status plus a code and message body`"]:::spec
+  service["`**services/**
+  the decisions; raises a typed error with a stable code, never HTTPException`"]:::core
+  model["`**models/**
+  SQLAlchemy tables, structure only`"]:::shared
+  schema["`**schemas/**
+  Pydantic v2, in and out separated: XxxCreate, XxxRead, XxxUpdate, XxxList`"]:::spec
+  dep["`**dependencies.py**
+  get_db, get_current_user`"]:::spec
+  db[("`PostgreSQL`")]:::store
+
+  req --> router --> service --> model --> db
+  schema --> router
+  dep --> router
+  service -- "typed error" --> errors --> router
 ```
 
 | Layer | Role | Rule |
@@ -349,11 +441,60 @@ The override applies only to the localhost regex. Explicit `CORS_ORIGINS` (produ
 
 ## CI/CD
 
+A change reaches production in two moves, and neither is automatic: checks gate the merge, and a person dispatches the deploy.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`a check reporting on the PR`"]:::spec
+    l2["`a step someone takes`"]:::shared
+    l3["`a gate nothing passes without`"]:::core
+    l1 ~~~ l2 ~~~ l3
+  end
+
+  pr["`**a pull request**
+  from a feature branch; main is branch-protected`"]:::shared
+
+  subgraph checks [What runs on it]
+    direction TB
+    ci["`**ci.yml**, six jobs, no path filters
+    backend-lint, backend-test, frontend, api-types, hygiene, docs-pairing`"]:::spec
+    other["`**pr-title.yml**, the **DCO app**, **codeql.yml**
+    title shape, sign-off, and the security-extended scan`"]:::spec
+  end
+
+  protect["`**branch protection on main**
+  seven required checks, linear history, no force-push`"]:::core
+  merge["`**merge to main**
+  auto-deploy is off`"]:::shared
+  dispatch["`**deploy.yml**, workflow_dispatch
+  one ref, six parallel jobs`"]:::core
+  rail["`**railway up --detach**
+  five services, then poll railway deployment list to a terminal status`"]:::shared
+  pre["`**alembic upgrade head**
+  the pre-deploy hook, before the new container takes traffic`"]:::core
+  vercel["`**vercel pull, build, deploy --prebuilt --prod**`"]:::shared
+  prod[("`**production**
+  api.vidit.app and vidit.app`")]:::store
+
+  pr --> checks --> protect --> merge --> dispatch
+  dispatch --> rail --> pre --> prod
+  dispatch --> vercel --> prod
+```
+
+The checks are [GitHub Actions](#github-actions), the gate is the branch-protection row under [Observability](#observability-whats-wired-and-how-to-turn-it-on), and the six deploy jobs are [Deployment](#deployment).
+
 ### GitHub Actions
 
 | Workflow | Trigger | Steps |
 |----------|---------|-------|
-| `ci.yml` | Every push to `main` and every PR (no path filters, so required checks always report even on a docs-only PR) | Four jobs. `backend-lint`: `uv sync` → `ruff check` → `ruff format --check` → `mypy app` → `vulture` (dead code). `backend-test` (parallel with `backend-lint`, no gate): `pytest -n 4 --dist loadfile` against a PostGIS service container (no separate migrate step: the xdist template build runs the migrations, see the tests entry in [Repo layout](#repository-layout-monorepo)). `frontend`: `npm ci` → `eslint` → `tsc --noEmit` → `vitest run` → `next build`. `docs-pairing` (PR-only): fails when the PR doesn't touch *both* `docs/` AND `planning/`; override with a justification in the PR description if the change genuinely needs neither. Dependabot PRs are exempt. Force-pushes cancel the obsolete in-flight run; pushes to `main` run to completion. |
+| `ci.yml` | Every push to `main` and every PR (no path filters, so required checks always report even on a docs-only PR) | Six jobs. `backend-lint`: `uv sync` → `ruff check` → `ruff format --check` → `mypy app` → `vulture` (dead code). `backend-test` (parallel with `backend-lint`, no gate): `pytest -n 4 --dist loadfile` against a PostGIS service container (no separate migrate step: the xdist template build runs the migrations, see the tests entry in [Repo layout](#repository-layout-monorepo)). `frontend`: `npm ci` → `eslint` → `tsc --noEmit` → `vitest run` → `next build`. `api-types`: regenerates `frontend/src/lib/api-types.ts` from the OpenAPI spec and fails on drift. `hygiene`: `jscpd` (duplication), `knip` (dead frontend code), and the palette-coverage check. `docs-pairing` (PR-only): fails when the PR doesn't touch *both* `docs/` AND `planning/`; override with a justification in the PR description if the change genuinely needs neither. Dependabot PRs are exempt. Force-pushes cancel the obsolete in-flight run; pushes to `main` run to completion. |
 | `codeql.yml` | Push to `main`, PR to `main`, weekly cron (Monday 06:00 UTC) | CodeQL dataflow analysis on Python + TypeScript/JavaScript with the `security-extended` query suite. Findings post to *Security tab → Code scanning alerts*. The `analyze` job is gated on `!github.event.repository.private`: code scanning is free on public repos but a paid GitHub Advanced Security add-on on private ones, so the job runs on the public repo and skips (rather than fails) anywhere the repository is private, e.g. a private fork. |
 | `pr-title.yml` | PR opened / edited / synchronized | Validates the PR title against Conventional Commits. Stays outside `ci.yml` on purpose: it re-runs on title edits, and bundling it would re-run the full test suite on every edit. |
 | `deploy.yml` | `workflow_dispatch` | See [Deployment](#deployment) below. |

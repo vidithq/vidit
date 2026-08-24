@@ -1,5 +1,66 @@
 # Design principles and decisions
 
+Every surface composes the same primitives, and two reader preferences repaint all of them at once. This page is that vocabulary: the principles the interface follows, the palette and layout it draws from, and the components a page is allowed to use.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`a surface, or a consumer that reads no CSS`"]:::spec
+    l2["`a shared primitive or constant`"]:::shared
+    l3["`the one place a rule is written`"]:::core
+    l1 ~~~ l2 ~~~ l3
+  end
+
+  subgraph pref [What a reader picks]
+    direction TB
+    settings["`**Settings → Display**
+    theme and accent hue, per browser`"]:::spec
+    attr["`**attributePreference.ts**
+    stores the choice and stamps data-theme and data-palette on &lt;html&gt;`"]:::core
+    globals["`**globals.css**
+    remaps the neutral-* and orange-* Tailwind scales; components keep writing the same utilities`"]:::core
+    settings --> attr --> globals
+  end
+
+  canvas["`**lib/palette.ts**, **Map.tsx**
+  map markers and the basemap carry hex, since a canvas reads no CSS variable`"]:::spec
+
+  subgraph build [What a page is built from]
+    direction TB
+    frame["`**PageFrame**
+    the rail inset and the one column width`"]:::shared
+    shell["`**PageShell**
+    title, subtitle, back, actions`"]:::shared
+    prims["`**components/ui/**
+    Button, Pill, Input, Card, EntityCard, MediaGallery, Avatar, FieldHelp`"]:::shared
+    consts["`**form-styles.ts**, **styles.ts**
+    FORM_*, ACCENT_SURFACE, TAPPABLE_HOVER, TEXT_LINK, WARNING_CALLOUT`"]:::shared
+    frame --> shell
+    consts --> prims
+  end
+
+  page["`**a page or feature component**
+  composes primitives; a control defined inline is a review-blocker`"]:::spec
+  catalogue["`**/palette**
+  the live catalogue; the hygiene job fails when a primitive or constant is missing from it`"]:::core
+
+  globals --> prims
+  globals --> consts
+  attr --> canvas
+  shell --> page
+  prims --> page
+  consts --> page
+  prims --> catalogue
+  consts --> catalogue
+```
+
+Each region of the diagram has a section below. What a reader picks is [Theme](#theme) and the [accent](#accent); both store the choice locally and repaint every `neutral-*` or `orange-*` utility, and the two consumers that cannot read a CSS variable, the map markers and the basemap, are the exception. What a page is built from is [Components](#components), whose class constants are named in the [accent recipe](#accent-recipe) and whose frame is [Page chrome](#page-chrome). `/palette` is the gate on that vocabulary, and the exceptions decided once are [Sanctioned one-offs](#sanctioned-one-offs).
+
 ## Philosophy
 
 The interface is spare by default and reveals complexity on demand. It stays legible to first-time visitors, and advanced filters and tools appear only when needed. The design avoids a cluttered dashboard look and a dark-ops aesthetic.
@@ -141,6 +202,64 @@ Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell
 | Subtitle | `text-sm text-neutral-400` | Tight under the H1 (8 px gap). |
 | Back arrow (`back`) | `flex -ml-2 mb-1 lg:inline-flex lg:absolute lg:right-full lg:top-1.5 lg:mr-3` | Lives in the gutter from `lg` up, so the title's x-coordinate is the same whether back is present or not. That gutter exists only once the centred column has room to sit off the rail; below `lg` the button is a row of its own above the title, since a gutter-parked one lands under the fixed sidebar, where taps reach the nav rather than the button. `-ml-2` takes back 8 of the 9px the 36px square insets its 18px glyph by, so the arrow reads as aligned with the heading. **When to set it:** `back` marks a drill-in page reached from content (event / request detail, edit, profile, the detections queue), where "back" means "return to where I clicked this". Sidebar destinations (map, submit, requests, search, about, settings) never set it: they are entered from the rail, so there is no "where I came from" to promise. **What it walks:** [`smartBack`](../frontend/src/lib/navigation.ts) pops an app-kept stack of visited paths rather than calling `history.back()`, which would walk off the origin. A route that only redirects keeps itself out of that stack (`skipBackRecord`, called before the redirect), since walking back onto one runs its redirect again and lands where the walk started, which reads as an arrow that does nothing. |
 | Actions (`actions`) | Right of the title, wrapping under it below a `14rem` title basis | The page-level action cluster. Every control that acts on the thing the page is about goes here, so a reader finds them in one place. On a profile that is the glyph row (the linked accounts, then Edit profile on your own), and Follow on someone else's profile or the save pair while editing. On an event surface it is the three-tier grammar below. The map's side panel mirrors the position, right-aligned beside its title. A panel a cluster control opens (the report form, the close form) renders under the header, directly below the trigger; two open panels stack as separate cards rather than sharing a slot. Flex line-breaking measures the title's base size, so the cluster takes its own line rather than squeezing a heading into a one-word column. A preference, not a minimum (`min-w-0`): a hard floor outgrows the frame on the narrowest phones and scrolls the page sideways. The cluster is capped at the header width (`max-w-full`) and wraps inside itself, so a row of several buttons breaks into right-aligned lines on a phone. The subtitle breaks anywhere, since the owner's email is one unbreakable token. |
+
+#### One event, four surfaces, two writes
+
+An event is read on four surfaces and written by two endpoints. The three subsections below take one region of it each: the controls a surface offers, the form both writes go through, and the addresses that read a version.
+
+```mermaid
+flowchart TB
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`an address a reader can open`"]:::spec
+    l2["`a shared component`"]:::shared
+    l3["`the write behind it`"]:::core
+    l1 ~~~ l2 ~~~ l3
+  end
+
+  canonical["`**/events/{id}**
+  canonical, always the current version`"]:::spec
+  history["`**/events/{id}/history**
+  one row per version, newest first, on the shared cursor`"]:::spec
+  vn["`**/events/{id}/vN**
+  the record as version N stood; noindex plus a canonical link back`"]:::spec
+  panel["`**the map side panel**
+  a preview of a row whose page is one click away`"]:::spec
+
+  body["`**EventPageBody**
+  the record's body, rendered by the canonical page and by every version page`"]:::shared
+  snap["`**snapshotToEventView**
+  maps a stored snapshot onto the live row's shape`"]:::shared
+  actions["`**useEventActions**
+  the three tiers: utilities, flow action, management`"]:::shared
+  form["`**EventEditForm** at **/events/{id}/edit**
+  one form, two shapes chosen by the row's status`"]:::shared
+
+  geo["`**POST /events/{id}/geolocate**
+  a detected row: submitting publishes it`"]:::core
+  ver["`**POST /events/{id}/versions**
+  a geolocated row: saving adds a version and overwrites nothing`"]:::core
+  rows[("`**events + event_versions**`")]:::store
+
+  canonical --> body
+  vn --> snap --> body
+  canonical --> actions
+  history --> vn
+  canonical -- "History" --> history
+  actions --> form
+  panel --> canonical
+  form -- "detected" --> geo
+  form -- "geolocated" --> ver
+  geo --> rows
+  ver --> rows
+```
+
+The history list's `Current` row opens the canonical page rather than a version address, since that is where the record as it stands is read.
 
 #### Event action tiers
 

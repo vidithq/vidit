@@ -7,6 +7,54 @@ A web platform for OSINT/GEOINT analysts to archive, reference, and visualize ge
 
 Live at **[vidit.app](https://vidit.app)** (beta).
 
+Work reaches the map through one of four doors. Three of them read an analyst's own X posts and produce machine detections; the fourth is the submit form. Nothing is published until a person vouches for it.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`what an analyst does`"]:::spec
+    l2["`what the machine does`"]:::shared
+    l3["`the moment a person vouches`"]:::core
+    l4[("`the catalog`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  subgraph doors [Four ways work comes in]
+    direction TB
+    hand["`**/submit**
+    one form: coordinates, source, media, tags, and a Tiptap proof`"]:::spec
+    bot["`**tag @ViditBot on X**`"]:::spec
+    paste["`**paste one of your own posts**`"]:::spec
+    arch["`**bulk import your X export**`"]:::spec
+  end
+
+  engine["`**one detection engine, three entries**
+  reads the coordinate, the source and the media out of the post`"]:::shared
+  det["`**a detection**
+  public from the moment it lands, badged as machine output`"]:::shared
+  review["`**your review**
+  complete it and publish, or reject it`"]:::core
+  ev[("`**events**
+  one row per geolocation; a published row is corrected by versions, never overwritten`")]:::store
+  read["`**/map, /search, /requests, /profile/{username}**
+  open to anonymous readers`"]:::spec
+
+  hand --> ev
+  bot --> engine
+  paste --> engine
+  arch --> engine
+  engine --> det --> review --> ev
+  ev --> read
+```
+
+The detection engine is documented in [docs/ingestion.md](docs/ingestion.md), the row and its statuses in [docs/data-model.md](docs/data-model.md).
+
 ---
 
 ## Why open source
