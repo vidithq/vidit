@@ -44,10 +44,10 @@ from app.services.versions import VersionLimitError
 SecondarySourceUrl = Annotated[str, StringConstraints(max_length=SOURCE_URL_MAX_LENGTH)]
 
 # Every ``SnapshotRejected`` code is the same verdict about the same two
-# fields: what the analyst pasted is not a snapshot of the link they named. 400
-# across the board, with the code telling them which check it failed. Shared by
-# every write form that carries a snapshot field, so one paste is answered the
-# same way wherever it arrives.
+# fields: what the analyst pasted is not a snapshot address, or names a link the
+# event does not carry. 400 across the board, with the code telling them which
+# check it failed. Shared by every write form that carries a snapshot field, so
+# one paste is answered the same way wherever it arrives.
 ARCHIVE_ERROR_STATUS: dict[str, int] = {
     "original_url_not_on_event": 400,
     "snapshot_url_invalid": 400,
@@ -55,7 +55,6 @@ ARCHIVE_ERROR_STATUS: dict[str, int] = {
     "snapshot_url_not_https": 400,
     "snapshot_provider_not_allowed": 400,
     "snapshot_not_a_replay_url": 400,
-    "snapshot_original_mismatch": 400,
     "snapshot_not_a_snapshot_code": 400,
 }
 

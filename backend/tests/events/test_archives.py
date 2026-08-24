@@ -132,17 +132,17 @@ def test_create_without_a_snapshot_stores_none(db, author, conflict, capture_sou
     assert _copies(db, uuid.UUID(response.json()["id"])) == []
 
 
-def test_create_refuses_a_snapshot_of_another_link(db, author, conflict, capture_source_tag):
-    """The same check the standalone endpoint runs, with the same code: a
-    replay URL that captured a different page is not this source's copy."""
-    response = _create(
-        author,
-        conflict,
-        capture_source_tag,
-        source_snapshot_url=_wayback_of("https://elsewhere.test/x"),
-    )
-    assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "snapshot_original_mismatch"
+def test_create_stores_a_snapshot_whatever_it_replays(db, author, conflict, capture_source_tag):
+    """Validation says where a snapshot lives, not what it captured: a
+    well-formed replay URL is stored even when its embedded original is spelled
+    unlike the source (a short link, a platform's former domain). The analyst
+    owns what the snapshot shows, and the form warns them before they post."""
+    snapshot = _wayback_of("https://youtu.be/dQw4w9WgXcQ")
+    response = _create(author, conflict, capture_source_tag, source_snapshot_url=snapshot)
+    assert response.status_code == 201, response.text
+    assert response.json()["archived_source"] == {"url": snapshot, "provider": "wayback"}
+
+    assert _copy(db, uuid.UUID(response.json()["id"]), SOURCE).snapshot_url == snapshot
 
 
 def test_create_refuses_a_snapshot_on_an_unlisted_host(author, conflict, capture_source_tag):
@@ -223,7 +223,7 @@ def test_geolocate_replaces_the_copy_the_event_already_had(
     ]
 
 
-def test_geolocate_refuses_a_snapshot_of_another_link(db, author, conflict, capture_source_tag):
+def test_geolocate_refuses_a_snapshot_that_is_not_one(db, author, conflict, capture_source_tag):
     """A rejected paste writes nothing at all: the detection stays unpublished, so
     the analyst fixes the paste and submits the same form again."""
     geo = _make_geo(db, author=author, status=STATUS_DETECTED, source_url=SOURCE, with_media=True)
@@ -233,10 +233,10 @@ def test_geolocate_refuses_a_snapshot_of_another_link(db, author, conflict, capt
         author,
         conflict,
         capture_source_tag,
-        source_snapshot_url=_wayback_of("https://elsewhere.test/x"),
+        source_snapshot_url="https://web.archive.org/about/",
     )
     assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "snapshot_original_mismatch"
+    assert response.json()["detail"]["code"] == "snapshot_not_a_replay_url"
 
     db.expire_all()
     assert _copies(db, geo.id) == []
@@ -313,9 +313,9 @@ def test_a_blank_mirror_row_does_not_shift_the_copies(db, author, conflict, capt
     ]
 
 
-def test_create_refuses_a_mirror_snapshot_of_another_link(db, author, conflict, capture_source_tag):
-    """Every paste is checked against the link it sits beside, so a snapshot of
-    the primary pasted under a mirror is the same 400 as anywhere else, and the
+def test_create_refuses_a_mirror_snapshot_that_is_not_one(db, author, conflict, capture_source_tag):
+    """Every paste runs the same checks wherever it sits, so a mirror's paste
+    that is not a snapshot address is the same 400 as the primary's, and the
     event it rode with is never created."""
     title = f"archival-{uuid.uuid4().hex[:8]}"
     response = _create(
@@ -324,10 +324,10 @@ def test_create_refuses_a_mirror_snapshot_of_another_link(db, author, conflict, 
         capture_source_tag,
         title=title,
         secondary_source_urls=[MIRROR],
-        secondary_snapshot_urls=[WAYBACK],
+        secondary_snapshot_urls=[f"https://archive.ph/newest/{MIRROR}"],
     )
     assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "snapshot_original_mismatch"
+    assert response.json()["detail"]["code"] == "snapshot_not_a_snapshot_code"
     assert db.query(Event).filter(Event.title == title).one_or_none() is None
 
 

@@ -30,7 +30,7 @@ export const FIELD_HELP = {
     label: "What is the camera position?",
   },
   source_url: {
-    text: "Where the footage was first published (the original post or channel). Not your own geolocation tweet. The archive mark beside the link is its archived copy, so the evidence survives the original being deleted: orange opens the stored copy, grey means there is none yet. Recording one happens from the edit form: the mark there offers the Wayback Machine with the link filled in and accepts a snapshot you took at archive.ph or archive.today.",
+    text: "Where the footage was first published (the original post or channel). Not your own geolocation tweet. The archive mark beside the link is its archived copy, so the evidence survives the original being deleted: orange opens the stored copy, grey means there is none yet. Recording one happens from the edit form: the mark there offers the Wayback Machine with the link filled in and accepts a snapshot you took at the Wayback Machine, archive.today (or any of its mirrors) or Ghostarchive.",
     label: "What is the source?",
   },
   secondary_source_urls: {

@@ -99,8 +99,8 @@ class ArchivedLinkRead(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    # The snapshot, as the analyst recorded it (validated against the link it
-    # archives, see ``services/source_archive.validate_snapshot``).
+    # The snapshot, as the analyst recorded it (checked for provider and path
+    # shape, see ``services/source_archive.validate_snapshot``).
     url: str
     # Which service holds it, inferred from the snapshot's host at write time.
     provider: SourceArchiveProvider

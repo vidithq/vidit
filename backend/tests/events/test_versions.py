@@ -359,10 +359,10 @@ def test_promoting_an_archived_mirror_to_the_source_keeps_its_copy(
     assert row.origin == "source_url"
 
 
-def test_save_version_refuses_a_mirror_snapshot_of_another_link(
+def test_save_version_refuses_a_mirror_snapshot_that_is_not_one(
     db, author, conflict, capture_source_tag
 ):
-    """A paste that archives a different page is a 400, and the edit it rode
+    """A paste that is not a snapshot address is a 400, and the edit it rode
     with files no version."""
     mirror = "https://t.me/channel/424242"
     geo = _published(db, author, conflict, capture_source_tag, secondary_source_urls=[mirror])
@@ -374,13 +374,11 @@ def test_save_version_refuses_a_mirror_snapshot_of_another_link(
             conflict,
             capture_source_tag,
             secondary_source_urls=[mirror],
-            secondary_snapshot_urls=[
-                f"https://web.archive.org/web/20260811120000/{geo.source_url}"
-            ],
+            secondary_snapshot_urls=[f"https://archive.ph/newest/{mirror}"],
         ),
     )
     assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "snapshot_original_mismatch"
+    assert response.json()["detail"]["code"] == "snapshot_not_a_snapshot_code"
 
     db.expire_all()
     assert db.query(EventVersion).filter(EventVersion.event_id == geo.id).count() == 0

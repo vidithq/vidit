@@ -753,8 +753,8 @@ One row per link an analyst has recorded an archived copy for: the event's `sour
 | `event_id` | `UUID` | FK → `events.id`, ON DELETE CASCADE, NOT NULL, indexed |
 | `original_url` | `TEXT` | NOT NULL. The link exactly as stored on the event. It is never normalized, because it is half the row's identity and what the read surface matches against `events.source_url`. |
 | `origin` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_origin_valid`: `'source_url'` (the event's declared footage source), `'secondary_source'` (a row of [`event_source_links`](#event_source_links)), `'detected_from'` (the event's `detected_from_url`, the post a machine detection came from), or `'proof_link'` (an href inside the proof body). A link reachable from several of these is stored once, under the first of them it appears in. |
-| `snapshot_url` | `TEXT` | NOT NULL. The archived copy, validated against `original_url` before it is stored. |
-| `provider` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_provider_valid`: `'wayback'` or `'archive_today'`. Inferred from the snapshot's host at write time, and what the read surface picks its icon from. |
+| `snapshot_url` | `TEXT` | NOT NULL. The archived copy, checked for provider and path shape before it is stored (see [`archival.md`](archival.md)). |
+| `provider` | `VARCHAR(20)` | NOT NULL, `ck_source_archives_provider_valid`: `'wayback'`, `'archive_today'` or `'ghostarchive'`. Inferred from the snapshot's host at write time, and what the read surface names the copy from. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 
 `UNIQUE (event_id, original_url)` is one copy per link. It is also the owner's correction path: pasting a second snapshot for a link overwrites the row rather than adding a competing one.

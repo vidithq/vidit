@@ -141,8 +141,8 @@ describe("ArchivedCopies", () => {
 
 /**
  * What the paste field accepts, which is wider than the one page the field's
- * link opens. The link is a convenience; the contract is the three allowed
- * hosts, and an analyst who archives at archive.today themselves must keep
+ * link opens. The link is a convenience; the contract is the allowed hosts, and
+ * an analyst who archives at archive.today or Ghostarchive themselves must keep
  * working.
  */
 describe("the pasted snapshot, whichever service produced it", () => {
@@ -150,8 +150,8 @@ describe("the pasted snapshot, whichever service produced it", () => {
 
   // One case per accepted host, read off the list the component checks against
   // and the backend mirrors, so a host added there cannot go untested. Only the
-  // shape differs: a Wayback URL replays the link it captured, while the other
-  // two are opaque codes.
+  // shape differs: a Wayback URL replays the link it captured, while the rest
+  // are opaque codes.
   const CASES = SNAPSHOT_HOSTS.map(
     (host) =>
       [
@@ -189,5 +189,41 @@ describe("the pasted snapshot, whichever service produced it", () => {
       />
     );
     expect(screen.getByText(SNAPSHOT_HINT)).toBeInTheDocument();
+  });
+
+  // The seatbelt for the one thing the server stopped checking. It warns and
+  // never refuses: the value stays in the field, the form still posts it, and
+  // the field keeps no invalid state.
+  it("warns, without refusing, on a snapshot that replays another link", () => {
+    const snapshot = "https://web.archive.org/web/20260601120000/https://elsewhere.test/x";
+    expect(isSnapshotUrl(snapshot)).toBe(true);
+
+    render(
+      <ArchiveSnapshotField
+        link={SOURCE}
+        describes={PRIMARY_SOURCE_DESCRIPTION}
+        value={snapshot}
+        onChange={() => {}}
+      />
+    );
+
+    // Both links are on screen, so the analyst can see which one is wrong.
+    expect(screen.getByText("https://elsewhere.test/x")).toBeInTheDocument();
+    expect(screen.getByText(SOURCE)).toBeInTheDocument();
+    // A warning, not a refusal: the hint sentence belongs to the other line.
+    expect(screen.queryByText(SNAPSHOT_HINT)).toBeNull();
+    expect(screen.getByRole("textbox")).toHaveValue(snapshot);
+  });
+
+  it("says nothing when the snapshot replays the link it sits under", () => {
+    render(
+      <ArchiveSnapshotField
+        link={SOURCE}
+        describes={PRIMARY_SOURCE_DESCRIPTION}
+        value={`https://web.archive.org/web/20260601120000/${SOURCE}`}
+        onChange={() => {}}
+      />
+    );
+    expect(screen.queryByText(SOURCE)).toBeNull();
   });
 });

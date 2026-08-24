@@ -42,11 +42,12 @@ single icon; :data:`~app.models.source_archive.SourceArchive` is unique on
 the row rather than adding a competing one.
 
 What counts as a snapshot is :func:`validate_snapshot`: ``https`` only, a host
-on :data:`PROVIDER_HOSTS`, and a per-provider shape check. A Wayback replay URL
-embeds the original it captured, so it is checked against ``original_url``
-directly. archive.today short codes embed nothing, so only the code's shape is
-checked; see that function for why the server does not fetch the page to
-verify it.
+on :data:`PROVIDER_HOSTS`, and that provider's path shape. It checks where a
+snapshot lives, never what it captured. Most pastes embed nothing to compare
+against, the server must not fetch the page to find out, and the analyst pasting
+the link is the authenticated owner of the record a wrong one degrades; the
+submit forms warn on a snapshot URL that visibly replays another link, and the
+warning blocks nothing.
 """
 
 from __future__ import annotations
@@ -54,7 +55,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import UTC, datetime
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
@@ -70,11 +71,21 @@ from app.services.sanitize import extract_link_hrefs, normalised_host, safe_link
 # Every host a snapshot may live on, and the provider each one is. The
 # allowlist is the abuse bound: the field takes a URL from an authenticated
 # analyst and the catalog renders it as an outbound link, so "an archiving
-# service" is spelled out as three hosts rather than inferred from the URL.
+# service" is spelled out host by host rather than inferred from the URL.
+#
+# archive.today serves one set of snapshots under six interchangeable domains,
+# and which one an analyst is handed depends on where they are and which domain
+# resolves for them, so all six map to one provider rather than five of them
+# being read as somewhere else.
 PROVIDER_HOSTS: dict[str, SourceArchiveProvider] = {
     "web.archive.org": "wayback",
     "archive.ph": "archive_today",
     "archive.today": "archive_today",
+    "archive.is": "archive_today",
+    "archive.md": "archive_today",
+    "archive.li": "archive_today",
+    "archive.vn": "archive_today",
+    "ghostarchive.org": "ghostarchive",
 }
 
 # A Wayback replay path: ``/web/<timestamp>/<original url>``. The timestamp is
@@ -83,10 +94,24 @@ PROVIDER_HOSTS: dict[str, SourceArchiveProvider] = {
 # ``im_``, ``js_``, ``cs_``, ``oe_``).
 _WAYBACK_REPLAY_RE = re.compile(r"^/web/(\d{4,14})(?:[a-z]{2}_)?/(.+)$", re.IGNORECASE)
 
-# An archive.today snapshot path: ``/<code>`` and nothing else. The service
-# mints a short base62 code per capture; the ceiling is headroom, not a
-# measurement of today's length.
+# An archive.today snapshot path, in either spelling the service mints:
+# ``/<code>``, the short base62 code a capture is addressed by, and
+# ``/<timestamp>/<original url>``, the long form its own result pages link. The
+# code ceiling is headroom, not a measurement of today's length.
 _ARCHIVE_TODAY_CODE_RE = re.compile(r"^/([A-Za-z0-9]{4,16})/?$")
+
+# The long form's first segment is a capture timestamp, and that is what tells it
+# apart from ``/newest/<url>``: a lookup resolves to whatever the service holds
+# today rather than to one fixed capture, so it is not a snapshot. A timestamp is
+# digits and ``newest`` is not, which is the whole distinction.
+_ARCHIVE_TODAY_CAPTURE_RE = re.compile(r"^/\d{4,14}/.+$")
+
+# A ghostarchive snapshot path: ``/archive/<id>`` for a page capture and
+# ``/varchive/<id>`` for a video one, whose id is the YouTube video id. Bounded
+# charset and length rather than the exact id grammar, the latitude the
+# archive.today code check takes for the same reason: the shape is an abuse
+# bound, not a claim about what the id resolves to.
+_GHOSTARCHIVE_PATH_RE = re.compile(r"^/v?archive/[A-Za-z0-9_-]{4,20}/?$")
 
 # Same ceiling the archivable links themselves carry, applied to the snapshot:
 # ``original_url`` and ``snapshot_url`` are both Text, but a URL past the
@@ -96,7 +121,7 @@ SNAPSHOT_URL_MAX_LENGTH = SOURCE_URL_MAX_LENGTH
 
 
 class SnapshotRejected(Exception):
-    """The pasted URL is not a snapshot of this link.
+    """The pasted URL is not a snapshot address, or names a link the event lacks.
 
     Carries the stable ``code`` :func:`app.routers._errors.raise_typed_error`
     translates, so the analyst is told which of the checks their paste failed
@@ -176,14 +201,11 @@ def origin_of(event: Event, url: str) -> SourceArchiveOrigin | None:
 def _normalised_target(url: str) -> tuple[str, str, str] | None:
     """``(host, path, query)`` for comparing two spellings of one link.
 
-    Wayback stores the URL it crawled, which is rarely the byte-for-byte string
-    the analyst submitted: it settles on a scheme of its own, folds the host to
-    lower case, and a copied link picks up or loses a trailing slash on the way
-    through a browser. Comparing the raw strings would reject a correct
-    snapshot for a difference that names the same page, so the scheme, the host
-    case, a leading ``www.`` and a trailing slash come off both sides. What is
-    left is host, path and query, which is what makes the snapshot a snapshot
-    *of this link*.
+    A URL reaches the form through a browser, which is where a trailing slash, a
+    host in another case and a scheme of the browser's choosing come from.
+    Comparing the raw strings would read two spellings of one address as two
+    addresses, so the scheme, the host case, a leading ``www.`` and a trailing
+    slash come off both sides. What is left is host, path and query.
 
     The host leg is :func:`sanitize.normalised_host`, the one home for that
     folding.
@@ -203,9 +225,7 @@ def same_snapshot(stored: str | None, pasted: str) -> bool:
     reaches the form through a browser, which is where a trailing slash or a
     host in another case comes from, so comparing the raw strings would read a
     re-paste of the stored copy as a correction and file a version for it. The
-    fold is :func:`_normalised_target`, the same one that decides whether a
-    Wayback replay URL names the link it claims to archive, so one notion of
-    "the same URL" serves both.
+    fold is :func:`_normalised_target`.
 
     ``None`` (the link holds no copy) is never the same as a paste.
     """
@@ -217,39 +237,33 @@ def same_snapshot(stored: str | None, pasted: str) -> bool:
     return left is not None and left == _normalised_target(pasted)
 
 
-def _wayback_target(path: str, query: str, fragment: str) -> str | None:
-    """The original URL embedded in a Wayback replay URL, or ``None``.
-
-    The embedded original is not a path segment: it is a whole URL, so its own
-    query and fragment were parsed off the replay URL and have to be put back
-    before it can be compared with anything.
-    """
-    match = _WAYBACK_REPLAY_RE.match(path)
-    if match is None:
-        return None
-    return urlunparse(("", "", match.group(2), "", query, fragment))
-
-
-def validate_snapshot(*, original_url: str, snapshot_url: str) -> SourceArchiveProvider:
-    """Check a pasted snapshot against the link it claims to archive.
+def validate_snapshot(snapshot_url: str) -> SourceArchiveProvider:
+    """Check that a pasted URL is a snapshot address, and say who holds it.
 
     Returns the provider the snapshot belongs to, inferred from its host, and
     raises :class:`SnapshotRejected` otherwise. The checks, in order:
 
     * ``https`` only, and no longer than :data:`SNAPSHOT_URL_MAX_LENGTH`.
     * The host is one of :data:`PROVIDER_HOSTS`.
-    * A ``web.archive.org`` URL is a replay URL (``/web/<timestamp>/<original>``)
-      whose embedded original names the same page as ``original_url``
-      (see :func:`_normalised_target`).
-    * An ``archive.ph`` / ``archive.today`` URL is a bare short code
-      (``/<code>``).
+    * A ``web.archive.org`` URL is a replay URL (``/web/<timestamp>/<original>``).
+    * An archive.today URL is a snapshot code (``/<code>``) or a capture URL
+      (``/<timestamp>/<original url>``), so a ``/newest/<url>`` lookup, which
+      resolves to whatever the service holds today, is refused.
+    * A ``ghostarchive.org`` URL is ``/archive/<id>`` or ``/varchive/<id>``.
 
-    The archive.today branch stops at the shape on purpose. A short code embeds
-    nothing, so the only way to learn what it captured is to fetch it, and
-    fetching archive.today from a server is precisely what gets the deployment's
-    IP banned. The trade is deliberate: the paste comes from the authenticated
-    owner of the event, whose own catalog entry a wrong code degrades, and the
-    host allowlist plus the code shape is what bounds the abuse.
+    Where the snapshot lives is the whole check. What it captured is not
+    verified, and cannot be: the short-code and id forms embed nothing, and the
+    embedded original in the replay forms is not compared here because it spells
+    the link as the platform did at capture time, so comparing it against the
+    stored link refuses correct snapshots every time a platform changes its own
+    URLs. Reading the page instead is not open either: fetching archive.today
+    from a server is what gets the deployment's IP banned.
+
+    So the trade is stated rather than hidden. The paste comes from the
+    authenticated owner of the event, whose own catalog entry a wrong link
+    degrades; the host allowlist and the path shape bound what the field can be
+    used for; and the submit forms show a non-blocking warning when a snapshot
+    URL visibly replays a different link.
     """
     if len(snapshot_url.encode()) > SNAPSHOT_URL_MAX_LENGTH:
         raise SnapshotRejected(
@@ -265,28 +279,32 @@ def validate_snapshot(*, original_url: str, snapshot_url: str) -> SourceArchiveP
     if provider is None:
         raise SnapshotRejected(
             "snapshot_provider_not_allowed",
-            "Only web.archive.org, archive.ph and archive.today links are accepted.",
+            "An archive link must be on one of: " + ", ".join(PROVIDER_HOSTS) + ".",
         )
     if provider == "wayback":
-        target = _wayback_target(parsed.path, parsed.query, parsed.fragment)
-        if target is None:
+        if _WAYBACK_REPLAY_RE.match(parsed.path) is None:
             raise SnapshotRejected(
                 "snapshot_not_a_replay_url",
                 "A Wayback Machine link must be a snapshot URL "
                 "(web.archive.org/web/<timestamp>/<original link>).",
             )
-        captured = _normalised_target(target)
-        wanted = _normalised_target(original_url)
-        if captured is None or wanted is None or captured != wanted:
+        return provider
+    if provider == "ghostarchive":
+        if _GHOSTARCHIVE_PATH_RE.match(parsed.path) is None:
             raise SnapshotRejected(
-                "snapshot_original_mismatch",
-                "That snapshot is of a different link.",
+                "snapshot_not_a_snapshot_code",
+                "A Ghostarchive link must be a snapshot path "
+                "(ghostarchive.org/archive/<id> or ghostarchive.org/varchive/<id>).",
             )
         return provider
-    if _ARCHIVE_TODAY_CODE_RE.match(parsed.path) is None:
+    if (
+        _ARCHIVE_TODAY_CODE_RE.match(parsed.path) is None
+        and _ARCHIVE_TODAY_CAPTURE_RE.match(parsed.path) is None
+    ):
         raise SnapshotRejected(
             "snapshot_not_a_snapshot_code",
-            "An archive.today link must be a snapshot code (archive.ph/<code>).",
+            "An archive.today link must be a snapshot code (archive.ph/<code>) or a "
+            "capture URL (archive.ph/<timestamp>/<original link>).",
         )
     return provider
 
@@ -313,7 +331,7 @@ def stage_snapshot(
     same URL can have moved from a proof citation to the declared source
     between the two pastes.
     """
-    provider = validate_snapshot(original_url=original_url, snapshot_url=snapshot_url)
+    provider = validate_snapshot(snapshot_url)
     now = datetime.now(UTC)
     db.execute(
         pg_insert(SourceArchive)
@@ -407,9 +425,9 @@ def stage_secondary_snapshots(db: Session, *, event: Event, snapshots: dict[str,
     dropped is dropped with it.
 
     Call it once ``event.source_links`` holds the submitted list and before the
-    caller's commit. Each paste runs the same :func:`validate_snapshot` against
-    the mirror it claims to archive, so a snapshot of another page raises the
-    same :class:`SnapshotRejected` codes here as anywhere else.
+    caller's commit. Each paste runs the same :func:`validate_snapshot`, so a
+    value that is not a snapshot address raises the same
+    :class:`SnapshotRejected` codes here as anywhere else.
     """
     for link in event.source_links:
         snapshot = snapshots.get(link.url)

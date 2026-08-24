@@ -30,7 +30,7 @@ const baseProps = {
 const MUTED = "text-neutral-400";
 const SOURCE_PLACEHOLDER = "https://t.me/channel/12345";
 const SNAPSHOT_PLACEHOLDER =
-  "Paste a snapshot link (web.archive.org, archive.ph, archive.today)";
+  "Paste a snapshot link (web.archive.org, archive.today, ghostarchive.org)";
 
 describe("DetailsFields", () => {
   it("renders the Details heading, the date + source fields, and their ? help", () => {
