@@ -277,6 +277,8 @@ Lifecycle: `mint` creates a token, `consume` redeems it, and `revoke_all_live_fo
 
 A code is valid exactly when `revoked_at IS NULL AND used_at IS NULL AND (expires_at IS NULL OR expires_at > now())`. `used_by` is not part of the validity check: it is nulled when the redeemer's account is erased, while `used_at` stays.
 
+`DELETE /admin/invite-codes/{id}` drops a row whose `used_by` is NULL, the cleanup for codes that were minted and never used. A row naming a redeemer is refused: it is that account's origin record. The `admin_events` row for the deletion carries the `code` value, so the trail names what left the table.
+
 ---
 
 ### `pending_registrations`
@@ -330,7 +332,7 @@ An append-only audit log for admin actions taken through the `/admin` page. It i
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `actor_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable |
-| `action` | `TEXT` | NOT NULL, for example `invite_created` and `invite_revoked` |
+| `action` | `TEXT` | NOT NULL, for example `invite_created`, `invite_revoked` and `invite_deleted` |
 | `target` | `JSON` | nullable. Free-form context: target IDs and parameters. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 

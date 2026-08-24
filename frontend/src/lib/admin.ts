@@ -16,8 +16,8 @@ export interface CreateInviteCodeBody {
 /** `GET /admin/invite-codes` for one page of the table.
  *
  *  A path rather than a fetch: the response is capped like every other list,
- *  so the console reads the append-only table through `useCursorList`, which
- *  builds each request from the `Link: rel="next"` cursor of the page before.
+ *  so the console reads the table through `useCursorList`, which builds each
+ *  request from the `Link: rel="next"` cursor of the page before.
  */
 export function inviteCodesPath(cursor: string | null): string {
   return `/admin/invite-codes${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`;
@@ -32,10 +32,17 @@ export function createInviteCode(
   });
 }
 
+/** Retire a code, keeping its row: the table still lists it as `revoked`. */
 export function revokeInviteCode(id: string): Promise<InviteCode> {
-  return apiFetch<InviteCode>(`/admin/invite-codes/${id}`, {
-    method: "DELETE",
+  return apiFetch<InviteCode>(`/admin/invite-codes/${id}/revoke`, {
+    method: "POST",
   });
+}
+
+/** Drop the row of a code no account was created from. A redeemed code is
+ *  refused with a 409: its row is the account's origin record. */
+export function deleteInviteCode(id: string): Promise<void> {
+  return apiFetch<void>(`/admin/invite-codes/${id}`, { method: "DELETE" });
 }
 
 /** One row of the admin user search. ``email`` is NULL on legacy

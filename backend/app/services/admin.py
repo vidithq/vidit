@@ -67,6 +67,12 @@ class VersionNotFoundError(AdminError):
     code = "version_not_found"
 
 
+class InviteCodeUsedError(AdminError):
+    """The code names a redeemer, so its row belongs to the audit trail."""
+
+    code = "invite_code_used"
+
+
 def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInviteRedeemerRead]:
     """Batch the onboarding counters for every redeemer in one pass per source.
 
@@ -237,8 +243,8 @@ def list_invite_codes(
     No status filtering: an admin reviewing the table needs revoked /
     expired rows to remember what was issued, not just the live ones. Paged
     all the same, on the same ``created_at DESC, id DESC`` keyset as the
-    catalog lists: the table grows one row per invite forever and had no
-    ceiling at all.
+    catalog lists: the table grows one row per invite issued, and only an
+    unused code's row ever leaves it.
     """
     query = (
         db.query(InviteCode)
@@ -273,6 +279,38 @@ def revoke_invite_code(
     db.commit()
     db.refresh(invite)
     return invite
+
+
+def delete_invite_code(
+    db: Session,
+    *,
+    actor_id: uuid.UUID,
+    invite_id: uuid.UUID,
+) -> bool:
+    """Drop an unredeemed invite code row. Returns False when the id is unknown.
+
+    Revocation keeps the row and its history; deletion is the cleanup for a
+    code no account was ever created from, so the table stops carrying the
+    ones that were minted and never shared. A row naming a redeemer is
+    refused: it is the account's origin record. The audit row keeps the code
+    value, so the trail still says which code left the table. An unconfirmed
+    registration started from the code goes with it (``ON DELETE CASCADE``),
+    which is the same outcome as revoking the code under that signup.
+    """
+    invite = db.query(InviteCode).filter(InviteCode.id == invite_id).first()
+    if invite is None:
+        return False
+    if invite.used_by is not None:
+        raise InviteCodeUsedError("A redeemed invite code cannot be deleted")
+    log_admin_event(
+        db,
+        actor_id=actor_id,
+        action="invite_deleted",
+        target={"invite_code_id": str(invite.id), "code": invite.code},
+    )
+    db.delete(invite)
+    db.commit()
+    return True
 
 
 def search_users(db: Session, *, query: str, limit: int = 20) -> list[User]:

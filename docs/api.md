@@ -10,7 +10,7 @@ All responses are JSON.
 
 **Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side effect: `login` on success, `failed_login` on any rejected login (with `user_id` set only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches, so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL because no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches, so the audit trail carries a rate-of-requests signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best effort inside a SAVEPOINT. An audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `version_not_found`, `x_handle_conflict`); every `POST /events/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `report_not_found`, `report_already_resolved`, `report_event_gone`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`; `POST /events/{id}/versions` adds it when the row is not `geolocated`, plus `nothing_changed` (the edit moves no versioned field) and `version_limit` (the event already carries 100 versions). `POST /events/import-from-tweet` adds `invalid_tweet_url`, `not_your_post`, `post_unreadable`, `upstream_unreadable` and `upstream_busy`. Every write path carrying an archived-copy field (`source_snapshot_url`, `secondary_snapshot_urls`, `detected_from_snapshot_url`) adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_original_mismatch` and `snapshot_not_a_snapshot_code`; they run the same checks, so one paste is answered the same way wherever it arrives. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `version_not_found`, `x_handle_conflict`, `invite_code_used`); every `POST /events/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `report_not_found`, `report_already_resolved`, `report_event_gone`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`; `POST /events/{id}/versions` adds it when the row is not `geolocated`, plus `nothing_changed` (the edit moves no versioned field) and `version_limit` (the event already carries 100 versions). `POST /events/import-from-tweet` adds `invalid_tweet_url`, `not_your_post`, `post_unreadable`, `upstream_unreadable` and `upstream_busy`. Every write path carrying an archived-copy field (`source_snapshot_url`, `secondary_snapshot_urls`, `detected_from_snapshot_url`) adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url`, `snapshot_original_mismatch` and `snapshot_not_a_snapshot_code`; they run the same checks, so one paste is answered the same way wherever it arrives. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
 ---
 
 ## Endpoints at a glance
@@ -73,7 +73,9 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | **Admin** (collapsed below) | | | |
 | GET | `/admin/me` | 🛡️ | `is_admin` probe |
 | GET | `/admin/detection-stats` | 🛡️ | Machine-extraction quality: reject-rate + pending missing-piece counts |
-| POST/GET/DELETE | `/admin/invite-codes[/{id}]` | 🛡️ | Mint / list / revoke invite codes |
+| POST/GET | `/admin/invite-codes` | 🛡️ | Mint / list invite codes |
+| POST | `/admin/invite-codes/{id}/revoke` | 🛡️ | Revoke an invite code, keeping its row |
+| DELETE | `/admin/invite-codes/{id}` | 🛡️ | Drop the row of an invite code no account was created from |
 | GET | `/admin/users` | 🛡️ | Substring search on username/email |
 | DELETE | `/admin/users/{id}` | 🛡️ | Soft delete (default) or `?hard=true` GDPR erasure |
 | DELETE | `/admin/users/{id}/detected-events` | 🛡️ | Purge every detection the user owns, account untouched |
@@ -131,7 +133,7 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
-| `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
+| `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
 | `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` | 60/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
 
@@ -1616,7 +1618,7 @@ Every code is single-use. `expires_in_days` is optional (omit / `null` for "neve
 
 List invite codes (newest first), including exhausted / revoked / expired ones. Feeds the admin onboarding table: each used code nests its `redeemer`, the redeeming account with acting fields plus read-side onboarding counters, batched in one grouped aggregate per source table (no per-row queries).
 
-Capped and cursor-paged like the catalog lists (the table is append-only, one row per invite ever issued).
+Capped and cursor-paged like the catalog lists: the table holds one row per invite issued, and only an unused code's row leaves it.
 
 **Query params:**
 | Param | Type | Description |
@@ -1650,11 +1652,21 @@ Capped and cursor-paged like the catalog lists (the table is append-only, one ro
 
 `archives_imported` counts `done` archive-import jobs. `bot_detection_count` sums `bot_mentions.events_created` for the account's X handle (case-insensitive), a historical total that survives later deletes. `detected_count` / `geolocated_count` are the live events they own in that status; the purge endpoint below also sweeps soft-deleted detections, so its `deleted_events` can exceed `detected_count`. `last_login_at` is the newest `login` auth event, `null` for an account that has never logged in since the audit log existed.
 
-### `DELETE /admin/invite-codes/{id}` 🛡️
+### `POST /admin/invite-codes/{id}/revoke` 🛡️
 
-Revoke an invite code (sets `revoked_at = now()`). Idempotent on already-revoked codes. Audited via `admin_events` (`action = "invite_revoked"`).
+Revoke an invite code (sets `revoked_at = now()`). The row stays in the table and the list reports it as `revoked`. Idempotent on already-revoked codes. Audited via `admin_events` (`action = "invite_revoked"`).
 
 **Response 200:** the updated `AdminInviteCodeRead` payload (same shape as the list endpoint).
+
+**Response 404:** unknown id.
+
+### `DELETE /admin/invite-codes/{id}` 🛡️
+
+Drop the invite-code row. Use it to clear codes that were minted and never shared; revoke instead to retire a code whose row you want to keep. Active, expired and revoked codes all delete as long as no account was created from them. Audited via `admin_events` (`action = "invite_deleted"`, target `{"invite_code_id": …, "code": …}`, so the trail names the code the row carried). An unconfirmed registration started from the code goes with it.
+
+**Response 204:** no body.
+
+**Response 409:** the code names a redeemer (`{"code": "invite_code_used", …}`). Its row is the account's origin record.
 
 **Response 404:** unknown id.
 

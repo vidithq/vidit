@@ -1,10 +1,22 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { ChevronDown, ChevronRight, Copy, Trash2 } from "lucide-react";
+import {
+  AtSign,
+  Ban,
+  Bot,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  FileArchive,
+  MapPin,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react";
 
 import {
   createInviteCode,
+  deleteInviteCode,
   inviteCodesPath,
   revokeInviteCode,
   type AdminPurgeDetectedResponse,
@@ -12,6 +24,7 @@ import {
   type InviteCodeStatus,
 } from "@/lib/admin";
 import { errorMessage } from "@/lib/api";
+import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useCursorList } from "@/hooks/useCursorList";
 import { useMutation } from "@/hooks/useMutation";
@@ -21,7 +34,7 @@ import {
   FORM_LABEL,
   LABEL_TEXT,
 } from "@/components/ui/form-styles";
-import { Button } from "@/components/ui/Button";
+import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Pill, type PillTone } from "@/components/ui/Pill";
@@ -37,13 +50,35 @@ const STATUS_TONE: Record<InviteCodeStatus, PillTone> = {
   expired: "neutral",
 };
 
-const COLUMN_COUNT = 11;
+// The wire name of a spent code is `exhausted`, which reads as a quota that ran
+// out; a single-use code either served its one account or it did not, so the
+// column says "used". Every other status carries its own name.
+const STATUS_LABEL: Partial<Record<InviteCodeStatus, string>> = {
+  exhausted: "used",
+};
+
+const COLUMN_COUNT = 10;
 
 function StatusChip({ status }: { status: InviteCodeStatus }) {
   return (
     <Pill tone={STATUS_TONE[status]} className="uppercase tracking-wider">
-      {status}
+      {STATUS_LABEL[status] ?? status}
     </Pill>
+  );
+}
+
+// Header cell for the per-analyst stat columns: the app-wide glyph stands in
+// for the label (FileArchive imports, Bot detections, MapPin geolocations,
+// AtSign for detections the X bot minted from mentions), which the cell keeps
+// as a tooltip and for screen readers.
+function StatHeader({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
+  return (
+    <th className="py-2 pr-3 font-medium" title={label}>
+      <span className="flex justify-end">
+        <Icon size={14} aria-hidden />
+        <span className="sr-only">{label}</span>
+      </span>
+    </th>
   );
 }
 
@@ -57,17 +92,42 @@ function InviteCodeRow({
   expanded,
   onToggle,
   onRevoke,
+  onDelete,
 }: {
   invite: InviteCode;
   expanded: boolean;
   onToggle: () => void;
   onRevoke: (id: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
 }) {
   const [revoking, setRevoking] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const { copied, copy } = useCopyToClipboard();
 
-  const canRevoke = invite.status === "active" || invite.status === "exhausted";
+  // Revoking retires a live code, so the button only stands where there is
+  // something to retire.
+  const canRevoke = invite.status === "active";
   const redeemer = invite.redeemer;
+  // Deletion drops the row itself, which the backend allows only while no
+  // account was created from the code. Same predicate here, so the button
+  // stands exactly where it works.
+  const canDelete = redeemer == null;
+
+  const {
+    armed: deleteArmed,
+    trigger: triggerDelete,
+    controlRef: deleteButtonRef,
+  } = useConfirmAction(
+    async () => {
+      setDeleting(true);
+      try {
+        await onDelete(invite.id);
+      } finally {
+        setDeleting(false);
+      }
+    },
+    { timeoutMs: ARM_MS, dismissOnOutside: true },
+  );
 
   const onCopy = () => void copy(invite.code);
 
@@ -95,7 +155,13 @@ function InviteCodeRow({
         </Button>
       </td>
       <td className="py-2 pr-3">
-        <StatusChip status={invite.status} />
+        {/* The wire status ranks revoked > expired > exhausted (the first
+            thing an admin acted on), but this column answers "did the code
+            serve an account", so a redeemed code reads used whatever
+            happened to its expiry date afterwards. */}
+        <StatusChip
+          status={invite.used_at !== null ? "exhausted" : invite.status}
+        />
       </td>
       <td className="py-2 pr-3 text-xs text-neutral-400">
         {redeemer ? (
@@ -118,9 +184,6 @@ function InviteCodeRow({
         ) : (
           <span className="text-xs text-neutral-600">—</span>
         )}
-      </td>
-      <td className="py-2 pr-3 text-xs text-neutral-400">
-        {formatDay(invite.expires_at)}
       </td>
       <td className="py-2 pr-3 text-xs text-right tabular-nums">
         {count(redeemer?.archives_imported)}
@@ -165,8 +228,21 @@ function InviteCodeRow({
             }}
             className="ml-1"
           >
-            <Trash2 size={12} />
+            <Ban size={12} />
             Revoke
+          </Button>
+        )}
+        {canDelete && (
+          <Button
+            ref={deleteButtonRef}
+            variant="danger"
+            disabled={deleting}
+            onClick={triggerDelete}
+            className={`ml-1 ${deleteArmed ? DANGER_CONFIRM : ""}`}
+            title="Drop this row. The code was never used."
+          >
+            <Trash2 size={12} />
+            {deleteArmed ? "Confirm?" : "Delete"}
           </Button>
         )}
       </td>
@@ -199,9 +275,9 @@ export function OnboardingPanel() {
   const [expiresInDays, setExpiresInDays] = useState<number | "">(14);
   const [xHandle, setXHandle] = useState("");
 
-  // The mint action owns the one error slot, and revoke writes to it via
-  // `setError` (revoke has no loading state of its own, the row owns that), so
-  // the panel keeps a single shared error. The loader carries its own, shown
+  // The mint action owns the one error slot, and revoke and delete write to it
+  // via `setError` (neither has a loading state of its own, the row owns that),
+  // so the panel keeps a single shared error. The loader carries its own, shown
   // in the same banner.
   const createMutation = useMutation(
     () =>
@@ -233,6 +309,18 @@ export function OnboardingPanel() {
       reload();
     } catch (err) {
       setError(errorMessage(err, "Failed to revoke invite code"));
+    }
+  };
+
+  const onDelete = async (id: string) => {
+    try {
+      await deleteInviteCode(id);
+      // The row is gone, so the walk restarts like it does after a mint or a
+      // revoke rather than patching a page that no longer holds it.
+      setExpandedId((prev) => (prev === id ? null : prev));
+      reload();
+    } catch (err) {
+      setError(errorMessage(err, "Failed to delete invite code"));
     }
   };
 
@@ -311,11 +399,10 @@ export function OnboardingPanel() {
               <th className="py-2 pr-3 font-medium">Status</th>
               <th className="py-2 pr-3 font-medium">Used by</th>
               <th className="py-2 pr-3 font-medium">X handle</th>
-              <th className="py-2 pr-3 font-medium">Expires</th>
-              <th className="py-2 pr-3 font-medium text-right">Archives</th>
-              <th className="py-2 pr-3 font-medium text-right">Bot det.</th>
-              <th className="py-2 pr-3 font-medium text-right">Detected</th>
-              <th className="py-2 pr-3 font-medium text-right">Geolocs</th>
+              <StatHeader icon={FileArchive} label="Archives imported" />
+              <StatHeader icon={AtSign} label="Bot detections" />
+              <StatHeader icon={Bot} label="Detections" />
+              <StatHeader icon={MapPin} label="Geolocations" />
               <th className="py-2 pr-3 font-medium">Last login</th>
               <th className="py-2"></th>
             </tr>
@@ -350,6 +437,7 @@ export function OnboardingPanel() {
                     setExpandedId((prev) => (prev === c.id ? null : c.id));
                   }}
                   onRevoke={onRevoke}
+                  onDelete={onDelete}
                 />
               ))
             )}

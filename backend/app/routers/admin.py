@@ -45,6 +45,7 @@ _ADMIN_ERROR_STATUS: dict[str, int] = {
     "geolocation_not_found": 404,
     "version_not_found": 404,
     "x_handle_conflict": 409,
+    "invite_code_used": 409,
 }
 
 
@@ -107,8 +108,9 @@ def list_invite_codes(
 ) -> list[AdminInviteCodeRead]:
     """Invite codes, newest first, capped at 100 per page.
 
-    The table is append-only, so the admin console reads it a page at a time
-    through the ``Link: rel="next"`` cursor like every other list.
+    The table grows one row per invite issued, so the admin console reads it a
+    page at a time through the ``Link: rel="next"`` cursor like every other
+    list.
     """
     size = page_size(limit)
     rows, has_next = admin_service.list_invite_codes(
@@ -122,8 +124,8 @@ def list_invite_codes(
     return admin_service.serialize_invite_codes(db, rows)
 
 
-@router.delete(
-    "/invite-codes/{invite_id}",
+@router.post(
+    "/invite-codes/{invite_id}/revoke",
     response_model=AdminInviteCodeRead,
 )
 @limiter.limit("60/hour")
@@ -133,10 +135,34 @@ def revoke_invite_code(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminInviteCodeRead:
+    """Retire a code while keeping its row. The list still shows it."""
     invite = admin_service.revoke_invite_code(db, actor_id=current_user.id, invite_id=invite_id)
     if invite is None:
         raise HTTPException(status_code=404, detail="Invite code not found")
     return admin_service.serialize_invite_code(db, invite)
+
+
+@router.delete(
+    "/invite-codes/{invite_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+@limiter.limit("60/hour")
+def delete_invite_code(
+    request: Request,
+    invite_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> Response:
+    """Drop the row of a code no account was created from. 409 once it was."""
+    try:
+        deleted = admin_service.delete_invite_code(
+            db, actor_id=current_user.id, invite_id=invite_id
+        )
+    except admin_service.AdminError as exc:
+        _raise_admin_error(exc)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Invite code not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/users", response_model=list[AdminUserRead])
