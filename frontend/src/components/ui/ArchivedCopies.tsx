@@ -6,7 +6,7 @@ import type { ArchivedLink } from "@/types";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { WARNING_CALLOUT } from "@/components/ui/styles";
-import { snapshotArchivesAnotherLink, WAYBACK_HOST } from "@/lib/snapshots";
+import { ARCHIVE_TODAY_HOSTS, snapshotArchivesAnotherLink, WAYBACK_HOST } from "@/lib/snapshots";
 
 interface ArchivedCopiesProps {
   /** The link's archived copy, or null while it has none. */
@@ -76,18 +76,13 @@ function savePageUrl(url: string): string {
 }
 
 /** Every host a snapshot may live on. Mirrors the keys of `PROVIDER_HOSTS` in
- *  `services/source_archive.py`; change it with its backend counterpart.
- *  archive.today serves one set of snapshots under six interchangeable domains,
- *  and which one an analyst is handed depends on where they are, so all six are
- *  here. */
+ *  `services/source_archive.py`; change it with its backend counterpart. The
+ *  archive.today domains come from `lib/snapshots.ts`, which reads the same six
+ *  to find the original a long capture URL embeds, so the check and the warning
+ *  cannot disagree about which hosts are that service. */
 export const SNAPSHOT_HOSTS = [
   WAYBACK_HOST,
-  "archive.today",
-  "archive.ph",
-  "archive.is",
-  "archive.md",
-  "archive.li",
-  "archive.vn",
+  ...ARCHIVE_TODAY_HOSTS,
   "ghostarchive.org",
 ];
 
@@ -296,8 +291,8 @@ export function ArchiveAdornment({
  * `isSnapshotUrl` runs as the analyst types, so a typo costs no round trip; the
  * refusal under the field is the same sentence the form's banner carries.
  *
- * Under it, one more line and no more: a paste that reads as a Wayback copy of
- * some other link raises an amber warning naming both URLs
+ * Under it, one more line and no more: a paste that reads as a copy of some
+ * other link raises an amber warning naming both URLs
  * (`snapshotArchivesAnotherLink`). It is the seatbelt for a check the server no
  * longer makes, and it blocks nothing, which is what lets the comparison be
  * loose. The two lines are exclusive: a value that cannot be a snapshot at all

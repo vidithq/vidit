@@ -41,7 +41,7 @@ export const metadata: Metadata = {
 const PROOF_STEPS: NumberedStep[] = [
   {
     title: "Verify and archive the source",
-    body: "Reverse-image-search the source to rule out recycled footage from another conflict, then snapshot the link so it survives if the original gets deleted. The Archived copy field under Source URL opens a Wayback Machine page prefilled with the link you typed, and takes the snapshot back in the same field: a copy from web.archive.org, archive.ph or archive.today is stored under its own name.",
+    body: "Reverse-image-search the source to rule out recycled footage from another conflict, then snapshot the link so it survives if the original gets deleted. The Archived copy field under Source URL opens a Wayback Machine page prefilled with the link you typed, and takes the snapshot back in the same field: a copy from the Wayback Machine, archive.today (or any of its mirrors) or Ghostarchive is stored under its own name.",
   },
   {
     title: "Pin the visual anchors",

@@ -1,24 +1,38 @@
 /**
- * Reading a Wayback replay URL, so the paste field can warn about an obvious
- * mis-paste.
+ * Reading the original out of a replay URL, so the paste field can warn about an
+ * obvious mis-paste.
  *
  * The server checks where a snapshot lives (`services/source_archive.
  * validate_snapshot`: https, an allowed provider host, that provider's path
- * shape) and never what it captured. archive.today codes and ghostarchive ids
- * embed nothing to compare, and the one provider that does embed its original
- * spells it in whatever form the source platform used at capture time, so a
- * server-side comparison refuses correct snapshots every time a platform moves
+ * shape) and never what it captured. The short-code and id forms embed nothing
+ * to compare, and the embedded original in the replay forms is not compared
+ * server side because it spells the link as the platform did at capture time, so
+ * a server-side comparison refuses correct snapshots every time a platform moves
  * its own URLs.
  *
- * What is left is a courtesy: the analyst pasting a Wayback URL under the wrong
+ * What is left is a courtesy: the analyst pasting a replay URL under the wrong
  * field is told before they post. Every function here is therefore deliberately
  * loose. It refuses nothing, so a comparison it cannot make confidently reports
  * "no warning" rather than guessing, and the folds below can be added to freely.
  */
 
-/** The Wayback Machine's host. The one provider whose snapshot URL says what it
- *  captured, and the host `ArchivedCopies` prefills its Save Page Now door on. */
+/** The Wayback Machine's host, and the host `ArchivedCopies` prefills its Save
+ *  Page Now door on. Mirrors the `wayback` entry of
+ *  `source_archive.PROVIDER_HOSTS`. */
 export const WAYBACK_HOST = "web.archive.org";
+
+/** archive.today's six interchangeable domains, which serve one set of
+ *  snapshots; which one an analyst is handed depends on where they are. Mirrors
+ *  the `archive_today` entries of `source_archive.PROVIDER_HOSTS`, and is what
+ *  `ArchivedCopies` builds its own host list from. */
+export const ARCHIVE_TODAY_HOSTS = [
+  "archive.today",
+  "archive.ph",
+  "archive.is",
+  "archive.md",
+  "archive.li",
+  "archive.vn",
+];
 
 /** A Wayback replay path, `/web/<timestamp>/<original url>`, with the optional
  *  replay modifier the player appends to the timestamp. Mirrors
@@ -26,12 +40,22 @@ export const WAYBACK_HOST = "web.archive.org";
  *  it, the server side only asks whether the path is one. */
 const REPLAY_PATH_RE = /^\/web\/\d{4,14}(?:[a-z]{2}_)?\/(.+)$/i;
 
+/** archive.today's long capture path, `/<timestamp>/<original url>`, which
+ *  embeds the original exactly as a replay path does. Mirrors
+ *  `source_archive._ARCHIVE_TODAY_CAPTURE_RE`. The service's other spelling is a
+ *  short code (`/<code>`), which embeds nothing and matches nothing here. */
+const CAPTURE_PATH_RE = /^\/\d{4,14}\/(.+)$/;
+
 /**
- * The link a Wayback replay URL says it captured, or null when the value is not
- * one.
+ * The link a snapshot URL says it captured, or null when the value embeds none.
+ *
+ * Two providers spell a capture as `<timestamp>/<original url>`: the Wayback
+ * Machine under `/web/`, archive.today at the path root. A short code and a
+ * Ghostarchive id carry nothing to read, so they answer null and warn about
+ * nothing.
  *
  * The captured link is a whole URL sitting in a path segment, so its own query
- * and fragment were parsed off the replay URL and are put back here.
+ * and fragment were parsed off the snapshot URL and are put back here.
  */
 function replayedLink(snapshot: string): string | null {
   let parsed: URL;
@@ -40,7 +64,7 @@ function replayedLink(snapshot: string): string | null {
   } catch {
     return null;
   }
-  if (parsed.hostname.toLowerCase() !== WAYBACK_HOST) return null;
+  const host = parsed.hostname.toLowerCase();
   // The URL parser percent-encodes what a pasted path did not, and leaves an
   // invalid percent sequence in place, which `decodeURI` throws on. A path it
   // cannot decode is read raw rather than crashing the field it renders under.
@@ -50,7 +74,13 @@ function replayedLink(snapshot: string): string | null {
   } catch {
     // Keep the encoded path.
   }
-  const match = REPLAY_PATH_RE.exec(path);
+  const pattern =
+    host === WAYBACK_HOST
+      ? REPLAY_PATH_RE
+      : ARCHIVE_TODAY_HOSTS.includes(host)
+        ? CAPTURE_PATH_RE
+        : null;
+  const match = pattern?.exec(path);
   return match ? `${match[1]}${parsed.search}${parsed.hash}` : null;
 }
 
@@ -80,6 +110,17 @@ function canonicalLink(url: string): string | null {
 
   // X kept both of its former domains resolving to the renamed one.
   if (host === "twitter.com" || host === "mobile.twitter.com") host = "x.com";
+  // X's share sheet appends `s` and `t` to the URL it hands out, and neither
+  // names a post: the status id in the path is the whole identity. Keeping them
+  // would read a shared spelling of a post and the post itself as two links,
+  // which is the shape most of this catalog's sources arrive in.
+  if (host === "x.com") {
+    const params = new URLSearchParams(query);
+    params.delete("s");
+    params.delete("t");
+    const kept = params.toString();
+    query = kept ? `?${kept}` : "";
+  }
   // Telegram's long domain and its `/s/` channel preview address the same post.
   if (host === "telegram.me") host = "t.me";
   if (host === "t.me" && path.startsWith("/s/")) path = path.slice(2);
@@ -104,8 +145,8 @@ function canonicalLink(url: string): string | null {
 
 /**
  * The link a pasted snapshot appears to archive, when that is visibly not the
- * link it was pasted under. Null means no warning: the paste is not a Wayback
- * replay URL, the two sides agree, or one of them cannot be read.
+ * link it was pasted under. Null means no warning: the paste embeds no original,
+ * the two sides agree, or one of them cannot be read.
  *
  * Nothing here refuses a paste. The form shows the answer as a line under the
  * field and posts the value either way, which is why the comparison may be as

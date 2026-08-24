@@ -63,8 +63,44 @@ describe("snapshotArchivesAnotherLink", () => {
       "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
       "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30s",
     ],
+    [
+      "X's share parameters",
+      "https://x.com/analyst/status/9876543210",
+      "https://twitter.com/analyst/status/9876543210?s=20&t=abc",
+    ],
   ])("stays quiet on %s", (_case, link, embedded) => {
     expect(snapshotArchivesAnotherLink(link, `${CAPTURE}/${embedded}`)).toBeNull();
+  });
+
+  it("still warns when an X status id is genuinely another post", () => {
+    // The share parameters come off, and nothing else does: the status id is
+    // what identifies the post, so a different one is a different link.
+    expect(
+      snapshotArchivesAnotherLink(
+        "https://x.com/analyst/status/9876543210",
+        `${CAPTURE}/https://twitter.com/analyst/status/1234567890?s=20`
+      )
+    ).toBe("https://twitter.com/analyst/status/1234567890?s=20");
+  });
+
+  // archive.today's long form embeds the original exactly as a replay path
+  // does, so the same warning has to reach it.
+  it("reads the original out of an archive.today capture URL", () => {
+    expect(
+      snapshotArchivesAnotherLink(SOURCE, "https://archive.ph/20260811120000/https://elsewhere.test/x")
+    ).toBe("https://elsewhere.test/x");
+    expect(
+      snapshotArchivesAnotherLink(SOURCE, `https://archive.today/20260811120000/${SOURCE}`)
+    ).toBeNull();
+  });
+
+  it("stays quiet on an archive.today short code, which embeds nothing", () => {
+    // Including an all-digit code, which the long form's timestamp leg must not
+    // read as a capture missing its link.
+    expect(snapshotArchivesAnotherLink(SOURCE, "https://archive.is/12345")).toBeNull();
+    // A lookup, not a capture: the server refuses it, and there is no timestamp
+    // to read an original behind.
+    expect(snapshotArchivesAnotherLink(SOURCE, `https://archive.ph/newest/${SOURCE}`)).toBeNull();
   });
 
   it("reads a replay URL carrying the player's modifier", () => {

@@ -43,10 +43,10 @@ the row rather than adding a competing one.
 
 What counts as a snapshot is :func:`validate_snapshot`: ``https`` only, a host
 on :data:`PROVIDER_HOSTS`, and that provider's path shape. It checks where a
-snapshot lives, never what it captured. Most providers embed nothing to compare
+snapshot lives, never what it captured. Most pastes embed nothing to compare
 against, the server must not fetch the page to find out, and the analyst pasting
 the link is the authenticated owner of the record a wrong one degrades; the
-submit forms warn on a Wayback URL that visibly replays another link, and the
+submit forms warn on a snapshot URL that visibly replays another link, and the
 warning blocks nothing.
 """
 
@@ -252,18 +252,18 @@ def validate_snapshot(snapshot_url: str) -> SourceArchiveProvider:
     * A ``ghostarchive.org`` URL is ``/archive/<id>`` or ``/varchive/<id>``.
 
     Where the snapshot lives is the whole check. What it captured is not
-    verified, and cannot be: an archive.today code embeds nothing, ghostarchive
-    ids embed nothing, and the one provider that does embed its original spells
-    that original in whatever form the source platform used at capture time, so
-    comparing it against the stored link refuses correct snapshots every time a
-    platform changes its own URLs. Reading the page instead is not open either:
-    fetching archive.today from a server is what gets the deployment's IP banned.
+    verified, and cannot be: the short-code and id forms embed nothing, and the
+    embedded original in the replay forms is not compared here because it spells
+    the link as the platform did at capture time, so comparing it against the
+    stored link refuses correct snapshots every time a platform changes its own
+    URLs. Reading the page instead is not open either: fetching archive.today
+    from a server is what gets the deployment's IP banned.
 
     So the trade is stated rather than hidden. The paste comes from the
     authenticated owner of the event, whose own catalog entry a wrong link
     degrades; the host allowlist and the path shape bound what the field can be
-    used for; and the submit forms show a non-blocking warning when a Wayback URL
-    visibly replays a different link.
+    used for; and the submit forms show a non-blocking warning when a snapshot
+    URL visibly replays a different link.
     """
     if len(snapshot_url.encode()) > SNAPSHOT_URL_MAX_LENGTH:
         raise SnapshotRejected(
