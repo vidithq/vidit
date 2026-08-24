@@ -8,6 +8,15 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+_Nothing yet._
+
+## v0.5.9, 2026-08-24
+
+### Added
+
+- **Catalogue feed panel on the admin console** ([`frontend/src/components/admin/CatalogueFeedPanel.tsx`](frontend/src/components/admin/CatalogueFeedPanel.tsx)) (#305). The ten newest rows of the public located view, rendered as compact entity cards on `/admin`. It reads the public `GET /events` list, so the panel shows an admin exactly what a visitor reads, and a Refresh button re-reads it after a moderation or delete taken in the panels below.
+- **Hard delete for unused invite codes, clearer invite table** ([`backend/app/routers/admin.py`](backend/app/routers/admin.py), [`frontend/src/components/admin/OnboardingPanel.tsx`](frontend/src/components/admin/OnboardingPanel.tsx)) (#314). `DELETE /admin/invite-codes/{id}` hard-deletes an unredeemed code (409 `invite_code_used` on a redeemed one, with the audit row capturing the code before it goes), and revocation moves to `POST /admin/invite-codes/{id}/revoke`. The status pill reads `used` whenever the code was redeemed, where expiry previously outranked redemption.
+
 ### Changed
 
 - **A snapshot is checked for where it lives, not for what it captured** ([`backend/app/services/source_archive.py`](backend/app/services/source_archive.py), [`backend/app/models/source_archive.py`](backend/app/models/source_archive.py), [`backend/alembic/versions/m1o3q5s7u9w1_ghostarchive_provider.py`](backend/alembic/versions/m1o3q5s7u9w1_ghostarchive_provider.py), [`frontend/src/lib/snapshots.ts`](frontend/src/lib/snapshots.ts), [`frontend/src/components/ui/ArchivedCopies.tsx`](frontend/src/components/ui/ArchivedCopies.tsx), [`docs/archival.md`](docs/archival.md), [`docs/api.md`](docs/api.md)) (#313). `validate_snapshot` keeps https, the byte ceiling, the provider allowlist and a per-provider path shape, and drops the comparison of a Wayback replay URL's embedded original against the link it was pasted under, with the error code `snapshot_original_mismatch`. That comparison refused correct snapshots on every source-platform URL change (`youtu.be` share links, `twitter.com` to `x.com`, `t.me/s/` previews), and the majority provider's short codes embed nothing to compare in the first place, so the responsibility sits where the paste comes from: the authenticated owner of the record. The submit and edit forms carry the seatbelt instead, an amber line under the paste field naming both URLs when a Wayback paste visibly replays a different link, which blocks nothing.
