@@ -35,7 +35,6 @@ from sqlalchemy.orm import Session
 from app.cache import points_cache
 from app.models.conflict import Conflict
 from app.models.event import (
-    MAX_SECONDARY_SOURCE_LINKS,
     STATUS_CLOSED,
     STATUS_DETECTED,
     STATUS_GEOLOCATED,
@@ -43,7 +42,6 @@ from app.models.event import (
     BeforeClosedStatus,
     Event,
     EventGeolocator,
-    EventSourceLink,
 )
 from app.models.media import Media
 from app.models.tag import Tag
@@ -64,226 +62,60 @@ from app.services.sanitize import (
 )
 from app.services.storage import sweep_keys
 
+from .coordinates import _optional_point, validate_coordinates
+from .errors import (
+    CoordinatesRequiredError,
+    EventError,
+    EventNotFoundError,
+    EventStateError,
+    InvalidCoordinatesError,
+    InvalidProofError,
+    NothingChangedError,
+    ProofImageRequiredError,
+    SourceUrlRequiredError,
+    TagRequirementsError,
+    TooManySourceLinksError,
+)
+from .source_links import (
+    build_source_link_rows,
+    normalize_secondary_source_urls,
+    pair_secondary_snapshots,
+    replace_source_links,
+    truncate_secondary_source_urls,
+)
+
+__all__ = [
+    "DETECTION_READINESS",
+    "ROW_INTERNAL_ERROR_CODE",
+    "CoordinatesRequiredError",
+    "DetectionCompletion",
+    "EventError",
+    "EventNotFoundError",
+    "EventStateError",
+    "InvalidCoordinatesError",
+    "InvalidProofError",
+    "NothingChangedError",
+    "ProofImageRequiredError",
+    "SourceSwap",
+    "SourceUrlRequiredError",
+    "TagRequirementsError",
+    "TooManySourceLinksError",
+    "build_source_link_rows",
+    "close",
+    "complete_detections",
+    "create_request",
+    "create_with_evidence",
+    "detection_ready_predicate",
+    "geolocate",
+    "normalize_secondary_source_urls",
+    "pair_secondary_snapshots",
+    "replace_source_links",
+    "save_version",
+    "truncate_secondary_source_urls",
+    "validate_coordinates",
+]
+
 logger = logging.getLogger(__name__)
-
-
-class EventError(EvidenceIntakeError):
-    """Base for event-specific friendly errors.
-
-    Subclass of :class:`EvidenceIntakeError` so the router catches one base
-    for both shared file/media failures and the event-specific rules
-    below. Carries a ``code`` the router maps to an HTTP status without
-    string-matching exception text.
-    """
-
-    code: str = "event_error"
-
-
-class InvalidCoordinatesError(EventError):
-    """Coordinates were supplied but fall outside the valid lat / lng ranges.
-
-    About malformed input, not absent input: a transition that needs
-    coordinates the row does not carry raises
-    :class:`CoordinatesRequiredError` instead. Maps to 400.
-    """
-
-    code = "invalid_coordinates"
-
-
-class CoordinatesRequiredError(EventError):
-    """The transition requires coordinates and the row carries none.
-
-    A machine detection may be born without a point (the import found
-    no location in the thread), so the requirement bites at the promotion, the
-    same shape as :class:`SourceUrlRequiredError`. Maps to 400.
-    """
-
-    code = "coordinates_required"
-
-
-class InvalidProofError(EventError):
-    code = "invalid_proof"
-
-
-class TagRequirementsError(EventError):
-    code = "tag_requirements_not_met"
-
-
-class ProofImageRequiredError(EventError):
-    code = "proof_image_required"
-
-
-class SourceUrlRequiredError(EventError):
-    """The geolocate promotion requires a source URL.
-
-    A machine detection may be born without one (the imported tweet
-    declared no source), so the requirement bites at the transition: a
-    ``geolocated`` row always carries its footage source (the same invariant
-    ``ck_events_source_url_status`` pins at the DB). Maps to 400.
-    """
-
-    code = "source_url_required"
-
-
-class TooManySourceLinksError(EventError):
-    """More secondary source links than :data:`MAX_SECONDARY_SOURCE_LINKS`.
-
-    Counted after normalization, so blanks and duplicates the client sent don't
-    push a legitimate submission over the cap. Maps to 400.
-    """
-
-    code = "too_many_source_links"
-
-
-class EventNotFoundError(EventError):
-    """The targeted row is gone (hard-deleted, or soft-deleted by an admin).
-
-    Only the batch completion raises it: the single-row paths resolve the event
-    in the router, which owns their 404. In a batch it is one row's outcome, not
-    the call's, so it travels as a typed per-row code and never reaches the
-    envelope. The 404 it carries in ``_EVENT_ERROR_STATUS`` is defensive, there
-    so a future single-row caller of the same helper gets the right status
-    instead of a 500.
-    """
-
-    code = "event_not_found"
-
-
-class EventStateError(EventError):
-    """The event's lifecycle state forbids the requested transition.
-
-    Raised when a geolocate targets a row that isn't ``requested`` /
-    ``detected`` (a ``geolocated`` row is past that transition, ``closed`` is
-    terminal), when a close targets an already ``closed`` row, or when a
-    :func:`save_version` targets a row that is not ``geolocated`` (there is no version to
-    supersede before publication, and a retracted row is not corrected). Maps to
-    409: the request is well-formed but conflicts with the row's current state.
-    """
-
-    code = "invalid_state"
-
-
-class NothingChangedError(EventError):
-    """The edit would file a version carrying the state the live row carries.
-
-    A version spends a number in a public address space and prints a row in the
-    history, so an edit that moves no versioned field is refused rather than
-    recorded: the record must not claim a correction that did not happen. The
-    note is not a versioned field, so a note on its own does not lift this.
-    Maps to 409, like the other "the row's state forbids this" verdicts.
-    """
-
-    code = "nothing_changed"
-
-
-def validate_coordinates(lat: float, lng: float) -> None:
-    """Reject out-of-range coordinates: the single bounds check shared by the
-    human create + geolocate paths."""
-    if not -90 <= lat <= 90:
-        raise InvalidCoordinatesError("Latitude must be between -90 and 90")
-    if not -180 <= lng <= 180:
-        raise InvalidCoordinatesError("Longitude must be between -180 and 180")
-
-
-def _clean_secondary_source_urls(urls: list[str], source_url: str | None) -> list[str]:
-    """Strip, drop blanks, drop duplicates and drop the primary, order-preserving.
-
-    The shared body of :func:`normalize_secondary_source_urls` (the write forms)
-    and :func:`truncate_secondary_source_urls` (the ingest prefill); the two
-    differ only in what they do past the cap. Dropping an entry equal to
-    ``source_url`` keeps the primary anchor from being listed twice.
-    """
-    primary = (source_url or "").strip()
-    cleaned: list[str] = []
-    seen: set[str] = set()
-    for raw in urls:
-        url = raw.strip()
-        if not url or url == primary or url in seen:
-            continue
-        seen.add(url)
-        cleaned.append(url)
-    return cleaned
-
-
-def normalize_secondary_source_urls(urls: list[str], source_url: str | None) -> list[str]:
-    """The submitted secondary source links, normalized: the one home every write
-    path runs before the rows are written.
-
-    Raises :class:`TooManySourceLinksError` past
-    :data:`MAX_SECONDARY_SOURCE_LINKS`. Rejecting rather than truncating is the
-    point: an analyst who pasted eleven mirrors should be told, not have the
-    eleventh silently dropped.
-    """
-    cleaned = _clean_secondary_source_urls(urls, source_url)
-    if len(cleaned) > MAX_SECONDARY_SOURCE_LINKS:
-        raise TooManySourceLinksError(
-            f"An event carries at most {MAX_SECONDARY_SOURCE_LINKS} secondary source links"
-        )
-    return cleaned
-
-
-def truncate_secondary_source_urls(urls: list[str], source_url: str | None) -> list[str]:
-    """The machine-path variant: same normalization, over-cap links dropped.
-
-    A tweet that links twelve mirrors is not an error the ingest can report to
-    anyone, so the prefill keeps the first ten and the owner adds the rest by
-    hand if they matter.
-    """
-    return _clean_secondary_source_urls(urls, source_url)[:MAX_SECONDARY_SOURCE_LINKS]
-
-
-def pair_secondary_snapshots(urls: list[str], snapshots: list[str]) -> dict[str, str]:
-    """Map each submitted mirror to the archived copy posted beside it.
-
-    The forms post two aligned repeated fields, ``secondary_source_urls`` and
-    ``secondary_snapshot_urls``, one entry each per row, blank where the analyst
-    archived nothing. Position is how they arrive and the link is how they are
-    stored, so the pairing happens here, on the raw lists, before
-    :func:`normalize_secondary_source_urls` drops the blank, duplicate and
-    primary-equal rows that would shift every later index.
-
-    A short or absent snapshot list pairs what it covers and leaves the rest
-    unarchived, so a client that posts no copies posts nothing extra. The first
-    entry wins on a repeated mirror, matching the one the normalization keeps.
-    """
-    paired: dict[str, str] = {}
-    for url, snapshot in zip(urls, snapshots, strict=False):
-        link, copy = url.strip(), snapshot.strip()
-        if link and copy:
-            paired.setdefault(link, copy)
-    return paired
-
-
-def build_source_link_rows(urls: list[str]) -> list[EventSourceLink]:
-    """The ordered child rows for an event's secondary links: one home so
-    ``position`` is always the list index."""
-    return [EventSourceLink(position=index, url=url) for index, url in enumerate(urls)]
-
-
-def replace_source_links(db: Session, geo: Event, urls: list[str]) -> None:
-    """Swap an existing event's secondary links for ``urls``.
-
-    The deletes are FLUSHED before the replacements insert: SQLAlchemy emits a
-    mapper's inserts ahead of its deletes, so a reused ``position`` would
-    otherwise collide on the composite PK mid-flush.
-    """
-    geo.source_links.clear()
-    db.flush()
-    geo.source_links = build_source_link_rows(urls)
-
-
-def _optional_point(lat: float | None, lng: float | None, *, field: str):
-    """Validate + build an optional PostGIS point from a half-typed form pair.
-
-    A lone half of the pair is a client bug, not a droppable value, so reject it
-    rather than silently storing nothing.
-    """
-    if lat is None and lng is None:
-        return None
-    if lat is None or lng is None:
-        raise InvalidCoordinatesError(f"{field} requires both a latitude and a longitude")
-    validate_coordinates(lat, lng)
-    return from_shape(Point(lng, lat), srid=4326)
 
 
 def _sanitize_proof(proof_data: dict | None, **kwargs: bool) -> dict | None:
