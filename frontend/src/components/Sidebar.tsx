@@ -235,14 +235,14 @@ export default function Sidebar() {
     <>
       {/* Phone only: the rail's chrome when it is off-canvas. Same z as the
           aside, so the drawer slides out from under it. */}
-      <div className="sm:hidden fixed top-2 left-2 z-1100 flex items-center gap-1 rounded-md bg-neutral-900/90 border border-neutral-800 backdrop-blur [&>div>a]:hidden">
+      <div className="sm:hidden fixed top-2 left-2 z-1100 flex items-center gap-0.5 rounded-md p-0.5 bg-neutral-900 border border-neutral-800 [&>div>a]:hidden">
         <button
           type="button"
           onClick={() => setExpanded(true)}
           aria-label="Open navigation"
           aria-expanded={expanded}
           aria-controls={NAV_ID}
-          className="size-11 shrink-0 flex items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
+          className="size-11 shrink-0 flex items-center justify-center rounded text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
         >
           <Menu size={20} strokeWidth={1.8} />
         </button>
