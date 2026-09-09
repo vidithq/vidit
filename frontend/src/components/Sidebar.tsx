@@ -235,7 +235,7 @@ export default function Sidebar() {
     <>
       {/* Phone only: the rail's chrome when it is off-canvas. Same z as the
           aside, so the drawer slides out from under it. */}
-      <div className="sm:hidden fixed top-0 inset-x-0 h-12 z-1100 flex items-center gap-1 px-2 bg-neutral-900 border-b border-neutral-800">
+      <div className="sm:hidden fixed top-2 left-2 z-1100 flex items-center gap-1 rounded-md bg-neutral-900/90 border border-neutral-800 backdrop-blur [&>div>a]:hidden">
         <button
           type="button"
           onClick={() => setExpanded(true)}

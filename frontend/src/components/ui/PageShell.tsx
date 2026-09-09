@@ -59,7 +59,7 @@ export function PageShell({
     </Button>
   );
   return (
-    <PageFrame className="pt-10 pb-16 space-y-6">
+    <PageFrame className="pt-10 max-sm:pt-16 pb-16 space-y-6">
       <header className="relative">
         {back && (
           // `right-full` parks the button outside the header's left edge
@@ -124,7 +124,7 @@ export function PageShell({
 // PageLoading / PageError, never directly.
 function PageCenter({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen flex items-center justify-center sm:pl-14 max-sm:pt-12">
+    <div className="min-h-screen flex items-center justify-center sm:pl-14">
       {children}
     </div>
   );
