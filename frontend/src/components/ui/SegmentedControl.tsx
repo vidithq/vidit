@@ -33,7 +33,8 @@ export function SegmentedControl<T extends string>({
   options: SegmentedControlOption<T>[];
   value: T;
   onChange: (value: T) => void;
-  /** Stretch the track; options share the width evenly. */
+  /** Stretch the track at every width; options share it evenly. Below `sm` the
+   *  track always stretches, `fullWidth` or not. */
   fullWidth?: boolean;
   "aria-label"?: string;
 }) {
@@ -42,11 +43,12 @@ export function SegmentedControl<T extends string>({
       role="group"
       aria-label={ariaLabel}
       className={cn(
-        // On a phone the track always stretches and the options share it: an
-        // intrinsic-width track with three labelled options runs past a 375px
-        // column, and the browser's answer (wrapping each label) reads broken.
-        "inline-flex h-9 items-center rounded-md border border-neutral-700 bg-neutral-900 p-0.5 max-sm:flex max-sm:w-full",
-        fullWidth && "flex w-full",
+        "inline-flex h-9 items-center rounded-md border border-neutral-700 bg-neutral-900 p-0.5",
+        // One stretch rule, two triggers: the caller asks for it, or the
+        // viewport is under `sm`, where an intrinsic-width track with three
+        // labelled options runs past a 375px column and the browser's answer
+        // (wrapping each label) reads broken.
+        fullWidth ? "flex w-full" : "max-sm:flex max-sm:w-full",
       )}
     >
       {options.map((opt) => {
@@ -61,8 +63,10 @@ export function SegmentedControl<T extends string>({
             // two-click confirm).
             onClick={() => !active && onChange(opt.value)}
             className={cn(
-              "px-3 py-1 text-sm rounded transition-colors whitespace-nowrap max-sm:flex-1 max-sm:px-2",
-              fullWidth && "flex-1",
+              "px-3 py-1 text-sm rounded transition-colors whitespace-nowrap max-sm:px-2",
+              // Shares the track under the same two triggers as the track's
+              // own stretch above.
+              fullWidth ? "flex-1" : "max-sm:flex-1",
               active
                 ? opt.tone === "danger"
                   ? "bg-red-500/10 text-red-300"

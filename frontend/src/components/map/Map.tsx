@@ -34,7 +34,7 @@ import type {
 } from "maplibre-gl";
 import type { Feature, FeatureCollection } from "geojson";
 import type { MapBounds } from "@/lib/viewport";
-import { isCoarsePointer } from "@/lib/pointer";
+import { isCoarsePointer } from "@/lib/media";
 import {
   CLUSTER_MAX_ZOOM,
   SPIDER_MAX_DOTS,
@@ -70,16 +70,17 @@ const PREVIEW_INTENT_MS = 150;
 // evicted, so a long session sweeping thousands of pins stays flat.
 const PREVIEW_CACHE_MAX = 50;
 
-// Every layer a tap can target, and the one place the four ids are listed
-// together: the layer-scoped handlers below take a hit on any of them, and
-// the padded re-test for a coarse pointer queries exactly these. A query
-// hands its matches back topmost first, whatever order this list carries.
-const TAP_TARGET_LAYERS = [
-  "clusters",
-  "stacks-circle",
-  "points-selected",
-  "points-circle",
-];
+// The layer ids, written once. One registration covers both point layers, so
+// the selected pin behaves like any other for hover, cursor and click.
+const CLUSTER_LAYER = "clusters";
+const STACK_LAYER = "stacks-circle";
+const POINT_LAYERS = ["points-selected", "points-circle"];
+
+// Every layer a tap can target: the layer-scoped handlers below take a hit on
+// any of them, and the padded re-test for a coarse pointer queries exactly
+// these. A query hands its matches back topmost first, whatever order this
+// list carries.
+const TAP_TARGET_LAYERS = [CLUSTER_LAYER, STACK_LAYER, ...POINT_LAYERS];
 
 // Crossfade band around the clustering ceiling, derived from
 // CLUSTER_MAX_ZOOM (single source: change the ceiling and the band follows).
@@ -180,6 +181,11 @@ function StackInteractions({
   // must track the parent's preview, which clears on click and spider open.
   const hoveredPinIdRef = useRef<string | null>(null);
 
+  // Set by the layer-scoped click handlers, read and reset by the canvas tap
+  // below: it says "a layer already took this click", so the slop re-test only
+  // runs on a tap that hit bare canvas.
+  const handledRef = useRef(false);
+
   useEffect(() => {
     if (!map) return;
 
@@ -272,6 +278,7 @@ function StackInteractions({
     };
 
     const clickCluster = async (feature: Feature | undefined) => {
+      handledRef.current = true;
       if (!feature || feature.geometry.type !== "Point") return;
       const coordinates = feature.geometry.coordinates as [number, number];
       const clusterId = feature.properties?.cluster_id as number | undefined;
@@ -314,10 +321,12 @@ function StackInteractions({
 
     // Tap fallback for touch (no hover): the badge opens the same ring.
     const handleStackClick = (e: MapLayerMouseEvent) => {
+      handledRef.current = true;
       openFromStackFeature(e.features?.[0]);
     };
 
     const clickPoint = (feature: Feature | undefined) => {
+      handledRef.current = true;
       const id = feature?.properties?.id;
       if (typeof id !== "string") return;
       // The parent clears the preview on click; the latch must follow, or
@@ -330,14 +339,29 @@ function StackInteractions({
       clickPoint(e.features?.[0]);
     };
 
+    // The tap targets present on the style, resolved on first use and kept.
+    // Not resolved here at registration: the `<Layer>` children add them from
+    // their own effects, which run after this one, so the list would be empty.
+    // Filtered because `queryRenderedFeatures` throws on an unknown layer id.
+    let tapLayers: string[] = [];
+    const layersForTap = () => {
+      if (tapLayers.length === 0) {
+        tapLayers = TAP_TARGET_LAYERS.filter((id) => map.getLayer(id));
+      }
+      return tapLayers;
+    };
+
     // A finger that misses every pin: re-test the tap over a TAP_SLOP_PX box
     // and take the nearest feature in it, so a 6px circle answers a thumb.
     // Coarse pointers only (registered below), and only past the exact hit
-    // test, which the layer-scoped handlers above have already answered.
+    // test: the layer-scoped handlers run first on this same click and raise
+    // the flag when one of them took it, so no second query asks.
     const handleCanvasTap = (e: MapMouseEvent) => {
-      const layers = TAP_TARGET_LAYERS.filter((id) => map.getLayer(id));
+      const handled = handledRef.current;
+      handledRef.current = false;
+      if (handled) return;
+      const layers = layersForTap();
       if (layers.length === 0) return;
-      if (map.queryRenderedFeatures(e.point, { layers }).length > 0) return;
       const { x, y } = e.point;
       const box: [[number, number], [number, number]] = [
         [x - TAP_SLOP_PX, y - TAP_SLOP_PX],
@@ -390,53 +414,53 @@ function StackInteractions({
       onPinHover({ id: p.id, x: px.x, y: px.y });
     };
 
-    // One registration over both point layers, so the selected pin behaves
-    // like any other for hover and click.
-    const pointLayers = ["points-circle", "points-selected"];
-    map.on("click", "clusters", handleClusterClick);
-    map.on("mouseenter", "clusters", handleClusterEnter);
-    map.on("click", "stacks-circle", handleStackClick);
-    map.on("mouseenter", "stacks-circle", handleStackEnter);
-    map.on("click", pointLayers, handlePointClick);
-    map.on("mousemove", pointLayers, handlePointMove);
-    map.on("mouseleave", pointLayers, clearPinHover);
-    map.on("movestart", clearPinHover);
-    map.on("mouseleave", "clusters", invalidateClusterHover);
-    map.on("movestart", invalidateClusterHover);
-    const coarse = isCoarsePointer();
-    if (coarse) map.on("click", handleCanvasTap);
-
     const pointerOn = () => {
       map.getCanvas().style.cursor = "pointer";
     };
     const pointerOff = () => {
       map.getCanvas().style.cursor = "";
     };
-    map.on("mouseenter", "clusters", pointerOn);
-    map.on("mouseleave", "clusters", pointerOff);
-    map.on("mouseenter", "stacks-circle", pointerOn);
-    map.on("mouseleave", "stacks-circle", pointerOff);
-    map.on("mouseenter", "points-circle", pointerOn);
-    map.on("mouseleave", "points-circle", pointerOff);
+
+    map.on("click", CLUSTER_LAYER, handleClusterClick);
+    map.on("mouseenter", CLUSTER_LAYER, handleClusterEnter);
+    map.on("click", STACK_LAYER, handleStackClick);
+    map.on("mouseenter", STACK_LAYER, handleStackEnter);
+    map.on("click", POINT_LAYERS, handlePointClick);
+    map.on("mousemove", POINT_LAYERS, handlePointMove);
+    map.on("mouseleave", POINT_LAYERS, clearPinHover);
+    map.on("movestart", clearPinHover);
+    map.on("mouseleave", CLUSTER_LAYER, invalidateClusterHover);
+    map.on("movestart", invalidateClusterHover);
+    // Registered last, so every layer-scoped click handler above runs first on
+    // the same click and can report that it took the tap.
+    if (isCoarsePointer()) map.on("click", handleCanvasTap);
+    map.on("mouseenter", CLUSTER_LAYER, pointerOn);
+    map.on("mouseleave", CLUSTER_LAYER, pointerOff);
+    map.on("mouseenter", STACK_LAYER, pointerOn);
+    map.on("mouseleave", STACK_LAYER, pointerOff);
+    map.on("mouseenter", POINT_LAYERS, pointerOn);
+    map.on("mouseleave", POINT_LAYERS, pointerOff);
 
     return () => {
-      map.off("click", "clusters", handleClusterClick);
-      map.off("mouseenter", "clusters", handleClusterEnter);
-      map.off("click", "stacks-circle", handleStackClick);
-      map.off("mouseenter", "stacks-circle", handleStackEnter);
-      map.off("click", pointLayers, handlePointClick);
-      map.off("mousemove", pointLayers, handlePointMove);
-      map.off("mouseleave", pointLayers, clearPinHover);
+      map.off("click", CLUSTER_LAYER, handleClusterClick);
+      map.off("mouseenter", CLUSTER_LAYER, handleClusterEnter);
+      map.off("click", STACK_LAYER, handleStackClick);
+      map.off("mouseenter", STACK_LAYER, handleStackEnter);
+      map.off("click", POINT_LAYERS, handlePointClick);
+      map.off("mousemove", POINT_LAYERS, handlePointMove);
+      map.off("mouseleave", POINT_LAYERS, clearPinHover);
       map.off("movestart", clearPinHover);
-      map.off("mouseleave", "clusters", invalidateClusterHover);
+      map.off("mouseleave", CLUSTER_LAYER, invalidateClusterHover);
       map.off("movestart", invalidateClusterHover);
-      if (coarse) map.off("click", handleCanvasTap);
-      map.off("mouseenter", "clusters", pointerOn);
-      map.off("mouseleave", "clusters", pointerOff);
-      map.off("mouseenter", "stacks-circle", pointerOn);
-      map.off("mouseleave", "stacks-circle", pointerOff);
-      map.off("mouseenter", "points-circle", pointerOn);
-      map.off("mouseleave", "points-circle", pointerOff);
+      // Unconditional: removing a handler that was never registered is a no-op,
+      // and it saves carrying the pointer read across the effect.
+      map.off("click", handleCanvasTap);
+      map.off("mouseenter", CLUSTER_LAYER, pointerOn);
+      map.off("mouseleave", CLUSTER_LAYER, pointerOff);
+      map.off("mouseenter", STACK_LAYER, pointerOn);
+      map.off("mouseleave", STACK_LAYER, pointerOff);
+      map.off("mouseenter", POINT_LAYERS, pointerOn);
+      map.off("mouseleave", POINT_LAYERS, pointerOff);
     };
   }, [map, onPointClick, onSpiderOpen, onPinHover]);
 
@@ -877,7 +901,10 @@ export default function Map({
     // click, which is enough to arm the intent timer; the card would then
     // open on top of the pin the finger just selected, and fetch its detail
     // twice. A coarse pointer therefore arms no preview at all: only the
-    // clearing half of this call runs, so every caller stays as it is.
+    // clearing half of this call runs, so every caller stays as it is. The
+    // read lives here because this is the single choke point every preview
+    // goes through, the layer `mousemove` and a ring dot's `onMouseEnter`
+    // alike.
     const target = raw && isCoarsePointer() ? null : raw;
     if (previewTimerRef.current) {
       clearTimeout(previewTimerRef.current);

@@ -45,20 +45,8 @@ const ROW_CLASS =
 // animation and flicker.
 const EXPAND_TRANSITION_MS = 200;
 
-// Ties the top bar's open button to the aside it controls.
+// Ties the chip's open button to the aside it controls.
 const NAV_ID = "primary-navigation";
-
-// Below Tailwind's `sm` the rail is a drawer behind a 48px top bar, and
-// `expanded` means "drawer open". Read at the moment an effect runs, so the
-// phone-only close rules (route change, Escape, scroll lock) never fire against
-// a pinned desktop rail.
-const PHONE_QUERY = "(max-width: 639.98px)";
-
-function isPhone(): boolean {
-  return (
-    typeof window !== "undefined" && window.matchMedia(PHONE_QUERY).matches
-  );
-}
 
 interface NavItem {
   href: string;
@@ -131,7 +119,12 @@ function isActive(item: NavItem, pathname: string): boolean {
 }
 
 export default function Sidebar() {
+  // The desktop rail's pinned width, from `sm` up: the chevron toggle, the rail
+  // width, and the label lag below. Nothing phone-related reads it.
   const [expanded, setExpanded] = useState(false);
+  // The phone drawer, by construction: the only control that opens it is the
+  // chip's button, and the chip is `sm:hidden`.
+  const [drawerOpen, setDrawerOpen] = useState(false);
   // Lags `expanded` when growing (labels appear after width animates) and leads
   // it when shrinking, avoiding the mid-animation overflow flicker.
   const [labelsVisible, setLabelsVisible] = useState(false);
@@ -150,21 +143,20 @@ export default function Sidebar() {
     setLabelsVisible(false);
   }, [expanded]);
 
-  // Phone only: a navigation closes the drawer, since the destination renders
-  // behind it. On a wider viewport the rail is pinned, so a route change must
-  // leave `expanded` alone. The aside's own click handler already collapses on
-  // a tap inside the drawer; this catches every other way out (a redirect, the
-  // browser's back button).
+  // A navigation closes the drawer, since the destination renders behind it.
+  // The aside's own click handler already closes on a tap inside the drawer;
+  // this catches every other way out (a redirect, the browser's back button).
+  // Closing a drawer that is already closed is a no-op, so no viewport read.
   useEffect(() => {
-    if (isPhone()) setExpanded(false);
+    setDrawerOpen(false);
   }, [pathname]);
 
-  // Phone only, while the drawer is open: Escape closes it, and the page under
-  // the scrim stays put instead of scrolling behind it.
+  // While the drawer is open: Escape closes it, and the page under the scrim
+  // stays put instead of scrolling behind it.
   useEffect(() => {
-    if (!expanded || !isPhone()) return;
+    if (!drawerOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setExpanded(false);
+      if (event.key === "Escape") setDrawerOpen(false);
     };
     document.addEventListener("keydown", onKeyDown);
     const previousOverflow = document.body.style.overflow;
@@ -173,7 +165,7 @@ export default function Sidebar() {
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = previousOverflow;
     };
-  }, [expanded]);
+  }, [drawerOpen]);
 
   // Suppressed only during the initial auth load, to avoid flashing the
   // signed-out nav before `useAuth` resolves. (The sidebar otherwise renders on
@@ -191,6 +183,11 @@ export default function Sidebar() {
   // The brand mark is the Home entry now, so it lights like a nav row on `/`.
   const homeActive = pathname === "/";
 
+  // The drawer is 192px wide whatever the rail's own width is, so it shows
+  // labels from the frame it opens: `labelsVisible` only paces the desktop
+  // width animation, which the drawer does not run.
+  const showLabels = labelsVisible || drawerOpen;
+
   const renderNavItem = (item: NavItem) => {
     const active = isActive(item, pathname);
     const Icon = item.icon;
@@ -198,7 +195,7 @@ export default function Sidebar() {
       <Link
         key={item.href}
         href={item.href}
-        title={!labelsVisible ? item.label : undefined}
+        title={!showLabels ? item.label : undefined}
         className={`${ROW_CLASS} overflow-hidden ${
           active
             ? ACCENT_SURFACE
@@ -206,70 +203,51 @@ export default function Sidebar() {
         }`}
       >
         <Icon size={18} strokeWidth={active ? 2.2 : 1.8} className="shrink-0" />
-        {labelsVisible && (
+        {showLabels && (
           <span className="truncate flex-1 animate-label-in">{item.label}</span>
         )}
       </Link>
     );
   };
 
-  // The brand mark doubles as the Home entry: it links `/` and takes the same
-  // row treatment (hover + active highlight) as the items below, now that Home
-  // has no separate rail slot. Written once, rendered twice: in the rail header
-  // and in the phone top bar, so the two can't drift.
-  const renderBrandMark = () => (
-    <Link
-      href="/"
-      title="Home"
-      className={`${ROW_CLASS} ${
-        homeActive ? ACCENT_SURFACE : "text-neutral-100 hover:bg-neutral-800"
-      }`}
-    >
-      <span className="w-[18px] flex items-center justify-center shrink-0 text-orange-500 font-bold text-lg leading-none">
-        V
-      </span>
-    </Link>
-  );
-
   return (
     <>
-      {/* Phone only: the rail's chrome when it is off-canvas. Same z as the
-          aside, so the drawer slides out from under it. */}
-      <div className="sm:hidden fixed top-2 left-2 z-1100 flex items-center gap-0.5 rounded-md p-0.5 bg-neutral-900 border border-neutral-800 [&>div>a]:hidden">
+      {/* Phone only: the rail's chrome while it is off-canvas. A floating chip
+          in the top-left corner, 8px in from both edges, holding the open
+          control and the page's back control; pages clear it with their own top
+          padding (PageShell's `max-sm:pt-16`) rather than surrendering a row to
+          a bar. Same z as the aside, so the drawer slides out from under it. */}
+      <div className="sm:hidden fixed top-2 left-2 z-1100 flex items-center gap-0.5 rounded-md p-0.5 bg-neutral-900 border border-neutral-800">
+        {/* Hand-rolled and not `<Button icon>`: this is a 44px neutral thumb
+            target, and the primitive offers one 36px square in accent or red
+            only. */}
         <button
           type="button"
-          onClick={() => setExpanded(true)}
+          onClick={() => setDrawerOpen(true)}
           aria-label="Open navigation"
-          aria-expanded={expanded}
+          aria-expanded={drawerOpen}
           aria-controls={NAV_ID}
           className="size-11 shrink-0 flex items-center justify-center rounded text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
         >
           <Menu size={20} strokeWidth={1.8} />
         </button>
-        {/* `PageShell` portals its back control into the slot on a page that
-            carries one, and the mark steps aside while it does: on a phone the
-            arrow rides this bar instead of taking a row of its own above the
-            title. Stateless, so no page has to announce itself: the wrapper
-            reads whether the slot holds anything and hides the mark on that
-            alone. `contents` keeps the slot out of the row's box model, so the
-            portaled button is a flex item of this bar like the mark it
-            replaces. */}
-        <div className="flex items-center gap-1 [&:has(#phone-back-slot:not(:empty))>a]:hidden">
-          <div
-            id="phone-back-slot"
-            className="contents"
-            ref={setPhoneBackSlot}
-          />
-          {renderBrandMark()}
-        </div>
+        {/* The back control's seat: `PageShell` portals its own button in here
+            on a page that carries one, so on a phone the arrow rides the chip
+            instead of taking a row of its own above the title. Empty on every
+            other page, where the chip is the open control alone. */}
+        <div
+          id="phone-back-slot"
+          className="flex items-center"
+          ref={setPhoneBackSlot}
+        />
       </div>
 
       {/* Phone only: tapping beside the open drawer closes it. Sits just under
-          the aside and the top bar, over everything else. */}
-      {expanded && (
+          the aside and the chip, over everything else. */}
+      {drawerOpen && (
         <button
           type="button"
-          onClick={() => setExpanded(false)}
+          onClick={() => setDrawerOpen(false)}
           aria-label="Close navigation"
           className="sm:hidden fixed inset-0 z-1090 bg-black/50"
         />
@@ -278,30 +256,49 @@ export default function Sidebar() {
       <aside
         id={NAV_ID}
         aria-label="Primary navigation"
-        // Phone only: any link inside the drawer collapses it on the way out.
-        // The route-change effect above cannot carry this alone, since a tap on
-        // the entry that is already active (About while on /about) changes no
-        // pathname and so never runs it: the drawer would stay open over the
-        // page it "navigated" to, with the body still scroll-locked. One
-        // handler here rather than an `onClick` per link, so a row added later
-        // is wired by construction.
+        // Any link inside the drawer closes it on the way out. The route-change
+        // effect above cannot carry this alone, since a tap on the entry that is
+        // already active (About while on /about) changes no pathname and so
+        // never runs it: the drawer would stay open over the page it
+        // "navigated" to, with the body still scroll-locked. One handler here
+        // rather than an `onClick` per link, so a row added later is wired by
+        // construction. Closing a closed drawer is a no-op, so the cheap
+        // `closest` answers for every width.
         onClick={(event) => {
-          if (isPhone() && (event.target as HTMLElement).closest("a")) {
-            setExpanded(false);
-          }
+          if ((event.target as HTMLElement).closest("a")) setDrawerOpen(false);
         }}
-        className={`fixed top-0 left-0 h-screen z-1100 flex flex-col bg-neutral-900 border-r border-neutral-800 transition-[width] duration-200 max-sm:h-dvh max-sm:w-48 max-sm:transition-transform max-sm:duration-200 ${
-          expanded
-            ? "w-48 max-sm:translate-x-0"
-            : "w-14 max-sm:-translate-x-full"
+        // `max-sm:invisible` takes the closed drawer out of the tab order; the
+        // transition carries `visibility` too, so it flips at the end of the
+        // slide out instead of blanking the drawer mid-animation.
+        className={`fixed top-0 left-0 h-screen z-1100 flex flex-col bg-neutral-900 border-r border-neutral-800 transition-[width] duration-200 max-sm:h-dvh max-sm:w-48 max-sm:transition-[transform,visibility] ${
+          expanded ? "w-48" : "w-14"
+        } ${
+          drawerOpen
+            ? "max-sm:translate-x-0 max-sm:visible"
+            : "max-sm:-translate-x-full max-sm:invisible"
         }`}
       >
         {/* Community glyphs ride the right of the row when expanded (no room in
             the 56px collapsed rail). pt-3/pb-1 keep the mark tight against the
             rail, not floating in a tall header. */}
         <div className="flex items-center gap-1 px-2 pt-3 pb-1 overflow-hidden">
-          {renderBrandMark()}
-          {labelsVisible && (
+          {/* The brand mark doubles as the Home entry: it links `/` and takes
+              the same row treatment (hover + active highlight) as the items
+              below, now that Home has no separate rail slot. */}
+          <Link
+            href="/"
+            title="Home"
+            className={`${ROW_CLASS} ${
+              homeActive
+                ? ACCENT_SURFACE
+                : "text-neutral-100 hover:bg-neutral-800"
+            }`}
+          >
+            <span className="w-[18px] flex items-center justify-center shrink-0 text-orange-500 font-bold text-lg leading-none">
+              V
+            </span>
+          </Link>
+          {showLabels && (
             <div className="flex items-center gap-1 ml-auto pr-1 animate-label-in">
               <a
                 href={GITHUB_URL}
@@ -351,7 +348,7 @@ export default function Sidebar() {
             <Link
               href={`/profile/${user.username}`}
               title={
-                !labelsVisible
+                !showLabels
                   ? detectionCount > 0
                     ? `${user.username} · ${detectionCount} to submit`
                     : user.username
@@ -387,7 +384,7 @@ export default function Sidebar() {
                   <Dot className="absolute -top-0.5 -right-1 ring-2 ring-neutral-900" />
                 )}
               </span>
-              {labelsVisible && (
+              {showLabels && (
                 <span className="truncate flex-1 animate-label-in">
                   {user.username}
                 </span>
@@ -404,38 +401,36 @@ export default function Sidebar() {
 
           {user && renderNavItem(SETTINGS_ITEM)}
 
-          {/* One button, two readings: on a phone the row closes the drawer (X,
-              "Close"), from `sm` up it collapses the rail (chevron, "Collapse").
-              Icon tracks `expanded` (flips immediately on click); label tracks
+          {/* The foot control, one row at every width but two buttons: below
+              `sm` it closes the drawer, from `sm` up it folds the rail. They
+              act on different state, so a single button would have to read the
+              viewport to know which. */}
+          <button
+            onClick={() => setDrawerOpen(false)}
+            aria-label="Close navigation"
+            className={`${ROW_CLASS} sm:hidden w-full overflow-hidden text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800`}
+          >
+            <X size={18} strokeWidth={1.8} className="shrink-0" />
+            {showLabels && (
+              <span className="truncate animate-label-in">Close</span>
+            )}
+          </button>
+          {/* Icon tracks `expanded` (flips immediately on click); label tracks
               `labelsVisible` so it doesn't flicker mid-animation. */}
           <button
             onClick={() => setExpanded((e) => !e)}
             aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
             aria-expanded={expanded}
             title={!labelsVisible ? "Expand sidebar" : undefined}
-            className={`${ROW_CLASS} w-full overflow-hidden text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800`}
+            className={`${ROW_CLASS} max-sm:hidden w-full overflow-hidden text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800`}
           >
-            <X size={18} strokeWidth={1.8} className="shrink-0 sm:hidden" />
             {expanded ? (
-              <ChevronLeft
-                size={18}
-                strokeWidth={1.8}
-                className="shrink-0 max-sm:hidden"
-              />
+              <ChevronLeft size={18} strokeWidth={1.8} className="shrink-0" />
             ) : (
-              <ChevronRight
-                size={18}
-                strokeWidth={1.8}
-                className="shrink-0 max-sm:hidden"
-              />
+              <ChevronRight size={18} strokeWidth={1.8} className="shrink-0" />
             )}
             {labelsVisible && (
-              <>
-                <span className="truncate animate-label-in sm:hidden">Close</span>
-                <span className="truncate animate-label-in max-sm:hidden">
-                  Collapse
-                </span>
-              </>
+              <span className="truncate animate-label-in">Collapse</span>
             )}
           </button>
 

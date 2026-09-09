@@ -539,7 +539,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard), the detections queue filter. tone=danger paints a destructive option's active state red; fullWidth stretches the track. A one-word label that needs a sentence takes a <FieldHelp> beside the bar, never hover text of its own.">
+          <Item name="<SegmentedControl>" usage="Exclusive-choice bar: submit mode (single / bulk import), admin delete mode (soft / hard), the detections queue filter. tone=danger paints a destructive option's active state red; fullWidth stretches the track at every width, and below sm the track always stretches. A one-word label that needs a sentence takes a <FieldHelp> beside the bar, never hover text of its own.">
             <div className="space-y-3">
               <SegmentedControl
                 aria-label="Preview mode"
@@ -1401,7 +1401,7 @@ export default function PalettePage() {
               <li><span className="font-mono text-neutral-400">FileManager / MediaManager</span>: upload, needs real pending files</li>
               <li><span className="font-mono text-neutral-400">BetaBanner</span>: a {"<Pill tone=\"accent\">"} in a <code>position: fixed</code> wrapper, already visible bottom-right from <code>sm</code> up; below <code>sm</code> the same pill rides the nav drawer via {"<BetaBanner inline>"}</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span>: fixed nav rail, auth/route-driven, always on screen</li>
-              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page</li>
+              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
             </ul>
           </Item>
         </section>

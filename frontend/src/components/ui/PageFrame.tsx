@@ -6,13 +6,15 @@ import { cn } from "@/lib/cn";
 // column (max-w-4xl mx-auto px-4 sm:px-6), so every page lands at the same
 // inset. The chrome moves at `sm`, so the offset does too: from `sm` up the rail
 // is a fixed 56px column on the left (sm:pl-14); below it the rail is a drawer
-// behind a floating menu chip in the top-left corner, which takes no inset of
-// its own: the caller's top padding clears it (PageShell's `max-sm:pt-16`, the
-// landing's hero padding). Vertical rhythm is the caller's: PageShell layers its
-// header spacing on top, the public landing its hero/section padding. No "use
-// client" here, so the SEO landing (a server component) can use it directly,
-// and PageShell (client, for its back button) composes it too. Single source of
-// truth for the offset + content column; change the column in one place.
+// behind a floating chip in the top-left corner (about 50px square at an 8px
+// inset), which takes no inset of its own: the caller's top padding clears it
+// (PageShell's `max-sm:pt-16`, the landing's hero padding). Vertical rhythm is
+// the caller's: PageShell layers its header spacing on top, the public landing
+// its hero/section padding. No "use client" here, so the SEO landing (a server
+// component) can use it directly, and PageShell (client, for its back button)
+// composes it too. Single source of truth for the rail offset + content column:
+// this file is the only place `sm:pl-14` is written, here for a page with a
+// column and in `PageCenter` below for one centred block.
 // Why the side padding takes a step at `sm`: docs/design.md → Page chrome.
 export function PageFrame({
   children,
@@ -28,6 +30,30 @@ export function PageFrame({
       <div className={cn("max-w-4xl mx-auto px-4 sm:px-6", className)}>
         {children}
       </div>
+    </div>
+  );
+}
+
+// One centred block on the same rail offset, for a screen that is a single
+// state rather than a column: the loading and error states below `PageShell`
+// (reached through `PageLoading` / `PageError`), the auth screens, the error
+// boundary. `className` carries the caller's own paint (a background, a text
+// colour, side padding); `cn` lets it replace what it names.
+export function PageCenter({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "min-h-screen sm:pl-14 flex items-center justify-center",
+        className,
+      )}
+    >
+      {children}
     </div>
   );
 }

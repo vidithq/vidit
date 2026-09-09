@@ -6,14 +6,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { smartBack } from "@/lib/navigation";
-import {
-  getPhoneBackSlot,
-  getServerPhoneBackSlot,
-  subscribePhoneBackSlot,
-} from "@/lib/phoneBackSlot";
+import { getPhoneBackSlot, subscribePhoneBackSlot } from "@/lib/phoneBackSlot";
 import { TEXT_LINK } from "./styles";
 import { Button } from "./Button";
-import { PageFrame } from "./PageFrame";
+import { PageCenter, PageFrame } from "./PageFrame";
 
 export function PageShell({
   title,
@@ -36,16 +32,16 @@ export function PageShell({
 }) {
   const router = useRouter();
   const handleBack = () => smartBack(router, backFallback);
-  // The phone top bar's slot, published by `Sidebar` from a ref. It is null
-  // until that bar exists (the sidebar renders nothing while auth resolves),
-  // and the portal below waits for it rather than looking once at mount.
+  // The chip's back slot, published by `Sidebar` from a ref. It is null until
+  // the chip exists (the sidebar renders nothing while auth resolves), and the
+  // portal below waits for it rather than looking once at mount.
   const phoneBackSlot = useSyncExternalStore(
     subscribePhoneBackSlot,
     getPhoneBackSlot,
-    getServerPhoneBackSlot,
+    getPhoneBackSlot,
   );
   // One back control, two placements: only the visibility classes differ, so
-  // the header copy and the phone top bar copy cannot drift.
+  // the header copy and the chip copy cannot drift.
   const renderBack = (className: string) => (
     <Button
       icon
@@ -74,18 +70,16 @@ export function PageShell({
           // block-level flex box can't stretch the square). `-ml-2` pulls it
           // back toward the heading: the 36px square insets its 18px glyph by
           // 9px, and the class takes 8 of those back. Below `sm` the row goes
-          // and the copy below takes over, in the 48px top bar where the rail
-          // has become a drawer.
+          // and the copy below takes over, in the chip the off-canvas rail
+          // leaves in the corner.
           renderBack(
             "max-sm:hidden flex -ml-2 mb-1 lg:inline-flex lg:absolute lg:right-full lg:top-1.5 lg:mr-3 lg:mb-0 lg:ml-0",
           )
         )}
-        {/* Phone only: the same control, portaled into the top bar's slot,
-            which hides the brand mark for as long as it holds this. `sm:hidden`
-            is belt and braces, the slot itself living in a `sm:hidden` bar. */}
-        {back &&
-          phoneBackSlot &&
-          createPortal(renderBack("sm:hidden"), phoneBackSlot)}
+        {/* Phone only: the same control, portaled into the chip's back slot.
+            It carries no visibility class of its own, the slot living inside a
+            `sm:hidden` chip. */}
+        {back && phoneBackSlot && createPortal(renderBack(""), phoneBackSlot)}
         {/* The action cluster drops under the title once the two can't share a
             row (a phone-width viewport with a long title): `basis-56` is the
             14rem the title asks for, which is what flex wrapping measures, so
@@ -116,17 +110,6 @@ export function PageShell({
       </header>
       {children}
     </PageFrame>
-  );
-}
-
-// Centered loading / error / empty state. Sibling to PageShell so the sidebar
-// offset (`pl-14`) stays in one place. Internal: pages reach it through
-// PageLoading / PageError, never directly.
-function PageCenter({ children }: { children: ReactNode }) {
-  return (
-    <div className="min-h-screen flex items-center justify-center sm:pl-14">
-      {children}
-    </div>
   );
 }
 
