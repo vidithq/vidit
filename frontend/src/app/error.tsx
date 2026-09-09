@@ -15,6 +15,7 @@ import * as Sentry from "@sentry/nextjs";
 
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { LABEL_TEXT } from "@/components/ui/form-styles";
+import { PageCenter } from "@/components/ui/PageFrame";
 
 interface ErrorProps {
   error: Error & { digest?: string };
@@ -31,41 +32,43 @@ export default function Error({ error, reset }: ErrorProps) {
   }, [error]);
 
   return (
-    <main className="min-h-screen sm:pl-14 flex items-center justify-center bg-neutral-950 text-neutral-100">
-      <div className="max-w-md mx-auto px-6 text-center space-y-4">
-        <h1 className="text-2xl font-semibold text-orange-400">
-          Something went wrong
-        </h1>
-        <p className="text-sm text-neutral-300">
-          An unexpected error broke this page. The platform is still in beta.
-          Please mention this to the team along with the digest below.
-        </p>
-        {error.digest && (
-          <div className="mt-2">
-            <p className={LABEL_TEXT}>
-              Error digest
-            </p>
-            <code
-              role="status"
-              aria-live="polite"
-              className="block mt-1 px-3 py-2 rounded-md bg-neutral-900 border border-neutral-700 text-xs font-mono text-neutral-300 select-all break-all"
+    <main>
+      <PageCenter className="bg-neutral-950 text-neutral-100">
+        <div className="max-w-md mx-auto px-6 text-center space-y-4">
+          <h1 className="text-2xl font-semibold text-orange-400">
+            Something went wrong
+          </h1>
+          <p className="text-sm text-neutral-300">
+            An unexpected error broke this page. The platform is still in beta.
+            Please mention this to the team along with the digest below.
+          </p>
+          {error.digest && (
+            <div className="mt-2">
+              <p className={LABEL_TEXT}>
+                Error digest
+              </p>
+              <code
+                role="status"
+                aria-live="polite"
+                className="block mt-1 px-3 py-2 rounded-md bg-neutral-900 border border-neutral-700 text-xs font-mono text-neutral-300 select-all break-all"
+              >
+                {error.digest}
+              </code>
+            </div>
+          )}
+          <div className="flex items-center justify-center gap-3 pt-2">
+            <Button
+              type="button"
+              onClick={reset}
             >
-              {error.digest}
-            </code>
+              Try again
+            </Button>
+            <a href="/map" className={buttonClasses("secondary")}>
+              Back to map
+            </a>
           </div>
-        )}
-        <div className="flex items-center justify-center gap-3 pt-2">
-          <Button
-            type="button"
-            onClick={reset}
-          >
-            Try again
-          </Button>
-          <a href="/map" className={buttonClasses("secondary")}>
-            Back to map
-          </a>
         </div>
-      </div>
+      </PageCenter>
     </main>
   );
 }

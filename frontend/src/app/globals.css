@@ -276,9 +276,11 @@ input.picker-glyph::-webkit-calendar-picker-indicator {
   gap: 8px !important;
 }
 /* The rail only occupies the left edge from `sm` up; below it, it is a drawer,
-   so the controls keep the map's own bottom-left corner. */
-@media (min-width: 640px) {
-  .map-fullscreen .maplibregl-ctrl-bottom-left {
+   so the controls keep the map's own bottom-left corner. `@variant` takes the
+   breakpoint from the theme, so this rule and every `sm:` utility move
+   together. */
+.map-fullscreen .maplibregl-ctrl-bottom-left {
+  @variant sm {
     left: 60px !important;
   }
 }

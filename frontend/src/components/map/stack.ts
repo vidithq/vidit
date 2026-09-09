@@ -139,15 +139,21 @@ export function nearestFeature(
   point: { x: number; y: number },
   project: (coordinates: [number, number]) => { x: number; y: number },
 ): Feature | null {
+  const points = features.filter((f) => f.geometry?.type === "Point");
+  if (points.length === 0) return null;
+  // The common answer on a sparse map: one candidate in the box, so it wins
+  // without projecting anything.
+  if (points.length === 1) return points[0];
   let best: Feature | null = null;
-  let bestDistance = Infinity;
-  for (const feature of features) {
-    if (feature.geometry?.type !== "Point") continue;
-    const [lng, lat] = feature.geometry.coordinates;
+  // Squared distances order exactly as distances do, so the square root that
+  // `Math.hypot` takes per candidate buys nothing here.
+  let bestSquared = Infinity;
+  for (const feature of points) {
+    const [lng, lat] = (feature.geometry as GeoJSON.Point).coordinates;
     const { x, y } = project([lng, lat]);
-    const distance = Math.hypot(x - point.x, y - point.y);
-    if (distance < bestDistance) {
-      bestDistance = distance;
+    const squared = (x - point.x) ** 2 + (y - point.y) ** 2;
+    if (squared < bestSquared) {
+      bestSquared = squared;
       best = feature;
     }
   }

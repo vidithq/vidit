@@ -1,12 +1,12 @@
 /**
- * The one slot the phone top bar keeps beside its open control, and the
- * subscription a page fills it through.
+ * The back control's seat in the phone chip, and the subscription a page fills
+ * it through.
  *
  * `Sidebar` owns the element (`#phone-back-slot`) and publishes it here from a
- * ref; `PageShell` subscribes and portals its back control into it, so on a
- * phone the arrow rides the 48px bar instead of taking a row of its own above
- * the title. Nothing here holds "is there a back arrow": the bar reads its own
- * slot with `:has(#phone-back-slot:not(:empty))` to yield the brand mark.
+ * ref; `PageShell` subscribes and portals its back control into it below `sm`,
+ * so on a phone the arrow rides the chip in the corner instead of taking a row
+ * of its own above the title. Nothing else reads the slot: the chip holds the
+ * open control and this seat, and the drawer's brand mark stays in the drawer.
  *
  * A store rather than a lookup at mount, because the two mount out of order:
  * `Sidebar` renders nothing while auth resolves, so the slot can appear after
@@ -23,7 +23,8 @@ const listeners = new Set<Listener>();
 export function setPhoneBackSlot(element: HTMLElement | null): void {
   if (slot === element) return;
   slot = element;
-  for (const listener of listeners) listener();
+  // Copied first: a listener may unsubscribe while the set is being walked.
+  for (const listener of [...listeners]) listener();
 }
 
 export function subscribePhoneBackSlot(listener: Listener): () => void {
@@ -33,11 +34,9 @@ export function subscribePhoneBackSlot(listener: Listener): () => void {
   };
 }
 
+/** The slot, or null before `Sidebar` has published one. Also the server
+ *  snapshot: only a ref callback ever sets it, so a prerender reads null and
+ *  portals nothing. */
 export function getPhoneBackSlot(): HTMLElement | null {
   return slot;
-}
-
-/** No DOM on the server, so the prerender pass portals nothing. */
-export function getServerPhoneBackSlot(): null {
-  return null;
 }
