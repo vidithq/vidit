@@ -6,6 +6,7 @@ import {
   STACK_EPSILON,
   groupStacks,
   isCoincidentStack,
+  nearestFeature,
   ringOffsets,
   ringRadius,
   stackCellKey,
@@ -102,6 +103,40 @@ describe("groupStacks", () => {
     const a = { lat: 48.2, lng: 35.2 };
     const b = { lat: 48.3, lng: 35.2 };
     expect(groupStacks([a, b], coord)).toHaveLength(2);
+  });
+});
+
+describe("nearestFeature", () => {
+  // The map's own projection, stubbed as the identity on a 1 degree = 1 px
+  // grid, so a feature's coordinates read as its screen position.
+  const project = ([lng, lat]: [number, number]) => ({ x: lng, y: lat });
+
+  it("takes the feature closest to the tap, not the topmost", () => {
+    const far = point(120, 100);
+    const near = point(104, 100);
+    expect(nearestFeature([far, near], { x: 100, y: 100 }, project)).toBe(near);
+  });
+
+  it("keeps render order on a tie", () => {
+    const first = point(94, 100);
+    const second = point(106, 100);
+    expect(nearestFeature([first, second], { x: 100, y: 100 }, project)).toBe(
+      first
+    );
+  });
+
+  it("is null when the padded query returned nothing", () => {
+    expect(nearestFeature([], { x: 100, y: 100 }, project)).toBeNull();
+  });
+
+  it("skips features that carry no point geometry", () => {
+    const line: Feature = {
+      type: "Feature",
+      properties: {},
+      geometry: { type: "LineString", coordinates: [[100, 100], [101, 101]] },
+    };
+    const pin = point(108, 100);
+    expect(nearestFeature([line, pin], { x: 100, y: 100 }, project)).toBe(pin);
   });
 });
 

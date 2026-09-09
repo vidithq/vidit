@@ -1,10 +1,16 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { smartBack } from "@/lib/navigation";
+import {
+  getPhoneBackSlot,
+  getServerPhoneBackSlot,
+  subscribePhoneBackSlot,
+} from "@/lib/phoneBackSlot";
 import { TEXT_LINK } from "./styles";
 import { Button } from "./Button";
 import { PageFrame } from "./PageFrame";
@@ -30,6 +36,28 @@ export function PageShell({
 }) {
   const router = useRouter();
   const handleBack = () => smartBack(router, backFallback);
+  // The phone top bar's slot, published by `Sidebar` from a ref. It is null
+  // until that bar exists (the sidebar renders nothing while auth resolves),
+  // and the portal below waits for it rather than looking once at mount.
+  const phoneBackSlot = useSyncExternalStore(
+    subscribePhoneBackSlot,
+    getPhoneBackSlot,
+    getServerPhoneBackSlot,
+  );
+  // One back control, two placements: only the visibility classes differ, so
+  // the header copy and the phone top bar copy cannot drift.
+  const renderBack = (className: string) => (
+    <Button
+      icon
+      variant="ghost"
+      onClick={handleBack}
+      aria-label="Back"
+      title="Back"
+      className={className}
+    >
+      <ArrowLeft size={18} />
+    </Button>
+  );
   return (
     <PageFrame className="pt-10 pb-16 space-y-6">
       <header className="relative">
@@ -39,24 +67,25 @@ export function PageShell({
           // whether or not the back arrow renders. That gutter only exists once
           // the centred column has room to sit off the rail, which is from `lg`
           // up: below it the button landed under the fixed sidebar, where taps
-          // reached the nav rather than the button. Below `lg` it sits in flow
-          // above the title, and `flex` says so: the row above the heading is
-          // the intended layout, not an inline atom that happens to break
-          // before its block sibling (`size-9` fixes the width, so a block-level
-          // flex box can't stretch the square). `-ml-2` pulls it back toward the
-          // heading: the 36px square insets its 18px glyph by 9px, and the class
-          // takes 8 of those back.
-          <Button
-            icon
-            variant="ghost"
-            onClick={handleBack}
-            aria-label="Back"
-          title="Back"
-            className="flex -ml-2 mb-1 lg:inline-flex lg:absolute lg:right-full lg:top-1.5 lg:mr-3 lg:mb-0 lg:ml-0"
-          >
-            <ArrowLeft size={18} />
-          </Button>
+          // reached the nav rather than the button. Between `sm` and `lg` it
+          // sits in flow above the title, and `flex` says so: the row above the
+          // heading is the intended layout, not an inline atom that happens to
+          // break before its block sibling (`size-9` fixes the width, so a
+          // block-level flex box can't stretch the square). `-ml-2` pulls it
+          // back toward the heading: the 36px square insets its 18px glyph by
+          // 9px, and the class takes 8 of those back. Below `sm` the row goes
+          // and the copy below takes over, in the 48px top bar where the rail
+          // has become a drawer.
+          renderBack(
+            "max-sm:hidden flex -ml-2 mb-1 lg:inline-flex lg:absolute lg:right-full lg:top-1.5 lg:mr-3 lg:mb-0 lg:ml-0",
+          )
         )}
+        {/* Phone only: the same control, portaled into the top bar's slot,
+            which hides the brand mark for as long as it holds this. `sm:hidden`
+            is belt and braces, the slot itself living in a `sm:hidden` bar. */}
+        {back &&
+          phoneBackSlot &&
+          createPortal(renderBack("sm:hidden"), phoneBackSlot)}
         {/* The action cluster drops under the title once the two can't share a
             row (a phone-width viewport with a long title): `basis-56` is the
             14rem the title asks for, which is what flex wrapping measures, so
@@ -95,7 +124,7 @@ export function PageShell({
 // PageLoading / PageError, never directly.
 function PageCenter({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen flex items-center justify-center pl-14">
+    <div className="min-h-screen flex items-center justify-center sm:pl-14 max-sm:pt-12">
       {children}
     </div>
   );

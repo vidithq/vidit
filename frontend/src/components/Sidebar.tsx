@@ -14,6 +14,8 @@ import {
   GitHubGlyph,
   XGlyph,
 } from "@/components/ui/BrandGlyphs";
+import BetaBanner from "@/components/BetaBanner";
+import { setPhoneBackSlot } from "@/lib/phoneBackSlot";
 import {
   Globe,
   Plus,
@@ -25,6 +27,8 @@ import {
   Swords,
   ChevronLeft,
   ChevronRight,
+  Menu,
+  X,
 } from "lucide-react";
 
 const X_URL = "https://x.com/vidithq";
@@ -40,6 +44,21 @@ const ROW_CLASS =
 // after the expand finishes, else they overflow the still-narrow sidebar mid-
 // animation and flicker.
 const EXPAND_TRANSITION_MS = 200;
+
+// Ties the top bar's open button to the aside it controls.
+const NAV_ID = "primary-navigation";
+
+// Below Tailwind's `sm` the rail is a drawer behind a 48px top bar, and
+// `expanded` means "drawer open". Read at the moment an effect runs, so the
+// phone-only close rules (route change, Escape, scroll lock) never fire against
+// a pinned desktop rail.
+const PHONE_QUERY = "(max-width: 639.98px)";
+
+function isPhone(): boolean {
+  return (
+    typeof window !== "undefined" && window.matchMedia(PHONE_QUERY).matches
+  );
+}
 
 interface NavItem {
   href: string;
@@ -131,6 +150,31 @@ export default function Sidebar() {
     setLabelsVisible(false);
   }, [expanded]);
 
+  // Phone only: a navigation closes the drawer, since the destination renders
+  // behind it. On a wider viewport the rail is pinned, so a route change must
+  // leave `expanded` alone. The aside's own click handler already collapses on
+  // a tap inside the drawer; this catches every other way out (a redirect, the
+  // browser's back button).
+  useEffect(() => {
+    if (isPhone()) setExpanded(false);
+  }, [pathname]);
+
+  // Phone only, while the drawer is open: Escape closes it, and the page under
+  // the scrim stays put instead of scrolling behind it.
+  useEffect(() => {
+    if (!expanded || !isPhone()) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpanded(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [expanded]);
+
   // Suppressed only during the initial auth load, to avoid flashing the
   // signed-out nav before `useAuth` resolves. (The sidebar otherwise renders on
   // every page and adapts to auth state.)
@@ -169,154 +213,237 @@ export default function Sidebar() {
     );
   };
 
-  return (
-    <aside
-      aria-label="Primary navigation"
-      className={`fixed top-0 left-0 h-screen z-1100 flex flex-col bg-neutral-900 border-r border-neutral-800 transition-[width] duration-200 ${
-        expanded ? "w-48" : "w-14"
+  // The brand mark doubles as the Home entry: it links `/` and takes the same
+  // row treatment (hover + active highlight) as the items below, now that Home
+  // has no separate rail slot. Written once, rendered twice: in the rail header
+  // and in the phone top bar, so the two can't drift.
+  const renderBrandMark = () => (
+    <Link
+      href="/"
+      title="Home"
+      className={`${ROW_CLASS} ${
+        homeActive ? ACCENT_SURFACE : "text-neutral-100 hover:bg-neutral-800"
       }`}
     >
-      {/* The brand mark doubles as the Home entry: it links `/` and takes the
-          same row treatment (hover + active highlight) as the items below, now
-          that Home has no separate rail slot. Community glyphs ride the right of
-          the row when expanded (no room in the 56px collapsed rail). pt-3/pb-1
-          keep the mark tight against the rail, not floating in a tall header. */}
-      <div className="flex items-center gap-1 px-2 pt-3 pb-1 overflow-hidden">
-        <Link
-          href="/"
-          title="Home"
-          className={`${ROW_CLASS} ${
-            homeActive
-              ? ACCENT_SURFACE
-              : "text-neutral-100 hover:bg-neutral-800"
-          }`}
-        >
-          <span className="w-[18px] flex items-center justify-center shrink-0 text-orange-500 font-bold text-lg leading-none">
-            V
-          </span>
-        </Link>
-        {labelsVisible && (
-          <div className="flex items-center gap-1 ml-auto pr-1 animate-label-in">
-            <a
-              href={GITHUB_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Vidit on GitHub"
-              aria-label="Vidit on GitHub"
-              className="size-7 rounded-md flex items-center justify-center text-neutral-500 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
-            >
-              <GitHubGlyph />
-            </a>
-            <a
-              href={X_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Vidit on X"
-              aria-label="Vidit on X"
-              className="size-7 rounded-md flex items-center justify-center text-neutral-500 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
-            >
-              <XGlyph />
-            </a>
-            <a
-              href={DISCORD_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Vidit Discord"
-              aria-label="Vidit Discord"
-              className="size-7 rounded-md flex items-center justify-center text-neutral-500 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
-            >
-              <DiscordGlyph />
-            </a>
-          </div>
-        )}
-      </div>
+      <span className="w-[18px] flex items-center justify-center shrink-0 text-orange-500 font-bold text-lg leading-none">
+        V
+      </span>
+    </Link>
+  );
 
-      {/* flex-1 pushes the bottom block down, so the gap is visual, not a
-          border. The logo header's pb-1 sets the top gap, so no pt here. */}
-      <nav className="flex-1 flex flex-col gap-1 px-2 pb-3">
-        {NAV_ITEMS.filter((item) => !item.auth || user).map(renderNavItem)}
-      </nav>
-
-      {/* Bottom block — one visual group, no border-t: the flex-1 spacer above
-          separates it. */}
-      <div className="flex flex-col gap-1 px-2 pb-3">
-        {isAdmin && renderNavItem(ADMIN_ITEM)}
-        {user ? (
-          <Link
-            href={`/profile/${user.username}`}
-            title={
-              !labelsVisible
-                ? detectionCount > 0
-                  ? `${user.username} · ${detectionCount} to submit`
-                  : user.username
-                : undefined
-            }
-            className={`${ROW_CLASS} overflow-hidden ${
-              profileActive
-                ? ACCENT_SURFACE
-                : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800"
-            }`}
-          >
-            {/* The analyst's own picture, in the same 18px box as every rail
-                glyph, so the identity row reads as "you" instead of a generic
-                user icon. `<Avatar>` owns the circle, the image and the icon
-                fallback; the wrapper exists only to anchor the badge.
-                `text-current` keeps the fallback glyph on the row's own colour,
-                so it still brightens on hover and takes the accent when
-                active, like every glyph above it. `decorative` keeps the
-                picture out of the link's accessible name, which stays the
-                handle (plus the pending count) from `title`. */}
-            <span className="relative flex shrink-0">
-              <Avatar
-                as="span"
-                src={user.avatar_url}
-                username={user.username}
-                size="size-[18px]"
-                fallback="icon"
-                iconClassName="text-current"
-                decorative
-              />
-              {/* Pending-submission nudge, the rail's only badge. */}
-              {detectionCount > 0 && (
-                <Dot className="absolute -top-0.5 -right-1 ring-2 ring-neutral-900" />
-              )}
-            </span>
-            {labelsVisible && (
-              <span className="truncate flex-1 animate-label-in">
-                {user.username}
-              </span>
-            )}
-            {detectionCount > 0 && (
-              <span className="sr-only">
-                {detectionCount} geolocations awaiting submission
-              </span>
-            )}
-          </Link>
-        ) : (
-          renderNavItem(SIGN_IN_ITEM)
-        )}
-
-        {user && renderNavItem(SETTINGS_ITEM)}
-
-        {/* Icon tracks `expanded` (flips immediately on click); label tracks
-            `labelsVisible` so it doesn't flicker mid-animation. */}
+  return (
+    <>
+      {/* Phone only: the rail's chrome when it is off-canvas. Same z as the
+          aside, so the drawer slides out from under it. */}
+      <div className="sm:hidden fixed top-0 inset-x-0 h-12 z-1100 flex items-center gap-1 px-2 bg-neutral-900 border-b border-neutral-800">
         <button
-          onClick={() => setExpanded((e) => !e)}
-          aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
+          type="button"
+          onClick={() => setExpanded(true)}
+          aria-label="Open navigation"
           aria-expanded={expanded}
-          title={!labelsVisible ? "Expand sidebar" : undefined}
-          className={`${ROW_CLASS} w-full overflow-hidden text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800`}
+          aria-controls={NAV_ID}
+          className="size-11 shrink-0 flex items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
         >
-          {expanded ? (
-            <ChevronLeft size={18} strokeWidth={1.8} className="shrink-0" />
-          ) : (
-            <ChevronRight size={18} strokeWidth={1.8} className="shrink-0" />
-          )}
-          {labelsVisible && (
-            <span className="truncate animate-label-in">Collapse</span>
-          )}
+          <Menu size={20} strokeWidth={1.8} />
         </button>
+        {/* `PageShell` portals its back control into the slot on a page that
+            carries one, and the mark steps aside while it does: on a phone the
+            arrow rides this bar instead of taking a row of its own above the
+            title. Stateless, so no page has to announce itself: the wrapper
+            reads whether the slot holds anything and hides the mark on that
+            alone. `contents` keeps the slot out of the row's box model, so the
+            portaled button is a flex item of this bar like the mark it
+            replaces. */}
+        <div className="flex items-center gap-1 [&:has(#phone-back-slot:not(:empty))>a]:hidden">
+          <div
+            id="phone-back-slot"
+            className="contents"
+            ref={setPhoneBackSlot}
+          />
+          {renderBrandMark()}
+        </div>
       </div>
-    </aside>
+
+      {/* Phone only: tapping beside the open drawer closes it. Sits just under
+          the aside and the top bar, over everything else. */}
+      {expanded && (
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          aria-label="Close navigation"
+          className="sm:hidden fixed inset-0 z-1090 bg-black/50"
+        />
+      )}
+
+      <aside
+        id={NAV_ID}
+        aria-label="Primary navigation"
+        // Phone only: any link inside the drawer collapses it on the way out.
+        // The route-change effect above cannot carry this alone, since a tap on
+        // the entry that is already active (About while on /about) changes no
+        // pathname and so never runs it: the drawer would stay open over the
+        // page it "navigated" to, with the body still scroll-locked. One
+        // handler here rather than an `onClick` per link, so a row added later
+        // is wired by construction.
+        onClick={(event) => {
+          if (isPhone() && (event.target as HTMLElement).closest("a")) {
+            setExpanded(false);
+          }
+        }}
+        className={`fixed top-0 left-0 h-screen z-1100 flex flex-col bg-neutral-900 border-r border-neutral-800 transition-[width] duration-200 max-sm:h-dvh max-sm:w-48 max-sm:transition-transform max-sm:duration-200 ${
+          expanded
+            ? "w-48 max-sm:translate-x-0"
+            : "w-14 max-sm:-translate-x-full"
+        }`}
+      >
+        {/* Community glyphs ride the right of the row when expanded (no room in
+            the 56px collapsed rail). pt-3/pb-1 keep the mark tight against the
+            rail, not floating in a tall header. */}
+        <div className="flex items-center gap-1 px-2 pt-3 pb-1 overflow-hidden">
+          {renderBrandMark()}
+          {labelsVisible && (
+            <div className="flex items-center gap-1 ml-auto pr-1 animate-label-in">
+              <a
+                href={GITHUB_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Vidit on GitHub"
+                aria-label="Vidit on GitHub"
+                className="size-7 rounded-md flex items-center justify-center text-neutral-500 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
+              >
+                <GitHubGlyph />
+              </a>
+              <a
+                href={X_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Vidit on X"
+                aria-label="Vidit on X"
+                className="size-7 rounded-md flex items-center justify-center text-neutral-500 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
+              >
+                <XGlyph />
+              </a>
+              <a
+                href={DISCORD_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Vidit Discord"
+                aria-label="Vidit Discord"
+                className="size-7 rounded-md flex items-center justify-center text-neutral-500 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
+              >
+                <DiscordGlyph />
+              </a>
+            </div>
+          )}
+        </div>
+
+        {/* flex-1 pushes the bottom block down, so the gap is visual, not a
+            border. The logo header's pb-1 sets the top gap, so no pt here. */}
+        <nav className="flex-1 flex flex-col gap-1 px-2 pb-3">
+          {NAV_ITEMS.filter((item) => !item.auth || user).map(renderNavItem)}
+        </nav>
+
+        {/* Bottom block, one visual group, no border-t: the flex-1 spacer above
+            separates it. */}
+        <div className="flex flex-col gap-1 px-2 pb-3">
+          {isAdmin && renderNavItem(ADMIN_ITEM)}
+          {user ? (
+            <Link
+              href={`/profile/${user.username}`}
+              title={
+                !labelsVisible
+                  ? detectionCount > 0
+                    ? `${user.username} · ${detectionCount} to submit`
+                    : user.username
+                  : undefined
+              }
+              className={`${ROW_CLASS} overflow-hidden ${
+                profileActive
+                  ? ACCENT_SURFACE
+                  : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800"
+              }`}
+            >
+              {/* The analyst's own picture, in the same 18px box as every rail
+                  glyph, so the identity row reads as "you" instead of a generic
+                  user icon. `<Avatar>` owns the circle, the image and the icon
+                  fallback; the wrapper exists only to anchor the badge.
+                  `text-current` keeps the fallback glyph on the row's own colour,
+                  so it still brightens on hover and takes the accent when
+                  active, like every glyph above it. `decorative` keeps the
+                  picture out of the link's accessible name, which stays the
+                  handle (plus the pending count) from `title`. */}
+              <span className="relative flex shrink-0">
+                <Avatar
+                  as="span"
+                  src={user.avatar_url}
+                  username={user.username}
+                  size="size-[18px]"
+                  fallback="icon"
+                  iconClassName="text-current"
+                  decorative
+                />
+                {/* Pending-submission nudge, the rail's only badge. */}
+                {detectionCount > 0 && (
+                  <Dot className="absolute -top-0.5 -right-1 ring-2 ring-neutral-900" />
+                )}
+              </span>
+              {labelsVisible && (
+                <span className="truncate flex-1 animate-label-in">
+                  {user.username}
+                </span>
+              )}
+              {detectionCount > 0 && (
+                <span className="sr-only">
+                  {detectionCount} geolocations awaiting submission
+                </span>
+              )}
+            </Link>
+          ) : (
+            renderNavItem(SIGN_IN_ITEM)
+          )}
+
+          {user && renderNavItem(SETTINGS_ITEM)}
+
+          {/* One button, two readings: on a phone the row closes the drawer (X,
+              "Close"), from `sm` up it collapses the rail (chevron, "Collapse").
+              Icon tracks `expanded` (flips immediately on click); label tracks
+              `labelsVisible` so it doesn't flicker mid-animation. */}
+          <button
+            onClick={() => setExpanded((e) => !e)}
+            aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
+            aria-expanded={expanded}
+            title={!labelsVisible ? "Expand sidebar" : undefined}
+            className={`${ROW_CLASS} w-full overflow-hidden text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800`}
+          >
+            <X size={18} strokeWidth={1.8} className="shrink-0 sm:hidden" />
+            {expanded ? (
+              <ChevronLeft
+                size={18}
+                strokeWidth={1.8}
+                className="shrink-0 max-sm:hidden"
+              />
+            ) : (
+              <ChevronRight
+                size={18}
+                strokeWidth={1.8}
+                className="shrink-0 max-sm:hidden"
+              />
+            )}
+            {labelsVisible && (
+              <>
+                <span className="truncate animate-label-in sm:hidden">Close</span>
+                <span className="truncate animate-label-in max-sm:hidden">
+                  Collapse
+                </span>
+              </>
+            )}
+          </button>
+
+          {/* The corner pill hides on a phone (it would sit over the content),
+              so the drawer carries the same build badge and bug-report link. */}
+          <BetaBanner inline />
+        </div>
+      </aside>
+    </>
   );
 }
