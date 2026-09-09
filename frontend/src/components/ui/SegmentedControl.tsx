@@ -42,7 +42,10 @@ export function SegmentedControl<T extends string>({
       role="group"
       aria-label={ariaLabel}
       className={cn(
-        "inline-flex h-9 items-center rounded-md border border-neutral-700 bg-neutral-900 p-0.5",
+        // On a phone the track always stretches and the options share it: an
+        // intrinsic-width track with three labelled options runs past a 375px
+        // column, and the browser's answer (wrapping each label) reads broken.
+        "inline-flex h-9 items-center rounded-md border border-neutral-700 bg-neutral-900 p-0.5 max-sm:flex max-sm:w-full",
         fullWidth && "flex w-full",
       )}
     >
@@ -58,7 +61,7 @@ export function SegmentedControl<T extends string>({
             // two-click confirm).
             onClick={() => !active && onChange(opt.value)}
             className={cn(
-              "px-3 py-1 text-sm rounded transition-colors",
+              "px-3 py-1 text-sm rounded transition-colors whitespace-nowrap max-sm:flex-1 max-sm:px-2",
               fullWidth && "flex-1",
               active
                 ? opt.tone === "danger"
