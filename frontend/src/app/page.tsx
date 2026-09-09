@@ -143,6 +143,12 @@ const ROADMAP: {
   {
     version: "v0.6",
     state: "upcoming",
+    title: "Phone-ready",
+    body: "The whole platform works on a phone: open a shared geolocation and follow its analyst, browse and filter the map, submit from the field through the form or an X post, and manage your account. It stays the web app you already use, not a separate native app to install.",
+  },
+  {
+    version: "v0.7",
+    state: "upcoming",
     title: "Collaboration & reviews",
     body: "Notifications, shared credit on events, edit history on published geolocations, and the request board as a shared queue. Organisations get a verified profile with members and roles, and an analyst or an organisation can approve a geolocation at a given version.",
   },
