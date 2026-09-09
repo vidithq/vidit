@@ -34,11 +34,14 @@ import type {
 } from "maplibre-gl";
 import type { Feature, FeatureCollection } from "geojson";
 import type { MapBounds } from "@/lib/viewport";
+import { isCoarsePointer } from "@/lib/pointer";
 import {
   CLUSTER_MAX_ZOOM,
   SPIDER_MAX_DOTS,
+  TAP_SLOP_PX,
   groupStacks,
   isCoincidentStack,
+  nearestFeature,
   ringOffsets,
   ringRadius,
 } from "./stack";
@@ -66,6 +69,17 @@ const PREVIEW_INTENT_MS = 150;
 // The preview detail cache is bounded: past this many entries the oldest is
 // evicted, so a long session sweeping thousands of pins stays flat.
 const PREVIEW_CACHE_MAX = 50;
+
+// Every layer a tap can target, and the one place the four ids are listed
+// together: the layer-scoped handlers below take a hit on any of them, and
+// the padded re-test for a coarse pointer queries exactly these. A query
+// hands its matches back topmost first, whatever order this list carries.
+const TAP_TARGET_LAYERS = [
+  "clusters",
+  "stacks-circle",
+  "points-selected",
+  "points-circle",
+];
 
 // Crossfade band around the clustering ceiling, derived from
 // CLUSTER_MAX_ZOOM (single source: change the ceiling and the band follows).
@@ -257,8 +271,7 @@ function StackInteractions({
         .catch(() => {});
     };
 
-    const handleClusterClick = async (e: MapLayerMouseEvent) => {
-      const feature = e.features?.[0];
+    const clickCluster = async (feature: Feature | undefined) => {
       if (!feature || feature.geometry.type !== "Point") return;
       const coordinates = feature.geometry.coordinates as [number, number];
       const clusterId = feature.properties?.cluster_id as number | undefined;
@@ -288,6 +301,9 @@ function StackInteractions({
         map.easeTo({ center: coordinates, zoom: (map.getZoom() || 5) + 2 });
       }
     };
+    const handleClusterClick = (e: MapLayerMouseEvent) => {
+      void clickCluster(e.features?.[0]);
+    };
 
     const handleStackEnter = (e: MapLayerMouseEvent) => {
       // While the camera animates, features pass under a still pointer; a
@@ -301,14 +317,47 @@ function StackInteractions({
       openFromStackFeature(e.features?.[0]);
     };
 
-    const handlePointClick = (e: MapLayerMouseEvent) => {
-      const id = e.features?.[0]?.properties?.id;
+    const clickPoint = (feature: Feature | undefined) => {
+      const id = feature?.properties?.id;
       if (typeof id !== "string") return;
       // The parent clears the preview on click; the latch must follow, or
       // re-hovering the same pin would hit the equality no-op below and
       // never re-arm the preview.
       hoveredPinIdRef.current = null;
       onPointClick?.(id);
+    };
+    const handlePointClick = (e: MapLayerMouseEvent) => {
+      clickPoint(e.features?.[0]);
+    };
+
+    // A finger that misses every pin: re-test the tap over a TAP_SLOP_PX box
+    // and take the nearest feature in it, so a 6px circle answers a thumb.
+    // Coarse pointers only (registered below), and only past the exact hit
+    // test, which the layer-scoped handlers above have already answered.
+    const handleCanvasTap = (e: MapMouseEvent) => {
+      const layers = TAP_TARGET_LAYERS.filter((id) => map.getLayer(id));
+      if (layers.length === 0) return;
+      if (map.queryRenderedFeatures(e.point, { layers }).length > 0) return;
+      const { x, y } = e.point;
+      const box: [[number, number], [number, number]] = [
+        [x - TAP_SLOP_PX, y - TAP_SLOP_PX],
+        [x + TAP_SLOP_PX, y + TAP_SLOP_PX],
+      ];
+      const target = nearestFeature(
+        map.queryRenderedFeatures(box, { layers }),
+        e.point,
+        (coordinates) => map.project(coordinates)
+      );
+      if (!target) return;
+      // Same three destinations as the layer-scoped handlers, picked off the
+      // feature instead of the layer it came from: a cluster zooms (or fans
+      // out when it cannot split), a stack badge fans out, a pin selects.
+      if (target.properties?.cluster_id !== undefined) {
+        void clickCluster(target);
+        return;
+      }
+      if (openFromStackFeature(target)) return;
+      clickPoint(target);
     };
 
     // Generic pin hover: any single unclustered circle under the cursor
@@ -354,6 +403,8 @@ function StackInteractions({
     map.on("movestart", clearPinHover);
     map.on("mouseleave", "clusters", invalidateClusterHover);
     map.on("movestart", invalidateClusterHover);
+    const coarse = isCoarsePointer();
+    if (coarse) map.on("click", handleCanvasTap);
 
     const pointerOn = () => {
       map.getCanvas().style.cursor = "pointer";
@@ -379,6 +430,7 @@ function StackInteractions({
       map.off("movestart", clearPinHover);
       map.off("mouseleave", "clusters", invalidateClusterHover);
       map.off("movestart", invalidateClusterHover);
+      if (coarse) map.off("click", handleCanvasTap);
       map.off("mouseenter", "clusters", pointerOn);
       map.off("mouseleave", "clusters", pointerOff);
       map.off("mouseenter", "stacks-circle", pointerOn);
@@ -526,6 +578,7 @@ function SpiderRing({
   onPinHover: (target: PreviewTarget | null) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   // Two-frame mount so the dots travel from the shared center out to the
   // ring instead of popping in place; `collapsing` runs the same transition
@@ -535,6 +588,22 @@ function SpiderRing({
     const raf = requestAnimationFrame(() => setExpanded(true));
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  // A finger leaves no pointer behind, so none of the three ways the ring
+  // closes on a mouse (leaving the overlay, roaming past the grace radius, a
+  // wheel) ever fires: on a coarse pointer a tap anywhere off the ring closes
+  // it. `pointerdown`, so the tap that closes the ring is also the tap the
+  // map handles underneath. The opening tap is over before this mounts.
+  useEffect(() => {
+    if (!isCoarsePointer()) return;
+    const handleOutside = (e: PointerEvent) => {
+      const root = rootRef.current;
+      if (root && e.target instanceof Node && root.contains(e.target)) return;
+      onClose();
+    };
+    document.addEventListener("pointerdown", handleOutside);
+    return () => document.removeEventListener("pointerdown", handleOutside);
+  }, [onClose]);
 
   const out = expanded && !collapsing;
   const n = spider.points.length;
@@ -550,6 +619,7 @@ function SpiderRing({
 
   return (
     <div
+      ref={rootRef}
       className={`absolute z-20 ${collapsing ? "pointer-events-none" : ""}`}
       style={{
         left: spider.center.x - half,
@@ -583,7 +653,13 @@ function SpiderRing({
             }}
             onMouseLeave={() => onPinHover(null)}
             onClick={() => onSelect(p.id)}
-            className="absolute rounded-full cursor-pointer transition-transform duration-150 ease-out"
+            // The dot stays SPIDER_DOT_PX wide; the pseudo-element grows the
+            // hit area around it to a 32px square (12px plus 10px each side),
+            // which is what a fingertip needs and what the circle alone never
+            // gave. Adjacent boxes overlap on a tight ring, and the dot drawn
+            // last takes the tap: still one member of the stack the finger
+            // aimed at, where a 12px target was a miss.
+            className="absolute rounded-full cursor-pointer transition-transform duration-150 ease-out before:absolute before:-inset-2.5 before:content-['']"
             style={{
               left: half - SPIDER_DOT_PX / 2,
               top: half - SPIDER_DOT_PX / 2,
@@ -796,7 +872,13 @@ export default function Map({
     globalThis.Map<string, EventDetail | Promise<EventDetail>>
   >(new globalThis.Map());
 
-  const hoverPin = useCallback((target: PreviewTarget | null) => {
+  const hoverPin = useCallback((raw: PreviewTarget | null) => {
+    // A tap fires one compatibility `mousemove` over the pin before its
+    // click, which is enough to arm the intent timer; the card would then
+    // open on top of the pin the finger just selected, and fetch its detail
+    // twice. A coarse pointer therefore arms no preview at all: only the
+    // clearing half of this call runs, so every caller stays as it is.
+    const target = raw && isCoarsePointer() ? null : raw;
     if (previewTimerRef.current) {
       clearTimeout(previewTimerRef.current);
       previewTimerRef.current = null;

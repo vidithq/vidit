@@ -122,6 +122,38 @@ export function ringOffsets(n: number): { dx: number; dy: number }[] {
   });
 }
 
+/** Hit slop (px) around a tap on the map canvas. A finger lands wider and
+ *  less precisely than a cursor, and the pins it aims at are 6 to 12px
+ *  circles: a tap that hits bare canvas is re-tested over a box this wide on
+ *  each side before it counts as a miss. Applied on coarse pointers only, so
+ *  a mouse keeps exact hit testing. */
+export const TAP_SLOP_PX = 12;
+
+/** The feature a slop-padded tap targets: the one whose projected center sits
+ *  closest to the tap, so a finger between two pins takes the nearer one.
+ *  Non-Point features and ties go to render order (`queryRenderedFeatures`
+ *  returns topmost first). Pure: the caller passes the projection, which is
+ *  the map's own. */
+export function nearestFeature(
+  features: readonly Feature[],
+  point: { x: number; y: number },
+  project: (coordinates: [number, number]) => { x: number; y: number },
+): Feature | null {
+  let best: Feature | null = null;
+  let bestDistance = Infinity;
+  for (const feature of features) {
+    if (feature.geometry?.type !== "Point") continue;
+    const [lng, lat] = feature.geometry.coordinates;
+    const { x, y } = project([lng, lat]);
+    const distance = Math.hypot(x - point.x, y - point.y);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = feature;
+    }
+  }
+  return best;
+}
+
 /** True when the group's Point features (2 or more) all sit within
  *  STACK_EPSILON of the first: no zoom level can separate them. */
 export function isCoincidentStack(features: ReadonlyArray<Feature>): boolean {

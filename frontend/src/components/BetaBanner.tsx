@@ -17,20 +17,30 @@ const displayVersion = /^\d/.test(BUILD_VERSION)
 
 const REPORT_URL = "https://discord.gg/9wPtsrrKyJ";
 
-export default function BetaBanner() {
+// The floating corner pill would sit over a phone's content, so it hides below
+// `sm` and the nav drawer renders this same component with `inline` instead.
+// One wrapper, one pill: only the placement classes differ, and the two
+// visibility halves never overlap, so exactly one copy is live at any width.
+const WRAPPER_CLASS = {
+  corner:
+    "max-sm:hidden fixed bottom-3 right-3 z-1200 pointer-events-none select-none",
+  inline: "sm:hidden select-none",
+};
+
+export default function BetaBanner({ inline = false }: { inline?: boolean }) {
   const pathname = usePathname() ?? "";
   if (isAuthRoute(pathname)) return null;
   // The landing dropped its beta framing, so the corner pill follows it there;
   // it stays on every app surface.
   if (pathname === "/") return null;
   return (
-    // `pointer-events-none` so the badge never eats map drags; only the report
-    // link inside opts back in. The wrapper owns the fixed placement, the
-    // <Pill> owns the look.
+    // `pointer-events-none` on the corner copy so the badge never eats map
+    // drags; only the report link inside opts back in. The wrapper owns the
+    // placement, the <Pill> owns the look.
     <div
       role="status"
       aria-label="Beta"
-      className="fixed bottom-3 right-3 z-1200 pointer-events-none select-none"
+      className={inline ? WRAPPER_CLASS.inline : WRAPPER_CLASS.corner}
     >
       <Pill tone="accent" className="gap-2 tracking-tight backdrop-blur-xs">
         <span>Beta · {displayVersion}</span>

@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import Sidebar from "./Sidebar";
 
@@ -72,5 +72,93 @@ describe("Sidebar identity row", () => {
     expect(wrapper).toHaveClass("relative");
     expect(wrapper?.querySelector(".bg-orange-500")).not.toBeNull();
     expect(row).toHaveTextContent("3 geolocations awaiting submission");
+  });
+});
+
+// Below `sm` the same rail is a drawer behind a top bar. jsdom applies no
+// media queries, so both halves of every `max-sm:` / `sm:` pair are in the DOM
+// and only the wiring is testable here: the open button's state and the scrim's
+// presence, not which one a phone actually paints.
+describe("Sidebar drawer controls", () => {
+  it("opens the drawer from the top bar and reports it on the button", () => {
+    render(<Sidebar />);
+
+    const open = screen.getByLabelText("Open navigation");
+    expect(open).toHaveAttribute("aria-expanded", "false");
+    expect(open).toHaveAttribute("aria-controls", "primary-navigation");
+    // The button names the aside it drives, so the two must actually meet.
+    expect(screen.getByLabelText("Primary navigation")).toHaveAttribute(
+      "id",
+      "primary-navigation",
+    );
+
+    fireEvent.click(open);
+
+    expect(open).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("closes the drawer when the scrim is tapped", () => {
+    render(<Sidebar />);
+
+    const open = screen.getByLabelText("Open navigation");
+    // The scrim exists only while the drawer is open: nothing to tap before.
+    expect(screen.queryByLabelText("Close navigation")).toBeNull();
+
+    fireEvent.click(open);
+    fireEvent.click(screen.getByLabelText("Close navigation"));
+
+    expect(open).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByLabelText("Close navigation")).toBeNull();
+  });
+
+  // The close-on-navigation rule is the one place the component asks the
+  // viewport a question directly (`isPhone`), and jsdom answers no media query
+  // on its own, so these two drive `matchMedia` instead.
+  const reportPhone = (phone: boolean) =>
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: phone,
+      media: query,
+      onchange: null,
+      addListener() {},
+      removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+      dispatchEvent: () => false,
+    }));
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("collapses the drawer when a link inside it is tapped", () => {
+    reportPhone(true);
+    render(<Sidebar />);
+
+    const open = screen.getByLabelText("Open navigation");
+    fireEvent.click(open);
+    expect(open).toHaveAttribute("aria-expanded", "true");
+
+    // Map is the row for the pinned pathname, so this is the tap that changes
+    // no route: the pathname effect never runs and the drawer would stay open
+    // over the page under it. The rail renders collapsed here (labels appear a
+    // transition later), so the row is named by its `title`.
+    fireEvent.click(screen.getByTitle("Map"));
+
+    expect(open).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("leaves the pinned rail expanded when a link is clicked on a desktop", () => {
+    reportPhone(false);
+    render(<Sidebar />);
+
+    const toggle = screen.getByLabelText("Expand sidebar");
+    fireEvent.click(toggle);
+
+    fireEvent.click(screen.getByTitle("Map"));
+
+    expect(screen.getByLabelText("Collapse sidebar")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
   });
 });

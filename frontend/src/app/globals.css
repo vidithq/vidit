@@ -270,11 +270,17 @@ input.picker-glyph::-webkit-calendar-picker-indicator {
 
 /* Offset MapLibre controls past the sidebar on full-screen map only */
 .map-fullscreen .maplibregl-ctrl-bottom-left {
-  left: 60px !important;
   display: flex !important;
   flex-direction: row !important;
   align-items: flex-end !important;
   gap: 8px !important;
+}
+/* The rail only occupies the left edge from `sm` up; below it, it is a drawer,
+   so the controls keep the map's own bottom-left corner. */
+@media (min-width: 640px) {
+  .map-fullscreen .maplibregl-ctrl-bottom-left {
+    left: 60px !important;
+  }
 }
 .map-fullscreen .maplibregl-ctrl-bottom-left .maplibregl-ctrl-group {
   order: 1 !important;

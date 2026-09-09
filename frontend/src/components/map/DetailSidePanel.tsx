@@ -22,6 +22,13 @@ interface DetailSidePanelProps {
  * pinned `bottom-14` so the panel shrinks to its content (no grey filler)
  * yet still caps and scrolls when content is long. 4.5rem = top-4 (1rem)
  * + 3.5rem clearance to keep the bottom pill off the panel even on hover.
+ *
+ * Below `sm` the same panel is a bottom sheet: a 384px card pinned to the
+ * right runs off a 375px viewport, and the map page clips it (`overflow-hidden`).
+ * It spans the width, sits on the bottom edge (square there, rounded on top,
+ * borderless where it meets the edge), caps at 60dvh and scrolls its own
+ * content. The sheet covers the map's bottom-left zoom control while open;
+ * closing it hands the control back.
  */
 export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelProps) {
   // The panel takes no tier at all: it previews a row whose own page is one
@@ -33,7 +40,15 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
   const { actions, panels } = useEventActions({ event: detail, surface: "panel" });
 
   return (
-    <div className="absolute top-4 right-4 max-h-[calc(100vh-4.5rem)] z-1000 w-96 bg-neutral-900 rounded-lg border border-neutral-700 overflow-y-auto">
+    <div className="absolute top-4 right-4 max-h-[calc(100vh-4.5rem)] z-1000 w-96 bg-neutral-900 rounded-lg border border-neutral-700 overflow-y-auto max-sm:top-auto max-sm:bottom-0 max-sm:inset-x-0 max-sm:w-auto max-sm:max-h-[60dvh] max-sm:rounded-b-none max-sm:rounded-t-lg max-sm:border-x-0 max-sm:border-b-0">
+      {/* The sheet's grab bar, phone only: the sheet has no top edge of its
+          own against the map, and the bar is what says the panel is the
+          surface that scrolls. Centred, so it clears the close button in the
+          same 40px strip; decorative, so it takes no pointer and no name. */}
+      <div className="sm:hidden flex justify-center py-2" aria-hidden="true">
+        <div className="h-1 w-9 rounded-full bg-neutral-600" />
+      </div>
+
       <Button
         icon
         variant="ghost"
