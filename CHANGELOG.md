@@ -8,7 +8,9 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-_Nothing yet._
+### Changed
+
+- **The events service is a package, one module per write verb** ([`backend/app/services/events/`](backend/app/services/events), [`docs/engineering.md`](docs/engineering.md), [`planning/next.md`](planning/next.md)) (#317). `services/events.py` is now the `services/events/` package: `create`, `geolocate`, `revise`, `batch` and `close` hold one write verb each, over the four modules they share (`errors`, `coordinates`, `source_links`, `rules`). The public API is unchanged at the package root, re-exported from `__init__.py`, so every caller's import stays as it was. Pure move, no behaviour change.
 
 ## v0.5.9, 2026-08-24
 

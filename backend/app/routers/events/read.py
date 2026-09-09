@@ -363,7 +363,7 @@ def list_detections(
     publish floor (``ready``) or to those that don't (``incomplete``), ``all``
     being the whole queue; anything else is a 422, as ``view`` is on
     :func:`list_events`. The floor is :func:`detection_ready_predicate`, the SQL
-    projection of the one ``services.events._publish_detection`` enforces. Filtering
+    projection of the one ``services/events/batch._publish_detection`` enforces. Filtering
     here rather than over the loaded page is the point: the queue pages at 10
     rows over imports of several hundred, so a page-local filter answers about
     ten detections while the analyst reads it as an answer about the queue.

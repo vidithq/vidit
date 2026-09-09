@@ -357,6 +357,14 @@ flowchart LR
 | **schemas/** | Pydantic validation | Input and output separated (`Create`, `Read`, `Update`, `List`) |
 | **dependencies.py** | FastAPI injection | `get_db`, `get_current_user` |
 
+A service that grows past one file becomes a package under `services/`, not a
+second module beside it. [`services/events/`](../backend/app/services/events) is
+the shape to follow: one module per write verb (`create`, `geolocate`,
+`revise`, `batch`, `close`) over the modules they share (`errors`,
+`coordinates`, `source_links`, `rules`), with the public API re-exported from
+the package root. Import that surface from the package, which names it in
+`__all__`; the module layout is an internal detail.
+
 ### Schema naming
 
 ```
