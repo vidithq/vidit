@@ -16,7 +16,7 @@ strings, translated to HTTP via the same `{code, message}` envelope as
 `routers/events/_common.py` (`_EVENT_ERROR_STATUS`), kept in sync
 when adding a code.
 
-One module per write verb, over three shared modules the verbs read:
+One module per write verb, over four shared modules the verbs read:
 
 * ``errors``: the typed failures and their codes, a leaf every other module
   raises from.

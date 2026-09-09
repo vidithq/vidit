@@ -43,7 +43,7 @@ def _warn_if_truncated(rows: list[Tag], *, view: str) -> list[Tag]:
 USER_CREATABLE_CATEGORIES = {"free"}
 
 # Server-managed taxonomy: every new geolocation must carry one tag from it
-# (enforced in `services/events.py`). Surfaced as the required selector on
+# (enforced in `services/events/rules.py`). Surfaced as the required selector on
 # the submit form via `?curated=true`.
 CURATED_CATEGORIES = ("capture_source",)
 

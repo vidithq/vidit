@@ -1269,7 +1269,7 @@ export async function awaitImportJob(
  * the row carries the whole evidence floor and only needs the two human choices
  * (conflict, capture source) to publish: the "ready" state the queue badges.
  *
- * Mirrors the server floor in `services/events._publish_detection`, and only that:
+ * Mirrors the server floor in `services/events/batch._publish_detection`, and only that:
  * it judges evidence the machine either found or didn't, so the form-level
  * requirements a submit adds (a title, the source post time) are not part of
  * it. Computed on the queue payload the detections list already carries, so the
