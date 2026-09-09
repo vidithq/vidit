@@ -124,7 +124,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     // the rest (a fixed max-height would ignore the strip and run the stack's
     // last sections off the bottom). The stretched box is transparent to
     // pointers so the map keeps every tap outside the blocks themselves.
-    <div className="absolute top-4 left-[72px] z-1000 w-72 max-sm:top-14 max-sm:bottom-4 max-sm:left-4 max-sm:right-4 max-sm:w-auto max-sm:flex max-sm:flex-col max-sm:pointer-events-none">
+    <div className="absolute top-4 left-[72px] z-1000 w-72 max-sm:top-4 max-sm:bottom-4 max-sm:left-16 max-sm:right-4 max-sm:w-auto max-sm:flex max-sm:flex-col max-sm:pointer-events-none">
       <button
         onClick={() => setFiltersOpen((o) => !o)}
         className="w-full flex items-center justify-between bg-neutral-900 rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:bg-neutral-800/80 transition-colors max-sm:shrink-0 max-sm:pointer-events-auto"

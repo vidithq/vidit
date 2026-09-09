@@ -8,7 +8,7 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   return (
-    <main className="min-h-screen sm:pl-14 max-sm:pt-12 flex items-center justify-center px-4 bg-neutral-950">
+    <main className="min-h-screen sm:pl-14 flex items-center justify-center px-4 bg-neutral-950">
       {/* The auth card plus the one discreet line under it. The legal notice
           and the privacy policy have to be reachable before an account exists,
           and the sign-in screen is where a visitor without one lands. */}
