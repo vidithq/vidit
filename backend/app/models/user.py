@@ -41,6 +41,14 @@ class User(Base):
         default=lambda: datetime.now(UTC),
         nullable=False,
     )
+    # Instant of the account's most recent authenticated request, throttled.
+    # ``dependencies.get_current_user`` refreshes it once per
+    # ``LAST_SEEN_THROTTLE`` window, so a signed-in session costs one UPDATE
+    # per window instead of one per request; the login and register-confirm
+    # routes stamp it when they issue cookies, so a fresh session reads as
+    # active straight away. NULL on a row that has made no authenticated
+    # request since the column landed.
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Soft-delete: NULL = live, timestamp = removed. Login + auth checks reject
     # soft-deleted users; public reads filter `deleted_at IS NULL`. Soft-
     # deleting a user cascade-soft-deletes every geolocation they authored.

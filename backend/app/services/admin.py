@@ -79,6 +79,9 @@ def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInvi
     Grouped aggregates over ``archive_import_jobs``, ``bot_mentions``,
     ``events`` and ``auth_events`` keyed by user (bot mentions by lowercased
     handle), so the invite list stays O(1) queries however many rows it has.
+
+    ``last_seen_at`` reads ``users.last_seen_at`` and falls back to the newest
+    ``login`` auth event, which is all a row predating that column carries.
     """
     if not users:
         return {}
@@ -137,7 +140,7 @@ def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInvi
             bot_detection_count=bot_by_handle.get(u.x_handle, 0) if u.x_handle else 0,
             detected_count=by_status.get((u.id, STATUS_DETECTED), 0),
             geolocated_count=by_status.get((u.id, STATUS_GEOLOCATED), 0),
-            last_login_at=logins.get(u.id),
+            last_seen_at=u.last_seen_at or logins.get(u.id),
         )
         for u in users
     }

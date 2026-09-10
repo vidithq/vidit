@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import uuid
+from datetime import UTC, datetime
 from typing import NoReturn
 from urllib.parse import urlencode
 
@@ -205,6 +206,9 @@ def confirm_registration(
     except registration.RegistrationError as exc:
         _raise_registration_error(exc)
 
+    # Same stamp as the login route: this call signs the analyst in, and it
+    # writes no ``login`` auth event to fall back on.
+    user.last_seen_at = datetime.now(UTC)
     audit.log_auth_event(
         db,
         event=EVENT_REGISTER_CONFIRMED,
@@ -305,6 +309,10 @@ def login(
     # Re-check ADMIN_EMAILS each login — covers the case where the env var
     # was added (or the address rotated in) after the user registered.
     maybe_promote_admin(user)
+    # Issuing cookies is activity, and the throttle in ``_touch_last_seen``
+    # would otherwise leave the row reading as last seen up to a window ago
+    # right after a sign-in.
+    user.last_seen_at = datetime.now(UTC)
     audit.log_auth_event(
         db,
         event=EVENT_LOGIN,

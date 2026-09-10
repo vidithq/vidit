@@ -53,7 +53,7 @@ _.dispatch  # app/middleware/csrf.py CSRFMiddleware
 redeemer  # schemas/admin.py AdminInviteCodeRead
 archives_imported  # schemas/admin.py AdminInviteRedeemerRead
 bot_detection_count  # schemas/admin.py AdminInviteRedeemerRead
-last_login_at  # schemas/admin.py AdminInviteRedeemerRead
+last_seen_at  # schemas/admin.py AdminInviteRedeemerRead
 deleted_events  # schemas/admin.py AdminPurgeDetectedResponse
 media_count  # schemas/admin.py
 pending_registrations_deleted  # schemas/admin.py

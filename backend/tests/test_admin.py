@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,6 +8,7 @@ from shapely.geometry import Point
 
 from app.config import settings
 from app.database import SessionLocal
+from app.dependencies import LAST_SEEN_THROTTLE
 from app.main import app
 from app.models.admin_event import AdminEvent
 from app.models.archive_import_job import ArchiveImportJob
@@ -412,7 +413,10 @@ def test_list_invite_codes_carries_redeemer_onboarding_stats(admin_user, regular
         assert redeemer["bot_detection_count"] == 3
         assert redeemer["detected_count"] == 1
         assert redeemer["geolocated_count"] == 1
-        assert redeemer["last_login_at"] is not None
+        # ``regular_user`` has made no authenticated request, so its
+        # ``last_seen_at`` is NULL and the read falls back to the login event.
+        assert regular_user.last_seen_at is None
+        assert redeemer["last_seen_at"] is not None
     finally:
         db.expire_all()
         db.query(InviteCode).filter(InviteCode.id == invite.id).delete()
@@ -420,6 +424,90 @@ def test_list_invite_codes_carries_redeemer_onboarding_stats(admin_user, regular
         db.query(BotMention).filter(BotMention.id == mention.id).delete()
         db.query(AuthEvent).filter(AuthEvent.user_id == regular_user.id).delete()
         regular_user.x_handle = None
+        db.commit()
+
+
+def _redeem(db, user: User) -> InviteCode:
+    """Bind a fresh invite code to ``user`` so the onboarding list carries them."""
+    invite = InviteCode(
+        code=f"code{uuid.uuid4().hex[:12]}",
+        used_by=user.id,
+        used_at=datetime.now(UTC),
+    )
+    db.add(invite)
+    db.commit()
+    return invite
+
+
+def _stored_last_seen(db, user: User) -> datetime | None:
+    """``users.last_seen_at`` re-read from the row, not from a stale identity map."""
+    db.expire_all()
+    return db.query(User.last_seen_at).filter(User.id == user.id).scalar()
+
+
+def test_authenticated_request_stamps_last_seen_and_the_onboarding_row_reads_it(
+    admin_user, regular_user, db
+):
+    invite = _redeem(db, regular_user)
+    try:
+        assert (
+            client.get("/api/v1/auth/me", headers=login_as(client, regular_user)).status_code == 200
+        )
+        stamped = _stored_last_seen(db, regular_user)
+        assert stamped is not None
+        client.cookies.clear()
+
+        rows = client.get("/api/v1/admin/invite-codes", headers=login_as(client, admin_user)).json()
+        row = next(r for r in rows if r["code"] == invite.code)
+        assert datetime.fromisoformat(row["redeemer"]["last_seen_at"]) == stamped
+    finally:
+        db.expire_all()
+        db.query(InviteCode).filter(InviteCode.id == invite.id).delete()
+        db.commit()
+
+
+def test_last_seen_is_rewritten_once_per_throttle_window(regular_user, db):
+    """A second request inside the window costs no UPDATE; one past it stamps again."""
+    headers = login_as(client, regular_user)
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
+    first = _stored_last_seen(db, regular_user)
+    assert first is not None
+
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
+    assert _stored_last_seen(db, regular_user) == first
+
+    # Age the stored value past the window; the next request has to move it.
+    stale = datetime.now(UTC) - LAST_SEEN_THROTTLE - timedelta(minutes=1)
+    db.query(User).filter(User.id == regular_user.id).update({User.last_seen_at: stale})
+    db.commit()
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
+    refreshed = _stored_last_seen(db, regular_user)
+    assert refreshed is not None and refreshed > stale
+
+
+def test_onboarding_row_falls_back_to_the_newest_login_event_when_last_seen_is_null(
+    admin_user, regular_user, db
+):
+    """A row predating the column carries no stamp, so the auth log stands in."""
+    invite = _redeem(db, regular_user)
+    now = datetime.now(UTC)
+    older = AuthEvent(
+        user_id=regular_user.id, event=EVENT_LOGIN, created_at=now - timedelta(days=3)
+    )
+    newest = AuthEvent(
+        user_id=regular_user.id, event=EVENT_LOGIN, created_at=now - timedelta(days=1)
+    )
+    db.add_all([older, newest])
+    db.commit()
+    try:
+        assert _stored_last_seen(db, regular_user) is None
+        rows = client.get("/api/v1/admin/invite-codes", headers=login_as(client, admin_user)).json()
+        row = next(r for r in rows if r["code"] == invite.code)
+        assert datetime.fromisoformat(row["redeemer"]["last_seen_at"]) == newest.created_at
+    finally:
+        db.expire_all()
+        db.query(AuthEvent).filter(AuthEvent.user_id == regular_user.id).delete()
+        db.query(InviteCode).filter(InviteCode.id == invite.id).delete()
         db.commit()
 
 
