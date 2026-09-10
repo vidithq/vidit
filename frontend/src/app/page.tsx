@@ -136,14 +136,8 @@ const ROADMAP: {
   link?: { href: string; label: string };
 }[] = [
   {
-    version: "v0.5",
-    state: "current",
-    title: "Analyst portfolio",
-    body: "Your body of work becomes a first-class object: a public profile that reads as a portfolio, rich link previews wherever you share it, batch completion of imported detections, a mobile pass on the pages readers land on, and sources archived when you publish so the work outlives its tweets.",
-  },
-  {
     version: "v0.6",
-    state: "upcoming",
+    state: "current",
     title: "Phone-ready",
     body: "The whole platform works on a phone: open a shared geolocation and follow its analyst, browse and filter the map, submit from the field through the form or an X post, and manage your account. It stays the web app you already use, not a separate native app to install.",
   },
