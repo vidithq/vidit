@@ -63,7 +63,15 @@ export function SegmentedControl<T extends string>({
             // two-click confirm).
             onClick={() => !active && onChange(opt.value)}
             className={cn(
-              "px-3 py-1 text-sm rounded transition-colors whitespace-nowrap max-sm:px-2",
+              // `truncate` carries the one-line rule at every width (it is
+              // `whitespace-nowrap` plus a clip), and `min-w-0` releases it to
+              // shrink below `sm` only. From `sm` up an option keeps its
+              // min-content width, so nothing ever clips there and the track
+              // reads exactly as it did. Below `sm` the track is pinned to the
+              // column: an option that can neither wrap nor shrink pushes the
+              // track past the viewport and scrolls the page sideways, so the
+              // long label shortens instead.
+              "px-3 py-1 text-sm rounded transition-colors truncate max-sm:px-2 max-sm:min-w-0 max-sm:text-xs",
               // Shares the track under the same two triggers as the track's
               // own stretch above.
               fullWidth ? "flex-1" : "max-sm:flex-1",

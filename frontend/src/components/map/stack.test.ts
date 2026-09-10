@@ -135,8 +135,22 @@ describe("nearestFeature", () => {
       properties: {},
       geometry: { type: "LineString", coordinates: [[100, 100], [101, 101]] },
     };
-    const pin = point(108, 100);
-    expect(nearestFeature([line, pin], { x: 100, y: 100 }, project)).toBe(pin);
+    // Two pins, so the filtered list runs past the single-candidate fast path
+    // and the distance loop is what has to ignore the line.
+    const far = point(120, 100);
+    const near = point(108, 100);
+    expect(
+      nearestFeature([line, far, near], { x: 100, y: 100 }, project)
+    ).toBe(near);
+  });
+
+  it("is null when the box held nothing with a point geometry", () => {
+    const line: Feature = {
+      type: "Feature",
+      properties: {},
+      geometry: { type: "LineString", coordinates: [[100, 100], [101, 101]] },
+    };
+    expect(nearestFeature([line], { x: 100, y: 100 }, project)).toBeNull();
   });
 });
 

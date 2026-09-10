@@ -495,7 +495,7 @@ function SubmitForm() {
                 value: "single",
                 label: (
                   <span className="inline-flex items-center gap-1.5">
-                    <MapPin size={13} strokeWidth={1.8} />
+                    <MapPin size={13} strokeWidth={1.8} className="max-sm:hidden" />
                     Single
                   </span>
                 ),
@@ -504,7 +504,7 @@ function SubmitForm() {
                 value: "xpost",
                 label: (
                   <span className="inline-flex items-center gap-1.5">
-                    <XGlyph size={12} />
+                    <span className="max-sm:hidden"><XGlyph size={12} /></span>
                     From an X post
                   </span>
                 ),
@@ -513,7 +513,7 @@ function SubmitForm() {
                 value: "bulk",
                 label: (
                   <span className="inline-flex items-center gap-1.5">
-                    <Archive size={13} strokeWidth={1.8} />
+                    <Archive size={13} strokeWidth={1.8} className="max-sm:hidden" />
                     Bulk import
                   </span>
                 ),

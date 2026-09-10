@@ -124,7 +124,9 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     // leave and scrolls the rest (a fixed max-height would ignore the strip and
     // run the stack's last sections off the bottom). The stretched box is
     // transparent to pointers so the map keeps every tap outside the blocks
-    // themselves.
+    // themselves. `max-sm:left-16` is 64px, derived from the chip: 8px inset
+    // from the left edge, 1px border, 2px padding, 44px control, about 55px in
+    // all, which 64px clears.
     <div className="absolute top-4 left-[72px] z-1000 w-72 max-sm:bottom-4 max-sm:left-16 max-sm:right-4 max-sm:w-auto max-sm:flex max-sm:flex-col max-sm:pointer-events-none">
       <button
         onClick={() => setFiltersOpen((o) => !o)}
