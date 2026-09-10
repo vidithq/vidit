@@ -200,12 +200,12 @@ function InviteCodeRow({
       <td
         className="py-2 pr-3 text-xs text-neutral-400"
         title={
-          redeemer?.last_login_at
-            ? new Date(redeemer.last_login_at).toLocaleString()
+          redeemer?.last_seen_at
+            ? new Date(redeemer.last_seen_at).toLocaleString()
             : undefined
         }
       >
-        {formatDay(redeemer?.last_login_at ?? null)}
+        {formatDay(redeemer?.last_seen_at ?? null)}
       </td>
       <td className="py-2 text-right whitespace-nowrap">
         {redeemer && (
@@ -340,7 +340,7 @@ export function OnboardingPanel() {
         <p className="text-xs text-neutral-500 mt-0.5">
           Every code is single-use (one code, one analyst), so each row tracks
           one analyst&apos;s journey: archives imported, bot detections, live
-          detections, geolocations, last login. Mint, share via a trusted channel,
+          detections, geolocations, last seen. Mint, share via a trusted channel,
           then manage the code and the account from the row.
         </p>
       </header>
@@ -403,7 +403,7 @@ export function OnboardingPanel() {
               <StatHeader icon={AtSign} label="Bot detections" />
               <StatHeader icon={Bot} label="Detections" />
               <StatHeader icon={MapPin} label="Geolocations" />
-              <th className="py-2 pr-3 font-medium">Last login</th>
+              <th className="py-2 pr-3 font-medium">Last seen</th>
               <th className="py-2"></th>
             </tr>
           </thead>

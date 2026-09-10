@@ -70,9 +70,10 @@ class AdminInviteRedeemerRead(BaseModel):
     detected_count: int
     # Live ``geolocated`` events they own.
     geolocated_count: int
-    # Most recent ``login`` auth event; NULL for an account that has never
-    # logged in since the audit log existed.
-    last_login_at: datetime | None
+    # Most recent authenticated request (``users.last_seen_at``, refreshed once
+    # per throttle window), falling back to the newest ``login`` auth event for
+    # a row that predates that column. NULL when the account carries neither.
+    last_seen_at: datetime | None
 
 
 class AdminInviteCodeRead(BaseModel):

@@ -1644,13 +1644,13 @@ Capped and cursor-paged like the catalog lists: the table holds one row per invi
       "bot_detection_count": 3,
       "detected_count": 12,
       "geolocated_count": 4,
-      "last_login_at": "…"
+      "last_seen_at": "…"
     }
   }
 ]
 ```
 
-`archives_imported` counts `done` archive-import jobs. `bot_detection_count` sums `bot_mentions.events_created` for the account's X handle (case-insensitive), a historical total that survives later deletes. `detected_count` / `geolocated_count` are the live events they own in that status; the purge endpoint below also sweeps soft-deleted detections, so its `deleted_events` can exceed `detected_count`. `last_login_at` is the newest `login` auth event, `null` for an account that has never logged in since the audit log existed.
+`archives_imported` counts `done` archive-import jobs. `bot_detection_count` sums `bot_mentions.events_created` for the account's X handle (case-insensitive), a historical total that survives later deletes. `detected_count` / `geolocated_count` are the live events they own in that status; the purge endpoint below also sweeps soft-deleted detections, so its `deleted_events` can exceed `detected_count`. `last_seen_at` is the instant of the account's most recent authenticated request, refreshed once per 15-minute window and stamped in full at sign-in, so an analyst who signs in once and works through the seven-day session reads as active. It falls back to the newest `login` auth event for a row that predates the column, and is `null` for an account that carries neither.
 
 ### `POST /admin/invite-codes/{id}/revoke` 🛡️
 

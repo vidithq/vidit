@@ -1700,8 +1700,8 @@ export interface components {
             geolocated_count: number;
             /** Is Admin */
             is_admin: boolean;
-            /** Last Login At */
-            last_login_at: string | null;
+            /** Last Seen At */
+            last_seen_at: string | null;
             /**
              * User Id
              * Format: uuid

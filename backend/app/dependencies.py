@@ -1,4 +1,6 @@
+import logging
 from collections.abc import Generator
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Cookie, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -8,6 +10,14 @@ from app.models.user import User
 from app.services.auth import decode_session_token
 from app.services.auth_cookies import SESSION_COOKIE
 
+logger = logging.getLogger(__name__)
+
+# How stale ``users.last_seen_at`` may get before an authenticated request
+# rewrites it. Every request would otherwise cost an UPDATE plus a commit on the
+# hot path; the admin onboarding table reads the value to the day, so a window
+# this wide costs the reader nothing.
+LAST_SEEN_THROTTLE = timedelta(minutes=15)
+
 
 def get_db() -> Generator[Session]:
     db = SessionLocal()
@@ -15,6 +25,27 @@ def get_db() -> Generator[Session]:
         yield db
     finally:
         db.close()
+
+
+def _touch_last_seen(db: Session, user: User) -> None:
+    """Stamp ``users.last_seen_at``, at most once per ``LAST_SEEN_THROTTLE``.
+
+    Best-effort, and never raises: a failed activity stamp is a blind spot in
+    the onboarding table, while a raised exception here would 500 a request the
+    caller was entitled to make. Same discipline as
+    ``services/audit.log_auth_event``, with a rollback instead of a savepoint
+    because this runs before the route body opens a transaction of its own.
+    """
+    now = datetime.now(UTC)
+    seen = user.last_seen_at
+    if seen is not None and now - seen < LAST_SEEN_THROTTLE:
+        return
+    try:
+        user.last_seen_at = now
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 (see the docstring)
+        logger.warning("last_seen touch failed: user_id=%s err=%s", user.id, exc)
+        db.rollback()
 
 
 def get_current_user(
@@ -50,6 +81,11 @@ def get_current_user(
     # tell "expired" from "invalidated" from "tampered".
     if token_version != user.token_version:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    # Every check passed, so this request is the account's activity. Stamped
+    # here rather than at login: a session lasts ``jwt_expire_minutes`` and
+    # register-confirm opens one without a login row, so login alone reports an
+    # analyst who signs in once and works for a week as inactive.
+    _touch_last_seen(db, user)
     return user
 
 
