@@ -21,8 +21,9 @@ import DemoVideo from "@/components/landing/DemoVideo";
 // Public landing at `vidit.app`, reachable without an account (see
 // `PUBLIC_EXACT` in `proxy.ts`); the app lives behind login at `/map`.
 // Server component for SEO (no "use client"); the hero CTA is a plain link,
-// the same one for every visitor. Offset by `pl-14` to keep the shared
-// sidebar rail.
+// the same one for every visitor. `PageFrame` offsets it by `sm:pl-14` to keep
+// the shared sidebar rail, which is a fixed column from `sm` up and a drawer
+// below, where the page takes no left inset at all.
 
 // `openGraph` + `twitter` blocks render a rich summary_large_image card
 // instead of a bare text card. The image comes from the sibling

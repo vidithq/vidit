@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import Sidebar from "./Sidebar";
@@ -77,11 +77,12 @@ describe("Sidebar identity row", () => {
   });
 });
 
-// Below `sm` the same rail is a drawer behind a floating chip. The component
-// reads no viewport, so the two states are independent by construction and both
-// are drivable here; jsdom applies no media query, so both halves of every
-// `max-sm:` / `sm:` pair are in the DOM and these tests assert the wiring, not
-// which half a phone paints.
+// Below `sm` the same rail is a drawer behind a floating chip. Its one viewport
+// read is the `sm` crossing (own test below); every other rule is a class, so
+// the two states are independent by construction and both are drivable here.
+// jsdom applies no media query, so both halves of every `max-sm:` / `sm:` pair
+// are in the DOM and these tests assert the wiring, not which half a phone
+// paints.
 describe("Sidebar drawer controls", () => {
   beforeEach(() => {
     viewer.pathname = "/map";
@@ -115,17 +116,85 @@ describe("Sidebar drawer controls", () => {
     render(<Sidebar />);
 
     const open = screen.getByLabelText("Open navigation");
-    // Two controls close the drawer and share that name: the foot row, always
-    // in the DOM, and the scrim, which exists only while the drawer is open and
-    // renders before the aside.
-    expect(screen.getAllByLabelText("Close navigation")).toHaveLength(1);
+    // The scrim carries its own name, distinct from the foot row's "Close
+    // navigation": it exists only while the drawer is open, so its absence and
+    // presence are what these two queries pin.
+    expect(screen.queryByLabelText("Close navigation overlay")).toBeNull();
 
     fireEvent.click(open);
-    const [scrim] = screen.getAllByLabelText("Close navigation");
+    const scrim = screen.getByLabelText("Close navigation overlay");
     fireEvent.click(scrim);
 
     expect(open).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByLabelText("Close navigation overlay")).toBeNull();
+    // The foot row keeps its own name through all of it, so the two controls
+    // never merge into one ambiguous entry in a reader's list.
     expect(screen.getAllByLabelText("Close navigation")).toHaveLength(1);
+  });
+
+  it("closes the drawer when the viewport crosses `sm`", () => {
+    // The drawer is state, not a class, so a widening viewport cannot clear it
+    // on its own. jsdom answers no media query, so this one test stands the
+    // listener up: the setup file's stub matches nothing and registers nothing.
+    const listeners: ((event: MediaQueryListEvent) => void)[] = [];
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener() {},
+      removeListener() {},
+      addEventListener(_type: string, listener: (e: MediaQueryListEvent) => void) {
+        listeners.push(listener);
+      },
+      removeEventListener(
+        _type: string,
+        listener: (e: MediaQueryListEvent) => void,
+      ) {
+        const i = listeners.indexOf(listener);
+        if (i >= 0) listeners.splice(i, 1);
+      },
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+
+    try {
+      render(<Sidebar />);
+      const open = screen.getByLabelText("Open navigation");
+      fireEvent.click(open);
+      expect(open).toHaveAttribute("aria-expanded", "true");
+
+      expect(listeners).toHaveLength(1);
+      act(() => {
+        for (const listener of listeners) {
+          listener({ matches: true } as MediaQueryListEvent);
+        }
+      });
+
+      expect(open).toHaveAttribute("aria-expanded", "false");
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  it("moves focus into the drawer and hands it back on close", () => {
+    render(<Sidebar />);
+
+    const open = screen.getByLabelText("Open navigation");
+    const aside = screen.getByLabelText("Primary navigation");
+
+    fireEvent.click(open);
+    // The first nav row, so a reader lands on the destinations rather than on
+    // whatever sat behind the scrim.
+    expect(aside.contains(document.activeElement)).toBe(true);
+    expect(aside).toHaveAttribute("role", "dialog");
+    expect(aside).toHaveAttribute("aria-modal", "true");
+
+    fireEvent.click(screen.getByLabelText("Close navigation overlay"));
+
+    expect(document.activeElement).toBe(open);
+    // The plain landmark again: only the drawer is modal.
+    expect(aside).not.toHaveAttribute("role");
+    expect(aside).not.toHaveAttribute("aria-modal");
   });
 
   it("closes the drawer on a route change it did not start", () => {

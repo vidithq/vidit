@@ -34,7 +34,7 @@ import type {
 } from "maplibre-gl";
 import type { Feature, FeatureCollection } from "geojson";
 import type { MapBounds } from "@/lib/viewport";
-import { isCoarsePointer } from "@/lib/media";
+import { isCoarsePointer } from "@/lib/pointer";
 import {
   CLUSTER_MAX_ZOOM,
   SPIDER_MAX_DOTS,
@@ -277,8 +277,10 @@ function StackInteractions({
         .catch(() => {});
     };
 
+    // Shared by the layer-scoped click and the slop re-test, so it raises no
+    // flag of its own: only a click a layer actually took may set it, and the
+    // slop path is what reads it.
     const clickCluster = async (feature: Feature | undefined) => {
-      handledRef.current = true;
       if (!feature || feature.geometry.type !== "Point") return;
       const coordinates = feature.geometry.coordinates as [number, number];
       const clusterId = feature.properties?.cluster_id as number | undefined;
@@ -309,6 +311,7 @@ function StackInteractions({
       }
     };
     const handleClusterClick = (e: MapLayerMouseEvent) => {
+      handledRef.current = true;
       void clickCluster(e.features?.[0]);
     };
 
@@ -325,8 +328,8 @@ function StackInteractions({
       openFromStackFeature(e.features?.[0]);
     };
 
+    // Shared with the slop re-test, so it raises no flag of its own either.
     const clickPoint = (feature: Feature | undefined) => {
-      handledRef.current = true;
       const id = feature?.properties?.id;
       if (typeof id !== "string") return;
       // The parent clears the preview on click; the latch must follow, or
@@ -336,6 +339,7 @@ function StackInteractions({
       onPointClick?.(id);
     };
     const handlePointClick = (e: MapLayerMouseEvent) => {
+      handledRef.current = true;
       clickPoint(e.features?.[0]);
     };
 
@@ -357,6 +361,10 @@ function StackInteractions({
     // test: the layer-scoped handlers run first on this same click and raise
     // the flag when one of them took it, so no second query asks.
     const handleCanvasTap = (e: MapMouseEvent) => {
+      // Read and clear before anything else, so the flag is down on every exit
+      // path below: a value left standing would swallow the next canvas tap.
+      // Only `handleClusterClick`, `handleStackClick` and `handlePointClick`
+      // raise it, never the helpers they share with this path.
       const handled = handledRef.current;
       handledRef.current = false;
       if (handled) return;
@@ -613,11 +621,12 @@ function SpiderRing({
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // A finger leaves no pointer behind, so none of the three ways the ring
-  // closes on a mouse (leaving the overlay, roaming past the grace radius, a
-  // wheel) ever fires: on a coarse pointer a tap anywhere off the ring closes
-  // it. `pointerdown`, so the tap that closes the ring is also the tap the
-  // map handles underneath. The opening tap is over before this mounts.
+  // A tap fires one compatibility `mousemove` and then nothing: no pointer
+  // stays behind to travel, so none of the three ways the ring closes on a
+  // mouse (leaving the overlay, roaming past the grace radius, a wheel) ever
+  // fires. On a coarse pointer a tap anywhere off the ring closes it instead.
+  // `pointerdown`, so the tap that closes the ring is also the tap the map
+  // handles underneath. The opening tap is over before this mounts.
   useEffect(() => {
     if (!isCoarsePointer()) return;
     const handleOutside = (e: PointerEvent) => {
@@ -677,13 +686,16 @@ function SpiderRing({
             }}
             onMouseLeave={() => onPinHover(null)}
             onClick={() => onSelect(p.id)}
-            // The dot stays SPIDER_DOT_PX wide; the pseudo-element grows the
-            // hit area around it to a 32px square (12px plus 10px each side),
-            // which is what a fingertip needs and what the circle alone never
-            // gave. Adjacent boxes overlap on a tight ring, and the dot drawn
-            // last takes the tap: still one member of the stack the finger
-            // aimed at, where a 12px target was a miss.
-            className="absolute rounded-full cursor-pointer transition-transform duration-150 ease-out before:absolute before:-inset-2.5 before:content-['']"
+            // The dot stays SPIDER_DOT_PX wide; on a coarse pointer the
+            // pseudo-element grows the hit area around it to a 32px square
+            // (12px plus 10px each side), which is what a fingertip needs and
+            // what the circle alone never gave. Adjacent boxes overlap on a
+            // tight ring, and the dot drawn last takes the tap: still one
+            // member of the stack the finger aimed at, where a 12px target was
+            // a miss. Gated on `pointer-coarse:` so a mouse keeps the 12px
+            // target it can hit exactly, and the box never steals a hover from
+            // the neighbouring dot.
+            className="absolute rounded-full cursor-pointer transition-transform duration-150 ease-out before:absolute pointer-coarse:before:-inset-2.5 before:content-['']"
             style={{
               left: half - SPIDER_DOT_PX / 2,
               top: half - SPIDER_DOT_PX / 2,

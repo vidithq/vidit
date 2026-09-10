@@ -55,6 +55,9 @@ export function PageShell({
     </Button>
   );
   return (
+    // `max-sm:pt-16` is 64px, derived from the chip the off-canvas rail leaves
+    // in the corner: 8px inset from the top edge, 1px border, 2px padding, 44px
+    // control, about 55px in all, which 64px clears.
     <PageFrame className="pt-10 max-sm:pt-16 pb-16 space-y-6">
       <header className="relative">
         {back && (

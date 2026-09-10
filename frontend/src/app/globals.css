@@ -274,12 +274,11 @@ input.picker-glyph::-webkit-calendar-picker-indicator {
   flex-direction: row !important;
   align-items: flex-end !important;
   gap: 8px !important;
-}
-/* The rail only occupies the left edge from `sm` up; below it, it is a drawer,
-   so the controls keep the map's own bottom-left corner. `@variant` takes the
-   breakpoint from the theme, so this rule and every `sm:` utility move
-   together. */
-.map-fullscreen .maplibregl-ctrl-bottom-left {
+
+  /* The rail only occupies the left edge from `sm` up; below it, it is a
+     drawer, so the controls keep the map's own bottom-left corner. `@variant`
+     takes the breakpoint from the theme, so this rule and every `sm:` utility
+     move together. */
   @variant sm {
     left: 60px !important;
   }
