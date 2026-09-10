@@ -21,8 +21,9 @@ import DemoVideo from "@/components/landing/DemoVideo";
 // Public landing at `vidit.app`, reachable without an account (see
 // `PUBLIC_EXACT` in `proxy.ts`); the app lives behind login at `/map`.
 // Server component for SEO (no "use client"); the hero CTA is a plain link,
-// the same one for every visitor. Offset by `pl-14` to keep the shared
-// sidebar rail.
+// the same one for every visitor. `PageFrame` offsets it by `sm:pl-14` to keep
+// the shared sidebar rail, which is a fixed column from `sm` up and a drawer
+// below, where the page takes no left inset at all.
 
 // `openGraph` + `twitter` blocks render a rich summary_large_image card
 // instead of a bare text card. The image comes from the sibling
@@ -135,13 +136,13 @@ const ROADMAP: {
   link?: { href: string; label: string };
 }[] = [
   {
-    version: "v0.5",
+    version: "v0.6",
     state: "current",
-    title: "Analyst portfolio",
-    body: "Your body of work becomes a first-class object: a public profile that reads as a portfolio, rich link previews wherever you share it, batch completion of imported detections, a mobile pass on the pages readers land on, and sources archived when you publish so the work outlives its tweets.",
+    title: "Phone-ready",
+    body: "The whole platform works on a phone: open a shared geolocation and follow its analyst, browse and filter the map, submit from the field through the form or an X post, and manage your account. It stays the web app you already use, not a separate native app to install.",
   },
   {
-    version: "v0.6",
+    version: "v0.7",
     state: "upcoming",
     title: "Collaboration & reviews",
     body: "Notifications, shared credit on events, edit history on published geolocations, and the request board as a shared queue. Organisations get a verified profile with members and roles, and an analyst or an organisation can approve a geolocation at a given version.",

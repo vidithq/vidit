@@ -118,10 +118,19 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
   const hasActiveFilters = activeFilterCount > 0;
 
   return (
-    <div className="absolute top-4 left-[72px] z-1000 w-72">
+    // Below `sm` the overlay starts right of the chip's open control and runs
+    // down to a 16px bottom margin, laying its three blocks out as a column, so
+    // the section stack takes whatever height the filter bar and the pill strip
+    // leave and scrolls the rest (a fixed max-height would ignore the strip and
+    // run the stack's last sections off the bottom). The stretched box is
+    // transparent to pointers so the map keeps every tap outside the blocks
+    // themselves. `max-sm:left-16` is 64px, derived from the chip: 8px inset
+    // from the left edge, 1px border, 2px padding, 44px control, about 55px in
+    // all, which 64px clears.
+    <div className="absolute top-4 left-[72px] z-1000 w-72 max-sm:bottom-4 max-sm:left-16 max-sm:right-4 max-sm:w-auto max-sm:flex max-sm:flex-col max-sm:pointer-events-none">
       <button
         onClick={() => setFiltersOpen((o) => !o)}
-        className="w-full flex items-center justify-between bg-neutral-900 rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:bg-neutral-800/80 transition-colors"
+        className="w-full flex items-center justify-between bg-neutral-900 rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:bg-neutral-800/80 transition-colors max-sm:shrink-0 max-sm:pointer-events-auto"
       >
         <div className="flex items-center gap-2">
           <Filter size={14} className="text-neutral-400" />
@@ -147,13 +156,16 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
         // Solid strip: the pills' accent surface is translucent, and bare over
         // the canvas the map labels bled through the row. Only when there are
         // pill entries: an author-only filter shows in its section, not here.
-        <div className="mt-1 bg-neutral-900 rounded-lg border border-neutral-700 px-2.5 py-2">
+        <div className="mt-1 bg-neutral-900 rounded-lg border border-neutral-700 px-2.5 py-2 max-sm:shrink-0 max-sm:pointer-events-auto">
           <ActiveFilterPills filters={activeFilters} onClearAll={clearFilters} />
         </div>
       )}
 
       {filtersOpen && (
-        <div className="mt-1">
+        // The one block that shrinks: `min-h-0` lets it go below its content
+        // height in the column above, and the overflow makes the sections it
+        // cannot show reachable by scroll instead of off the bottom edge.
+        <div className="mt-1 max-sm:min-h-0 max-sm:overflow-y-auto max-sm:pointer-events-auto">
           <EventFilterSections
             tags={tags}
             conflicts={conflicts}

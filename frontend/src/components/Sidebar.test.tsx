@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import Sidebar from "./Sidebar";
@@ -10,6 +10,7 @@ import Sidebar from "./Sidebar";
 const viewer = vi.hoisted(() => ({
   avatar_url: null as string | null,
   detections: 0,
+  pathname: "/map",
 }));
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
@@ -23,12 +24,13 @@ vi.mock("@/contexts/DetectionsContext", () => ({
 vi.mock("@/hooks/useAdmin", () => ({
   useAdmin: () => ({ isAdmin: false, loading: false }),
 }));
-vi.mock("next/navigation", () => ({ usePathname: () => "/map" }));
+vi.mock("next/navigation", () => ({ usePathname: () => viewer.pathname }));
 
 describe("Sidebar identity row", () => {
   beforeEach(() => {
     viewer.avatar_url = null;
     viewer.detections = 0;
+    viewer.pathname = "/map";
   });
 
   // The rail renders collapsed by default, so the handle lives in the row's
@@ -72,5 +74,158 @@ describe("Sidebar identity row", () => {
     expect(wrapper).toHaveClass("relative");
     expect(wrapper?.querySelector(".bg-orange-500")).not.toBeNull();
     expect(row).toHaveTextContent("3 geolocations awaiting submission");
+  });
+});
+
+// Below `sm` the same rail is a drawer behind a floating chip. Its one viewport
+// read is the `sm` crossing (own test below); every other rule is a class, so
+// the two states are independent by construction and both are drivable here.
+// jsdom applies no media query, so both halves of every `max-sm:` / `sm:` pair
+// are in the DOM and these tests assert the wiring, not which half a phone
+// paints.
+describe("Sidebar drawer controls", () => {
+  beforeEach(() => {
+    viewer.pathname = "/map";
+  });
+
+  it("opens the drawer from the chip and reports it on the button", () => {
+    render(<Sidebar />);
+
+    const open = screen.getByLabelText("Open navigation");
+    expect(open).toHaveAttribute("aria-expanded", "false");
+    expect(open).toHaveAttribute("aria-controls", "primary-navigation");
+    // The button names the aside it drives, so the two must actually meet.
+    expect(screen.getByLabelText("Primary navigation")).toHaveAttribute(
+      "id",
+      "primary-navigation",
+    );
+
+    fireEvent.click(open);
+
+    expect(open).toHaveAttribute("aria-expanded", "true");
+
+    // Map is the row for the pinned pathname, so this is the tap that changes
+    // no route: the pathname effect never runs and the drawer would stay open
+    // over the page under it, body still scroll-locked.
+    fireEvent.click(screen.getByRole("link", { name: "Map" }));
+
+    expect(open).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("closes the drawer when the scrim is tapped", () => {
+    render(<Sidebar />);
+
+    const open = screen.getByLabelText("Open navigation");
+    // The scrim carries its own name, distinct from the foot row's "Close
+    // navigation": it exists only while the drawer is open, so its absence and
+    // presence are what these two queries pin.
+    expect(screen.queryByLabelText("Close navigation overlay")).toBeNull();
+
+    fireEvent.click(open);
+    const scrim = screen.getByLabelText("Close navigation overlay");
+    fireEvent.click(scrim);
+
+    expect(open).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByLabelText("Close navigation overlay")).toBeNull();
+    // The foot row keeps its own name through all of it, so the two controls
+    // never merge into one ambiguous entry in a reader's list.
+    expect(screen.getAllByLabelText("Close navigation")).toHaveLength(1);
+  });
+
+  it("closes the drawer when the viewport crosses `sm`", () => {
+    // The drawer is state, not a class, so a widening viewport cannot clear it
+    // on its own. jsdom answers no media query, so this one test stands the
+    // listener up: the setup file's stub matches nothing and registers nothing.
+    const listeners: ((event: MediaQueryListEvent) => void)[] = [];
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener() {},
+      removeListener() {},
+      addEventListener(_type: string, listener: (e: MediaQueryListEvent) => void) {
+        listeners.push(listener);
+      },
+      removeEventListener(
+        _type: string,
+        listener: (e: MediaQueryListEvent) => void,
+      ) {
+        const i = listeners.indexOf(listener);
+        if (i >= 0) listeners.splice(i, 1);
+      },
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+
+    try {
+      render(<Sidebar />);
+      const open = screen.getByLabelText("Open navigation");
+      fireEvent.click(open);
+      expect(open).toHaveAttribute("aria-expanded", "true");
+
+      expect(listeners).toHaveLength(1);
+      act(() => {
+        for (const listener of listeners) {
+          listener({ matches: true } as MediaQueryListEvent);
+        }
+      });
+
+      expect(open).toHaveAttribute("aria-expanded", "false");
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  it("moves focus into the drawer and hands it back on close", () => {
+    render(<Sidebar />);
+
+    const open = screen.getByLabelText("Open navigation");
+    const aside = screen.getByLabelText("Primary navigation");
+
+    fireEvent.click(open);
+    // The first nav row, so a reader lands on the destinations rather than on
+    // whatever sat behind the scrim.
+    expect(aside.contains(document.activeElement)).toBe(true);
+    expect(aside).toHaveAttribute("role", "dialog");
+    expect(aside).toHaveAttribute("aria-modal", "true");
+
+    fireEvent.click(screen.getByLabelText("Close navigation overlay"));
+
+    expect(document.activeElement).toBe(open);
+    // The plain landmark again: only the drawer is modal.
+    expect(aside).not.toHaveAttribute("role");
+    expect(aside).not.toHaveAttribute("aria-modal");
+  });
+
+  it("closes the drawer on a route change it did not start", () => {
+    const { rerender } = render(<Sidebar />);
+
+    const open = screen.getByLabelText("Open navigation");
+    fireEvent.click(open);
+    expect(open).toHaveAttribute("aria-expanded", "true");
+
+    // The ways out of a page that are not a tap on a drawer row: a redirect,
+    // the browser's back button. The drawer would otherwise stay open over the
+    // destination, with the body still scroll-locked.
+    viewer.pathname = "/about";
+    rerender(<Sidebar />);
+
+    expect(open).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("leaves the pinned rail expanded when a link is clicked", () => {
+    render(<Sidebar />);
+
+    const toggle = screen.getByLabelText("Expand sidebar");
+    fireEvent.click(toggle);
+
+    // The rail renders its labels a transition later, so the row is named by
+    // its `title` at this point; either way the accessible name is "Map".
+    fireEvent.click(screen.getByRole("link", { name: "Map" }));
+
+    expect(screen.getByLabelText("Collapse sidebar")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
   });
 });
