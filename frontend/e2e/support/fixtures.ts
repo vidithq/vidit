@@ -10,6 +10,7 @@
 import type {
   Conflict,
   EventDetail,
+  EventListItem,
   Tag,
   User,
 } from "@/types";
@@ -37,10 +38,20 @@ export const SIGNED_IN_USER: User = {
   created_at: "2025-01-04T09:00:00Z",
 };
 
+/**
+ * Name of the tag that measures `<Pill>`'s wrap. One token with no space in it,
+ * longer than the content column of any card at 320px, so a pill that fails to
+ * break inside its own box runs past the card and scrolls the page sideways.
+ * The backend accepts it: `schemas/tag.py` caps the name's length and nothing
+ * else, so this is a tag an analyst can actually create.
+ */
+export const LONG_TAG_NAME = "counterbatteryradarreconnaissance";
+
 export const CURATED_TAGS: Tag[] = [
   { id: "33333333-3333-4333-8333-333333333331", name: "Drone", category: "capture_source" },
   { id: "33333333-3333-4333-8333-333333333332", name: "CCTV", category: "capture_source" },
   { id: "33333333-3333-4333-8333-333333333333", name: "Armour", category: "free" },
+  { id: "33333333-3333-4333-8333-333333333334", name: LONG_TAG_NAME, category: "free" },
 ];
 
 export const CONFLICTS: Conflict[] = [
@@ -120,7 +131,31 @@ export const EVENT: EventDetail = {
     original_filename: "street.png",
     sha256: null,
   },
-  tags: [CURATED_TAGS[0], CURATED_TAGS[2]],
+  tags: [CURATED_TAGS[0], CURATED_TAGS[2], CURATED_TAGS[3]],
+  conflicts: CONFLICTS,
+};
+
+/**
+ * The one open request the board serves, carrying the long tag. The request
+ * card is the narrowest content column in the product (about 150px at 320px,
+ * beside a thumbnail and a status badge), which is where a tag that does not
+ * wrap inside its pill runs past the card and scrolls the page sideways.
+ */
+export const REQUESTED_EVENT: EventListItem = {
+  id: "66666666-6666-4666-8666-666666666661",
+  title: "Strike on a rail yard, footage from a passing car",
+  status: "requested",
+  before_closed_status: null,
+  event_coords: null,
+  event_date: "2025-01-02",
+  is_graphic: false,
+  media: null,
+  owner: {
+    id: SIGNED_IN_USER.id,
+    username: SIGNED_IN_USER.username,
+    avatar_url: null,
+  },
+  tags: [CURATED_TAGS[3]],
   conflicts: CONFLICTS,
 };
 

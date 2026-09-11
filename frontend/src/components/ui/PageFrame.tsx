@@ -16,6 +16,18 @@ import { cn } from "@/lib/cn";
 // this file is the only place `sm:pl-14` is written, here for a page with a
 // column and in `PageCenter` below for one centred block.
 // Why the side padding takes a step at `sm`: docs/design.md → Page chrome.
+
+// The display cutout's horizontal insets, applied once for every route rather
+// than per page. `app/layout.tsx` exports `viewportFit: "cover"`, so in
+// landscape on a notched phone the content column would otherwise start under
+// the cutout; the chrome that sits on a screen edge already takes its own
+// insets, and this is the same move for the column both frames centre. Its own
+// element because the insets are padding and every box below already carries a
+// padding utility on the same sides, which would decide the winner by
+// stylesheet order rather than by intent. `env()` reads 0 with no inset
+// reported, so the element is inert on a desktop.
+const SAFE_SIDES = "safe-pl safe-pr";
+
 export function PageFrame({
   children,
   className = "",
@@ -25,10 +37,12 @@ export function PageFrame({
 }) {
   return (
     <div className="min-h-screen sm:pl-14">
-      {/* `cn` and not a template string, so a caller's own `px-*` replaces the
-          column padding instead of landing beside it. */}
-      <div className={cn("max-w-4xl mx-auto px-4 sm:px-6", className)}>
-        {children}
+      <div className={SAFE_SIDES}>
+        {/* `cn` and not a template string, so a caller's own `px-*` replaces the
+            column padding instead of landing beside it. */}
+        <div className={cn("max-w-4xl mx-auto px-4 sm:px-6", className)}>
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -53,7 +67,7 @@ export function PageCenter({
         className,
       )}
     >
-      {children}
+      <div className={SAFE_SIDES}>{children}</div>
     </div>
   );
 }

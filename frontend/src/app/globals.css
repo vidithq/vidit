@@ -273,9 +273,11 @@ input.picker-glyph::-webkit-calendar-picker-indicator {
    absolutely positioned surface anchors on the physical edge of the screen
    rather than on the safe rectangle inside it. Two forms, because the two
    shapes of chrome need opposite things. A surface that floats a set distance
-   in from an edge (the menu chip, the map's filter overlay, the media overlay)
-   takes the inset as a margin, so its whole box moves clear of the cutout. A
-   surface that fills an edge (the nav drawer, the map's bottom sheet) takes it
+   in from an edge (the menu chip, the map's filter overlay, the map's detail
+   panel from `sm` up) takes the inset as a margin, so its whole box moves clear
+   of the cutout. A surface that fills an edge (the nav drawer, the map's bottom
+   sheet, the media overlay whose backdrop has to cover the cutout band for a
+   tap there to close the viewer, and the page column in `PageFrame`) takes it
    as padding, so the box still reaches the edge and only its content moves in.
    `env()` reads 0 wherever the device reports no inset, so both forms are
    inert on a desktop and on a phone without a cutout, and Tailwind emits only

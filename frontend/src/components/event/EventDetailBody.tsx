@@ -98,7 +98,7 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
   // chips lost in one row.
   const captureTags = geo.tags.filter((t) => t.category === "capture_source");
   const freeTags = geo.tags.filter((t) => t.category === "free");
-  const sourceClass = compact ? "ml-4" : "text-sm ml-4";
+  const sourceClass = compact ? "" : "text-sm";
   const tagRow = (name: string, tags: EventDetailBodyData["tags"], concept?: Concept) =>
     tags.length > 0 ? (
       <DetailRow label={name} concept={concept} compact={compact} align="start">
@@ -125,7 +125,7 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
       {geo.status === "closed" && geo.close_reason && (
         <DetailRow label="Reason" compact={compact} align="start">
           <span
-            className={`${compact ? "" : "text-sm"} text-neutral-300 whitespace-pre-wrap text-right ml-4`}
+            className={`${compact ? "" : "text-sm"} text-neutral-300 whitespace-pre-wrap text-right`}
           >
             {geo.close_reason}
           </span>
@@ -233,7 +233,7 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
         <DetailRow label="Requested by" concept="requested_by" compact={compact}>
           <Link
             href={`/profile/${geo.requested_by.username}`}
-            className={`text-sm ${TEXT_LINK} truncate ml-4`}
+            className={`text-sm ${TEXT_LINK} truncate`}
           >
             @{geo.requested_by.username}
           </Link>
@@ -322,7 +322,7 @@ function SecondarySourcesRow({
       compact={compact}
       align="start"
     >
-      <div className="flex flex-col items-end gap-1 ml-4">
+      <div className="flex flex-col items-end gap-1">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}

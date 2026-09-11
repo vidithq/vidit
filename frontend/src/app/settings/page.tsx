@@ -8,14 +8,14 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { Button } from "@/components/ui/Button";
+import { Button, ICON_TAP_STEP } from "@/components/ui/Button";
 import {
   FORM_ERROR_BANNER,
   FORM_LABEL,
   FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
-import { Switch } from "@/components/ui/Switch";
+import { ToggleRow } from "@/components/ui/ToggleRow";
 import { useHelpHidden } from "@/hooks/useHelpHidden";
 import { setHelpHidden } from "@/lib/helpPreference";
 import { usePalette } from "@/hooks/usePalette";
@@ -90,7 +90,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <span className={FORM_LABEL}>Email</span>
-              <p className="text-neutral-100 mt-0.5 break-words [overflow-wrap:anywhere]">
+              <p className="text-neutral-100 mt-0.5 wrap-anywhere">
                 {user.email}
               </p>
             </div>
@@ -104,44 +104,30 @@ export default function SettingsPage() {
               Preferences stored in this browser.
             </p>
           </div>
-          {/* The whole row is the switch, the way `<ToggleRow>` builds the
-              filter toggles: the control itself is a 20x36px track, and the
-              row beside it reads as part of the same offer, so a thumb that
-              lands on the label toggles rather than missing. */}
-          <button
-            type="button"
-            role="switch"
-            aria-checked={!helpHidden}
-            onClick={() => setHelpHidden(!helpHidden)}
-            className="flex w-full items-center justify-between gap-4 text-left"
-          >
-            <span className="block">
-              <span className="block text-sm text-neutral-200">Show help tooltips</span>
-              <span className="block text-xs text-neutral-500">
+          {/* Both preference rows are `<ToggleRow>`: the whole row carries the
+              switch role and the click, so a thumb that lands on the label
+              toggles rather than missing the 20x36px track. The divider between
+              them is this card's, not the primitive's. */}
+          <ToggleRow
+            label="Show help tooltips"
+            description={
+              <>
                 The small <span className="font-medium">?</span> icons that
                 explain each field and section. Turn them off once you know the
                 form.
-              </span>
-            </span>
-            <Switch as="span" on={!helpHidden} />
-          </button>
+              </>
+            }
+            on={!helpHidden}
+            onToggle={() => setHelpHidden(!helpHidden)}
+          />
 
-          <button
-            type="button"
-            role="switch"
-            aria-checked={theme === "light"}
-            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-            className="flex w-full items-center justify-between gap-4 border-t border-neutral-800 pt-4 text-left"
-          >
-            <span className="block">
-              <span className="block text-sm text-neutral-200">Light mode</span>
-              <span className="block text-xs text-neutral-500">
-                Switch the interface and map to a light background. Dark by
-                default.
-              </span>
-            </span>
-            <Switch as="span" on={theme === "light"} />
-          </button>
+          <ToggleRow
+            label="Light mode"
+            description="Switch the interface and map to a light background. Dark by default."
+            on={theme === "light"}
+            onToggle={() => setTheme(theme === "light" ? "dark" : "light")}
+            className="border-t border-neutral-800 pt-4"
+          />
 
           {/* The swatch row stacks under its label below `sm`: five 36px
               controls and their gaps take 212px, which leaves the label
@@ -165,9 +151,10 @@ export default function SettingsPage() {
                   title={p.label}
                   onClick={() => setPalette(p.id)}
                   style={{ backgroundColor: p.swatch }}
-                  // The phone tap step the icon button takes: the swatch is a
-                  // 24px disc on a desktop, under what a thumb reliably hits.
-                  className={`size-9 sm:size-6 rounded-full transition-transform hover:scale-110 ${
+                  // `ICON_TAP_STEP`, the phone floor every small icon control
+                  // takes: the swatch is a 24px disc on a desktop, under what a
+                  // thumb reliably hits.
+                  className={`${ICON_TAP_STEP} sm:size-6 rounded-full transition-transform hover:scale-110 ${
                     palette === p.id
                       ? "ring-2 ring-neutral-100 ring-offset-2 ring-offset-neutral-900"
                       : "ring-1 ring-neutral-700"

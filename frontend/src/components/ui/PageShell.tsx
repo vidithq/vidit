@@ -96,7 +96,7 @@ export function PageShell({
             {subtitle && (
               // The owner's email is one unbreakable token; without an
               // anywhere-break it runs past the frame on a phone.
-              <div className="text-sm text-neutral-400 break-words [overflow-wrap:anywhere]">
+              <div className="text-sm text-neutral-400 wrap-anywhere">
                 {subtitle}
               </div>
             )}

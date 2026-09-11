@@ -21,7 +21,10 @@ export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  // No retries anywhere. Every assertion here is geometric against a page
+  // served from fixtures, so a failure is a layout regression and a retry
+  // would only hide a flaky one behind a second green run.
+  retries: 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? "list" : "line",
   // The dev server compiles a route on its first request, so the first
@@ -30,8 +33,15 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   use: {
     baseURL: APP_ORIGIN,
-    trace: "on-first-retry",
+    // With no retries there is no second run to trace, so a trace is kept on
+    // the failing run itself. `.gitignore` holds `test-results/`, and the CI
+    // job uploads it when the suite goes red.
+    trace: "retain-on-failure",
   },
+  // Desktop Chrome at phone widths, not a device profile: what is measured is
+  // the CSS the width selects, so no touch emulation, no mobile user agent and
+  // no device pixel ratio. A spec that needs a finger (the map's coarse-pointer
+  // hit slop) belongs in a project that emulates one.
   projects: VIEWPORTS.map(({ name, width, height }) => ({
     name,
     use: { ...devices["Desktop Chrome"], viewport: { width, height } },

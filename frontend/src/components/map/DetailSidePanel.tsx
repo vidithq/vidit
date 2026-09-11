@@ -18,10 +18,12 @@ interface DetailSidePanelProps {
 }
 
 /**
- * The map's detail overlay. `max-h-[calc(100vh-4.5rem)]` rather than a
+ * The map's detail overlay. `max-h-[calc(100dvh-4.5rem)]` rather than a
  * pinned `bottom-14` so the panel shrinks to its content (no grey filler)
  * yet still caps and scrolls when content is long. 4.5rem = top-4 (1rem)
  * + 3.5rem clearance to keep the bottom pill off the panel even on hover.
+ * `dvh` and not `vh`, so the cap follows the iOS URL bar rather than the
+ * taller viewport it hides.
  *
  * Below `sm` the same panel is a bottom sheet: a 384px card pinned to the
  * right runs off a 375px viewport, and the map page clips it (`overflow-hidden`).
@@ -40,7 +42,13 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
   const { actions, panels } = useEventActions({ event: detail, surface: "panel" });
 
   return (
-    <div className="absolute top-4 right-4 safe-mt safe-mr max-h-[calc(100dvh-4.5rem)] z-1000 w-96 bg-neutral-900 rounded-lg border border-neutral-700 overflow-y-auto max-sm:top-auto max-sm:bottom-0 max-sm:inset-x-0 max-sm:w-auto max-sm:max-h-[60dvh] max-sm:rounded-b-none max-sm:border-x-0 max-sm:safe-pb max-sm:border-b-0">
+    // The display cutout, in the form each shape needs (docs/design.md ->
+    // Phone chrome). From `sm` up the panel floats a set distance in from the
+    // top-right corner, so the insets are margins and move the whole box clear.
+    // Below `sm` it is a sheet filling the bottom edge: it keeps reaching the
+    // edge and takes the insets as padding on all three sides it touches, so
+    // only its content moves in.
+    <div className="absolute top-4 right-4 sm:safe-mt sm:safe-mr max-h-[calc(100dvh-4.5rem)] z-1000 w-96 bg-neutral-900 rounded-lg border border-neutral-700 overflow-y-auto max-sm:top-auto max-sm:bottom-0 max-sm:inset-x-0 max-sm:w-auto max-sm:max-h-[60dvh] max-sm:rounded-b-none max-sm:border-x-0 max-sm:safe-pb max-sm:safe-pl max-sm:safe-pr max-sm:border-b-0">
       {/* The sheet's grab bar, phone only: the sheet has no top edge of its
           own against the map, and the bar is what says the panel is the
           surface that scrolls. Centred, so it clears the close button in the

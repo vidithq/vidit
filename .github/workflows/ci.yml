@@ -167,8 +167,9 @@ jobs:
 
   # The narrow-viewport smoke suite: the four golden paths (a shared event
   # link, the map, the submit form in both of its single-event modes, sign-in
-  # and settings) measured at 375x812 and 320x568 for sideways scroll, a
-  # primary control pushed out of the column, and field text under 16px.
+  # and settings) plus the request board, measured at 375x812 and 320x568 for
+  # sideways scroll, a primary control pushed out of the column, and field text
+  # under 16px.
   #
   # Its own job rather than a step on `frontend`: it downloads a browser and
   # runs a Next server, and a phone-layout regression reports as its own red
@@ -180,6 +181,9 @@ jobs:
   frontend-e2e:
     name: Frontend narrow-viewport smoke tests
     runs-on: ubuntu-latest
+    # The suite runs a Next dev server and a browser, so a hang here costs
+    # a runner rather than failing: the whole job is well under 5 minutes.
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: frontend
@@ -196,11 +200,39 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The browser download is the slowest step in the job, and the version it
+      # downloads is decided by @playwright/test, so the lock file's resolved
+      # version is the cache key: a Dependabot bump misses the cache and
+      # re-downloads, and nothing else does.
+      - name: Read the Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the browser
+        id: playwright-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      # `--with-deps` installs the shared libraries the browser links against,
+      # which live outside the cached directory, so it runs on a cache hit too.
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
       - name: Narrow-viewport smoke tests
         run: npm run test:e2e
+
+      # The traces `playwright.config.ts` keeps on a failing run. Uploaded only
+      # when the suite goes red, so a green run publishes nothing.
+      - name: Upload the failing run's traces
+        if: failure()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: playwright-test-results
+          path: frontend/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
 
   # The frontend's enum types (lib/api-types.ts) are GENERATED from the backend
   # OpenAPI spec, not hand-maintained — so a backend schema change that isn't

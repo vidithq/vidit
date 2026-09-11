@@ -205,27 +205,35 @@ export function MediaOverlay({
       role="dialog"
       aria-modal="true"
       aria-label={label}
-      className="fixed inset-0 z-1500 flex items-center justify-center overflow-y-auto bg-black/85 p-6 safe-mt safe-mr safe-mb safe-ml"
+      className="fixed inset-0 z-1500 bg-black/85 safe-pt safe-pr safe-pb safe-pl"
       onClick={onClose}
     >
-      <div
-        className="relative max-h-full max-w-full"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {children}
-        <div className="absolute -top-3 -right-3 z-10 flex items-center gap-1">
-          {actions}
-          <Button
-            icon
-            variant="ghost"
-            className={FLOATING_CONTROL}
-            aria-label="Close"
-            title="Close"
-            data-overlay-close=""
-            onClick={onClose}
-          >
-            <X size={16} />
-          </Button>
+      {/* The backdrop fills the screen and the insets are its padding, not its
+          margin: the overlay covers the cutout and home-indicator bands, so a
+          tap on one closes the viewer the way a tap anywhere else on the
+          backdrop does, and the media is what moves in. The frame that centres
+          and scrolls the content is a child of it rather than the same box,
+          since its own `p-6` and the inset padding set the same property. */}
+      <div className="flex h-full w-full items-center justify-center overflow-y-auto p-6">
+        <div
+          className="relative max-h-full max-w-full"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {children}
+          <div className="absolute -top-3 -right-3 z-10 flex items-center gap-1">
+            {actions}
+            <Button
+              icon
+              variant="ghost"
+              className={FLOATING_CONTROL}
+              aria-label="Close"
+              title="Close"
+              data-overlay-close=""
+              onClick={onClose}
+            >
+              <X size={16} />
+            </Button>
+          </div>
         </div>
       </div>
     </div>,

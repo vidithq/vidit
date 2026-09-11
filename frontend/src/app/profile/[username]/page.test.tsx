@@ -377,7 +377,7 @@ describe("public profile identity", () => {
     // The link is plain text that breaks where it must; PageShell's subtitle
     // slot owns the anywhere-break, so one unbreakable token cannot scroll a
     // phone sideways.
-    expect(line.closest("[class*='overflow-wrap']")).not.toBeNull();
+    expect(line.closest(".wrap-anywhere")).not.toBeNull();
   });
 });
 

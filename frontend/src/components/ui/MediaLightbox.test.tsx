@@ -49,9 +49,10 @@ describe("MediaLightbox", () => {
     expect(onClose).toHaveBeenCalledTimes(3);
 
     // The content click is stopped, so a click on the media (or a video's own
-    // controls) never dismisses the viewer.
-    const content = screen.getByRole("dialog").querySelector(":scope > div");
-    fireEvent.click(content!);
+    // controls) never dismisses the viewer. Clicking the media itself rather
+    // than the box around it, so the assertion survives a change in how the
+    // backdrop frames its content.
+    fireEvent.click(screen.getByAltText("A street corner"));
     expect(onClose).toHaveBeenCalledTimes(3);
   });
 

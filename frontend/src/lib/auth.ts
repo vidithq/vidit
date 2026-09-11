@@ -3,7 +3,11 @@
 // `credentials: include`. The JWT is never touched from JS; only the CSRF
 // token is readable, to echo back via `X-CSRF-Token` on state-changing requests.
 
-const CSRF_COOKIE = "vidit_csrf";
+// Exported alongside the header: the narrow-viewport suite grants a session by
+// setting this cookie on the browser context (`e2e/support/mockApi.ts`), and a
+// second literal there is a cookie name the app could be renamed out from
+// under. `proxy.ts` keeps a third, deliberately inlined copy (edge runtime).
+export const CSRF_COOKIE = "vidit_csrf";
 export const CSRF_HEADER = "X-CSRF-Token";
 
 // Minimum password length, mirroring the backend PASSWORD_MIN_LENGTH in

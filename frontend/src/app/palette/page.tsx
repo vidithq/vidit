@@ -423,7 +423,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Controls · buttons & pills" />
 
-          <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive or alerting, no grey button. `dangerGhost` is red at ghost weight, for a red control sitting in an icon row (the report flag). `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm. `disabled` drops the tone for neutral grey rather than fading it, so a button that refuses the click reads like every other inert control on the site. `icon` makes a square icon-only button, and every icon control on the site is that ghost icon button, at one size: a page-header cluster, the profile header row, the coordinates line, the archive mark beside a source link, a field's trailing adornment, all the same 32px square with the same hover plate. An action is <Button icon variant='ghost'>; navigation is buttonClasses('ghost', {icon: true}) on a <Link> or an <a>, so a control that navigates never nests a button inside an anchor; a control with nothing to act on is the disabled button, which paints itself neutral grey and leaves the tab order (an inert link becomes a disabled button, since a dead anchor is not a control). aria-label is the whole name, title repeats it, and only a tooltip that moves while the name holds still (a copy flash) may differ. Marks are 14px lucide or brand glyphs. Both shapes take a phone tap step below `sm`, `TAP_STEP` for the text shape's height and 36px for the icon square; the constant is exported, so an interactive `<Pill>`, a `<FilterSection>` header row and the filter surfaces' quiet text controls take the same floor rather than inventing a second one.">
+          <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive or alerting, no grey button. `dangerGhost` is red at ghost weight, for a red control sitting in an icon row (the report flag). `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm. `disabled` drops the tone for neutral grey rather than fading it, so a button that refuses the click reads like every other inert control on the site. `icon` makes a square icon-only button, and every icon control on the site is that ghost icon button, at one size: a page-header cluster, the profile header row, the coordinates line, the archive mark beside a source link, a field's trailing adornment, all the same 32px square with the same hover plate. An action is <Button icon variant='ghost'>; navigation is buttonClasses('ghost', {icon: true}) on a <Link> or an <a>, so a control that navigates never nests a button inside an anchor; a control with nothing to act on is the disabled button, which paints itself neutral grey and leaves the tab order (an inert link becomes a disabled button, since a dead anchor is not a control). aria-label is the whole name, title repeats it, and only a tooltip that moves while the name holds still (a copy flash) may differ. Marks are 14px lucide or brand glyphs. Both shapes take a phone tap step below `sm`, `TAP_STEP` for the text shape's height and `ICON_TAP_STEP` for the icon square; both are exported, so an interactive `<Pill>`, a `<FilterSection>` header toggle and the filter surfaces' quiet text controls take the height floor, and a square control smaller than this one (the settings accent swatch, a `<FileManager>` tile's remove control, the map scrubber's play and reset, the sidebar's community links) takes `ICON_TAP_STEP` and names its own desktop square beside it, rather than either inventing a second figure.">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="primary">Primary</Button>
@@ -491,7 +491,7 @@ export default function PalettePage() {
             <PaletteChipBucket />
           </Item>
 
-          <Item name="<ToggleRow>" usage="A compact on/off row for a boolean filter: the whole row is the switch (role + click), the <Switch> rendering as its visual span.">
+          <Item name="<ToggleRow>" usage="An on/off row: the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-labelledby on it), never the paragraph under it. `className` carries the caller's own divider and spacing.">
             <PaletteToggleRow />
           </Item>
 
@@ -1512,9 +1512,20 @@ function PaletteChipBucket() {
 
 function PaletteToggleRow() {
   const [on, setOn] = useState(true);
+  const [described, setDescribed] = useState(false);
   return (
-    <div className="w-72 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
-      <ToggleRow label="Hide closed rows" on={on} onToggle={() => setOn((v) => !v)} />
+    <div className="w-72 space-y-3">
+      <div className="bg-neutral-900 rounded-lg border border-neutral-700 px-3">
+        <ToggleRow label="Hide closed rows" on={on} onToggle={() => setOn((v) => !v)} />
+      </div>
+      <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-3">
+        <ToggleRow
+          label="Show help tooltips"
+          description="The small ? icons that explain each field and section."
+          on={described}
+          onToggle={() => setDescribed((v) => !v)}
+        />
+      </div>
     </div>
   );
 }

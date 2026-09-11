@@ -17,12 +17,27 @@ import { expect, type Locator, type Page } from "@playwright/test";
 const MIN_FIELD_FONT_SIZE_PX = 16;
 
 /**
- * What counts as an editable field: the controls a reader types into. Hidden,
- * checkbox, radio and file inputs are excluded because none of them renders
- * typed text, so none of them triggers the zoom.
+ * What counts as an editable field: the controls a reader types into. The
+ * excluded `type` values are the inputs that render no typed text, so none of
+ * them triggers the zoom: `hidden` has no box, `checkbox` / `radio` / `file` /
+ * `range` / `color` are pickers drawn by the engine, and `submit` / `button` /
+ * `reset` / `image` are buttons that happen to be spelled `<input>`.
  */
+const NON_TEXT_INPUT_TYPES = [
+  "hidden",
+  "checkbox",
+  "radio",
+  "file",
+  "submit",
+  "button",
+  "reset",
+  "image",
+  "range",
+  "color",
+];
+
 const EDITABLE_FIELD_SELECTOR = [
-  'input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="file"])',
+  `input${NON_TEXT_INPUT_TYPES.map((t) => `:not([type="${t}"])`).join("")}`,
   "textarea",
   "select",
   '[contenteditable="true"]',
@@ -34,43 +49,54 @@ interface UndersizedField {
   fontSizePx: number;
 }
 
-/** The document is no wider than the viewport, so the page never scrolls sideways. */
+/**
+ * The document is no wider than the viewport, so the page never scrolls
+ * sideways.
+ *
+ * Measured against `document.documentElement.clientWidth`, the width of the
+ * viewport's content box, and not against `window.innerWidth`, which counts a
+ * classic scrollbar's gutter as part of the viewport. On a runner that paints
+ * one, every page would then read as 15px narrower than the window and the
+ * check would pass with a real 15px overflow in it.
+ */
 export async function expectNoHorizontalOverflow(page: Page): Promise<void> {
-  const { scrollWidth, innerWidth } = await page.evaluate(() => ({
+  const { scrollWidth, clientWidth } = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
-    innerWidth: window.innerWidth,
+    clientWidth: document.documentElement.clientWidth,
   }));
   expect(
     scrollWidth,
-    `document.documentElement.scrollWidth (${scrollWidth}) must equal window.innerWidth (${innerWidth}): the page scrolls sideways`,
-  ).toBe(innerWidth);
+    `document.documentElement.scrollWidth (${scrollWidth}) must equal its clientWidth (${clientWidth}): the page scrolls sideways`,
+  ).toBe(clientWidth);
 }
 
-/** The page's primary control is visible and sits entirely inside the column. */
+/**
+ * The page's primary control is visible and lies entirely inside the viewport.
+ *
+ * `toBeInViewport({ ratio: 1 })` asserts the whole of the control's box
+ * intersects the viewport, vertically as well as horizontally, which is the
+ * check a hand-rolled comparison of the box against `window.innerWidth` only
+ * made on one axis. It is preceded by a scroll, so a control below the fold is
+ * measured where a reader would meet it rather than failing for being further
+ * down a long form.
+ */
 export async function expectControlInsideViewport(
   page: Page,
   control: Locator,
 ): Promise<void> {
   await expect(control).toBeVisible();
-  const box = await control.boundingBox();
-  expect(box, "the primary control has no bounding box").not.toBeNull();
-  const innerWidth = await page.evaluate(() => window.innerWidth);
-  // Non-null asserted through a local: `box` is proven above, and reading it
-  // once keeps the two failure messages describing the same measurement.
-  const { x, width } = box as { x: number; width: number };
-  expect(x, `the primary control starts at x=${x}, left of the viewport`).toBeGreaterThanOrEqual(0);
-  expect(
-    x + width,
-    `the primary control ends at x=${x + width}, past the viewport width ${innerWidth}`,
-  ).toBeLessThanOrEqual(innerWidth);
+  await control.scrollIntoViewIfNeeded();
+  await expect(control).toBeInViewport({ ratio: 1 });
 }
 
 /** Every visible editable field renders at 16px or more. */
 export async function expectReadableFieldText(page: Page): Promise<void> {
   const undersized: UndersizedField[] = await page.evaluate(
     ({ selector, minimum }) => {
-      // Name a field by the attributes that locate it in the markup, in the
-      // order a reader would search for: id, then name, then placeholder.
+      // Name a field by the first attribute that locates it in the markup,
+      // preferring the ones a reader can search for over the ones they cannot:
+      // id, then name, then the accessible name, then the placeholder, and the
+      // class list when the field carries none of them.
       const describe = (el: Element): string => {
         const tag = el.tagName.toLowerCase();
         const id = el.getAttribute("id");

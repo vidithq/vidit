@@ -1,5 +1,7 @@
 import type { BrowserContext, Page, Route } from "@playwright/test";
 
+import { CSRF_COOKIE } from "@/lib/auth";
+
 import {
   API_BASE_URL,
   APP_ORIGIN,
@@ -14,6 +16,7 @@ import {
   EVENT,
   EVENT_ID,
   ONE_PIXEL_PNG,
+  REQUESTED_EVENT,
   SIGNED_IN_USER,
 } from "./fixtures";
 
@@ -23,9 +26,6 @@ import {
  * layout against a fixed page rather than against whatever a live catalogue
  * happens to hold.
  */
-
-/** Cookie name `proxy.ts` and `lib/auth.ts` both read as "has a session". */
-const CSRF_COOKIE = "vidit_csrf";
 
 /** Value the cookie carries. Nothing validates it: the mock is the backend. */
 const CSRF_TOKEN = "e2e-csrf-token";
@@ -39,6 +39,10 @@ const ROUTES: [RegExp, unknown][] = [
   [/^\/auth\/login$/, SIGNED_IN_USER],
   [/^\/admin\/me$/, { is_admin: false }],
   [/^\/events\/detections$/, EMPTY_DETECTIONS],
+  // The request board's first page. Every pattern here anchors on the whole
+  // path, so the bare list, the detection queue above and the event by id
+  // below stay distinct.
+  [/^\/events$/, [REQUESTED_EVENT]],
   [/^\/events\/points$/, []],
   [/^\/events\/possible-duplicates$/, []],
   [/^\/tags$/, CURATED_TAGS],
@@ -56,7 +60,10 @@ function bodyFor(path: string): unknown {
   // A path none of the four golden paths reaches today. An empty list keeps a
   // page that grows a new call from painting an error banner over the layout
   // under measurement: this suite measures geometry, and a missing fixture is
-  // not a layout failure.
+  // not a layout failure. The warning names it, so a spec that starts
+  // measuring an empty section says so in the run log rather than passing
+  // quietly on a fixture nobody wrote.
+  console.warn(`mockApi: no fixture for ${path}, answering with an empty list`);
   return [];
 }
 

@@ -60,8 +60,18 @@ const BASE = `inline-flex items-center justify-center rounded-md transition-colo
 // control keeps its own type scale and its own horizontal padding.
 export const TAP_STEP = "min-h-9 sm:min-h-0";
 
+// The same 36px floor for a square control that is smaller than the icon
+// button's own square and has to stay that size on a desktop: the settings
+// accent swatch, the remove control on a `<FileManager>` tile, the map
+// scrubber's play and reset controls, the sidebar's brand links. Height and
+// width together, since a square is what those controls are, and the caller
+// names its desktop square beside it (`${ICON_TAP_STEP} sm:size-6`), which is
+// the one figure that differs between them. Hand-written per call site, the
+// phone figure drifts the moment one of them is re-tuned.
+export const ICON_TAP_STEP = "size-9";
+
 const TEXT_SHAPE = `gap-1.5 px-3 py-1.5 ${TAP_STEP} text-xs font-medium`;
-const ICON_SHAPE = "size-9 sm:size-8";
+const ICON_SHAPE = `${ICON_TAP_STEP} sm:size-8`;
 
 const VARIANT: Record<ButtonVariant, string> = {
   primary:

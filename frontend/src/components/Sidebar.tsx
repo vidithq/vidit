@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useAdmin } from "@/hooks/useAdmin";
 import { ACCENT_SURFACE } from "@/components/ui/styles";
+import { ICON_TAP_STEP } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { Dot } from "@/components/ui/Dot";
 import {
@@ -42,6 +43,12 @@ const GITHUB_URL = "https://github.com/vidithq/vidit";
 // pixels each instead of overflowing into a scroll.
 const ROW_CLASS =
   "flex items-center gap-2.5 h-9 shrink-0 rounded-md px-2.5 text-sm transition-colors";
+
+// The three community links on the header row, written once. `ICON_TAP_STEP`
+// is the phone floor every small icon control takes: the resting 28px square
+// is what a mouse needs and less than what a thumb hits, and below `sm` the
+// row is inside the drawer, where the reader is using one.
+const BRAND_LINK_CLASS = `${ICON_TAP_STEP} sm:size-7 rounded-md flex items-center justify-center text-neutral-500 hover:text-neutral-100 hover:bg-neutral-800 transition-colors`;
 
 // Must match the aside's `duration-200` width transition. Labels render only
 // after the expand finishes, else they overflow the still-narrow sidebar mid-
@@ -401,7 +408,7 @@ export default function Sidebar() {
                 rel="noopener noreferrer"
                 title="Vidit on GitHub"
                 aria-label="Vidit on GitHub"
-                className="size-7 rounded-md flex items-center justify-center text-neutral-500 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
+                className={BRAND_LINK_CLASS}
               >
                 <GitHubGlyph />
               </a>
@@ -411,7 +418,7 @@ export default function Sidebar() {
                 rel="noopener noreferrer"
                 title="Vidit on X"
                 aria-label="Vidit on X"
-                className="size-7 rounded-md flex items-center justify-center text-neutral-500 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
+                className={BRAND_LINK_CLASS}
               >
                 <XGlyph />
               </a>
@@ -421,7 +428,7 @@ export default function Sidebar() {
                 rel="noopener noreferrer"
                 title="Vidit Discord"
                 aria-label="Vidit Discord"
-                className="size-7 rounded-md flex items-center justify-center text-neutral-500 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
+                className={BRAND_LINK_CLASS}
               >
                 <DiscordGlyph />
               </a>

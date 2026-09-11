@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { Plus, Upload, X } from "lucide-react";
 
+import { ICON_TAP_STEP } from "@/components/ui/Button";
 import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { MediaOverlay } from "@/components/ui/MediaLightbox";
 
@@ -85,10 +86,10 @@ export function FileManager({
       onClick={onClick}
       aria-label={label}
       title={label}
-      // The phone tap step the icon button takes, 36px below `sm`: the
+      // `ICON_TAP_STEP`, the phone floor every small icon control takes: the
       // resting 24px circle sits in a tile corner, where a near miss opens the
       // lightbox under it instead of removing the file.
-      className="absolute top-1 right-1 flex size-9 sm:size-6 items-center justify-center rounded-full bg-neutral-950/80 text-neutral-300 transition-colors hover:bg-neutral-950 hover:text-red-400"
+      className={`absolute top-1 right-1 flex ${ICON_TAP_STEP} sm:size-6 items-center justify-center rounded-full bg-neutral-950/80 text-neutral-300 transition-colors hover:bg-neutral-950 hover:text-red-400`}
     >
       <X size={13} />
     </button>
