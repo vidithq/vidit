@@ -81,14 +81,18 @@ export default function SettingsPage() {
 
         <Card>
           <SectionEyebrow title="Account" margin="none" />
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          {/* One column below `sm`: at 320px two columns are about 88px each,
+              and an email address is a single unbreakable token. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div>
               <span className={FORM_LABEL}>Username</span>
               <p className="text-neutral-100 mt-0.5">{user.username}</p>
             </div>
             <div>
               <span className={FORM_LABEL}>Email</span>
-              <p className="text-neutral-100 mt-0.5">{user.email}</p>
+              <p className="text-neutral-100 mt-0.5 break-words [overflow-wrap:anywhere]">
+                {user.email}
+              </p>
             </div>
           </div>
         </Card>
@@ -100,38 +104,49 @@ export default function SettingsPage() {
               Preferences stored in this browser.
             </p>
           </div>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm text-neutral-200">Show help tooltips</p>
-              <p className="text-xs text-neutral-500">
+          {/* The whole row is the switch, the way `<ToggleRow>` builds the
+              filter toggles: the control itself is a 20x36px track, and the
+              row beside it reads as part of the same offer, so a thumb that
+              lands on the label toggles rather than missing. */}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!helpHidden}
+            onClick={() => setHelpHidden(!helpHidden)}
+            className="flex w-full items-center justify-between gap-4 text-left"
+          >
+            <span className="block">
+              <span className="block text-sm text-neutral-200">Show help tooltips</span>
+              <span className="block text-xs text-neutral-500">
                 The small <span className="font-medium">?</span> icons that
                 explain each field and section. Turn them off once you know the
                 form.
-              </p>
-            </div>
-            <Switch
-              on={!helpHidden}
-              onToggle={() => setHelpHidden(!helpHidden)}
-              aria-label="Show help tooltips"
-            />
-          </div>
+              </span>
+            </span>
+            <Switch as="span" on={!helpHidden} />
+          </button>
 
-          <div className="flex items-center justify-between gap-4 border-t border-neutral-800 pt-4">
-            <div>
-              <p className="text-sm text-neutral-200">Light mode</p>
-              <p className="text-xs text-neutral-500">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={theme === "light"}
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+            className="flex w-full items-center justify-between gap-4 border-t border-neutral-800 pt-4 text-left"
+          >
+            <span className="block">
+              <span className="block text-sm text-neutral-200">Light mode</span>
+              <span className="block text-xs text-neutral-500">
                 Switch the interface and map to a light background. Dark by
                 default.
-              </p>
-            </div>
-            <Switch
-              on={theme === "light"}
-              onToggle={() => setTheme(theme === "light" ? "dark" : "light")}
-              aria-label="Light mode"
-            />
-          </div>
+              </span>
+            </span>
+            <Switch as="span" on={theme === "light"} />
+          </button>
 
-          <div className="flex items-center justify-between gap-4 border-t border-neutral-800 pt-4">
+          {/* The swatch row stacks under its label below `sm`: five 36px
+              controls and their gaps take 212px, which leaves the label
+              nothing to sit in on a 320px screen. */}
+          <div className="flex max-sm:flex-col max-sm:items-start items-center justify-between gap-4 border-t border-neutral-800 pt-4">
             <div>
               <p className="text-sm text-neutral-200">Accent color</p>
               <p className="text-xs text-neutral-500">
@@ -139,7 +154,7 @@ export default function SettingsPage() {
                 points.
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {PALETTES.map((p) => (
                 <button
                   key={p.id}
@@ -150,7 +165,9 @@ export default function SettingsPage() {
                   title={p.label}
                   onClick={() => setPalette(p.id)}
                   style={{ backgroundColor: p.swatch }}
-                  className={`h-6 w-6 rounded-full transition-transform hover:scale-110 ${
+                  // The phone tap step the icon button takes: the swatch is a
+                  // 24px disc on a desktop, under what a thumb reliably hits.
+                  className={`size-9 sm:size-6 rounded-full transition-transform hover:scale-110 ${
                     palette === p.id
                       ? "ring-2 ring-neutral-100 ring-offset-2 ring-offset-neutral-900"
                       : "ring-1 ring-neutral-700"

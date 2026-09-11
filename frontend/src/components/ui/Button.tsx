@@ -51,7 +51,16 @@ const BASE = `inline-flex items-center justify-center rounded-md transition-colo
 // desktop text button stands 28px tall and the icon square 32px, under what a
 // thumb reliably hits. The type scale and the horizontal padding are untouched,
 // so only the tappable height grows; from `sm` up the desktop shape is exact.
-const TEXT_SHAPE = "gap-1.5 px-3 py-1.5 min-h-9 sm:min-h-0 text-xs font-medium";
+// The phone tap step itself, on its own because the button is not the only
+// control that takes it: an interactive `<Pill>`, a `<FilterSection>` header
+// row and the quiet text controls of the filter surfaces are all things a
+// thumb has to hit, and a second figure for the same floor is how two controls
+// on one row end up two different heights. It raises the tappable box to 36px
+// below `sm` and returns the exact desktop shape from `sm` up. Height only: a
+// control keeps its own type scale and its own horizontal padding.
+export const TAP_STEP = "min-h-9 sm:min-h-0";
+
+const TEXT_SHAPE = `gap-1.5 px-3 py-1.5 ${TAP_STEP} text-xs font-medium`;
 const ICON_SHAPE = "size-9 sm:size-8";
 
 const VARIANT: Record<ButtonVariant, string> = {

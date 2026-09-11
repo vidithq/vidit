@@ -1,1 +1,8 @@
 .vercel
+
+# Playwright run artefacts: traces and the HTML report, rebuilt by every
+# `npm run test:e2e`.
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

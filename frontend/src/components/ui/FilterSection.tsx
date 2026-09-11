@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
+import { TAP_STEP } from "./Button";
 import { FieldHelp } from "./FieldHelp";
 import type { Concept } from "@/lib/fieldHelp";
 
@@ -33,15 +34,20 @@ export function FilterSection({
 }) {
   // The header is a row, not one button: the `?` is its own button (a button
   // can't nest inside another), so the title + the summary/chevron each toggle
-  // the section while the `?` opens its tooltip independently.
+  // the section while the `?` opens its tooltip independently. The row is the
+  // tap target all the same, the way `<ToggleRow>` makes its whole row the
+  // switch: it takes the phone tap step, both toggles stretch to its full
+  // height, and the summary/chevron one grows into every pixel right of the
+  // title, so on a phone the only part of the header that is not a toggle is
+  // the `?` itself.
   return (
     <div className="border-b border-neutral-800 last:border-b-0">
-      <div className="w-full flex items-center justify-between py-2.5 group">
+      <div className={`w-full flex items-stretch justify-between py-2.5 ${TAP_STEP} group`}>
         <span className="flex items-center gap-1 min-w-0">
           <button
             onClick={onToggle}
             aria-expanded={open}
-            className="text-[10px] text-neutral-500 uppercase tracking-wider group-hover:text-neutral-400 transition-colors"
+            className="flex self-stretch items-center text-left text-[10px] text-neutral-500 uppercase tracking-wider group-hover:text-neutral-400 transition-colors"
           >
             {title}
           </button>
@@ -50,7 +56,7 @@ export function FilterSection({
         <button
           onClick={onToggle}
           aria-label={`Toggle ${title}`}
-          className="flex items-center gap-1.5 min-w-0"
+          className="flex grow items-center justify-end gap-1.5 min-w-0"
         >
           {!open && (
             <span

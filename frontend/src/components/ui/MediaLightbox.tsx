@@ -65,8 +65,8 @@ function resolveSource(source: LightboxSource): ResolvedSource {
 // The viewer's size envelope: big enough to inspect, short enough that the
 // backdrop still frames it. A plain image caps directly; a next/image `fill`
 // and the player both need a sized parent instead, so they take the box form.
-const MEDIA_CAP = "max-h-[80vh] max-w-[85vw]";
-const MEDIA_FRAME = "relative h-[80vh] w-[85vw] max-w-4xl";
+const MEDIA_CAP = "max-h-[80dvh] max-w-[85vw]";
+const MEDIA_FRAME = "relative h-[80dvh] w-[85vw] max-w-4xl";
 
 /**
  * One media at viewer size. A clip plays in the shared `VideoPlayer`, which
@@ -205,7 +205,7 @@ export function MediaOverlay({
       role="dialog"
       aria-modal="true"
       aria-label={label}
-      className="fixed inset-0 z-1500 flex items-center justify-center bg-black/85 p-6"
+      className="fixed inset-0 z-1500 flex items-center justify-center overflow-y-auto bg-black/85 p-6 safe-mt safe-mr safe-mb safe-ml"
       onClick={onClose}
     >
       <div

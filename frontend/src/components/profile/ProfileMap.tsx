@@ -86,6 +86,7 @@ export function ProfileMap({ username }: { username: string }) {
           points={points}
           fitBounds={bounds}
           onPointClick={(id) => router.push(`/events/${id}`)}
+          embedded
         />
       </div>
     </Card>

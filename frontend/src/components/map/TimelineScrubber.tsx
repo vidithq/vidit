@@ -218,7 +218,7 @@ export function TimelineScrubber({
 
   const inputClass =
     "flex-1 min-w-0 px-1 py-1 bg-neutral-800 border border-neutral-700 rounded-sm " +
-    "text-[11px] text-neutral-300 focus:outline-hidden focus:border-orange-500";
+    "text-base sm:text-[11px] text-neutral-300 focus:outline-hidden focus:border-orange-500";
 
   return (
     <div className="select-none">

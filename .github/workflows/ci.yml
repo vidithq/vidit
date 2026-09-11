@@ -165,6 +165,43 @@ jobs:
           # get the production URL from Vercel project settings.
           NEXT_PUBLIC_API_URL: https://api.invalid
 
+  # The narrow-viewport smoke suite: the four golden paths (a shared event
+  # link, the map, the submit form in both of its single-event modes, sign-in
+  # and settings) measured at 375x812 and 320x568 for sideways scroll, a
+  # primary control pushed out of the column, and field text under 16px.
+  #
+  # Its own job rather than a step on `frontend`: it downloads a browser and
+  # runs a Next server, and a phone-layout regression reports as its own red
+  # check instead of hiding behind whichever step failed first above.
+  #
+  # No backend and no database. `frontend/e2e/support/mockApi.ts` answers every
+  # API call in the browser, and `playwright.config.ts` hands the web server the
+  # fake API origin those route patterns are written against.
+  frontend-e2e:
+    name: Frontend narrow-viewport smoke tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Narrow-viewport smoke tests
+        run: npm run test:e2e
+
   # The frontend's enum types (lib/api-types.ts) are GENERATED from the backend
   # OpenAPI spec, not hand-maintained — so a backend schema change that isn't
   # regenerated would drift the committed types silently. This job regenerates

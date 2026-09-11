@@ -215,7 +215,7 @@ export default function HomePage() {
   }, [points, filters.statuses, dateWindows]);
 
   return (
-    <div className="h-screen w-screen relative overflow-hidden bg-neutral-950">
+    <div className="h-dvh w-screen relative overflow-hidden bg-neutral-950">
       <Map
         points={visiblePoints}
         selectedId={selectedId}

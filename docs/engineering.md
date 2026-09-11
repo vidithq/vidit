@@ -463,8 +463,8 @@ flowchart LR
 
   subgraph checks [What runs on it]
     direction TB
-    ci["`**ci.yml**, six jobs, no path filters
-    backend-lint, backend-test, frontend, api-types, hygiene, docs-pairing`"]:::spec
+    ci["`**ci.yml**, seven jobs, no path filters
+    backend-lint, backend-test, frontend, frontend-e2e, api-types, hygiene, docs-pairing`"]:::spec
     other["`**pr-title.yml**, the **DCO app**, **codeql.yml**
     title shape, sign-off, and the security-extended scan`"]:::spec
   end
@@ -494,7 +494,7 @@ The checks are [GitHub Actions](#github-actions), the gate is the branch-protect
 
 | Workflow | Trigger | Steps |
 |----------|---------|-------|
-| `ci.yml` | Every push to `main` and every PR (no path filters, so required checks always report even on a docs-only PR) | Six jobs. `backend-lint`: `uv sync` → `ruff check` → `ruff format --check` → `mypy app` → `vulture` (dead code). `backend-test` (parallel with `backend-lint`, no gate): `pytest -n 4 --dist loadfile` against a PostGIS service container (no separate migrate step: the xdist template build runs the migrations, see the tests entry in [Repo layout](#repository-layout-monorepo)). `frontend`: `npm ci` → `eslint` → `tsc --noEmit` → `vitest run` → `next build`. `api-types`: regenerates `frontend/src/lib/api-types.ts` from the OpenAPI spec and fails on drift. `hygiene`: `jscpd` (duplication), `knip` (dead frontend code), and the palette-coverage check. `docs-pairing` (PR-only): fails when the PR doesn't touch *both* `docs/` AND `planning/`; override with a justification in the PR description if the change genuinely needs neither. Dependabot PRs are exempt. Force-pushes cancel the obsolete in-flight run; pushes to `main` run to completion. |
+| `ci.yml` | Every push to `main` and every PR (no path filters, so required checks always report even on a docs-only PR) | Seven jobs. `backend-lint`: `uv sync` → `ruff check` → `ruff format --check` → `mypy app` → `vulture` (dead code). `backend-test` (parallel with `backend-lint`, no gate): `pytest -n 4 --dist loadfile` against a PostGIS service container (no separate migrate step: the xdist template build runs the migrations, see the tests entry in [Repo layout](#repository-layout-monorepo)). `frontend`: `npm ci` → `eslint` → `tsc --noEmit` → `vitest run` → `next build`. `frontend-e2e`: `npm ci` → `npx playwright install --with-deps chromium` → `npm run test:e2e`, the narrow-viewport smoke suite described below. `api-types`: regenerates `frontend/src/lib/api-types.ts` from the OpenAPI spec and fails on drift. `hygiene`: `jscpd` (duplication), `knip` (dead frontend code), and the palette-coverage check. `docs-pairing` (PR-only): fails when the PR doesn't touch *both* `docs/` AND `planning/`; override with a justification in the PR description if the change genuinely needs neither. Dependabot PRs are exempt. Force-pushes cancel the obsolete in-flight run; pushes to `main` run to completion. |
 | `codeql.yml` | Push to `main`, PR to `main`, weekly cron (Monday 06:00 UTC) | CodeQL dataflow analysis on Python + TypeScript/JavaScript with the `security-extended` query suite. Findings post to *Security tab → Code scanning alerts*. The `analyze` job is gated on `!github.event.repository.private`: code scanning is free on public repos but a paid GitHub Advanced Security add-on on private ones, so the job runs on the public repo and skips (rather than fails) anywhere the repository is private, e.g. a private fork. |
 | `pr-title.yml` | PR opened / edited / synchronized | Validates the PR title against Conventional Commits. Stays outside `ci.yml` on purpose: it re-runs on title edits, and bundling it would re-run the full test suite on every edit. |
 | `deploy.yml` | `workflow_dispatch` | See [Deployment](#deployment) below. |
@@ -508,6 +508,33 @@ The workflows are hardened because forks make every workflow run reachable to at
 - **Every third-party action is SHA-pinned**, with the human-readable version in a trailing comment (the `# vX.Y.Z` form is the one Dependabot's `github-actions` ecosystem reads to know which pin to rewrite on a version-update PR).
 - **Every workflow declares a top-level `permissions:` block** scoped to the minimum it needs (`contents: read` for the five CI workflows, `pull-requests: read` on `pr-title.yml`).
 - **No workflow uses `pull_request_target`**, because it's a fork-PR escalation vector. Use `pull_request` instead.
+
+#### Narrow-viewport smoke tests
+
+The `frontend-e2e` job is the floor under the phone layouts. `vitest` runs in jsdom, which has no layout engine: `getBoundingClientRect` returns zeros and no media query evaluates, so a phone-layout regression cannot fail there. Playwright runs a real Chromium instead.
+
+The suite lives in [`frontend/e2e/`](../frontend/e2e) and [`frontend/playwright.config.ts`](../frontend/playwright.config.ts) runs it as two projects, Chromium at 375x812 and at 320x568, so every spec runs at both widths. It covers the four golden paths: open a shared event link and read it, browse and filter the map, fill the submit page in its single-form and X-post-import modes, and sign in and read settings.
+
+Each page takes the same three assertions, held in one module (`e2e/support/narrowLayout.ts`) rather than repeated per spec:
+
+- `document.documentElement.scrollWidth` equals `window.innerWidth`, so the page does not scroll sideways.
+- The page's primary control is visible and its box sits inside the viewport.
+- Every visible editable field computes a `font-size` of at least 16px.
+
+There is no screenshot comparison, which is what keeps the job stable across runners with different fonts.
+
+The suite needs no database and no backend. `e2e/support/mockApi.ts` answers every API call with `page.route`, and the config hands the web server the fake API origin those route patterns are written against. `grantSession` sets the CSRF cookie [`proxy.ts`](../frontend/src/proxy.ts) reads, so the gated pages are reachable under mocks on the same terms they are in production.
+
+The config runs `next dev` rather than a production build, because `proxy.ts` redirects every non-canonical host to the apex outside development, which on localhost answers each navigation with a 308 to the live site.
+
+To run it locally, from `frontend/`:
+
+```bash
+npx playwright install chromium   # once
+npm run test:e2e
+```
+
+`npm run test:e2e -- --project=chromium-320x568` runs the narrow width alone, and `--ui` opens the runner.
 
 ### Deployment
 
@@ -629,7 +656,7 @@ vercel --prod --yes                               # promote to production
 | Vercel Web Analytics + Speed Insights | `<Analytics />` + `<SpeedInsights />` (the `/next` entrypoints of `@vercel/analytics` / `@vercel/speed-insights`) render in [`frontend/src/app/layout.tsx`](../frontend/src/app/layout.tsx). Cookieless aggregate page-view counts and Core Web Vitals; no cross-site tracking, so no consent banner is required. Both components no-op outside a Vercel deployment. | Vercel dashboard → project → **Analytics** tab → Enable, and **Speed Insights** tab → Enable. The components send nothing until both toggles are on. |
 | Uptime monitor | External. Pings `/health` from outside Railway region to catch outages. | Pick a free tier (UptimeRobot, BetterStack, Hyperping). Add `https://api.vidit.app/health` as an HTTP monitor, 1-5 min cadence, alert routes to owner email + the Vidit Discord webhook. Health endpoint is unauthenticated and returns `{"status":"ok"}`. |
 | CloudWatch budget alarm | External. $20/mo guardrail against a forgotten log-volume spike or a runaway CloudFront-cache-miss bill. | AWS console → Billing → Budgets → Create budget → Cost budget, monthly $20 fixed amount, threshold 80% actual + 100% forecasted → email alert to owner. |
-| Branch protection on `main` | External: configured via the branch-protection API; free on public repos (unenforced on free-plan private ones). | Active rule: PRs only, seven required status checks (five `ci.yml` jobs: *Backend lint & format*, *Backend tests*, *Frontend lint, type-check, test, build*, *API types in sync with OpenAPI*, *Hygiene — duplication & dead code*; plus `pr-title.yml`'s *Conventional commit title* and `DCO` from the Probot DCO App, not a workflow file), enforced for admins, linear history required, force-push and branch deletion disallowed. The sixth `ci.yml` job, *PR touches docs/ and planning/*, runs on every PR to `main` but is not a required context. No required-review count: a sole maintainer cannot approve their own PR, so a review floor would deadlock every merge; add one (or CODEOWNERS) when a second maintainer exists. `strict` (require branch up to date) is off so the weekly Dependabot wave merges without per-PR rebase round-trips. `ci.yml` runs un-path-filtered precisely so these required checks always report. |
+| Branch protection on `main` | External: configured via the branch-protection API; free on public repos (unenforced on free-plan private ones). | Active rule: PRs only, seven required status checks (five `ci.yml` jobs: *Backend lint & format*, *Backend tests*, *Frontend lint, type-check, test, build*, *API types in sync with OpenAPI*, *Hygiene — duplication & dead code*; plus `pr-title.yml`'s *Conventional commit title* and `DCO` from the Probot DCO App, not a workflow file), enforced for admins, linear history required, force-push and branch deletion disallowed. Two `ci.yml` jobs run on every PR to `main` without being required contexts: *PR touches docs/ and planning/* and *Frontend narrow-viewport smoke tests*. No required-review count: a sole maintainer cannot approve their own PR, so a review floor would deadlock every merge; add one (or CODEOWNERS) when a second maintainer exists. `strict` (require branch up to date) is off so the weekly Dependabot wave merges without per-PR rebase round-trips. `ci.yml` runs un-path-filtered precisely so these required checks always report. |
 | Secret scanning + push protection | External: *Settings → Code security*; free on public repos, no config file. | Both enabled. Scanning alerts on provider-pattern tokens/keys anywhere in history and new commits; push protection rejects a push containing one before it lands (bypassable per-push with a logged justification). Alerts surface in *Security tab → Secret scanning*. |
 
 ### Frontend Sentry verification

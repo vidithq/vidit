@@ -40,7 +40,7 @@ export function DetailSidePanel({ detail, loading, onClose }: DetailSidePanelPro
   const { actions, panels } = useEventActions({ event: detail, surface: "panel" });
 
   return (
-    <div className="absolute top-4 right-4 max-h-[calc(100vh-4.5rem)] z-1000 w-96 bg-neutral-900 rounded-lg border border-neutral-700 overflow-y-auto max-sm:top-auto max-sm:bottom-0 max-sm:inset-x-0 max-sm:w-auto max-sm:max-h-[60dvh] max-sm:rounded-b-none max-sm:border-x-0 max-sm:border-b-0">
+    <div className="absolute top-4 right-4 safe-mt safe-mr max-h-[calc(100dvh-4.5rem)] z-1000 w-96 bg-neutral-900 rounded-lg border border-neutral-700 overflow-y-auto max-sm:top-auto max-sm:bottom-0 max-sm:inset-x-0 max-sm:w-auto max-sm:max-h-[60dvh] max-sm:rounded-b-none max-sm:border-x-0 max-sm:safe-pb max-sm:border-b-0">
       {/* The sheet's grab bar, phone only: the sheet has no top edge of its
           own against the map, and the bar is what says the panel is the
           surface that scrolls. Centred, so it clears the close button in the

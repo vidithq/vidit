@@ -296,7 +296,7 @@ export default function Sidebar() {
           a bar. Above the aside's own z, since the drawer comes later in tree
           order and would otherwise paint over it: the chip and the page's back
           control stay visible while the drawer is out. */}
-      <div className="sm:hidden fixed top-2 left-2 z-1150 flex items-center gap-0.5 rounded-md p-0.5 bg-neutral-900 border border-neutral-800">
+      <div className="sm:hidden fixed top-2 left-2 safe-mt safe-ml z-1150 flex items-center gap-0.5 rounded-md p-0.5 bg-neutral-900 border border-neutral-800">
         {/* Hand-rolled and not `<Button icon>`: this is a 44px neutral thumb
             target, and the primitive offers one 36px square in accent or red
             only. */}
@@ -365,7 +365,7 @@ export default function Sidebar() {
         // `max-sm:invisible` takes the closed drawer out of the tab order; the
         // transition carries `visibility` too, so it flips at the end of the
         // slide out instead of blanking the drawer mid-animation.
-        className={`fixed top-0 left-0 h-screen z-1100 flex flex-col bg-neutral-900 border-r border-neutral-800 transition-[width] duration-200 max-sm:h-dvh max-sm:w-48 max-sm:transition-[transform,visibility] ${
+        className={`fixed top-0 left-0 h-screen z-1100 flex flex-col safe-pt safe-pb safe-pl bg-neutral-900 border-r border-neutral-800 transition-[width] duration-200 max-sm:h-dvh max-sm:w-48 max-sm:transition-[transform,visibility] ${
           expanded ? "w-48" : "w-14"
         } ${
           drawerOpen

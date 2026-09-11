@@ -85,7 +85,10 @@ export function FileManager({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="absolute top-1 right-1 flex size-6 items-center justify-center rounded-full bg-neutral-950/80 text-neutral-300 transition-colors hover:bg-neutral-950 hover:text-red-400"
+      // The phone tap step the icon button takes, 36px below `sm`: the
+      // resting 24px circle sits in a tile corner, where a near miss opens the
+      // lightbox under it instead of removing the file.
+      className="absolute top-1 right-1 flex size-9 sm:size-6 items-center justify-center rounded-full bg-neutral-950/80 text-neutral-300 transition-colors hover:bg-neutral-950 hover:text-red-400"
     >
       <X size={13} />
     </button>

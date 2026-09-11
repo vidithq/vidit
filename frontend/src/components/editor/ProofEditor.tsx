@@ -5,6 +5,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 
+import { TAP_STEP } from "@/components/ui/Button";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
 import { PROOF_PLACEHOLDER_PREFIX, safeProofFilename } from "@/lib/proofImages";
 
@@ -113,6 +114,14 @@ export function resolveProofDoc(
  * its placeholder by filename and rewrites the src to the stored URL (see
  * `docs/data-model.md` → media → "Upload timing").
  */
+// One shape for every toolbar control, plus the two state paints. The row
+// repeats the same box five times, so it is written once here, and it carries
+// the phone tap step `<Button>` takes: the resting control is about 24px tall,
+// and this row is what a reader reaches for while writing proof on a phone.
+const TOOL = `inline-flex items-center px-2 py-1 rounded text-xs ${TAP_STEP}`;
+const TOOL_ON = "bg-neutral-600 text-white";
+const TOOL_OFF = "text-neutral-400 hover:bg-neutral-700";
+
 export default function ProofEditor({
   onChange,
   onProofFilesChange,
@@ -192,8 +201,8 @@ export default function ProofEditor({
         <button
           type="button"
           onClick={() => editor.chain().focus().toggleBold().run()}
-          className={`px-2 py-1 rounded text-xs font-bold ${
-            editor.isActive("bold") ? "bg-neutral-600 text-white" : "text-neutral-400 hover:bg-neutral-700"
+          className={`${TOOL} font-bold ${
+            editor.isActive("bold") ? TOOL_ON : TOOL_OFF
           }`}
         >
           B
@@ -201,8 +210,8 @@ export default function ProofEditor({
         <button
           type="button"
           onClick={() => editor.chain().focus().toggleItalic().run()}
-          className={`px-2 py-1 rounded text-xs italic ${
-            editor.isActive("italic") ? "bg-neutral-600 text-white" : "text-neutral-400 hover:bg-neutral-700"
+          className={`${TOOL} italic ${
+            editor.isActive("italic") ? TOOL_ON : TOOL_OFF
           }`}
         >
           I
@@ -210,8 +219,8 @@ export default function ProofEditor({
         <button
           type="button"
           onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-          className={`px-2 py-1 rounded text-xs ${
-            editor.isActive("heading", { level: 3 }) ? "bg-neutral-600 text-white" : "text-neutral-400 hover:bg-neutral-700"
+          className={`${TOOL} ${
+            editor.isActive("heading", { level: 3 }) ? TOOL_ON : TOOL_OFF
           }`}
         >
           H3
@@ -219,8 +228,8 @@ export default function ProofEditor({
         <button
           type="button"
           onClick={() => editor.chain().focus().toggleBulletList().run()}
-          className={`px-2 py-1 rounded text-xs ${
-            editor.isActive("bulletList") ? "bg-neutral-600 text-white" : "text-neutral-400 hover:bg-neutral-700"
+          className={`${TOOL} ${
+            editor.isActive("bulletList") ? TOOL_ON : TOOL_OFF
           }`}
         >
           List
@@ -229,7 +238,7 @@ export default function ProofEditor({
         {/* Holds the picked file locally (blob preview + retained File);
             the upload happens at publish via proof_files[]. */}
         <label
-          className="px-2 py-1 rounded-sm text-xs text-neutral-400 hover:bg-neutral-700 cursor-pointer"
+          className={`${TOOL} ${TOOL_OFF} cursor-pointer`}
           title="Add a proof image (uploaded when you publish)"
         >
           + Image

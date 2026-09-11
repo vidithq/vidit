@@ -54,6 +54,7 @@ export function EventPageBody({ geo }: { geo: EventDetail }) {
                 ]}
                 center={{ lat: geo.event_coords.lat, lng: geo.event_coords.lng }}
                 zoom={12}
+                embedded
               />
             </div>
             <DetailRow
