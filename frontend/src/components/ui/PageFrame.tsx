@@ -28,6 +28,17 @@ import { cn } from "@/lib/cn";
 // reported, so the element is inert on a desktop.
 const SAFE_SIDES = "safe-pl safe-pr";
 
+// The frame's own height floor, on `dvh` like every other surface that owns the
+// screen size (the map page, the media lightbox, the global error boundary).
+// `vh` is the tallest the viewport ever gets, so with mobile Safari's URL bar
+// showing, an 812px screen frames 812px of page inside 712px of visible room:
+// a centred block (`PageCenter`, which is what the auth screens are) is then
+// centred 50px below the middle of what the reader can see, and its last row,
+// the sign-in button and the legal line under it, sits behind the bottom
+// chrome. A column frame gains the same 100px of dead scroll under its
+// content. `dvh` tracks the room that is actually visible.
+const MIN_HEIGHT = "min-h-dvh";
+
 export function PageFrame({
   children,
   className = "",
@@ -36,7 +47,7 @@ export function PageFrame({
   className?: string;
 }) {
   return (
-    <div className="min-h-screen sm:pl-14">
+    <div className={`${MIN_HEIGHT} sm:pl-14`}>
       <div className={SAFE_SIDES}>
         {/* `cn` and not a template string, so a caller's own `px-*` replaces the
             column padding instead of landing beside it. */}
@@ -63,7 +74,7 @@ export function PageCenter({
   return (
     <div
       className={cn(
-        "min-h-screen sm:pl-14 flex items-center justify-center",
+        `${MIN_HEIGHT} sm:pl-14 flex items-center justify-center`,
         className,
       )}
     >

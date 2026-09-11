@@ -214,9 +214,19 @@ export function MediaOverlay({
           backdrop does, and the media is what moves in. The frame that centres
           and scrolls the content is a child of it rather than the same box,
           since its own `p-6` and the inset padding set the same property. */}
-      <div className="flex h-full w-full items-center justify-center overflow-y-auto p-6">
+      {/* `items-start` plus `my-auto` on the child, and not `items-center`:
+          auto margins centre the content while it fits the overlay and
+          collapse to 0 when it does not, so everything the viewer holds sits
+          at or below scroll origin. A centred flex item taller than its line
+          overflows in both directions, and the half above scroll origin is a
+          band no scroll gesture reaches: the close cluster, which hangs 12px
+          above the content, is what sits in it. The child is sized by what it
+          holds rather than clamped to the overlay's height, so a frame taller
+          than the room there is (a clip whose player chrome grows past it, a
+          short landscape viewport) scrolls instead of being cut to fit. */}
+      <div className="flex h-full w-full items-start justify-center overflow-y-auto p-6">
         <div
-          className="relative max-h-full max-w-full"
+          className="relative my-auto max-w-full"
           onClick={(e) => e.stopPropagation()}
         >
           {children}

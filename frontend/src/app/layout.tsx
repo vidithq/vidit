@@ -59,7 +59,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${montserrat.variable} font-sans bg-neutral-950 text-neutral-100 min-h-screen`}
+        className={`${montserrat.variable} font-sans bg-neutral-950 text-neutral-100 min-h-dvh`}
       >
         <Providers>
           <Sidebar />

@@ -372,7 +372,15 @@ export default function Sidebar() {
         // `max-sm:invisible` takes the closed drawer out of the tab order; the
         // transition carries `visibility` too, so it flips at the end of the
         // slide out instead of blanking the drawer mid-animation.
-        className={`fixed top-0 left-0 h-screen z-1100 flex flex-col safe-pt safe-pb safe-pl bg-neutral-900 border-r border-neutral-800 transition-[width] duration-200 max-sm:h-dvh max-sm:w-48 max-sm:transition-[transform,visibility] ${
+        //
+        // The safe-area padding is the drawer's alone (`max-sm:`). The drawer
+        // is 192px wide and fills the left edge, so moving its content in from
+        // the cutout costs it nothing. The rail from `sm` up is the fixed 56px
+        // column, border-box, and a landscape phone is past `sm` (a notched
+        // 812px viewport matches it), so the same padding would take 44px of
+        // that 56px and leave the nav glyphs 12px to sit in. The rail takes no
+        // inset: see docs/design.md, Phone chrome.
+        className={`fixed top-0 left-0 h-screen z-1100 flex flex-col max-sm:safe-pt max-sm:safe-pb max-sm:safe-pl bg-neutral-900 border-r border-neutral-800 transition-[width] duration-200 max-sm:h-dvh max-sm:w-48 max-sm:transition-[transform,visibility] ${
           expanded ? "w-48" : "w-14"
         } ${
           drawerOpen

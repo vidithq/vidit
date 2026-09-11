@@ -7,6 +7,15 @@ import { expect, type Locator, type Page } from "@playwright/test";
  * Each check answers one way a page breaks on a phone:
  * sideways scroll, a primary control pushed off the column, and a field small
  * enough that mobile Safari zooms the page in on focus and never zooms back.
+ *
+ * **Every check waits.** `page.goto` resolves on `load`, which lands before
+ * React hydrates and before the session and catalogue fetches answer, so a
+ * geometry read taken right after it measures the loading skeleton and passes
+ * on a page that has not rendered. Two things keep that from happening. The
+ * page's primary control is awaited before any measurement, so the client tree
+ * is mounted and the page is the one a reader meets; and the two whole-document
+ * reads retry through `expect.poll` until they hold, so a late image or a
+ * deferred panel cannot land an overflow after the last assertion.
  */
 
 /**
@@ -60,14 +69,20 @@ interface UndersizedField {
  * check would pass with a real 15px overflow in it.
  */
 export async function expectNoHorizontalOverflow(page: Page): Promise<void> {
-  const { scrollWidth, clientWidth } = await page.evaluate(() => ({
-    scrollWidth: document.documentElement.scrollWidth,
-    clientWidth: document.documentElement.clientWidth,
-  }));
-  expect(
-    scrollWidth,
-    `document.documentElement.scrollWidth (${scrollWidth}) must equal its clientWidth (${clientWidth}): the page scrolls sideways`,
-  ).toBe(clientWidth);
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        ),
+      {
+        message:
+          "document.documentElement.scrollWidth must not exceed its clientWidth: the page scrolls sideways",
+      },
+    )
+    .toBeLessThanOrEqual(0);
 }
 
 /**
@@ -89,9 +104,9 @@ export async function expectControlInsideViewport(
   await expect(control).toBeInViewport({ ratio: 1 });
 }
 
-/** Every visible editable field renders at 16px or more. */
-export async function expectReadableFieldText(page: Page): Promise<void> {
-  const undersized: UndersizedField[] = await page.evaluate(
+/** The visible editable fields rendering under the floor, read once. */
+function undersizedFields(page: Page): Promise<UndersizedField[]> {
+  return page.evaluate(
     ({ selector, minimum }) => {
       // Name a field by the first attribute that locates it in the markup,
       // preferring the ones a reader can search for over the ones they cannot:
@@ -123,21 +138,30 @@ export async function expectReadableFieldText(page: Page): Promise<void> {
     },
     { selector: EDITABLE_FIELD_SELECTOR, minimum: MIN_FIELD_FONT_SIZE_PX },
   );
+}
 
-  expect(
-    undersized,
-    `every visible editable field must render at ${MIN_FIELD_FONT_SIZE_PX}px or more`,
-  ).toEqual([]);
+/** Every visible editable field renders at 16px or more. */
+export async function expectReadableFieldText(page: Page): Promise<void> {
+  await expect
+    .poll(() => undersizedFields(page), {
+      message: `every visible editable field must render at ${MIN_FIELD_FONT_SIZE_PX}px or more`,
+    })
+    .toEqual([]);
 }
 
 /**
- * Run all three checks against the page as it currently stands. `control`
- * names the page's primary control, the one a reader came to press.
+ * Run all three checks against the rendered page. `control` names the page's
+ * primary control, the one a reader came to press, and waiting for it is what
+ * says the page is rendered: it comes from the client tree, so it is on screen
+ * only once React has hydrated and the fetches the page gates itself on have
+ * answered. Measure before that and the three checks read a skeleton, where
+ * there is no column to overflow and no field to size.
  */
 export async function expectNarrowViewportLayout(
   page: Page,
   control: Locator,
 ): Promise<void> {
+  await expect(control).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await expectControlInsideViewport(page, control);
   await expectReadableFieldText(page);

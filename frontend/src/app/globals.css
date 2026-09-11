@@ -263,7 +263,9 @@ input[type='datetime-local']:not(.has-value)::-webkit-datetime-edit {
    scrubber, both too narrow for an adornment) keeps the native button. Only
    Webkit/Chromium expose the button as a pseudo-element; Gecko draws it inside
    the widget with no selector reaching it, so there the two marks sit side by
-   side. */
+   side. The hiding holds at every width, below `sm` included, where the site's
+   own mark stands down as well and a tap on the field is what opens the picker:
+   see docs/design.md, Phone chrome. */
 input.picker-glyph::-webkit-calendar-picker-indicator {
   display: none;
 }

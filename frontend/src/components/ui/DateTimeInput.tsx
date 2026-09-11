@@ -38,6 +38,11 @@ const PICKER: Record<DateTimeType, { icon: typeof Calendar; label: string }> = {
  * too narrow for an adornment (the search filters, the map scrubber) stays a
  * bare `<Input type="date">` and keeps the native button.
  *
+ * The mark itself is a desktop affordance. Below `sm` a field is too narrow to
+ * carry both a 36px icon button and the value of an instant, so the mark stands
+ * down and a tap on the field opens the engine's picker, which is what a phone
+ * reaches every date field on the site by.
+ *
  * It also owns `has-value`, the class `globals.css` mutes an empty field's
  * `dd/mm/yyyy` placeholder off. The value is right here, so no call site has to
  * remember to derive it.
@@ -74,6 +79,13 @@ export function DateTimeInput({
       type={type}
       value={value}
       className={cn("picker-glyph", value ? "has-value" : "", className)}
+      // The mark is a desktop affordance. A 36px icon button takes 42px of a
+      // 248px field at 320px, more than the field can spare and still paint an
+      // instant, so on the one date field a submit cannot skip the tail of the
+      // value would run under the mark. Below `sm` the field carries none and a
+      // tap on it opens the engine's own picker, which is how a phone reaches
+      // every date field on the site.
+      trailingFromSm
       trailing={
         <Button
           icon

@@ -76,6 +76,16 @@ interface FieldProps {
 // anchor and has to clear the same adornment by the same amount.
 export const TRAILING_ROOM = "pr-20 sm:pr-18";
 
+// The figure for an adornment that stands down on a phone (`trailingFromSm`
+// below): one icon button's room from `sm` up, the 6px inset plus the 32px
+// square rounded to the next step on the scale, and none below, where the field
+// carries no mark to clear. A phone field cannot always hold both: at 320px the
+// field is about 248px, the icon button is 36px there for 42px of room, and a
+// `datetime-local` needs more than the rest to paint its own value, so its tail
+// runs under the mark. Still one figure per adornment shape rather than per call
+// site, so two fields wearing the same mark stop their text in the same place.
+const TRAILING_ROOM_FROM_SM = "sm:pr-10";
+
 /** The adornment itself, positioned against a `relative` field box: centred on
  *  the field's height whatever height it takes, and taking the pointer, since
  *  what sits in it are controls. Each control is a ghost icon button carrying
@@ -85,9 +95,23 @@ export const TRAILING_ROOM = "pr-20 sm:pr-18";
  *  field's text padding, and two of them sit a hair apart: their hover plates have to read as
  *  two controls without a channel of field between them. Shared with
  *  `<LockedUrl>` for the same reason `TRAILING_ROOM` is. */
-export function FieldAdornment({ children }: { children: ReactNode }) {
+export function FieldAdornment({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  /** The one caller-set class: `max-sm:hidden`, from a field whose mark stands
+   *  down on a phone. It lands here rather than on the control inside, so the
+   *  slot and the room the field leaves for it are decided in one place. */
+  className?: string;
+}) {
   return (
-    <span className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center gap-0.5">
+    <span
+      className={cn(
+        "absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center gap-0.5",
+        className,
+      )}
+    >
       {children}
     </span>
   );
@@ -111,6 +135,7 @@ export function Input({
   invalid = false,
   icon,
   trailing,
+  trailingFromSm = false,
   className = "",
   ...props
 }: FieldProps & {
@@ -119,6 +144,11 @@ export function Input({
   /** Content overlaid inside the field at its right edge, centred on the
    *  field's height. The field's text padding grows to clear it. */
   trailing?: ReactNode;
+  /** The adornment renders from `sm` up only, and the field takes its room
+   *  there only. For a field that cannot hold both its value and a 36px mark
+   *  on a phone; what it acts on has to stay reachable without it, the way a
+   *  date field falls back to the engine's own picker button. */
+  trailingFromSm?: boolean;
   ref?: Ref<HTMLInputElement>;
 } & InputHTMLAttributes<HTMLInputElement>) {
   if (icon || trailing) {
@@ -137,12 +167,16 @@ export function Input({
           className={cn(
             fieldClass(variant, invalid, ""),
             icon && "pl-9",
-            trailing && TRAILING_ROOM,
+            trailing && (trailingFromSm ? TRAILING_ROOM_FROM_SM : TRAILING_ROOM),
             className,
           )}
           {...props}
         />
-        {trailing && <FieldAdornment>{trailing}</FieldAdornment>}
+        {trailing && (
+          <FieldAdornment className={trailingFromSm ? "max-sm:hidden" : ""}>
+            {trailing}
+          </FieldAdornment>
+        )}
       </div>
     );
   }
