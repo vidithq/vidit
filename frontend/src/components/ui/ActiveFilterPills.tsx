@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
 
+import { TAP_STEP } from "./Button";
 import { Pill } from "./Pill";
 
 /** One active filter: `label` is what the pill shows, `onRemove` clears just
@@ -45,7 +46,7 @@ export function ActiveFilterPills({
         <button
           type="button"
           onClick={onClearAll}
-          className="text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors"
+          className={`inline-flex items-center ${TAP_STEP} text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors`}
         >
           Clear all
         </button>

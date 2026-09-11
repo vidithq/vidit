@@ -127,7 +127,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     // themselves. `max-sm:left-16` is 64px, derived from the chip: 8px inset
     // from the left edge, 1px border, 2px padding, 44px control, about 55px in
     // all, which 64px clears.
-    <div className="absolute top-4 left-[72px] z-1000 w-72 max-sm:bottom-4 max-sm:left-16 max-sm:right-4 max-sm:w-auto max-sm:flex max-sm:flex-col max-sm:pointer-events-none">
+    <div className="absolute top-4 left-[72px] safe-mt safe-mr safe-mb safe-ml z-1000 w-72 max-sm:bottom-4 max-sm:left-16 max-sm:right-4 max-sm:w-auto max-sm:flex max-sm:flex-col max-sm:pointer-events-none">
       <button
         onClick={() => setFiltersOpen((o) => !o)}
         className="w-full flex items-center justify-between bg-neutral-900 rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:bg-neutral-800/80 transition-colors max-sm:shrink-0 max-sm:pointer-events-auto"

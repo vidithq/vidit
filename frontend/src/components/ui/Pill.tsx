@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
+import { TAP_STEP } from "./Button";
 import { ACCENT_SURFACE } from "./styles";
 
 // The one pill for the whole status / tag / chip family: a single rounded-full
@@ -15,8 +16,24 @@ import { ACCENT_SURFACE } from "./styles";
 //   danger     a revoked / error state
 export type PillTone = "accent" | "secondary" | "neutral" | "danger";
 
+// `max-w-full` plus `wrap-anywhere`: a pill never outgrows the box it sits in.
+// `shrink-0` holds a pill's width against its neighbours on a row, which is
+// what keeps a badge from being squeezed, and it also means a pill carrying a
+// long single word (a tag name on the request card's 150px content column at
+// 320px) would hold its full width and run past the card. The cap bounds the
+// box at the container and `wrap-anywhere` (`overflow-wrap: anywhere`) breaks
+// the word inside it, so the pill takes a second line rather than the card
+// taking a horizontal scrollbar. It has to be `anywhere` and not `break-words`:
+// a pill is an `inline-flex` box, whose width is its content's min-content
+// width, and `break-word` opportunities are excluded from that measurement, so
+// the box would stay as wide as the unbroken word and the text would break
+// inside a box already running past the card. `anywhere` counts, so the box
+// narrows with the wrap. The same token breaks the account email in
+// [`app/settings/page.tsx`](../../app/settings/page.tsx) and the page subtitle
+// in [`PageShell`](./PageShell.tsx). Every pill short enough to fit is
+// untouched.
 const BASE =
-  "inline-flex items-center gap-1 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium";
+  "inline-flex items-center gap-1 shrink-0 max-w-full wrap-anywhere rounded-full px-2 py-0.5 text-[11px] font-medium";
 
 // The accent tone is the base surface paint (../ui/styles, the single source
 // shared with the active-nav treatments) plus the pill's own border. The other
@@ -51,10 +68,17 @@ export function Pill({
   children,
   onClick,
 }: PillProps) {
+  // An interactive chip takes the phone tap step `<Button>` takes. The resting
+  // pill stands about 19px, which is a label's height and a thumb's near miss,
+  // and with `onClick` it is the chip every filter surface is built out of: the
+  // conflict, capture-source, tag and status buckets, the removable active
+  // filters, the search scope, the author suggestions, every `<TagPicker>`
+  // chip. A static pill is a label and keeps the resting height, so a row of
+  // status badges reads as tight as it does now.
   const cls = cn(
     BASE,
     PILL_TONE[tone],
-    onClick && "transition-colors hover:brightness-110 cursor-pointer",
+    onClick && `${TAP_STEP} transition-colors hover:brightness-110 cursor-pointer`,
     className,
   );
   if (onClick) {

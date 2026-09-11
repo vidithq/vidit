@@ -2,12 +2,6 @@ import { safeHostname } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { TEXT_LINK } from "@/components/ui/styles";
 
-/**
- * Discriminated union — ``maxWidthClass`` is required in link mode (without a
- * width ceiling a long hostname overflows the parent) and forbidden in inline
- * mode, catching a forgetful caller at the type level rather than as a layout
- * bug.
- */
 type SourceLabelProps = {
   /** Null on a machine detection whose tweet declared no source:
    *  renders the muted "To confirm" label instead of a link. */
@@ -15,21 +9,12 @@ type SourceLabelProps = {
   /** Appended Tailwind classes. The atom sets palette + affordance; the caller
    *  owns text size, margin, and layout. */
   className?: string;
-} & (
-  | {
-      /** ``"link"`` — clickable ``<a target=_blank>`` for detail surfaces where
-       *  the source URL is the primary outbound affordance. */
-      variant: "link";
-      /** Tailwind max-width class (e.g. ``"max-w-[300px]"``). */
-      maxWidthClass: string;
-    }
-  | {
-      /** ``"inline"`` — plain text for list cards where the whole card is
-       *  already the click target; an inner ``<a>`` would nest links. */
-      variant: "inline";
-      maxWidthClass?: never;
-    }
-);
+  /** ``"link"`` is a clickable ``<a target=_blank>`` for detail surfaces where
+   *  the source URL is the primary outbound affordance. ``"inline"`` is plain
+   *  text for list cards where the whole card is already the click target; an
+   *  inner ``<a>`` would nest links. */
+  variant: "link" | "inline";
+};
 
 /**
  * Source-URL display that reduces a stored URL to its host, with italic
@@ -58,7 +43,12 @@ export function SourceLabel(props: SourceLabelProps) {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className={cn(`${TEXT_LINK} truncate`, props.maxWidthClass, className)}
+      // `min-w-0` rather than a width ceiling: the link is a flex item on every
+      // surface that shows it, and a flex item's automatic floor is the width
+      // of the whole hostname, which is what pushes a row past its card. With
+      // the floor lifted, `truncate` cuts the host to whatever the row leaves,
+      // so the same link reads correctly in a 200px column and in a wide one.
+      className={cn(`${TEXT_LINK} truncate min-w-0`, className)}
     >
       {hostname}
     </a>

@@ -114,7 +114,10 @@ export function ImportPostPanel() {
             Import guide
           </Link>
         </p>
-        <div className="flex gap-2">
+        {/* The pair stacks below `sm`: the button's label stays on one line by
+            design, which at 320px leaves the URL field about 100px of a row
+            they share. */}
+        <div className="flex max-sm:flex-col gap-2">
           <Input
             type="url"
             value={url}

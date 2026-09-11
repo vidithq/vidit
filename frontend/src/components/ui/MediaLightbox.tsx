@@ -65,8 +65,8 @@ function resolveSource(source: LightboxSource): ResolvedSource {
 // The viewer's size envelope: big enough to inspect, short enough that the
 // backdrop still frames it. A plain image caps directly; a next/image `fill`
 // and the player both need a sized parent instead, so they take the box form.
-const MEDIA_CAP = "max-h-[80vh] max-w-[85vw]";
-const MEDIA_FRAME = "relative h-[80vh] w-[85vw] max-w-4xl";
+const MEDIA_CAP = "max-h-[80dvh] max-w-[85vw]";
+const MEDIA_FRAME = "relative h-[80dvh] w-[85vw] max-w-4xl";
 
 /**
  * One media at viewer size. A clip plays in the shared `VideoPlayer`, which
@@ -205,27 +205,45 @@ export function MediaOverlay({
       role="dialog"
       aria-modal="true"
       aria-label={label}
-      className="fixed inset-0 z-1500 flex items-center justify-center bg-black/85 p-6"
+      className="fixed inset-0 z-1500 bg-black/85 safe-pt safe-pr safe-pb safe-pl"
       onClick={onClose}
     >
-      <div
-        className="relative max-h-full max-w-full"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {children}
-        <div className="absolute -top-3 -right-3 z-10 flex items-center gap-1">
-          {actions}
-          <Button
-            icon
-            variant="ghost"
-            className={FLOATING_CONTROL}
-            aria-label="Close"
-            title="Close"
-            data-overlay-close=""
-            onClick={onClose}
-          >
-            <X size={16} />
-          </Button>
+      {/* The backdrop fills the screen and the insets are its padding, not its
+          margin: the overlay covers the cutout and home-indicator bands, so a
+          tap on one closes the viewer the way a tap anywhere else on the
+          backdrop does, and the media is what moves in. The frame that centres
+          and scrolls the content is a child of it rather than the same box,
+          since its own `p-6` and the inset padding set the same property. */}
+      {/* `items-start` plus `my-auto` on the child, and not `items-center`:
+          auto margins centre the content while it fits the overlay and
+          collapse to 0 when it does not, so everything the viewer holds sits
+          at or below scroll origin. A centred flex item taller than its line
+          overflows in both directions, and the half above scroll origin is a
+          band no scroll gesture reaches: the close cluster, which hangs 12px
+          above the content, is what sits in it. The child is sized by what it
+          holds rather than clamped to the overlay's height, so a frame taller
+          than the room there is (a clip whose player chrome grows past it, a
+          short landscape viewport) scrolls instead of being cut to fit. */}
+      <div className="flex h-full w-full items-start justify-center overflow-y-auto p-6">
+        <div
+          className="relative my-auto max-w-full"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {children}
+          <div className="absolute -top-3 -right-3 z-10 flex items-center gap-1">
+            {actions}
+            <Button
+              icon
+              variant="ghost"
+              className={FLOATING_CONTROL}
+              aria-label="Close"
+              title="Close"
+              data-overlay-close=""
+              onClick={onClose}
+            >
+              <X size={16} />
+            </Button>
+          </div>
         </div>
       </div>
     </div>,

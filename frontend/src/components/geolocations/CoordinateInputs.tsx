@@ -52,11 +52,15 @@ export function CoordinateInputs({
   const pair = coordinatePair(lat, lng);
 
   return (
-    // Two columns at every width: the pair's own actions ride inside the
-    // longitude field as its trailing adornment, so checking a coordinate
-    // against imagery costs neither a third column that squeezes the fields on
-    // a phone nor a line of its own under them.
-    <div className="grid grid-cols-2 gap-4">
+    // The pair's own actions ride inside the longitude field as its trailing
+    // adornment, so checking a coordinate against imagery costs neither a third
+    // column nor a line of its own under the fields. That adornment is what
+    // decides the layout: it takes a fixed 80px of the longitude field on a
+    // phone, so a two-column pair inside the form card leaves a 9-character
+    // value with no room to show itself at 320px. One column below `sm` gives
+    // each field the card's full width, two columns from `sm` up where the
+    // column is wide enough to carry the mark and the value together.
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div className="space-y-1.5">
         <label
           htmlFor={latId}

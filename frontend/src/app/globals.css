@@ -263,10 +263,35 @@ input[type='datetime-local']:not(.has-value)::-webkit-datetime-edit {
    scrubber, both too narrow for an adornment) keeps the native button. Only
    Webkit/Chromium expose the button as a pseudo-element; Gecko draws it inside
    the widget with no selector reaching it, so there the two marks sit side by
-   side. */
+   side. The hiding holds at every width, below `sm` included, where the site's
+   own mark stands down as well and a tap on the field is what opens the picker:
+   see docs/design.md, Phone chrome. */
 input.picker-glyph::-webkit-calendar-picker-indicator {
   display: none;
 }
+
+/* The display cutout and the home indicator. `app/layout.tsx` exports
+   `viewportFit: "cover"`, so the page paints edge to edge and a fixed or
+   absolutely positioned surface anchors on the physical edge of the screen
+   rather than on the safe rectangle inside it. Two forms, because the two
+   shapes of chrome need opposite things. A surface that floats a set distance
+   in from an edge (the menu chip, the map's filter overlay, the map's detail
+   panel from `sm` up) takes the inset as a margin, so its whole box moves clear
+   of the cutout. A surface that fills an edge (the nav drawer, the map's bottom
+   sheet, the media overlay whose backdrop has to cover the cutout band for a
+   tap there to close the viewer, and the page column in `PageFrame`) takes it
+   as padding, so the box still reaches the edge and only its content moves in.
+   `env()` reads 0 wherever the device reports no inset, so both forms are
+   inert on a desktop and on a phone without a cutout, and Tailwind emits only
+   the ones a class name actually uses. */
+@utility safe-mt { margin-top: env(safe-area-inset-top); }
+@utility safe-mr { margin-right: env(safe-area-inset-right); }
+@utility safe-mb { margin-bottom: env(safe-area-inset-bottom); }
+@utility safe-ml { margin-left: env(safe-area-inset-left); }
+@utility safe-pt { padding-top: env(safe-area-inset-top); }
+@utility safe-pr { padding-right: env(safe-area-inset-right); }
+@utility safe-pb { padding-bottom: env(safe-area-inset-bottom); }
+@utility safe-pl { padding-left: env(safe-area-inset-left); }
 
 /* Offset MapLibre controls past the sidebar on full-screen map only */
 .map-fullscreen .maplibregl-ctrl-bottom-left {

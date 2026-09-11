@@ -773,6 +773,16 @@ interface MapProps {
   // that one persists the camera and deliberately skips the layout move-end,
   // while the first bounds are exactly what the initial fetch needs.
   onBoundsChange?: (bounds: MapBounds) => void;
+  /** Marks a map that sits inside a scrolling article rather than owning the
+   *  screen (the event page's location box, the profile map). MapLibre's
+   *  one-finger `dragPan` otherwise swallows any swipe that starts on the
+   *  canvas, which on a phone is a third of the screen the reader cannot
+   *  scroll past. `cooperativeGestures` hands the one-finger swipe back to the
+   *  page: MapLibre drops the canvas to `touch-action: pan-x pan-y`, so the
+   *  page scrolls, and the map takes two fingers to pan and Command or Ctrl
+   *  plus the wheel to zoom, telling the reader so on the blocked gesture.
+   *  `/map` leaves it unset, since there the map IS the page. */
+  embedded?: boolean;
 }
 
 /** Reports the visible rectangle to the parent, which fetches the points for
@@ -860,6 +870,7 @@ export default function Map({
   fitBounds,
   onViewChange,
   onBoundsChange,
+  embedded = false,
 }: MapProps) {
   const [mounted, setMounted] = useState(false);
   // MapLibre needs WebGL, which Tor Browser disables or gates; without
@@ -1190,6 +1201,7 @@ export default function Map({
       mapStyle={BASEMAP_STYLE[theme]}
       projection="globe"
       attributionControl={false}
+      cooperativeGestures={embedded}
     >
       <StackInteractions
         onPointClick={handlePinClick}

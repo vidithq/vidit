@@ -7,6 +7,7 @@ import { displayLinkValue, resolveLinkHref, type PublicProfile } from "@/lib/use
 import type { ExternalLinks } from "@/types";
 import { DiscordGlyph, GitHubGlyph, XGlyph } from "@/components/ui/BrandGlyphs";
 import { Button, buttonClasses } from "@/components/ui/Button";
+import { FIELD_TEXT } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_LABEL } from "@/components/ui/form-styles";
@@ -92,7 +93,7 @@ export function LinkedAccountsFields({ edit }: { edit: ProfileEditState }) {
                       [p.key]: e.target.value,
                     }))
                   }
-                  className="block w-full bg-transparent text-sm text-neutral-200 placeholder:text-neutral-600 focus:outline-hidden"
+                  className={`block w-full bg-transparent ${FIELD_TEXT} text-neutral-200 placeholder:text-neutral-600 focus:outline-hidden`}
                 />
               </div>
             </div>

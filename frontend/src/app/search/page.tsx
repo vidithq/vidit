@@ -449,21 +449,24 @@ function DateRange({
   onChange: (from: string, to: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-2">
+    // The pair stacks below `sm`: a native date control needs more width than
+    // the two columns leave on a 320px screen, and the separator only reads as
+    // one while the two fields sit on a row, so it goes with the row.
+    <div className="flex max-sm:flex-col max-sm:items-stretch items-center gap-2">
       <Input
         type="date"
         value={from}
         onChange={(e) => onChange(e.target.value, to)}
         aria-label={`${label} from`}
-        className="bg-neutral-800 text-[11px]"
+        className="bg-neutral-800 sm:text-[11px]"
       />
-      <span className="text-neutral-500 text-xs">–</span>
+      <span className="max-sm:hidden text-neutral-500 text-xs">–</span>
       <Input
         type="date"
         value={to}
         onChange={(e) => onChange(from, e.target.value)}
         aria-label={`${label} to`}
-        className="bg-neutral-800 text-[11px]"
+        className="bg-neutral-800 sm:text-[11px]"
       />
     </div>
   );

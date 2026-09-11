@@ -16,6 +16,29 @@ import { cn } from "@/lib/cn";
 // this file is the only place `sm:pl-14` is written, here for a page with a
 // column and in `PageCenter` below for one centred block.
 // Why the side padding takes a step at `sm`: docs/design.md → Page chrome.
+
+// The display cutout's horizontal insets, applied once for every route rather
+// than per page. `app/layout.tsx` exports `viewportFit: "cover"`, so in
+// landscape on a notched phone the content column would otherwise start under
+// the cutout; the chrome that sits on a screen edge already takes its own
+// insets, and this is the same move for the column both frames centre. Its own
+// element because the insets are padding and every box below already carries a
+// padding utility on the same sides, which would decide the winner by
+// stylesheet order rather than by intent. `env()` reads 0 with no inset
+// reported, so the element is inert on a desktop.
+const SAFE_SIDES = "safe-pl safe-pr";
+
+// The frame's own height floor, on `dvh` like every other surface that owns the
+// screen size (the map page, the media lightbox, the global error boundary).
+// `vh` is the tallest the viewport ever gets, so with mobile Safari's URL bar
+// showing, an 812px screen frames 812px of page inside 712px of visible room:
+// a centred block (`PageCenter`, which is what the auth screens are) is then
+// centred 50px below the middle of what the reader can see, and its last row,
+// the sign-in button and the legal line under it, sits behind the bottom
+// chrome. A column frame gains the same 100px of dead scroll under its
+// content. `dvh` tracks the room that is actually visible.
+const MIN_HEIGHT = "min-h-dvh";
+
 export function PageFrame({
   children,
   className = "",
@@ -24,11 +47,13 @@ export function PageFrame({
   className?: string;
 }) {
   return (
-    <div className="min-h-screen sm:pl-14">
-      {/* `cn` and not a template string, so a caller's own `px-*` replaces the
-          column padding instead of landing beside it. */}
-      <div className={cn("max-w-4xl mx-auto px-4 sm:px-6", className)}>
-        {children}
+    <div className={`${MIN_HEIGHT} sm:pl-14`}>
+      <div className={SAFE_SIDES}>
+        {/* `cn` and not a template string, so a caller's own `px-*` replaces the
+            column padding instead of landing beside it. */}
+        <div className={cn("max-w-4xl mx-auto px-4 sm:px-6", className)}>
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -49,11 +74,11 @@ export function PageCenter({
   return (
     <div
       className={cn(
-        "min-h-screen sm:pl-14 flex items-center justify-center",
+        `${MIN_HEIGHT} sm:pl-14 flex items-center justify-center`,
         className,
       )}
     >
-      {children}
+      <div className={SAFE_SIDES}>{children}</div>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useAdmin } from "@/hooks/useAdmin";
 import { ACCENT_SURFACE } from "@/components/ui/styles";
+import { ICON_TAP_STEP } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { Dot } from "@/components/ui/Dot";
 import {
@@ -42,6 +43,12 @@ const GITHUB_URL = "https://github.com/vidithq/vidit";
 // pixels each instead of overflowing into a scroll.
 const ROW_CLASS =
   "flex items-center gap-2.5 h-9 shrink-0 rounded-md px-2.5 text-sm transition-colors";
+
+// The three community links on the header row, written once. `ICON_TAP_STEP`
+// is the phone floor every small icon control takes: the resting 28px square
+// is what a mouse needs and less than what a thumb hits, and below `sm` the
+// row is inside the drawer, where the reader is using one.
+const BRAND_LINK_CLASS = `${ICON_TAP_STEP} sm:size-7 rounded-md flex items-center justify-center text-neutral-500 hover:text-neutral-100 hover:bg-neutral-800 transition-colors`;
 
 // Must match the aside's `duration-200` width transition. Labels render only
 // after the expand finishes, else they overflow the still-narrow sidebar mid-
@@ -296,7 +303,7 @@ export default function Sidebar() {
           a bar. Above the aside's own z, since the drawer comes later in tree
           order and would otherwise paint over it: the chip and the page's back
           control stay visible while the drawer is out. */}
-      <div className="sm:hidden fixed top-2 left-2 z-1150 flex items-center gap-0.5 rounded-md p-0.5 bg-neutral-900 border border-neutral-800">
+      <div className="sm:hidden fixed top-2 left-2 safe-mt safe-ml z-1150 flex items-center gap-0.5 rounded-md p-0.5 bg-neutral-900 border border-neutral-800">
         {/* Hand-rolled and not `<Button icon>`: this is a 44px neutral thumb
             target, and the primitive offers one 36px square in accent or red
             only. */}
@@ -365,7 +372,15 @@ export default function Sidebar() {
         // `max-sm:invisible` takes the closed drawer out of the tab order; the
         // transition carries `visibility` too, so it flips at the end of the
         // slide out instead of blanking the drawer mid-animation.
-        className={`fixed top-0 left-0 h-screen z-1100 flex flex-col bg-neutral-900 border-r border-neutral-800 transition-[width] duration-200 max-sm:h-dvh max-sm:w-48 max-sm:transition-[transform,visibility] ${
+        //
+        // The safe-area padding is the drawer's alone (`max-sm:`). The drawer
+        // is 192px wide and fills the left edge, so moving its content in from
+        // the cutout costs it nothing. The rail from `sm` up is the fixed 56px
+        // column, border-box, and a landscape phone is past `sm` (a notched
+        // 812px viewport matches it), so the same padding would take 44px of
+        // that 56px and leave the nav glyphs 12px to sit in. The rail takes no
+        // inset: see docs/design.md, Phone chrome.
+        className={`fixed top-0 left-0 h-screen z-1100 flex flex-col max-sm:safe-pt max-sm:safe-pb max-sm:safe-pl bg-neutral-900 border-r border-neutral-800 transition-[width] duration-200 max-sm:h-dvh max-sm:w-48 max-sm:transition-[transform,visibility] ${
           expanded ? "w-48" : "w-14"
         } ${
           drawerOpen
@@ -401,7 +416,7 @@ export default function Sidebar() {
                 rel="noopener noreferrer"
                 title="Vidit on GitHub"
                 aria-label="Vidit on GitHub"
-                className="size-7 rounded-md flex items-center justify-center text-neutral-500 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
+                className={BRAND_LINK_CLASS}
               >
                 <GitHubGlyph />
               </a>
@@ -411,7 +426,7 @@ export default function Sidebar() {
                 rel="noopener noreferrer"
                 title="Vidit on X"
                 aria-label="Vidit on X"
-                className="size-7 rounded-md flex items-center justify-center text-neutral-500 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
+                className={BRAND_LINK_CLASS}
               >
                 <XGlyph />
               </a>
@@ -421,7 +436,7 @@ export default function Sidebar() {
                 rel="noopener noreferrer"
                 title="Vidit Discord"
                 aria-label="Vidit Discord"
-                className="size-7 rounded-md flex items-center justify-center text-neutral-500 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
+                className={BRAND_LINK_CLASS}
               >
                 <DiscordGlyph />
               </a>

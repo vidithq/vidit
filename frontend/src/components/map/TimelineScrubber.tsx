@@ -4,6 +4,9 @@ import { useEffect, useMemo, useRef } from "react";
 import { Pause, Play, RotateCcw } from "lucide-react";
 
 import type { MapPoint } from "@/types";
+import { cn } from "@/lib/cn";
+import { ICON_TAP_STEP } from "@/components/ui/Button";
+import { FIELD_TEXT } from "@/components/ui/Input";
 
 interface TimelineScrubberProps {
   /** Filtered point set (post conflict/tag/author, pre-window). Drives the
@@ -216,9 +219,16 @@ export function TimelineScrubber({
     </>
   );
 
-  const inputClass =
-    "flex-1 min-w-0 px-1 py-1 bg-neutral-800 border border-neutral-700 rounded-sm " +
-    "text-[11px] text-neutral-300 focus:outline-hidden focus:border-orange-500";
+  // `FIELD_TEXT` first, then the scrubber's own denser desktop size: `cn`
+  // resolves the two `sm:` sizes caller-last, so the pair reads as 16px below
+  // `sm` (the floor every editable field takes, `Input.tsx`) and 11px above it,
+  // where these two dates share a 240px panel row with the play control.
+  const inputClass = cn(
+    "flex-1 min-w-0 px-1 py-1 bg-neutral-800 border border-neutral-700 rounded-sm",
+    "text-neutral-300 focus:outline-hidden focus:border-orange-500",
+    FIELD_TEXT,
+    "sm:text-[11px]",
+  );
 
   return (
     <div className="select-none">
@@ -289,7 +299,7 @@ export function TimelineScrubber({
         <button
           onClick={() => setPlaying((p) => !p)}
           disabled={!hasAxis || span <= 0}
-          className="flex items-center justify-center w-6 h-6 shrink-0 rounded-sm bg-neutral-800 border border-neutral-700 text-orange-400 hover:bg-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className={`flex items-center justify-center ${ICON_TAP_STEP} sm:size-6 shrink-0 rounded-sm bg-neutral-800 border border-neutral-700 text-orange-400 hover:bg-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors`}
           aria-label={playing ? "Pause" : "Play timeline"}
         >
           {playing ? <Pause size={12} /> : <Play size={12} />}
@@ -320,7 +330,7 @@ export function TimelineScrubber({
                 onClick={resetWindow}
                 aria-label="Reset window"
                 title="Reset window"
-                className="shrink-0 flex items-center justify-center w-5 h-5 text-neutral-500 hover:text-neutral-300 transition-colors"
+                className={`shrink-0 flex items-center justify-center ${ICON_TAP_STEP} sm:size-5 text-neutral-500 hover:text-neutral-300 transition-colors`}
               >
                 <RotateCcw size={12} />
               </button>

@@ -98,8 +98,7 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
   // chips lost in one row.
   const captureTags = geo.tags.filter((t) => t.category === "capture_source");
   const freeTags = geo.tags.filter((t) => t.category === "free");
-  const sourceMaxWidth = compact ? "max-w-[200px]" : "max-w-[300px]";
-  const sourceClass = compact ? "ml-4" : "text-sm ml-4";
+  const sourceClass = compact ? "" : "text-sm";
   const tagRow = (name: string, tags: EventDetailBodyData["tags"], concept?: Concept) =>
     tags.length > 0 ? (
       <DetailRow label={name} concept={concept} compact={compact} align="start">
@@ -126,7 +125,7 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
       {geo.status === "closed" && geo.close_reason && (
         <DetailRow label="Reason" compact={compact} align="start">
           <span
-            className={`${compact ? "" : "text-sm"} text-neutral-300 whitespace-pre-wrap text-right ml-4 max-w-[300px]`}
+            className={`${compact ? "" : "text-sm"} text-neutral-300 whitespace-pre-wrap text-right`}
           >
             {geo.close_reason}
           </span>
@@ -171,7 +170,6 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
           <SourceLabel
             url={geo.source_url}
             variant="link"
-            maxWidthClass={sourceMaxWidth}
             className={sourceClass}
           />
           {geo.source_url && (
@@ -190,7 +188,6 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
           urls={geo.secondary_source_urls}
           archived={geo.archived_secondary_sources}
           compact={compact}
-          maxWidthClass={sourceMaxWidth}
         />
       )}
       {/* The post a detection was imported from, distinct from Source (the
@@ -204,7 +201,6 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
             <SourceLabel
               url={geo.detected_from_url}
               variant="link"
-              maxWidthClass={sourceMaxWidth}
               className={sourceClass}
             />
             {/* Archived on the same terms as the source: the analyst's post is
@@ -237,7 +233,7 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
         <DetailRow label="Requested by" concept="requested_by" compact={compact}>
           <Link
             href={`/profile/${geo.requested_by.username}`}
-            className={`text-sm ${TEXT_LINK} truncate ml-4 max-w-[300px]`}
+            className={`text-sm ${TEXT_LINK} truncate`}
           >
             @{geo.requested_by.username}
           </Link>
@@ -312,12 +308,10 @@ function SecondarySourcesRow({
   urls,
   archived,
   compact,
-  maxWidthClass,
 }: {
   urls: string[];
   archived: (ArchivedLink | null)[];
   compact: boolean;
-  maxWidthClass: string;
 }) {
   const [open, setOpen] = useState(false);
   const textSize = compact ? "" : "text-sm";
@@ -328,7 +322,7 @@ function SecondarySourcesRow({
       compact={compact}
       align="start"
     >
-      <div className="flex flex-col items-end gap-1 ml-4">
+      <div className="flex flex-col items-end gap-1">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -355,7 +349,6 @@ function SecondarySourcesRow({
               <SourceLabel
                 url={url}
                 variant="link"
-                maxWidthClass={maxWidthClass}
                 className={textSize}
               />
               {/* Named per mirror rather than "the source": several archived

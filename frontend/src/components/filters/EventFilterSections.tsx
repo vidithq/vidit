@@ -7,6 +7,7 @@ import { AUTHOR_FILTER_RE, suggestAuthors } from "@/lib/search";
 
 import type { Conflict, Tag } from "@/types";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
+import { TAP_STEP } from "@/components/ui/Button";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { Input } from "@/components/ui/Input";
 import {
@@ -405,7 +406,7 @@ export function EventFilterSections({
           {freeTags.length > TAGS_PREVIEW && (
             <button
               onClick={() => setShowAllTags((s) => !s)}
-              className="mt-2 text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors"
+              className={`mt-2 inline-flex items-center ${TAP_STEP} text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors`}
             >
               {showAllTags ? "Show less" : `Show all ${freeTags.length}`}
             </button>
@@ -448,7 +449,7 @@ export function EventFilterSections({
             }}
             placeholder="Type a username…"
             aria-label="Author username"
-            className="bg-neutral-800 text-[11px]"
+            className="bg-neutral-800 sm:text-[11px]"
           />
           {authorSuggestions.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
