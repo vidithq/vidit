@@ -18,12 +18,15 @@ from app.database import Base
 # ``x_handle`` (admin-linked), so nothing was created and no reply posted.
 # ``skipped``: every detection deduped against an existing row and moved
 # nothing on it.
+# ``requested``: the thread carried no coordinate but did carry footage and a
+# requestable source, so a ``requested`` row was opened instead of a refusal
+# (``services/bot``, the request branch).
 # ``self``: the bot's own post surfaced in its mentions timeline (recorded so
 # the ``since_id`` cursor advances past it instead of re-billing it every
 # pull). ``failed``: processing raised (captured to Sentry; delete the row to
 # retry that mention on the next run).
 BotMentionOutcome = Literal[
-    "created", "updated", "no_detection", "no_account", "skipped", "self", "failed"
+    "created", "updated", "requested", "no_detection", "no_account", "skipped", "self", "failed"
 ]
 
 

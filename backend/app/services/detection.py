@@ -12,6 +12,11 @@ what keeps the engine pure.
 A detection that matches a row the owner already holds resolves through
 :func:`_row_disposition`: an open ``detected`` row is overwritten in place with
 the newer parse, and every other shape is left alone.
+
+:func:`open_request` is the second write path, for the engine's second exit: a
+``RequestDraft`` becomes a ``requested`` row through ``events.create_request``,
+the same verb a person's request goes through. Only the bot's request branch
+calls it.
 """
 
 from __future__ import annotations
@@ -19,17 +24,20 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, Protocol, cast
 
 import httpx
+from fastapi import UploadFile
 from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import Point
-from sqlalchemy import or_, select
+from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.orm import Session
+from starlette.datastructures import Headers
 
 from app.cache import points_cache
 from app.models.event import (
@@ -41,8 +49,14 @@ from app.models.event import (
 )
 from app.models.media import Media, MediaRole
 from app.models.user import User
-from app.services.events import build_source_link_rows, replace_source_links
-from app.services.evidence_intake import collect_media_keys
+from app.services.events import (
+    ImportProvenance,
+    build_source_link_rows,
+    create_request,
+    replace_source_links,
+    stamp_provenance,
+)
+from app.services.evidence_intake import EvidenceIntakeError, collect_media_keys
 from app.services.sanitize import tiptap_doc_from_text
 from app.services.source_archive import reconcile_source_archive
 from app.services.storage import (
@@ -51,12 +65,14 @@ from app.services.storage import (
     detected_media_key,
     get_storage,
     prepare_media,
+    safe_storage_extension,
     sweep_keys,
     upload_prepared_media,
     validate_bytes,
 )
 from app.services.tweet_ingest import (
     DUPLICATE_MEDIA,
+    FOOTAGE_UNUSABLE,
     SOURCE_AMBIGUOUS,
     SOURCE_DATE_UNKNOWN,
     SOURCE_FETCH_FAILED,
@@ -64,6 +80,7 @@ from app.services.tweet_ingest import (
     SOURCE_MISSING,
     Detection,
     ParsedMedia,
+    RequestDraft,
     Resolution,
     acquire_from_post,
     archive_media_fetcher,
@@ -180,6 +197,36 @@ def _row_disposition(row: Event) -> Verdict:
     return "skip"
 
 
+def _match_legs(
+    *, tweet_id: int | None, thread_tweet_ids: Sequence[int], source_url: str | None
+) -> list[ColumnElement[bool]]:
+    """The OR legs a row is recognised by: the provenance, then the source.
+
+    One home for "is this post, or this source, already on a row of mine", read
+    by :func:`_disposition` for a detection and by :func:`_existing_row_for` for
+    a request. The rationale for each leg is in :func:`_disposition`; what this
+    function owns is that both readers ask the same question.
+
+    Empty when the incoming work declares neither a post id, a thread, nor a
+    source: nothing an existing row could be recognised by.
+    """
+    legs: list[ColumnElement[bool]] = []
+    if tweet_id is not None:
+        legs.append(Event.detected_from_tweet_id == tweet_id)
+    if thread_tweet_ids:
+        legs.append(Event.detected_thread_tweet_ids.overlap(list(thread_tweet_ids)))
+    if source_url is not None:
+        legs.append(Event.source_url == source_url)
+        legs.append(
+            Event.id.in_(
+                select(EventVersion.event_id).where(
+                    EventVersion.snapshot["source_url"].astext == source_url
+                )
+            )
+        )
+    return legs
+
+
 def _disposition(db: Session, owner: User, detection: Detection) -> tuple[Verdict, Event | None]:
     """Verdict for one detection, with the row it applies to when there is one.
 
@@ -220,20 +267,11 @@ def _disposition(db: Session, owner: User, detection: Detection) -> tuple[Verdic
     A ``skip`` carries the row that earned it, so a caller answering one post
     can still name the row its detection landed on. Only ``create`` has no row.
     """
-    legs = []
-    if detection.detected_from_tweet_id is not None:
-        legs.append(Event.detected_from_tweet_id == detection.detected_from_tweet_id)
-    if detection.thread_tweet_ids:
-        legs.append(Event.detected_thread_tweet_ids.overlap(list(detection.thread_tweet_ids)))
-    if detection.source_url is not None:
-        legs.append(Event.source_url == detection.source_url)
-        legs.append(
-            Event.id.in_(
-                select(EventVersion.event_id).where(
-                    EventVersion.snapshot["source_url"].astext == detection.source_url
-                )
-            )
-        )
+    legs = _match_legs(
+        tweet_id=detection.detected_from_tweet_id,
+        thread_tweet_ids=detection.thread_tweet_ids,
+        source_url=detection.source_url,
+    )
     if not legs:
         # No post id and no source: the detection declares nothing an existing
         # row could be recognised by, so it can only be new.
@@ -462,16 +500,22 @@ async def _persist_one(
             proof=_proof_doc(detection, []),
             event_date=detection.event_date,
             source_posted_at=detection.source_posted_at,
-            detected_post_at=detection.detected_post_at,
             status=STATUS_DETECTED,
             detected_at=datetime.now(UTC),
-            detected_from_tweet_id=detection.detected_from_tweet_id,
-            detected_from_url=detection.detected_from_url,
-            # Provenance, written once: the thread the detection came from and the
-            # entry that read it. A re-import through another entry moves
-            # neither (see :func:`_apply_import_fields`).
-            detected_thread_tweet_ids=list(detection.thread_tweet_ids) or None,
-            detected_via=via,
+        )
+        # Provenance, written once and through the one home both write paths
+        # read: the post and thread the detection came from, when it was posted,
+        # and the entry that read it. A re-import through another entry moves
+        # none of it (see :func:`_apply_import_fields`).
+        stamp_provenance(
+            geo,
+            ImportProvenance(
+                tweet_id=detection.detected_from_tweet_id,
+                url=detection.detected_from_url,
+                thread_tweet_ids=list(detection.thread_tweet_ids),
+                via=via,
+                post_at=detection.detected_post_at,
+            ),
         )
         # The mirrors the post also linked. Already normalized + capped by the
         # resolution, so no second pass here.
@@ -736,7 +780,28 @@ def _engine_warnings(persisted: list[tuple[uuid.UUID, Detection]]) -> dict[str, 
     return counts
 
 
-def _write_warnings(db: Session, persisted: list[tuple[uuid.UUID, Detection]]) -> dict[str, int]:
+class _WarningSubject(Protocol):
+    """What :func:`_write_warnings` reads off the engine work behind one row.
+
+    Both engine exits satisfy it: a ``Detection`` carries the three as fields,
+    and a ``RequestDraft`` carries its warnings and its source date as fields
+    and derives ``source_fetch_failed`` off them. The protocol is what lets one
+    function answer for both, instead of each write path composing codes itself.
+    """
+
+    @property
+    def warnings(self) -> list[str]: ...
+
+    @property
+    def source_posted_at(self) -> datetime | None: ...
+
+    @property
+    def source_fetch_failed(self) -> bool: ...
+
+
+def _write_warnings(
+    db: Session, persisted: Sequence[tuple[uuid.UUID, _WarningSubject]]
+) -> dict[str, int]:
     """The warnings only the write path can raise, counted per row it wrote.
 
     The engine says what it could not settle from the post; these say what the
@@ -746,30 +811,35 @@ def _write_warnings(db: Session, persisted: list[tuple[uuid.UUID, Detection]]) -
     media is already on Vidit. Review is the repair for all of them, so they
     read as warnings beside the engine's and are counted the same way.
 
+    Both write paths read it: :func:`persist_detections` over the rows a pass
+    wrote, :func:`open_request` over the one row a request wrote. A request's
+    source slot is filled by construction, so the footage leg never fires there
+    and the date and duplicate legs are what it reads.
+
     A footage-less row whose chase failed on an upstream that would not answer
     (``Detection.source_fetch_failed``, the retry schedule already spent) raises
     ``SOURCE_FETCH_FAILED`` instead: the footage may well exist, so importing the
     post again later is a repair, which it is not for a source that simply
     carries none.
 
-    The footage and date warnings are dropped on a row whose detection already
+    The footage and date warnings are dropped on a row whose engine work already
     carries ``SOURCE_MISSING`` or ``SOURCE_AMBIGUOUS``: an empty source slot
     already says why there is neither footage nor date.
     """
     counts: dict[str, int] = {}
     if not persisted:
         return counts
-    ids = [event_id for event_id, _detection in persisted]
+    ids = [event_id for event_id, _subject in persisted]
     footage_less = _rows_without_footage(db, ids)
     duplicated = _rows_with_duplicate_media(db, ids)
-    for event_id, detection in persisted:
+    for event_id, subject in persisted:
         raised: list[str] = []
-        if not set(detection.warnings) & {SOURCE_MISSING, SOURCE_AMBIGUOUS}:
+        if not set(subject.warnings) & {SOURCE_MISSING, SOURCE_AMBIGUOUS}:
             if event_id in footage_less:
                 raised.append(
-                    SOURCE_FETCH_FAILED if detection.source_fetch_failed else SOURCE_FOOTAGE_MISSING
+                    SOURCE_FETCH_FAILED if subject.source_fetch_failed else SOURCE_FOOTAGE_MISSING
                 )
-            if detection.source_posted_at is None:
+            if subject.source_posted_at is None:
                 raised.append(SOURCE_DATE_UNKNOWN)
         if event_id in duplicated:
             raised.append(DUPLICATE_MEDIA)
@@ -896,6 +966,176 @@ async def persist_detections(
         # same way (``services/events``, ``routers/admin``, ``routers/events``).
         points_cache.invalidate()
     return outcome
+
+
+def _existing_row_for(db: Session, owner: User, draft: RequestDraft) -> Event | None:
+    """The row ``owner`` already holds for the draft's post or its source.
+
+    The same legs a detection matches on (:func:`_match_legs`), minus the
+    coordinate, which a request has none of. Any live match at all blocks the
+    request, whatever state the row is in: the analyst already holds something
+    for that post or that footage, and a request is not the machine's to open
+    beside it. Oldest first, so a repeat mention names the same row every time.
+
+    Soft-deleted rows are excluded, unlike the detections' own match
+    (:func:`_row_disposition`, where a ``deleted_at`` row is exactly what must
+    stay deleted): nothing here would be written onto the matched row, so a
+    takedown that also fenced the owner off from ever mirroring that footage
+    again would be a silent second penalty rather than a protection.
+    """
+    legs = _match_legs(
+        tweet_id=draft.detected_from_tweet_id,
+        thread_tweet_ids=draft.thread_tweet_ids,
+        source_url=draft.source_url,
+    )
+    return (
+        db.query(Event)
+        .filter(Event.owner_id == owner.id, Event.deleted_at.is_(None), or_(*legs))
+        .order_by(Event.created_at, Event.id)
+        .first()
+    )
+
+
+@dataclass
+class RequestOutcome:
+    """What one request draft did: a row written, a row already held, or neither.
+
+    At most one of ``created`` / ``existing`` carries an id, and ``refusal``
+    carries a ``REFUSAL_MESSAGES`` code instead when neither does and the
+    machine can say why. ``warnings`` is what review has to answer on a row that
+    landed, worded by the same ``WARNING_MESSAGES`` table every other surface
+    reads.
+    """
+
+    created: uuid.UUID | None = None
+    existing: uuid.UUID | None = None
+    refusal: str | None = None
+    warnings: list[str] = field(default_factory=list)
+
+
+async def open_request(
+    db: Session,
+    *,
+    owner: User,
+    draft: RequestDraft,
+    fetch_media: MediaFetcher,
+) -> RequestOutcome | None:
+    """Write one :class:`RequestDraft` as a ``requested`` row owned by ``owner``.
+
+    The second write path, beside :func:`persist_detections`, and the bot's
+    request branch is its one caller. The row is born the way a person's
+    request is born, through ``events.create_request``: ``owner_id`` and
+    ``requested_by_id`` are both the linked owner, ``requested_at`` is stamped,
+    the source is the original the mirror post pointed at, and the footage the
+    thread carried is its one ``role=source`` media. What the machine adds is
+    the provenance (:class:`events.ImportProvenance`, ``detected_via='bot'``),
+    so a second mention of the same post recognises the row.
+
+    What a re-tag does depends on what it carries. A coordinate-less re-tag, of
+    the same post or of a repost of it, lands on the row through
+    :func:`_existing_row_for` and moves nothing: the tag is answered with
+    silence, the verdict every dedup earns. A coordinate-bearing tag on the same
+    source is a geolocation, so it takes the detections' path and lands a
+    ``detected`` row beside the open request: :func:`_row_disposition` leaves a
+    ``requested`` row alone, because it belongs to a human flow and no machine
+    writes into one. The request stays its owner's to withdraw.
+
+    The row that lands carries the warnings a request can earn, read off the
+    same two halves a detection's are: the engine's own (``SOURCE_FETCH_FAILED``
+    when the chase answered with nothing to take) and the write path's
+    (:func:`_write_warnings`, so ``SOURCE_DATE_UNKNOWN`` and ``DUPLICATE_MEDIA``
+    come from the comparison the detections already run). The remaining codes
+    cannot apply, since a request is born with a source and the footage filling
+    its source slot.
+
+    The footage is the draft's ordered candidates, and the first that fetches
+    fills the slot: the source's media, then the analyst's own video. The bytes
+    go to ``events.create_request`` as an ``UploadFile``, so the evidence intake
+    validates and prepares them exactly as it does a person's upload.
+
+    ``None`` means "nothing was written, nothing was held and there is nothing
+    to name": no candidate fetched, or the write raised. The caller degrades to
+    the refusal a coordinate-less thread has always earned, and a re-tag
+    retries. An intake that refused the file is named instead, through
+    ``refusal`` carrying ``FOOTAGE_UNUSABLE``: a clip over the video size cap is
+    not a post with no coordinate, and telling the analyst so is what lets them
+    add it at review.
+
+    The map is not invalidated: a ``requested`` row carries no coordinate, so
+    ``/points`` never served it.
+    """
+    existing = _existing_row_for(db, owner, draft)
+    if existing is not None:
+        return RequestOutcome(existing=existing.id)
+    fetched: tuple[bytes, str] | None = None
+    for candidate in draft.footage_candidates:
+        fetched = await fetch_media(candidate)
+        if fetched is not None:
+            break
+    if fetched is None:
+        logger.warning(
+            "No footage fetched for the request drafted from %s; refusing instead",
+            draft.detected_from_url,
+        )
+        return None
+    data, content_type = fetched
+    upload = UploadFile(
+        file=BytesIO(data),
+        filename=f"footage{safe_storage_extension(content_type)}",
+        headers=Headers({"content-type": content_type}),
+    )
+    try:
+        row = await create_request(
+            db,
+            current_user=owner,
+            title=draft.title,
+            source_url=draft.source_url,
+            secondary_source_urls=draft.secondary_source_urls,
+            proof_data=tiptap_doc_from_text(draft.proof_text),
+            event_date=draft.event_date,
+            source_posted_at=draft.source_posted_at,
+            tag_ids=[],
+            conflict_ids=[],
+            file=upload,
+            proof_files=[],
+            provenance=ImportProvenance(
+                tweet_id=draft.detected_from_tweet_id,
+                url=draft.detected_from_url,
+                thread_tweet_ids=list(draft.thread_tweet_ids),
+                via="bot",
+                post_at=draft.detected_post_at,
+            ),
+        )
+    except EvidenceIntakeError:
+        # The intake refused the file or the proof (a clip over the size cap,
+        # bytes nothing could read, a proof that would not sanitise). Roll back
+        # what ``create_request`` staged before it raised, the event row and its
+        # source-link rows, since the caller's next act is the ledger commit and
+        # a half-built row must not ride it.
+        logger.warning(
+            "The request drafted from %s was refused by the evidence intake",
+            draft.detected_from_url,
+            exc_info=True,
+        )
+        db.rollback()
+        return RequestOutcome(refusal=FOOTAGE_UNUSABLE)
+    except Exception:
+        # The net :func:`persist_detections` puts around every row it writes: a
+        # storage or database failure here is transient, and burning the mention
+        # as ``failed`` would cost the analyst both the row and the answer. Log,
+        # roll back, and let the caller degrade to the refusal reply, which a
+        # re-tag retries.
+        logger.exception("The request drafted from %s failed to write", draft.detected_from_url)
+        db.rollback()
+        return None
+    # The two halves a detection's warnings come from, over the one row this
+    # wrote: the engine's, then the write path's, which is where the duplicate
+    # comparison lives. Mirroring is exactly how the same clip reaches Vidit
+    # twice, so the code a detection raises for it is the code a request raises
+    # for it, computed by one function rather than two.
+    warnings = list(draft.warnings)
+    warnings.extend(_write_warnings(db, [(row.id, draft)]))
+    return RequestOutcome(created=row.id, warnings=warnings)
 
 
 def linked_owner(db: Session, handle: str) -> User | None:

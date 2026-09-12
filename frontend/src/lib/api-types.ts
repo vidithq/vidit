@@ -1521,8 +1521,12 @@ export interface components {
          * AdminDetectionStatsRead
          * @description Quality signal on the machine-extraction pipeline (admin-only).
          *
-         *     A machine detection is a row imported from X, ``detected_from_url`` set
-         *     (the archive backfill / the bot); a human submit always carries NULL there.
+         *     A machine detection is a row imported from X and never a request:
+         *     ``detected_from_url`` set (the archive backfill / the bot) and
+         *     ``requested_at`` NULL. A human submit always carries NULL in the first
+         *     column. A request the bot opened carries both, so the second column is what
+         *     keeps it out of the cohort for its whole life: the stamp is never cleared,
+         *     including after a fulfiller geolocates the row.
          *
          *     Reject-rate: of every machine detection, the fraction dismissed before it
          *     was published, whichever door they left through. A machine detection counts

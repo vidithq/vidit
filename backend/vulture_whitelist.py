@@ -108,3 +108,9 @@ _cache_clear  # services/tweet_ingest/syndication.py
 # Starlette replays it to the route (same slot ``Request.body()`` fills). We
 # only write it; the read is inside Starlette, which the gate does not scan.
 _body  # main.py enforce_request_body_size
+
+# ── SQLAlchemy hybrid expression ──────────────────────────────────────────────
+# The SQL half of ``Event.is_machine_detection``: SQLAlchemy reaches it through
+# the ``@is_machine_detection.inplace.expression`` decorator and binds it to the
+# hybrid, so no line calls it by name.
+_is_machine_detection_expression  # models/event.py Event

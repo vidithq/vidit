@@ -196,6 +196,9 @@ describe("EventDetailBody", () => {
         geo={geoFixture({
           status: "detected",
           detected_from_url: "https://x.com/ana/status/123",
+          // A detection is nobody's request: the two provenance stamps never
+          // sit on one row outside a fixture.
+          requested_by: null,
         })}
         variant="page"
       />
@@ -213,7 +216,7 @@ describe("EventDetailBody", () => {
       screen.getByRole("button", { name: "What does the status mean?" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "What is 'detected from'?" })
+      screen.getByRole("button", { name: "Where was this read from?" })
     ).toBeInTheDocument();
   });
 
@@ -561,6 +564,23 @@ describe("EventDetailBody", () => {
     ).toBeDisabled();
     // The mirror itself stays the primary link either way.
     expect(screen.getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
+  });
+
+  it("a request opened from a post reads Requested from, not Detected from", () => {
+    render(
+      <EventDetailBody
+        geo={geoFixture({
+          status: "requested",
+          event_coords: null,
+          geolocated_at: null,
+          detected_from_url: "https://x.com/ana/status/123",
+          detected_via: "bot",
+        })}
+        variant="page"
+      />
+    );
+    expect(screen.getByText("Requested from")).toBeInTheDocument();
+    expect(screen.queryByText("Detected from")).not.toBeInTheDocument();
   });
 
   it("renders the archived copy beside the Detected from link", () => {

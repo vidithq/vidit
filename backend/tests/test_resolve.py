@@ -27,6 +27,7 @@ from app.services.tweet_ingest.resolve import (
     split_media,
 )
 from app.services.tweet_ingest.syndication import ParsedMedia
+from tests._fixtures import tweet_record as _rec
 
 _INSTAGRAM = SourceLink(
     url="https://www.instagram.com/reel/FAKEREEL01/",
@@ -39,17 +40,6 @@ def _media(kind: str, origin: str) -> ParsedMedia:
         "https://pbs.twimg.com/media/x.jpg" if kind == "image" else "https://video.twimg.com/v.mp4"
     )
     return ParsedMedia(kind=kind, remote_url=url, origin=origin)  # type: ignore[arg-type]
-
-
-def _rec(**kw: object) -> TweetRecord:
-    base: dict = dict(
-        tweet_id="1",
-        handle="analyst",
-        text="",
-        created_at="2025-11-12T14:33:00Z",
-    )
-    base.update(kw)
-    return TweetRecord(**base)
 
 
 def _resolve(thread: list[TweetRecord]) -> Resolution:

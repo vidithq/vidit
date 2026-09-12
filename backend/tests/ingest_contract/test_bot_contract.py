@@ -10,6 +10,10 @@ pins is that the bot's entry answers what the shared expectation says.
 Each typology's expected value is ``expected.json``'s top level. A ``paths.bot``
 block holds only the bot's own vocabulary, the failure reason its reply names,
 or a ``skip`` for a shape no live post can carry.
+
+The engine's second exit is pinned here too: a coordinate-less mirror post
+yields the refusal plus one request draft, which is the branch the bot's
+integration test then writes through.
 """
 
 from __future__ import annotations
@@ -17,7 +21,7 @@ from __future__ import annotations
 import pytest
 
 from app.services.bot import acquire_tagged_thread
-from app.services.tweet_ingest import Resolution, resolve_threads
+from app.services.tweet_ingest import COORDS_MISSING, Resolution, resolve_threads
 
 from . import loader
 
@@ -25,11 +29,15 @@ _PATH = "bot"
 
 
 def _resolution(typology: str) -> Resolution:
-    """Run the bot's detection half over the typology's post, as if tagged there."""
+    """Run the bot's detection half over the typology's post, as if tagged there.
+
+    ``with_requests`` as the bot passes it: the second exit is the bot's alone,
+    so a contract that reads it has to ask for it the way the entry does.
+    """
     body = loader.load_body(typology)
     with loader.syndication_client(typology) as client:
         acquired = acquire_tagged_thread(body["id_str"], body["user"]["screen_name"], client=client)
-    return resolve_threads([acquired.records])
+    return resolve_threads([acquired.records], with_requests=True)
 
 
 @pytest.mark.parametrize("typology", loader.typology_names())
@@ -38,6 +46,19 @@ def test_typology_matches_the_bot_contract(typology: str) -> None:
     if "skip" in block:
         pytest.skip(block["skip"])
     loader.assert_resolution_matches(typology, _PATH, _resolution(typology))
+
+
+@pytest.mark.parametrize("typology", ["mirror_telegram_no_coord", "mirror_x_status_no_coord"])
+def test_a_coordinate_less_mirror_post_drafts_one_request(typology: str) -> None:
+    """The two mirror shapes: no coordinate, so the thread refuses as it always
+    did, and the same resolution carries one request draft the bot reads off the
+    second exit. Both halves travel together, which is what keeps an entry that
+    reads detections alone refusing exactly as before."""
+    resolution = _resolution(typology)
+
+    assert resolution.detections == []
+    assert resolution.reason == COORDS_MISSING
+    assert len(resolution.requests) == 1
 
 
 def test_the_bot_reads_the_same_authors_parent() -> None:

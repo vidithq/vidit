@@ -326,6 +326,40 @@ export default function ImportGuidePage() {
             </div>
           </div>
         </div>
+        <div className={TILE}>
+          <h3 className={TILE_TITLE}>No coordinate yet? It opens a request</h3>
+          <p className={`mt-1.5 mb-4 ${NOTE}`}>
+            Mirror someone else&apos;s footage with no coordinate of your own
+            and the bot opens a request instead of refusing: the post you linked
+            becomes the source, its own clip becomes the evidence, and the
+            request goes on the board for anyone to geolocate. The copy you
+            attached is used only when the linked post serves no clip of its
+            own. It works when the link is an X post or a public Telegram post,
+            and when the thread carries footage. Tag the same post again and
+            nothing is duplicated.
+          </p>
+          <div className="space-y-3">
+            <MockPost
+              {...MOCK_ANALYST}
+              media={{
+                kind: "video",
+                label: "your copy, kept only if the channel post serves none",
+              }}
+            >
+              {"Wild Division work in the 82nd Brigade sector\n"}
+              <MockPostLink>t.me/wilddivision82/351</MockPostLink>
+              {"\n"}
+              <MockPostLink>@viditbot</MockPostLink>
+            </MockPost>
+            <div className="pl-6">
+              <MockPost {...MOCK_BOT} replyingTo={MOCK_ANALYST.handle}>
+                {
+                  "✅ Request opened, no coordinate found · ref 5c02be71\nReview from your profile"
+                }
+              </MockPost>
+            </div>
+          </div>
+        </div>
         <p className={NOTE}>
           The bot answers in-thread with your detection&apos;s reference and
           with what to fix at review: an empty source, several coordinates, a

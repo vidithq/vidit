@@ -23,9 +23,13 @@ comes back. ``tweet_ingest.resolve_threads`` then reads that thread
 and ``detection.persist_detections`` writes what it read, owned by the account
 ``detection.linked_owner`` maps the tagged author's handle to, read once per
 mention (the bot never mints users: an unknown handle is ledgered
-``no_account`` and produces nothing). The mention then lands in the
-``bot_mentions`` ledger. What is left in this module is orchestration: the X
-API, the reply, the ledger, the budget and the webhook drain.
+``no_account`` and produces nothing). One branch answers off the same
+resolution: a thread carrying no coordinate but carrying footage and an X
+status or a Telegram post as its source opens a ``requested`` row through
+``detection.open_request`` instead of earning the ``coords_missing`` refusal.
+The mention then lands in the ``bot_mentions`` ledger. What is left in this
+module is orchestration: the X API, the reply, the ledger, the budget and the
+webhook drain.
 
 Both paths share that ledger, so a mention is processed (and billed) at most
 once whichever path sees it first; the poll's ``since_id`` derives from it,
@@ -36,7 +40,8 @@ Response model: the reply is the only gesture (a like at worker pickup,
 seconds before the reply, would signal nothing the reply does not, and it
 was the most expensive call of the mention). Replies open with the ✅/❌
 verdict. A detection the tag created, or the newer parse overwrote, earns the
-in-thread success reply (event ref + warnings); a linked author whose tag
+in-thread success reply (event ref + warnings), and so does a request the tag
+opened (:func:`compose_request_reply`); a linked author whose tag
 produced nothing gets a failure reply carrying the diagnosis, unless the
 tagged tweet is itself a reply to the bot (the loop guard: a courtesy answer
 to the bot's own reply auto-mentions the bot and must not earn another
@@ -68,8 +73,9 @@ from app.config import settings
 from app.models.bot_mention import BotMention, BotMentionOutcome
 from app.models.bot_webhook_event import BotWebhookEvent
 from app.models.user import User
-from app.services.detection import Outcome, linked_owner, persist_detections
+from app.services.detection import Outcome, linked_owner, open_request, persist_detections
 from app.services.tweet_ingest import (
+    COORDS_MISSING,
     POST_UNREADABLE,
     REFUSAL_MESSAGES,
     WARNING_MESSAGES,
@@ -210,6 +216,10 @@ class BotRunOutcome:
     mentions_seen: int = 0
     already_handled: int = 0
     events_created: int = 0
+    # Mentions answered by the request branch: a coordinate-less mirror post
+    # that opened a ``requested`` row. Counted apart from ``events_created``,
+    # which is detections.
+    requests_opened: int = 0
     # Mentions whose whole answer was overwriting an open detection: no row created,
     # at least one updated. Counted apart from ``events_created`` so a pass over
     # re-tagged posts does not read as an idle one.
@@ -253,6 +263,25 @@ def acquire_tagged_thread(
 _REPLY_REF_CHARS = 8
 
 
+def _reply(header: str, warnings: Iterable[str]) -> str:
+    """The ✅ reply's shape: the header, the ⚠ lines, the footer.
+
+    The body both success composers share, so the two verdicts cannot drift on
+    the glyph, the warning order or the footer. One ⚠ line per warning the pass
+    raised, worded by ``WARNING_MESSAGES`` and read in its order: the reply owns
+    the glyph and the length discipline, never the sentence, since the same
+    sentence reaches the archive's outcome email and the import panel. Which
+    warnings a row carries is the engine's and the write path's answer
+    (``detection.persist_detections``, ``detection.open_request``), not the
+    reply's.
+    """
+    raised = set(warnings)
+    lines = [header]
+    lines.extend(f"⚠ {message}" for code, message in WARNING_MESSAGES.items() if code in raised)
+    lines.append("Review from your profile")
+    return _within_reply_cap("\n".join(lines))
+
+
 def compose_reply(
     created_id: str, *, detections: int, warnings: Iterable[str], updated: bool = False
 ) -> str:
@@ -269,20 +298,30 @@ def compose_reply(
     The ref also makes each reply unique, so X's duplicate-content 403 cannot eat
     it.
 
-    One ⚠ line per warning the pass raised, worded by ``WARNING_MESSAGES`` and
-    read in its order. The reply owns the glyph and the length discipline, never
-    the sentence: the same sentence reaches the archive's outcome email and the
-    import panel, so the three surfaces cannot describe one code differently.
-    Which warnings a detection carries is the engine's and the write path's answer
-    (``detection.persist_detections``), not the reply's.
+    The body is :func:`_reply`, shared with :func:`compose_request_reply`; what
+    this composer owns is the header.
     """
     plural = "s" if detections > 1 else ""
     verb = "updated" if updated else "saved"
-    lines = [f"✅ {detections} detection{plural} {verb} · ref {created_id[:_REPLY_REF_CHARS]}"]
-    raised = set(warnings)
-    lines.extend(f"⚠ {message}" for code, message in WARNING_MESSAGES.items() if code in raised)
-    lines.append("Review from your profile")
-    return _within_reply_cap("\n".join(lines))
+    return _reply(
+        f"✅ {detections} detection{plural} {verb} · ref {created_id[:_REPLY_REF_CHARS]}", warnings
+    )
+
+
+def compose_request_reply(event_id: str, *, warnings: Iterable[str]) -> str:
+    """The in-thread reply for a mention that opened a request.
+
+    The ✅ twin of :func:`compose_reply`, for the thread that carried footage
+    and a source but no coordinate: the same :func:`_reply` body, and a header
+    naming a request rather than a detection, so the analyst is told what
+    actually landed and does not go looking for a coordinate the bot never read.
+
+    Same contract as every other reply: linkless, and unique per mention
+    through the event ref.
+    """
+    return _reply(
+        f"✅ Request opened, no coordinate found · ref {event_id[:_REPLY_REF_CHARS]}", warnings
+    )
 
 
 # Where an analyst goes when the bot has nothing to diagnose. A handle mention
@@ -398,22 +437,65 @@ async def _process_mention(
         # rather than raise into the pass's ``failed`` + Sentry capture, where
         # the analyst would get no answer and an operator a false outage.
         return "no_detection", 0, None, POST_UNREADABLE
+    # The bot is the one entry that reads the engine's second exit, so it is the
+    # one caller that asks for it.
+    resolution = resolve_threads([acquired.records], with_requests=True)
     if owner is None:
         # The engine runs here too, writing nothing: a mention from an unknown
         # handle whose post carries no coordinate ledgers ``no_detection``, so
         # ``no_account`` isolates the mentions where a link would actually have
-        # produced a detection.
-        resolution = resolve_threads([acquired.records])
-        if resolution.detections:
+        # produced a detection. A request draft counts the same way: linking the
+        # handle is what that tag was one step away from.
+        if resolution.detections or resolution.requests:
             return "no_account", 0, None, None
         return "no_detection", 0, None, resolution.reason
     assembled = await persist_detections(
         db,
         owner=owner,
-        resolution=resolve_threads([acquired.records]),
+        resolution=resolution,
         via="bot",
         fetch_media=fetch_cdn_media,
     )
+    if assembled.reason == COORDS_MISSING and resolution.requests:
+        # The request branch: no coordinate, but footage and a source the bot
+        # can name, so the tag opens a request instead of earning the refusal.
+        # A draft that writes nothing (no candidate footage fetched, the write
+        # raised) falls through to the failure reply below, which is the answer
+        # this mention has always had.
+        opened = await open_request(
+            db,
+            owner=owner,
+            draft=resolution.requests[0],
+            fetch_media=fetch_cdn_media,
+        )
+        if opened is not None and opened.created is not None:
+            request_reply_id: str | None = None
+            if reply_allowed:
+                # The request's reply is billed and budgeted exactly like a
+                # detection's, off the same ledger-seeded hourly and per-author
+                # caps: a branch that spent from a second allowance would put
+                # the account over the cap the ledger reads back.
+                request_reply_id = _post_reply_failsoft(
+                    mention,
+                    compose_request_reply(str(opened.created), warnings=opened.warnings),
+                    client=x_write_client,
+                )
+            else:
+                logger.warning(
+                    "Reply budget reached; request opened without reply for mention %s",
+                    mention.tweet_id,
+                )
+            return "requested", 0, request_reply_id, None
+        if opened is not None and opened.existing is not None:
+            # The analyst already holds a row for that post or that source, so
+            # the tag moved nothing. Silent, like every other dedup verdict.
+            return "skipped", 0, None, None
+        if opened is not None and opened.refusal is not None:
+            # The intake refused the footage (over the video size cap, or bytes
+            # nothing could read). Naming that is the whole point: "no
+            # coordinate in the post" would send the analyst looking for the
+            # wrong fix.
+            return "no_detection", 0, None, opened.refusal
     if assembled.reason is not None:
         return "no_detection", 0, None, assembled.reason
     if not assembled.created and not assembled.updated:
@@ -463,7 +545,8 @@ def _success_reply(assembled: Outcome) -> str:
 # reads as the reply's unexpected case. A tag that answers neither either wrote
 # a row (``created`` / ``updated``, both the ✅ reply) or deduplicated onto a row
 # it moved nothing on (``skipped``, which is not a failure to report), and an
-# unlinked author stays fully silent whatever the tweet yielded.
+# unlinked author stays fully silent whatever the tweet yielded. ``requested``
+# posts its own ✅ reply inside the pipeline, so it is not answered again here.
 _ANSWERED_VERDICTS = ("no_detection", "failed")
 
 
@@ -552,6 +635,8 @@ async def process_single_mention(
         outcome.replies_posted += 1
     if verdict == "updated":
         outcome.events_updated += 1
+    elif verdict == "requested":
+        outcome.requests_opened += 1
     elif verdict == "no_detection":
         outcome.no_detection += 1
     elif verdict == "no_account":

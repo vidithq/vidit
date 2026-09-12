@@ -66,7 +66,7 @@ flowchart LR
   persist --> f3
 ```
 
-`Detection` is the only shape travelling between [`resolve_threads`](../backend/app/services/tweet_ingest/resolve.py) and [`detection.persist_detections`](../backend/app/services/detection.py). Each region of the diagram has a section below: [the contract](#the-contract) is what the engine reads, the [grammar table](#grammar-table) pins it shape by shape, and the entries are [the bot](#the-bot), [the pasted-tweet import](#the-pasted-tweet-import) and [the archive backfill](#archive-formats). The analyst-facing projection is [`/import`](../frontend/src/app/import/page.tsx), one section per entry (`#bot`, `#paste`, `#archive`); `/bot` and `/archive` redirect into it.
+`Detection` is the shape travelling between [`resolve_threads`](../backend/app/services/tweet_ingest/resolve.py) and [`detection.persist_detections`](../backend/app/services/detection.py), and `RequestDraft` is the one other, read by [the bot](#the-bot) alone. Each region of the diagram has a section below: [the contract](#the-contract) is what the engine reads, the [grammar table](#grammar-table) pins it shape by shape, and the entries are [the bot](#the-bot), [the pasted-tweet import](#the-pasted-tweet-import) and [the archive backfill](#archive-formats). The analyst-facing projection is [`/import`](../frontend/src/app/import/page.tsx), one section per entry (`#bot`, `#paste`, `#archive`); `/bot` and `/archive` redirect into it.
 
 **Module layout.** [`tweet_ingest/`](../backend/app/services/tweet_ingest) splits on whether a module fetches: `records`, `extract`, `stitch` and `resolve` fetch nothing, and `urls` is the URL vocabulary they read, the one place a post URL is written back from an id. `syndication` is the X read, `chase/` holds one chaser per technology behind one dispatcher, `acquire` is the live acquisition, `archive` reads the export off disk, and `retry` is the schedule every fetch runs under. [`test_ingest_boundaries.py`](../backend/tests/test_ingest_boundaries.py) pins the direction: no pure module imports `syndication`, and only `acquire` imports `chase/`.
 
@@ -114,6 +114,10 @@ flowchart LR
 **In**: the threads the entry acquired. Never across authors, and one hop for a post with content of its own ([see what acquisition reads](#what-acquisition-reads)), so an analyst posts the coordinate and replies to themselves with the source link, and provenance anchors on the parent whichever of the two the entry was pointed at. The archive reads its threads from the export, which carries every reply edge inline. Acquisition runs [the chase](#the-chase), so resolution does no I/O.
 
 **Out**: one `Detection` per coordinate, or one refusal for the thread. `post_unreadable` (X served no body), `coords_missing` (no coordinate in the analyst's own text) and `coords_invalid` (a coordinate-shaped string outside the world) are all the engine tells apart.
+
+A coordinate-less thread is a refusal for every entry, and the refusal travels whatever else the resolution carries. Beside it the engine emits a `RequestDraft` when the caller asks for it and the thread carries footage and names an X status or a Telegram post, read off the same source, media, title and date derivations the detections use. Only [the bot](#the-bot) asks. The draft stores the source in one canonical spelling, since the dedup that keeps a re-tag off a second row compares the stored URL as a string.
+
+A fourth code, `footage_unusable`, is worded beside the three but raised by the write path: a drafted request whose footage the evidence intake refused, for size or for bytes nothing could read. It reaches the analyst as the bot's ❌ reply.
 
 Each derived field fills on a signal in that text, or stays empty:
 
@@ -237,6 +241,8 @@ A warning is not a refusal: the detection lands either way, and review answers i
 
 The footage and date warnings are dropped on a detection already carrying `source_ambiguous` or `source_missing`, since an empty source slot already says why there is neither footage nor date. Only created and updated rows count, so a pass that wrote nothing reports no warnings.
 
+A request the bot opened carries three of these codes, read off the same two halves a detection's are: `source_fetch_failed`, when the chase for the source answered with nothing to take; `source_date_unknown`, when it served no date; and `duplicate_media`, raised by the same `_write_warnings` pass the detections run, over the footage the request stored. The remaining codes cannot apply, since a request is born with a source and the footage that fills its source slot. Each reads the same sentence from the same table, in the bot's ✅ reply.
+
 The bot names a refusal back in its [reply](#the-bot), and so does the paste in its response ([`api.md`](api.md#post-eventsimport-from-tweet)); the archive reports counts in its [outcome email](#archive-import-worker), since an export refusing several threads for different reasons would be picking a winner. Every code has exactly one wording, in `resolve.WARNING_MESSAGES` and `REFUSAL_MESSAGES`, and every surface reads it; a code added without a sentence fails `test_engine_copy`. Branch on the code, which is stable, not on the sentence.
 
 ## Grammar table
@@ -246,6 +252,8 @@ Each row is one input shape and the outcome the engine produces for it. The thre
 | Input shape | Outcome |
 |---|---|
 | No coordinate anywhere (`no_coord`) | `0`, no coordinate (`coords_missing`) |
+| No coordinate, an own video and a sole Telegram link (`mirror_telegram_no_coord`) | `0`, no coordinate (`coords_missing`); the bot opens 1 request, source is the chased t.me post, `n/a` for the paste and the archive |
+| No coordinate, no media and a sole third-party X status link (`mirror_x_status_no_coord`) | `0`, no coordinate (`coords_missing`); the bot opens 1 request, source is the chased status and its video is the footage, `n/a` for the paste and the archive |
 | Coordinate inside prose, no link and no quote (`referenceless_annotation`) | 1 detection, source empty |
 | Coordinate inside prose behind an `@mention` prefix (`mention_prefix`) | 1 detection, source empty |
 | Coordinate alone on its line, or beside its maps link, no other link and no quote | 1 detection, source empty, title empty |
@@ -298,10 +306,11 @@ flowchart LR
 
   subgraph legend [Legend]
     direction LR
-    l1["`one delivery, or one gesture`"]:::spec
+    l1["`one delivery, one write only the bot makes, or one gesture`"]:::spec
     l2["`shared with the other entries`"]:::shared
     l3["`the one pipeline both deliveries meet in`"]:::core
-    l1 ~~~ l2 ~~~ l3
+    l4[("`what the bot writes`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
   end
 
   subgraph deliveries [Two deliveries, one pipeline]
@@ -317,18 +326,27 @@ flowchart LR
   ledger[("`**bot_mentions**
   the idempotency ledger: a mention is processed, billed and answered at most once`")]:::store
   engine["`**resolve_threads, persist_detections**`"]:::shared
-  reply["`**compose_reply**
+  request["`**open_request**
+  events.create_request, a requested row over the thread's footage`"]:::spec
+  reply["`**compose_reply, compose_request_reply**
   one in-thread reply, linkless and unique, capped per trailing hour in total and per author`"]:::spec
 
   wh --> one
   poll --> one
   one --> ledger
   one --> engine --> reply
+  engine -- "no coordinate, footage, an X status or a t.me post" --> request --> reply
 ```
 
 The webhook is signature-verified ([`/webhooks/x`](api.md#webhooks)) and queues into [`bot_webhook_events`](data-model.md#bot_webhook_events), drained by the always-on [import worker](#archive-import-worker); the poll ([`run_bot.py`](../backend/scripts/run_bot.py)) takes the paid mentions read (see [`x_api.py`](../backend/app/services/x_api.py)).
 
-The [`bot_mentions`](data-model.md#bot_mentions) ledger is written whatever the outcome, so whichever path sees a mention first records it and the other counts it as handled. A `failed` row retries only when an operator deletes it. A mention from a handle with no [linked account](#the-contract) is ledgered `no_account` and produces nothing: no user row, no detection, no reply; the tag itself is the consent for sync. When syndication refuses the tagged post outright, because it is deleted, protected, age-restricted or withheld, the mention lands `no_detection` and the failure reply names the restriction.
+The [`bot_mentions`](data-model.md#bot_mentions) ledger is written whatever the outcome, so whichever path sees a mention first records it and the other counts it as handled. A `failed` row retries only when an operator deletes it. A mention from a handle with no [linked account](#the-contract) is ledgered `no_account` and produces nothing: no user row, no detection, no reply; the tag itself is the consent for sync. A mention that opened a request is ledgered `requested`, and one that landed on a row the analyst already holds is ledgered `skipped`. When syndication refuses the tagged post outright, because it is deleted, protected, age-restricted or withheld, the mention lands `no_detection` and the failure reply names the restriction.
+
+**A coordinate-less mirror post opens a request.** An analyst who re-uploads someone else's footage and links the original has posted everything a request needs except the geolocation, which is what a request asks for. The bot reads that off the same resolution the detections come from ([`resolve.RequestDraft`](../backend/app/services/tweet_ingest/resolve.py)) and writes it through [`detection.open_request`](../backend/app/services/detection.py), which calls the same `events.create_request` a person's request goes through: the row is owned by and credited to the analyst, stamped `requested_at`, carrying the chased original as its `source_url` and the thread's footage as its one `role=source` media, with no coordinate. Six conditions hold together, and any one of them failing leaves the mention the refusal it has always earned: the tagged post carries a usable id, the chase for the source did not fail transiently, the source resolves to an X status or a public `t.me` post, no quoted post carries a coordinate, the thread carries footage, and the title is not empty. A coordinate anywhere in the thread, own post or quoted post, is a geolocation, never a request. The row also carries the [provenance](data-model.md#events) a detection carries, `detected_via` reading `bot`. What a re-tag does then depends on what it carries: a coordinate-less re-tag, of the same post or of a repost of it, lands on the row and moves nothing, so the bot stays silent; a tag carrying the coordinate the analyst has since worked out is a geolocation, so it takes the detections' path and lands a `detected` row beside the open request, which stays its owner's to withdraw. A soft-deleted row never matches: a takedown must not fence the owner off from mirroring that footage again.
+
+The footage is the draft's ordered candidates, the source's media first and the analyst's own video behind it, and the first that fetches fills the slot. A source whose chase could not be read at all is refused rather than drafted, so the next tag retries it; a source whose chase answered with nothing to take is drafted and the reply carries `source_fetch_failed`. A clip the evidence intake refuses earns the ❌ reply naming `footage_unusable`, never the one naming a missing coordinate.
+
+Only the bot opens requests. The paste and the archive never ask the engine for the second exit, so a coordinate-less post is a plain refusal on both and an export never holds a draft it would throw away.
 
 **Response model.** The in-thread reply is the only gesture the bot makes: no like, no retweet. Replies are capped per trailing hour, in total and per author, and a reply weighs at most 280 characters in X's units (`bot.py`). The caps default to 40 per hour and 10 per author, and `BOT_MAX_REPLIES_PER_HOUR` and `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR` set them per deployment, so you raise them for a traffic spike without a code change. The caps are seeded from the ledger, so they hold across drain passes and worker restarts. Past a cap the detection still lands, since detecting is unbilled, and only the reply is skipped and logged.
 
@@ -336,6 +354,7 @@ The [`bot_mentions`](data-model.md#bot_mentions) ledger is written whatever the 
 |---|---|---|
 | Detections created | In-thread reply, opening ✅: the detection count, a bare event ref, one ⚠ line per [warning](#warnings), in one fixed order | Always (budget permitting) |
 | No detection created, an open one overwritten | The same ✅ reply, reading *updated* rather than *saved* and naming the detection it landed on | Always (budget permitting). A tag on a post the analyst edited since importing it is an answered tag, ledgered `updated` |
+| No coordinate, on a footage-carrying thread whose source is an X status or a Telegram post | The same ✅ reply, naming a request rather than a detection | Always (budget permitting), when the author is linked and holds no live row for that post or that source |
 | Nothing created | The same shape with an ❌ header and one ⚠ line naming the [refusal](#warnings); no recited lesson and no fix recipe (the guide lives behind the bio link) | Author linked AND the tagged tweet is not itself a reply to the bot (the loop guard: a courtesy answer to the bot's own reply auto-mentions it and must not earn another reply, forever) |
 | Nothing created because the write path raised on every detection | The same ❌ reply, its ⚠ line stating that the case is unexpected and naming the admin contact | The same two conditions |
 | Anything else | Nothing | A tag that matched a row and moved nothing on it (`skipped`), plus `no_account` and every unlinked author, stay fully silent |
