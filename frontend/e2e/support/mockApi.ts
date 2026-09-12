@@ -9,6 +9,9 @@ import {
   MEDIA_ORIGIN,
 } from "./environment";
 import {
+  COLLECTED_EVENT,
+  COLLECTION,
+  COLLECTION_ID,
   CONFLICTS,
   CURATED_TAGS,
   EMPTY_BASEMAP_STYLE,
@@ -48,6 +51,15 @@ const ROUTES: [RegExp, unknown][] = [
   [/^\/tags$/, CURATED_TAGS],
   [/^\/conflicts$/, CONFLICTS],
   [new RegExp(`^/events/${EVENT_ID}$`), EVENT],
+  // The collection page: its header, then the one page of items the map and
+  // the list both read.
+  [new RegExp(`^/collections/${COLLECTION_ID}$`), COLLECTION],
+  [new RegExp(`^/collections/${COLLECTION_ID}/events$`), [COLLECTED_EVENT]],
+  // The profile's Collections grid, which the signed-in analyst owns.
+  [
+    new RegExp(`^/users/${SIGNED_IN_USER.username}/collections$`),
+    { items: [COLLECTION], total: 1, page: 1, per_page: 6 },
+  ],
 ];
 
 /** The prefix `lib/api.ts` puts in front of every path it requests. */

@@ -35,6 +35,7 @@ vi.mock("@/lib/users", async (importOriginal) => ({
 }));
 
 import { buttonClasses } from "@/components/ui/Button";
+import type { CollectionPage } from "@/lib/collections";
 import type { PublicProfile, UserStats } from "@/lib/users";
 import type { EventListItem, MapPoint } from "@/types";
 
@@ -90,6 +91,24 @@ const STATS: UserStats = {
 // [id, lat, lng, event_date, added_date, detected]
 const POINT: MapPoint = ["e1", 48.5, 37.8, "2026-06-01", "2026-06-02", 0];
 
+const COLLECTIONS: CollectionPage = {
+  items: [
+    {
+      id: "c1",
+      owner: { id: "u1", username: "ana", avatar_url: null },
+      title: "Kupiansk rail corridor",
+      cover_url: null,
+      event_count: 2,
+      first_date: "2026-06-01",
+      last_date: "2026-06-02",
+      created_at: "2026-06-03T09:00:00Z",
+    },
+  ],
+  total: 1,
+  page: 1,
+  per_page: 6,
+};
+
 /**
  * The blocks a reader meets, each named by the one piece of text that block
  * alone puts on the page. Pinned by document position rather than by test
@@ -98,6 +117,7 @@ const POINT: MapPoint = ["e1", 48.5, 37.8, "2026-06-01", "2026-06-02", 0];
  */
 const BLOCKS: Record<string, string> = {
   "Recent submissions": "recent submissions",
+  Collections: "collections",
   Insights: "insights",
   Coverage: "coverage",
   // Edit mode only: reading the links is the header action cluster, so this
@@ -139,6 +159,9 @@ describe("public profile order", () => {
       if (path?.startsWith("/events/points")) {
         return { data: [POINT], error: null, loading: false, refetch: vi.fn() };
       }
+      if (path?.startsWith("/users/ana/collections")) {
+        return { data: COLLECTIONS, error: null, loading: false, refetch: vi.fn() };
+      }
       return { data: PROFILE, error: null, loading: false, refetch: vi.fn() };
     });
     useAuth.mockReturnValue({
@@ -160,6 +183,9 @@ describe("public profile order", () => {
     expect(blockOrder(container)).toEqual([
       "coverage",
       "insights",
+      // The analyst's own grouping of the work, between the card that
+      // describes all of it and the list that just grows.
+      "collections",
       "recent submissions",
     ]);
     // The links are buttons in the header here, so the section that titles
@@ -275,6 +301,7 @@ describe("public profile order", () => {
       "detections queue",
       "coverage",
       "insights",
+      "collections",
       "recent submissions",
       "account controls",
     ]);
@@ -301,6 +328,14 @@ describe("public profile identity", () => {
       }
       if (path?.startsWith("/events/points")) {
         return { data: [], error: null, loading: false, refetch: vi.fn() };
+      }
+      if (path?.startsWith("/users/ana/collections")) {
+        return {
+          data: { ...COLLECTIONS, items: [], total: 0 },
+          error: null,
+          loading: false,
+          refetch: vi.fn(),
+        };
       }
       return { data: profile, error: null, loading: false, refetch: vi.fn() };
     });
@@ -391,6 +426,9 @@ describe("public profile edit mode", () => {
       }
       if (path?.startsWith("/events/points")) {
         return { data: [POINT], error: null, loading: false, refetch: vi.fn() };
+      }
+      if (path?.startsWith("/users/ana/collections")) {
+        return { data: COLLECTIONS, error: null, loading: false, refetch: vi.fn() };
       }
       return { data: PROFILE, error: null, loading: false, refetch: vi.fn() };
     });

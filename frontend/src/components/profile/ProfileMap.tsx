@@ -1,29 +1,22 @@
 "use client";
 
 import { useMemo } from "react";
-import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
 
 import { filterPointsByStatus, type MapPoint } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { AUTHOR_FILTER_RE } from "@/lib/search";
-import { hasFiniteCoords, pointsBounds } from "@/components/map/bounds";
+import { hasFiniteCoords } from "@/components/map/bounds";
+import { CoverageMap } from "@/components/map/CoverageMap";
 import { WORLD_BOUNDS, toBboxParam } from "@/lib/viewport";
-import { Card } from "@/components/ui/Card";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-
-// Same dynamic import as the map page and the event detail page: MapLibre
-// touches `window` at module scope, so it never server-renders.
-const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
 /**
  * The analyst's own geolocations on a map, framed on their work.
  *
  * One fetch of `/events/points?author=…`, the author filter the map page
  * already uses, with an explicit world `bbox` so the request asks for the
- * whole body of work rather than a viewport slice. The camera is fitted to
- * the returned points (`fitBounds` on the shared `<Map>`), so a profile
- * opens on the region the analyst covers instead of a default camera.
+ * whole body of work rather than a viewport slice. The card itself is the
+ * shared `<CoverageMap>`, which a collection page opens with too, so the two
+ * maps cannot drift into two boxes.
  *
  * Both live statuses are mapped: `geolocated` submissions and the `detected`
  * machine detections behind them, which the shared `<Map>` already paints in its
@@ -44,7 +37,6 @@ const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
  * `ProfileInsights`.
  */
 export function ProfileMap({ username }: { username: string }) {
-  const router = useRouter();
   // The charset gate the map page applies before committing an author value:
   // an ineligible one 422s server-side. A null path skips the fetch entirely
   // (`useApiResource`), so an ineligible handle makes no request.
@@ -60,35 +52,10 @@ export function ProfileMap({ username }: { username: string }) {
     () => filterPointsByStatus(points, ["detected"]).length,
     [points]
   );
-  const bounds = useMemo(() => pointsBounds(points), [points]);
-
-  if (!bounds) return null;
 
   const geolocatedCount = points.length - detectedCount;
   const counts = [`${geolocatedCount} geolocated`];
   if (detectedCount > 0) counts.push(`${detectedCount} detected`);
 
-  return (
-    <Card as="section">
-      <div className="flex items-center justify-between gap-3">
-        <SectionEyebrow title="Coverage" margin="none" />
-        <span className="text-xs text-neutral-500">
-          {counts.join(", ")} on the map
-        </span>
-      </div>
-
-      {/* Same embedded-map shape as the event detail page: a fixed height with
-          the rounded corners clipped on the map alone. Taller from `sm` up, so
-          a phone keeps the map under a thumb's reach and a laptop gets a real
-          canvas. */}
-      <div className="h-64 sm:h-80 overflow-hidden rounded-lg border border-neutral-700">
-        <Map
-          points={points}
-          fitBounds={bounds}
-          onPointClick={(id) => router.push(`/events/${id}`)}
-          embedded
-        />
-      </div>
-    </Card>
-  );
+  return <CoverageMap points={points} caption={`${counts.join(", ")} on the map`} />;
 }

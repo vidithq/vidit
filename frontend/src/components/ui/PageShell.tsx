@@ -14,6 +14,7 @@ import { PageCenter, PageFrame } from "./PageFrame";
 export function PageShell({
   title,
   subtitle,
+  banner,
   back = false,
   backFallback,
   actions,
@@ -21,6 +22,11 @@ export function PageShell({
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
+  /** A full-width band over the heading, for a page whose subject carries a
+   *  picture of its own (a collection's cover). It reads before the title
+   *  because it is the thing the title names, and it lives in the header so
+   *  the page's first section still starts the body. */
+  banner?: ReactNode;
   back?: boolean;
   /** Where Back lands when the session carries nothing to return to, i.e. the
    *  reader arrived straight from a search result. Forwards to `smartBack`'s
@@ -83,6 +89,10 @@ export function PageShell({
             It carries no visibility class of its own, the slot living inside a
             `sm:hidden` chip. */}
         {back && phoneBackSlot && createPortal(renderBack(""), phoneBackSlot)}
+        {/* Above the heading row, inside the header: the band belongs to the
+            page's subject rather than to its body, and the gap is the header's
+            own rather than the body stack's `space-y-6`. */}
+        {banner && <div className="mb-4">{banner}</div>}
         {/* The action cluster drops under the title once the two can't share a
             row (a phone-width viewport with a long title): `basis-56` is the
             14rem the title asks for, which is what flex wrapping measures, so

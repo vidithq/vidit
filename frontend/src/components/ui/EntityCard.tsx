@@ -39,15 +39,24 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 // covered (there is nothing to cover).
 export function MediaThumb({
   media,
+  src,
   className,
   isGraphic = false,
 }: {
   media?: Media;
+  /** A stored image that is not an event's media row: a collection's cover,
+   *  which is either the owner's upload or the server's pick of one item's
+   *  media. It wins over `media`, and it is what makes the "no media" box the
+   *  one placeholder on the site rather than a second one drawn beside it. */
+  src?: string;
   className?: string;
   /** The event's `is_graphic` flag. */
   isGraphic?: boolean;
 }) {
-  const picture = media ? (
+  const picture = src ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={src} alt="" className="w-full h-full object-cover" />
+  ) : media ? (
     media.media_type === "image" ? (
       // eslint-disable-next-line @next/next/no-img-element
       <img
@@ -110,8 +119,16 @@ interface EntityCardBaseProps {
   media?: Media;
   /** The event's `is_graphic` flag, forwarded to the card's media slot. */
   isGraphic?: boolean;
-  /** Always shown: every card carries its author for a uniform byline. */
-  author: { username: string };
+  /** The card's byline. Shown on every catalogue surface, where a card stands
+   *  beside other analysts' work and the handle is what tells them apart.
+   *  Omitted on a surface that is one analyst's own set and names them once in
+   *  its header (a collection's item list), where repeating the same handle on
+   *  every row says nothing about any of them. */
+  author?: { username: string };
+  /** A control that acts on this row rather than opening it (taking an item
+   *  off a collection). It renders above the stretched link, in the badge's
+   *  column, so it takes its own click; a row with none stays one click. */
+  action?: ReactNode;
   date?: string;
   coords?: { lat: number; lng: number } | null;
   /** ``url`` is null on a sourceless machine detection; `SourceLabel` renders the
@@ -162,6 +179,7 @@ export function EntityCard({
   media,
   isGraphic = false,
   author,
+  action,
   date,
   coords,
   source,
@@ -189,13 +207,17 @@ export function EntityCard({
         {stretched}
         {badge && <div className="absolute top-3 right-3 z-20">{badge}</div>}
         <div className="relative z-20 flex items-center gap-2.5 text-xs w-fit">
-          <Link href={`/profile/${author.username}`}>
-            <Avatar username={author.username} size="size-7" />
-          </Link>
+          {author && (
+            <Link href={`/profile/${author.username}`}>
+              <Avatar username={author.username} size="size-7" />
+            </Link>
+          )}
           <div className="flex flex-col leading-tight">
-            <span className="text-[11px] text-neutral-500">
-              by <AuthorLink username={author.username} />
-            </span>
+            {author && (
+              <span className="text-[11px] text-neutral-500">
+                by <AuthorLink username={author.username} />
+              </span>
+            )}
             <span className="text-[11px] text-neutral-500 inline-flex items-center gap-2">
               {date && formatDate(date)}
               {coords && <CoordsMeta coords={coords} />}
@@ -240,9 +262,11 @@ export function EntityCard({
             {title}
           </h3>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500">
-            <span>
-              by <AuthorLink username={author.username} />
-            </span>
+            {author && (
+              <span>
+                by <AuthorLink username={author.username} />
+              </span>
+            )}
             {date && <span>{formatDate(date)}</span>}
             {coords && <CoordsMeta coords={coords} />}
             {source && (
@@ -259,7 +283,15 @@ export function EntityCard({
             </div>
           )}
         </div>
-        {badge && <div className="shrink-0">{badge}</div>}
+        {(badge || action) && (
+          // The badge is inert and sits under the stretched link; the action is
+          // a control, so it is lifted above it (`relative z-20`, the lift the
+          // author link takes) and takes its own click.
+          <div className="shrink-0 flex items-start gap-1.5 sm:flex-col sm:items-end">
+            {badge}
+            {action && <div className="relative z-20">{action}</div>}
+          </div>
+        )}
       </div>
     </div>
   );

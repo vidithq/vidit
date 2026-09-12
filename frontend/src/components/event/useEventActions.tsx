@@ -2,13 +2,15 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { CircleX, History, MapPin, Pencil } from "lucide-react";
+import { CircleX, History, Layers, MapPin, Pencil } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { eventHistoryHref, hasPublishedRecord } from "@/lib/events";
+import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { ACCENT_SURFACE } from "@/components/ui/styles";
 import { closeActionLabel, CloseEventForm } from "@/components/event/CloseEventForm";
 import ShareButtons from "@/components/event/ShareButtons";
 import { useReportEvent } from "@/components/event/useReportEvent";
@@ -33,7 +35,9 @@ import type { EventDetail } from "@/types";
  * 2. **The flow action**, at most one, filled: what this surface exists to move
  *    forward. Only an open request carries one (geolocate it).
  * 3. **Owner management**: the controls only the author holds, as icon buttons
- *    in the row like every other control in it. The event page carries editing
+ *    in the row like every other control in it. The event page carries shelving
+ *    the row on one of the author's own collections, which writes no version
+ *    and changes nothing a reader sees on the record. The event page carries editing
  *    a published geolocation, which files a version rather than overwriting the
  *    record, as a pencil; both detail pages carry closing the row, which is how
  *    an author takes their own work back. Nothing here destroys a row: closing
@@ -72,21 +76,23 @@ const TIERS: Record<
   ActionSurface,
   {
     flow: boolean;
+    collect: boolean;
     saveVersion: boolean;
     close: boolean;
     history: boolean;
     utilities: boolean;
   }
 > = {
-  event:   { flow: false, saveVersion: true,  close: true,  history: true,  utilities: true },
-  request: { flow: true,  saveVersion: false, close: true,  history: false, utilities: true },
-  panel:   { flow: false, saveVersion: false, close: false, history: false, utilities: false },
-  edit:    { flow: false, saveVersion: false, close: false, history: false, utilities: false },
+  event:   { flow: false, collect: true,  saveVersion: true,  close: true,  history: true,  utilities: true },
+  request: { flow: true,  collect: false, saveVersion: false, close: true,  history: false, utilities: true },
+  panel:   { flow: false, collect: false, saveVersion: false, close: false, history: false, utilities: false },
+  edit:    { flow: false, collect: false, saveVersion: false, close: false, history: false, utilities: false },
 };
 
 // Ties the menu entry to the panel it opens two levels down the tree, which
 // `aria-controls` needs since the two are not DOM siblings.
 const CLOSE_FORM_ID = "close-request-form";
+const COLLECT_PANEL_ID = "add-to-collection-panel";
 
 export interface EventActionsOptions {
   /** The row to act on. Null while it loads: both nodes come back null. */
@@ -115,6 +121,8 @@ export function useEventActions({
   const report = useReportEvent(event?.id ?? "");
   // Whether the inline close panel is open.
   const [closing, setClosing] = useState(false);
+  // Whether the add-to-collection panel is open.
+  const [collecting, setCollecting] = useState(false);
 
   // Same leak the report form had: this hook survives a client navigation from
   // one row to the next, so per-event state has to follow the row rather than
@@ -122,6 +130,7 @@ export function useEventActions({
   // panel already open.
   useEffect(() => {
     setClosing(false);
+    setCollecting(false);
   }, [event?.id]);
 
   if (!event) return { actions: null, panels: null };
@@ -141,13 +150,27 @@ export function useEventActions({
   // destroyed. `closed` is terminal, so the verb disappears once taken.
   const canClose = isAuthor && tiers.close && event.status !== "closed";
   const closeLabel = closeActionLabel(event.status);
+  // Shelving the row on one of the owner's collections. The two worked
+  // statuses only, the same set a collection may hold
+  // (`services/event_filters.collectable_events`): a request is an ask rather
+  // than an answer and a closed row is one its owner took back, so neither
+  // belongs on a curated shelf and the control is absent rather than offered
+  // and refused.
+  const canCollect =
+    isAuthor &&
+    tiers.collect &&
+    (event.status === "geolocated" || event.status === "detected");
 
   // A surface whose every tier is off, or off for this row, gets nothing rather
   // than an empty row: the wrapper is itself an item in the host's own cluster,
   // so an empty one prints a gap beside the controls the host adds of its own
   // (the edit form's queue position, Skip and Close).
   const rowIsEmpty =
-    !tiers.utilities && !(tiers.flow && isOpenRequest) && !canSaveVersion && !canClose;
+    !tiers.utilities &&
+    !(tiers.flow && isOpenRequest) &&
+    !canCollect &&
+    !canSaveVersion &&
+    !canClose;
 
   return {
     // `flex-wrap` plus `justify-end`: the row is wider than a phone, so it
@@ -163,6 +186,25 @@ export function useEventActions({
             <MapPin size={14} />
             Geolocate
           </Link>
+        )}
+        {canCollect && (
+          <Button
+            icon
+            variant="ghost"
+            onClick={() => setCollecting((open) => !open)}
+            aria-controls={COLLECT_PANEL_ID}
+            aria-expanded={collecting}
+            aria-label="Add to collection"
+            title="Add to collection"
+            // The open trigger wears the active-row paint, so the reader can
+            // tell which control the panel under the header belongs to. It is
+            // a toggle rather than a one-way open: the panel writes on every
+            // click inside it, so there is nothing to cancel and the trigger
+            // itself closes it.
+            className={collecting ? ACCENT_SURFACE : ""}
+          >
+            <Layers size={14} />
+          </Button>
         )}
         {canSaveVersion && (
           <Link
@@ -234,6 +276,14 @@ export function useEventActions({
     // forms in a column, never two forms sharing a slot.
     panels: (
       <>
+        {canCollect && collecting && (
+          <div id={COLLECT_PANEL_ID}>
+            <Card as="section">
+              <SectionEyebrow title="Add to collection" margin="none" />
+              <AddToCollectionPanel eventId={event.id} />
+            </Card>
+          </div>
+        )}
         {closing && (
           // The `id` sits on a wrapper, not the Card, so `aria-controls` on a
           // trigger that is not a DOM sibling still resolves (same shape the
