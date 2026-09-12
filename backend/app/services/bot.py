@@ -263,6 +263,25 @@ def acquire_tagged_thread(
 _REPLY_REF_CHARS = 8
 
 
+def _reply(header: str, warnings: Iterable[str]) -> str:
+    """The ✅ reply's shape: the header, the ⚠ lines, the footer.
+
+    The body both success composers share, so the two verdicts cannot drift on
+    the glyph, the warning order or the footer. One ⚠ line per warning the pass
+    raised, worded by ``WARNING_MESSAGES`` and read in its order: the reply owns
+    the glyph and the length discipline, never the sentence, since the same
+    sentence reaches the archive's outcome email and the import panel. Which
+    warnings a row carries is the engine's and the write path's answer
+    (``detection.persist_detections``, ``detection.open_request``), not the
+    reply's.
+    """
+    raised = set(warnings)
+    lines = [header]
+    lines.extend(f"⚠ {message}" for code, message in WARNING_MESSAGES.items() if code in raised)
+    lines.append("Review from your profile")
+    return _within_reply_cap("\n".join(lines))
+
+
 def compose_reply(
     created_id: str, *, detections: int, warnings: Iterable[str], updated: bool = False
 ) -> str:
@@ -279,39 +298,30 @@ def compose_reply(
     The ref also makes each reply unique, so X's duplicate-content 403 cannot eat
     it.
 
-    One ⚠ line per warning the pass raised, worded by ``WARNING_MESSAGES`` and
-    read in its order. The reply owns the glyph and the length discipline, never
-    the sentence: the same sentence reaches the archive's outcome email and the
-    import panel, so the three surfaces cannot describe one code differently.
-    Which warnings a detection carries is the engine's and the write path's answer
-    (``detection.persist_detections``), not the reply's.
+    The body is :func:`_reply`, shared with :func:`compose_request_reply`; what
+    this composer owns is the header.
     """
     plural = "s" if detections > 1 else ""
     verb = "updated" if updated else "saved"
-    lines = [f"✅ {detections} detection{plural} {verb} · ref {created_id[:_REPLY_REF_CHARS]}"]
-    raised = set(warnings)
-    lines.extend(f"⚠ {message}" for code, message in WARNING_MESSAGES.items() if code in raised)
-    lines.append("Review from your profile")
-    return _within_reply_cap("\n".join(lines))
+    return _reply(
+        f"✅ {detections} detection{plural} {verb} · ref {created_id[:_REPLY_REF_CHARS]}", warnings
+    )
 
 
 def compose_request_reply(event_id: str, *, warnings: Iterable[str]) -> str:
     """The in-thread reply for a mention that opened a request.
 
     The ✅ twin of :func:`compose_reply`, for the thread that carried footage
-    and a source but no coordinate: the same header glyph, the same shortened
-    ref, the same ⚠ lines from ``WARNING_MESSAGES``, the same footer. The
-    header names a request rather than a detection, so the analyst is told what
+    and a source but no coordinate: the same :func:`_reply` body, and a header
+    naming a request rather than a detection, so the analyst is told what
     actually landed and does not go looking for a coordinate the bot never read.
 
     Same contract as every other reply: linkless, and unique per mention
     through the event ref.
     """
-    lines = [f"✅ Request opened, no coordinate found · ref {event_id[:_REPLY_REF_CHARS]}"]
-    raised = set(warnings)
-    lines.extend(f"⚠ {message}" for code, message in WARNING_MESSAGES.items() if code in raised)
-    lines.append("Review from your profile")
-    return _within_reply_cap("\n".join(lines))
+    return _reply(
+        f"✅ Request opened, no coordinate found · ref {event_id[:_REPLY_REF_CHARS]}", warnings
+    )
 
 
 # Where an analyst goes when the bot has nothing to diagnose. A handle mention
@@ -427,7 +437,9 @@ async def _process_mention(
         # rather than raise into the pass's ``failed`` + Sentry capture, where
         # the analyst would get no answer and an operator a false outage.
         return "no_detection", 0, None, POST_UNREADABLE
-    resolution = resolve_threads([acquired.records])
+    # The bot is the one entry that reads the engine's second exit, so it is the
+    # one caller that asks for it.
+    resolution = resolve_threads([acquired.records], with_requests=True)
     if owner is None:
         # The engine runs here too, writing nothing: a mention from an unknown
         # handle whose post carries no coordinate ledgers ``no_detection``, so
@@ -447,9 +459,9 @@ async def _process_mention(
     if assembled.reason == COORDS_MISSING and resolution.requests:
         # The request branch: no coordinate, but footage and a source the bot
         # can name, so the tag opens a request instead of earning the refusal.
-        # A draft that writes nothing (the footage would not fetch, the intake
-        # refused it) falls through to the failure reply below, which is the
-        # answer this mention has always had.
+        # A draft that writes nothing (no candidate footage fetched, the write
+        # raised) falls through to the failure reply below, which is the answer
+        # this mention has always had.
         opened = await open_request(
             db,
             owner=owner,
@@ -459,6 +471,10 @@ async def _process_mention(
         if opened is not None and opened.created is not None:
             request_reply_id: str | None = None
             if reply_allowed:
+                # The request's reply is billed and budgeted exactly like a
+                # detection's, off the same ledger-seeded hourly and per-author
+                # caps: a branch that spent from a second allowance would put
+                # the account over the cap the ledger reads back.
                 request_reply_id = _post_reply_failsoft(
                     mention,
                     compose_request_reply(str(opened.created), warnings=opened.warnings),
@@ -474,6 +490,12 @@ async def _process_mention(
             # The analyst already holds a row for that post or that source, so
             # the tag moved nothing. Silent, like every other dedup verdict.
             return "skipped", 0, None, None
+        if opened is not None and opened.refusal is not None:
+            # The intake refused the footage (over the video size cap, or bytes
+            # nothing could read). Naming that is the whole point: "no
+            # coordinate in the post" would send the analyst looking for the
+            # wrong fix.
+            return "no_detection", 0, None, opened.refusal
     if assembled.reason is not None:
         return "no_detection", 0, None, assembled.reason
     if not assembled.created and not assembled.updated:

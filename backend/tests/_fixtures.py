@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import settings
+from app.services.tweet_ingest.records import TweetRecord
 
 
 def stored_path(key: str) -> Path:
@@ -87,6 +88,23 @@ TINY_JPEG: bytes = bytes.fromhex(_TINY_JPEG_HEX)
 # through, ``validate_bytes`` only size-checks video/mp4), so any short byte
 # string round-trips as a video Media row.
 TINY_MP4: bytes = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isomFAKE"
+
+
+def tweet_record(**kw: Any) -> TweetRecord:
+    """A ``TweetRecord`` with the fields a test does not care about filled in.
+
+    The one builder for the engine's pure tests: every one of them names a post
+    id, a handle, a text and a date to construct a record at all, and almost
+    none of them is what the test is about. Defaults are overridden by keyword.
+    """
+    base: dict[str, Any] = {
+        "tweet_id": "1",
+        "handle": "analyst",
+        "text": "",
+        "created_at": "2025-11-12T14:33:00Z",
+    }
+    base.update(kw)
+    return TweetRecord(**base)
 
 
 def tiny_jpeg(filename: str = "tiny.jpg") -> tuple[str, bytes, str]:

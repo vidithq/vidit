@@ -137,6 +137,7 @@ def _archive_quoted(
         text=_tweet_text(src),
         created_at=_to_iso(created_at) if isinstance(created_at, str) else "",
         media=_archive_media(src, quoted_id),
+        external_sources=[SourceLink(url=u, shortlink=t) for u, t in extract_source_links(src)],
     )
 
 

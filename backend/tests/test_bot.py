@@ -36,6 +36,7 @@ from app.services.bot import (
 )
 from app.services.tweet_ingest import (
     DUPLICATE_MEDIA,
+    FOOTAGE_UNUSABLE,
     REFUSAL_MESSAGES,
     SEVERAL_COORDINATES,
     SOURCE_AMBIGUOUS,
@@ -45,8 +46,9 @@ from app.services.tweet_ingest import (
     WARNING_MESSAGES,
 )
 from app.services.tweet_ingest.syndication import _cache_clear
+from app.services.tweet_ingest.urls import TELEGRAM_HOST_RE
 from tests._fixtures import TINY_MP4
-from tests.ingest_contract.loader import load_body, load_embed
+from tests.ingest_contract.loader import load_body, load_chased, load_embed, load_expected
 
 BOT_USER_ID = "999000"
 HANDLE = f"hawk{uuid.uuid4().hex[:8]}"
@@ -79,18 +81,36 @@ MIRROR_TG_REPOST_ID = "9110000000000000002"
 MIRROR_X_ID = "9110000000000000003"
 MIRROR_X_SOURCE_ID = "9110000000000000004"
 MIRROR_TG_OTHER_ID = "9110000000000000005"
+# The same mirror, re-posted with the coordinate the analyst has since worked
+# out: a geolocation, which takes the detections' path beside the open request.
+MIRROR_TG_GEO_ID = "9110000000000000006"
 
-# The mirror post and the Telegram embed come from the contract catalogue, the
-# one place the shape is written down (``mirror_telegram_no_coord``): the bot's
-# request tests run the payload the grammar is pinned on rather than a second
-# copy of it. Only the identity the bot needs is overridden per body, the id,
-# the date and the tagging handle, plus the bot tag the mention carries.
+# Both mirror posts, and the Telegram embed, come from the contract catalogue,
+# the one place the shapes are written down: the bot's request tests run the
+# payloads the grammar is pinned on rather than second copies of them. Only the
+# identity the bot needs is overridden per body, the id, the date and the
+# tagging handle, plus the bot tag the mention carries.
 _MIRROR_TYPOLOGY = "mirror_telegram_no_coord"
 _MIRROR_BODY = load_body(_MIRROR_TYPOLOGY)
-_MIRROR_VIDEO = _MIRROR_BODY["mediaDetails"][0]
-_TELEGRAM_EMBED = load_embed(_MIRROR_TYPOLOGY)
-assert _TELEGRAM_EMBED is not None, f"{_MIRROR_TYPOLOGY} ships no embed.html"
 _TELEGRAM_POST = _MIRROR_BODY["entities"]["urls"][0]["expanded_url"]
+_MIRROR_X_TYPOLOGY = "mirror_x_status_no_coord"
+_MIRROR_X_BODY = load_body(_MIRROR_X_TYPOLOGY)
+_MIRROR_X_SOURCE_BODY = load_chased(
+    _MIRROR_X_TYPOLOGY, load_expected(_MIRROR_X_TYPOLOGY)["chased_status_id"]
+)
+
+
+def _telegram_embed() -> str:
+    """The catalogue's Telegram embed, which the chase reads over the wire.
+
+    Raises rather than asserts: the fixture is what the whole request branch
+    runs on here, so a typology that stopped shipping one has to fail loudly at
+    the read instead of at an opaque ``None`` three layers down.
+    """
+    embed = load_embed(_MIRROR_TYPOLOGY)
+    if embed is None:
+        raise RuntimeError(f"{_MIRROR_TYPOLOGY} ships no embed.html")
+    return embed
 
 
 def _mirror_body(tweet_id: str, created_at: str, handle: str = HANDLE) -> dict:
@@ -208,37 +228,35 @@ BODIES = {
     MIRROR_TG_OTHER_ID: _mirror_body(
         MIRROR_TG_OTHER_ID, "2026-03-12T09:10:00.000Z", handle=OTHER_HANDLE
     ),
+    MIRROR_TG_GEO_ID: {
+        **_mirror_body(MIRROR_TG_GEO_ID, "2026-03-14T11:00:00.000Z"),
+        "text": f"@viditbot\n{_MIRROR_BODY['text']}\n48.123456, 37.654321",
+    },
     MIRROR_X_ID: {
+        **_MIRROR_X_BODY,
         "id_str": MIRROR_X_ID,
-        "created_at": "2026-03-13T10:15:00.000Z",
         "user": {"screen_name": HANDLE},
-        "text": "@viditbot\nFootage from the northern approach\nhttps://t.co/mirrorX",
+        "text": f"@viditbot\n{_MIRROR_X_BODY['text']}",
         "entities": {
             "urls": [
                 {
-                    "url": "https://t.co/mirrorX",
+                    "url": _MIRROR_X_BODY["entities"]["urls"][0]["url"],
                     "expanded_url": f"https://x.com/front_owl/status/{MIRROR_X_SOURCE_ID}",
                 }
             ]
         },
     },
     # The status the X mirror points at, chased for its date and its video.
-    MIRROR_X_SOURCE_ID: {
-        "id_str": MIRROR_X_SOURCE_ID,
-        "created_at": "2026-03-12T18:40:00.000Z",
-        "user": {"screen_name": "front_owl"},
-        "text": "Column moving at first light",
-        "mediaDetails": [_MIRROR_VIDEO],
-    },
+    MIRROR_X_SOURCE_ID: {**_MIRROR_X_SOURCE_BODY, "id_str": MIRROR_X_SOURCE_ID},
 }
 
 
 def _syndication_client() -> httpx.Client:
     def handler(req: httpx.Request) -> httpx.Response:
-        if req.url.host.lower() == "t.me":
+        if TELEGRAM_HOST_RE.match(req.url.host.lower()) is not None:
             # The Telegram chase reads a public embed rather than syndication;
             # one client carries both upstreams, as it does in production.
-            return httpx.Response(200, text=_TELEGRAM_EMBED)
+            return httpx.Response(200, text=_telegram_embed())
         tweet_id = req.url.params.get("id", "")
         if tweet_id == TOMBSTONE_ID:
             # X's 200-with-no-tweet for a post readable only behind a login
@@ -761,6 +779,12 @@ async def test_a_coordinate_less_mirror_post_opens_a_request(
     assert row.detected_from_url == f"https://x.com/{HANDLE}/status/{mention_id}"
     assert row.detected_via == "bot"
     assert row.detected_from_tweet_id == int(mention_id)
+    assert row.detected_thread_tweet_ids == [int(mention_id)]
+    # The fifth provenance column, stamped by the same helper a detection's are
+    # (``events.stamp_provenance``): when the analyst posted the mirror, which is
+    # neither when the event happened nor when the source posted the clip.
+    assert row.detected_post_at is not None
+    assert row.detected_post_at != row.source_posted_at
     # The chase served a date, so the reply carries no date warning.
     assert row.source_posted_at is not None
 
@@ -860,6 +884,56 @@ async def test_footage_that_will_not_fetch_falls_back_to_the_refusal(db, linked_
     assert payload["text"].startswith("\u274c Nothing saved\n\u26a0 No coordinate in the post\n")
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == MIRROR_TG_ID).one()
     assert ledger.outcome == "no_detection"
+
+
+async def test_footage_the_intake_refuses_is_named_back(db, linked_owner, _stub_cdn, monkeypatch):
+    """A clip over the video size cap is not a post with no coordinate.
+
+    The fetch succeeded and the evidence intake refused what it served, so the
+    reply names ``footage_unusable`` rather than sending the analyst looking for
+    a coordinate they never wrote. Nothing is left behind: the row
+    ``create_request`` had staged is rolled back before the ledger commits.
+    """
+    monkeypatch.setattr(settings, "max_video_size", 8)
+    outcome, _, posted, _ = await _run(db, [MIRROR_TG_ID])
+
+    assert outcome.requests_opened == 0
+    assert outcome.no_detection == 1
+    assert db.query(Event).filter(Event.owner_id == linked_owner.id).all() == []
+
+    (payload,) = posted
+    assert payload["text"].startswith(
+        f"\u274c Nothing saved\n\u26a0 {REFUSAL_MESSAGES[FOOTAGE_UNUSABLE]}\n"
+    )
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == MIRROR_TG_ID).one()
+    assert ledger.outcome == "no_detection"
+
+
+async def test_a_coordinate_bearing_re_tag_lands_a_detection_beside_the_request(
+    db, linked_owner, _stub_cdn
+):
+    """The dedup contract, stated by the two tags that exercise both halves.
+
+    A coordinate-less re-tag lands on the open request and moves nothing. A
+    re-tag carrying the coordinate the analyst has since worked out is a
+    geolocation, so it takes the detections' path: the match skips the
+    coordinate-less request, a ``detected`` row lands beside it, and the request
+    stays open and its owner's to withdraw, since no machine writes into a
+    human-flow row.
+    """
+    await _run(db, [MIRROR_TG_ID])
+    outcome, _, _, _ = await _run(db, [MIRROR_TG_GEO_ID])
+
+    assert outcome.events_created == 1
+    assert outcome.requests_opened == 0
+
+    rows = db.query(Event).filter(Event.owner_id == linked_owner.id).all()
+    assert sorted(row.status for row in rows) == [STATUS_DETECTED, STATUS_REQUESTED]
+    (request_row,) = [row for row in rows if row.status == STATUS_REQUESTED]
+    assert request_row.closed_at is None
+    assert request_row.deleted_at is None
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == MIRROR_TG_GEO_ID).one()
+    assert ledger.outcome == "created"
 
 
 async def test_the_reply_budget_skips_the_reply_and_keeps_the_request(

@@ -32,6 +32,10 @@ from tests._fixtures import TINY_MP4, write_archive_js
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
+# The one entry that reads the engine's second exit, so the one path an
+# ``expected["request"]`` block is asserted for.
+_REQUEST_PATH = "bot"
+
 # Twitter's archive ``created_at`` format, for turning an ISO fixture timestamp
 # into the raw export shape the archive reader parses.
 _TWITTER_TIME_FMT = "%a %b %d %H:%M:%S %z %Y"
@@ -109,7 +113,9 @@ def assert_resolution_matches(typology: str, path: str, resolution: Resolution) 
     coordinate-less thread still yields (its source, its title, its footage). A
     typology without one must yield none, so a shape that starts drafting a
     request has to say so in the catalogue rather than appearing only in a
-    bot-side test.
+    bot-side test. The block is the bot's alone, since the bot is the one entry
+    that asks for the exit (``resolve_threads(..., with_requests=True)``): every
+    other entry resolves none whatever the catalogue says.
     """
     block = load_expected(typology).get("paths", {}).get(path, {})
     expected = expected_for_path(typology, path)
@@ -117,14 +123,15 @@ def assert_resolution_matches(typology: str, path: str, resolution: Resolution) 
     assert len(resolution.detections) == len(expected["coords"]), typology
     if "reason" in block:
         assert resolution.reason == block["reason"], typology
-    request = expected.get("request")
+    request = expected.get("request") if path == _REQUEST_PATH else None
     if request is None:
         assert resolution.requests == [], typology
     else:
         [draft] = resolution.requests
         assert draft.source_url == request["source_url"], typology
         assert draft.title == request["title"], typology
-        assert [draft.footage.kind, draft.footage.origin] == list(request["footage"]), typology
+        footage = draft.footage_candidates[0]
+        assert [footage.kind, footage.origin] == list(request["footage"]), typology
     for detection in resolution.detections:
         assert detection.title == expected["title"], typology
         assert detection.source_url == expected["source_url"], typology

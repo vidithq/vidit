@@ -62,8 +62,8 @@ export const FIELD_HELP = {
     label: "What does the status mean?",
   },
   detected_from: {
-    text: "The post this detection was imported from. Its provenance, kept distinct from Source (the footage origin). It carries the same archive mark as the Source: orange opens its stored copy, grey means there is none yet, and its owner records one from the edit form.",
-    label: "What is 'detected from'?",
+    text: "The post this entry was read from: the detection was imported from it, or the request was opened from it. Its provenance, kept distinct from Source (the footage origin). It carries the same archive mark as the Source: orange opens its stored copy, grey means there is none yet, and its owner records one from the edit form.",
+    label: "Where was this read from?",
   },
   requested_by: {
     text: "The analyst who opened this as a request. The row stays after fulfilment, as the trace of where the event came from.",

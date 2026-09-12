@@ -600,7 +600,7 @@ async def create_with_evidence(
 class ImportProvenance:
     """Where a machine-written row came from: the post, its thread, the entry.
 
-    The four provenance columns an import stamps, carried as one argument so a
+    The five provenance columns an import stamps, carried as one argument so a
     write verb takes them together or not at all. It lives here rather than
     beside the import code because ``services/detection`` imports this module,
     and the reverse would be a cycle.
@@ -610,6 +610,27 @@ class ImportProvenance:
     url: str
     thread_tweet_ids: list[int]
     via: DetectedVia
+    # When the analyst posted the post the row was read from. Part of the
+    # provenance, not of the event: ``event_date`` and ``source_posted_at`` say
+    # when the event happened and when the source posted it.
+    post_at: datetime | None
+
+
+def stamp_provenance(row: Event, provenance: ImportProvenance) -> None:
+    """Write the five import columns onto a machine-written ``row``.
+
+    The one home, read by both write paths: ``detection._persist_one`` for a
+    detection and :func:`create_request` for a request the bot opened. Stamping
+    them in one call is what keeps a column from being set on one path and left
+    NULL on the other. Written once at creation and never moved, so a re-import
+    through another entry leaves the thread the row was read from and the entry
+    that first read it alone (``detection._apply_import_fields``).
+    """
+    row.detected_from_tweet_id = provenance.tweet_id
+    row.detected_from_url = provenance.url
+    row.detected_thread_tweet_ids = provenance.thread_tweet_ids or None
+    row.detected_via = provenance.via
+    row.detected_post_at = provenance.post_at
 
 
 async def create_request(
@@ -662,13 +683,11 @@ async def create_request(
     press.
 
     ``provenance`` is set only by a machine writer (``detection.open_request``,
-    the bot's request branch) and stamps the four import columns
-    (``detected_from_tweet_id``, ``detected_from_url``,
-    ``detected_thread_tweet_ids``, ``detected_via``) on the row, so a
-    machine-opened request is recognised by the same re-import match as a
-    detection. A human request carries none of them. ``source_posted_at`` is
-    likewise optional here, since a chase may serve no date; the form keeps it
-    required for people (``routers/events/write``).
+    the bot's request branch) and stamps the five import columns through
+    :func:`stamp_provenance`, so a machine-opened request is recognised by the
+    same re-import match as a detection. A human request carries none of them.
+    ``source_posted_at`` is likewise optional here, since a chase may serve no
+    date; the form keeps it required for people (``routers/events/write``).
 
     Failure modes: :class:`InvalidCoordinatesError` on a bad / half-typed
     guess, :class:`MediaRequiredError` with no file,
@@ -712,10 +731,7 @@ async def create_request(
         requested_at=datetime.now(UTC),
     )
     if provenance is not None:
-        geo.detected_from_tweet_id = provenance.tweet_id
-        geo.detected_from_url = provenance.url
-        geo.detected_thread_tweet_ids = provenance.thread_tweet_ids or None
-        geo.detected_via = provenance.via
+        stamp_provenance(geo, provenance)
     geo.tags = _resolve_tags(db, tag_ids)
     geo.conflicts = _resolve_conflicts(db, conflict_ids)
     geo.source_links = build_source_link_rows(secondary_links)

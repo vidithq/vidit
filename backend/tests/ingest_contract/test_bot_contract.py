@@ -29,11 +29,15 @@ _PATH = "bot"
 
 
 def _resolution(typology: str) -> Resolution:
-    """Run the bot's detection half over the typology's post, as if tagged there."""
+    """Run the bot's detection half over the typology's post, as if tagged there.
+
+    ``with_requests`` as the bot passes it: the second exit is the bot's alone,
+    so a contract that reads it has to ask for it the way the entry does.
+    """
     body = loader.load_body(typology)
     with loader.syndication_client(typology) as client:
         acquired = acquire_tagged_thread(body["id_str"], body["user"]["screen_name"], client=client)
-    return resolve_threads([acquired.records])
+    return resolve_threads([acquired.records], with_requests=True)
 
 
 @pytest.mark.parametrize("typology", loader.typology_names())

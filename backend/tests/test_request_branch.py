@@ -3,8 +3,9 @@
 Pure, no DB. The two shapes that do draft one are pinned typology by typology
 in ``tests/ingest_contract`` (``mirror_telegram_no_coord``,
 ``mirror_x_status_no_coord``); what is left here is the boundary, the threads
-that look request-shaped and are not, because each of the four conditions in
-``resolve._request_draft`` has to be the one that refuses them.
+that look request-shaped and are not, because each of the six conditions in
+``resolve._request_draft`` has to be the one that refuses them, plus the one
+spelling the source is stored under.
 
 The refusal always travels with the draft, so every case below also asserts
 that the thread still reports ``coords_missing``: an entry reading detections
@@ -13,9 +14,15 @@ alone (the paste, the archive) answers exactly what it did before.
 
 from __future__ import annotations
 
-from app.services.tweet_ingest import COORDS_INVALID, COORDS_MISSING, RequestDraft
+from app.services.tweet_ingest import (
+    COORDS_INVALID,
+    COORDS_MISSING,
+    SOURCE_FETCH_FAILED,
+    RequestDraft,
+)
 from app.services.tweet_ingest.records import ParsedMedia, QuotedTweet, SourceLink, TweetRecord
 from app.services.tweet_ingest.resolve import resolve_threads
+from tests._fixtures import tweet_record
 
 _TELEGRAM = SourceLink(url="https://t.me/wilddivision82/351", shortlink="https://t.co/fakeTG")
 _YOUTUBE = SourceLink(
@@ -34,14 +41,10 @@ _MIRROR_TEXT = 'Trabajo de "Wild Division" de la 82ª Brigada https://t.co/fakeT
 
 
 def _rec(**kw: object) -> TweetRecord:
-    base: dict = dict(
-        tweet_id="9200000000000000001",
-        handle="analyst",
-        text="",
-        created_at="2026-03-12T08:30:00Z",
+    """The shared builder under this module's own mirror-post identity."""
+    return tweet_record(
+        **{"tweet_id": "9200000000000000001", "created_at": "2026-03-12T08:30:00Z", **kw}
     )
-    base.update(kw)
-    return TweetRecord(**base)
 
 
 def _draft(thread: list[TweetRecord]) -> RequestDraft | None:
@@ -50,7 +53,7 @@ def _draft(thread: list[TweetRecord]) -> RequestDraft | None:
     Asserts the refusal alongside, since the branch adds an exit and moves no
     existing one.
     """
-    resolution = resolve_threads([thread])
+    resolution = resolve_threads([thread], with_requests=True)
     assert resolution.detections == []
     assert resolution.reason == COORDS_MISSING
     return resolution.requests[0] if resolution.requests else None
@@ -64,7 +67,7 @@ def test_a_mirror_post_with_a_telegram_link_and_a_video_drafts_a_request() -> No
 
     assert draft is not None
     assert draft.source_url == "https://t.me/wilddivision82/351"
-    assert draft.footage == _VIDEO
+    assert draft.footage_candidates == [_VIDEO]
     assert draft.title.startswith('Trabajo de "Wild Division"')
     assert draft.detected_from_tweet_id == 9200000000000000001
     assert draft.detected_from_url == "https://x.com/analyst/status/9200000000000000001"
@@ -161,7 +164,7 @@ def test_an_out_of_bounds_coordinate_drafts_nothing() -> None:
             external_sources=[_TELEGRAM],
         )
     ]
-    resolution = resolve_threads([thread])
+    resolution = resolve_threads([thread], with_requests=True)
 
     assert resolution.detections == []
     assert resolution.reason == COORDS_INVALID
@@ -236,7 +239,7 @@ def test_a_quoted_status_carrying_footage_drafts_a_request() -> None:
 
     assert draft is not None
     assert draft.source_url == "https://x.com/front_owl/status/9200000000000000002"
-    assert draft.footage.origin == "quote"
+    assert [m.origin for m in draft.footage_candidates] == ["quote"]
     assert draft.source_posted_at is not None
 
 
@@ -280,3 +283,133 @@ def test_a_coordinate_in_the_quoted_post_drafts_nothing() -> None:
         ],
     )
     assert _draft([_rec(text="Geolocated the clip below", quoted=quote)]) is None
+
+
+def test_two_spellings_of_one_telegram_post_draft_one_source_url() -> None:
+    """The source is stored canonical, never as the analyst spelled it.
+
+    The dedup that keeps a re-tag off a second row compares ``source_url`` as a
+    string (``detection._match_legs``), so a ``www.`` host and a share
+    parameter have to reach the column as the same value the bare link does.
+    """
+    spellings = [
+        "https://t.me/wilddivision82/351",
+        "https://www.t.me/wilddivision82/351?single",
+        "http://t.me/wilddivision82/351?comment=9",
+    ]
+    stored = set()
+    for index, url in enumerate(spellings):
+        link = SourceLink(url=url, shortlink=f"https://t.co/fakeTG{index}")
+        draft = _draft(
+            [
+                _rec(
+                    text=f"Channel footage worth a look\nhttps://t.co/fakeTG{index}",
+                    media=[_VIDEO],
+                    external_sources=[link],
+                )
+            ]
+        )
+        assert draft is not None
+        stored.add(draft.source_url)
+
+    assert stored == {"https://t.me/wilddivision82/351"}
+
+
+def test_an_x_status_link_is_stored_canonical() -> None:
+    """The same rule on the other technology: the tracking parameter and the
+    ``twitter.com`` host come off, so one status is one source URL."""
+    link = SourceLink(
+        url="https://twitter.com/front_owl/status/9200000000000000002?s=20",
+        shortlink="https://t.co/fakeXS",
+    )
+    draft = _draft(
+        [_rec(text="Worth a look\nhttps://t.co/fakeXS", media=[_VIDEO], external_sources=[link])]
+    )
+
+    assert draft is not None
+    assert draft.source_url == "https://x.com/front_owl/status/9200000000000000002"
+
+
+def test_a_transient_chase_failure_drafts_nothing() -> None:
+    """The upstream would not answer and the retry schedule is spent.
+
+    The source's own footage may well exist, so a request opened now would
+    store the analyst's copy under a post nobody read, and the dedup would keep
+    the re-tag that could fix it off the row. The thread keeps its refusal and
+    the next tag retries.
+    """
+    assert (
+        _draft(
+            [
+                _rec(
+                    text="Channel footage worth a look\nhttps://t.co/fakeTG",
+                    media=[_VIDEO],
+                    external_sources=[_TELEGRAM],
+                    chase_outcome="transient_failure",
+                )
+            ]
+        )
+        is None
+    )
+
+
+def test_a_definitive_chase_failure_drafts_a_request_that_says_so() -> None:
+    """The upstream answered and had nothing to take: the post is gone or
+    restricted, so the analyst's own copy is the only footage there will ever
+    be. The request lands and carries ``source_fetch_failed``, which the reply
+    reads back as the one sentence every surface reads for that code."""
+    draft = _draft(
+        [
+            _rec(
+                text="Channel footage worth a look\nhttps://t.co/fakeTG",
+                media=[_VIDEO],
+                external_sources=[_TELEGRAM],
+                chase_outcome="not_accessible",
+            )
+        ]
+    )
+
+    assert draft is not None
+    assert draft.warnings == [SOURCE_FETCH_FAILED]
+    assert draft.source_fetch_failed is True
+
+
+def test_a_coordinate_behind_a_shortlink_in_a_quoted_post_drafts_nothing() -> None:
+    """A quoted post's raw text carries only opaque ``t.co`` wrappers, so the
+    coordinate guard expands them first: a maps link in the quoted post is the
+    quoting party's geolocation to read, not a request to open."""
+    quote = QuotedTweet(
+        tweet_id="9200000000000000002",
+        handle="raw_feed",
+        text="Vehicles burning here https://t.co/fakeMAP",
+        created_at="2026-03-11T18:40:00.000Z",
+        media=[
+            ParsedMedia(kind="video", remote_url="https://video.twimg.com/q.mp4", origin="quote")
+        ],
+        external_sources=[
+            SourceLink(
+                url="https://www.google.com/maps/@48.123456,37.654321,15z",
+                shortlink="https://t.co/fakeMAP",
+            )
+        ],
+    )
+    assert _draft([_rec(text="Someone please locate this", quoted=quote)]) is None
+
+
+def test_the_own_video_rides_behind_the_sources_footage_as_a_fallback() -> None:
+    """The write path takes the first candidate that fetches, so the order is
+    the contract: the source's footage, then the analyst's own copy for the
+    fetch that comes back with nothing."""
+    quote = QuotedTweet(
+        tweet_id="9200000000000000002",
+        handle="front_owl",
+        text="Column moving at first light",
+        created_at="2026-03-11T18:40:00.000Z",
+        media=[
+            ParsedMedia(kind="video", remote_url="https://video.twimg.com/q.mp4", origin="quote")
+        ],
+    )
+    draft = _draft([_rec(text="Worth a look at this", media=[_VIDEO], quoted=quote)])
+
+    assert draft is not None
+    assert [media.origin for media in draft.footage_candidates] == ["quote", "op"]
