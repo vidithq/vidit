@@ -96,6 +96,29 @@ def published_events() -> ColumnElement[bool]:
     return Event.status == STATUS_GEOLOCATED
 
 
+def collectable_events() -> ColumnElement[bool]:
+    """The predicate for an event a collection may hold: visible, and worked.
+
+    The single home for what a collection lists and counts. Every collection
+    read goes through it, the item page, the item count, the first and last
+    date of the range, the default cover, and the eligibility check the add
+    verb runs, so a row that later closes, is taken down or is soft-deleted
+    drops out of all five at once without a write to ``collection_events``.
+
+    It is :func:`visible_events` plus the two worked statuses, ``geolocated``
+    and ``detected``, folded into one predicate because the membership join
+    applies all three together. ``requested`` is out because a collection
+    curates answers rather than asks, and ``closed`` is out because a
+    rejected detection and a retracted geolocation are both decisions the
+    owner took against the row: keeping either on a curated shelf would go on
+    presenting it as work that stands.
+    """
+    return and_(
+        *visible_events(),
+        Event.status.in_((STATUS_GEOLOCATED, STATUS_DETECTED)),
+    )
+
+
 def parse_optional_iso_date(raw: str | None, *, field: str) -> date | None:
     """Parse an optional ISO-8601 (YYYY-MM-DD) date. Empty → ``None``; 422 on garbage.
 

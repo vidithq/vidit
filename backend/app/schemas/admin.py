@@ -166,6 +166,19 @@ class AdminEventDeleteResponse(BaseModel):
     media_count: int = 0
 
 
+class AdminCollectionHideResponse(BaseModel):
+    """Response for ``DELETE /admin/collections/{id}``.
+
+    Names the collection that was withheld and when, so the panel states the
+    outcome without a re-query. ``hidden_at`` is the original stamp on a
+    collection that was already withheld: the verb is idempotent.
+    """
+
+    collection_id: uuid.UUID
+    title: str
+    hidden_at: datetime | None
+
+
 class AdminEventModerationUpdate(BaseModel):
     """Body for ``PATCH /admin/events/{id}/moderation``.
 

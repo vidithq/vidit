@@ -690,23 +690,37 @@ def avatar_key_of(url: str | None) -> str | None:
 def avatar_key(user_id: UUID) -> str:
     """Mint the storage key for one analyst's next profile picture.
 
-    Always ``.jpg``: :func:`render_avatar_jpeg` re-encodes every accepted
+    Always ``.jpg``: :func:`render_display_jpeg` re-encodes every accepted
     source format, so the key never has to describe what was uploaded.
     """
     return f"{AVATAR_KEY_PREFIX}{user_id}/{uuid4()}.jpg"
 
 
-def render_avatar_jpeg(data: bytes, content_type: str) -> bytes:
-    """Turn accepted image bytes into the single JPEG an avatar is stored as.
+# Every object under this prefix is one this codebase minted for a collection
+# cover. Same contract as :data:`AVATAR_KEY_PREFIX`: the column that points at
+# it is server-set, so the prefix is what tells a sweep the key is ours.
+COLLECTION_COVER_KEY_PREFIX = "collections/"
+
+
+def collection_cover_key(collection_id: UUID) -> str:
+    """Mint the storage key for one collection's next cover image.
+
+    Always ``.jpg``, for the same reason as :func:`avatar_key`.
+    """
+    return f"{COLLECTION_COVER_KEY_PREFIX}{collection_id}/{uuid4()}.jpg"
+
+
+def render_display_jpeg(data: bytes, content_type: str) -> bytes:
+    """Turn accepted image bytes into the single JPEG a display image is stored as.
 
     EXIF/IPTC/XMP/ICC stripped, then resized so the longer edge fits
-    ``THUMBNAIL_MAX_DIM`` and re-encoded as JPEG. One object per avatar: the
-    picture renders at 44 px on the profile header and smaller everywhere
-    else, so hero / thumbnail siblings would be unfetched objects retained
-    365 days under Object Lock.
+    ``THUMBNAIL_MAX_DIM`` and re-encoded as JPEG. One object per picture: an
+    avatar renders at 44 px on the profile header and a collection cover fills
+    a card band, so hero / thumbnail siblings would be unfetched objects
+    retained 365 days under Object Lock.
 
     ``content_type`` must already be in :data:`ALLOWED_IMAGE_TYPES`; the
-    caller owns that check (:func:`upload_avatar_image` for the endpoint).
+    caller owns that check (:func:`_upload_display_jpeg` for both endpoints).
     Anything else falls through the transforms unchanged, which is not what a
     caller here wants.
 
@@ -724,8 +738,12 @@ def render_avatar_jpeg(data: bytes, content_type: str) -> bytes:
     return make_jpeg_derivative(strip_metadata(data, content_type), content_type, THUMBNAIL_MAX_DIM)
 
 
-async def upload_avatar_image(file: UploadFile, user_id: UUID) -> UploadResult:
-    """Store one analyst's profile picture and return where it landed.
+async def _upload_display_jpeg(file: UploadFile, key: str, *, what: str) -> UploadResult:
+    """Store one uploaded picture at ``key`` as a stripped JPEG.
+
+    The one home for the display-image pipeline the profile picture and the
+    collection cover share: MIME allowlist, size ceiling, metadata strip,
+    re-encode, upload. ``what`` names the picture in the rejection message.
 
     Images only. A video content type is rejected on the MIME rather than
     validated against the video size ceiling, because nothing downstream would
@@ -733,15 +751,33 @@ async def upload_avatar_image(file: UploadFile, user_id: UUID) -> UploadResult:
     """
     content_type = file.content_type or ""
     if content_type not in ALLOWED_IMAGE_TYPES:
-        raise ValueError(f"File type {content_type or 'unknown'} not allowed for an avatar")
+        raise ValueError(f"File type {content_type or 'unknown'} not allowed for {what}")
     validate_file(file)
 
     def _render() -> bytes:
         file.file.seek(0)
-        return render_avatar_jpeg(file.file.read(), content_type)
+        return render_display_jpeg(file.file.read(), content_type)
 
     data = await asyncio.to_thread(_render)
-    return await get_storage().upload_bytes(data, avatar_key(user_id), "image/jpeg")
+    return await get_storage().upload_bytes(data, key, "image/jpeg")
+
+
+async def upload_avatar_image(file: UploadFile, user_id: UUID) -> UploadResult:
+    """Store one analyst's profile picture and return where it landed."""
+    return await _upload_display_jpeg(file, avatar_key(user_id), what="an avatar")
+
+
+async def upload_collection_cover_image(file: UploadFile, collection_id: UUID) -> str:
+    """Store one collection's cover image and return its storage key.
+
+    A key, where :func:`upload_avatar_image` hands back a URL: ``cover_key``
+    holds the key and the read resolves it through
+    :meth:`Storage.public_url`, so no caller has to parse a URL back into the
+    object it names.
+    """
+    key = collection_cover_key(collection_id)
+    await _upload_display_jpeg(file, key, what="a collection cover")
+    return key
 
 
 # 255 chars is the common filesystem-name max (NTFS / ext4), above any

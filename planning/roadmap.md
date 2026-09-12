@@ -41,6 +41,14 @@ This version makes four golden paths work end to end on a 375px phone, with 320p
 
 Work breakdown: [`next.md`](next.md) → *v0.6*.
 
+## v0.6.5: Collections
+
+Analysts already produce this shape of work outside Vidit: a thread grouping several sites around one place (a spatial dossier, e.g. a nuclear plant), or a sequence of strikes over days (an operation reconstruction), published as an X thread or a PDF dossier because Vidit has the pin and the conflict referential and nothing between them.
+
+A collection is a named, curated set of one analyst's own events, personal only: one owner, shown on the owner's public profile. Items order automatically (event date, then creation), the title is the only free-text field, and a collection carries no description and no manual ordering, keeping it a set of facts rather than a narrative. Collaborative and organization-owned collections wait for v0.7.
+
+Work breakdown: [`next.md`](next.md) → *v0.6.5*.
+
 ## v0.7: Collaboration & reviews
 
 Two phases: **A**, the substrate (the interaction layer between analysts, plus edit history on a published geolocation), and **B**, the visible layer it carries (organizations and reviews).

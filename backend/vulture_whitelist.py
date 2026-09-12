@@ -42,6 +42,7 @@ requested_at  # app/models/event.py, state-entry stamp
 detected_at  # app/models/event.py, state-entry stamp
 geolocated_at  # app/models/event.py, state-entry stamp
 finished_at  # app/models/archive_import_job.py, stamped by services/archive_jobs
+added_at  # app/models/collection.py CollectionEvent, stamped when an event joins
 
 # ── ASGI middleware override ──────────────────────────────────────────────────
 # Starlette's BaseHTTPMiddleware calls dispatch(); it is never referenced by name.
@@ -51,6 +52,7 @@ _.dispatch  # app/middleware/csrf.py CSRFMiddleware
 # Set by the service layer when constructing the schema and serialized by
 # Pydantic; the field name is never read back in app/.
 redeemer  # schemas/admin.py AdminInviteCodeRead
+in_collection  # schemas/collection.py CollectionMembershipRead
 archives_imported  # schemas/admin.py AdminInviteRedeemerRead
 bot_detection_count  # schemas/admin.py AdminInviteRedeemerRead
 last_seen_at  # schemas/admin.py AdminInviteRedeemerRead

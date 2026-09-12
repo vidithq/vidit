@@ -4,6 +4,31 @@
  */
 
 export interface paths {
+    "/api/v1/admin/collections/{collection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Hide Collection Admin
+         * @description Withhold a collection from every read but an admin's.
+         *
+         *     Sets ``hidden_at``, the reversible takedown an event carries too, so the
+         *     shelf is withheld pending judgement rather than destroyed. The events on
+         *     it are untouched: each is moderated on its own. Idempotent, and 404 on an
+         *     unknown collection.
+         */
+        delete: operations["hide_collection_admin_api_v1_admin_collections__collection_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/detection-stats": {
         parameters: {
             query?: never;
@@ -600,6 +625,145 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Collection
+         * @description Open a collection. The title is the only field; it starts empty.
+         */
+        post: operations["create_collection_api_v1_collections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Collection
+         * @description One collection's header: owner, title, cover, item count and date range.
+         *
+         *     Public, like the events it points at. A withheld collection reads as 404
+         *     for everyone but an admin.
+         */
+        get: operations["get_collection_api_v1_collections__collection_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Collection
+         * @description Drop your collection. Owner only. Every event it held stays as it is.
+         */
+        delete: operations["delete_collection_api_v1_collections__collection_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename Collection
+         * @description Retitle your collection. Owner only; 403 for anyone else.
+         */
+        patch: operations["rename_collection_api_v1_collections__collection_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/cover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Collection Cover
+         * @description Replace your collection's cover with an uploaded image. Owner only.
+         *
+         *     The same pipeline the profile picture takes: one image (JPEG / PNG /
+         *     WebP), stored as a stripped and resized JPEG under
+         *     ``collections/{collection id}/``, and the picture it replaced is deleted.
+         */
+        put: operations["set_collection_cover_api_v1_collections__collection_id__cover_put"];
+        post?: never;
+        /**
+         * Delete Collection Cover
+         * @description Drop your collection's uploaded cover. Owner only.
+         *
+         *     The cover falls back to the first chronological item's media. Idempotent:
+         *     removing a cover you never set returns 200.
+         */
+        delete: operations["delete_collection_cover_api_v1_collections__collection_id__cover_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Collection Events
+         * @description The collection's items, in the order the events happened.
+         *
+         *     Ordered by ``event_date``, then ``event_time``, then ``created_at``, then
+         *     ``id``, ascending, with an item missing its date or its hour sorting after
+         *     the ones that carry them. Capped at 100 rows however large ``limit`` is; a
+         *     caller reading further follows the ``cursor`` in the ``Link: rel="next"``
+         *     header, which goes out exactly when the next page holds a row.
+         */
+        get: operations["list_collection_events_api_v1_collections__collection_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add Event To Collection
+         * @description Put one of your events on one of your collections.
+         *
+         *     Idempotent: adding an event already on the collection returns 204 and
+         *     writes no second row. 403 when either the collection or the event belongs
+         *     to someone else, 409 when the event's state is not one a collection shows.
+         */
+        put: operations["add_event_to_collection_api_v1_collections__collection_id__events__event_id__put"];
+        post?: never;
+        /**
+         * Remove Event From Collection
+         * @description Take one event off your collection. Owner only.
+         *
+         *     Idempotent: removing an event the collection does not hold returns 204.
+         *     The event itself is untouched.
+         */
+        delete: operations["remove_event_from_collection_api_v1_collections__collection_id__events__event_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/conflicts": {
         parameters: {
             query?: never;
@@ -1019,6 +1183,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/{geolocation_id}/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Event Collections
+         * @description Your collections, each saying whether this event is already on it.
+         *
+         *     The add-to-collection popover's read, owner-only: a collection is
+         *     personal, and only the event's owner may shelve it, so nobody else has an
+         *     answer to give here. Empty collections are listed, since putting the first
+         *     event on one is what the popover is for. 404 on a soft-deleted or withheld
+         *     event, 403 when the event is somebody else's.
+         */
+        get: operations["list_event_collections_api_v1_events__geolocation_id__collections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events/{geolocation_id}/geolocate": {
         parameters: {
             query?: never;
@@ -1367,6 +1557,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/{username}/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Collections
+         * @description One analyst's collections, newest first.
+         *
+         *     A collection with nothing showable on it is scaffolding rather than
+         *     published work, so a reader gets the ones that have something on them and
+         *     the owner gets all of theirs. The narrowing applies to ``total`` as well as
+         *     to the rows, so the pager describes the set it walks. Withheld collections
+         *     are in neither view.
+         *
+         *     Offset-paged, like the published-geolocations feed beside it, and capped at
+         *     100 rows per page.
+         */
+        get: operations["get_user_collections_api_v1_users__username__collections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{username}/events": {
         parameters: {
             query?: never;
@@ -1516,6 +1735,25 @@ export interface components {
             count: number;
             /** Period */
             period: string;
+        };
+        /**
+         * AdminCollectionHideResponse
+         * @description Response for ``DELETE /admin/collections/{id}``.
+         *
+         *     Names the collection that was withheld and when, so the panel states the
+         *     outcome without a re-query. ``hidden_at`` is the original stamp on a
+         *     collection that was already withheld: the verb is idempotent.
+         */
+        AdminCollectionHideResponse: {
+            /**
+             * Collection Id
+             * Format: uuid
+             */
+            collection_id: string;
+            /** Hidden At */
+            hidden_at: string | null;
+            /** Title */
+            title: string;
         };
         /**
          * AdminDetectionStatsRead
@@ -2213,6 +2451,11 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** Body_set_collection_cover_api_v1_collections__collection_id__cover_put */
+        Body_set_collection_cover_api_v1_collections__collection_id__cover_put: {
+            /** File */
+            file: string;
+        };
         /** Body_set_my_avatar_api_v1_users_me_avatar_put */
         Body_set_my_avatar_api_v1_users_me_avatar_put: {
             /** File */
@@ -2230,6 +2473,115 @@ export interface components {
             current_password: string;
             /** New Password */
             new_password: string;
+        };
+        /**
+         * CollectionCreate
+         * @description Body of ``POST /collections``. The title is the only field a collection
+         *     carries: items order themselves by when their events happened, so there is
+         *     no description and no manual order to submit.
+         */
+        CollectionCreate: {
+            /** Title */
+            title: string;
+        };
+        /**
+         * CollectionList
+         * @description One page of an analyst's collections, newest first.
+         *
+         *     Offset-paged rather than cursor-paged, like the profile feed beside it
+         *     (``GET /users/{username}/events``): the profile renders a pager over a
+         *     small set, and ``total`` counts the collections the caller may see, so the
+         *     pager never counts a row the list will not serve.
+         */
+        CollectionList: {
+            /** Items */
+            items: components["schemas"]["CollectionRead"][];
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * CollectionMembershipList
+         * @description Every collection the caller owns, as the popover reads them.
+         */
+        CollectionMembershipList: {
+            /** Items */
+            items: components["schemas"]["CollectionMembershipRead"][];
+        };
+        /**
+         * CollectionMembershipRead
+         * @description One of the caller's collections, and whether one event is already in it.
+         *
+         *     The add-to-collection popover's row. Deliberately thinner than
+         *     :class:`CollectionRead`: the popover names a collection and shows a
+         *     checked state, so it carries no cover and no date range to compute.
+         */
+        CollectionMembershipRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** In Collection */
+            in_collection: boolean;
+            /** Title */
+            title: string;
+        };
+        /**
+         * CollectionRead
+         * @description One collection as every read surface renders it.
+         *
+         *     ``event_count``, ``first_date`` and ``last_date`` are computed at read
+         *     time over the events the collection may show
+         *     (``services/event_filters.collectable_events``), never stored: a row that
+         *     closes, is taken down or is soft-deleted leaves the count and the range
+         *     without a write to the membership table. ``first_date`` and ``last_date``
+         *     are the smallest and largest ``event_date`` among those events, so both
+         *     are null for a collection holding nothing and for one whose items all
+         *     lack a date.
+         *
+         *     ``cover_url`` is what the card and the page band show. It resolves the
+         *     owner's uploaded cover when they set one. With none set it falls back to
+         *     the media of the first item in chronological order that is not flagged
+         *     graphic, picked by the card-thumbnail rule
+         *     (``services/thumbnails.pick_thumbnail``): the fallback is presentation
+         *     only, over imagery the item's own page already shows. It is null when no
+         *     item qualifies.
+         */
+        CollectionRead: {
+            /** Cover Url */
+            cover_url: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Event Count */
+            event_count: number;
+            /** First Date */
+            first_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Date */
+            last_date: string | null;
+            owner: components["schemas"]["AuthorRef"];
+            /** Title */
+            title: string;
+        };
+        /**
+         * CollectionUpdate
+         * @description Body of ``PATCH /collections/{id}``. The title is the only mutable
+         *     field, under the same cap the create takes.
+         */
+        CollectionUpdate: {
+            /** Title */
+            title: string;
         };
         /**
          * ConfirmRegistrationRequest
@@ -3114,6 +3466,39 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    hide_collection_admin_api_v1_admin_collections__collection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCollectionHideResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     detection_stats_api_v1_admin_detection_stats_get: {
         parameters: {
             query?: never;
@@ -3992,6 +4377,313 @@ export interface operations {
             };
         };
     };
+    create_collection_api_v1_collections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_collection_api_v1_collections__collection_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_collection_api_v1_collections__collection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_collection_api_v1_collections__collection_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_collection_cover_api_v1_collections__collection_id__cover_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_set_collection_cover_api_v1_collections__collection_id__cover_put"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_collection_cover_api_v1_collections__collection_id__cover_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_collection_events_api_v1_collections__collection_id__events_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor from a Link: rel=next header */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventList"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_event_to_collection_api_v1_collections__collection_id__events__event_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+                event_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_event_from_collection_api_v1_collections__collection_id__events__event_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+                event_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_conflicts_api_v1_conflicts_get: {
         parameters: {
             query?: {
@@ -4488,6 +5180,39 @@ export interface operations {
             };
         };
     };
+    list_event_collections_api_v1_events__geolocation_id__collections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionMembershipList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     geolocate_event_api_v1_events__geolocation_id__geolocate_post: {
         parameters: {
             query?: never;
@@ -4971,6 +5696,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserProfile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_collections_api_v1_users__username__collections_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                per_page?: number;
+            };
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionList"];
                 };
             };
             /** @description Validation Error */

@@ -47,6 +47,10 @@ flowchart LR
   the superseded state, as version_no moves on`")]:::store
   reports[("`**content_reports**
   any viewer, signed in or not`")]:::store
+  shelve["`**PUT /collections/{id}/events/{event_id}**
+  the owner puts one of their own rows on a named shelf`"]:::spec
+  shelves[("`**collections** + **collection_events**
+  which curated sets the row is on`")]:::store
 
   ask --> requested
   engine --> detected
@@ -61,9 +65,12 @@ flowchart LR
   geolocated --> close
   close --> closed
   geolocated --> reports
+  geolocated --> shelve
+  detected --> shelve
+  shelve --> shelves
 ```
 
-The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The three writes are `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched, [`event_versions`](#event_versions) holds what a correction superseded, and [`content_reports`](#content_reports) holds what a viewer flagged.
+The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The three writes are `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched, [`event_versions`](#event_versions) holds what a correction superseded, [`content_reports`](#content_reports) holds what a viewer flagged, and [`collections`](#collections) with [`collection_events`](#collection_events) holds the curated sets the owner puts their own rows on.
 
 ## Schema overview
 
@@ -240,6 +247,22 @@ erDiagram
         UUID conflict_id FK
     }
 
+    collections {
+        UUID id PK
+        UUID owner_id FK "the one owner"
+        VARCHAR title
+        TEXT cover_key "nullable, server-minted storage key"
+        TIMESTAMPTZ hidden_at "nullable, admin takedown"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    collection_events {
+        UUID collection_id FK
+        UUID event_id FK
+        TIMESTAMPTZ added_at
+    }
+
     follows {
         UUID follower_id FK
         UUID followed_id FK
@@ -267,6 +290,9 @@ erDiagram
     events |o--o{ content_reports : "event_id"
     users ||--o{ content_reports : "reporter_user_id"
     users ||--o{ content_reports : "resolved_by"
+    users ||--o{ collections : "owner_id"
+    collections ||--o{ collection_events : "collection_id"
+    events ||--o{ collection_events : "event_id"
     users ||--o{ follows : "follower_id"
     users ||--o{ follows : "followed_id"
 ```
@@ -604,6 +630,52 @@ Indexes:
 - `ix_follows_followed_id` on `(followed_id)`. The PK indexes the forward direction, who is X following, on its leading column. Without this index, the reverse direction, who follows X, the query that powers `followers_count` on every profile load, would full-scan.
 
 `ON DELETE CASCADE` applies to both FKs. Hard-deleting an analyst drops every edge on either side, so a deleted user cannot keep ghost followers or ghost followings. Soft-deleted users (`users.deleted_at IS NOT NULL`) keep their edges. The public profile returns 404 regardless, and resurrecting an account should resurrect its graph.
+
+---
+
+### `collections`
+
+A named, curated set of one analyst's own events, shown on the owner's public profile: a spatial dossier or an operation reconstruction. Personal, with exactly one owner and no collaborators. The title is the only free-text field and the items order themselves by when their events happened, so the table carries no description, no manual position, no denormalized count and no version history.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `owner_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The one owner. Cascades, unlike `events.owner_id`: a collection is one analyst's own shelf and nothing on it outlives their account, so a GDPR hard delete passes straight through. |
+| `title` | `VARCHAR(255)` | NOT NULL. The same width as `events.title`, from the shared `TITLE_MAX_LENGTH` in [`models/event.py`](../backend/app/models/event.py), so one cap governs an event title and a collection title alike. The API floor is 1 character. |
+| `cover_key` | `TEXT` | nullable. The storage key of the cover image, server-minted: `PUT /collections/{id}/cover` stores one metadata-stripped 400 px JPEG under `collections/{collection_id}/` and writes its key here, `DELETE` clears the column and the object. A key, where [`users.avatar_url`](#users) holds a URL, so nothing has to parse a URL back into the object it names; the read resolves it through the media host. NULL means the owner has set no cover and the read falls back (below). |
+| `hidden_at` | `TIMESTAMPTZ` | nullable. Takedown: NULL = visible, timestamp = withheld from every read but an admin's, the owner's included. The same reversible axis [`events.hidden_at`](#events) carries, set by `DELETE /admin/collections/{id}`. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL |
+| `updated_at` | `TIMESTAMPTZ` | NOT NULL, SQLAlchemy `onupdate` stamp |
+
+**Indexes:**
+- `ix_collections_owner_created_at` on `(owner_id, created_at)`. Backs the profile section's only read, this analyst's collections newest first.
+
+**What a collection shows is one predicate, not a column.** `services/event_filters.collectable_events` is a visible event (`deleted_at IS NULL AND hidden_at IS NULL`) in one of the two worked statuses, `geolocated` or `detected`. The item list, the item count, the date range, the default cover and the eligibility check the add verb runs all read it, so an event that later closes or is taken down leaves all five at once with no write to `collection_events`. A `requested` row is an ask rather than an answer; a `closed` row is one the owner rejected or retracted, and a curated shelf must not go on presenting it as work that stands.
+
+**Counts and the date range are computed per read.** `event_count` is the number of showable items, `first_date` and `last_date` the smallest and largest `event_date` among them. Nothing is stored, so no write path can leave a stale figure behind.
+
+**The default cover.** With `cover_key` NULL, the read serves the media of the first item in chronological order that is not flagged `is_graphic`, picked by the card-thumbnail rule (`services/thumbnails.pick_thumbnail`). Items flagged graphic are skipped rather than ending the search, so a card never shows death or injury to a reader who did not open the item, and a collection whose earliest event carries hard footage still gets a cover. The field is null when no item qualifies.
+
+**The ownership invariant lives in the service.** An event joins its owner's collection only, which spans two tables and so is no CHECK: `services/collections.add_event` enforces it, and an attempt to shelve somebody else's event is a 403. See [`api.md`](api.md#collections).
+
+---
+
+### `collection_events`
+
+One membership: this event is on this collection.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `collection_id` | `UUID` | FK → `collections.id` ON DELETE CASCADE |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE |
+| `added_at` | `TIMESTAMPTZ` | NOT NULL. When the owner put the event on the collection. Not a read key: the list orders by when the events happened, not by when they were shelved. |
+
+Composite PK: `(collection_id, event_id)`. The pair is the identity, so adding an event twice is the same row and the add verb is idempotent without a read-then-write.
+
+**Indexes:**
+- `ix_collection_events_event_id` on `(event_id)`. The PK's leading `collection_id` serves the forward read, what is on this collection; this covers the reverse, which of my collections hold this event, behind `GET /events/{id}/collections`.
+
+Both foreign keys cascade, so neither a hard-deleted event nor a hard-deleted collection leaves a membership pointing at nothing. Dropping a collection removes its memberships and touches no event: a collection is a view over the analyst's published record, so removing the view is not a judgement on any geolocation.
 
 ---
 
