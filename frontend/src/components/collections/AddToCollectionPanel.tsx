@@ -14,6 +14,7 @@ import {
   addEventToCollection,
   createCollection,
   eventCollectionsPath,
+  eventCountLabel,
   removeEventFromCollection,
   type CollectionMembership,
   type CollectionMemberships,
@@ -26,7 +27,12 @@ import {
  * It reads `GET /events/{id}/collections`, which is owner-only and lists empty
  * collections too, since putting the first event on one is what this panel is
  * for. Each row is the app's boolean row (`<ToggleRow>`), so a tap anywhere on
- * it toggles rather than having to land on the track.
+ * it toggles rather than having to land on the track. It carries the
+ * collection's item count as the row's `description`, which is what puts the
+ * title at reading size: a title runs to 255 characters and the row's other
+ * shape sets its label as a filter's 10px uppercase micro text. The count is
+ * the line the surface has to say anyway, in the phrasing every collection
+ * surface uses (`eventCountLabel`).
  *
  * **The toggle is optimistic, and it rolls back.** Membership is one bit and
  * both writes are idempotent, so the row flips on the click and the request
@@ -81,10 +87,17 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
       onSuccess: (collection) => {
         setCreating(false);
         // Appended rather than re-read: the new collection holds this event
-        // and nothing else, so the panel already knows its whole state.
+        // and nothing else, so the panel already knows its whole state. The
+        // count is 1 rather than the create response's own 0, which was read
+        // before this event was put on it.
         setRows((current) => [
           ...(current ?? []),
-          { id: collection.id, title: collection.title, in_collection: true },
+          {
+            id: collection.id,
+            title: collection.title,
+            event_count: 1,
+            in_collection: true,
+          },
         ]);
       },
     },
@@ -107,13 +120,18 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
   return (
     <div className="space-y-4">
       {rows.length > 0 ? (
-        <div>
+        /* The dividers and the row padding are this list's, not the
+           primitive's: its described shape carries neither, the way the
+           settings card supplies both for its own two rows. */
+        <div className="divide-y divide-neutral-800">
           {rows.map((row) => (
             <ToggleRow
               key={row.id}
               label={row.title}
+              description={eventCountLabel(row.event_count)}
               on={row.in_collection}
               onToggle={() => void toggle(row)}
+              className="py-2.5"
             />
           ))}
         </div>

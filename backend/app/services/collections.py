@@ -266,6 +266,7 @@ def build_collection_reads(db: Session, collections: Sequence[Collection]) -> li
             owner=collection.owner,
             title=collection.title,
             cover_url=cover_url(db, collection),
+            cover_is_uploaded=bool(collection.cover_key),
             event_count=stats_of(stats, collection.id).event_count,
             first_date=stats_of(stats, collection.id).first_date,
             last_date=stats_of(stats, collection.id).last_date,
@@ -482,10 +483,13 @@ def list_memberships(
 ) -> list[CollectionMembershipRead]:
     """Every collection ``owner`` holds, and whether ``event_id`` is on each.
 
-    The add-to-collection popover's payload, read in one pass: the caller's
-    collections, newest first, each carrying the checked state the popover
-    renders. Empty collections are in it, since putting the first event on one
-    is what the popover is for.
+    The add-to-collection popover's payload, read in three statements however
+    many rows come back: the caller's collections newest first, the
+    memberships of this one event among them, and the item count per
+    collection out of the same grouped query a page of cards reads
+    (:func:`stats_for`), so the number the popover prints under a title is the
+    number that collection's own page prints. Empty collections are in it,
+    since putting the first event on one is what the popover is for.
     """
     collections = (
         db.query(Collection)
@@ -494,6 +498,7 @@ def list_memberships(
         .limit(MAX_POPOVER_COLLECTIONS)
         .all()
     )
+    collection_ids = [collection.id for collection in collections]
     member_ids: set[uuid.UUID] = set()
     if collections:
         member_ids = {
@@ -501,14 +506,16 @@ def list_memberships(
             for (collection_id,) in db.query(CollectionEvent.collection_id)
             .filter(
                 CollectionEvent.event_id == event_id,
-                CollectionEvent.collection_id.in_([c.id for c in collections]),
+                CollectionEvent.collection_id.in_(collection_ids),
             )
             .all()
         }
+    stats = stats_for(db, collection_ids)
     return [
         CollectionMembershipRead(
             id=collection.id,
             title=collection.title,
+            event_count=stats_of(stats, collection.id).event_count,
             in_collection=collection.id in member_ids,
         )
         for collection in collections

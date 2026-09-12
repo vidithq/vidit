@@ -166,7 +166,7 @@ The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/u
 
 The key is `User.id`, read from the signature-verified session cookie. A forged `sub` cannot mint a bucket, so the cap travels with the account rather than with its source address: the per-IP table caps one client, and this quota caps one account's read throughput wherever it reads from. The two layers stack, and the backend evaluates the table limit first, so a request the table limit rejects costs the account nothing.
 
-This quota is defense in depth, not a wall on its own. Ten of the thirteen paths answer anonymously, so if you drop the session cookie, you leave the quota behind and fall back to the per-IP limits alone. The quota adds a ceiling the per-IP table cannot express: a bound on how much one account pulls, however many addresses it pulls from. Governing the anonymous catalog surface is the per-IP table's job.
+This quota is defense in depth, not a wall on its own. Thirteen of the sixteen paths answer anonymously, so if you drop the session cookie, you leave the quota behind and fall back to the per-IP limits alone. The quota adds a ceiling the per-IP table cannot express: a bound on how much one account pulls, however many addresses it pulls from. Governing the anonymous catalog surface is the per-IP table's job.
 
 Anonymous callers are exempt from the quota and keep the per-IP limits alone. So is every authenticated read absent from the list above, including `GET /auth/me` and the read-only admin probes. One endpoint is absent by decision rather than by nature: `GET /events/import-archive/{job_id}`. A single import polls it hard enough to drain a shared budget on its own. Exempting it cannot widen the catalog surface, because it returns no catalog rows: one job's own progress counters, with no listing, search, or enumeration to walk.
 
@@ -1116,13 +1116,13 @@ The add-to-collection popover's read, owner only: a collection is personal and o
 ```json
 {
   "items": [
-    { "id": "uuid", "title": "Zaporizhzhia plant", "in_collection": true },
-    { "id": "uuid", "title": "March strikes", "in_collection": false }
+    { "id": "uuid", "title": "Zaporizhzhia plant", "event_count": 12, "in_collection": true },
+    { "id": "uuid", "title": "March strikes", "event_count": 0, "in_collection": false }
   ]
 }
 ```
 
-Deliberately thinner than [`CollectionRead`](#get-collectionsid): the popover names a collection and shows a checked state, so it carries no cover and no date range.
+Thinner than [`CollectionRead`](#get-collectionsid): the popover names a collection, shows a checked state and says how much the collection already holds, so it carries no cover and no date range. `event_count` is computed over the same predicate as the collection reads, so the number under a title here is the number that collection's own page prints.
 
 **Errors:**
 | Code | Case |
@@ -1368,7 +1368,7 @@ Open a collection. It starts empty.
 
 `title` is required, 1 to 255 characters.
 
-**Response 201:** the new `CollectionRead`, with `event_count` 0 and a null date range and cover.
+**Response 201:** the new `CollectionRead`, with `event_count` 0, a null date range, a null cover and `cover_is_uploaded` false.
 
 **Errors:**
 | Code | Case |
@@ -1389,6 +1389,7 @@ One collection's header: owner, title, cover, item count, and the range its item
   "owner": { "id": "uuid", "username": "analyst", "avatar_url": "https://…/avatars/…jpg" },
   "title": "Zaporizhzhia plant",
   "cover_url": "https://…/collections/…jpg",
+  "cover_is_uploaded": true,
   "event_count": 12,
   "first_date": "2026-03-01",
   "last_date": "2026-07-09",
@@ -1399,6 +1400,8 @@ One collection's header: owner, title, cover, item count, and the range its item
 `event_count`, `first_date` and `last_date` are computed per read over the events the collection may show, never stored. `first_date` and `last_date` are the smallest and largest `event_date` among those events, so both are null for an empty collection and for one whose items all lack a date.
 
 `cover_url` is the owner's uploaded cover when they set one ([`PUT /collections/{id}/cover`](#put-collectionsidcover)). With none set it falls back to the media of the first item in chronological order that is not flagged graphic, picked by the same card-thumbnail rule as [`GET /events`](#get-events). Items flagged graphic are skipped rather than ending the search, so a card never shows death or injury to a reader who did not open the item. It is null when no item qualifies.
+
+`cover_is_uploaded` says which of the two `cover_url` resolved: true for the owner's own upload, false for the fallback and for no cover at all. It is what lets a client offer the owner's remove-the-cover control ([`DELETE /collections/{id}/cover`](#delete-collectionsidcover)) only where there is an upload to remove, since `cover_url` alone cannot tell a picture the owner chose from one the server picked.
 
 A withheld collection (`hidden_at`, see [`DELETE /admin/collections/{id}`](#delete-admincollectionsid)) answers 404 for everyone but an admin, its owner included, the same branch [`GET /events/{id}`](#get-eventsid) takes. So does a collection whose owner is soft-deleted.
 
@@ -1516,7 +1519,7 @@ The same pipeline the profile picture takes ([`PUT /users/me/avatar`](#put-users
 
 **Body:** `multipart/form-data` with a single `file` field. Accepts `image/jpeg`, `image/png`, and `image/webp`, up to `MAX_IMAGE_SIZE`. Video types are rejected.
 
-**Response 200:** the updated `CollectionRead`, carrying the new `cover_url`.
+**Response 200:** the updated `CollectionRead`, carrying the new `cover_url` with `cover_is_uploaded` true.
 
 **Errors:**
 | Code | Case |
@@ -1532,7 +1535,7 @@ The same pipeline the profile picture takes ([`PUT /users/me/avatar`](#put-users
 
 Remove the uploaded cover. Owner only.
 
-Clears `collections.cover_key` and deletes the stored object, so `cover_url` falls back to the default described under [`GET /collections/{id}`](#get-collectionsid). Idempotent: removing a cover you never set returns 200.
+Clears `collections.cover_key` and deletes the stored object, so `cover_url` falls back to the default described under [`GET /collections/{id}`](#get-collectionsid) and `cover_is_uploaded` returns to false. Idempotent: removing a cover you never set returns 200.
 
 **Response 200:** the updated `CollectionRead`.
 
@@ -1754,6 +1757,7 @@ Offset-paged, like the published-geolocations feed beside it.
       "owner": { "id": "uuid", "username": "analyst", "avatar_url": null },
       "title": "Zaporizhzhia plant",
       "cover_url": "https://…/collections/…jpg",
+      "cover_is_uploaded": true,
       "event_count": 12,
       "first_date": "2026-03-01",
       "last_date": "2026-07-09",

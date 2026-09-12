@@ -133,6 +133,17 @@ export function deleteCollectionCover(id: string): Promise<Collection> {
 }
 
 /**
+ * How much a collection holds, as every surface says it.
+ *
+ * One phrasing for the three that state it: the collection page's meta line,
+ * the profile card's, and the add-to-collection panel's row, so the same
+ * collection never reads as `12 events` on one surface and `12` on another.
+ */
+export function eventCountLabel(count: number): string {
+  return `${count} event${count === 1 ? "" : "s"}`;
+}
+
+/**
  * The meta line both the page and the profile card print: how much the
  * collection holds, then the span its items cover.
  *
@@ -146,7 +157,7 @@ export function deleteCollectionCover(id: string): Promise<Collection> {
  */
 export function collectionMetaSegments(collection: Collection): string[] {
   const { event_count: count, first_date: first, last_date: last } = collection;
-  const segments = [`${count} event${count === 1 ? "" : "s"}`];
+  const segments = [eventCountLabel(count)];
   if (first && last) {
     segments.push(
       first === last

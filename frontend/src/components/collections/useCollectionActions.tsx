@@ -119,13 +119,12 @@ export function useCollectionActions({
 
   if (!collection || !isOwner) return { actions: null, panels: null };
 
-  // What the cover currently resolves to, which is either the owner's upload
-  // or the first item's own media: the read serves one `cover_url` for both, so
-  // this surface cannot tell them apart and does not claim to. The tile shows
-  // the picture the collection is wearing, and the remove control clears an
-  // upload if there is one (the endpoint is idempotent, so clearing a cover
-  // nobody uploaded is a no-op rather than an error).
+  // The tile shows whatever the collection is wearing, the owner's upload or
+  // the first item's own media. `cover_is_uploaded` separates the two, which
+  // `cover_url` alone cannot, and only an upload can be removed: offering the
+  // control against a fallback names a picture the owner never chose.
   const hasCover = collection.cover_url !== null;
+  const hasUpload = collection.cover_is_uploaded;
 
   // The name says what survives the act, since that is the part a reader
   // hesitates over: the events stay exactly as they are.
@@ -232,7 +231,7 @@ export function useCollectionActions({
                     clear control: with no upload the cover falls back to the
                     first item's media, so there is always something shown and
                     the tile is never the empty state a clear would produce. */}
-                {hasCover && (
+                {hasUpload && (
                   <Button
                     variant="ghost"
                     disabled={clearCover.loading}

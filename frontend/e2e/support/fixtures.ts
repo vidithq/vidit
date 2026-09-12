@@ -182,6 +182,7 @@ export const COLLECTION: Collection = {
   },
   title: "Kupiansk rail corridor: three days of strikes on the eastern approach",
   cover_url: MEDIA_URL,
+  cover_is_uploaded: true,
   event_count: 1,
   first_date: "2025-01-03",
   last_date: "2025-01-03",

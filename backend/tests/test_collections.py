@@ -15,8 +15,9 @@ A collection is a named set of one analyst's own events. What these lock in:
 * ``GET /users/{username}/collections``: a reader sees the collections that
   hold something, the owner sees their empty ones too, and ``total`` agrees
   with the rows either way.
-* The cover: an uploaded object lands on our own media host, and a collection
-  with none falls back to the first chronological item's media.
+* The cover: an uploaded object lands on our own media host, a collection with
+  none falls back to the first chronological item's media, and
+  ``cover_is_uploaded`` says which of the two the read resolved.
 * A GDPR hard delete of the owner drops the collections and sweeps their cover
   objects.
 """
@@ -255,6 +256,7 @@ def test_create_collection_returns_an_empty_shelf(db, cleanup, owner):
     assert body["first_date"] is None
     assert body["last_date"] is None
     assert body["cover_url"] is None
+    assert body["cover_is_uploaded"] is False
 
 
 def test_create_collection_requires_auth():
@@ -690,6 +692,31 @@ def test_event_collections_report_membership_to_the_owner(db, cleanup, owner):
     assert by_title == {"Holding": True, "Other": False}
 
 
+def test_event_collections_count_each_collection_on_the_showable_predicate(db, cleanup, owner):
+    """The count under a title is the one that collection's own page prints: the
+    same predicate, so a withheld item is out of both."""
+    collection = _make_collection(db, cleanup, owner=owner, title="Holding")
+    empty = _make_collection(db, cleanup, owner=owner, title="Other")
+    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    _add(db, collection, event)
+    _add(db, collection, _make_event(db, cleanup, owner=owner, event_date=date(2026, 6, 1)))
+    _add(
+        db,
+        collection,
+        _make_event(db, cleanup, owner=owner, event_date=date(2020, 1, 1), hidden=True),
+    )
+
+    body = client.get(
+        f"/api/v1/events/{event.id}/collections", headers=login_as(client, owner)
+    ).json()
+    assert {item["title"]: item["event_count"] for item in body["items"]} == {
+        "Holding": 2,
+        "Other": 0,
+    }
+    assert client.get(f"/api/v1/collections/{collection.id}").json()["event_count"] == 2
+    assert client.get(f"/api/v1/collections/{empty.id}").json()["event_count"] == 0
+
+
 def test_event_collections_are_owner_only(db, cleanup, owner, stranger):
     event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
     assert client.get(f"/api/v1/events/{event.id}/collections").status_code == 401
@@ -813,6 +840,38 @@ def test_uploaded_cover_wins_over_the_default(local_storage, db, cleanup, owner)
 
     url = _put_cover(collection, owner).json()["cover_url"]
     assert url.startswith(LOCAL_STORAGE_URL_PREFIX)
+
+
+def test_cover_is_uploaded_names_which_cover_the_read_resolved(local_storage, db, cleanup, owner):
+    """The flag separates the owner's upload from the fallback, which one
+    ``cover_url`` cannot: false with a fallback showing, true once a picture is
+    uploaded, false again once it is removed."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    db.add(
+        Media(
+            event_id=event.id,
+            role="source",
+            storage_url="https://media.example.com/item.jpg",
+            media_type="image",
+        )
+    )
+    _add(db, collection, event)
+    db.commit()
+
+    # A fallback is a cover the reader sees and not one the owner can remove.
+    body = client.get(f"/api/v1/collections/{collection.id}").json()
+    assert body["cover_url"] == "https://media.example.com/item.jpg"
+    assert body["cover_is_uploaded"] is False
+
+    assert _put_cover(collection, owner).json()["cover_is_uploaded"] is True
+    assert client.get(f"/api/v1/collections/{collection.id}").json()["cover_is_uploaded"] is True
+
+    cleared = client.delete(
+        f"/api/v1/collections/{collection.id}/cover", headers=login_as(client, owner)
+    ).json()
+    assert cleared["cover_is_uploaded"] is False
+    assert cleared["cover_url"] == "https://media.example.com/item.jpg"
 
 
 def test_default_cover_is_null_without_media(db, cleanup, owner):

@@ -41,12 +41,20 @@ class CollectionRead(BaseModel):
     (``services/thumbnails.pick_thumbnail``): the fallback is presentation
     only, over imagery the item's own page already shows. It is null when no
     item qualifies.
+
+    ``cover_is_uploaded`` says which of the two ``cover_url`` resolved, true
+    for the owner's own upload and false for the fallback and for no cover at
+    all. Without it the two are one value and a client cannot tell a picture
+    the owner chose from one the server picked, which is what the owner's
+    remove-the-cover control needs to know: offering it against a fallback
+    names an upload that does not exist.
     """
 
     id: uuid.UUID
     owner: AuthorRef
     title: str
     cover_url: str | None
+    cover_is_uploaded: bool
     event_count: int
     first_date: date | None
     last_date: date | None
@@ -73,13 +81,19 @@ class CollectionList(BaseModel):
 class CollectionMembershipRead(BaseModel):
     """One of the caller's collections, and whether one event is already in it.
 
-    The add-to-collection popover's row. Deliberately thinner than
-    :class:`CollectionRead`: the popover names a collection and shows a
-    checked state, so it carries no cover and no date range to compute.
+    The add-to-collection popover's row. Thinner than :class:`CollectionRead`:
+    the popover names a collection, shows a checked state and says how much
+    the collection already holds, so it carries no cover and no date range.
+
+    ``event_count`` is computed over the same predicate
+    (``services/event_filters.collectable_events``) the collection reads use,
+    so the number under a title in the popover is the number the collection's
+    own page prints.
     """
 
     id: uuid.UUID
     title: str
+    event_count: int
     in_collection: bool
 
 

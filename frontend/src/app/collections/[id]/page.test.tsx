@@ -50,6 +50,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   owner: OWNER,
   title: "Kupiansk rail corridor",
   cover_url: null,
+  cover_is_uploaded: false,
   event_count: 5,
   first_date: "2026-03-14",
   last_date: "2026-03-16",
@@ -224,6 +225,44 @@ describe("CollectionPage", () => {
       screen.getByRole("button", {
         name: "Remove Strike on the rail junction from this collection",
       }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers to remove the cover only where the owner uploaded one", () => {
+    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
+    // A cover the server picked off the first item: shown, and not the
+    // owner's to remove.
+    useApiResource.mockReturnValue({
+      data: collection({
+        cover_url: "https://media.example/item.jpg",
+        cover_is_uploaded: false,
+      }),
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    const view = render(<CollectionPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Change the cover" }));
+
+    expect(
+      screen.queryByRole("button", { name: "Remove the uploaded picture" }),
+    ).not.toBeInTheDocument();
+
+    view.unmount();
+    useApiResource.mockReturnValue({
+      data: collection({
+        cover_url: "https://media.example/cover.jpg",
+        cover_is_uploaded: true,
+      }),
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(<CollectionPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Change the cover" }));
+
+    expect(
+      screen.getByRole("button", { name: "Remove the uploaded picture" }),
     ).toBeInTheDocument();
   });
 

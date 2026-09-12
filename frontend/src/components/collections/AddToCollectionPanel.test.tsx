@@ -23,8 +23,18 @@ import { AddToCollectionPanel } from "./AddToCollectionPanel";
 
 const MEMBERSHIPS: CollectionMemberships = {
   items: [
-    { id: "c1", title: "Kupiansk rail corridor", in_collection: false },
-    { id: "c2", title: "Zaporizhzhia plant perimeter", in_collection: true },
+    {
+      id: "c1",
+      title: "Kupiansk rail corridor",
+      event_count: 1,
+      in_collection: false,
+    },
+    {
+      id: "c2",
+      title: "Zaporizhzhia plant perimeter",
+      event_count: 12,
+      in_collection: true,
+    },
   ],
 };
 
@@ -54,6 +64,17 @@ describe("AddToCollectionPanel", () => {
       "aria-checked",
       "true",
     );
+  });
+
+  it("gives each row the reading-size shape, with what the collection holds", () => {
+    render(<AddToCollectionPanel eventId="e1" />);
+
+    // A described `<ToggleRow>` is the label at reading size over its line,
+    // which is the shape an analyst's own title needs; the count is that line.
+    expect(screen.getByText("1 event")).toBeInTheDocument();
+    expect(screen.getByText("12 events")).toBeInTheDocument();
+    // The accessible name stays the title alone, never the count under it.
+    expect(row("Kupiansk rail corridor")).toBeInTheDocument();
   });
 
   it("flips the row on the click and writes behind it", async () => {
@@ -130,7 +151,8 @@ describe("AddToCollectionPanel", () => {
       owner: { id: "u1", username: "ana", avatar_url: null },
       title: "March strikes",
       cover_url: null,
-      event_count: 1,
+      cover_is_uploaded: false,
+      event_count: 0,
       first_date: null,
       last_date: null,
       created_at: "2026-03-21T09:00:00Z",
@@ -152,6 +174,9 @@ describe("AddToCollectionPanel", () => {
     await waitFor(() =>
       expect(row("March strikes")).toHaveAttribute("aria-checked", "true"),
     );
+    // And counted as holding it, not as the empty shelf the create answered
+    // with before the event was put on it.
+    expect(row("March strikes")).toHaveTextContent("1 event");
   });
 
   it("offers to open the first one when the analyst holds none", () => {
