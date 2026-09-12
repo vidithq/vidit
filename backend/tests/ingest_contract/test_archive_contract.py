@@ -43,7 +43,7 @@ from app.services.tweet_ingest import (
     resolve_threads,
     stitch,
 )
-from tests._fixtures import TINY_JPEG
+from tests._fixtures import TINY_JPEG, TINY_MP4
 
 from . import loader
 
@@ -120,9 +120,12 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
 
     assert _rows_for(db, owner, "no_coord") == []
     # The export runs the same write path as the bot and the paste, so a thread
-    # it refuses is counted under the code they name back. ``no_coord`` is the
-    # only refusing thread here; ``reason`` stays unset because rows landed.
-    assert outcome.refusals == {COORDS_MISSING: 1}
+    # it refuses is counted under the code they name back. Three threads carry
+    # no coordinate here, the two mirror shapes included: the archive writes
+    # detections and nothing else, so a mirror post is a plain refusal on this
+    # entry whatever second exit the engine offers the bot. ``reason`` stays
+    # unset because rows landed.
+    assert outcome.refusals == {COORDS_MISSING: 3}
     assert outcome.reason is None
 
     # Source-less typologies: source_url NULL, source_posted_at NULL.
@@ -246,7 +249,7 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
         # Stand in for the X CDN GET the chased source media would trigger, so
         # the disk fetcher's real path (photos from tweets_media/) still runs but
         # nothing leaves the box.
-        return loader.TINY_MP4, parsed.content_type
+        return TINY_MP4, parsed.content_type
 
     monkeypatch.setattr(x_chase_mod, "fetch_syndication", fake_fetch)
     monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
@@ -298,7 +301,7 @@ async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: 
         return ChaseResult(outcome="chased", post=embed)
 
     async def fake_cdn(parsed: ParsedMedia) -> tuple[bytes, str]:
-        return loader.TINY_MP4, parsed.content_type
+        return TINY_MP4, parsed.content_type
 
     monkeypatch.setattr(telegram_mod, "chase", fake_chase)
     monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
@@ -397,7 +400,7 @@ async def test_reimport_fills_a_detection_an_earlier_run_left_bare(
         )
 
     async def fake_cdn(parsed: ParsedMedia) -> tuple[bytes, str]:
-        return loader.TINY_MP4, parsed.content_type
+        return TINY_MP4, parsed.content_type
 
     monkeypatch.setattr(telegram_mod, "chase", fake_chase)
     monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)

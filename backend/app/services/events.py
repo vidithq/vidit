@@ -41,6 +41,7 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     STATUS_REQUESTED,
     BeforeClosedStatus,
+    DetectedVia,
     Event,
     EventGeolocator,
     EventSourceLink,
@@ -595,6 +596,22 @@ async def create_with_evidence(
     return geo
 
 
+@dataclass(frozen=True)
+class ImportProvenance:
+    """Where a machine-written row came from: the post, its thread, the entry.
+
+    The four provenance columns an import stamps, carried as one argument so a
+    write verb takes them together or not at all. It lives here rather than
+    beside the import code because ``services/detection`` imports this module,
+    and the reverse would be a cycle.
+    """
+
+    tweet_id: int | None
+    url: str
+    thread_tweet_ids: list[int]
+    via: DetectedVia
+
+
 async def create_request(
     db: Session,
     *,
@@ -609,7 +626,7 @@ async def create_request(
     capture_source_lng: float | None = None,
     event_date: date | None = None,
     event_time: time | None = None,
-    source_posted_at: datetime,
+    source_posted_at: datetime | None,
     tag_ids: list,
     conflict_ids: list,
     is_graphic: bool = False,
@@ -617,6 +634,7 @@ async def create_request(
     proof_files: list[UploadFile],
     source_snapshot_url: str | None = None,
     secondary_snapshot_urls: list[str] | None = None,
+    provenance: ImportProvenance | None = None,
 ) -> Event:
     """Create a ``requested`` event row + its source media (an open call).
 
@@ -642,6 +660,15 @@ async def create_request(
     :func:`create_with_evidence`: the poster archives them while filling the one
     form that posts either shape, so the pastes are kept whichever button they
     press.
+
+    ``provenance`` is set only by a machine writer (``detection.open_request``,
+    the bot's request branch) and stamps the four import columns
+    (``detected_from_tweet_id``, ``detected_from_url``,
+    ``detected_thread_tweet_ids``, ``detected_via``) on the row, so a
+    machine-opened request is recognised by the same re-import match as a
+    detection. A human request carries none of them. ``source_posted_at`` is
+    likewise optional here, since a chase may serve no date; the form keeps it
+    required for people (``routers/events/write``).
 
     Failure modes: :class:`InvalidCoordinatesError` on a bad / half-typed
     guess, :class:`MediaRequiredError` with no file,
@@ -684,6 +711,11 @@ async def create_request(
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
     )
+    if provenance is not None:
+        geo.detected_from_tweet_id = provenance.tweet_id
+        geo.detected_from_url = provenance.url
+        geo.detected_thread_tweet_ids = provenance.thread_tweet_ids or None
+        geo.detected_via = provenance.via
     geo.tags = _resolve_tags(db, tag_ids)
     geo.conflicts = _resolve_conflicts(db, conflict_ids)
     geo.source_links = build_source_link_rows(secondary_links)

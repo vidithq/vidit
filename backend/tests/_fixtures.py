@@ -82,6 +82,12 @@ _TINY_JPEG_HEX = (
 
 TINY_JPEG: bytes = bytes.fromhex(_TINY_JPEG_HEX)
 
+# A minimal, non-empty stand-in for an mp4's bytes. The ingest path stores
+# videos without decoding them (``prepare_media`` passes non-image types
+# through, ``validate_bytes`` only size-checks video/mp4), so any short byte
+# string round-trips as a video Media row.
+TINY_MP4: bytes = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isomFAKE"
+
 
 def tiny_jpeg(filename: str = "tiny.jpg") -> tuple[str, bytes, str]:
     """Drop-in replacement for ``_tiny_jpeg()`` — works with FastAPI's

@@ -1,6 +1,6 @@
 """Unit tests for the Telegram chaser (offline).
 
-Two surfaces: the SSRF URL guard (``_telegram_post_url`` admits nothing but a
+Two surfaces: the SSRF URL guard (``urls.telegram_post_url`` admits nothing but a
 public t.me post) and the embed parser (``chase`` over synthetic HTML carrying
 the real ``tgme_*`` classes). Every fetch runs through an ``httpx.MockTransport``
 client, so no request leaves the box.
@@ -12,8 +12,9 @@ import httpx
 import pytest
 
 from app.services.tweet_ingest import retry
-from app.services.tweet_ingest.chase.telegram import _telegram_post_url, chase
+from app.services.tweet_ingest.chase.telegram import chase
 from app.services.tweet_ingest.records import ChasedPost, ChaseResult
+from app.services.tweet_ingest.urls import telegram_post_url
 
 # ── SSRF URL guard ────────────────────────────────────────────────────────
 
@@ -32,7 +33,7 @@ from app.services.tweet_ingest.records import ChasedPost, ChaseResult
     ],
 )
 def test_post_url_accepts_public_posts(url: str, expected: str) -> None:
-    assert _telegram_post_url(url) == expected
+    assert telegram_post_url(url) == expected
 
 
 @pytest.mark.parametrize(
@@ -52,7 +53,7 @@ def test_post_url_accepts_public_posts(url: str, expected: str) -> None:
     ],
 )
 def test_post_url_rejects_everything_else(url: str) -> None:
-    assert _telegram_post_url(url) is None
+    assert telegram_post_url(url) is None
 
 
 def test_disallowed_url_never_fetches() -> None:

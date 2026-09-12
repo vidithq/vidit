@@ -1600,6 +1600,47 @@ def test_reject_rate_ignores_human_submits(admin_user, regular_user, events_clea
     assert after["machine_rejected"] == before["machine_rejected"]
 
 
+def test_reject_rate_ignores_a_bot_opened_request(admin_user, regular_user, events_cleanup, db):
+    """A request the bot opened carries ``detected_from_url`` like a detection,
+    and ``requested_at`` like every other request. The stamp is what keeps it out
+    of the cohort for its whole life, closed or fulfilled: it is footage waiting
+    for a geolocation, not an extraction the pipeline is judged on."""
+    before = _detection_stats(admin_user)
+
+    now = datetime.now(UTC)
+    closed_request = Event(
+        owner_id=regular_user.id,
+        requested_by_id=regular_user.id,
+        title=f"Bot request closed {uuid.uuid4().hex[:8]}",
+        status=STATUS_CLOSED,
+        before_closed_status=STATUS_REQUESTED,
+        closed_at=now,
+        requested_at=now,
+        source_url="https://t.me/wilddivision82/351",
+        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        detected_via="bot",
+    )
+    fulfilled_request = Event(
+        owner_id=regular_user.id,
+        requested_by_id=regular_user.id,
+        title=f"Bot request fulfilled {uuid.uuid4().hex[:8]}",
+        status=STATUS_GEOLOCATED,
+        geolocated_at=now,
+        requested_at=now,
+        event_coords=from_shape(Point(34.5, 48.5), srid=4326),
+        source_url="https://t.me/wilddivision82/352",
+        detected_from_url=f"https://x.com/a/{uuid.uuid4().hex}",
+        detected_via="bot",
+    )
+    db.add_all([closed_request, fulfilled_request])
+    db.commit()
+    events_cleanup.extend([closed_request.id, fulfilled_request.id])
+
+    after = _detection_stats(admin_user)
+    assert after["machine_total"] == before["machine_total"]
+    assert after["machine_rejected"] == before["machine_rejected"]
+
+
 def test_pending_quality_counts_missing_pieces(admin_user, regular_user, events_cleanup, db):
     """The pending counts flag live detections missing a source media, a
     proof image, or a source URL. A detection with all three present lifts only the

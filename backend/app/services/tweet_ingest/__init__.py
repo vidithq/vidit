@@ -10,7 +10,7 @@ Single-responsibility bricks behind one import surface:
   every path.
 * ``stitch``: recombine records into threads (union-find on reply edges).
 * ``resolve``: the engine, threads to one ``Detection`` per coordinate plus the
-  reason a thread produced none.
+  reason a thread produced none and any ``RequestDraft`` that reason carries.
 * ``syndication``: X I/O (fetch + token + cache, payload mappers).
 * ``chase``: the one chase step (``chase_thread``), one module per technology
   behind one dispatcher, for the single fetch a thread's declared source costs.
@@ -65,6 +65,7 @@ from .resolve import (
     SOURCE_MISSING,
     WARNING_MESSAGES,
     Detection,
+    RequestDraft,
     Resolution,
     resolve_threads,
     sole_refusal,
@@ -90,6 +91,7 @@ __all__ = [
     "InvalidTweetUrl",
     "ParsedCoord",
     "ParsedMedia",
+    "RequestDraft",
     "Resolution",
     "TweetFetchFailed",
     "TweetNotAccessible",
