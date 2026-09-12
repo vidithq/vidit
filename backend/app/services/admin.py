@@ -10,6 +10,7 @@ from app.models.admin_event import AdminEvent
 from app.models.archive_import_job import ArchiveImportJob
 from app.models.auth_event import EVENT_LOGIN, AuthEvent
 from app.models.bot_mention import BotMention
+from app.models.collection import Collection
 from app.models.event import (
     STATUS_CLOSED,
     STATUS_DETECTED,
@@ -25,7 +26,7 @@ from app.schemas.admin import (
     AdminInviteCodeRead,
     AdminInviteRedeemerRead,
 )
-from app.services import versions
+from app.services import collections, versions
 from app.services.auth import bump_token_version, generate_invite_code, invite_code_status
 from app.services.evidence_intake import (
     collect_event_media_keys,
@@ -71,6 +72,12 @@ class InviteCodeUsedError(AdminError):
     """The code names a redeemer, so its row belongs to the audit trail."""
 
     code = "invite_code_used"
+
+
+class CollectionNotFoundError(AdminError):
+    """No collection carries that id."""
+
+    code = "collection_not_found"
 
 
 def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInviteRedeemerRead]:
@@ -410,6 +417,40 @@ def soft_delete_geolocation(
     return geo
 
 
+def hide_collection(
+    db: Session,
+    *,
+    actor_id: uuid.UUID,
+    collection_id: uuid.UUID,
+) -> Collection:
+    """Withhold one collection from every read but an admin's.
+
+    The collection-shaped takedown, next to the event one above and on the
+    same reversible ``hidden_at`` axis: a reported shelf is withheld pending
+    judgement rather than removed. The events on it are untouched, each
+    carrying its own moderation state, and the cover object stays where it is.
+
+    Idempotent: an already withheld collection keeps its original timestamp
+    and files no second audit row.
+    """
+    collection = db.query(Collection).filter(Collection.id == collection_id).first()
+    if collection is None:
+        raise CollectionNotFoundError("Collection not found")
+    if collection.hidden_at is not None:
+        return collection
+
+    collection.hidden_at = datetime.now(UTC)
+    log_admin_event(
+        db,
+        actor_id=actor_id,
+        action="collection_hidden",
+        target={"collection_id": str(collection.id), "title": collection.title},
+    )
+    db.commit()
+    db.refresh(collection)
+    return collection
+
+
 def hard_delete_geolocation(
     db: Session,
     *,
@@ -600,15 +641,17 @@ def hard_delete_user(
 
     1. Capture S3 keys upfront: the media URLs (all roles: source footage +
        proof images) across their events, located and requested alike, plus
-       the account's own avatar object. The cascade about to fire would drop
-       those rows before we could read them.
+       the account's own avatar object and the cover of every collection they
+       own. The cascade about to fire would drop those rows before we could
+       read them.
     2. Manually delete each event: ``owner_id`` carries no ``ON DELETE
        CASCADE`` (would mean retroactive constraint changes). Each ``db.delete``
        cascades to that row's media / contributor rows / tags. Because the
        owner is always among an event's geolocators, no ``geolocated`` event
        is left below one geolocator.
-    3. Delete the user. ``auth_tokens`` and their contributor rows on other
-       people's events cascade-drop; ``admin_events.actor_id`` and
+    3. Delete the user. ``auth_tokens``, their collections (and the
+       memberships under them) and their contributor rows on other people's
+       events cascade-drop; ``admin_events.actor_id`` and
        ``invite_codes.used_by`` flip to NULL via migration f1a3b5c7d9e0:
        invite-code rows are audit trail and should outlive the user.
     4. Commit, *then* sweep S3 (see :func:`services.storage.sweep_keys`).
@@ -626,6 +669,9 @@ def hard_delete_user(
     for geo in geolocations:
         geo_media_keys.extend(collect_event_media_keys(db, geo))
     avatar_key = avatar_key_of(user.avatar_url)
+    # The collection rows cascade with the user; their cover objects do not,
+    # so they are read here for the sweep, the same reason the avatar is.
+    cover_keys = collections.owned_cover_keys(db, user.id)
 
     target = {
         "user_id": str(user.id),
@@ -648,7 +694,7 @@ def hard_delete_user(
 
     # 4. Best-effort S3 sweep, after the DB transaction is durable.
     sweep_keys(
-        geo_media_keys + ([avatar_key] if avatar_key else []),
+        geo_media_keys + ([avatar_key] if avatar_key else []) + cover_keys,
         context=f"user {user_id} hard-delete",
     )
 

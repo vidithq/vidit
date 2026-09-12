@@ -11,6 +11,7 @@ from app.ratelimit import limiter
 from app.routers._errors import raise_typed_error
 from app.routers.events._common import build_version_read
 from app.schemas.admin import (
+    AdminCollectionHideResponse,
     AdminDetectionStatsRead,
     AdminEventDeleteResponse,
     AdminEventModerationRead,
@@ -44,6 +45,7 @@ _ADMIN_ERROR_STATUS: dict[str, int] = {
     "user_not_found": 404,
     "geolocation_not_found": 404,
     "version_not_found": 404,
+    "collection_not_found": 404,
     "x_handle_conflict": 409,
     "invite_code_used": 409,
 }
@@ -310,6 +312,37 @@ def delete_geolocation_admin(
         title=geo.title,
         mode="soft",
         deleted_at=geo.deleted_at,
+    )
+
+
+@router.delete(
+    "/collections/{collection_id}",
+    response_model=AdminCollectionHideResponse,
+)
+@limiter.limit("60/hour")
+def hide_collection_admin(
+    request: Request,
+    collection_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> AdminCollectionHideResponse:
+    """Withhold a collection from every read but an admin's.
+
+    Sets ``hidden_at``, the reversible takedown an event carries too, so the
+    shelf is withheld pending judgement rather than destroyed. The events on
+    it are untouched: each is moderated on its own. Idempotent, and 404 on an
+    unknown collection.
+    """
+    try:
+        collection = admin_service.hide_collection(
+            db, actor_id=current_user.id, collection_id=collection_id
+        )
+    except admin_service.AdminError as exc:
+        _raise_admin_error(exc)
+    return AdminCollectionHideResponse(
+        collection_id=collection.id,
+        title=collection.title,
+        hidden_at=collection.hidden_at,
     )
 
 

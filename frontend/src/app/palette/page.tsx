@@ -19,6 +19,7 @@ import {
   Search as SearchIcon,
   Swords,
   Upload,
+  X,
 } from "lucide-react";
 
 import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
@@ -32,6 +33,7 @@ import {
 } from "@/components/ui/BrandGlyphs";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { EntityCard } from "@/components/ui/EntityCard";
+import { CollectionCover } from "@/components/collections/CollectionCover";
 import { DetectionQueueRow } from "@/components/detections/DetectionQueueRow";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -1377,6 +1379,43 @@ export default function PalettePage() {
             </div>
           </Item>
 
+          <Item name="<EntityCard variant=compact>: a collection item" usage="One item of a collection: the same compact card with two differences the props carry. `author` is omitted, so the row drops its byline, because a collection is one analyst's own set and the page header names them once. `action` holds a control that acts on the row rather than opening it (here the owner's remove), rendered above the stretched link in the badge's column, so it takes its own click while the rest of the row still navigates.">
+            <div className="w-full max-w-xl">
+              <EntityCard
+                variant="compact"
+                detailHref="/events/demo"
+                title={MOCK_CARD_GEO.title}
+                badge={<StatusBadge status="geolocated" />}
+                date={MOCK_CARD_GEO.event_date}
+                coords={{ lat: 48.0159, lng: 37.8024 }}
+                tags={MOCK_CARD_GEO.tags}
+                action={
+                  <Button
+                    icon
+                    variant="ghost"
+                    aria-label="Remove from this collection"
+                    title="Remove from collection"
+                  >
+                    <X size={14} />
+                  </Button>
+                }
+              />
+            </div>
+          </Item>
+
+          <Item name="<CollectionCover>" usage="A collection's cover, in its two shapes: the profile card's 16:9 slot and the band over the collection page's header. It is EntityCard's own MediaThumb slot fed a plain image URL (`src`, for a picture that is not an event's media row), so a cover with nothing to show falls back to the one no-media placeholder rather than to a stand-in of its own. The band wears the embedded-map treatment, at 120px on a phone and 160px from `sm` up.">
+            <div className="w-full max-w-xl space-y-3">
+              <Variant label="card slot, no cover to show">
+                <div className="w-56">
+                  <CollectionCover coverUrl={null} />
+                </div>
+              </Variant>
+              <Variant label="page band, no cover to show">
+                <CollectionCover coverUrl={null} variant="band" />
+              </Variant>
+            </div>
+          </Item>
+
           <Item name="<DetectionQueueRow>" usage="Detections queue: denser than a card (no byline, coords or tags), whole row clicks through to the edit form. One badge, describing the evidence: 'Ready to review' (outline tone, waiting on a review's judgment, never a complete state), one named missing piece, or a count of several. Hover any badge: every state carries title text saying what it means, which pieces are missing in full, and what to do next.">
             <div className="w-full max-w-xl space-y-2">
               <DetectionQueueRow detection={MOCK_DETECTION_READY} />
@@ -1402,7 +1441,7 @@ export default function PalettePage() {
               <li><span className="font-mono text-neutral-400">BetaBanner</span>: a {"<Pill tone=\"accent\">"} in a <code>position: fixed</code> wrapper, already visible bottom-right from <code>sm</code> up; below <code>sm</code> the same pill rides the nav drawer via {"<BetaBanner inline>"}</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span>: the primary nav, auth/route-driven, always on screen. Two shapes: a fixed rail on the left edge from <code>sm</code> up (glyphs, or glyphs plus labels once expanded), and below <code>sm</code> a floating chip in the top-left corner that opens the same rail as a drawer over the page</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span> chip and drawer: the rail&apos;s own phone shape, rendered by that component rather than a <code>components/ui/</code> primitive, so there is nothing here to reuse. The chip&apos;s open control is a deliberate one-off too: a 44px neutral thumb target, which {"<Button icon>"} does not offer (36px, accent or red)</li>
-              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
+              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page; PageShell&apos;s <code>banner</code> slot is the band a page whose subject carries a picture of its own puts over the heading (a collection&apos;s cover); <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
             </ul>
           </Item>
         </section>

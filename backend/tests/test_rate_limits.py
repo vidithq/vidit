@@ -210,6 +210,9 @@ _READ_LIMITS = [
     ("/api/v1/users/no-such-user", 120),
     ("/api/v1/users/no-such-user/events", 120),
     ("/api/v1/users/no-such-user/stats", 120),
+    ("/api/v1/users/no-such-user/collections", 120),
+    (f"/api/v1/collections/{uuid.UUID(int=0)}", 120),
+    (f"/api/v1/collections/{uuid.UUID(int=0)}/events", 120),
 ]
 
 
@@ -264,6 +267,9 @@ _QUOTA_ROUTES = [
     "/api/v1/users/{username}",
     "/api/v1/users/{username}/stats",
     "/api/v1/users/{username}/events",
+    "/api/v1/users/{username}/collections",
+    "/api/v1/collections/{collection_id}",
+    "/api/v1/collections/{collection_id}/events",
     "/api/v1/timeline",
 ]
 
@@ -430,6 +436,8 @@ def test_read_quota_key_rejects_a_forged_token(user):
 #   (the row carries no picture, so each pass sweeps nothing);
 # * every admin action writes an `admin_events` row, and
 #   `POST /admin/invite-codes` mints 30 codes;
+# * `POST /collections` opens 30 collections on the throwaway `user` row,
+#   which the cascade on `collections.owner_id` drops with it;
 # * the `reap-*` maintenance cases delete expired `auth_tokens` /
 #   `pending_registrations` rows.
 
@@ -611,6 +619,29 @@ _DOCUMENTED_LIMITS = [
     _Case("delete", f"{ME}/avatar", 20),
     _Case("post", "/api/v1/users/no-such-user/follow", 60),
     _Case("delete", "/api/v1/users/no-such-user/follow", 60),
+    # Collections. The create is the one case here that stores a row per
+    # request; every other probe names an id no collection carries, so it
+    # reaches the limiter and then 404s.
+    _Case("post", "/api/v1/collections", 30, "user", {"json": {"title": "rate limit probe"}}),
+    _Case(
+        "patch",
+        f"/api/v1/collections/{_MISSING_ID}",
+        30,
+        "user",
+        {"json": {"title": "probe"}},
+    ),
+    _Case("delete", f"/api/v1/collections/{_MISSING_ID}", 30),
+    _Case("put", f"/api/v1/collections/{_MISSING_ID}/events/{_MISSING_ID}", 60),
+    _Case("delete", f"/api/v1/collections/{_MISSING_ID}/events/{_MISSING_ID}", 60),
+    _Case(
+        "put",
+        f"/api/v1/collections/{_MISSING_ID}/cover",
+        20,
+        "user",
+        {"files": {"file": ("probe.txt", b"probe", "text/plain")}},
+    ),
+    _Case("delete", f"/api/v1/collections/{_MISSING_ID}/cover", 20),
+    _Case("get", f"/api/v1/events/{_MISSING_ID}/collections", 120),
     # Admin.
     _Case("post", "/api/v1/admin/invite-codes", 30, "admin", {"json": {}}),
     _Case("post", f"/api/v1/admin/invite-codes/{_MISSING_ID}/revoke", 60, "admin"),
@@ -625,6 +656,7 @@ _DOCUMENTED_LIMITS = [
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}", 30, "admin"),
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}/detected-events", 30, "admin"),
     _Case("delete", f"/api/v1/admin/events/{_MISSING_ID}", 60, "admin"),
+    _Case("delete", f"/api/v1/admin/collections/{_MISSING_ID}", 60, "admin"),
     _Case(
         "post",
         f"/api/v1/admin/reports/{_MISSING_ID}/resolve",

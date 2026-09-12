@@ -7,6 +7,7 @@
  * Typed as the generated frontend aliases, so a backend schema change reaches
  * the suite through the same drift gate every other reader goes through.
  */
+import type { Collection } from "@/lib/collections";
 import type {
   Conflict,
   EventDetail,
@@ -150,6 +151,59 @@ export const REQUESTED_EVENT: EventListItem = {
   event_date: "2025-01-02",
   is_graphic: false,
   media: null,
+  owner: {
+    id: SIGNED_IN_USER.id,
+    username: SIGNED_IN_USER.username,
+    avatar_url: null,
+  },
+  tags: [CURATED_TAGS[3]],
+  conflicts: CONFLICTS,
+};
+
+/** Id of the collection the collection-page spec opens. */
+export const COLLECTION_ID = "77777777-7777-4777-8777-777777777771";
+
+/**
+ * The collection that spec reads, owned by the signed-in user so the owner's
+ * controls render and get measured: the header cluster's three verbs, and the
+ * per-row control that takes an item off the shelf.
+ *
+ * It carries a cover, since the band is a full-width image in the page header
+ * and the one element on the page sized by something other than the column.
+ * The title is long enough to take the whole heading row at 320px, which is
+ * what pushes the action cluster onto its own line.
+ */
+export const COLLECTION: Collection = {
+  id: COLLECTION_ID,
+  owner: {
+    id: SIGNED_IN_USER.id,
+    username: SIGNED_IN_USER.username,
+    avatar_url: null,
+  },
+  title: "Kupiansk rail corridor: three days of strikes on the eastern approach",
+  cover_url: MEDIA_URL,
+  cover_is_uploaded: true,
+  event_count: 1,
+  first_date: "2025-01-03",
+  last_date: "2025-01-03",
+  created_at: "2025-01-05T08:00:00Z",
+};
+
+/**
+ * The collection's one item: a published geolocation, the only kind a
+ * collection shows. It carries the long tag and the coordinates line, so the
+ * row is measured with everything a card can hold plus the owner's remove
+ * control in the badge column.
+ */
+export const COLLECTED_EVENT: EventListItem = {
+  id: EVENT_ID,
+  title: EVENT.title,
+  status: "geolocated",
+  before_closed_status: null,
+  event_coords: { lat: 48.4647, lng: 35.0462 },
+  event_date: "2025-01-03",
+  is_graphic: false,
+  media: EVENT.thumbnail,
   owner: {
     id: SIGNED_IN_USER.id,
     username: SIGNED_IN_USER.username,

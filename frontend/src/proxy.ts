@@ -51,6 +51,10 @@ const PUBLIC_PREFIXES = [
   // too; behind the wall their reports redirected to /login and died 405.
   "/monitoring",
   "/map",
+  // A collection is shown on its owner's public profile and reads
+  // anonymously, the same terms the events it holds read on, so the page a
+  // shared collection link opens is outside the wall too.
+  "/collections",
   "/events",
   "/requests",
   "/profile",

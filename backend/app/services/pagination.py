@@ -22,9 +22,12 @@ ordering total, so rows inserted while a caller walks pages can neither
 duplicate a row onto the next page nor skip one, the way an ``OFFSET`` walk
 does. A list whose rows already carry a unique ordinal pages on that instead
 (:func:`encode_ordinal_cursor`), which needs no tiebreaker and no timestamp;
-one event's version history is the case, ordered on ``version_no``. Both forms
-are opaque on purpose (base64 of a compact JSON payload): the shape is this
-module's business, not a contract callers build values for.
+one event's version history is the case, ordered on ``version_no``. A list read
+in the order its events happened pages on all four of
+``event_date, event_time, created_at, id`` ascending
+(:func:`encode_chronological_cursor`); a collection's items are the case. The
+three forms are opaque on purpose (base64 of a compact JSON payload): the shape
+is this module's business, not a contract callers build values for.
 """
 
 from __future__ import annotations
@@ -32,7 +35,8 @@ from __future__ import annotations
 import base64
 import binascii
 import uuid
-from datetime import datetime
+from collections.abc import Sequence
+from datetime import date, datetime, time
 from typing import Any
 
 import orjson
@@ -132,6 +136,66 @@ def decode_ordinal_cursor(cursor: str) -> int:
         return decoded
     except (ValueError, TypeError, binascii.Error) as exc:
         raise HTTPException(status_code=422, detail="cursor is malformed") from exc
+
+
+def encode_chronological_cursor(
+    event_date: date, event_time: time, created_at: datetime, row_id: uuid.UUID
+) -> str:
+    """Opaque cursor for a list ordered by when its events happened.
+
+    A collection's items page this way: the order is
+    ``event_date, event_time, created_at, id`` ascending, so the cursor names
+    all four. The caller passes the sort values it ordered by, the stand-ins
+    for a missing date or hour included
+    (``services/collections.chronological_key``), so the values that cut the
+    page are the values the next page's predicate compares against.
+    """
+    return _encode(
+        [event_date.isoformat(), event_time.isoformat(), created_at.isoformat(), str(row_id)]
+    )
+
+
+def decode_chronological_cursor(cursor: str) -> tuple[date, time, datetime, uuid.UUID]:
+    """Parse a chronological cursor back into its four sort values, 422 on anything else.
+
+    Same contract as :func:`decode_cursor`: the shape is checked before any
+    conversion runs, so a payload that decodes to something other than four
+    strings is rejected rather than raising out of ``uuid.UUID``.
+    """
+    try:
+        decoded = _decode(cursor)
+        if not (
+            isinstance(decoded, list)
+            and len(decoded) == 4
+            and all(isinstance(part, str) for part in decoded)
+        ):
+            raise ValueError("cursor does not decode to a four-value chronological key")
+        date_raw, time_raw, created_raw, id_raw = decoded
+        return (
+            date.fromisoformat(date_raw),
+            time.fromisoformat(time_raw),
+            datetime.fromisoformat(created_raw),
+            uuid.UUID(id_raw),
+        )
+    except (ValueError, TypeError, binascii.Error) as exc:
+        raise HTTPException(status_code=422, detail="cursor is malformed") from exc
+
+
+def keyset_after(
+    columns: Sequence[ColumnElement[Any]], cursor: tuple[Any, ...]
+) -> ColumnElement[bool]:
+    """Predicate for the rows after ``cursor`` under an ascending ORDER BY.
+
+    The ascending twin of :func:`keyset_before`, over as many columns as the
+    ordering takes. A row comparison for the same reason: Postgres evaluates
+    ``(a, b, …) > (:x, :y, …)`` directly, and the caller passes the very
+    expressions it ordered by, so the page cut cannot disagree with the sort
+    it was cut from. Every column must be non-NULL for every row, a row
+    comparison against NULL being unknown rather than true or false; a
+    nullable sort column reaches here wrapped in its stand-in
+    (``services/collections.chronological_key``).
+    """
+    return tuple_(*columns) > cursor
 
 
 def keyset_before(
