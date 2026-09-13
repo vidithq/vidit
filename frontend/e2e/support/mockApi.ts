@@ -58,7 +58,7 @@ const ROUTES: [RegExp, unknown][] = [
   // The profile's Collections grid, which the signed-in analyst owns.
   [
     new RegExp(`^/users/${SIGNED_IN_USER.username}/collections$`),
-    { items: [COLLECTION], total: 1, page: 1, per_page: 6 },
+    { items: [COLLECTION], total: 1, page: 1, per_page: 4 },
   ],
 ];
 

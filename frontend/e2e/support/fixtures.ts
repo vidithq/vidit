@@ -168,10 +168,9 @@ export const COLLECTION_ID = "77777777-7777-4777-8777-777777777771";
  * controls render and get measured: the header cluster's three verbs, and the
  * per-row control that takes an item off the shelf.
  *
- * It carries a cover, since the band is a full-width image in the page header
- * and the one element on the page sized by something other than the column.
- * The title is long enough to take the whole heading row at 320px, which is
- * what pushes the action cluster onto its own line.
+ * It carries a cover, which the profile card wears and the owner's cover panel
+ * shows as a tile. The title is long enough to take the whole heading row at
+ * 320px, which is what pushes the action cluster onto its own line.
  */
 export const COLLECTION: Collection = {
   id: COLLECTION_ID,

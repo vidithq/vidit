@@ -1403,15 +1403,17 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<CollectionCover>" usage="A collection's cover, in its two shapes: the profile card's 16:9 slot and the band over the collection page's header. It is EntityCard's own MediaThumb slot fed the collection's `cover`: an uploaded picture as a plain URL (`src`, a stored JPEG with no derivative beside it), a default cover as the item Media row it was picked from, so a video default plays as a clip and a cover with nothing to show falls back to the one no-media placeholder rather than to a stand-in of its own. The band wears the embedded-map treatment, at 120px on a phone and 160px from `sm` up.">
+          <Item name="<CollectionCover>" usage="A collection's cover: the profile card's 16:9 slot, and the tile the owner's cover panel shows beside the picker. The collection's own page carries none. It is EntityCard's own MediaThumb slot fed the collection's `cover`: an uploaded picture as a plain URL (`src`, a stored JPEG with no derivative beside it), a default cover as the item Media row it was picked from, so a video default plays as a clip and a cover with nothing to show falls back to the one no-media placeholder rather than to a stand-in of its own. It spans the column it is given, so a caller sizes it by that column.">
             <div className="w-full max-w-xl space-y-3">
               <Variant label="card slot, no cover to show">
                 <div className="w-56">
                   <CollectionCover cover={null} />
                 </div>
               </Variant>
-              <Variant label="page band, no cover to show">
-                <CollectionCover cover={null} variant="band" />
+              <Variant label="cover panel tile, no cover to show">
+                <div className="w-40">
+                  <CollectionCover cover={null} />
+                </div>
               </Variant>
             </div>
           </Item>
@@ -1441,7 +1443,7 @@ export default function PalettePage() {
               <li><span className="font-mono text-neutral-400">BetaBanner</span>: a {"<Pill tone=\"accent\">"} in a <code>position: fixed</code> wrapper, already visible bottom-right from <code>sm</code> up; below <code>sm</code> the same pill rides the nav drawer via {"<BetaBanner inline>"}</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span>: the primary nav, auth/route-driven, always on screen. Two shapes: a fixed rail on the left edge from <code>sm</code> up (glyphs, or glyphs plus labels once expanded), and below <code>sm</code> a floating chip in the top-left corner that opens the same rail as a drawer over the page</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span> chip and drawer: the rail&apos;s own phone shape, rendered by that component rather than a <code>components/ui/</code> primitive, so there is nothing here to reuse. The chip&apos;s open control is a deliberate one-off too: a 44px neutral thumb target, which {"<Button icon>"} does not offer (36px, accent or red)</li>
-              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page; PageShell&apos;s <code>banner</code> slot is the band a page whose subject carries a picture of its own puts over the heading (a collection&apos;s cover); <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
+              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
             </ul>
           </Item>
         </section>

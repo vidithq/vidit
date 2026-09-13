@@ -9,6 +9,31 @@ const baseProps = {
 };
 
 describe("FileManager", () => {
+  it("gives the drop zone way to a staged file, and keeps it for a current value", () => {
+    const items: FileManagerItem[] = [
+      { key: "a", content: <img alt="staged" src="/a.jpg" /> },
+    ];
+    const onAddFiles = vi.fn();
+
+    const single = render(
+      <FileManager {...baseProps} items={items} onAddFiles={onAddFiles} />,
+    );
+    expect(screen.queryByText("Add media")).toBeNull();
+    single.unmount();
+
+    // The cover picker's item is what the collection wears rather than a file
+    // on its way up, so hiding the drop zone behind it leaves no way to pick.
+    render(
+      <FileManager
+        {...baseProps}
+        items={items}
+        onAddFiles={onAddFiles}
+        keepDropzone
+      />,
+    );
+    expect(screen.getByText("Add media")).toBeInTheDocument();
+  });
+
   it("renders a non-viewable item's content directly, with no view button", () => {
     const items: FileManagerItem[] = [
       { key: "a", content: <img alt="plain" src="/a.jpg" /> },

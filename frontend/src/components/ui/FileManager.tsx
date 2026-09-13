@@ -39,6 +39,11 @@ interface FileManagerProps {
   accept: string;
   /** Allow picking several at once (also keeps the drop zone shown once staged). */
   multiple?: boolean;
+  /** Keep the drop zone under a single-file picker whose one item is the
+   *  current value rather than a staged file (a collection's cover, which the
+   *  next pick replaces). Without it the item hides the only way to pick, and
+   *  an item the caller renders without `onRemove` leaves no way back. */
+  keepDropzone?: boolean;
   /** Drop-zone label + optional hint line. */
   addLabel: string;
   addHint?: string;
@@ -59,6 +64,7 @@ export function FileManager({
   onAddFiles,
   accept,
   multiple = false,
+  keepDropzone = false,
   addLabel,
   addHint,
   layout = "grid",
@@ -163,9 +169,11 @@ export function FileManager({
     </label>
   ) : null;
 
-  // The drop zone stays while multiple are allowed; for a single-file picker it
+  // The drop zone stays while multiple are allowed, and for a picker whose one
+  // item is the current value (`keepDropzone`); otherwise a single-file picker
   // gives way to the staged item.
-  const showDropzone = !!onAddFiles && (multiple || items.length === 0);
+  const showDropzone =
+    !!onAddFiles && (multiple || keepDropzone || items.length === 0);
 
   if (grid) {
     return (

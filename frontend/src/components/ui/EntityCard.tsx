@@ -55,9 +55,9 @@ export function MediaThumb({
    *  placeholder on the site rather than a second one drawn beside it. */
   src?: string;
   /** Which image derivative the slot reads (`media` only): the 400 px
-   *  `thumbnail` a card row shows, or the 1280 px `hero` a full-width slot
-   *  needs (a collection's cover band). Videos have no derivatives and ignore
-   *  it. */
+   *  `thumbnail` a card row shows, or the 1280 px `hero` a slot spanning its
+   *  column needs (a collection's cover). Videos have no derivatives and
+   *  ignore it. */
   size?: "thumbnail" | "hero";
   className?: string;
   /** The event's `is_graphic` flag. */

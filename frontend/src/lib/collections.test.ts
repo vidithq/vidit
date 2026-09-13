@@ -74,9 +74,12 @@ describe("collection paths", () => {
     );
   });
 
-  it("asks the profile endpoint for the grid's own page size", () => {
-    expect(userCollectionsPath("ana", 6)).toBe(
-      "/users/ana/collections?per_page=6",
+  it("asks the profile endpoint for one page at the grid's own size", () => {
+    expect(userCollectionsPath("ana", 4, 1)).toBe(
+      "/users/ana/collections?page=1&per_page=4",
+    );
+    expect(userCollectionsPath("ana", 4, 2)).toBe(
+      "/users/ana/collections?page=2&per_page=4",
     );
   });
 });

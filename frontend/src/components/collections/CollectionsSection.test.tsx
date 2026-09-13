@@ -10,9 +10,12 @@ vi.mock("@/hooks/useApiResource", () => ({
 }));
 
 const createCollection = vi.fn();
+const fetchUserCollections = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
   createCollection: (title: string) => createCollection(title),
+  fetchUserCollections: (username: string, perPage: number, page: number) =>
+    fetchUserCollections(username, perPage, page),
 }));
 
 import type { Collection, CollectionPage } from "@/lib/collections";
@@ -31,16 +34,27 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   ...over,
 });
 
-const page = (items: Collection[], total = items.length): CollectionPage => ({
+const page = (
+  items: Collection[],
+  total = items.length,
+  number = 1,
+): CollectionPage => ({
   items,
   total,
-  page: 1,
-  per_page: 6,
+  page: number,
+  per_page: 4,
 });
+
+/** A shelf of `count` collections, each with its own id and title. */
+const shelf = (count: number): Collection[] =>
+  Array.from({ length: count }, (_, i) =>
+    collection({ id: `c${i + 1}`, title: `Collection ${i + 1}` }),
+  );
 
 beforeEach(() => {
   push.mockReset();
   createCollection.mockReset();
+  fetchUserCollections.mockReset();
   useApiResource.mockReset();
 });
 
@@ -117,19 +131,66 @@ describe("CollectionsSection", () => {
     ).toBeDisabled();
   });
 
-  it("raises the page rather than leaving the rest of the shelf unreachable", () => {
-    useApiResource.mockReturnValue({ data: page([collection()], 11) });
+  it("asks for nothing further once the whole shelf is on screen", () => {
+    useApiResource.mockReturnValue({ data: page(shelf(4)) });
 
     render(<CollectionsSection username="ana" isOwn={false} />);
+
     expect(useApiResource).toHaveBeenCalledWith(
-      "/users/ana/collections?per_page=6",
+      "/users/ana/collections?page=1&per_page=4",
+    );
+    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(4);
+    expect(
+      screen.queryByRole("button", { name: "Show more" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("appends the next page in place and drops the control at the end", async () => {
+    useApiResource.mockReturnValue({ data: page(shelf(4), 6) });
+    fetchUserCollections.mockResolvedValue(
+      page(
+        [
+          collection({ id: "c5", title: "Collection 5" }),
+          collection({ id: "c6", title: "Collection 6" }),
+        ],
+        6,
+        2,
+      ),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Show all 11" }));
+    render(<CollectionsSection username="ana" isOwn={false} />);
+    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(4);
 
-    expect(useApiResource).toHaveBeenLastCalledWith(
-      "/users/ana/collections?per_page=100",
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+
+    await waitFor(() =>
+      expect(fetchUserCollections).toHaveBeenCalledWith("ana", 4, 2),
     );
+    // The first page stays on screen and the second one lands under it.
+    const titles = screen
+      .getAllByRole("heading", { level: 3 })
+      .map((row) => row.textContent);
+    expect(titles).toEqual([
+      "Collection 1",
+      "Collection 2",
+      "Collection 3",
+      "Collection 4",
+      "Collection 5",
+      "Collection 6",
+    ]);
+    expect(
+      screen.queryByRole("button", { name: "Show more" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers the control while the shelf holds more than the grid", () => {
+    useApiResource.mockReturnValue({ data: page(shelf(4), 11) });
+
+    render(<CollectionsSection username="ana" isOwn={false} />);
+
+    expect(
+      screen.getByRole("button", { name: "Show more" }),
+    ).toBeInTheDocument();
   });
 
   it("renders nothing until the read lands", () => {

@@ -197,17 +197,26 @@ export function useCollectionActions({
             <Card as="section">
               <SectionEyebrow title="Cover" margin="none" />
               {/* The profile picture's own picker, the shared `FileManager` in
-                  single-file image mode, under the same file rules: its drop
-                  zone comes back once nothing is staged, so picking and
-                  clearing are one primitive rather than two controls. */}
+                  single-file image mode, under the same file rules. Its one
+                  item is what the collection wears rather than a staged file,
+                  so the drop zone stays beside it (`keepDropzone`): the next
+                  pick replaces the cover, and a collection wearing the first
+                  item's media has nothing to clear first. The tile takes a
+                  fixed width, since the card's cover slot spans its column and
+                  the picker's own column is sized by what it holds. */}
               <div className="max-w-sm space-y-4">
                 <FileManager
+                  keepDropzone
                   items={
                     cover
                       ? [
                           {
                             key: cover.url,
-                            content: <CollectionCover cover={cover} />,
+                            content: (
+                              <div className="w-40">
+                                <CollectionCover cover={cover} />
+                              </div>
+                            ),
                           },
                         ]
                       : []
@@ -218,7 +227,11 @@ export function useCollectionActions({
                   }}
                   accept={ACCEPTED_IMAGE_MIME}
                   addLabel={
-                    setCover.loading ? "Uploading…" : "Add a cover picture"
+                    setCover.loading
+                      ? "Uploading…"
+                      : cover
+                        ? "Replace the cover picture"
+                        : "Add a cover picture"
                   }
                   addHint="JPEG, PNG or WebP. Stored on Vidit and resized."
                   layout="stack"

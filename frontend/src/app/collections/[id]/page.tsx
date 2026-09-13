@@ -4,7 +4,6 @@ import { useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Layers } from "lucide-react";
 
-import { CollectionCover } from "@/components/collections/CollectionCover";
 import { CollectionItems } from "@/components/collections/CollectionItems";
 import { CollectionMetaLine } from "@/components/collections/CollectionCard";
 import { useCollectionActions } from "@/components/collections/useCollectionActions";
@@ -26,11 +25,11 @@ import type { EventListItem } from "@/types";
  * One collection: what it is, where its items are, and what they are.
  *
  * The header is the collection itself, the grammar the event page uses for an
- * event: the cover band over the title, the owner's byline under it with a
- * `Collection` pill saying what kind of page this is, and the meta line the
- * profile card prints beside the same cover. The band renders only when the
- * collection has a picture to show, so a collection with no cover opens on its
- * title rather than on a placeholder band the width of the page.
+ * event: the title, the owner's byline under it with a `Collection` pill saying
+ * what kind of page this is, and the meta line the profile card prints beside
+ * the cover. The cover itself is the profile card's picture and nothing else:
+ * the page opens on the name of the collection, not on a band the width of the
+ * page, and the owner reaches the picture through the cover panel.
  *
  * Then the work, widest first, the profile's own order: the items on a map, and
  * the chronological list under it. Both read one set, the items themselves, so
@@ -80,11 +79,6 @@ export default function CollectionPage() {
   return (
     <PageShell
       back
-      banner={
-        collection.cover && (
-          <CollectionCover cover={collection.cover} variant="band" />
-        )
-      }
       title={collection.title}
       subtitle={
         <div className="space-y-1">

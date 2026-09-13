@@ -45,10 +45,28 @@ export function collectionHref(id: string): string {
   return `/collections/${encodeURIComponent(id)}`;
 }
 
-/** An analyst's collections, newest first. `per_page` is the grid's own page
- *  size rather than the endpoint's default. */
-export function userCollectionsPath(username: string, perPage: number): string {
-  return `/users/${encodeURIComponent(username)}/collections?per_page=${perPage}`;
+/** An analyst's collections, newest first. The endpoint is offset-paged, and
+ *  the profile grid walks it a page at a time: `perPage` is the grid's own page
+ *  size rather than the endpoint's default, and `page` is the one the reader
+ *  asked for. */
+export function userCollectionsPath(
+  username: string,
+  perPage: number,
+  page: number,
+): string {
+  return `/users/${encodeURIComponent(username)}/collections?page=${page}&per_page=${perPage}`;
+}
+
+/** One page of an analyst's collections. The profile grid reads its first page
+ *  declaratively and calls this for each page the reader then asks for. */
+export function fetchUserCollections(
+  username: string,
+  perPage: number,
+  page: number,
+): Promise<CollectionPage> {
+  return apiFetch<CollectionPage>(
+    userCollectionsPath(username, perPage, page),
+  );
 }
 
 /** The owner's collections, each carrying whether this event is on it. */

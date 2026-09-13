@@ -8,6 +8,7 @@ import { CollectionCard } from "@/components/collections/CollectionCard";
 import { CollectionTitleForm } from "@/components/collections/CollectionTitleForm";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -15,19 +16,27 @@ import { useMutation } from "@/hooks/useMutation";
 import {
   collectionHref,
   createCollection,
+  fetchUserCollections,
   userCollectionsPath,
+  type Collection,
   type CollectionPage,
 } from "@/lib/collections";
 
-/** How many cards the grid holds before the reader asks for the rest. Six is
- *  three rows of the two-column grid, enough to read as a shelf without
- *  pushing the submissions list below it off the page. */
-const GRID_PAGE = 6;
+/** How many cards the grid holds before the reader asks for more, and the page
+ *  size every further read takes. Four is two rows of the two-column grid,
+ *  enough to read as a shelf without pushing the submissions list below it off
+ *  the page. */
+const GRID_PAGE = 4;
 
-/** The row cap every list endpoint shares, which is what *Show all* raises the
- *  page to: one more read serves every collection an analyst can have on
- *  screen at once. */
-const ALL = 100;
+/** The pages the reader has asked for past the first, and the page number the
+ *  next `Show more` reads. `username` is the analyst they answer for, so a
+ *  profile-to-profile navigation cannot append one analyst's page onto
+ *  another's grid. */
+interface Walk {
+  username: string;
+  items: Collection[];
+  next: number;
+}
 
 /**
  * The profile's Collections section: the analyst's named sets of their own
@@ -46,6 +55,10 @@ const ALL = 100;
  * out for an analyst with no events. For the owner it is a first-run surface,
  * so it keeps the heading and offers the action that fills it.
  *
+ * The grid holds one page of cards and `Show more` reads the next one and
+ * appends it, so a shelf grows in place rather than sending the reader
+ * somewhere else. The control goes once every collection is on screen.
+ *
  * A failed read hides the section rather than blocking the profile, matching
  * `ProfileMap` and `ProfileInsights`.
  */
@@ -57,10 +70,31 @@ export function CollectionsSection({
   isOwn: boolean;
 }) {
   const router = useRouter();
-  const [showAll, setShowAll] = useState(false);
+  const [walk, setWalk] = useState<Walk>({ username, items: [], next: 2 });
   const [creating, setCreating] = useState(false);
   const { data } = useApiResource<CollectionPage>(
-    userCollectionsPath(username, showAll ? ALL : GRID_PAGE),
+    userCollectionsPath(username, GRID_PAGE, 1),
+  );
+
+  // The first page is the declarative read; every further one is asked for by
+  // the reader, so it is a call rather than a second resource. Pages past the
+  // first are kept beside it rather than merged into it, which is what lets the
+  // grid grow without the first read being re-run.
+  const appended = walk.username === username ? walk : null;
+  const more = useMutation(
+    () => fetchUserCollections(username, GRID_PAGE, appended?.next ?? 2),
+    {
+      fallback: "Failed to read more collections",
+      onSuccess: (page) =>
+        setWalk((prev) => {
+          const kept = prev.username === username ? prev.items : [];
+          return {
+            username,
+            items: [...kept, ...page.items],
+            next: page.page + 1,
+          };
+        }),
+    },
   );
 
   // A collection opens on its own page, so the create hands over rather than
@@ -79,7 +113,7 @@ export function CollectionsSection({
   // page exactly as it was.
   if (!data?.items) return null;
 
-  const collections = data.items;
+  const collections = [...data.items, ...(appended?.items ?? [])];
   if (collections.length === 0 && !isOwn) return null;
 
   const newCollection = (
@@ -128,13 +162,21 @@ export function CollectionsSection({
               <CollectionCard key={collection.id} collection={collection} />
             ))}
           </div>
-          {data.total > collections.length && (
+          {collections.length < data.total && (
+            // The submissions list's `Show more` in the same shape, as a button
+            // rather than a link: this one expands the grid in place instead of
+            // handing the reader to another surface.
             <div className="flex justify-center">
-              <Button variant="ghost" onClick={() => setShowAll(true)}>
-                Show all {data.total}
+              <Button
+                variant="secondary"
+                disabled={more.loading}
+                onClick={() => void more.run()}
+              >
+                {more.loading ? "Loading…" : "Show more"}
               </Button>
             </div>
           )}
+          {more.error && <div className={FORM_ERROR_BANNER}>{more.error}</div>}
         </>
       ) : (
         // Owner only: the visitor case returned above. A first-run surface

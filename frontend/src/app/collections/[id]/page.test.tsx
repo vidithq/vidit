@@ -150,14 +150,7 @@ describe("CollectionPage", () => {
     expect(screen.getByText("1 event on the map")).toBeInTheDocument();
   });
 
-  it("shows no cover band when the collection has no picture", () => {
-    render(<CollectionPage />);
-
-    expect(screen.queryByRole("presentation")).not.toBeInTheDocument();
-    expect(document.querySelector("img")).toBeNull();
-  });
-
-  it("opens on the cover when the collection carries one", () => {
+  it("keeps the cover off the header: it is the profile card's picture", () => {
     useApiResource.mockReturnValue({
       data: collection({
         cover: {
@@ -172,33 +165,11 @@ describe("CollectionPage", () => {
 
     render(<CollectionPage />);
 
-    expect(document.querySelector("img")).toHaveAttribute(
-      "src",
-      "https://media.example/cover.jpg",
-    );
-  });
-
-  it("plays a video cover as a clip rather than as an empty band", () => {
-    // Most source media are clips, so the default cover usually is one.
-    useApiResource.mockReturnValue({
-      data: collection({
-        cover: {
-          url: "https://media.example/clip.mp4",
-          media_type: "video",
-          is_uploaded: false,
-        },
-      }),
-      error: null,
-      refetch: vi.fn(),
-    });
-
-    render(<CollectionPage />);
-
-    expect(document.querySelector("img")).toBeNull();
-    expect(document.querySelector("video")).toHaveAttribute(
-      "src",
-      "https://media.example/clip.mp4#t=0.1",
-    );
+    expect(
+      screen.getByRole("heading", { name: "Kupiansk rail corridor" }),
+    ).toBeInTheDocument();
+    expect(document.querySelector("header img")).toBeNull();
+    expect(document.querySelector("header video")).toBeNull();
   });
 
   it("maps the items' pins and lists them in order, each with its status", () => {
@@ -298,6 +269,38 @@ describe("CollectionPage", () => {
     expect(
       screen.getByRole("button", { name: "Remove the uploaded picture" }),
     ).toBeInTheDocument();
+  });
+
+  it("offers the picker beside the cover the collection already wears", () => {
+    // The picker's one item is the current cover rather than a staged file, so
+    // hiding the drop zone behind it leaves the owner no way to change it.
+    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
+    useApiResource.mockReturnValue({
+      data: collection({
+        cover: {
+          url: "https://media.example/cover.jpg",
+          media_type: "image",
+          is_uploaded: true,
+        },
+      }),
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(<CollectionPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Change the cover" }));
+
+    expect(screen.getByText("Replace the cover picture")).toBeInTheDocument();
+    expect(document.querySelector("input[type=file]")).toBeInTheDocument();
+  });
+
+  it("names the pick an add where the collection wears nothing", () => {
+    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
+
+    render(<CollectionPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Change the cover" }));
+
+    expect(screen.getByText("Add a cover picture")).toBeInTheDocument();
   });
 
   it("asks twice before dropping the collection", () => {
