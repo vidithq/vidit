@@ -16,8 +16,9 @@ A collection is a named set of one analyst's own events. What these lock in:
   hold something, the owner sees their empty ones too, and ``total`` agrees
   with the rows either way.
 * The cover: an uploaded object lands on our own media host, a collection with
-  none falls back to the first chronological item's media, and
-  ``cover_is_uploaded`` says which of the two the read resolved.
+  none falls back to the first chronological item's media, ``media_type``
+  names the element that can render it, and ``is_uploaded`` says which of the
+  two the read resolved.
 * A GDPR hard delete of the owner drops the collections and sweeps their cover
   objects.
 """
@@ -255,8 +256,7 @@ def test_create_collection_returns_an_empty_shelf(db, cleanup, owner):
     assert body["event_count"] == 0
     assert body["first_date"] is None
     assert body["last_date"] is None
-    assert body["cover_url"] is None
-    assert body["cover_is_uploaded"] is False
+    assert body["cover"] is None
 
 
 def test_create_collection_requires_auth():
@@ -743,7 +743,10 @@ def test_cover_upload_lands_on_our_own_host(local_storage, db, cleanup, owner):
     collection = _make_collection(db, cleanup, owner=owner)
     response = _put_cover(collection, owner)
     assert response.status_code == 200
-    url = response.json()["cover_url"]
+    cover = response.json()["cover"]
+    assert cover["media_type"] == "image"
+    assert cover["is_uploaded"] is True
+    url = cover["url"]
     assert url.startswith(f"{LOCAL_STORAGE_URL_PREFIX}/collections/{collection.id}/")
     assert url.endswith(".jpg")
     assert _stored_path(local_storage, url).is_file()
@@ -756,23 +759,23 @@ def test_cover_upload_lands_on_our_own_host(local_storage, db, cleanup, owner):
 
 def test_cover_upload_replaces_and_sweeps_the_previous_object(local_storage, db, cleanup, owner):
     collection = _make_collection(db, cleanup, owner=owner)
-    first = _stored_path(local_storage, _put_cover(collection, owner).json()["cover_url"])
+    first = _stored_path(local_storage, _put_cover(collection, owner).json()["cover"]["url"])
     assert first.is_file()
 
-    second_url = _put_cover(collection, owner).json()["cover_url"]
+    second_url = _put_cover(collection, owner).json()["cover"]["url"]
     assert not first.exists()
     assert _stored_path(local_storage, second_url).is_file()
 
 
 def test_cover_delete_clears_the_column_and_the_object(local_storage, db, cleanup, owner):
     collection = _make_collection(db, cleanup, owner=owner)
-    stored = _stored_path(local_storage, _put_cover(collection, owner).json()["cover_url"])
+    stored = _stored_path(local_storage, _put_cover(collection, owner).json()["cover"]["url"])
 
     response = client.delete(
         f"/api/v1/collections/{collection.id}/cover", headers=login_as(client, owner)
     )
     assert response.status_code == 200
-    assert response.json()["cover_url"] is None
+    assert response.json()["cover"] is None
     assert not stored.exists()
 
     db.expire_all()
@@ -821,7 +824,11 @@ def test_default_cover_is_the_first_chronological_non_graphic_item(db, cleanup, 
     db.commit()
 
     body = client.get(f"/api/v1/collections/{collection.id}").json()
-    assert body["cover_url"] == "https://media.example.com/second.jpg"
+    assert body["cover"] == {
+        "url": "https://media.example.com/second.jpg",
+        "media_type": "image",
+        "is_uploaded": False,
+    }
 
 
 def test_uploaded_cover_wins_over_the_default(local_storage, db, cleanup, owner):
@@ -838,14 +845,38 @@ def test_uploaded_cover_wins_over_the_default(local_storage, db, cleanup, owner)
     _add(db, collection, event)
     db.commit()
 
-    url = _put_cover(collection, owner).json()["cover_url"]
+    url = _put_cover(collection, owner).json()["cover"]["url"]
     assert url.startswith(LOCAL_STORAGE_URL_PREFIX)
 
 
-def test_cover_is_uploaded_names_which_cover_the_read_resolved(local_storage, db, cleanup, owner):
-    """The flag separates the owner's upload from the fallback, which one
-    ``cover_url`` cannot: false with a fallback showing, true once a picture is
-    uploaded, false again once it is removed."""
+def test_default_cover_over_a_video_item_reports_the_video_type(db, cleanup, owner):
+    """Most source media are clips, so the fallback names the kind of file it
+    points at: a client reading the url alone puts an ``.mp4`` in an ``<img>``
+    and paints an empty band."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    db.add(
+        Media(
+            event_id=event.id,
+            role="source",
+            storage_url="https://media.example.com/clip.mp4",
+            media_type="video",
+        )
+    )
+    _add(db, collection, event)
+    db.commit()
+
+    assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"] == {
+        "url": "https://media.example.com/clip.mp4",
+        "media_type": "video",
+        "is_uploaded": False,
+    }
+
+
+def test_is_uploaded_names_which_cover_the_read_resolved(local_storage, db, cleanup, owner):
+    """The flag separates the owner's upload from the fallback, which one url
+    cannot: false with a fallback showing, true once a picture is uploaded,
+    false again once it is removed."""
     collection = _make_collection(db, cleanup, owner=owner)
     event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
     db.add(
@@ -861,23 +892,32 @@ def test_cover_is_uploaded_names_which_cover_the_read_resolved(local_storage, db
 
     # A fallback is a cover the reader sees and not one the owner can remove.
     body = client.get(f"/api/v1/collections/{collection.id}").json()
-    assert body["cover_url"] == "https://media.example.com/item.jpg"
-    assert body["cover_is_uploaded"] is False
+    assert body["cover"] == {
+        "url": "https://media.example.com/item.jpg",
+        "media_type": "image",
+        "is_uploaded": False,
+    }
 
-    assert _put_cover(collection, owner).json()["cover_is_uploaded"] is True
-    assert client.get(f"/api/v1/collections/{collection.id}").json()["cover_is_uploaded"] is True
+    uploaded = _put_cover(collection, owner).json()["cover"]
+    assert uploaded["is_uploaded"] is True
+    # An upload is always an image: the cover pipeline stores one JPEG.
+    assert uploaded["media_type"] == "image"
+    assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"]["is_uploaded"] is True
 
     cleared = client.delete(
         f"/api/v1/collections/{collection.id}/cover", headers=login_as(client, owner)
     ).json()
-    assert cleared["cover_is_uploaded"] is False
-    assert cleared["cover_url"] == "https://media.example.com/item.jpg"
+    assert cleared["cover"] == {
+        "url": "https://media.example.com/item.jpg",
+        "media_type": "image",
+        "is_uploaded": False,
+    }
 
 
 def test_default_cover_is_null_without_media(db, cleanup, owner):
     collection = _make_collection(db, cleanup, owner=owner)
     _add(db, collection, _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1)))
-    assert client.get(f"/api/v1/collections/{collection.id}").json()["cover_url"] is None
+    assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"] is None
 
 
 # ── GDPR hard delete ──────────────────────────────────────────────────────
@@ -889,7 +929,7 @@ def test_hard_deleting_the_owner_drops_the_collections_and_sweeps_the_covers(
     collection = _make_collection(db, cleanup, owner=owner)
     event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
     _add(db, collection, event)
-    cover = _stored_path(local_storage, _put_cover(collection, owner).json()["cover_url"])
+    cover = _stored_path(local_storage, _put_cover(collection, owner).json()["cover"]["url"])
     assert cover.is_file()
     client.cookies.clear()
     # Read the ids before the erasure: the fixture session's copies of the

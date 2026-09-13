@@ -1403,15 +1403,15 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<CollectionCover>" usage="A collection's cover, in its two shapes: the profile card's 16:9 slot and the band over the collection page's header. It is EntityCard's own MediaThumb slot fed a plain image URL (`src`, for a picture that is not an event's media row), so a cover with nothing to show falls back to the one no-media placeholder rather than to a stand-in of its own. The band wears the embedded-map treatment, at 120px on a phone and 160px from `sm` up.">
+          <Item name="<CollectionCover>" usage="A collection's cover, in its two shapes: the profile card's 16:9 slot and the band over the collection page's header. It is EntityCard's own MediaThumb slot fed the collection's `cover`: an uploaded picture as a plain URL (`src`, a stored JPEG with no derivative beside it), a default cover as the item Media row it was picked from, so a video default plays as a clip and a cover with nothing to show falls back to the one no-media placeholder rather than to a stand-in of its own. The band wears the embedded-map treatment, at 120px on a phone and 160px from `sm` up.">
             <div className="w-full max-w-xl space-y-3">
               <Variant label="card slot, no cover to show">
                 <div className="w-56">
-                  <CollectionCover coverUrl={null} />
+                  <CollectionCover cover={null} />
                 </div>
               </Variant>
               <Variant label="page band, no cover to show">
-                <CollectionCover coverUrl={null} variant="band" />
+                <CollectionCover cover={null} variant="band" />
               </Variant>
             </div>
           </Item>

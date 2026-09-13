@@ -22,6 +22,12 @@ export const COLLECTION_TITLE_MAX_LEN = 255;
 /** One collection's header, as every read surface renders it. */
 export type Collection = components["schemas"]["CollectionRead"];
 
+/** The picture a collection wears: the url, the kind of file it is, and whether
+ *  the owner uploaded it. The kind picks the element that can render it, since
+ *  a default cover taken off a video item is a clip. */
+export type CollectionCoverRead =
+  components["schemas"]["CollectionCoverRead"];
+
 /** One page of `GET /users/{username}/collections`, offset-paged. */
 export type CollectionPage = components["schemas"]["CollectionList"];
 
@@ -125,7 +131,7 @@ export function uploadCollectionCover(
   );
 }
 
-/** Drop the uploaded cover; `cover_url` falls back to the first item's media. */
+/** Drop the uploaded cover; `cover` falls back to the first item's media. */
 export function deleteCollectionCover(id: string): Promise<Collection> {
   return apiFetch<Collection>(`/collections/${encodeURIComponent(id)}/cover`, {
     method: "DELETE",

@@ -120,11 +120,11 @@ export function useCollectionActions({
   if (!collection || !isOwner) return { actions: null, panels: null };
 
   // The tile shows whatever the collection is wearing, the owner's upload or
-  // the first item's own media. `cover_is_uploaded` separates the two, which
-  // `cover_url` alone cannot, and only an upload can be removed: offering the
+  // the first item's own media. `cover.is_uploaded` separates the two, which
+  // the url alone cannot, and only an upload can be removed: offering the
   // control against a fallback names a picture the owner never chose.
-  const hasCover = collection.cover_url !== null;
-  const hasUpload = collection.cover_is_uploaded;
+  const cover = collection.cover;
+  const hasUpload = cover?.is_uploaded ?? false;
 
   // The name says what survives the act, since that is the part a reader
   // hesitates over: the events stay exactly as they are.
@@ -203,15 +203,11 @@ export function useCollectionActions({
               <div className="max-w-sm space-y-4">
                 <FileManager
                   items={
-                    hasCover
+                    cover
                       ? [
                           {
-                            key: collection.cover_url ?? "cover",
-                            content: (
-                              <CollectionCover
-                                coverUrl={collection.cover_url}
-                              />
-                            ),
+                            key: cover.url,
+                            content: <CollectionCover cover={cover} />,
                           },
                         ]
                       : []

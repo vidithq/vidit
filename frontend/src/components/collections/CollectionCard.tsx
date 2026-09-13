@@ -31,7 +31,7 @@ export function CollectionCard({ collection }: { collection: Collection }) {
         aria-label={collection.title}
         className="absolute inset-0 z-10 rounded-[inherit]"
       />
-      <CollectionCover coverUrl={collection.cover_url} />
+      <CollectionCover cover={collection.cover} />
       <div className="flex gap-3">
         {/* The mark says what kind of thing the card is, which a cover cannot:
             an uploaded cover is an arbitrary picture, and the fallback is one

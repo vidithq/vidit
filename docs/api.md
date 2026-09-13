@@ -1368,7 +1368,7 @@ Open a collection. It starts empty.
 
 `title` is required, 1 to 255 characters.
 
-**Response 201:** the new `CollectionRead`, with `event_count` 0, a null date range, a null cover and `cover_is_uploaded` false.
+**Response 201:** the new `CollectionRead`, with `event_count` 0, a null date range and a null `cover`.
 
 **Errors:**
 | Code | Case |
@@ -1388,8 +1388,11 @@ One collection's header: owner, title, cover, item count, and the range its item
   "id": "uuid",
   "owner": { "id": "uuid", "username": "analyst", "avatar_url": "https://…/avatars/…jpg" },
   "title": "Zaporizhzhia plant",
-  "cover_url": "https://…/collections/…jpg",
-  "cover_is_uploaded": true,
+  "cover": {
+    "url": "https://…/collections/…jpg",
+    "media_type": "image",
+    "is_uploaded": true
+  },
   "event_count": 12,
   "first_date": "2026-03-01",
   "last_date": "2026-07-09",
@@ -1399,9 +1402,11 @@ One collection's header: owner, title, cover, item count, and the range its item
 
 `event_count`, `first_date` and `last_date` are computed per read over the events the collection may show, never stored. `first_date` and `last_date` are the smallest and largest `event_date` among those events, so both are null for an empty collection and for one whose items all lack a date.
 
-`cover_url` is the owner's uploaded cover when they set one ([`PUT /collections/{id}/cover`](#put-collectionsidcover)). With none set it falls back to the media of the first item in chronological order that is not flagged graphic, picked by the same card-thumbnail rule as [`GET /events`](#get-events). Items flagged graphic are skipped rather than ending the search, so a card never shows death or injury to a reader who did not open the item. It is null when no item qualifies.
+`cover` is the owner's uploaded cover when they set one ([`PUT /collections/{id}/cover`](#put-collectionsidcover)). With none set it falls back to the media of the first item in chronological order that is not flagged graphic, picked by the same card-thumbnail rule as [`GET /events`](#get-events). Items flagged graphic are skipped rather than ending the search, so a card never shows death or injury to a reader who did not open the item. It is null when no item qualifies.
 
-`cover_is_uploaded` says which of the two `cover_url` resolved: true for the owner's own upload, false for the fallback and for no cover at all. It is what lets a client offer the owner's remove-the-cover control ([`DELETE /collections/{id}/cover`](#delete-collectionsidcover)) only where there is an upload to remove, since `cover_url` alone cannot tell a picture the owner chose from one the server picked.
+`cover.media_type` is the media-kind domain `image` or `video`, so a client picks the element that can render the file. Most source media are clips, so a fallback is often a video, and an `<img>` pointed at one paints an empty band. An upload is always `image`.
+
+`cover.is_uploaded` says which of the two the read resolved: true for the owner's own upload, false for the fallback. It is what lets a client offer the owner's remove-the-cover control ([`DELETE /collections/{id}/cover`](#delete-collectionsidcover)) only where there is an upload to remove, since the url alone cannot tell a picture the owner chose from one the server picked. An upload carries no display derivative, so a client renders `cover.url` as stored; a fallback is a Media row's own `storage_url` and takes the derivatives every other Media url takes.
 
 A withheld collection (`hidden_at`, see [`DELETE /admin/collections/{id}`](#delete-admincollectionsid)) answers 404 for everyone but an admin, its owner included, the same branch [`GET /events/{id}`](#get-eventsid) takes. So does a collection whose owner is soft-deleted.
 
@@ -1519,7 +1524,7 @@ The same pipeline the profile picture takes ([`PUT /users/me/avatar`](#put-users
 
 **Body:** `multipart/form-data` with a single `file` field. Accepts `image/jpeg`, `image/png`, and `image/webp`, up to `MAX_IMAGE_SIZE`. Video types are rejected.
 
-**Response 200:** the updated `CollectionRead`, carrying the new `cover_url` with `cover_is_uploaded` true.
+**Response 200:** the updated `CollectionRead`, carrying the new `cover` with `media_type` `image` and `is_uploaded` true.
 
 **Errors:**
 | Code | Case |
@@ -1535,7 +1540,7 @@ The same pipeline the profile picture takes ([`PUT /users/me/avatar`](#put-users
 
 Remove the uploaded cover. Owner only.
 
-Clears `collections.cover_key` and deletes the stored object, so `cover_url` falls back to the default described under [`GET /collections/{id}`](#get-collectionsid) and `cover_is_uploaded` returns to false. Idempotent: removing a cover you never set returns 200.
+Clears `collections.cover_key` and deletes the stored object, so `cover` falls back to the default described under [`GET /collections/{id}`](#get-collectionsid) and `is_uploaded` returns to false. Idempotent: removing a cover you never set returns 200.
 
 **Response 200:** the updated `CollectionRead`.
 
@@ -1756,8 +1761,11 @@ Offset-paged, like the published-geolocations feed beside it.
       "id": "uuid",
       "owner": { "id": "uuid", "username": "analyst", "avatar_url": null },
       "title": "Zaporizhzhia plant",
-      "cover_url": "https://…/collections/…jpg",
-      "cover_is_uploaded": true,
+      "cover": {
+        "url": "https://…/collections/…jpg",
+        "media_type": "image",
+        "is_uploaded": true
+      },
       "event_count": 12,
       "first_date": "2026-03-01",
       "last_date": "2026-07-09",

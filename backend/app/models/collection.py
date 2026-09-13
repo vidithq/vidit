@@ -40,7 +40,7 @@ class Collection(Base):
     # ``collections/<collection id>/`` and writes its key here. A key rather
     # than a URL, so the object is addressed the same way whichever media host
     # serves it; the read schema resolves it through
-    # ``services/collections.cover_url``. NULL means the owner has set none,
+    # ``services/collections.cover_for``. NULL means the owner has set none,
     # and the read falls back to the first chronological item's media.
     cover_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Takedown: NULL = visible, timestamp = withheld from every read but an

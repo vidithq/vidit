@@ -81,8 +81,8 @@ export default function CollectionPage() {
     <PageShell
       back
       banner={
-        collection.cover_url && (
-          <CollectionCover coverUrl={collection.cover_url} variant="band" />
+        collection.cover && (
+          <CollectionCover cover={collection.cover} variant="band" />
         )
       }
       title={collection.title}

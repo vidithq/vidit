@@ -49,8 +49,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   id: "c1",
   owner: OWNER,
   title: "Kupiansk rail corridor",
-  cover_url: null,
-  cover_is_uploaded: false,
+  cover: null,
   event_count: 5,
   first_date: "2026-03-14",
   last_date: "2026-03-16",
@@ -160,7 +159,13 @@ describe("CollectionPage", () => {
 
   it("opens on the cover when the collection carries one", () => {
     useApiResource.mockReturnValue({
-      data: collection({ cover_url: "https://media.example/cover.jpg" }),
+      data: collection({
+        cover: {
+          url: "https://media.example/cover.jpg",
+          media_type: "image",
+          is_uploaded: true,
+        },
+      }),
       error: null,
       refetch: vi.fn(),
     });
@@ -170,6 +175,29 @@ describe("CollectionPage", () => {
     expect(document.querySelector("img")).toHaveAttribute(
       "src",
       "https://media.example/cover.jpg",
+    );
+  });
+
+  it("plays a video cover as a clip rather than as an empty band", () => {
+    // Most source media are clips, so the default cover usually is one.
+    useApiResource.mockReturnValue({
+      data: collection({
+        cover: {
+          url: "https://media.example/clip.mp4",
+          media_type: "video",
+          is_uploaded: false,
+        },
+      }),
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(<CollectionPage />);
+
+    expect(document.querySelector("img")).toBeNull();
+    expect(document.querySelector("video")).toHaveAttribute(
+      "src",
+      "https://media.example/clip.mp4#t=0.1",
     );
   });
 
@@ -234,8 +262,11 @@ describe("CollectionPage", () => {
     // owner's to remove.
     useApiResource.mockReturnValue({
       data: collection({
-        cover_url: "https://media.example/item.jpg",
-        cover_is_uploaded: false,
+        cover: {
+          url: "https://media.example/item.jpg",
+          media_type: "image",
+          is_uploaded: false,
+        },
       }),
       error: null,
       refetch: vi.fn(),
@@ -251,8 +282,11 @@ describe("CollectionPage", () => {
     view.unmount();
     useApiResource.mockReturnValue({
       data: collection({
-        cover_url: "https://media.example/cover.jpg",
-        cover_is_uploaded: true,
+        cover: {
+          url: "https://media.example/cover.jpg",
+          media_type: "image",
+          is_uploaded: true,
+        },
       }),
       error: null,
       refetch: vi.fn(),

@@ -36,7 +36,11 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.models.collection import Collection, CollectionEvent
 from app.models.event import Event
 from app.models.user import User
-from app.schemas.collection import CollectionMembershipRead, CollectionRead
+from app.schemas.collection import (
+    CollectionCoverRead,
+    CollectionMembershipRead,
+    CollectionRead,
+)
 from app.services.event_filters import collectable_events
 from app.services.pagination import keyset_after
 from app.services.permissions import ensure_owner
@@ -211,7 +215,7 @@ def stats_of(stats: dict[uuid.UUID, CollectionStats], collection_id: uuid.UUID) 
     return stats.get(collection_id, _EMPTY_STATS)
 
 
-def default_cover_url(db: Session, collection_id: uuid.UUID) -> str | None:
+def default_cover(db: Session, collection_id: uuid.UUID) -> CollectionCoverRead | None:
     """The cover a collection shows when its owner has set none.
 
     The media of the first item in chronological order that is not flagged
@@ -221,6 +225,10 @@ def default_cover_url(db: Session, collection_id: uuid.UUID) -> str | None:
     event carries hard footage still gets a cover, and no reader is shown
     death or injury on a card they did not open. ``None`` when no item
     qualifies.
+
+    The chosen media's own ``media_type`` rides along, since most source media
+    are clips and a reader handed the url alone cannot tell which element
+    plays it.
     """
     row = (
         db.query(Event)
@@ -235,20 +243,30 @@ def default_cover_url(db: Session, collection_id: uuid.UUID) -> str | None:
     if row is None:
         return None
     media = pick_thumbnail(row.media)
-    return media.storage_url if media is not None else None
+    if media is None:
+        return None
+    return CollectionCoverRead(
+        url=media.storage_url, media_type=media.media_type, is_uploaded=False
+    )
 
 
-def cover_url(db: Session, collection: Collection) -> str | None:
-    """Where the cover image of one collection lives, or ``None``.
+def cover_for(db: Session, collection: Collection) -> CollectionCoverRead | None:
+    """The picture one collection wears, or ``None``.
 
     The owner's uploaded cover when ``cover_key`` holds one, resolved through
     the media host the way every other stored object is
     (:meth:`services.storage.Storage.public_url`); otherwise the default
-    (:func:`default_cover_url`).
+    (:func:`default_cover`). An upload is always an image, since
+    :func:`services.storage.upload_collection_cover_image` accepts image types
+    only and stores one JPEG.
     """
     if collection.cover_key:
-        return get_storage().public_url(collection.cover_key)
-    return default_cover_url(db, collection.id)
+        return CollectionCoverRead(
+            url=get_storage().public_url(collection.cover_key),
+            media_type="image",
+            is_uploaded=True,
+        )
+    return default_cover(db, collection.id)
 
 
 def build_collection_reads(db: Session, collections: Sequence[Collection]) -> list[CollectionRead]:
@@ -265,8 +283,7 @@ def build_collection_reads(db: Session, collections: Sequence[Collection]) -> li
             id=collection.id,
             owner=collection.owner,
             title=collection.title,
-            cover_url=cover_url(db, collection),
-            cover_is_uploaded=bool(collection.cover_key),
+            cover=cover_for(db, collection),
             event_count=stats_of(stats, collection.id).event_count,
             first_date=stats_of(stats, collection.id).first_date,
             last_date=stats_of(stats, collection.id).last_date,
@@ -564,7 +581,7 @@ def clear_cover(db: Session, *, collection: Collection, user: User) -> Collectio
     """Drop ``collection``'s uploaded cover, column and stored object both.
 
     403 for anyone but the owner. The card then falls back to the default
-    (:func:`default_cover_url`).
+    (:func:`default_cover`).
     """
     ensure_owner(collection, user)
     previous = collection.cover_key

@@ -4,6 +4,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.event import TITLE_MAX_LENGTH
+from app.models.media import MediaType
 from app.schemas.user import AuthorRef
 
 
@@ -22,6 +23,27 @@ class CollectionUpdate(BaseModel):
     title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH)
 
 
+class CollectionCoverRead(BaseModel):
+    """The picture one collection wears, and what kind of file it is.
+
+    ``url`` points at the stored object. ``media_type`` is the media-kind
+    domain ``models/media.MediaType`` defines, so a client picks the element
+    that can render the file: a default cover taken off a video item is a clip,
+    and an ``<img>`` pointed at it paints an empty band.
+
+    ``is_uploaded`` says which of the two covers this is, true for the owner's
+    own upload and false for the fallback the server picked. It is what the
+    owner's remove-the-cover control reads: offering it against a fallback
+    names an upload that does not exist. An upload is always an image, since
+    the cover pipeline accepts image types only, and it carries no display
+    derivative, so a client renders its ``url`` as stored.
+    """
+
+    url: str
+    media_type: MediaType
+    is_uploaded: bool
+
+
 class CollectionRead(BaseModel):
     """One collection as every read surface renders it.
 
@@ -34,27 +56,24 @@ class CollectionRead(BaseModel):
     are null for a collection holding nothing and for one whose items all
     lack a date.
 
-    ``cover_url`` is what the card and the page band show. It resolves the
-    owner's uploaded cover when they set one. With none set it falls back to
-    the media of the first item in chronological order that is not flagged
-    graphic, picked by the card-thumbnail rule
-    (``services/thumbnails.pick_thumbnail``): the fallback is presentation
-    only, over imagery the item's own page already shows. It is null when no
-    item qualifies.
+    ``cover`` is what the card and the page band show, a
+    :class:`CollectionCoverRead` or null. It resolves the owner's uploaded
+    cover when they set one. With none set it falls back to the media of the
+    first item in chronological order that is not flagged graphic, picked by
+    the card-thumbnail rule (``services/thumbnails.pick_thumbnail``): the
+    fallback is presentation only, over imagery the item's own page already
+    shows. It is null when no item qualifies.
 
-    ``cover_is_uploaded`` says which of the two ``cover_url`` resolved, true
-    for the owner's own upload and false for the fallback and for no cover at
-    all. Without it the two are one value and a client cannot tell a picture
-    the owner chose from one the server picked, which is what the owner's
-    remove-the-cover control needs to know: offering it against a fallback
-    names an upload that does not exist.
+    The url and its kind travel together rather than as a bare url, because
+    most source media in the corpus are clips: a fallback picked off a video
+    item is an ``.mp4``, and a client handed the url alone renders it in an
+    ``<img>`` and shows an empty band.
     """
 
     id: uuid.UUID
     owner: AuthorRef
     title: str
-    cover_url: str | None
-    cover_is_uploaded: bool
+    cover: CollectionCoverRead | None
     event_count: int
     first_date: date | None
     last_date: date | None

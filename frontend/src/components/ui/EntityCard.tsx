@@ -24,7 +24,7 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 //   `media` is present, its marked "no media" box otherwise.
 
 // The one fixed-ratio media slot on cards: the real media when there is one
-// (image thumbnail, or muted video first-frame via `posterFrameUrl` +
+// (the image derivative `size` names, or muted video first-frame via `posterFrameUrl` +
 // `preload="metadata"` so it paints as a poster), else a marked "no media"
 // box. No generated stand-ins: a card without media says so. The video is
 // `object-contain` on the slot's backdrop, so a portrait clip letterboxes in
@@ -40,15 +40,25 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 export function MediaThumb({
   media,
   src,
+  size = "thumbnail",
   className,
   isGraphic = false,
 }: {
-  media?: Media;
-  /** A stored image that is not an event's media row: a collection's cover,
-   *  which is either the owner's upload or the server's pick of one item's
-   *  media. It wins over `media`, and it is what makes the "no media" box the
-   *  one placeholder on the site rather than a second one drawn beside it. */
+  /** Anything carrying a stored url and its kind: an event's `Media` row, or a
+   *  collection's default cover, which is one item's media read off the
+   *  collection read. The kind is what picks the element, so a clip plays as a
+   *  clip on every surface that shows this slot. */
+  media?: Pick<Media, "storage_url" | "media_type">;
+  /** A stored image with no derivatives beside it: a collection's uploaded
+   *  cover, which the cover pipeline stores as one already-resized JPEG. It
+   *  wins over `media`, and it is what makes the "no media" box the one
+   *  placeholder on the site rather than a second one drawn beside it. */
   src?: string;
+  /** Which image derivative the slot reads (`media` only): the 400 px
+   *  `thumbnail` a card row shows, or the 1280 px `hero` a full-width slot
+   *  needs (a collection's cover band). Videos have no derivatives and ignore
+   *  it. */
+  size?: "thumbnail" | "hero";
   className?: string;
   /** The event's `is_graphic` flag. */
   isGraphic?: boolean;
@@ -60,7 +70,7 @@ export function MediaThumb({
     media.media_type === "image" ? (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={displayUrlsFor(media).thumbnail}
+        src={displayUrlsFor(media)[size]}
         alt=""
         className="w-full h-full object-cover"
       />
