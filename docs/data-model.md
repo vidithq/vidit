@@ -1,6 +1,6 @@
 # Data model
 
-One `events` row carries a geolocation for its whole life. The status it holds says how far along it is, three writes move it, and the tables below hang off it rather than copy it.
+One `events` row carries a geolocation for its whole life. The status it holds says how far along it is, four writes move or correct it, and the tables below hang off it rather than copy it.
 
 ```mermaid
 flowchart LR
@@ -34,6 +34,8 @@ flowchart LR
   closed["`**closed**
   closed_at, close_reason, and before_closed_status: withdrawn, rejected or retracted`"]:::core
 
+  amend["`**update_request**
+  the owner corrects the open question: overwritten in place, no version filed`"]:::spec
   vouch["`**services/events.geolocate**
   a person vouches: coordinate, source_url, one proof image. owner_id moves to the fulfiller`"]:::spec
   version["`**POST /events/{id}/versions**
@@ -51,6 +53,7 @@ flowchart LR
   ask --> requested
   engine --> detected
   submit --> vouch
+  requested --> amend --> requested
   requested --> vouch
   detected --> vouch
   vouch --> geolocated --> version --> geolocated
@@ -63,7 +66,7 @@ flowchart LR
   geolocated --> reports
 ```
 
-The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The three writes are `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched, [`event_versions`](#event_versions) holds what a correction superseded, and [`content_reports`](#content_reports) holds what a viewer flagged.
+The three entries on the left are the three ways a row is born: a request and a direct submit come from [`POST /events/requests` and `POST /events`](api.md#post-events), and a machine detection comes from the [ingest engine](ingestion.md). The four statuses and the constraints that pin them are [`events`](#events). The four writes are `update_request`, `geolocate`, `save_version` and `close`, all in [`api.md`](api.md). Two of them correct a row rather than move it, and they differ on what the row is: `update_request` overwrites an open question, while `save_version` files what it supersedes, because a published row is a vouched claim. The tables on the right exist because a write happened: [`event_geolocators`](#event_geolocators) records who vouched, [`event_versions`](#event_versions) holds what a correction superseded, and [`content_reports`](#content_reports) holds what a viewer flagged.
 
 ## Schema overview
 
@@ -436,12 +439,12 @@ One row represents one event across its whole lifecycle. `status` tracks the lif
 | `detected_at` | `TIMESTAMPTZ` | nullable. Stamped when a machine produced it, entering `detected`. |
 | `geolocated_at` | `TIMESTAMPTZ` | nullable. Stamped when a person vouched for it and published it, entering `geolocated`. |
 | `closed_at` | `TIMESTAMPTZ` | nullable. Stamped when the event entered the terminal `closed` state. |
-| `status` | `VARCHAR(20)` | NOT NULL, `server_default 'geolocated'`. The lifecycle runs `requested` (an open call to geolocate) → `detected` (a machine detection, marked on every surface, immutable until vouched) → `geolocated` (a person vouched for it and published it; always has a location, and every later correction is a version) → `closed` (the owner took the row back, from any of the three live states). It is a plain string, not a native enum, and `ck_events_status_valid` pins the value domain. The default keeps a direct human submit correct without setting the value explicitly; the requested and detected paths pass `status` explicitly. The `geolocate`, `save_version` and `close` transitions are documented in [`api.md`](api.md). |
+| `status` | `VARCHAR(20)` | NOT NULL, `server_default 'geolocated'`. The lifecycle runs `requested` (an open call to geolocate) → `detected` (a machine detection, marked on every surface, immutable until vouched) → `geolocated` (a person vouched for it and published it; always has a location, and every later correction is a version) → `closed` (the owner took the row back, from any of the three live states). It is a plain string, not a native enum, and `ck_events_status_valid` pins the value domain. The default keeps a direct human submit correct without setting the value explicitly; the requested and detected paths pass `status` explicitly. The `update_request`, `geolocate`, `save_version` and `close` writes are documented in [`api.md`](api.md). |
 | `close_reason` | `TEXT` | nullable. A free-text reason the event was closed, such as AI image, bot bug, or withdrawn. Required by the close endpoint and kept visible for transparency, which is what makes a closed row read as a decision rather than a disappearance. A curated reason picker is deferred. |
 | `before_closed_status` | `VARCHAR(20)` | nullable. The status held just before `closed`: `requested` means withdrawn, `detected` means rejected, `geolocated` means retracted. Drives the status badge and the read views: a rejected detection stays in the located catalog, a withdrawn request in the requested queue, and a retraction is in neither. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks an admin soft-delete: the row and its media stay in place, but every public read filters it out, admins included. |
 | `hidden_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks a takedown: the row is withheld from every public read the same way `deleted_at` is, but an admin still reads it (judging the [content report](#content_reports) that led to the takedown means seeing what was withheld), and the state is reversible, which is what separates it from `deleted_at`. Set by `POST /admin/reports/{id}/resolve` (`resolution = "hidden"`) or directly by `PATCH /admin/events/{id}/moderation`; cleared only by the latter. |
-| `version_no` | `INTEGER` | NOT NULL, `server_default 1`. Which version of the event the live row is. It starts at 1 and moves forward one step per correction, which files the superseded state in [`event_versions`](#event_versions). Only a `geolocated` row can move past 1, because saving a version is the published-row correction path; see [`POST /events/{id}/versions`](api.md#post-eventsidversions). A version number is a public address, so it never changes meaning: a version is never deleted, and the number only ever increases. |
+| `version_no` | `INTEGER` | NOT NULL, `server_default 1`. Which version of the event the live row is. It starts at 1 and moves forward one step per correction, which files the superseded state in [`event_versions`](#event_versions). Only a `geolocated` row can move past 1, because saving a version is the published-row correction path; see [`POST /events/{id}/versions`](api.md#post-eventsidversions). An open request is corrected in place by [`POST /events/{id}/request`](api.md#post-eventsidrequest) and stays at 1: a version supersedes a vouched claim, and a request is a question. A version number is a public address, so it never changes meaning: a version is never deleted, and the number only ever increases. |
 | `is_graphic` | `BOOLEAN` | NOT NULL, default `false`. `TRUE` when the footage shows death, injury or human remains. The author sets it on the create / edit forms; an admin can override it, directly (`PATCH /admin/events/{id}/moderation`) or by resolving a report as `marked_graphic`. Public column, carried by every event read schema: the frontend covers a flagged event's media behind [`GraphicContentGate`](design.md#components) until the viewer confirms they want to see it. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
@@ -555,7 +558,7 @@ Composite PK: `(event_id, position)`. `position` sits in the key, so the stored 
 
 There is no secondary index: every read is "this event's links, in order", served by the PK's leading `event_id`. `MAX_SECONDARY_SOURCE_LINKS = 10` (`backend/app/models/event.py`) caps how many rows an event carries. The write forms normalize and enforce this cap before insert: they strip whitespace, drop blanks, drop duplicates, and drop the entry equal to `source_url`, preserving order.
 
-The system writes this list wholesale, not row by row. A create sets the full ordered list once, and a geolocate replaces the whole list with whatever the fulfiller submits, including for requested events. Unlike `source_url`, there is no requester protection here. Hard-deleting the event cascades to the rows.
+The system writes this list wholesale, not row by row. A create sets the full ordered list once, and every later write replaces the whole list with whatever the form submits: the requester's own edit of an open request, and the geolocate, including for requested events. Unlike `source_url`, there is no requester protection here. Hard-deleting the event cascades to the rows.
 
 ---
 

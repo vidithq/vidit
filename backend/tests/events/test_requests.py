@@ -21,6 +21,9 @@ What we lock in:
   it transitions to ``geolocated``, transfers ``owner_id`` to the
   fulfiller, credits them in ``event_geolocators``, and keeps
   ``requested_by`` as the original poster.
+* ``POST /events/{id}/request`` corrects an open request in place: owner-only,
+  ``requested``-only, no version filed, the source floor held, and the
+  provenance of a bot-opened row left where the import stamped it.
 """
 
 from __future__ import annotations
@@ -35,10 +38,12 @@ from app.models.event import (
     STATUS_REQUESTED,
     Event,
     EventGeolocator,
+    EventVersion,
 )
 from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
+from app.services.events import ImportProvenance, stamp_provenance
 from tests._fixtures import TINY_JPEG
 from tests._fixtures import tiny_jpeg as _tiny_jpeg
 from tests.conftest import login_as
@@ -927,3 +932,248 @@ def test_geolocate_fulfilment_rejected_when_closed(
 def test_geolocate_fulfilment_404_for_unknown(author, conflict, capture_source_tag):
     response = _geolocate_fulfilment(client, uuid.uuid4(), author, conflict, capture_source_tag)
     assert response.status_code == 404
+
+
+# ── POST /events/{id}/request, the owner's edit ──────────────────────────
+#
+# The owner's correction of an open request, overwriting it in place: a request
+# is a question rather than a vouched claim, so the edit files no version. What
+# these lock in is that boundary (owner-only, ``requested``-only, no version
+# row), that the edit reaches the fields the create form writes, and that the two
+# things a request carries across its life, the requester's evidence anchor and
+# the provenance of a bot-opened row, survive it.
+
+
+def _edit_request(client, request_id, editor, **overrides):
+    """POST the edit form. The defaults move every field the create form writes,
+    so a test asserting on one of them overrides only that one."""
+    data = {
+        "title": "Edited title",
+        "source_url": "https://example.com/post",
+        "source_posted_at": "2026-05-02T09:30",
+        "event_date": "2026-05-02",
+    }
+    data.update(overrides)
+    return client.post(
+        f"/api/v1/events/{request_id}/request",
+        headers=login_as(client, editor),
+        data=data,
+    )
+
+
+def test_edit_request_overwrites_in_place_without_a_version(db, author, free_tag):
+    """The owner's edit moves title, source, dates, mirrors, tags and proof, and
+    the row stays version 1 with no ``event_versions`` row behind it."""
+    request = _make_request(db, author=author, source_url="https://example.com/first")
+    request_id = request.id
+
+    response = _edit_request(
+        client,
+        request_id,
+        author,
+        source_url="https://example.com/second",
+        secondary_source_urls=["https://mirror.example/a"],
+        tag_ids=json.dumps([str(free_tag.id)]),
+        proof=json.dumps({"type": "doc", "content": [{"type": "paragraph"}]}),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["id"] == str(request_id)
+    assert body["status"] == STATUS_REQUESTED
+    assert body["title"] == "Edited title"
+    assert body["source_url"] == "https://example.com/second"
+    assert body["event_date"] == "2026-05-02"
+    assert body["secondary_source_urls"] == ["https://mirror.example/a"]
+    assert [t["name"] for t in body["tags"]] == [free_tag.name]
+    assert body["version_no"] == 1
+    # The poster keeps both roles: an edit is not a change of hands.
+    assert body["owner"]["username"] == author.username
+    assert body["requested_by"]["username"] == author.username
+
+    db.expire_all()
+    row = db.query(Event).filter(Event.id == request_id).one()
+    assert row.status == STATUS_REQUESTED
+    assert row.title == "Edited title"
+    assert row.source_url == "https://example.com/second"
+    assert row.version_no == 1
+    assert db.query(EventVersion).filter(EventVersion.event_id == request_id).count() == 0
+
+
+def test_edit_request_moves_the_coordinate_guess(db, author):
+    """The approximate guess is editable like every other field, and an edit
+    that posts neither half clears it (the row stays legal without one)."""
+    request = _make_request(db, author=author)
+    request_id = request.id
+
+    placed = _edit_request(client, request_id, author, lat="48.5", lng="34.5")
+    assert placed.status_code == 200, placed.text
+    assert placed.json()["event_coords"] == {"lat": 48.5, "lng": 34.5}
+
+    cleared = _edit_request(client, request_id, author)
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["event_coords"] is None
+
+    db.expire_all()
+    assert db.query(Event).filter(Event.id == request_id).one().event_coords is None
+
+
+def test_edit_request_keeps_the_source_instant_the_bot_could_not_read(db, author):
+    """``source_posted_at`` is optional here: a bot-opened request whose source
+    date was unreadable is editable without inventing an instant."""
+    request = _make_request(db, author=author)
+    request_id = request.id
+    db.query(Event).filter(Event.id == request_id).update({"source_posted_at": None})
+    db.commit()
+
+    response = _edit_request(client, request_id, author, source_posted_at="")
+    assert response.status_code == 200, response.text
+    assert response.json()["source_posted_at"] is None
+
+
+def test_edit_request_accepts_the_stored_instant_verbatim(db, author):
+    """The form posts the row's own value back when the analyst never touched the
+    field, so what the read model serves has to be what this write takes: a full
+    UTC instant, seconds and zone included, not the minute the input holds."""
+    request = _make_request(db, author=author)
+    response = _edit_request(client, request.id, author, source_posted_at="2026-05-01T12:00:27Z")
+    assert response.status_code == 200, response.text
+    assert response.json()["source_posted_at"] == "2026-05-01T12:00:27Z"
+
+
+def test_edit_request_swaps_the_source_media(db, author):
+    """The footage moves on the same removal + upload pair the published writes
+    take, and the row is left on exactly one source media."""
+    request = _make_request(db, author=author)
+    request_id = request.id
+    stored = db.query(Media).filter(Media.event_id == request_id).one()
+
+    response = client.post(
+        f"/api/v1/events/{request_id}/request",
+        headers=login_as(client, author),
+        data={
+            "title": "Edited title",
+            "source_url": "https://example.com/post",
+            "source_posted_at": "2026-05-02T09:30",
+            "remove_media_ids": json.dumps([str(stored.id)]),
+        },
+        files=[("files", ("swap.jpg", TINY_JPEG, "image/jpeg"))],
+    )
+    assert response.status_code == 200, response.text
+    media = response.json()["media"]
+    assert len(media) == 1
+    assert media[0]["id"] != str(stored.id)
+
+    db.expire_all()
+    rows = db.query(Media).filter(Media.event_id == request_id).all()
+    assert [m.role for m in rows] == ["source"]
+
+
+def test_edit_request_refuses_to_leave_the_row_without_footage(db, author):
+    """A request is an unfinished geolocation, so the source floor holds on the
+    edit: dropping the footage without a replacement is refused."""
+    request = _make_request(db, author=author)
+    request_id = request.id
+    stored = db.query(Media).filter(Media.event_id == request_id).one()
+
+    response = _edit_request(
+        client, request_id, author, remove_media_ids=json.dumps([str(stored.id)])
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "media_required"
+
+    db.expire_all()
+    assert db.query(Media).filter(Media.event_id == request_id).count() == 1
+
+
+def test_edit_request_owner_only(db, author, second_user):
+    """An open request is answerable by anyone and editable by nobody but its
+    owner: the fulfilment is the door a second analyst comes through."""
+    request = _make_request(db, author=author)
+    response = _edit_request(client, request.id, second_user)
+    assert response.status_code == 403
+
+
+def test_edit_request_requires_authentication(db, author):
+    request = _make_request(db, author=author)
+    response = client.post(
+        f"/api/v1/events/{request.id}/request",
+        data={"title": "Edited title", "source_url": "https://example.com/post"},
+    )
+    assert response.status_code == 401
+
+
+def test_edit_request_rejects_a_row_that_left_requested(db, author):
+    """Only an open request takes this write: a fulfilled row is corrected as a
+    version, a detection through the geolocate, and a withdrawn one is
+    terminal."""
+    for status in (STATUS_GEOLOCATED, "detected", STATUS_CLOSED):
+        geo = _make_geo(db, author=author, status=status, with_media=True)
+        response = _edit_request(client, geo.id, author)
+        assert response.status_code == 409, f"{status}: {response.text}"
+        assert response.json()["detail"]["code"] == "invalid_state"
+
+
+def test_edit_request_404_for_unknown(author):
+    assert _edit_request(client, uuid.uuid4(), author).status_code == 404
+
+
+def test_edit_request_rejects_blank_title(db, author):
+    request = _make_request(db, author=author)
+    response = _edit_request(client, request.id, author, title="   ")
+    assert response.status_code == 400
+    assert response.json()["detail"] == "title is required"
+
+
+def test_fulfilment_keeps_the_edited_source_url(
+    db, author, second_user, conflict, capture_source_tag
+):
+    """The requester's evidence anchor is the one the edit stored: a fulfiller
+    still cannot rewrite it, and what they inherit is the corrected value."""
+    request = _make_request(db, author=author, source_url="https://example.com/wrong")
+    request_id = request.id
+
+    edited = _edit_request(client, request_id, author, source_url="https://requester.example/right")
+    assert edited.status_code == 200, edited.text
+
+    response = _geolocate_fulfilment(
+        client,
+        request_id,
+        second_user,
+        conflict,
+        capture_source_tag,
+        source_url="https://tamper.example/other",
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["source_url"] == "https://requester.example/right"
+
+
+def test_edit_request_keeps_the_provenance_of_a_bot_opened_row(db, author):
+    """A request the bot opened is its owner's to correct, and the five import
+    columns are not the owner's to move: the edit leaves them where the import
+    stamped them."""
+    request = _make_request(db, author=author)
+    request_id = request.id
+    provenance = ImportProvenance(
+        tweet_id=1234567890,
+        url="https://x.com/analyst/status/1234567890",
+        thread_tweet_ids=[1234567890],
+        via="bot",
+        post_at=datetime(2026, 5, 1, 8, 0, tzinfo=UTC),
+    )
+    row = db.query(Event).filter(Event.id == request_id).one()
+    stamp_provenance(row, provenance)
+    db.commit()
+
+    response = _edit_request(client, request_id, author)
+    assert response.status_code == 200, response.text
+    assert response.json()["detected_from_url"] == provenance.url
+    assert response.json()["detected_via"] == "bot"
+
+    db.expire_all()
+    edited = db.query(Event).filter(Event.id == request_id).one()
+    assert edited.title == "Edited title"
+    assert edited.detected_from_tweet_id == provenance.tweet_id
+    assert edited.detected_from_url == provenance.url
+    assert edited.detected_thread_tweet_ids == provenance.thread_tweet_ids
+    assert edited.detected_via == "bot"
+    assert edited.detected_post_at == provenance.post_at

@@ -50,10 +50,16 @@ vi.mock("@/lib/events", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/events")>()),
   geolocateEvent: vi.fn(),
   saveVersion: vi.fn(),
+  updateEventRequest: vi.fn(),
   closeEvent: vi.fn(),
 }));
 
-import { closeEvent, geolocateEvent, saveVersion } from "@/lib/events";
+import {
+  closeEvent,
+  geolocateEvent,
+  saveVersion,
+  updateEventRequest,
+} from "@/lib/events";
 import { ARM_MS } from "@/hooks/useConfirmAction";
 import type { Conflict, EventDetail, Tag } from "@/types";
 
@@ -61,6 +67,7 @@ import EditEventPage from "./page";
 
 const geolocateMock = vi.mocked(geolocateEvent);
 const saveVersionMock = vi.mocked(saveVersion);
+const updateRequestMock = vi.mocked(updateEventRequest);
 const closeMock = vi.mocked(closeEvent);
 
 const CONFLICTS: Conflict[] = [
@@ -144,6 +151,22 @@ function publishedFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   });
 }
 
+/**
+ * An open request its owner is correcting: born without a coordinate, carrying
+ * the footage the poster attached and none of the curated picks a publication
+ * requires.
+ */
+function requestFixture(overrides: Partial<EventDetail> = {}): EventDetail {
+  return detectionFixture({
+    status: "requested",
+    event_coords: null,
+    detected_from_url: null,
+    requested_by: { id: "u1", username: "ana" },
+    proof: null,
+    ...overrides,
+  });
+}
+
 /** The row `/events/d1` serves, set per test. */
 let row: EventDetail;
 
@@ -188,9 +211,11 @@ beforeEach(() => {
   push.mockReset();
   geolocateMock.mockReset();
   saveVersionMock.mockReset();
+  updateRequestMock.mockReset();
   closeMock.mockReset();
   geolocateMock.mockResolvedValue(detectionFixture({ status: "geolocated" }));
   saveVersionMock.mockResolvedValue(publishedFixture({ version_no: 2 }));
+  updateRequestMock.mockResolvedValue(requestFixture());
   row = detectionFixture();
   queryParam = null;
   queueItems = [
@@ -553,6 +578,85 @@ describe("editing a published geolocation", () => {
     const notice = await screen.findByRole("alert");
     expect(notice).toHaveTextContent("Conflict");
     expect(saveVersionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("editing an open request", () => {
+  beforeEach(() => {
+    row = requestFixture();
+  });
+
+  it("opens the request form instead of refusing the edit", () => {
+    render(<EditEventPage />);
+
+    expect(
+      screen.getByRole("heading", { name: "Edit request" })
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/no edit form/)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Save request" })
+    ).toBeInTheDocument();
+    // Neither published verb belongs here: a request files no version, and it
+    // is answered through the submit form rather than confirmed on this one.
+    expect(screen.queryByRole("button", { name: /Save version/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
+  });
+
+  it("offers the fields the request was opened with, seeded from the row", () => {
+    render(<EditEventPage />);
+
+    expect(screen.getByRole("textbox", { name: /Title/ })).toHaveValue(
+      "Strike near Bakhmut"
+    );
+    expect(screen.getByRole("textbox", { name: /Source URL/ })).toHaveValue(
+      "https://t.me/channel/12345"
+    );
+    // The footage is swappable here as on the published edit: its Remove is
+    // what opens the picker.
+    expect(
+      screen.getByRole("button", { name: "Remove media" })
+    ).toBeInTheDocument();
+  });
+
+  it("overwrites the request and lands back on it", async () => {
+    render(<EditEventPage />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
+      target: { value: "Corrected ask" },
+    });
+    // No arming step and no version: the edit overwrites the question.
+    fireEvent.click(screen.getByRole("button", { name: "Save request" }));
+    await waitFor(() => expect(updateRequestMock).toHaveBeenCalledTimes(1));
+    expect(updateRequestMock.mock.calls[0][0]).toBe("d1");
+    expect(updateRequestMock.mock.calls[0][1]).toMatchObject({
+      title: "Corrected ask",
+      source_url: "https://t.me/channel/12345",
+    });
+    expect(saveVersionMock).not.toHaveBeenCalled();
+    expect(geolocateMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/requests/d1"));
+  });
+
+  it("saves a request the bot opened with no source instant", async () => {
+    // The bot opens a request whose source date it could not read, so the
+    // instant is not part of this form's floor: the save goes through with the
+    // field empty rather than pushing the owner into inventing one.
+    row = requestFixture({ source_posted_at: null });
+    render(<EditEventPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save request" }));
+    await waitFor(() => expect(updateRequestMock).toHaveBeenCalledTimes(1));
+    expect(updateRequestMock.mock.calls[0][1].source_posted_at).toBe("");
+  });
+
+  it("holds the request floor before it posts", () => {
+    render(<EditEventPage />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
+      target: { value: "  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save request" }));
+    expect(updateRequestMock).not.toHaveBeenCalled();
   });
 });
 

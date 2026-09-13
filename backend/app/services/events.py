@@ -5,7 +5,8 @@ hand them to the functions here, which own every business rule, the S3 upload
 loop, proof-image intake, the DB commit, and the post-commit S3 sweep on
 rollback. The write verbs map one-to-one onto the lifecycle:
 :func:`create_with_evidence` births a ``geolocated`` row, :func:`create_request`
-a ``requested`` one, :func:`geolocate` is the one generalized transition to
+a ``requested`` one, :func:`update_request` corrects an open request in place,
+:func:`geolocate` is the one generalized transition to
 ``geolocated`` (fulfil a request, vouch a detection), :func:`save_version` corrects a
 published row and files the superseded state as a version, and :func:`close`
 is the terminal withdraw / reject / retract, available in every live state.
@@ -155,9 +156,11 @@ class EventStateError(EventError):
 
     Raised when a geolocate targets a row that isn't ``requested`` /
     ``detected`` (a ``geolocated`` row is past that transition, ``closed`` is
-    terminal), when a close targets an already ``closed`` row, or when a
+    terminal), when a close targets an already ``closed`` row, when a
     :func:`save_version` targets a row that is not ``geolocated`` (there is no version to
-    supersede before publication, and a retracted row is not corrected). Maps to
+    supersede before publication, and a retracted row is not corrected), or when
+    an :func:`update_request` targets a row that is no longer ``requested`` (a
+    fulfilled or withdrawn request is not edited in place). Maps to
     409: the request is well-formed but conflicts with the row's current state.
     """
 
@@ -755,6 +758,149 @@ async def create_request(
     )
 
     db.refresh(geo)
+    return geo
+
+
+async def update_request(
+    db: Session,
+    *,
+    geo: Event,
+    current_user: User,
+    title: str,
+    source_url: str,
+    secondary_source_urls: list[str],
+    proof_data: dict | None,
+    lat: float | None = None,
+    lng: float | None = None,
+    capture_source_lat: float | None = None,
+    capture_source_lng: float | None = None,
+    event_date: date | None = None,
+    event_time: time | None = None,
+    source_posted_at: datetime | None,
+    tag_ids: list,
+    conflict_ids: list,
+    is_graphic: bool = False,
+    remove_media_ids: list,
+    files: list[UploadFile],
+    proof_files: list[UploadFile],
+    source_snapshot_url: str | None = None,
+    secondary_snapshot_urls: list[str] | None = None,
+) -> Event:
+    """Correct an open request, in place. Owner-only, and only while ``requested``.
+
+    The write the owner of a request holds, whether they opened it on the form
+    or the bot opened it for them: the form posts the whole state and this
+    overwrites the row with it. **No version is filed.** A version supersedes a
+    vouched claim, and a request is a question rather than a claim, so there is
+    nothing to supersede; ``updated_at`` moves and the row keeps its id, its
+    ``requested_at``, its requester and its provenance columns. Past fulfilment
+    the same correction goes through :func:`save_version`, which does file one.
+
+    Every field :func:`create_request` writes is editable on the same rules: the
+    coordinate guess and the camera point stay optional and both-or-neither, the
+    curated floor stays unenforced (:func:`geolocate` is where it binds), the
+    secondary links are normalized against the source URL this write stores, and
+    the proof body may carry images or none. ``source_posted_at`` is optional
+    here, unlike on the human create form: the bot opens a request whose source
+    date it could not read, so an owner correcting that row must be able to leave
+    the column NULL rather than invent an instant. ``is_graphic`` ratchets as it
+    does on every other write, and only ``PATCH /admin/events/{id}/moderation``
+    clears it.
+
+    The source media moves on the ``remove_media_ids`` + ``files`` pair
+    :func:`geolocate` takes, under the same one-source cap, and the row must
+    still carry its footage afterwards: a request without evidence asks nothing.
+    Nothing versioned points at the dropped media (a request is at version 1,
+    with no snapshot behind it), so its S3 objects are swept once the commit
+    lands.
+
+    Concurrency: the row is re-fetched ``with_for_update()`` FIRST, then the
+    status re-checked under the lock, the discipline :func:`geolocate`,
+    :func:`save_version` and :func:`close` share. A fulfilment or a withdrawal
+    racing this edit therefore serializes with it, and the loser of the race sees
+    the 409 rather than writing into a row that has left ``requested``.
+
+    Raises :class:`EventStateError` (409) off ``requested``, the 403 of
+    ``ensure_owner`` for anyone but the owner, :class:`InvalidCoordinatesError` /
+    :class:`InvalidProofError` / :class:`MediaRequiredError` /
+    :class:`TooManySourceLinksError` (400) on a bad value or an unmet floor,
+    :class:`TooManyFilesError` (422) past the one-source cap, and the shared
+    file-validation errors. Returns the refreshed row.
+    """
+    # Lock first, re-read under it, then decide: the router already loaded this
+    # row into the session identity map, so ``populate_existing()`` is what makes
+    # the re-read real rather than a replay of the stale Python object.
+    geo = db.query(Event).filter(Event.id == geo.id).populate_existing().with_for_update().one()
+    ensure_owner(geo, current_user)
+    if geo.status != STATUS_REQUESTED:
+        raise EventStateError("Only an open request can be edited")
+
+    guess_point = _optional_point(lat, lng, field="event_coords")
+    capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
+    mirror_snapshots = pair_secondary_snapshots(
+        secondary_source_urls, secondary_snapshot_urls or []
+    )
+    # Normalized against the source URL this write stores, so an owner who moves
+    # the old source down to the mirrors keeps one link in one place.
+    stored_source_url = source_url.strip()
+    secondary_links = normalize_secondary_source_urls(secondary_source_urls, stored_source_url)
+
+    # The same read, the same cap and the same floor the two published writes
+    # run, taken before any S3 work so a refused swap writes nothing.
+    swap = _plan_source_swap(geo, remove_media_ids=remove_media_ids, files=files)
+
+    proof_data = _sanitize_proof(proof_data, allow_placeholders=True)
+
+    _require_submission_media(swap.survivors > 0)
+
+    # Suppress autoflush across the edit, as the two published writes do: the
+    # collection assignments lazy-load the current sets, which would flush a
+    # half-edited row.
+    with db.no_autoflush:
+        geo.title = title
+        geo.source_url = stored_source_url
+        geo.event_coords = guess_point
+        geo.capture_source_coords = capture_point
+        geo.event_date = event_date
+        geo.event_time = event_time
+        geo.source_posted_at = source_posted_at
+        geo.is_graphic = geo.is_graphic or is_graphic
+        geo.tags = _resolve_tags(db, tag_ids)
+        geo.conflicts = _resolve_conflicts(db, conflict_ids)
+
+    replace_source_links(db, geo, secondary_links)
+
+    # A mirror this edit dropped takes its stored copy with it, and the archived
+    # source follows the URL this write stores: a copy of a link the row no
+    # longer declares archives nothing the record shows. Both run before the
+    # pastes below, so a re-paste lands in the slot the reconciliation freed.
+    source_archive.drop_mirror_archives(db, event=geo, kept=secondary_links)
+    source_archive.reconcile_source_archive(db, event=geo)
+    if source_snapshot_url:
+        source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
+    source_archive.stage_secondary_snapshots(db, event=geo, snapshots=mirror_snapshots)
+
+    # Snapshot the dropped media's keys before the rows go with the flush, and
+    # flush the deletes ahead of the replacement insert (delete-then-insert, or
+    # ``uq_media_source_per_event`` trips mid-flush).
+    removed_keys = collect_media_keys(swap.removed)
+    _apply_source_removals(db, swap)
+
+    await attach_evidence_and_commit(
+        db,
+        event=geo,
+        source_files=files,
+        proof_doc=proof_data,
+        proof_files=proof_files,
+        sweep_context=f"event {geo.id} request edit rollback",
+    )
+
+    # Committed; sweep the replaced media's objects (best-effort). No version
+    # renders them, so nothing is left pointing at what goes.
+    sweep_keys(removed_keys, context=f"event {geo.id} request edit media removal")
+    db.refresh(geo)
+    # No points-cache invalidation: the map serves located rows alone, so a
+    # request's guess never entered the cache this write could stale.
     return geo
 
 

@@ -33,9 +33,11 @@ import type { EventDetail } from "@/types";
  * 2. **The flow action**, at most one, filled: what this surface exists to move
  *    forward. Only an open request carries one (geolocate it).
  * 3. **Owner management**: the controls only the author holds, as icon buttons
- *    in the row like every other control in it. The event page carries editing
- *    a published geolocation, which files a version rather than overwriting the
- *    record, as a pencil; both detail pages carry closing the row, which is how
+ *    in the row like every other control in it. Both detail pages carry editing
+ *    an open request, which overwrites it, as a pencil; the event page carries
+ *    editing a published geolocation, which files a version rather than
+ *    overwriting the record, as the same pencil on a row in the other state.
+ *    Both detail pages carry closing the row, which is how
  *    an author takes their own work back. Nothing here destroys a row: closing
  *    keeps it readable with its reason, and removing one for good is an admin
  *    act.
@@ -59,11 +61,14 @@ export type ActionSurface = "event" | "request" | "panel" | "edit";
 // flow action (a published geolocation is finished work) but does carry the
 // correction its author makes.
 //
-// Owner management is two entries, not one, because the surfaces claim
-// different halves of it: `saveVersion` is correcting a published geolocation,
-// which only the event page offers, and `close` is taking a row back, which
-// both detail pages offer since both serve rows their author may still want to
-// take back. What each row actually gets is decided per status below, so a
+// Owner management is three entries, not one, because the surfaces claim
+// different parts of it: `editRequest` is correcting an open request, which both
+// detail pages offer since both serve one; `saveVersion` is correcting a
+// published geolocation, which only the event page offers; and `close` is taking
+// a row back, which both detail pages offer since both serve rows their author
+// may still want to take back. The two edits never appear together, since no row
+// is both requested and published, and both lead to the one edit address. What
+// each row actually gets is decided per status below, so a
 // surface never offers a close to a row that cannot take one. `history` is the read into a
 // published record's versions, public, first in the utilities row: the event
 // page alone carries it, since the map panel and the forms show one version by
@@ -72,16 +77,17 @@ const TIERS: Record<
   ActionSurface,
   {
     flow: boolean;
+    editRequest: boolean;
     saveVersion: boolean;
     close: boolean;
     history: boolean;
     utilities: boolean;
   }
 > = {
-  event:   { flow: false, saveVersion: true,  close: true,  history: true,  utilities: true },
-  request: { flow: true,  saveVersion: false, close: true,  history: false, utilities: true },
-  panel:   { flow: false, saveVersion: false, close: false, history: false, utilities: false },
-  edit:    { flow: false, saveVersion: false, close: false, history: false, utilities: false },
+  event:   { flow: false, editRequest: true,  saveVersion: true,  close: true,  history: true,  utilities: true },
+  request: { flow: true,  editRequest: true,  saveVersion: false, close: true,  history: false, utilities: true },
+  panel:   { flow: false, editRequest: false, saveVersion: false, close: false, history: false, utilities: false },
+  edit:    { flow: false, editRequest: false, saveVersion: false, close: false, history: false, utilities: false },
 };
 
 // Ties the menu entry to the panel it opens two levels down the tree, which
@@ -135,6 +141,11 @@ export function useEventActions({
   // take: the author's own controls are the ones they reach for most, and a
   // disclosure holding two entries costs a click on every use to hide what the
   // row has width for.
+  // The owner's edit of an open request. Owner-only, unlike the geolocate beside
+  // it: anyone may answer a request, and only the analyst who asked rewrites the
+  // question. The write overwrites the row rather than filing a version, which
+  // is what the label says by not promising one.
+  const canEditRequest = isAuthor && tiers.editRequest && isOpenRequest;
   const canSaveVersion = isAuthor && tiers.saveVersion && event.status === "geolocated";
   // Every live state closes, `geolocated` included: a published claim its
   // author no longer stands behind is retracted rather than left standing or
@@ -147,7 +158,11 @@ export function useEventActions({
   // so an empty one prints a gap beside the controls the host adds of its own
   // (the edit form's queue position, Skip and Close).
   const rowIsEmpty =
-    !tiers.utilities && !(tiers.flow && isOpenRequest) && !canSaveVersion && !canClose;
+    !tiers.utilities &&
+    !(tiers.flow && isOpenRequest) &&
+    !canEditRequest &&
+    !canSaveVersion &&
+    !canClose;
 
   return {
     // `flex-wrap` plus `justify-end`: the row is wider than a phone, so it
@@ -162,6 +177,19 @@ export function useEventActions({
           >
             <MapPin size={14} />
             Geolocate
+          </Link>
+        )}
+        {canEditRequest && (
+          <Link
+            href={`/events/${event.id}/edit`}
+            className={buttonClasses("ghost", { icon: true })}
+            // The same address the published correction uses, and a label that
+            // names the row rather than the write: editing a request overwrites
+            // it, so there is no version to promise.
+            aria-label="Edit this request"
+            title="Edit this request"
+          >
+            <Pencil size={14} />
           </Link>
         )}
         {canSaveVersion && (

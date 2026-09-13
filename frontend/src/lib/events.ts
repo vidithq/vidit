@@ -1060,12 +1060,18 @@ export interface EventRequestInput {
   proof_files: File[];
 }
 
-export function createEventRequest(input: EventRequestInput): Promise<EventDetail> {
-  const fd = new FormData();
-  // Shared metadata + camera point + tags. A request's deltas from a
-  // geolocation: the subject point is optional (each half guarded, not
-  // both-or-neither), `event_date` is optional, and the source rides under the
-  // singular `file` key. Proof images are optional (no image floor).
+/** Append the multipart fields the two request write paths post identically.
+ *  A request's deltas from a geolocation live here: the subject point is
+ *  optional (each half guarded, not both-or-neither), `event_date` is optional,
+ *  and the proof body's images ride along with no image floor behind them. The
+ *  source media is what the two paths differ on, so the caller passes its key:
+ *  a create carries the singular `file`, an edit the plural `files` plus the
+ *  `remove_media_ids` naming what that file replaces. */
+function appendRequestFormFields(
+  fd: FormData,
+  input: EventRequestInput & { remove_media_ids?: string[] },
+  sourceKey: "file" | "files"
+): void {
   appendSharedEventFields(fd, input);
   if (input.lat !== undefined) fd.append("lat", String(input.lat));
   if (input.lng !== undefined) fd.append("lng", String(input.lng));
@@ -1073,12 +1079,50 @@ export function createEventRequest(input: EventRequestInput): Promise<EventDetai
     fd.append("event_date", input.event_date);
   }
   for (const file of input.files) {
-    fd.append("file", file);
+    fd.append(sourceKey, file);
+  }
+  if (input.remove_media_ids?.length) {
+    fd.append("remove_media_ids", JSON.stringify(input.remove_media_ids));
   }
   for (const file of input.proof_files) {
     fd.append("proof_files", file);
   }
+}
+
+export function createEventRequest(input: EventRequestInput): Promise<EventDetail> {
+  const fd = new FormData();
+  appendRequestFormFields(fd, input, "file");
   return apiFetch<EventDetail>("/events/requests", {
+    method: "POST",
+    body: fd,
+  });
+}
+
+/**
+ * Correct an open request: `POST /events/{id}/request` (multipart), owner-only
+ * and `requested`-only. The create form's fields, whole, plus the source-media
+ * swap an existing row needs. No version is filed: a version supersedes a
+ * vouched claim, and a request is a question, so the row is overwritten and
+ * keeps its id, its requester and its provenance. Past fulfilment the same
+ * correction goes through `saveVersion`, which does file one.
+ */
+export type EventRequestEditInput = EventRequestInput & {
+  /** Ids of existing source media to drop; the replacement rides in `files`,
+   *  under the one-source cap every write shares. */
+  remove_media_ids: string[];
+  /** Optional here, unlike on the create form: the bot opens a request whose
+   *  source date it could not read, so an owner correcting that row must be
+   *  able to leave the column empty. An empty value clears it. */
+  source_posted_at: string;
+};
+
+export function updateEventRequest(
+  id: string,
+  input: EventRequestEditInput
+): Promise<EventDetail> {
+  const fd = new FormData();
+  appendRequestFormFields(fd, input, "files");
+  return apiFetch<EventDetail>(`/events/${id}/request`, {
     method: "POST",
     body: fd,
   });
@@ -1456,17 +1500,26 @@ export function missingEventFields(
  * floor is a subset of the geolocation one (no coordinates, dates, proof, or
  * tags), just enough to be actionable: a title, the source, and the footage.
  * Mirrors the server `POST /events/requests` requirements.
+ *
+ * `requireSourcePostedAt` defaults to true, which is what opening a request
+ * asks for. False on the owner's edit: the bot opens a request whose source
+ * date it could not read, and `POST /events/{id}/request` takes the field as
+ * optional to match, so flagging it here would block an edit the server accepts
+ * and push the owner into inventing an instant.
  */
-export function missingEventRequestFields(s: {
-  title: string;
-  sourceUrl: string;
-  sourcePostedAt: string;
-  mediaCount: number;
-}): MissingField[] {
+export function missingEventRequestFields(
+  s: {
+    title: string;
+    sourceUrl: string;
+    sourcePostedAt: string;
+    mediaCount: number;
+  },
+  { requireSourcePostedAt = true }: { requireSourcePostedAt?: boolean } = {}
+): MissingField[] {
   const missing: MissingField[] = [];
   if (!s.title.trim()) missing.push({ key: "title", label: FIELD_LABELS.title });
   if (!s.sourceUrl.trim()) missing.push({ key: "source_url", label: FIELD_LABELS.source_url });
-  if (!s.sourcePostedAt) {
+  if (requireSourcePostedAt && !s.sourcePostedAt) {
     missing.push({ key: "source_posted_at", label: FIELD_LABELS.source_posted_at });
   }
   if (s.mediaCount === 0) {

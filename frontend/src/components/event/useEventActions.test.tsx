@@ -112,6 +112,31 @@ describe("owner management: correcting, taking back, and never destroying", () =
     }
   );
 
+  // The owner's other edit, on the row in the other state: an open request is
+  // overwritten rather than versioned, so the label promises no version, and
+  // both detail surfaces carry it since both serve requests.
+  it.each<ActionSurface>(["event", "request"])(
+    "offers the request edit on the %s surface as a visible icon",
+    (surface) => {
+      render(<Harness status="requested" surface={surface} />);
+      expect(screen.getByRole("link", { name: "Edit this request" })).toHaveAttribute(
+        "href",
+        "/events/e1/edit"
+      );
+      // The two edits never stand together: no row is both requested and
+      // published.
+      expect(screen.queryByRole("link", { name: "Edit this geolocation" })).toBeNull();
+    }
+  );
+
+  it.each<EventStatus>(["geolocated", "detected", "closed"])(
+    "shows no request edit for a %s row",
+    (status) => {
+      render(<Harness status={status} surface="request" />);
+      expect(screen.queryByRole("link", { name: "Edit this request" })).toBeNull();
+    }
+  );
+
   // One verb closes all three live states, and the noun names the row it
   // closes, so a reader learns one word rather than three.
   it.each<[EventStatus, string]>([

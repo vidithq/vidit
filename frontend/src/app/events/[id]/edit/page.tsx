@@ -4,6 +4,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 import { EventEditForm } from "@/components/geolocations/edit/EventEditForm";
+import { RequestEditForm } from "@/components/geolocations/edit/RequestEditForm";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -17,11 +18,13 @@ import {
 import type { EventDetail } from "@/types";
 
 /**
- * Owner edit of one event: confirming a machine detection, or correcting a
- * published geolocation. One address for both, since the fields are the same
- * form; `EventEditForm` reads the row's state and offers the write that state
- * allows. A row in any other state has no owner edit, so it says so and links
- * to the event.
+ * Owner edit of one event, in the three shapes an owner edits in: correcting an
+ * open request, confirming a machine detection, or correcting a published
+ * geolocation. One address for all three, since the fields are the same form.
+ * A request is overwritten in place (`RequestEditForm`), while a detection and a
+ * published row share `EventEditForm`, which reads the state and offers the
+ * write that state allows. A `closed` row is terminal and has no owner edit, so
+ * the page says so and links to the event.
  *
  * The page is also one step of a review pass over the detections queue when the
  * URL carries `?queue=1`.
@@ -85,9 +88,16 @@ export default function EditEventPage() {
     );
   }
 
+  // An open request is corrected in place, overwriting the row: it is a
+  // question rather than a vouched claim, so there is no version to file.
+  // Answering it is a different act, and lives on the submit form
+  // (`/submit?request_id=`), which anyone may use.
+  if (geo.status === "requested") {
+    return <RequestEditForm geo={geo} redirectTo={`/requests/${geo.id}`} />;
+  }
+
   // A detection is confirmed here and a published geolocation is edited here.
-  // The states in between are handled elsewhere: a `requested` event is
-  // answered through the submit form, and a `closed` one is terminal.
+  // What is left is `closed`, the terminal state, which no write reopens.
   if (geo.status !== "detected" && geo.status !== "geolocated") {
     return (
       <PageShell back title="Edit event">

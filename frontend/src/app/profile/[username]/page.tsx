@@ -5,7 +5,9 @@ import { LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useConfirmAction } from "@/hooks/useConfirmAction";
+import { eventListPath } from "@/lib/events";
 import type { PublicProfile } from "@/lib/users";
+import type { EventListItem } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { BioField } from "@/components/profile/BioField";
 import { LinkedAccountsFields } from "@/components/profile/LinkedAccounts";
@@ -22,6 +24,7 @@ import {
   type PaginatedSubmissions,
 } from "@/components/profile/RecentSubmissions";
 import { DetectionsEntry } from "@/components/profile/DetectionsEntry";
+import { OpenRequests } from "@/components/profile/OpenRequests";
 import { useProfileEdit } from "@/components/profile/useProfileEdit";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
@@ -45,6 +48,20 @@ export default function ProfilePage() {
     username ? `/users/${username}/events?per_page=5` : null
   );
   const submissions = submissionsData?.items ?? [];
+  // The analyst's open calls, from the same public list the requests board
+  // reads. Error deliberately unread, like the submissions above: a failed read
+  // renders no block rather than blocking the profile.
+  const { data: openRequests } = useApiResource<EventListItem[]>(
+    username
+      ? eventListPath({
+          view: "requested",
+          status: "requested",
+          author: username,
+          // The same five rows the submissions block above shows.
+          limit: 5,
+        })
+      : null
+  );
   // Shared with the sidebar dot via the provider — owner-scoped server-side, so
   // it's the signed-in user's pending count regardless of whose profile this is
   // (gated to the own-profile render below).
@@ -98,7 +115,11 @@ export default function ProfilePage() {
   // and Insights directly under it, since the summary that interprets that map
   // belongs beside it: the map says where, and the card says what kind, how
   // much and when. Recent submissions follow, because a list that grows reads
-  // better last of the work blocks. Sign out sinks under all of it.
+  // better last of the work blocks, and the open requests follow them: published
+  // work is what a portfolio shows, and a request is an open question about
+  // footage, which reads after the answers. It is public, like the requests
+  // board, so a visitor can answer what they find there; its owner reaches the
+  // edit and the withdrawal from the same cards. Sign out sinks under all of it.
   //
   // The detections entry is the exception to "work first": it is pending work
   // rather than an account control, so on the owner's own profile it stays
@@ -148,6 +169,10 @@ export default function ProfilePage() {
             submissions={submissions}
             isOwn={isOwn}
           />
+
+          {openRequests && openRequests.length > 0 && (
+            <OpenRequests profile={profile} requests={openRequests} />
+          )}
         </>
       )}
 

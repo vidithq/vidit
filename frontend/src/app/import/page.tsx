@@ -332,11 +332,12 @@ export default function ImportGuidePage() {
             Mirror someone else&apos;s footage with no coordinate of your own
             and the bot opens a request instead of refusing: the post you linked
             becomes the source, its own clip becomes the evidence, and the
-            request goes on the board for anyone to geolocate. The copy you
-            attached is used only when the linked post serves no clip of its
-            own. It works when the link is an X post or a public Telegram post,
-            and when the thread carries footage. Tag the same post again and
-            nothing is duplicated.
+            request goes on the board for anyone to geolocate. It is yours: it
+            sits with your other open requests on your profile, where you edit
+            it or withdraw it. The copy you attached is used only when the
+            linked post serves no clip of its own. It works when the link is an
+            X post or a public Telegram post, and when the thread carries
+            footage. Tag the same post again and nothing is duplicated.
           </p>
           <div className="space-y-3">
             <MockPost
