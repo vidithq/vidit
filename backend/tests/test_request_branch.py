@@ -17,7 +17,6 @@ from __future__ import annotations
 from app.services.tweet_ingest import (
     COORDS_INVALID,
     COORDS_MISSING,
-    SOURCE_FETCH_FAILED,
     RequestDraft,
 )
 from app.services.tweet_ingest.records import ParsedMedia, QuotedTweet, SourceLink, TweetRecord
@@ -353,11 +352,14 @@ def test_a_transient_chase_failure_drafts_nothing() -> None:
     )
 
 
-def test_a_definitive_chase_failure_drafts_a_request_that_says_so() -> None:
+def test_a_definitive_chase_failure_drafts_a_request_with_footage_and_no_warning() -> None:
     """The upstream answered and had nothing to take: the post is gone or
-    restricted, so the analyst's own copy is the only footage there will ever
-    be. The request lands and carries ``source_fetch_failed``, which the reply
-    reads back as the one sentence every surface reads for that code."""
+    restricted, so the analyst's own copy backs the footage slot instead. The
+    row this drafts is never footage-less, so the draft itself carries no
+    warning for it: only ``source_date_unknown`` reaches the analyst, raised
+    later by ``detection._write_warnings`` because the chase served no date
+    either. ``source_fetch_failed`` names why the source slot would be
+    footage-less if it ever were, not something this row shows."""
     draft = _draft(
         [
             _rec(
@@ -370,8 +372,10 @@ def test_a_definitive_chase_failure_drafts_a_request_that_says_so() -> None:
     )
 
     assert draft is not None
-    assert draft.warnings == [SOURCE_FETCH_FAILED]
+    assert draft.warnings == []
     assert draft.source_fetch_failed is True
+    assert draft.source_posted_at is None
+    assert draft.footage_candidates == [_VIDEO]
 
 
 def test_a_coordinate_behind_a_shortlink_in_a_quoted_post_drafts_nothing() -> None:

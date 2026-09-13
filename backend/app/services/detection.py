@@ -783,10 +783,9 @@ def _engine_warnings(persisted: list[tuple[uuid.UUID, Detection]]) -> dict[str, 
 class _WarningSubject(Protocol):
     """What :func:`_write_warnings` reads off the engine work behind one row.
 
-    Both engine exits satisfy it: a ``Detection`` carries the three as fields,
-    and a ``RequestDraft`` carries its warnings and its source date as fields
-    and derives ``source_fetch_failed`` off them. The protocol is what lets one
-    function answer for both, instead of each write path composing codes itself.
+    Both engine exits carry all three as plain fields. The protocol is what lets
+    one function answer for both, instead of each write path composing codes
+    itself.
     """
 
     @property
@@ -817,10 +816,11 @@ def _write_warnings(
     and the date and duplicate legs are what it reads.
 
     A footage-less row whose chase failed on an upstream that would not answer
-    (``Detection.source_fetch_failed``, the retry schedule already spent) raises
+    (``subject.source_fetch_failed``, the retry schedule already spent) raises
     ``SOURCE_FETCH_FAILED`` instead: the footage may well exist, so importing the
     post again later is a repair, which it is not for a source that simply
-    carries none.
+    carries none. A request row is never footage-less by construction, so this
+    leg is reachable only through ``Detection``.
 
     The footage and date warnings are dropped on a row whose engine work already
     carries ``SOURCE_MISSING`` or ``SOURCE_AMBIGUOUS``: an empty source slot
@@ -1040,13 +1040,14 @@ async def open_request(
     ``requested`` row alone, because it belongs to a human flow and no machine
     writes into one. The request stays its owner's to withdraw.
 
-    The row that lands carries the warnings a request can earn, read off the
-    same two halves a detection's are: the engine's own (``SOURCE_FETCH_FAILED``
-    when the chase answered with nothing to take) and the write path's
-    (:func:`_write_warnings`, so ``SOURCE_DATE_UNKNOWN`` and ``DUPLICATE_MEDIA``
-    come from the comparison the detections already run). The remaining codes
-    cannot apply, since a request is born with a source and the footage filling
-    its source slot.
+    The row that lands carries the warnings a request can earn, read entirely off
+    :func:`_write_warnings`, the same pass the detections run: ``SOURCE_DATE_UNKNOWN``
+    when the chase served no date, and ``DUPLICATE_MEDIA`` off the same
+    comparison. The engine contributes none of its own: a request is born with a
+    source and the footage filling its source slot, so neither
+    ``SOURCE_FETCH_FAILED`` nor ``SOURCE_FOOTAGE_MISSING`` ever reaches the
+    analyst, even when the chase came back with nothing to take, since the
+    analyst's own copy backs the slot instead.
 
     The footage is the draft's ordered candidates, and the first that fetches
     fills the slot: the source's media, then the analyst's own video. The bytes
@@ -1129,13 +1130,14 @@ async def open_request(
         logger.exception("The request drafted from %s failed to write", draft.detected_from_url)
         db.rollback()
         return None
-    # The two halves a detection's warnings come from, over the one row this
-    # wrote: the engine's, then the write path's, which is where the duplicate
-    # comparison lives. Mirroring is exactly how the same clip reaches Vidit
-    # twice, so the code a detection raises for it is the code a request raises
-    # for it, computed by one function rather than two.
-    warnings = list(draft.warnings)
-    warnings.extend(_write_warnings(db, [(row.id, draft)]))
+    # The engine drafts a request with no warnings of its own (a request is
+    # always born with a source and the footage filling its slot), so the write
+    # path is the whole answer here: the same function the detections run,
+    # which is also where the duplicate comparison lives. Mirroring is exactly
+    # how the same clip reaches Vidit twice, so the code a detection raises for
+    # it is the code a request raises for it, computed by one function rather
+    # than two.
+    warnings = list(_write_warnings(db, [(row.id, draft)]))
     return RequestOutcome(created=row.id, warnings=warnings)
 
 

@@ -554,23 +554,21 @@ class RequestDraft:
     # the write path takes the first candidate that fetches, the same walk
     # ``detection._resolve_media`` runs over a detection's source slot.
     footage_candidates: list[ParsedMedia]
-    # What review has to answer on the row, the engine's half. A draft settles
-    # every field it needs except one: a chase that answered and had nothing to
-    # serve leaves the source footage-less and dateless, which is
-    # ``SOURCE_FETCH_FAILED``. Empty otherwise.
+    # Whether the chase for the declared source came back with nothing to take
+    # (the chaser's definitive ``not_accessible``; the retryable
+    # ``transient_failure`` twin drafts nothing at all, see
+    # :func:`_request_draft`). Mirrors ``Detection.source_fetch_failed``, and for
+    # the same reason: it is not shown to the analyst, since a request is always
+    # born with footage (the analyst's own copy fills the slot when the chase
+    # served none, so the row never lands footage-less); it only lets
+    # ``detection._write_warnings`` tell ``SOURCE_FETCH_FAILED`` from
+    # ``SOURCE_FOOTAGE_MISSING`` on the row this drafted, should it somehow land
+    # without footage after all.
+    source_fetch_failed: bool = False
+    # What review has to answer on the row, the engine's half. Always empty
+    # today, since a draft settles every field it needs, footage included; kept
+    # so both engine exits satisfy the ``detection._write_warnings`` protocol.
     warnings: list[str] = field(default_factory=list)
-
-    @property
-    def source_fetch_failed(self) -> bool:
-        """Whether the chase for the declared source came back with nothing.
-
-        The shape ``detection._write_warnings`` reads off both engine exits.
-        Derived rather than carried: the retryable failure
-        (``transient_failure``) drafts nothing at all (:func:`_request_draft`),
-        so the only failure a draft can carry is the definitive one, and it
-        already rides :attr:`warnings`.
-        """
-        return SOURCE_FETCH_FAILED in self.warnings
 
 
 def sole_refusal(refusals: dict[str, int]) -> str | None:
@@ -834,12 +832,11 @@ def _request_draft(posts: list[TweetRecord], own_text: str) -> RequestDraft | No
         footage_candidates=candidates,
         # The chase answered and had nothing to take: the source post is gone or
         # restricted, so the row stores the analyst's own copy and the source's
-        # own date is not coming. The transient twin never reaches here.
-        warnings=(
-            [SOURCE_FETCH_FAILED]
-            if any(post.chase_outcome == "not_accessible" for post in posts)
-            else []
-        ),
+        # own date is not coming. The transient twin never reaches here. The row
+        # this drafts is never footage-less, so this never actually reaches
+        # ``SOURCE_FETCH_FAILED`` in the analyst's reply; it only lets the write
+        # path tell the codes apart if a row ever did land without footage.
+        source_fetch_failed=any(post.chase_outcome == "not_accessible" for post in posts),
     )
 
 
