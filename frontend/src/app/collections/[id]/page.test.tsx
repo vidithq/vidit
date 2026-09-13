@@ -1,20 +1,54 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
 
+const replace = vi.fn();
+const searchParams = new URLSearchParams();
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "c1" }),
   usePathname: () => "/collections/c1",
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+  useSearchParams: () => searchParams,
+  useRouter: () => ({ push: vi.fn(), replace, back: vi.fn() }),
 }));
 
-// MapLibre touches `window` at module scope, so the coverage map never loads
-// its real canvas under jsdom. The stub reports the pins it was handed, which
-// is what the camera is fitted to.
+// MapLibre touches `window` at module scope, so the player's map never loads
+// its real canvas under jsdom. The stub reports the pins it was handed and
+// which of them is lit, which is what the step moves.
 vi.mock("next/dynamic", () => ({
   default: () =>
-    function MapStub({ points }: { points: unknown[] }) {
-      return <div data-testid="map" data-points={points.length} />;
+    function MapStub({
+      points,
+      selectedId,
+    }: {
+      points: unknown[];
+      selectedId?: string | null;
+    }) {
+      return (
+        <div
+          data-testid="map"
+          data-points={points.length}
+          data-selected={selectedId ?? ""}
+        />
+      );
     },
+}));
+
+// The panel is the map page's own, covered there. Stubbed, so what the player
+// is measured on is the step header it pins to the panel's top edge and the
+// event it hands the panel to render.
+vi.mock("@/components/map/DetailSidePanel", () => ({
+  DetailSidePanel: ({
+    header,
+    detail,
+  }: {
+    header?: ReactNode;
+    detail: { title: string } | null;
+  }) => (
+    <div data-testid="panel">
+      {header}
+      <p>{detail?.title ?? "Loading..."}</p>
+    </div>
+  ),
 }));
 
 const useAuth = vi.fn();
@@ -25,17 +59,16 @@ vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => useApiResource(path),
 }));
 
-const useCursorList = vi.fn();
-vi.mock("@/hooks/useCursorList", () => ({
-  useCursorList: (build: (cursor: string | null) => string) =>
-    useCursorList(build),
-}));
-
 const removeEventFromCollection = vi.fn();
+// The page walks the cursor once and hands that one sequence to the player,
+// the panel and the list, so a spec picks the set it measures here.
+const fetchCollectionSequence = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
   removeEventFromCollection: (c: string, e: string) =>
     removeEventFromCollection(c, e),
+  fetchCollectionSequence: (id: string, signal?: AbortSignal) =>
+    fetchCollectionSequence(id, signal),
 }));
 
 import type { Collection } from "@/lib/collections";
@@ -87,42 +120,46 @@ const ITEMS: EventListItem[] = [
   },
 ];
 
-const reload = vi.fn();
+/** The paths the page reads, answered by which one is asked for: the
+ *  collection itself for the header, and the current step's event for the
+ *  panel. */
+function mockReads(data: Collection) {
+  useApiResource.mockImplementation((path: string | null) =>
+    path?.startsWith("/events/")
+      ? {
+          data: { id: path.slice("/events/".length), title: `event ${path}` },
+          error: null,
+          loading: false,
+          refetch: vi.fn(),
+        }
+      : { data, error: null, loading: false, refetch: vi.fn() },
+  );
+}
 
-function list(items: EventListItem[] = ITEMS) {
-  return {
-    items,
-    error: null,
-    loading: false,
-    loadingMore: false,
-    hasMore: false,
-    loadMore: vi.fn(),
-    reload,
-  };
+/** Render, then wait for the sequence walk to land: the player and the list
+ *  are both drawn from it, so a measurement before it reads an empty page. */
+async function renderPage() {
+  render(<CollectionPage />);
+  await screen.findByRole("heading", { name: "Kupiansk rail corridor" });
+  await waitFor(() => expect(fetchCollectionSequence).toHaveBeenCalled());
 }
 
 beforeEach(() => {
   useAuth.mockReset();
   useApiResource.mockReset();
-  useCursorList.mockReset();
   removeEventFromCollection.mockReset();
-  reload.mockReset();
+  fetchCollectionSequence.mockReset();
+  replace.mockReset();
+  searchParams.delete("step");
   useAuth.mockReturnValue({ user: null });
-  useApiResource.mockReturnValue({
-    data: collection(),
-    error: null,
-    refetch: vi.fn(),
-  });
-  useCursorList.mockReturnValue(list());
+  mockReads(collection());
+  fetchCollectionSequence.mockResolvedValue({ items: ITEMS, capped: false });
 });
 
 describe("CollectionPage", () => {
-  it("titles itself with the collection and names its owner", () => {
-    render(<CollectionPage />);
+  it("titles itself with the collection and names its owner", async () => {
+    await renderPage();
 
-    expect(
-      screen.getByRole("heading", { name: "Kupiansk rail corridor" }),
-    ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "ana" })).toHaveAttribute(
       "href",
       "/profile/ana",
@@ -130,17 +167,16 @@ describe("CollectionPage", () => {
     expect(screen.getByText("Collection")).toBeInTheDocument();
   });
 
-  it("prints the description whole, under the meta line", () => {
-    useApiResource.mockReturnValue({
-      data: collection({
+  it("prints the description whole, in its own About card", async () => {
+    mockReads(
+      collection({
         description: "Three days of strikes.\nThe eastern approach.",
       }),
-      error: null,
-      refetch: vi.fn(),
-    });
+    );
 
-    render(<CollectionPage />);
+    await renderPage();
 
+    expect(screen.getByText("About")).toBeInTheDocument();
     // One node, so the paragraph breaks the owner typed are kept rather than
     // collapsed into a run of text.
     const description = screen.getByText(
@@ -149,49 +185,43 @@ describe("CollectionPage", () => {
     expect(description).toHaveClass("whitespace-pre-line");
   });
 
-  it("counts the items and names the span they cover", () => {
-    render(<CollectionPage />);
+  it("counts the items and names the span they cover", async () => {
+    await renderPage();
 
     expect(screen.getByText("5 events")).toBeInTheDocument();
     expect(screen.getByText("14 Mar 2026 to 16 Mar 2026")).toBeInTheDocument();
   });
 
-  it("says one event in the singular", () => {
-    useApiResource.mockReturnValue({
-      data: collection({ event_count: 1, last_date: "2026-03-14" }),
-      error: null,
-      refetch: vi.fn(),
+  it("says one event in the singular", async () => {
+    mockReads(collection({ event_count: 1, last_date: "2026-03-14" }));
+    fetchCollectionSequence.mockResolvedValue({
+      items: [ITEMS[0]],
+      capped: false,
     });
-    useCursorList.mockReturnValue(list([ITEMS[0]]));
 
-    render(<CollectionPage />);
+    await renderPage();
 
     expect(screen.getByText("1 event")).toBeInTheDocument();
-    expect(screen.getByText("1 event on the map")).toBeInTheDocument();
+    expect(await screen.findByText("1 event on the map")).toBeInTheDocument();
   });
 
-  it("keeps the mosaic off the header: it is the profile card's picture", () => {
-    useApiResource.mockReturnValue({
-      data: collection({
+  it("keeps the mosaic off the header: it is the profile card's picture", async () => {
+    mockReads(
+      collection({
         cover: [{ url: "https://media.example/item.jpg", media_type: "image" }],
       }),
-      error: null,
-      refetch: vi.fn(),
-    });
+    );
 
-    render(<CollectionPage />);
+    await renderPage();
 
-    expect(
-      screen.getByRole("heading", { name: "Kupiansk rail corridor" }),
-    ).toBeInTheDocument();
     expect(document.querySelector("header img")).toBeNull();
     expect(document.querySelector("header video")).toBeNull();
   });
 
-  it("maps the items' pins and lists them in order, each with its status", () => {
-    render(<CollectionPage />);
+  it("maps the items' pins and lists them in order, each with its status", async () => {
+    await renderPage();
 
-    expect(screen.getByTestId("map")).toHaveAttribute("data-points", "2");
+    expect(await screen.findByTestId("map")).toHaveAttribute("data-points", "2");
     expect(screen.getByText("2 events on the map")).toBeInTheDocument();
     const rows = screen.getAllByRole("heading", { level: 3 });
     expect(rows.map((row) => row.textContent)).toEqual([
@@ -202,14 +232,81 @@ describe("CollectionPage", () => {
     expect(screen.getByText("Detected")).toBeInTheDocument();
   });
 
-  it("repeats no byline on a row: the header already names the analyst", () => {
-    render(<CollectionPage />);
+  it("opens on the first item and lights it on the map and in the list", async () => {
+    await renderPage();
+
+    expect(await screen.findByText("1 of 2")).toBeInTheDocument();
+    expect(screen.getByTestId("map")).toHaveAttribute("data-selected", "e1");
+    expect(useApiResource).toHaveBeenCalledWith("/events/e1");
+    expect(
+      screen.getByRole("button", {
+        name: "Read this collection from Strike on the rail junction",
+      }),
+    ).toHaveAttribute("aria-current", "true");
+  });
+
+  it("opens on the step a shared link carries", async () => {
+    searchParams.set("step", "2");
+
+    await renderPage();
+
+    expect(await screen.findByText("2 of 2")).toBeInTheDocument();
+    expect(screen.getByTestId("map")).toHaveAttribute("data-selected", "e2");
+  });
+
+  it("clamps a step the collection does not hold", async () => {
+    searchParams.set("step", "99");
+
+    await renderPage();
+
+    expect(await screen.findByText("2 of 2")).toBeInTheDocument();
+  });
+
+  it("moves to the row a reader picks, and says so in the URL", async () => {
+    await renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Read this collection from Damaged locomotive shed",
+      }),
+    );
+
+    // `replace`, so the back button leaves the page rather than walking back
+    // through every step taken on it.
+    expect(replace).toHaveBeenCalledWith("/collections/c1?step=2", {
+      scroll: false,
+    });
+  });
+
+  it("keeps the way to the event's own page on the row", async () => {
+    await renderPage();
+
+    expect(
+      screen.getByRole("link", { name: "Strike on the rail junction" }),
+    ).toHaveAttribute("href", "/events/e1");
+  });
+
+  it("offers no player for a collection with nothing on it", async () => {
+    mockReads(collection({ event_count: 0, first_date: null, last_date: null }));
+    fetchCollectionSequence.mockResolvedValue({ items: [], capped: false });
+
+    await renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText("Nothing on this collection yet.")).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("panel")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("map")).not.toBeInTheDocument();
+  });
+
+  it("repeats no byline on a row: the header already names the analyst", async () => {
+    await renderPage();
 
     expect(screen.queryByText(/^by/)).not.toBeInTheDocument();
   });
 
-  it("hands a visitor no owner control", () => {
-    render(<CollectionPage />);
+  it("hands a visitor no owner control", async () => {
+    await renderPage();
 
     for (const name of [
       "Edit this collection's details",
@@ -219,10 +316,10 @@ describe("CollectionPage", () => {
     }
   });
 
-  it("gives the owner the details, the drop and a control per item", () => {
+  it("gives the owner the details, the drop and a control per item", async () => {
     useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
 
-    render(<CollectionPage />);
+    await renderPage();
 
     expect(
       screen.getByRole("button", { name: "Edit this collection's details" }),
@@ -233,16 +330,16 @@ describe("CollectionPage", () => {
       }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", {
+      await screen.findByRole("button", {
         name: "Remove Strike on the rail junction from this collection",
       }),
     ).toBeInTheDocument();
   });
 
-  it("hands the owner no picture control: the card reads the items", () => {
+  it("hands the owner no picture control: the card reads the items", async () => {
     useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
 
-    render(<CollectionPage />);
+    await renderPage();
 
     // Nothing is uploaded for a collection, so the header cluster carries the
     // title and the drop alone and the page offers no file input anywhere.
@@ -252,10 +349,10 @@ describe("CollectionPage", () => {
     expect(document.querySelector("input[type=file]")).toBeNull();
   });
 
-  it("asks twice before dropping the collection", () => {
+  it("asks twice before dropping the collection", async () => {
     useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
 
-    render(<CollectionPage />);
+    await renderPage();
     fireEvent.click(
       screen.getByRole("button", {
         name: "Drop this collection (the events it holds stay)",
@@ -267,13 +364,13 @@ describe("CollectionPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("re-reads the header and the walk once an item is off", async () => {
+  it("re-reads the header and the sequence once an item is off", async () => {
     useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
     removeEventFromCollection.mockResolvedValue(undefined);
 
-    render(<CollectionPage />);
+    await renderPage();
     fireEvent.click(
-      screen.getByRole("button", {
+      await screen.findByRole("button", {
         name: "Remove Strike on the rail junction from this collection",
       }),
     );
@@ -281,7 +378,10 @@ describe("CollectionPage", () => {
     await waitFor(() =>
       expect(removeEventFromCollection).toHaveBeenCalledWith("c1", "e1"),
     );
-    // The count, the date range and the mosaic all move with the set.
-    expect(reload).toHaveBeenCalled();
+    // The count, the date range and the mosaic all move with the set, and so
+    // does the sequence the three sections read.
+    await waitFor(() =>
+      expect(fetchCollectionSequence).toHaveBeenCalledTimes(2),
+    );
   });
 });

@@ -1,41 +1,50 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Layers } from "lucide-react";
 
 import { CollectionItems } from "@/components/collections/CollectionItems";
 import { CollectionMetaLine } from "@/components/collections/CollectionCard";
+import { CollectionReader } from "@/components/collections/CollectionReader";
 import { useCollectionActions } from "@/components/collections/useCollectionActions";
-import { CoverageMap } from "@/components/map/CoverageMap";
 import { AuthorByline } from "@/components/ui/AuthorByline";
+import { Card } from "@/components/ui/Card";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
-import { useCursorList } from "@/hooks/useCursorList";
+import { errorMessage } from "@/lib/api";
 import {
-  collectionEventsPath,
-  collectionPoints,
+  collectionStepHref,
+  fetchCollectionSequence,
+  readerStep,
   type Collection,
+  type CollectionSequence,
 } from "@/lib/collections";
-import type { EventListItem } from "@/types";
 
 /**
  * One collection: what it is, where its items are, and what they are.
  *
  * The header is the collection itself, the grammar the event page uses for an
  * event: the title, the owner's byline under it with a `Collection` pill saying
- * what kind of page this is, the meta line the profile card prints beside the
- * mosaic, and the description under it, at reading size and whole, where the
- * card clamps it to two lines. The mosaic itself is the profile card's picture
- * and nothing
- * else: the page opens on the name of the collection rather than on a band the
- * width of the page.
+ * what kind of page this is, and the meta line the profile card prints beside
+ * the mosaic. The mosaic itself is the profile card's picture and nothing else:
+ * the page opens on the name of the collection rather than on a band the width
+ * of the page.
  *
- * Then the work, widest first, the profile's own order: the items on a map, and
- * the chronological list under it. Both read one set, the items themselves, so
- * the pins and the rows can never describe different collections.
+ * Then three sections, each a `Card` under its own eyebrow. **About** is what
+ * the owner says the collection holds, at reading size and whole, where the
+ * card clamps it to two lines; it is a section rather than a header line
+ * because a description runs to 500 characters and the header is the identity
+ * of the page, not its content. **Coverage** is the player: the items on the
+ * map with the current one lit, and that item's event in the map page's own
+ * panel beside it. **Events** is the chronological list, where the row the
+ * player stands on is lit and a click on a row moves the player to it.
+ *
+ * All three read one set, the sequence this page walks once, so the pins, the
+ * panel and the rows can never describe different collections.
  *
  * The page is public. The owner's two verbs (the title and dropping the
  * collection) ride the header cluster with their panels under it, which is
@@ -43,8 +52,19 @@ import type { EventListItem } from "@/types";
  * about.
  */
 export default function CollectionPage() {
+  // `useSearchParams` opts out of static prerender, so the body lives under a
+  // Suspense boundary (the shape every other page reading the query takes).
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <CollectionPageBody />
+    </Suspense>
+  );
+}
+
+function CollectionPageBody() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const id = typeof params.id === "string" ? params.id : "";
 
@@ -54,13 +74,47 @@ export default function CollectionPage() {
     refetch,
   } = useApiResource<Collection>(id ? `/collections/${id}` : null);
 
-  // Memoized so the cursor walk keys on the path rather than on a fresh
-  // closure each render (see `useCursorList`).
-  const buildPath = useCallback(
-    (cursor: string | null) => collectionEventsPath(id, cursor),
-    [id],
+  // The collection's whole sequence, read once for the three sections. The
+  // player has to say `N of M` and the list is what picks a step out of the
+  // same set, so a page of items would leave the two counting differently;
+  // `fetchCollectionSequence` follows the cursor to the end under its own
+  // ceiling. `reloads` re-runs the walk after the owner takes an item off.
+  const [sequence, setSequence] = useState<CollectionSequence | null>(null);
+  const [sequenceError, setSequenceError] = useState<string | null>(null);
+  const [reloads, setReloads] = useState(0);
+
+  useEffect(() => {
+    if (!id) return;
+    const controller = new AbortController();
+    fetchCollectionSequence(id, controller.signal)
+      .then((walk) => {
+        if (controller.signal.aborted) return;
+        setSequence(walk);
+      })
+      .catch((e: unknown) => {
+        if (controller.signal.aborted) return;
+        setSequenceError(errorMessage(e, "Failed to read this collection"));
+      });
+    return () => controller.abort();
+  }, [id, reloads]);
+
+  const items = sequence?.items ?? [];
+  // Clamped at read time, so a link to a step the collection no longer holds
+  // opens on its nearest real one and taking the current item off the shelf
+  // lands on whatever is nearest to where the reader was, with no write to the
+  // URL to do it.
+  const step = readerStep(searchParams.get("step"), items.length);
+
+  const goToStep = useCallback(
+    (next: number) => {
+      // `replace`, not `push`: stepping through a collection is reading one
+      // page, so the browser's back button leaves the page rather than walking
+      // back through every step taken on it. `scroll: false` keeps the reader
+      // where they picked the step, which on the list is below the player.
+      router.replace(collectionStepHref(id, next), { scroll: false });
+    },
+    [id, router],
   );
-  const list = useCursorList<EventListItem>(buildPath);
 
   const isOwner = !!user && !!collection && user.id === collection.owner.id;
 
@@ -72,8 +126,6 @@ export default function CollectionPage() {
     onDeleted: () =>
       router.push(`/profile/${collection?.owner.username ?? ""}`),
   });
-
-  const points = useMemo(() => collectionPoints(list.items), [list.items]);
 
   if (error) return <PageError message={error} backHref="/map" />;
   if (!collection) return <PageLoading />;
@@ -94,13 +146,6 @@ export default function CollectionPage() {
             </Pill>
           </span>
           <CollectionMetaLine collection={collection} className="text-xs" />
-          {/* What the owner says the collection holds, at reading size under
-              the two lines that identify it. `whitespace-pre-line` keeps the
-              paragraph breaks they typed; the text is plain, so nothing else
-              of what they wrote is rendered. */}
-          <p className="whitespace-pre-line text-sm text-neutral-300">
-            {collection.description}
-          </p>
         </div>
       }
       actions={actions}
@@ -108,25 +153,40 @@ export default function CollectionPage() {
       {/* Directly under the header, where the trigger that opened it is. */}
       {panels}
 
-      <CoverageMap
-        points={points}
-        caption={`${points.length} ${points.length === 1 ? "event" : "events"} on the map`}
-      />
+      <Card as="section">
+        <SectionEyebrow title="About" margin="none" />
+        {/* `whitespace-pre-line` keeps the paragraph breaks the owner typed;
+            the text is plain, so nothing else of what they wrote is
+            rendered. */}
+        <p className="whitespace-pre-line text-sm text-neutral-300">
+          {collection.description}
+        </p>
+      </Card>
+
+      {/* A collection with nothing on it has nothing to step through, and the
+          list below says so in its own words. */}
+      {items.length > 0 && (
+        <CollectionReader
+          items={items}
+          capped={sequence?.capped ?? false}
+          step={step}
+          onStep={goToStep}
+        />
+      )}
 
       <CollectionItems
         collectionId={collection.id}
-        items={list.items}
+        items={items}
         isOwner={isOwner}
-        loading={list.loading}
-        error={list.error}
-        hasMore={list.hasMore}
-        loadingMore={list.loadingMore}
-        onLoadMore={list.loadMore}
+        loading={sequence === null && sequenceError === null}
+        error={sequenceError}
+        step={step}
+        onStep={goToStep}
         onRemoved={() => {
           // The header's count and date range both move with the set, and the
-          // walk so far is a page of a list that just changed.
+          // sequence the three sections read is a set that just changed.
           refetch();
-          list.reload();
+          setReloads((n) => n + 1);
         }}
       />
     </PageShell>

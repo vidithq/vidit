@@ -24,13 +24,21 @@ import type { EventListItem } from "@/types";
  * analyst's own work and the header above names them, so the same handle on
  * every row would only push the title's column narrower.
  *
+ * **The list is the player's step control.** A click anywhere on a row moves
+ * the player above it to that item, and the row the player stands on wears the
+ * accent border, so the list doubles as the index of the walk instead of
+ * carrying a second control per row to start one. The row keeps the way to the
+ * event's own page on its title, the lift `<EntityCard>` gives every link that
+ * is not the card's own click.
+ *
  * The owner gets one control per row, taking the item off the shelf. It is not
  * a destructive verb and does not wear the destructive colour: the event is
  * untouched, the write is idempotent, and putting it back is the panel on its
  * own page. So there is no confirm either.
  *
- * The list walks the shared cursor, `Load more` at the foot like every other
- * list on the site.
+ * The list holds the collection's whole sequence, the one the page reads for
+ * the map and the panel too, so the rows and the pins can never describe
+ * different collections and the row numbers and `N of M` are one count.
  */
 export function CollectionItems({
   collectionId,
@@ -38,9 +46,8 @@ export function CollectionItems({
   isOwner,
   loading,
   error,
-  hasMore,
-  loadingMore,
-  onLoadMore,
+  step,
+  onStep,
   onRemoved,
 }: {
   collectionId: string;
@@ -48,9 +55,9 @@ export function CollectionItems({
   isOwner: boolean;
   loading: boolean;
   error: string | null;
-  hasMore: boolean;
-  loadingMore: boolean;
-  onLoadMore: () => void;
+  /** Which item the player above the list stands on, 1-based. */
+  step: number;
+  onStep: (step: number) => void;
   /** Runs once an item is off the collection: the page re-reads the header,
    *  whose count, date range and mosaic all move with the set. */
   onRemoved: () => void;
@@ -76,7 +83,8 @@ export function CollectionItems({
         <div className="basis-56 grow min-w-0 space-y-1">
           <SectionEyebrow title="Events" margin="none" />
           <p className="text-xs text-neutral-500">
-            Ordered by event date and time, earliest first.
+            Ordered by event date and time, earliest first. Pick a row to read
+            it on the map above.
           </p>
         </div>
         {isOwner && (
@@ -99,49 +107,39 @@ export function CollectionItems({
       {remove.error && <div className={FORM_ERROR_BANNER}>{remove.error}</div>}
 
       {items.length > 0 ? (
-        <>
-          <div className="space-y-2">
-            {items.map((item) => (
-              <EntityCard
-                key={item.id}
-                variant="compact"
-                detailHref={`/events/${item.id}`}
-                title={item.title}
-                badge={<StatusBadge status={item.status} />}
-                media={item.media ?? undefined}
-                isGraphic={item.is_graphic}
-                date={item.event_date ?? undefined}
-                coords={item.event_coords}
-                tags={item.tags}
-                action={
-                  isOwner ? (
-                    <Button
-                      icon
-                      variant="ghost"
-                      disabled={pending === item.id}
-                      onClick={() => handleRemove(item.id)}
-                      aria-label={`Remove ${item.title} from this collection`}
-                      title="Remove from collection"
-                    >
-                      <X size={14} />
-                    </Button>
-                  ) : undefined
-                }
-              />
-            ))}
-          </div>
-          {hasMore && (
-            <div className="flex justify-center">
-              <Button
-                variant="secondary"
-                disabled={loadingMore}
-                onClick={onLoadMore}
-              >
-                {loadingMore ? "Loading…" : "Load more"}
-              </Button>
-            </div>
-          )}
-        </>
+        <div className="space-y-2">
+          {items.map((item, index) => (
+            <EntityCard
+              key={item.id}
+              variant="compact"
+              detailHref={`/events/${item.id}`}
+              title={item.title}
+              badge={<StatusBadge status={item.status} />}
+              media={item.media ?? undefined}
+              isGraphic={item.is_graphic}
+              date={item.event_date ?? undefined}
+              coords={item.event_coords}
+              tags={item.tags}
+              selected={index + 1 === step}
+              onSelect={() => onStep(index + 1)}
+              selectLabel={`Read this collection from ${item.title}`}
+              action={
+                isOwner ? (
+                  <Button
+                    icon
+                    variant="ghost"
+                    disabled={pending === item.id}
+                    onClick={() => handleRemove(item.id)}
+                    aria-label={`Remove ${item.title} from this collection`}
+                    title="Remove from collection"
+                  >
+                    <X size={14} />
+                  </Button>
+                ) : undefined
+              }
+            />
+          ))}
+        </div>
       ) : (
         !loading &&
         !error && (

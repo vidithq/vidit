@@ -27,6 +27,7 @@ import { MediaThumb } from "@/components/ui/EntityCard";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import type {
+  ExpressionSpecification,
   FilterSpecification,
   GeoJSONSource,
   MapLayerMouseEvent,
@@ -750,6 +751,18 @@ const FIT_MAX_ZOOM = 9;
 // extreme point doesn't sit under the map's own controls.
 const FIT_PADDING = 32;
 
+// How far in a `flyTo` lands when the camera is wider than that, and how long
+// the flight takes. The zoom is the `fitBounds` ceiling, so a camera framed on
+// a whole sequence and a camera flown to one of its items read at the same
+// scale; a reader who zoomed in past it keeps their own zoom.
+const FLY_ZOOM = FIT_MAX_ZOOM;
+const FLY_MS = 900;
+
+// What a pin named in `dimmedIds` paints at. Low enough to step behind the
+// pins around it, high enough to stay on the map: the reader's walked steps
+// are still part of the sequence being read.
+const DIMMED_OPACITY = 0.35;
+
 interface MapProps {
   points: MapPoint[];
   selectedId?: string | null;
@@ -764,6 +777,16 @@ interface MapProps {
    *  and whenever the box changes. Unlike a request box, `east` may run past
    *  180 for a box crossing the antimeridian, which is how MapLibre reads it. */
   fitBounds?: MapBounds;
+  /** Flies the camera to this point whenever it changes. The first value is
+   *  where the caller already framed the camera (`fitBounds` on the whole
+   *  set), so it moves nothing; every later one is a step the reader took.
+   *  Null while the current item carries no coordinates, which leaves the
+   *  camera where it is rather than flying it somewhere arbitrary. */
+  flyTo?: { lat: number; lng: number } | null;
+  /** Ids drawn at reduced strength: the steps the reader has already walked
+   *  past. A dimmed pin keeps its colour, its stack and its click, so the set
+   *  still reads as one sequence. The selected pin is never dimmed. */
+  dimmedIds?: ReadonlySet<string>;
   // Reports pan/zoom on every move-end so the parent can persist it across
   // navigation. State preservation only: the map stays uncontrolled internally.
   onViewChange?: (view: { latitude: number; longitude: number; zoom: number }) => void;
@@ -843,6 +866,35 @@ function FitBoundsCamera({ bounds }: { bounds: MapBounds }) {
   return null;
 }
 
+/** Flies the camera to a point whenever that point changes, which is how the
+ *  collection page follows a step.
+ *
+ *  The first target is skipped: the reader opens framed on the whole sequence
+ *  (`fitBounds`), and flying away from that frame on mount would take the
+ *  shape of the set off the screen before the reader has seen it. `flyTo`
+ *  carries no `essential` flag, so a reader who asked their system for reduced
+ *  motion gets the same camera without the flight. */
+function FlyToCamera({ target }: { target: { lat: number; lng: number } }) {
+  const { current: map } = useMap();
+  const framed = useRef(false);
+  const { lat, lng } = target;
+
+  useEffect(() => {
+    if (!map) return;
+    if (!framed.current) {
+      framed.current = true;
+      return;
+    }
+    map.flyTo({
+      center: [lng, lat],
+      zoom: Math.max(map.getZoom(), FLY_ZOOM),
+      duration: FLY_MS,
+    });
+  }, [map, lat, lng]);
+
+  return null;
+}
+
 // Dev-only camera handle for the promo-recording pipeline (video/): exposes
 // the maplibre instance so a Playwright take can drive smooth easeTo camera
 // moves instead of synthetic wheel events. The production gate is at the render
@@ -868,6 +920,8 @@ export default function Map({
   center,
   zoom,
   fitBounds,
+  flyTo,
+  dimmedIds,
   onViewChange,
   onBoundsChange,
   embedded = false,
@@ -1113,6 +1167,10 @@ export default function Map({
           properties: {
             id,
             selected: id === selectedId ? 1 : 0,
+            // 1 for a step the reader already walked past: the paint below
+            // takes it down to `DIMMED_OPACITY`. Always written, so the
+            // expression reads a property that exists on every feature.
+            dimmed: dimmedIds?.has(id) ? 1 : 0,
             // 1 for a machine detection: the marker paint colours it amber
             // so a detected point reads distinct from a submitted one at a
             // glance.
@@ -1134,7 +1192,18 @@ export default function Map({
       });
     }
     return { type: "FeatureCollection", features };
-  }, [points, selectedId]);
+  }, [points, selectedId, dimmedIds]);
+
+  // A pin the reader has stepped past gives up its strength and nothing else.
+  // Applied per opacity value rather than around the whole paint: a `zoom`
+  // expression is only legal as the input of a top-level `step` or
+  // `interpolate`, so the ceiling crossfade stays on the outside and this
+  // rides each of its stops. Returns the value untouched wherever no caller
+  // asked for a dim, so every other map keeps the exact paint it had.
+  const withDim = (opacity: number): number | ExpressionSpecification =>
+    dimmedIds === undefined
+      ? opacity
+      : ["case", ["==", ["get", "dimmed"], 1], DIMMED_OPACITY, opacity];
 
   // A points swap (timeline scrub, filter refetch, selection change)
   // rebuilds the source: supercluster reassigns cluster ids, so an open
@@ -1211,6 +1280,7 @@ export default function Map({
         spider={spider}
       />
       {fitBounds && <FitBoundsCamera bounds={fitBounds} />}
+      {flyTo && <FlyToCamera target={flyTo} />}
       <BoundsReporter onBoundsChange={onBoundsChange} />
       {process.env.NODE_ENV !== "production" && <DevMapHandle />}
       <NavigationControl position="bottom-left" showCompass={false} />
@@ -1328,11 +1398,11 @@ export default function Map({
             "circle-opacity": zoomInFlight
               ? [
                   "interpolate", ["linear"], ["zoom"],
-                  POINTS_ZOOM - 0.01, 1,
-                  POINTS_ZOOM, 0.35,
-                  FADE_IN_END, 1,
+                  POINTS_ZOOM - 0.01, withDim(1),
+                  POINTS_ZOOM, withDim(0.35),
+                  FADE_IN_END, withDim(1),
                 ]
-              : 1,
+              : withDim(1),
           }}
         />
 

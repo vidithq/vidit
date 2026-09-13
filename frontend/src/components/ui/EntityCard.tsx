@@ -18,6 +18,11 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 // - Click model is uniform: the whole card navigates to `detailHref` via a
 //   stretched link. The author byline sits above it (`relative z-20`) and
 //   stays independently clickable. No nested <a>.
+// - `onSelect` swaps that one link for a stretched button, for a list whose
+//   rows pick a position on the surface they sit on rather than leave it (the
+//   collection page's step list). `detailHref` then rides the title, lifted
+//   above the button the same way the byline is, so the row keeps the way to
+//   the entity's own page without growing a control for it.
 // - It renders the slots that carry data; an entity without `coords` (a request)
 //   simply omits that bit. No `kind` flag.
 // - The thumbnail is the private `MediaThumb` below: the real media when
@@ -130,6 +135,17 @@ interface EntityCardBaseProps {
    *  off a collection). It renders above the stretched link, in the badge's
    *  column, so it takes its own click; a row with none stays one click. */
   action?: ReactNode;
+  /** Picks this row on the surface it sits on instead of opening it. The whole
+   *  card becomes the button that does it and the title keeps `detailHref`. */
+  onSelect?: () => void;
+  /** What that button is called, since the title beside it already carries the
+   *  row's own name and two controls reading the same words say nothing about
+   *  either. Falls back to the title. */
+  selectLabel?: string;
+  /** True for the row the surface currently stands on: the card wears the
+   *  accent border its hover treatment already uses, and the stretched control
+   *  is marked as the current one. */
+  selected?: boolean;
   date?: string;
   coords?: { lat: number; lng: number } | null;
   /** ``url`` is null on a sourceless machine detection; `SourceLabel` renders the
@@ -181,19 +197,45 @@ export function EntityCard({
   isGraphic = false,
   author,
   action,
+  onSelect,
+  selectLabel,
+  selected = false,
   date,
   coords,
   source,
   tags,
   variant = "compact",
 }: EntityCardProps) {
-  const stretched = (
+  const name = titleText ?? (typeof title === "string" ? title : undefined);
+  const stretched = onSelect ? (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-label={selectLabel ?? name}
+      aria-current={selected ? "true" : undefined}
+      className="absolute inset-0 z-10 rounded-[inherit]"
+    />
+  ) : (
     <Link
       href={detailHref}
-      aria-label={titleText ?? (typeof title === "string" ? title : undefined)}
+      aria-label={name}
       className="absolute inset-0 z-10 rounded-[inherit]"
     />
   );
+  // The title, and on a selecting row the way to the entity's own page: an
+  // explicit `TEXT_LINK` lifted above the stretched button, the lift the
+  // byline takes. On every other row the whole card is that link already, so
+  // the heading stays plain text and the card carries one destination.
+  const heading = onSelect ? (
+    <Link href={detailHref} className={`relative z-20 ${TEXT_LINK}`}>
+      {title}
+    </Link>
+  ) : (
+    title
+  );
+  // The one border a selected row wears, the accent its hover already reaches
+  // for, so standing on a row and pointing at one read as the same colour.
+  const shell = cn(SHELL, selected && "border-orange-500/60");
   // Always a thumbnail (keeps the row height uniform): MediaThumb renders the
   // real media or its own "no media" box. Narrower on a phone, where the
   // desktop 112px slot plus the status badge left the title column no width at
@@ -204,7 +246,7 @@ export function EntityCard({
 
   if (variant === "feed") {
     return (
-      <article className={`${SHELL} flex-col gap-3 ${TAPPABLE_HOVER}`}>
+      <article className={cn(shell, "flex-col gap-3", TAPPABLE_HOVER)}>
         {stretched}
         {badge && <div className="absolute top-3 right-3 z-20">{badge}</div>}
         <div className="relative z-20 flex items-center gap-2.5 text-xs w-fit">
@@ -226,7 +268,7 @@ export function EntityCard({
           </div>
         </div>
         <div className="space-y-3">
-          <h2 className="text-sm font-medium text-neutral-100">{title}</h2>
+          <h2 className="text-sm font-medium text-neutral-100">{heading}</h2>
           <MediaThumb
             media={media}
             isGraphic={isGraphic}
@@ -245,7 +287,7 @@ export function EntityCard({
   }
 
   return (
-    <div className={`${SHELL} ${TAPPABLE_HOVER}`}>
+    <div className={cn(shell, TAPPABLE_HOVER)}>
       {stretched}
       {thumb}
       {/* The badge shares the row with the text from `sm` up and drops under it
@@ -260,7 +302,7 @@ export function EntityCard({
             added dead space. */}
         <div className="flex-1 min-w-0 flex flex-col gap-1.5 sm:min-h-[5.75rem]">
           <h3 className="text-sm font-medium text-neutral-100 line-clamp-2">
-            {title}
+            {heading}
           </h3>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500">
             {author && (

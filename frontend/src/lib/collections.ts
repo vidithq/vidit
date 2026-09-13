@@ -1,4 +1,4 @@
-import { apiFetch } from "./api";
+import { apiFetch, apiFetchPage } from "./api";
 import type { components } from "./api-types";
 import { formatDate } from "./format";
 import type { EventListItem, MapPoint } from "@/types";
@@ -90,6 +90,76 @@ export function collectionEventsPath(
 ): string {
   const base = `/collections/${encodeURIComponent(id)}/events`;
   return cursor === null ? base : `${base}?cursor=${encodeURIComponent(cursor)}`;
+}
+
+/** The collection's page, opened on one step of its sequence. The step is
+ *  1-based and rides the query string of the page itself, so a link says which
+ *  event the sender was on and opens the page there. */
+export function collectionStepHref(id: string, step: number): string {
+  return `${collectionHref(id)}?step=${step}`;
+}
+
+/** How many items the page ever steps through. A collection is a curated set,
+ *  so this is a ceiling on a runaway read rather than a page size: past it the
+ *  page holds the first 500 items and says on screen that it stopped there. */
+export const READER_MAX_ITEMS = 500;
+
+/** A collection's items in reading order, and whether the walk hit the
+ *  ceiling. */
+export interface CollectionSequence {
+  items: EventListItem[];
+  /** True when the collection holds more than the page walks. */
+  capped: boolean;
+}
+
+/**
+ * Every page of a collection's items, in one read.
+ *
+ * The page needs the whole sequence before it can say `N of M`, so it follows
+ * the `Link: rel="next"` cursor to the end rather than paging as the reader
+ * steps. One read serves the pins, the panel's sequence and the list, which is
+ * what keeps the three describing the same collection. A collection is a
+ * curated set, and `READER_MAX_ITEMS` bounds the walk for the one that is not.
+ */
+export async function fetchCollectionSequence(
+  id: string,
+  signal?: AbortSignal,
+): Promise<CollectionSequence> {
+  const items: EventListItem[] = [];
+  let cursor: string | null = null;
+  for (;;) {
+    // Annotated: `cursor` is written from this page and read to build the
+    // next one, which TypeScript cannot resolve from the call alone.
+    const page: { items: EventListItem[]; nextCursor: string | null } =
+      await apiFetchPage<EventListItem[]>(collectionEventsPath(id, cursor), {
+        signal,
+      });
+    items.push(...page.items);
+    if (items.length >= READER_MAX_ITEMS) {
+      return {
+        items: items.slice(0, READER_MAX_ITEMS),
+        // The last page can land exactly on the ceiling with nothing behind
+        // it, which is a whole collection rather than a truncated one.
+        capped: items.length > READER_MAX_ITEMS || page.nextCursor !== null,
+      };
+    }
+    if (page.nextCursor === null) return { items, capped: false };
+    cursor = page.nextCursor;
+  }
+}
+
+/**
+ * Which step a reader link opens on, read off `?step=`.
+ *
+ * The value is 1-based and clamped into the sequence, so a link to a step the
+ * collection no longer holds opens on its nearest real one instead of on
+ * nothing. Anything that is not a positive whole number is step 1, the same
+ * answer a link carrying no step at all gets.
+ */
+export function readerStep(raw: string | null, total: number): number {
+  if (total <= 0) return 1;
+  if (!raw || !/^\d+$/.test(raw)) return 1;
+  return Math.min(Math.max(Number.parseInt(raw, 10), 1), total);
 }
 
 /** Open a collection under a title and a description, both required. */

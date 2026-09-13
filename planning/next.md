@@ -27,7 +27,7 @@ Strategic context: [`roadmap.md`](roadmap.md) → *v0.6*. Four golden paths have
 
 ## v0.6.5: Collections
 
-Strategic context: [`roadmap.md`](roadmap.md) → *v0.6.5*. A collection is a named, curated set of one analyst's own `geolocated` and `detected` events (a spatial dossier or an operation reconstruction), personal only: one owner, shown on the owner's public profile. The title and a short description are the free-text fields, same class as the profile bio, the title capped like the event title and the description at 500 characters, and items order automatically (`event_date`, `event_time`, then `created_at`) rather than by a manual order, keeping a collection a set of facts rather than a narrative. Collaborative and organization-owned collections wait for v0.7.
+Strategic context: [`roadmap.md`](roadmap.md) → *v0.6.5*. A collection is a named, curated set of one analyst's own `geolocated` and `detected` events (a spatial dossier or an operation reconstruction), personal only: one owner, shown on the owner's public profile. The title and a short description are the free-text fields, same class as the profile bio, the title capped like the event title and the description at 500 characters, and items order automatically (`event_date`, `event_time`, then `created_at`) rather than by a manual order, keeping a collection a set of facts rather than a narrative. The collection page steps through that order on its own map ([`design.md`](../docs/design.md#collections)), so what is left open below is the data model and the moderation path, not the reading surface. Collaborative and organization-owned collections wait for v0.7.
 
 | Pri | Area | Item | Why / how |
 |---|---|---|---|

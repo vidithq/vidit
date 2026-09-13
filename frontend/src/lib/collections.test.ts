@@ -6,20 +6,25 @@ import {
   collectionHref,
   collectionMetaSegments,
   collectionPoints,
+  collectionStepHref,
   createCollection,
   deleteCollection,
   eventCollectionsPath,
+  fetchCollectionSequence,
+  READER_MAX_ITEMS,
+  readerStep,
   removeEventFromCollection,
   updateCollection,
   userCollectionsPath,
   type Collection,
 } from "./collections";
-import { apiFetch } from "./api";
+import { apiFetch, apiFetchPage } from "./api";
 import type { EventListItem } from "@/types";
 
-vi.mock("./api", () => ({ apiFetch: vi.fn() }));
+vi.mock("./api", () => ({ apiFetch: vi.fn(), apiFetchPage: vi.fn() }));
 
 const mockFetch = apiFetch as unknown as Mock;
+const mockFetchPage = apiFetchPage as unknown as Mock;
 
 /** The path and options of the last request. */
 function lastCall(): [string, RequestInit] {
@@ -57,6 +62,7 @@ const item = (
 beforeEach(() => {
   mockFetch.mockReset();
   mockFetch.mockResolvedValue(COLLECTION);
+  mockFetchPage.mockReset();
 });
 
 describe("collection paths", () => {
@@ -132,6 +138,89 @@ describe("collection writes", () => {
     ]);
   });
 
+});
+
+describe("the step link", () => {
+  it("is the collection's own page, carrying the step, 1-based", () => {
+    expect(collectionStepHref("c1", 1)).toBe("/collections/c1?step=1");
+    expect(collectionStepHref("c 1", 3)).toBe("/collections/c%201?step=3");
+  });
+});
+
+describe("readerStep", () => {
+  it("reads the step out of the query", () => {
+    expect(readerStep("3", 12)).toBe(3);
+  });
+
+  it("opens on the first item when the link carries no step", () => {
+    expect(readerStep(null, 12)).toBe(1);
+  });
+
+  it("clamps a step the collection does not hold", () => {
+    expect(readerStep("99", 12)).toBe(12);
+    expect(readerStep("0", 12)).toBe(1);
+    expect(readerStep("-4", 12)).toBe(1);
+  });
+
+  it("answers 1 for a value that is not a whole number of steps", () => {
+    // A hand-edited or truncated link reads as its first step rather than as
+    // no step at all.
+    expect(readerStep("two", 12)).toBe(1);
+    expect(readerStep("2.5", 12)).toBe(1);
+    expect(readerStep("", 12)).toBe(1);
+  });
+
+  it("answers 1 with nothing to step through", () => {
+    expect(readerStep("3", 0)).toBe(1);
+  });
+});
+
+describe("fetchCollectionSequence", () => {
+  /** One page of items, the shape `apiFetchPage` hands back. */
+  const page = (items: EventListItem[], nextCursor: string | null) => ({
+    items,
+    nextCursor,
+  });
+
+  it("walks the cursor to the end and keeps the order it read", async () => {
+    mockFetchPage
+      .mockResolvedValueOnce(page([item({ id: "e1" })], "c2"))
+      .mockResolvedValueOnce(page([item({ id: "e2" })], null));
+
+    const sequence = await fetchCollectionSequence("c1");
+
+    expect(sequence.items.map((i) => i.id)).toEqual(["e1", "e2"]);
+    expect(sequence.capped).toBe(false);
+    expect(mockFetchPage.mock.calls.map((call) => call[0])).toEqual([
+      "/collections/c1/events",
+      "/collections/c1/events?cursor=c2",
+    ]);
+  });
+
+  it("stops at the ceiling and says the collection holds more", async () => {
+    const many = Array.from({ length: READER_MAX_ITEMS }, (_, i) =>
+      item({ id: `e${i}` }),
+    );
+    mockFetchPage
+      .mockResolvedValueOnce(page(many, "c2"))
+      .mockResolvedValueOnce(page([item({ id: "over" })], null));
+
+    const sequence = await fetchCollectionSequence("c1");
+
+    expect(sequence.items).toHaveLength(READER_MAX_ITEMS);
+    expect(sequence.capped).toBe(true);
+    // The walk stopped rather than reading the page behind the ceiling.
+    expect(mockFetchPage).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads a collection that ends exactly on the ceiling as whole", async () => {
+    const many = Array.from({ length: READER_MAX_ITEMS }, (_, i) =>
+      item({ id: `e${i}` }),
+    );
+    mockFetchPage.mockResolvedValueOnce(page(many, null));
+
+    expect((await fetchCollectionSequence("c1")).capped).toBe(false);
+  });
 });
 
 describe("collectionMetaSegments", () => {

@@ -2,7 +2,11 @@ import { expect, test } from "@playwright/test";
 
 import { COLLECTION, COLLECTION_ID } from "./support/fixtures";
 import { grantSession, mockApi } from "./support/mockApi";
-import { expectNarrowViewportLayout } from "./support/narrowLayout";
+import {
+  expectControlInsideViewport,
+  expectNarrowViewportLayout,
+  expectNoHorizontalOverflow,
+} from "./support/narrowLayout";
 
 /**
  * A collection page, read by its owner.
@@ -48,5 +52,42 @@ test.describe("collection page", () => {
     });
 
     expect(overflow, "the header runs past the column").toBeLessThanOrEqual(1);
+  });
+});
+
+/**
+ * The same page read by a visitor, for the step player it opens the
+ * collection's work with.
+ *
+ * A visitor rather than the owner, because the player is what every reader of
+ * the page gets and the owner's controls are covered above. The player is the
+ * one block on this page whose two halves are sized against each other: a map
+ * beside a panel from `sm` up, stacked below it, so a phone is where the
+ * column can be pushed open or a control can land off it.
+ */
+test.describe("collection player", () => {
+  test("steps through the collection on a narrow column", async ({ page }) => {
+    await mockApi(page);
+    await page.goto(`/collections/${COLLECTION_ID}`);
+
+    await expect(
+      page.getByRole("heading", { name: COLLECTION.title }),
+    ).toBeVisible();
+
+    // The player opens on the first item, and the two moves are what a reader
+    // came to this page to press.
+    await expect(page.getByText("1 of 2")).toBeVisible();
+    const next = page.getByRole("button", { name: "Next event" });
+    await expectNarrowViewportLayout(page, next);
+    await expectControlInsideViewport(
+      page,
+      page.getByRole("button", { name: "Previous event" }),
+    );
+
+    // The step is the share unit, so it rides the page's own URL.
+    await next.click();
+    await expect(page.getByText("2 of 2")).toBeVisible();
+    await expect(page).toHaveURL(/\?step=2$/);
+    await expectNoHorizontalOverflow(page);
   });
 });
