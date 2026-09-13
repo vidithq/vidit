@@ -1111,8 +1111,9 @@ export type EventRequestEditInput = EventRequestInput & {
    *  under the one-source cap every write shares. */
   remove_media_ids: string[];
   /** Optional here, unlike on the create form: the bot opens a request whose
-   *  source date it could not read, so an owner correcting that row must be
-   *  able to leave the column empty. An empty value clears it. */
+   *  source date it could not read, so an owner corrects that row without
+   *  inventing an instant. An empty value keeps what the row holds, the way
+   *  `saveVersion` reads the same field; only a value replaces it. */
   source_posted_at: string;
 };
 

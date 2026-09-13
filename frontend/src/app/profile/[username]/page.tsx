@@ -118,8 +118,8 @@ export default function ProfilePage() {
   // better last of the work blocks, and the open requests follow them: published
   // work is what a portfolio shows, and a request is an open question about
   // footage, which reads after the answers. It is public, like the requests
-  // board, so a visitor can answer what they find there; its owner reaches the
-  // edit and the withdrawal from the same cards. Sign out sinks under all of it.
+  // board, so a visitor can answer what they find there; the cards link to each
+  // request, where the verbs are. Sign out sinks under all of it.
   //
   // The detections entry is the exception to "work first": it is pending work
   // rather than an account control, so on the owner's own profile it stays

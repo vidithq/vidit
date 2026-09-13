@@ -345,8 +345,9 @@ async def update_event_request(
     event_date: str | None = Form(None),
     event_time: str | None = Form(None),
     # Optional, unlike on the human create form: the bot opens a request whose
-    # source date it could not read, so an owner correcting that row must be able
-    # to leave the column NULL. Empty clears it, a value replaces it.
+    # source date it could not read, so an owner corrects that row without
+    # inventing an instant. Empty or omitted keeps what the row holds, NULL
+    # included; only a value replaces it.
     source_posted_at: str | None = Form(None),
     tag_ids: str | None = Form(None),
     conflict_ids: str | None = Form(None),

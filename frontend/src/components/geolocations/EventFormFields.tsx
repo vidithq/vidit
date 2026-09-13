@@ -251,6 +251,9 @@ interface EventFormFieldsProps {
   /** The source URL is inherited the same way, and shows a "from request"
    *  hint instead of an input. */
   sourceUrlLocked?: boolean;
+  /** Whether this surface's floor holds the source instant. The request edit
+   *  is the one that saves without it, so it is the one that says false. */
+  sourcePostedAtRequired?: boolean;
   /** Show `row`'s provenance link, read-only. The two owner edit surfaces do;
    *  the submit form writes a record of its own and leaves it out. */
   showProvenance?: boolean;
@@ -283,6 +286,7 @@ export function EventFormFields({
   row = null,
   mediaLocked = false,
   sourceUrlLocked = false,
+  sourcePostedAtRequired = true,
   showProvenance = false,
   detectedFromSnapshotUrl,
   setDetectedFromSnapshotUrl,
@@ -318,10 +322,11 @@ export function EventFormFields({
             : (i) => form.setNewFiles((prev) => prev.filter((_, idx) => idx !== i))
         }
         locked={mediaLocked}
-        // The age gate covers footage the analyst did not pick: a request's
-        // media on a fulfilment. An owner editing their own row chose it, and
-        // a staged file is the analyst's own pick either way.
-        isGraphic={mediaLocked && (row?.is_graphic ?? false)}
+        // The age gate covers every persisted tile of a flagged row, inherited
+        // or not: the bot opens requests, so an owner can meet footage on this
+        // form they have never seen. It reaches the stored media alone; a
+        // staged file is the analyst's own pick and shows uncovered.
+        isGraphic={row?.is_graphic ?? false}
         invalid={invalidKeys.has("source_media")}
       />
 
@@ -354,6 +359,7 @@ export function EventFormFields({
         setEventTime={form.setEventTime}
         sourcePostedAt={form.sourcePostedAt}
         setSourcePostedAt={form.setSourcePostedAt}
+        sourcePostedAtRequired={sourcePostedAtRequired}
         isGraphic={form.isGraphic}
         setIsGraphic={form.setIsGraphic}
         // The stored value, not the live one: the flag ratchets on the backend,

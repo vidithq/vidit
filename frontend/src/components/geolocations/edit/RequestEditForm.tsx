@@ -72,15 +72,18 @@ export function RequestEditForm({
         // dropped rather than posted as a 400.
         ...parseGuessCoords(form.lat, form.lng),
         ...parseCaptureCoords(form.captureLat, form.captureLng),
-        // An untouched lossy input is not posted as the truncation it holds: the
-        // row's own value goes back instead, at the precision it was stored in.
+        // An untouched lossy input is not posted as the truncation it holds.
+        // `source_posted_at` is dropped, which this endpoint reads as "keep
+        // what the row holds", the contract the version path shares;
+        // `event_time` has none (an absent value clears it), so it goes back at
+        // the row's own precision instead.
         event_time:
           form.eventTime === form.seeded.eventTime
             ? (geo.event_time ?? undefined)
             : form.eventTime || undefined,
         source_posted_at:
           form.sourcePostedAt === form.seeded.sourcePostedAt
-            ? (geo.source_posted_at ?? "")
+            ? ""
             : form.sourcePostedAt,
         remove_media_ids: [...form.removedIds],
         files: form.newFiles,
@@ -132,7 +135,14 @@ export function RequestEditForm({
       {/* `noValidate`: the shared IncompleteFormNotice owns required-field
           feedback, so the browser's native validation must not preempt it. */}
       <form onSubmit={attemptSave} className="space-y-6" noValidate>
-        <EventFormFields form={form} row={geo} showProvenance />
+        {/* The source instant is not this surface's floor, so the input is not
+            announced as a required field it saves without. */}
+        <EventFormFields
+          form={form}
+          row={geo}
+          showProvenance
+          sourcePostedAtRequired={false}
+        />
 
         {/* Validation + errors sit right above the action: the notice lists
             every missing field at once, the banner carries server failures. */}

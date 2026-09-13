@@ -72,15 +72,18 @@ export default function EditEventPage() {
   // enforces (403 / 409). Surface them before the form rather than letting the
   // post bounce.
   if (user.id !== geo.owner.id) {
+    // An open request reads at `/requests/{id}`, every other row at
+    // `/events/{id}`, so the way out names the surface it actually opens.
+    const isRequest = geo.status === "requested";
     return (
       <PageShell back title="Edit event">
         <p className="text-sm text-neutral-400">
           You can only edit your own events.{" "}
           <Link
-            href={`/events/${geo.id}`}
+            href={isRequest ? `/requests/${geo.id}` : `/events/${geo.id}`}
             className={TEXT_LINK}
           >
-            View this geolocation
+            {isRequest ? "View this request" : "View this geolocation"}
           </Link>
           .
         </p>

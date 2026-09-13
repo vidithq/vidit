@@ -14,10 +14,11 @@ import type { EventListItem } from "@/types";
  * posted for them, that nobody has geolocated yet.
  *
  * Public, like the requests board itself, so a visitor reading a profile sees
- * what that analyst is asking for and can answer it; its owner reaches the edit
- * and the withdrawal from the same cards, which is where the bot's reply sends
- * them. The parent renders the block only when there is a row, so a profile
- * with nothing open stays clean.
+ * what that analyst is asking for and can answer it. The cards are plain links:
+ * the verbs (geolocate, edit, withdraw) live on the request page each one
+ * opens, which is where the bot's reply sends the owner too. The parent renders
+ * the block only when there is a row, so a profile with nothing open stays
+ * clean.
  *
  * Built from the same bricks as `RecentSubmissions`, one row above it in the
  * page: the compact `EntityCard` the located catalogue and the requests board

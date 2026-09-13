@@ -32,6 +32,11 @@ import json
 import uuid
 from datetime import UTC, datetime
 
+import pytest
+from geoalchemy2.shape import from_shape
+from shapely.geometry import Point
+
+from app.database import SessionLocal
 from app.models.event import (
     STATUS_CLOSED,
     STATUS_GEOLOCATED,
@@ -43,7 +48,13 @@ from app.models.event import (
 from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
-from app.services.events import ImportProvenance, stamp_provenance
+from app.services.events import (
+    EventStateError,
+    ImportProvenance,
+    stamp_provenance,
+    update_request,
+)
+from app.services.evidence_intake import collect_media_keys
 from tests._fixtures import TINY_JPEG
 from tests._fixtures import tiny_jpeg as _tiny_jpeg
 from tests.conftest import login_as
@@ -1066,6 +1077,155 @@ def test_edit_request_swaps_the_source_media(db, author):
     db.expire_all()
     rows = db.query(Media).filter(Media.event_id == request_id).all()
     assert [m.role for m in rows] == ["source"]
+
+
+def test_edit_request_sweeps_the_replaced_media(db, author, monkeypatch):
+    """The swap above leaves the dropped file orphaned on S3 unless the commit is
+    followed by a sweep, and no version renders it: the old keys, derivatives
+    included, go to ``sweep_keys``."""
+    request = _make_request(db, author=author)
+    request_id = request.id
+    stored = db.query(Media).filter(Media.event_id == request_id).one()
+    expected_keys = collect_media_keys([stored])
+
+    swept: list[list[str]] = []
+    monkeypatch.setattr(
+        "app.services.events.sweep_keys",
+        lambda keys, context: swept.append(list(keys)),
+    )
+
+    response = client.post(
+        f"/api/v1/events/{request_id}/request",
+        headers=login_as(client, author),
+        data={
+            "title": "Edited title",
+            "source_url": "https://example.com/post",
+            "remove_media_ids": json.dumps([str(stored.id)]),
+        },
+        files=[("files", ("swap.jpg", TINY_JPEG, "image/jpeg"))],
+    )
+    assert response.status_code == 200, response.text
+    assert swept == [expected_keys]
+
+
+def test_edit_request_keeps_a_stored_source_instant_the_form_omits(db, author):
+    """Omitted means keep, the rule ``save_version`` holds to: the form posts the
+    whole state and an empty datetime input is indistinguishable from an absent
+    field, so an edit that never went near the instant must not clear it."""
+    request = _make_request(db, author=author)
+    request_id = request.id
+    stored = request.source_posted_at
+
+    response = _edit_request(client, request_id, author, source_posted_at="")
+    assert response.status_code == 200, response.text
+
+    db.expire_all()
+    assert db.query(Event).filter(Event.id == request_id).one().source_posted_at == stored
+
+
+def test_edit_request_clears_the_event_date(db, author):
+    """``event_date`` is the optional field the edit does clear: footage that
+    never established a date reads as Unknown rather than keeping a guess the
+    owner has withdrawn."""
+    request = _make_request(db, author=author)
+    request_id = request.id
+    dated = _edit_request(client, request_id, author, event_date="2026-05-02")
+    assert dated.status_code == 200, dated.text
+    assert dated.json()["event_date"] == "2026-05-02"
+
+    cleared = _edit_request(client, request_id, author, event_date="")
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["event_date"] is None
+
+    db.expire_all()
+    assert db.query(Event).filter(Event.id == request_id).one().event_date is None
+
+
+def test_edit_request_cannot_unset_the_graphic_flag(db, author):
+    """``is_graphic`` ratchets here as it does on ``geolocate`` and
+    ``save_version``: the form raises it and never lowers it, so an unchecked
+    box leaves a flagged request flagged. Only
+    ``PATCH /admin/events/{id}/moderation`` clears it."""
+    request = _make_request(db, author=author)
+    request_id = request.id
+    db.query(Event).filter(Event.id == request_id).update({"is_graphic": True})
+    db.commit()
+
+    response = _edit_request(client, request_id, author, is_graphic="false")
+    assert response.status_code == 200, response.text
+    assert response.json()["is_graphic"] is True
+
+    db.expire_all()
+    assert db.query(Event).filter(Event.id == request_id).one().is_graphic is True
+
+
+def test_edit_request_keeps_the_requested_at_stamp(db, author):
+    """The edit overwrites the question, not its history: ``requested_at`` is
+    when the call went out, and the requests board orders on it."""
+    request = _make_request(db, author=author)
+    request_id = request.id
+    opened_at = request.requested_at
+
+    response = _edit_request(client, request_id, author)
+    assert response.status_code == 200, response.text
+
+    db.expire_all()
+    edited = db.query(Event).filter(Event.id == request_id).one()
+    assert edited.requested_at == opened_at
+    assert edited.title == "Edited title"
+
+
+async def test_edit_request_loses_the_race_to_a_fulfilment(db, author):
+    """A ``geolocate`` that commits between the router's live-row resolution and
+    the service's locked re-read takes the row out of ``requested``: the edit
+    reads the post-lock status and refuses (409), rather than writing into a
+    published record. Service-level, the way the fulfilment lock is exercised:
+    the stale row the router resolved is handed straight to ``update_request``
+    while a second session holds the committed fulfilment.
+
+    The owner answers their own request here (a second tab), so the row stays
+    theirs and the refusal turns on the status alone; a fulfilment by anyone
+    else moves ``owner_id`` too, and the same edit is refused one gate earlier,
+    by ``ensure_owner``.
+    """
+    request = _make_request(db, author=author)
+    request_id = request.id
+
+    # The competing fulfilment, committed from its own session: the row this
+    # test's session still holds is now stale.
+    winner = SessionLocal()
+    try:
+        fulfilled = winner.query(Event).filter(Event.id == request_id).one()
+        fulfilled.status = STATUS_GEOLOCATED
+        fulfilled.event_coords = from_shape(Point(37.8, 48.5), srid=4326)
+        fulfilled.geolocated_at = datetime.now(UTC)
+        winner.commit()
+    finally:
+        winner.close()
+
+    with pytest.raises(EventStateError):
+        await update_request(
+            db,
+            geo=request,
+            current_user=author,
+            title="Raced edit",
+            source_url="https://example.com/raced",
+            secondary_source_urls=[],
+            proof_data=None,
+            source_posted_at=None,
+            tag_ids=[],
+            conflict_ids=[],
+            remove_media_ids=[],
+            files=[],
+            proof_files=[],
+        )
+
+    db.rollback()
+    db.expire_all()
+    raced = db.query(Event).filter(Event.id == request_id).one()
+    assert raced.status == STATUS_GEOLOCATED
+    assert raced.title != "Raced edit"
+    assert raced.source_url == "https://example.com/post"
 
 
 def test_edit_request_refuses_to_leave_the_row_without_footage(db, author):

@@ -128,6 +128,10 @@ export function EventEditForm({
   // Everything both writes post, the evidence anchor included: both endpoints
   // declare the same fields, and a version records the anchor it supersedes.
   const buildCommon = () => ({
+    // The shared block leads and the endpoint's own fields follow, the order
+    // every write uses: what one path takes differently is the exception, and
+    // it is written where a reader looks for it.
+    ...form.shared(),
     title: form.title.trim(),
     source_url: form.sourceUrl.trim(),
     remove_media_ids: [...form.removedIds],
@@ -138,7 +142,6 @@ export function EventEditForm({
     lat: cleanNumber(form.lat) ?? NaN,
     lng: cleanNumber(form.lng) ?? NaN,
     ...parseCaptureCoords(form.captureLat, form.captureLng),
-    ...form.shared(),
   });
 
   // The one write this surface makes, in whichever shape the row is in. On a

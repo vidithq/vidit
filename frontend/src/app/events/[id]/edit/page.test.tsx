@@ -19,8 +19,16 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(queryParam ? "queue=1" : ""),
 }));
 
+// Who is signed in: the row's owner, except where a test signs in someone else
+// to reach the refusal the page shows a visitor.
+const { auth, OWNER, VISITOR } = vi.hoisted(() => {
+  const OWNER = { id: "u1", username: "ana" };
+  const VISITOR = { id: "u2", username: "bo" };
+  return { auth: { user: OWNER }, OWNER, VISITOR };
+});
+
 vi.mock("@/hooks/useRequireAuth", () => ({
-  useRequireAuth: () => ({ user: { id: "u1", username: "ana" }, loading: false }),
+  useRequireAuth: () => ({ user: auth.user, loading: false }),
 }));
 
 vi.mock("@/contexts/AuthContext", () => ({
@@ -217,6 +225,7 @@ beforeEach(() => {
   saveVersionMock.mockResolvedValue(publishedFixture({ version_no: 2 }));
   updateRequestMock.mockResolvedValue(requestFixture());
   row = detectionFixture();
+  auth.user = OWNER;
   queryParam = null;
   queueItems = [
     detectionFixture(),
@@ -647,6 +656,31 @@ describe("editing an open request", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save request" }));
     await waitFor(() => expect(updateRequestMock).toHaveBeenCalledTimes(1));
     expect(updateRequestMock.mock.calls[0][1].source_posted_at).toBe("");
+  });
+
+  it("covers the footage of a flagged request behind the age gate", () => {
+    // The bot opens requests, so the owner can meet footage here they have
+    // never seen: a flagged row's stored media is covered on the form exactly
+    // as it is on the pages that read it.
+    row = requestFixture({ is_graphic: true });
+    render(<EditEventPage />);
+
+    expect(
+      screen.getByRole("button", { name: "Show graphic content (18 or older)" })
+    ).toBeInTheDocument();
+  });
+
+  it("sends a visitor to the request rather than an edit form", () => {
+    auth.user = VISITOR;
+    render(<EditEventPage />);
+
+    // The write is owner-only (403 server-side), and the way out names the
+    // surface a request actually reads on.
+    expect(screen.queryByRole("button", { name: "Save request" })).toBeNull();
+    expect(screen.getByRole("link", { name: "View this request" })).toHaveAttribute(
+      "href",
+      "/requests/d1"
+    );
   });
 
   it("holds the request floor before it posts", () => {

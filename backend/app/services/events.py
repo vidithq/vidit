@@ -802,10 +802,12 @@ async def update_request(
     secondary links are normalized against the source URL this write stores, and
     the proof body may carry images or none. ``source_posted_at`` is optional
     here, unlike on the human create form: the bot opens a request whose source
-    date it could not read, so an owner correcting that row must be able to leave
-    the column NULL rather than invent an instant. ``is_graphic`` ratchets as it
-    does on every other write, and only ``PATCH /admin/events/{id}/moderation``
-    clears it.
+    date it could not read, so an owner correcting that row edits it without
+    inventing an instant. Omitted or empty keeps what the row holds, NULL
+    included, the rule :func:`save_version` follows; only a value replaces it,
+    and nothing on this path clears a stored instant. ``is_graphic`` ratchets as
+    it does on every other write, and only
+    ``PATCH /admin/events/{id}/moderation`` clears it.
 
     The source media moves on the ``remove_media_ids`` + ``files`` pair
     :func:`geolocate` takes, under the same one-source cap, and the row must
@@ -863,7 +865,13 @@ async def update_request(
         geo.capture_source_coords = capture_point
         geo.event_date = event_date
         geo.event_time = event_time
-        geo.source_posted_at = source_posted_at
+        # None means keep, the rule :func:`save_version` holds to: the form
+        # posts the whole state and an empty datetime input arrives
+        # indistinguishable from an absent field, so assigning unconditionally
+        # cleared the instant of a request that carried one on an edit that
+        # never touched it.
+        if source_posted_at is not None:
+            geo.source_posted_at = source_posted_at
         geo.is_graphic = geo.is_graphic or is_graphic
         geo.tags = _resolve_tags(db, tag_ids)
         geo.conflicts = _resolve_conflicts(db, conflict_ids)
