@@ -53,8 +53,7 @@ _.dispatch  # app/middleware/csrf.py CSRFMiddleware
 # Pydantic; the field name is never read back in app/.
 redeemer  # schemas/admin.py AdminInviteCodeRead
 in_collection  # schemas/collection.py CollectionMembershipRead
-cover  # schemas/collection.py CollectionRead
-is_uploaded  # schemas/collection.py CollectionCoverRead
+cover  # schemas/collection.py CollectionRead, the card's mosaic
 archives_imported  # schemas/admin.py AdminInviteRedeemerRead
 bot_detection_count  # schemas/admin.py AdminInviteRedeemerRead
 last_seen_at  # schemas/admin.py AdminInviteRedeemerRead

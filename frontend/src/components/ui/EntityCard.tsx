@@ -39,34 +39,25 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 // covered (there is nothing to cover).
 export function MediaThumb({
   media,
-  src,
   size = "thumbnail",
   className,
   isGraphic = false,
 }: {
-  /** Anything carrying a stored url and its kind: an event's `Media` row, or a
-   *  collection's default cover, which is one item's media read off the
+  /** Anything carrying a stored url and its kind: an event's `Media` row, or
+   *  one tile of a collection's mosaic, which is one item's media read off the
    *  collection read. The kind is what picks the element, so a clip plays as a
    *  clip on every surface that shows this slot. */
   media?: Pick<Media, "storage_url" | "media_type">;
-  /** A stored image with no derivatives beside it: a collection's uploaded
-   *  cover, which the cover pipeline stores as one already-resized JPEG. It
-   *  wins over `media`, and it is what makes the "no media" box the one
-   *  placeholder on the site rather than a second one drawn beside it. */
-  src?: string;
-  /** Which image derivative the slot reads (`media` only): the 400 px
-   *  `thumbnail` a card row shows, or the 1280 px `hero` a slot spanning its
-   *  column needs (a collection's cover). Videos have no derivatives and
-   *  ignore it. */
+  /** Which image derivative the slot reads: the 400 px `thumbnail` a card row
+   *  shows, or the 1280 px `hero` a slot spanning its column needs (a
+   *  collection's mosaic where one tile fills it). Videos have no derivatives
+   *  and ignore it. */
   size?: "thumbnail" | "hero";
   className?: string;
   /** The event's `is_graphic` flag. */
   isGraphic?: boolean;
 }) {
-  const picture = src ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt="" className="w-full h-full object-cover" />
-  ) : media ? (
+  const picture = media ? (
     media.media_type === "image" ? (
       // eslint-disable-next-line @next/next/no-img-element
       <img

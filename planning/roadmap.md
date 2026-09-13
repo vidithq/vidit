@@ -45,7 +45,7 @@ Work breakdown: [`next.md`](next.md) → *v0.6*.
 
 Analysts already produce this shape of work outside Vidit: a thread grouping several sites around one place (a spatial dossier, e.g. a nuclear plant), or a sequence of strikes over days (an operation reconstruction), published as an X thread or a PDF dossier because Vidit has the pin and the conflict referential and nothing between them.
 
-A collection is a named, curated set of one analyst's own events, personal only: one owner, shown on the owner's public profile. Items order automatically (event date, then creation), the title is the only free-text field, and a collection carries no description and no manual ordering, keeping it a set of facts rather than a narrative. Collaborative and organization-owned collections wait for v0.7.
+A collection is a named, curated set of one analyst's own events, personal only: one owner, shown on the owner's public profile. Items order automatically (event date, then creation), the title is the only free-text field, and a collection carries no description, no manual ordering and no uploaded picture, keeping it a set of facts rather than a narrative. The card on the profile wears a mosaic of the first few items' own media, so what identifies a collection is what it holds. Collaborative and organization-owned collections wait for v0.7.
 
 Work breakdown: [`next.md`](next.md) → *v0.6.5*.
 

@@ -15,19 +15,18 @@ A collection is a named set of one analyst's own events. What these lock in:
 * ``GET /users/{username}/collections``: a reader sees the collections that
   hold something, the owner sees their empty ones too, and ``total`` agrees
   with the rows either way.
-* The cover: an uploaded object lands on our own media host, a collection with
-  none falls back to the first chronological item's media, ``media_type``
-  names the element that can render it, and ``is_uploaded`` says which of the
-  two the read resolved.
-* A GDPR hard delete of the owner drops the collections and sweeps their cover
-  objects.
+* The card mosaic: up to four tiles read off the items in chronological
+  order, a graphic item skipped, an image preferred over a clip on an item
+  carrying both, and ``media_type`` naming the element that can render each
+  tile.
+* A GDPR hard delete of the owner drops the collections and their
+  memberships.
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime, time
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -46,10 +45,7 @@ from app.models.event import (
 )
 from app.models.media import Media
 from app.models.user import User
-from app.services import storage as storage_module
 from app.services.auth import hash_password
-from app.services.storage import LOCAL_STORAGE_URL_PREFIX
-from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
 
 client = TestClient(app)
@@ -141,24 +137,6 @@ def admin(db, cleanup):
     user = _make_user(db, prefix="admin", is_admin=True)
     user_ids.append(user.id)
     return user
-
-
-@pytest.fixture
-def local_storage(monkeypatch, tmp_path):
-    """Point the storage backend at a scratch directory for one test.
-
-    The cover contract is "the object physically lands on our own media host,
-    and the replaced one physically goes away", which only the local backend
-    lets a test read back off disk.
-    """
-    monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
-    monkeypatch.setattr(storage_module.settings, "local_storage_dir", str(tmp_path))
-    return tmp_path
-
-
-def _stored_path(root: Path, url: str) -> Path:
-    """The on-disk file a local-storage public URL resolves to."""
-    return root / url.removeprefix(f"{LOCAL_STORAGE_URL_PREFIX}/")
 
 
 def _make_event(
@@ -256,7 +234,7 @@ def test_create_collection_returns_an_empty_shelf(db, cleanup, owner):
     assert body["event_count"] == 0
     assert body["first_date"] is None
     assert body["last_date"] is None
-    assert body["cover"] is None
+    assert body["cover"] == []
 
 
 def test_create_collection_requires_auth():
@@ -728,209 +706,135 @@ def test_event_collections_are_owner_only(db, cleanup, owner, stranger):
     )
 
 
-# ── The cover ─────────────────────────────────────────────────────────────
+# ── The card mosaic ───────────────────────────────────────────────────────
 
 
-def _put_cover(collection, user, content: bytes = TINY_JPEG, content_type: str = "image/jpeg"):
-    return client.put(
-        f"/api/v1/collections/{collection.id}/cover",
-        files={"file": ("cover.jpg", content, content_type)},
-        headers=login_as(client, user),
-    )
-
-
-def test_cover_upload_lands_on_our_own_host(local_storage, db, cleanup, owner):
-    collection = _make_collection(db, cleanup, owner=owner)
-    response = _put_cover(collection, owner)
-    assert response.status_code == 200
-    cover = response.json()["cover"]
-    assert cover["media_type"] == "image"
-    assert cover["is_uploaded"] is True
-    url = cover["url"]
-    assert url.startswith(f"{LOCAL_STORAGE_URL_PREFIX}/collections/{collection.id}/")
-    assert url.endswith(".jpg")
-    assert _stored_path(local_storage, url).is_file()
-
-    db.expire_all()
-    refreshed = _reload_collection(db, collection.id)
-    assert refreshed.cover_key is not None
-    assert refreshed.cover_key.startswith(f"collections/{collection.id}/")
-
-
-def test_cover_upload_replaces_and_sweeps_the_previous_object(local_storage, db, cleanup, owner):
-    collection = _make_collection(db, cleanup, owner=owner)
-    first = _stored_path(local_storage, _put_cover(collection, owner).json()["cover"]["url"])
-    assert first.is_file()
-
-    second_url = _put_cover(collection, owner).json()["cover"]["url"]
-    assert not first.exists()
-    assert _stored_path(local_storage, second_url).is_file()
-
-
-def test_cover_delete_clears_the_column_and_the_object(local_storage, db, cleanup, owner):
-    collection = _make_collection(db, cleanup, owner=owner)
-    stored = _stored_path(local_storage, _put_cover(collection, owner).json()["cover"]["url"])
-
-    response = client.delete(
-        f"/api/v1/collections/{collection.id}/cover", headers=login_as(client, owner)
-    )
-    assert response.status_code == 200
-    assert response.json()["cover"] is None
-    assert not stored.exists()
-
-    db.expire_all()
-    assert _reload_collection(db, collection.id).cover_key is None
-
-
-def test_cover_rejects_a_non_image(local_storage, db, cleanup, owner):
-    collection = _make_collection(db, cleanup, owner=owner)
-    response = _put_cover(collection, owner, content=b"not an image", content_type="text/plain")
-    assert response.status_code == 422
-    assert response.json()["detail"]["code"] == "invalid_cover"
-
-    db.expire_all()
-    assert _reload_collection(db, collection.id).cover_key is None
-
-
-def test_cover_is_owner_only(local_storage, db, cleanup, owner, stranger):
-    collection = _make_collection(db, cleanup, owner=owner)
-    assert _put_cover(collection, stranger).status_code == 403
-    client.cookies.clear()
-    assert (
-        client.delete(
-            f"/api/v1/collections/{collection.id}/cover", headers=login_as(client, stranger)
-        ).status_code
-        == 403
-    )
-
-
-def test_default_cover_is_the_first_chronological_non_graphic_item(db, cleanup, owner):
-    """No uploaded cover: the fallback shows the earliest item's own media, and
-    skips one flagged graphic rather than putting it on a card."""
-    collection = _make_collection(db, cleanup, owner=owner)
-    graphic = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1), is_graphic=True)
-    second = _make_event(db, cleanup, owner=owner, event_date=date(2026, 4, 1))
-    third = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
-    for event, name in ((graphic, "graphic"), (second, "second"), (third, "third")):
-        db.add(
-            Media(
-                event_id=event.id,
-                role="source",
-                storage_url=f"https://media.example.com/{name}.jpg",
-                media_type="image",
-            )
+def _add_media(db, event: Event, name: str, media_type: str = "image", role: str = "source"):
+    """Give one event a media row the card rule may pick."""
+    db.add(
+        Media(
+            event_id=event.id,
+            role=role,
+            storage_url=f"https://media.example.com/{name}",
+            media_type=media_type,
         )
+    )
+
+
+def _tile_urls(collection: Collection) -> list[str]:
+    body = client.get(f"/api/v1/collections/{collection.id}").json()
+    return [tile["url"] for tile in body["cover"]]
+
+
+def test_mosaic_is_empty_without_media(db, cleanup, owner):
+    """An item carrying nothing a card may show contributes no tile, so a
+    collection of such items wears the placeholder rather than a broken box."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    _add(db, collection, _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1)))
+    assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"] == []
+
+
+def test_mosaic_of_one_item_is_one_tile(db, cleanup, owner):
+    collection = _make_collection(db, cleanup, owner=owner)
+    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    _add_media(db, event, "only.jpg")
+    _add(db, collection, event)
+    db.commit()
+
+    assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"] == [
+        {"url": "https://media.example.com/only.jpg", "media_type": "image"}
+    ]
+
+
+def test_mosaic_takes_the_first_four_items_in_chronological_order(db, cleanup, owner):
+    """Six items, four tiles: the walk is the order the collection's own page
+    lists its items in, and it stops at four rather than at the newest."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    for day in range(1, 7):
+        event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, day))
+        _add_media(db, event, f"day{day}.jpg")
         _add(db, collection, event)
     db.commit()
 
-    body = client.get(f"/api/v1/collections/{collection.id}").json()
-    assert body["cover"] == {
-        "url": "https://media.example.com/second.jpg",
-        "media_type": "image",
-        "is_uploaded": False,
-    }
+    assert _tile_urls(collection) == [
+        f"https://media.example.com/day{day}.jpg" for day in (1, 2, 3, 4)
+    ]
 
 
-def test_uploaded_cover_wins_over_the_default(local_storage, db, cleanup, owner):
+def test_mosaic_skips_a_graphic_item_and_keeps_walking(db, cleanup, owner):
+    """A flagged item is stepped over rather than ending the walk, so no reader
+    meets death or injury on a card they did not open and the mosaic still
+    fills from the items that follow."""
     collection = _make_collection(db, cleanup, owner=owner)
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
-    db.add(
-        Media(
-            event_id=event.id,
-            role="source",
-            storage_url="https://media.example.com/item.jpg",
-            media_type="image",
-        )
-    )
-    _add(db, collection, event)
+    graphic = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1), is_graphic=True)
+    _add_media(db, graphic, "graphic.jpg")
+    _add(db, collection, graphic)
+    for day in (2, 3):
+        event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, day))
+        _add_media(db, event, f"day{day}.jpg")
+        _add(db, collection, event)
     db.commit()
 
-    url = _put_cover(collection, owner).json()["cover"]["url"]
-    assert url.startswith(LOCAL_STORAGE_URL_PREFIX)
+    assert _tile_urls(collection) == [
+        "https://media.example.com/day2.jpg",
+        "https://media.example.com/day3.jpg",
+    ]
 
 
-def test_default_cover_over_a_video_item_reports_the_video_type(db, cleanup, owner):
-    """Most source media are clips, so the fallback names the kind of file it
-    points at: a client reading the url alone puts an ``.mp4`` in an ``<img>``
-    and paints an empty band."""
+def test_a_tile_prefers_an_image_over_a_clip_on_the_same_item(db, cleanup, owner):
+    """A tile is a quarter of a card and never plays, so an item holding a
+    source clip beside a proof image offers the picture. An item with only a
+    clip still tiles as one, with the kind that says so."""
     collection = _make_collection(db, cleanup, owner=owner)
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
-    db.add(
-        Media(
-            event_id=event.id,
-            role="source",
-            storage_url="https://media.example.com/clip.mp4",
-            media_type="video",
-        )
-    )
-    _add(db, collection, event)
+    both = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    _add_media(db, both, "footage.mp4", media_type="video")
+    _add_media(db, both, "proof.jpg", role="proof")
+    clip_only = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 2))
+    _add_media(db, clip_only, "clip.mp4", media_type="video")
+    for event in (both, clip_only):
+        _add(db, collection, event)
     db.commit()
 
-    assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"] == {
-        "url": "https://media.example.com/clip.mp4",
-        "media_type": "video",
-        "is_uploaded": False,
-    }
+    assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"] == [
+        {"url": "https://media.example.com/proof.jpg", "media_type": "image"},
+        {"url": "https://media.example.com/clip.mp4", "media_type": "video"},
+    ]
 
 
-def test_is_uploaded_names_which_cover_the_read_resolved(local_storage, db, cleanup, owner):
-    """The flag separates the owner's upload from the fallback, which one url
-    cannot: false with a fallback showing, true once a picture is uploaded,
-    false again once it is removed."""
+def test_mosaic_drops_a_withheld_or_closed_item(db, cleanup, owner):
+    """The tiles read the one predicate every other collection reading reads,
+    so a row that is taken down or closed leaves the card with no write to the
+    membership table."""
     collection = _make_collection(db, cleanup, owner=owner)
-    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
-    db.add(
-        Media(
-            event_id=event.id,
-            role="source",
-            storage_url="https://media.example.com/item.jpg",
-            media_type="image",
-        )
+    hidden = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1), hidden=True)
+    _add_media(db, hidden, "hidden.jpg")
+    closed = _make_event(
+        db,
+        cleanup,
+        owner=owner,
+        status=STATUS_CLOSED,
+        event_date=date(2026, 3, 2),
+        before_closed_status=STATUS_REQUESTED,
     )
-    _add(db, collection, event)
+    _add_media(db, closed, "closed.jpg")
+    shown = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 3))
+    _add_media(db, shown, "shown.jpg")
+    for event in (hidden, closed, shown):
+        _add(db, collection, event)
     db.commit()
 
-    # A fallback is a cover the reader sees and not one the owner can remove.
-    body = client.get(f"/api/v1/collections/{collection.id}").json()
-    assert body["cover"] == {
-        "url": "https://media.example.com/item.jpg",
-        "media_type": "image",
-        "is_uploaded": False,
-    }
-
-    uploaded = _put_cover(collection, owner).json()["cover"]
-    assert uploaded["is_uploaded"] is True
-    # An upload is always an image: the cover pipeline stores one JPEG.
-    assert uploaded["media_type"] == "image"
-    assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"]["is_uploaded"] is True
-
-    cleared = client.delete(
-        f"/api/v1/collections/{collection.id}/cover", headers=login_as(client, owner)
-    ).json()
-    assert cleared["cover"] == {
-        "url": "https://media.example.com/item.jpg",
-        "media_type": "image",
-        "is_uploaded": False,
-    }
-
-
-def test_default_cover_is_null_without_media(db, cleanup, owner):
-    collection = _make_collection(db, cleanup, owner=owner)
-    _add(db, collection, _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1)))
-    assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"] is None
+    assert _tile_urls(collection) == ["https://media.example.com/shown.jpg"]
 
 
 # ── GDPR hard delete ──────────────────────────────────────────────────────
 
 
-def test_hard_deleting_the_owner_drops_the_collections_and_sweeps_the_covers(
-    local_storage, db, cleanup, owner, admin
+def test_hard_deleting_the_owner_drops_the_collections_and_their_memberships(
+    db, cleanup, owner, admin
 ):
     collection = _make_collection(db, cleanup, owner=owner)
     event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
     _add(db, collection, event)
-    cover = _stored_path(local_storage, _put_cover(collection, owner).json()["cover"]["url"])
-    assert cover.is_file()
     client.cookies.clear()
     # Read the ids before the erasure: the fixture session's copies of the
     # deleted rows cannot answer for their own columns afterwards.
@@ -947,4 +851,3 @@ def test_hard_deleting_the_owner_drops_the_collections_and_sweeps_the_covers(
         db.query(CollectionEvent).filter(CollectionEvent.collection_id == collection_id).count()
         == 0
     )
-    assert not cover.exists(), "the cover object outlived the erased account"

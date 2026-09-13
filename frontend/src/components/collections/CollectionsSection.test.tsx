@@ -26,7 +26,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   id: "c1",
   owner: { id: "u1", username: "ana", avatar_url: null },
   title: "Kupiansk rail corridor",
-  cover: null,
+  cover: [],
   event_count: 5,
   first_date: "2026-03-14",
   last_date: "2026-03-16",

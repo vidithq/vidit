@@ -6,16 +6,15 @@ Create Date: 2026-09-12 10:00:00.000000
 
 A collection is a named, curated set of one analyst's own events, shown on the
 owner's public profile. Two tables carry it: ``collections`` (owner, title,
-cover key, takedown stamp) and ``collection_events`` (the memberships, one row
-per event in one collection).
+takedown stamp) and ``collection_events`` (the memberships, one row per event
+in one collection).
 
 Every foreign key cascades. ``collections.owner_id`` does, unlike
 ``events.owner_id``, because a collection is one analyst's own shelf and
-nothing outlives their account, so a GDPR hard delete passes straight through;
-the cover objects are swept by the application before the row goes
-(``services/admin.hard_delete_user``). The membership keys cascade on both
-sides, so neither a hard-deleted event nor a hard-deleted collection leaves a
-row pointing at nothing.
+nothing outlives their account, so a GDPR hard delete passes straight through
+and leaves no stored object behind, a collection holding no file of its own.
+The membership keys cascade on both sides, so neither a hard-deleted event nor
+a hard-deleted collection leaves a row pointing at nothing.
 
 The ownership invariant (an event joins its owner's collection only) lives in
 ``services/collections.add_event``, not here: it spans two tables, which a
@@ -44,7 +43,6 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("owner_id", sa.Uuid(), nullable=False),
         sa.Column("title", sa.String(length=TITLE_MAX_LENGTH), nullable=False),
-        sa.Column("cover_key", sa.Text(), nullable=True),
         sa.Column("hidden_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),

@@ -52,7 +52,7 @@ export function CollectionItems({
   loadingMore: boolean;
   onLoadMore: () => void;
   /** Runs once an item is off the collection: the page re-reads the header,
-   *  whose count, date range and default cover all move with the set. */
+   *  whose count, date range and mosaic all move with the set. */
   onRemoved: () => void;
 }) {
   // Which row's removal is in flight. One banner for the section and one

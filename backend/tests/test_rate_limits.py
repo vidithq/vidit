@@ -633,14 +633,6 @@ _DOCUMENTED_LIMITS = [
     _Case("delete", f"/api/v1/collections/{_MISSING_ID}", 30),
     _Case("put", f"/api/v1/collections/{_MISSING_ID}/events/{_MISSING_ID}", 60),
     _Case("delete", f"/api/v1/collections/{_MISSING_ID}/events/{_MISSING_ID}", 60),
-    _Case(
-        "put",
-        f"/api/v1/collections/{_MISSING_ID}/cover",
-        20,
-        "user",
-        {"files": {"file": ("probe.txt", b"probe", "text/plain")}},
-    ),
-    _Case("delete", f"/api/v1/collections/{_MISSING_ID}/cover", 20),
     _Case("get", f"/api/v1/events/{_MISSING_ID}/collections", 120),
     # Admin.
     _Case("post", "/api/v1/admin/invite-codes", 30, "admin", {"json": {}}),

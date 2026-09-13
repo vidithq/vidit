@@ -101,7 +101,7 @@ def collectable_events() -> ColumnElement[bool]:
 
     The single home for what a collection lists and counts. Every collection
     read goes through it, the item page, the item count, the first and last
-    date of the range, the default cover, and the eligibility check the add
+    date of the range, the card mosaic, and the eligibility check the add
     verb runs, so a row that later closes, is taken down or is soft-deleted
     drops out of all five at once without a write to ``collection_events``.
 

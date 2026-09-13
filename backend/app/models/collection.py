@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -22,10 +22,8 @@ class Collection(Base):
 
     ``owner_id`` carries ``ON DELETE CASCADE``, unlike ``Event.owner_id``: a
     collection is one analyst's own shelf and nothing outlives their account,
-    so a GDPR erasure passes straight through. The cover object is the one
-    thing the cascade cannot reach, so
-    ``services/admin.hard_delete_user`` reads ``cover_key`` before the delete
-    and sweeps it the way it sweeps an avatar.
+    so a GDPR erasure passes straight through with no object left behind, the
+    collection storing no file of its own.
     """
 
     __tablename__ = "collections"
@@ -35,14 +33,6 @@ class Collection(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH), nullable=False)
-    # The storage key of the cover image, server-minted like an avatar:
-    # ``PUT /collections/{id}/cover`` stores one metadata-stripped JPEG under
-    # ``collections/<collection id>/`` and writes its key here. A key rather
-    # than a URL, so the object is addressed the same way whichever media host
-    # serves it; the read schema resolves it through
-    # ``services/collections.cover_for``. NULL means the owner has set none,
-    # and the read falls back to the first chronological item's media.
-    cover_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Takedown: NULL = visible, timestamp = withheld from every read but an
     # admin's, the same axis ``Event.hidden_at`` carries and reversible the
     # same way.

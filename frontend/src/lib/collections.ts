@@ -22,11 +22,11 @@ export const COLLECTION_TITLE_MAX_LEN = 255;
 /** One collection's header, as every read surface renders it. */
 export type Collection = components["schemas"]["CollectionRead"];
 
-/** The picture a collection wears: the url, the kind of file it is, and whether
- *  the owner uploaded it. The kind picks the element that can render it, since
- *  a default cover taken off a video item is a clip. */
-export type CollectionCoverRead =
-  components["schemas"]["CollectionCoverRead"];
+/** One tile of the mosaic a collection's profile card wears: the url of one
+ *  item's media and the kind of file it is. The kind picks the element that can
+ *  render it, since most source media are clips. */
+export type CollectionCoverTile =
+  components["schemas"]["CollectionCoverTile"];
 
 /** One page of `GET /users/{username}/collections`, offset-paged. */
 export type CollectionPage = components["schemas"]["CollectionList"];
@@ -129,31 +129,6 @@ export function removeEventFromCollection(
     `/collections/${encodeURIComponent(collectionId)}/events/${encodeURIComponent(eventId)}`,
     { method: "DELETE" },
   );
-}
-
-/**
- * Upload the collection's cover. The same pipeline the profile picture takes:
- * `FormData` rather than JSON, so `apiFetch` leaves the boundary header to the
- * browser and still attaches the CSRF token, and the backend strips the
- * image's metadata, resizes it and stores one JPEG on our own media host.
- */
-export function uploadCollectionCover(
-  id: string,
-  file: File,
-): Promise<Collection> {
-  const body = new FormData();
-  body.append("file", file);
-  return apiFetch<Collection>(
-    `/collections/${encodeURIComponent(id)}/cover`,
-    { method: "PUT", body },
-  );
-}
-
-/** Drop the uploaded cover; `cover` falls back to the first item's media. */
-export function deleteCollectionCover(id: string): Promise<Collection> {
-  return apiFetch<Collection>(`/collections/${encodeURIComponent(id)}/cover`, {
-    method: "DELETE",
-  });
 }
 
 /**

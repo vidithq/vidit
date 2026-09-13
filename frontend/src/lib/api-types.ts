@@ -654,7 +654,7 @@ export interface paths {
         };
         /**
          * Get Collection
-         * @description One collection's header: owner, title, cover, item count and date range.
+         * @description One collection's header: owner, title, item count and date range.
          *
          *     Public, like the events it points at. A withheld collection reads as 404
          *     for everyone but an admin.
@@ -674,37 +674,6 @@ export interface paths {
          * @description Retitle your collection. Owner only; 403 for anyone else.
          */
         patch: operations["rename_collection_api_v1_collections__collection_id__patch"];
-        trace?: never;
-    };
-    "/api/v1/collections/{collection_id}/cover": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Set Collection Cover
-         * @description Replace your collection's cover with an uploaded image. Owner only.
-         *
-         *     The same pipeline the profile picture takes: one image (JPEG / PNG /
-         *     WebP), stored as a stripped and resized JPEG under
-         *     ``collections/{collection id}/``, and the picture it replaced is deleted.
-         */
-        put: operations["set_collection_cover_api_v1_collections__collection_id__cover_put"];
-        post?: never;
-        /**
-         * Delete Collection Cover
-         * @description Drop your collection's uploaded cover. Owner only.
-         *
-         *     The cover falls back to the first chronological item's media. Idempotent:
-         *     removing a cover you never set returns 200.
-         */
-        delete: operations["delete_collection_cover_api_v1_collections__collection_id__cover_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/collections/{collection_id}/events": {
@@ -2451,11 +2420,6 @@ export interface components {
             /** Title */
             title: string;
         };
-        /** Body_set_collection_cover_api_v1_collections__collection_id__cover_put */
-        Body_set_collection_cover_api_v1_collections__collection_id__cover_put: {
-            /** File */
-            file: string;
-        };
         /** Body_set_my_avatar_api_v1_users_me_avatar_put */
         Body_set_my_avatar_api_v1_users_me_avatar_put: {
             /** File */
@@ -2475,24 +2439,15 @@ export interface components {
             new_password: string;
         };
         /**
-         * CollectionCoverRead
-         * @description The picture one collection wears, and what kind of file it is.
+         * CollectionCoverTile
+         * @description One tile of the mosaic a collection wears, and what kind of file it is.
          *
-         *     ``url`` points at the stored object. ``media_type`` is the media-kind
-         *     domain ``models/media.MediaType`` defines, so a client picks the element
-         *     that can render the file: a default cover taken off a video item is a clip,
-         *     and an ``<img>`` pointed at it paints an empty band.
-         *
-         *     ``is_uploaded`` says which of the two covers this is, true for the owner's
-         *     own upload and false for the fallback the server picked. It is what the
-         *     owner's remove-the-cover control reads: offering it against a fallback
-         *     names an upload that does not exist. An upload is always an image, since
-         *     the cover pipeline accepts image types only, and it carries no display
-         *     derivative, so a client renders its ``url`` as stored.
+         *     ``url`` points at the media of one item the collection holds. ``media_type``
+         *     is the media-kind domain ``models/media.MediaType`` defines, so a client
+         *     picks the element that can render the file: most source media in the corpus
+         *     are clips, and an ``<img>`` pointed at one paints an empty band.
          */
-        CollectionCoverRead: {
-            /** Is Uploaded */
-            is_uploaded: boolean;
+        CollectionCoverTile: {
             /**
              * Media Type
              * @enum {string}
@@ -2544,7 +2499,7 @@ export interface components {
          *
          *     The add-to-collection popover's row. Thinner than :class:`CollectionRead`:
          *     the popover names a collection, shows a checked state and says how much
-         *     the collection already holds, so it carries no cover and no date range.
+         *     the collection already holds, so it carries no mosaic and no date range.
          *
          *     ``event_count`` is computed over the same predicate
          *     (``services/event_filters.collectable_events``) the collection reads use,
@@ -2577,21 +2532,20 @@ export interface components {
          *     are null for a collection holding nothing and for one whose items all
          *     lack a date.
          *
-         *     ``cover`` is what the card and the page band show, a
-         *     :class:`CollectionCoverRead` or null. It resolves the owner's uploaded
-         *     cover when they set one. With none set it falls back to the media of the
-         *     first item in chronological order that is not flagged graphic, picked by
-         *     the card-thumbnail rule (``services/thumbnails.pick_thumbnail``): the
-         *     fallback is presentation only, over imagery the item's own page already
-         *     shows. It is null when no item qualifies.
+         *     ``cover`` is the mosaic the profile card wears: zero to four tiles, each
+         *     the media of one item the collection holds, computed at read time and
+         *     never stored (``services/collections.cover_tiles_for`` states the rule).
+         *     The list is empty when nothing on the collection carries media a card may
+         *     show, and the collection's own page shows no cover at all.
          *
-         *     The url and its kind travel together rather than as a bare url, because
-         *     most source media in the corpus are clips: a fallback picked off a video
-         *     item is an ``.mp4``, and a client handed the url alone renders it in an
-         *     ``<img>`` and shows an empty band.
+         *     Each tile's url and kind travel together rather than as a bare url,
+         *     because most source media in the corpus are clips: a tile taken off a
+         *     video item is an ``.mp4``, and a client handed the url alone renders it in
+         *     an ``<img>`` and shows an empty band.
          */
         CollectionRead: {
-            cover: components["schemas"]["CollectionCoverRead"] | null;
+            /** Cover */
+            cover: components["schemas"]["CollectionCoverTile"][];
             /**
              * Created At
              * Format: date-time
@@ -4530,76 +4484,6 @@ export interface operations {
                 "application/json": components["schemas"]["CollectionUpdate"];
             };
         };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CollectionRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_collection_cover_api_v1_collections__collection_id__cover_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                collection_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_set_collection_cover_api_v1_collections__collection_id__cover_put"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CollectionRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_collection_cover_api_v1_collections__collection_id__cover_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                collection_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

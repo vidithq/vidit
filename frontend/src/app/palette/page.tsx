@@ -276,6 +276,17 @@ const MOCK_CARD_GEO = {
   ],
 };
 
+// Four tiles for the collection mosaic, the shape `GET /collections/{id}`
+// hands over: one item's media per tile, in the order the collection lists its
+// items. The app's own OG image stands in for the stored media, extensionless
+// so `displayUrlsFor` finds no sibling and every size resolves to it.
+const MOCK_COVER_TILES = [
+  { url: "/opengraph-image", media_type: "image" as const },
+  { url: "/opengraph-image", media_type: "image" as const },
+  { url: "/opengraph-image", media_type: "image" as const },
+  { url: "/opengraph-image", media_type: "image" as const },
+];
+
 const MOCK_CURATED: Tag[] = [
   { id: "cs1", name: "Drone", category: "capture_source" },
   { id: "cs2", name: "Satellite", category: "capture_source" },
@@ -1403,16 +1414,31 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<CollectionCover>" usage="A collection's cover: the profile card's 16:9 slot, and the tile the owner's cover panel shows beside the picker. The collection's own page carries none. It is EntityCard's own MediaThumb slot fed the collection's `cover`: an uploaded picture as a plain URL (`src`, a stored JPEG with no derivative beside it), a default cover as the item Media row it was picked from, so a video default plays as a clip and a cover with nothing to show falls back to the one no-media placeholder rather than to a stand-in of its own. It spans the column it is given, so a caller sizes it by that column.">
+          <Item name="<CollectionCover>" usage="A collection's mosaic: the 16:9 slot the profile card wears, made of the media of the first few items the collection holds, the way a playlist icon is made of what is on it. Nothing is uploaded and nothing is stored; the collection's own page carries none. Each tile is EntityCard's own MediaThumb slot fed one item's media, so a clip plays as a clip and a collection with nothing to show falls back to the one no-media placeholder rather than to a stand-in of its own. The arrangement is the tile count: one fills the slot, two split it, three put the earliest item tall on the left, four fill a 2x2, with 2px gaps in the card's own neutral. It spans the column it is given, so a caller sizes it by that column.">
             <div className="w-full max-w-xl space-y-3">
-              <Variant label="card slot, no cover to show">
+              <Variant label="nothing to show">
                 <div className="w-56">
-                  <CollectionCover cover={null} />
+                  <CollectionCover cover={[]} />
                 </div>
               </Variant>
-              <Variant label="cover panel tile, no cover to show">
-                <div className="w-40">
-                  <CollectionCover cover={null} />
+              <Variant label="one tile">
+                <div className="w-56">
+                  <CollectionCover cover={MOCK_COVER_TILES.slice(0, 1)} />
+                </div>
+              </Variant>
+              <Variant label="two tiles">
+                <div className="w-56">
+                  <CollectionCover cover={MOCK_COVER_TILES.slice(0, 2)} />
+                </div>
+              </Variant>
+              <Variant label="three tiles">
+                <div className="w-56">
+                  <CollectionCover cover={MOCK_COVER_TILES.slice(0, 3)} />
+                </div>
+              </Variant>
+              <Variant label="four tiles">
+                <div className="w-56">
+                  <CollectionCover cover={MOCK_COVER_TILES} />
                 </div>
               </Variant>
             </div>

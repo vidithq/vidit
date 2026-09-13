@@ -49,7 +49,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   id: "c1",
   owner: OWNER,
   title: "Kupiansk rail corridor",
-  cover: null,
+  cover: [],
   event_count: 5,
   first_date: "2026-03-14",
   last_date: "2026-03-16",
@@ -150,14 +150,10 @@ describe("CollectionPage", () => {
     expect(screen.getByText("1 event on the map")).toBeInTheDocument();
   });
 
-  it("keeps the cover off the header: it is the profile card's picture", () => {
+  it("keeps the mosaic off the header: it is the profile card's picture", () => {
     useApiResource.mockReturnValue({
       data: collection({
-        cover: {
-          url: "https://media.example/cover.jpg",
-          media_type: "image",
-          is_uploaded: true,
-        },
+        cover: [{ url: "https://media.example/item.jpg", media_type: "image" }],
       }),
       error: null,
       refetch: vi.fn(),
@@ -197,23 +193,19 @@ describe("CollectionPage", () => {
 
     for (const name of [
       "Rename this collection",
-      "Change the cover",
       "Remove Strike on the rail junction from this collection",
     ]) {
       expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     }
   });
 
-  it("gives the owner the title, the cover, the drop and a control per item", () => {
+  it("gives the owner the title, the drop and a control per item", () => {
     useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
 
     render(<CollectionPage />);
 
     expect(
       screen.getByRole("button", { name: "Rename this collection" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Change the cover" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
@@ -227,80 +219,17 @@ describe("CollectionPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("offers to remove the cover only where the owner uploaded one", () => {
+  it("hands the owner no picture control: the card reads the items", () => {
     useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
-    // A cover the server picked off the first item: shown, and not the
-    // owner's to remove.
-    useApiResource.mockReturnValue({
-      data: collection({
-        cover: {
-          url: "https://media.example/item.jpg",
-          media_type: "image",
-          is_uploaded: false,
-        },
-      }),
-      error: null,
-      refetch: vi.fn(),
-    });
 
-    const view = render(<CollectionPage />);
-    fireEvent.click(screen.getByRole("button", { name: "Change the cover" }));
+    render(<CollectionPage />);
 
+    // Nothing is uploaded for a collection, so the header cluster carries the
+    // title and the drop alone and the page offers no file input anywhere.
     expect(
-      screen.queryByRole("button", { name: "Remove the uploaded picture" }),
+      screen.queryByRole("button", { name: /picture|cover/i }),
     ).not.toBeInTheDocument();
-
-    view.unmount();
-    useApiResource.mockReturnValue({
-      data: collection({
-        cover: {
-          url: "https://media.example/cover.jpg",
-          media_type: "image",
-          is_uploaded: true,
-        },
-      }),
-      error: null,
-      refetch: vi.fn(),
-    });
-
-    render(<CollectionPage />);
-    fireEvent.click(screen.getByRole("button", { name: "Change the cover" }));
-
-    expect(
-      screen.getByRole("button", { name: "Remove the uploaded picture" }),
-    ).toBeInTheDocument();
-  });
-
-  it("offers the picker beside the cover the collection already wears", () => {
-    // The picker's one item is the current cover rather than a staged file, so
-    // hiding the drop zone behind it leaves the owner no way to change it.
-    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
-    useApiResource.mockReturnValue({
-      data: collection({
-        cover: {
-          url: "https://media.example/cover.jpg",
-          media_type: "image",
-          is_uploaded: true,
-        },
-      }),
-      error: null,
-      refetch: vi.fn(),
-    });
-
-    render(<CollectionPage />);
-    fireEvent.click(screen.getByRole("button", { name: "Change the cover" }));
-
-    expect(screen.getByText("Replace the cover picture")).toBeInTheDocument();
-    expect(document.querySelector("input[type=file]")).toBeInTheDocument();
-  });
-
-  it("names the pick an add where the collection wears nothing", () => {
-    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
-
-    render(<CollectionPage />);
-    fireEvent.click(screen.getByRole("button", { name: "Change the cover" }));
-
-    expect(screen.getByText("Add a cover picture")).toBeInTheDocument();
+    expect(document.querySelector("input[type=file]")).toBeNull();
   });
 
   it("asks twice before dropping the collection", () => {
@@ -332,7 +261,7 @@ describe("CollectionPage", () => {
     await waitFor(() =>
       expect(removeEventFromCollection).toHaveBeenCalledWith("c1", "e1"),
     );
-    // The count, the date range and the default cover all move with the set.
+    // The count, the date range and the mosaic all move with the set.
     expect(reload).toHaveBeenCalled();
   });
 });

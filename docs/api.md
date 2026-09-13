@@ -10,7 +10,7 @@ All responses are JSON.
 
 **Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side effect: `login` on success, `failed_login` on any rejected login (with `user_id` set only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches, so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL because no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches, so the audit trail carries a rate-of-requests signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best effort inside a SAVEPOINT. An audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `version_not_found`, `x_handle_conflict`, `invite_code_used`); every `POST /events/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `report_not_found`, `report_already_resolved`, `report_event_gone`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. Every `/collections` path adds `collection_not_found`; `PUT /collections/{id}/events/{event_id}` adds `event_not_found` and `event_not_collectable` (the event's state is not one a collection shows), `PUT /collections/{id}/cover` adds `invalid_cover` on the same three file checks as the avatar, and `DELETE /admin/collections/{id}` adds `collection_not_found`. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`; `POST /events/{id}/versions` adds it when the row is not `geolocated`, plus `nothing_changed` (the edit moves no versioned field) and `version_limit` (the event already carries 100 versions). `POST /events/import-from-tweet` adds `invalid_tweet_url`, `not_your_post`, `post_unreadable`, `upstream_unreadable` and `upstream_busy`. Every write path carrying an archived-copy field (`source_snapshot_url`, `secondary_snapshot_urls`, `detected_from_snapshot_url`) adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url` and `snapshot_not_a_snapshot_code`; they run the same checks, so one paste is answered the same way wherever it arrives. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `version_not_found`, `x_handle_conflict`, `invite_code_used`); every `POST /events/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `report_not_found`, `report_already_resolved`, `report_event_gone`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. Every `/collections` path adds `collection_not_found`; `PUT /collections/{id}/events/{event_id}` adds `event_not_found` and `event_not_collectable` (the event's state is not one a collection shows), and `DELETE /admin/collections/{id}` adds `collection_not_found`. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`; `POST /events/{id}/versions` adds it when the row is not `geolocated`, plus `nothing_changed` (the edit moves no versioned field) and `version_limit` (the event already carries 100 versions). `POST /events/import-from-tweet` adds `invalid_tweet_url`, `not_your_post`, `post_unreadable`, `upstream_unreadable` and `upstream_busy`. Every write path carrying an archived-copy field (`source_snapshot_url`, `secondary_snapshot_urls`, `detected_from_snapshot_url`) adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url` and `snapshot_not_a_snapshot_code`; they run the same checks, so one paste is answered the same way wherever it arrives. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
 ---
 
 ## Endpoints at a glance
@@ -51,14 +51,12 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/{id}/collections` | 🔒 | Your collections, each saying whether this event is on it (owner only) |
 | **Collections** | | | |
 | POST | `/collections` | 🔒 | Open a collection (title only) |
-| GET | `/collections/{id}` | 🌐 | One collection: owner, title, cover, item count, date range |
+| GET | `/collections/{id}` | 🌐 | One collection: owner, title, item count, date range |
 | PATCH | `/collections/{id}` | 🔒 | Retitle your collection |
 | DELETE | `/collections/{id}` | 🔒 | Drop your collection; the events it held stay |
 | GET | `/collections/{id}/events` | 🌐 | Its items, oldest event first (cursor-paged) |
 | PUT | `/collections/{id}/events/{event_id}` | 🔒 | Put one of your events on it (idempotent) |
 | DELETE | `/collections/{id}/events/{event_id}` | 🔒 | Take one event off it (idempotent) |
-| PUT | `/collections/{id}/cover` | 🔒 | Upload its cover image (multipart) |
-| DELETE | `/collections/{id}/cover` | 🔒 | Remove the uploaded cover; the default returns |
 | **Search** | | | |
 | GET | `/search` | 🌐 | Free-text search across geolocations / requests / users |
 | GET | `/search/authors` | 🌐 | Username typeahead for the author filter |
@@ -139,7 +137,6 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | `GET /collections/{id}`, `GET /collections/{id}/events` | 120/min |
 | `POST /collections`, `PATCH /collections/{id}`, `DELETE /collections/{id}` | 30/min |
 | `PUT`/`DELETE /collections/{id}/events/{event_id}` | 60/min |
-| `PUT`/`DELETE /collections/{id}/cover` | 20/min |
 | **Search / Tags** | |
 | `GET /search`, `GET /search/authors` | 60/min |
 | `GET /tags` | 60/min |
@@ -1122,7 +1119,7 @@ The add-to-collection popover's read, owner only: a collection is personal and o
 }
 ```
 
-Thinner than [`CollectionRead`](#get-collectionsid): the popover names a collection, shows a checked state and says how much the collection already holds, so it carries no cover and no date range. `event_count` is computed over the same predicate as the collection reads, so the number under a title here is the number that collection's own page prints.
+Thinner than [`CollectionRead`](#get-collectionsid): the popover names a collection, shows a checked state and says how much the collection already holds, so it carries no mosaic and no date range. `event_count` is computed over the same predicate as the collection reads, so the number under a title here is the number that collection's own page prints.
 
 **Errors:**
 | Code | Case |
@@ -1355,7 +1352,7 @@ Ongoing-conflict names and dates derive from Wikipedia's "List of ongoing armed 
 
 A collection is a named, curated set of one analyst's own events, shown on the owner's public profile. One owner, no collaborators. The title is the only free-text field, capped at the event title's own 255 characters, and the items order themselves by when their events happened, so a collection carries no description and no manual order.
 
-What a collection may hold is one predicate, `services/event_filters.collectable_events`: a visible event (neither soft-deleted nor withheld) in one of the two worked statuses, `geolocated` or `detected`. A `requested` row is an ask rather than an answer, and a `closed` row is one the owner rejected or retracted, so neither is on a curated shelf. The same predicate governs the item list, the item count, the date range, the default cover, and the check `PUT /collections/{id}/events/{event_id}` runs, so an event that later closes or is taken down leaves all five at once with no write to the membership table.
+What a collection may hold is one predicate, `services/event_filters.collectable_events`: a visible event (neither soft-deleted nor withheld) in one of the two worked statuses, `geolocated` or `detected`. A `requested` row is an ask rather than an answer, and a `closed` row is one the owner rejected or retracted, so neither is on a curated shelf. The same predicate governs the item list, the item count, the date range, the card mosaic, and the check `PUT /collections/{id}/events/{event_id}` runs, so an event that later closes or is taken down leaves all five at once with no write to the membership table.
 
 ### `POST /collections` 🔒
 
@@ -1368,7 +1365,7 @@ Open a collection. It starts empty.
 
 `title` is required, 1 to 255 characters.
 
-**Response 201:** the new `CollectionRead`, with `event_count` 0, a null date range and a null `cover`.
+**Response 201:** the new `CollectionRead`, with `event_count` 0, a null date range and an empty `cover`.
 
 **Errors:**
 | Code | Case |
@@ -1380,7 +1377,7 @@ Open a collection. It starts empty.
 
 ### `GET /collections/{id}` 🌐
 
-One collection's header: owner, title, cover, item count, and the range its items span.
+One collection's header: owner, title, item count, and the range its items span.
 
 **Response 200:**
 ```json
@@ -1388,11 +1385,10 @@ One collection's header: owner, title, cover, item count, and the range its item
   "id": "uuid",
   "owner": { "id": "uuid", "username": "analyst", "avatar_url": "https://…/avatars/…jpg" },
   "title": "Zaporizhzhia plant",
-  "cover": {
-    "url": "https://…/collections/…jpg",
-    "media_type": "image",
-    "is_uploaded": true
-  },
+  "cover": [
+    { "url": "https://…/uploads/geo/…jpg", "media_type": "image" },
+    { "url": "https://…/uploads/geo/…mp4", "media_type": "video" }
+  ],
   "event_count": 12,
   "first_date": "2026-03-01",
   "last_date": "2026-07-09",
@@ -1402,11 +1398,9 @@ One collection's header: owner, title, cover, item count, and the range its item
 
 `event_count`, `first_date` and `last_date` are computed per read over the events the collection may show, never stored. `first_date` and `last_date` are the smallest and largest `event_date` among those events, so both are null for an empty collection and for one whose items all lack a date.
 
-`cover` is the owner's uploaded cover when they set one ([`PUT /collections/{id}/cover`](#put-collectionsidcover)). With none set it falls back to the media of the first item in chronological order that is not flagged graphic, picked by the same card-thumbnail rule as [`GET /events`](#get-events). Items flagged graphic are skipped rather than ending the search, so a card never shows death or injury to a reader who did not open the item. It is null when no item qualifies.
+`cover` is the mosaic the profile card wears, zero to four tiles computed per read and never stored: walk the items the collection may show in chronological order, skip one flagged graphic, take each remaining item's card media by the same rule as [`GET /events`](#get-events) (preferring an image over a clip where the item carries both), and stop at four. A graphic item is skipped rather than ending the walk, so a card never shows death or injury to a reader who did not open the item. The list is empty when no item qualifies. There is no cover upload: a collection stores no picture of its own.
 
-`cover.media_type` is the media-kind domain `image` or `video`, so a client picks the element that can render the file. Most source media are clips, so a fallback is often a video, and an `<img>` pointed at one paints an empty band. An upload is always `image`.
-
-`cover.is_uploaded` says which of the two the read resolved: true for the owner's own upload, false for the fallback. It is what lets a client offer the owner's remove-the-cover control ([`DELETE /collections/{id}/cover`](#delete-collectionsidcover)) only where there is an upload to remove, since the url alone cannot tell a picture the owner chose from one the server picked. An upload carries no display derivative, so a client renders `cover.url` as stored; a fallback is a Media row's own `storage_url` and takes the derivatives every other Media url takes.
+`cover[].media_type` is the media-kind domain `image` or `video`, so a client picks the element that can render each tile. Most source media are clips, and an `<img>` pointed at one paints an empty band. Each `url` is a Media row's own `storage_url` and takes the derivatives every other Media url takes.
 
 A withheld collection (`hidden_at`, see [`DELETE /admin/collections/{id}`](#delete-admincollectionsid)) answers 404 for everyone but an admin, its owner included, the same branch [`GET /events/{id}`](#get-eventsid) takes. So does a collection whose owner is soft-deleted.
 
@@ -1442,7 +1436,7 @@ Retitle your collection. Owner only.
 
 Drop your collection. Owner only.
 
-Every event it held stays exactly as it was: a collection is a view over the analyst's published record, so removing the view is not a judgement on any geolocation. The membership rows go with it, and the uploaded cover object is deleted once nothing points at it.
+Every event it held stays exactly as it was: a collection is a view over the analyst's published record, so removing the view is not a judgement on any geolocation. The membership rows go with it, and nothing else has to be reached: a collection stores no file of its own.
 
 **Response 204:** no body.
 
@@ -1506,43 +1500,6 @@ Take one event off your collection. Owner only.
 Idempotent: an event the collection does not hold returns 204. The event itself is untouched, and eligibility is not re-checked, so an owner can always clear a membership whose event has since closed or been withheld.
 
 **Response 204:** no body.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 401 | Not authenticated |
-| 403 | Not your collection |
-| 404 | `collection_not_found` |
-
----
-
-### `PUT /collections/{id}/cover` 🔒
-
-Upload your collection's cover image. Owner only.
-
-The same pipeline the profile picture takes ([`PUT /users/me/avatar`](#put-usersmeavatar)): the backend strips the image's metadata, resizes it so its longer edge fits 400 px, re-encodes it as JPEG, and stores one object under `collections/{collection id}/`. It then points `collections.cover_key` at that object and deletes the picture it replaced. The column holds the storage key, and the read resolves it to a URL on the media host, so a cover is served from our own host for the same reason an avatar is.
-
-**Body:** `multipart/form-data` with a single `file` field. Accepts `image/jpeg`, `image/png`, and `image/webp`, up to `MAX_IMAGE_SIZE`. Video types are rejected.
-
-**Response 200:** the updated `CollectionRead`, carrying the new `cover` with `media_type` `image` and `is_uploaded` true.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 401 | Not authenticated |
-| 403 | Not your collection |
-| 404 | `collection_not_found` |
-| 422 | `{"code": "invalid_cover", …}`: not an accepted image type, over the size ceiling, or undecodable |
-
----
-
-### `DELETE /collections/{id}/cover` 🔒
-
-Remove the uploaded cover. Owner only.
-
-Clears `collections.cover_key` and deletes the stored object, so `cover` falls back to the default described under [`GET /collections/{id}`](#get-collectionsid) and `is_uploaded` returns to false. Idempotent: removing a cover you never set returns 200.
-
-**Response 200:** the updated `CollectionRead`.
 
 **Errors:**
 | Code | Case |
@@ -1761,11 +1718,10 @@ Offset-paged, like the published-geolocations feed beside it.
       "id": "uuid",
       "owner": { "id": "uuid", "username": "analyst", "avatar_url": null },
       "title": "Zaporizhzhia plant",
-      "cover": {
-        "url": "https://…/collections/…jpg",
-        "media_type": "image",
-        "is_uploaded": true
-      },
+      "cover": [
+        { "url": "https://…/uploads/geo/…jpg", "media_type": "image" },
+        { "url": "https://…/uploads/geo/…mp4", "media_type": "video" }
+      ],
       "event_count": 12,
       "first_date": "2026-03-01",
       "last_date": "2026-07-09",
@@ -1990,7 +1946,7 @@ Remove a user. Default is soft delete (sets `users.deleted_at` *and* cascade-sof
 
 **Soft delete**: the user can no longer log in (opaque 401 like wrong credentials); their public profile 404s; their author handle still renders on events preserved in the audit trail. Idempotent: re-soft-deleting preserves the original timestamp.
 
-**Hard delete**: drops the user row, cascade-drops every event they owned (which cascade to media of every role + tag links + contributor rows) and every [collection](#collections) they owned (which cascades to its memberships), then sweeps the S3 objects (event media of both roles, the profile picture, and every collection cover). `invite_codes.created_by` and `invite_codes.used_by` flip to NULL via `ON DELETE SET NULL` so the codes survive as audit rows even after the issuer or consumer is gone. DB transaction commits before the S3 attempt so a flaky storage backend can't strand DB rows pointing at live keys.
+**Hard delete**: drops the user row, cascade-drops every event they owned (which cascade to media of every role + tag links + contributor rows) and every [collection](#collections) they owned (which cascades to its memberships), then sweeps the S3 objects (event media of both roles and the profile picture). `invite_codes.created_by` and `invite_codes.used_by` flip to NULL via `ON DELETE SET NULL` so the codes survive as audit rows even after the issuer or consumer is gone. DB transaction commits before the S3 attempt so a flaky storage backend can't strand DB rows pointing at live keys.
 
 **Response 200:**
 ```json

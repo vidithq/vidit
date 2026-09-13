@@ -1,11 +1,11 @@
-"""Personal collections: create, curate, read, and cover.
+"""Personal collections: create, curate, and read.
 
 A collection is a named set of one analyst's own events, shown on the owner's
 public profile. Two rules hold everywhere in this module:
 
 * **What a collection may show is one predicate.**
   :func:`services.event_filters.collectable_events` decides it, and the item
-  page, the count, the date range, the default cover and the add verb's
+  page, the count, the date range, the card mosaic and the add verb's
   eligibility check all read it. A row that closes, is taken down or is
   soft-deleted therefore leaves every one of them at once, with no write to
   ``collection_events``.
@@ -14,10 +14,9 @@ public profile. Two rules hold everywhere in this module:
   the same :func:`services.permissions.ensure_owner` every owner-only verb
   uses, which means an attempt to shelve somebody else's event is a 403.
 
-The cover mirrors the profile picture (``services/users``): store the image,
-point the column at it, commit, then delete the object the column used to
-point at, the commit-then-sweep ordering :func:`services.storage.sweep_keys`
-states.
+A collection stores no file of its own: the picture its profile card wears is
+the mosaic :func:`cover_tiles_for` reads off the items at request time, so
+there is nothing to upload, nothing to replace and nothing to sweep.
 """
 
 from __future__ import annotations
@@ -27,7 +26,6 @@ from collections.abc import Sequence
 from datetime import date, datetime, time
 from typing import Any, NamedTuple
 
-from fastapi import UploadFile
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.exc import IntegrityError
@@ -35,16 +33,16 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.collection import Collection, CollectionEvent
 from app.models.event import Event
+from app.models.media import Media
 from app.models.user import User
 from app.schemas.collection import (
-    CollectionCoverRead,
+    CollectionCoverTile,
     CollectionMembershipRead,
     CollectionRead,
 )
 from app.services.event_filters import collectable_events
 from app.services.pagination import keyset_after
 from app.services.permissions import ensure_owner
-from app.services.storage import get_storage, sweep_keys, upload_collection_cover_image
 from app.services.thumbnails import pick_thumbnail, thumbnail_media_criteria
 
 
@@ -77,17 +75,10 @@ class EventNotCollectableError(CollectionError):
     code = "event_not_collectable"
 
 
-class CoverError(CollectionError):
-    """The submitted file cannot become a cover image."""
-
-    code = "invalid_cover"
-
-
 COLLECTION_ERROR_STATUS: dict[str, int] = {
     "collection_not_found": 404,
     "event_not_found": 404,
     "event_not_collectable": 409,
-    "invalid_cover": 422,
 }
 
 
@@ -215,75 +206,130 @@ def stats_of(stats: dict[uuid.UUID, CollectionStats], collection_id: uuid.UUID) 
     return stats.get(collection_id, _EMPTY_STATS)
 
 
-def default_cover(db: Session, collection_id: uuid.UUID) -> CollectionCoverRead | None:
-    """The cover a collection shows when its owner has set none.
+# How many tiles the profile card's mosaic holds. Four, the playlist-icon
+# shape: one item fills the slot, two split it, three and four fill it as a
+# grid, and a fifth would make each tile too small to read at a card's width.
+COVER_TILES = 4
 
-    The media of the first item in chronological order that is not flagged
-    graphic, picked by the card-thumbnail rule
-    (:func:`services.thumbnails.pick_thumbnail`). Items flagged graphic are
-    skipped rather than ending the search, so a collection whose earliest
-    event carries hard footage still gets a cover, and no reader is shown
-    death or injury on a card they did not open. ``None`` when no item
-    qualifies.
 
-    The chosen media's own ``media_type`` rides along, since most source media
-    are clips and a reader handed the url alone cannot tell which element
-    plays it.
+def _has_thumbnail_media() -> ColumnElement[bool]:
+    """Correlated EXISTS: this event carries media a card may show.
+
+    The same rows :func:`services.thumbnails.thumbnail_media_criteria` names,
+    asked as a predicate on the event. It is what keeps an item carrying no
+    showable media out of the ranking, so a collection whose earliest items
+    are text-only still fills its mosaic from the ones that follow.
     """
-    row = (
-        db.query(Event)
+    return (
+        select(1)
+        .select_from(Media)
+        .where(Media.event_id == Event.id, thumbnail_media_criteria())
+        .correlate(Event)
+        .exists()
+    )
+
+
+def _tile_media(rows: Sequence[Media]) -> Media | None:
+    """The media one item contributes to a mosaic, images preferred.
+
+    The card-thumbnail pick (:func:`services.thumbnails.pick_thumbnail`) with
+    one difference that belongs to this surface alone: where that pick returns
+    the item's ``source`` row whatever its kind, a mosaic tile prefers an image
+    over a clip. A tile is a quarter of a card and never plays, so a still frame
+    says more there than a poster frame does, and an item holding a source clip
+    beside a proof image has a picture to offer. The preference lives here
+    rather than in ``pick_thumbnail``, which every other card surface reads and
+    which must go on naming the item's own footage.
+    """
+    picked = pick_thumbnail(rows)
+    if picked is None or picked.media_type == "image":
+        return picked
+    return next((row for row in rows if row.media_type == "image"), picked)
+
+
+def cover_tiles_for(
+    db: Session, collection_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, list[CollectionCoverTile]]:
+    """The mosaic each collection wears, up to :data:`COVER_TILES` tiles.
+
+    The rule, one home: walk the items the collection may show
+    (:func:`services.event_filters.collectable_events`) in the chronological
+    order its own page lists them in, skip an item flagged ``is_graphic``, take
+    one tile per remaining item from its card media (:func:`_tile_media`), and
+    stop at four. A graphic item is skipped rather than ending the walk, so a
+    collection whose earliest event carries hard footage still wears a mosaic
+    and no reader meets death or injury on a card they did not open. A
+    collection with nothing showable gets an empty list, which is the card's
+    placeholder.
+
+    Two statements for a whole page of collections, however many rows it holds.
+    The first ranks each collection's eligible items by the chronological key
+    with a window function and keeps the first four, so the ranking happens once
+    in the database rather than once per card; the second is the eager load of
+    those items' media. The alternative, one query per collection, costs a
+    round trip per card on a surface that pages four at a time.
+    """
+    if not collection_ids:
+        return {}
+    ranked = (
+        select(
+            CollectionEvent.collection_id.label("collection_id"),
+            CollectionEvent.event_id.label("event_id"),
+            func.row_number()
+            .over(
+                partition_by=CollectionEvent.collection_id,
+                order_by=chronological_key(),
+            )
+            .label("rank"),
+        )
         .select_from(CollectionEvent)
         .join(Event, Event.id == CollectionEvent.event_id)
-        .options(selectinload(Event.media.and_(thumbnail_media_criteria())))
-        .filter(*_items_of(collection_id), Event.is_graphic.is_(False))
-        .order_by(*chronological_key())
-        .limit(1)
-        .first()
-    )
-    if row is None:
-        return None
-    media = pick_thumbnail(row.media)
-    if media is None:
-        return None
-    return CollectionCoverRead(
-        url=media.storage_url, media_type=media.media_type, is_uploaded=False
-    )
-
-
-def cover_for(db: Session, collection: Collection) -> CollectionCoverRead | None:
-    """The picture one collection wears, or ``None``.
-
-    The owner's uploaded cover when ``cover_key`` holds one, resolved through
-    the media host the way every other stored object is
-    (:meth:`services.storage.Storage.public_url`); otherwise the default
-    (:func:`default_cover`). An upload is always an image, since
-    :func:`services.storage.upload_collection_cover_image` accepts image types
-    only and stores one JPEG.
-    """
-    if collection.cover_key:
-        return CollectionCoverRead(
-            url=get_storage().public_url(collection.cover_key),
-            media_type="image",
-            is_uploaded=True,
+        .where(
+            CollectionEvent.collection_id.in_(collection_ids),
+            collectable_events(),
+            Event.is_graphic.is_(False),
+            _has_thumbnail_media(),
         )
-    return default_cover(db, collection.id)
+        .subquery()
+    )
+    rows = (
+        db.query(ranked.c.collection_id, Event)
+        .select_from(ranked)
+        .join(Event, Event.id == ranked.c.event_id)
+        .options(selectinload(Event.media.and_(thumbnail_media_criteria())))
+        .filter(ranked.c.rank <= COVER_TILES)
+        .order_by(ranked.c.collection_id, ranked.c.rank)
+        .all()
+    )
+    tiles: dict[uuid.UUID, list[CollectionCoverTile]] = {}
+    for collection_id, event in rows:
+        media = _tile_media(event.media)
+        if media is None:
+            continue
+        tiles.setdefault(collection_id, []).append(
+            CollectionCoverTile(url=media.storage_url, media_type=media.media_type)
+        )
+    return tiles
 
 
 def build_collection_reads(db: Session, collections: Sequence[Collection]) -> list[CollectionRead]:
     """Assemble the read payload for a page of collections.
 
     The single assembler, so a collection is the same shape on its own page,
-    on a profile and in a create response. The stats come from one grouped
-    query; the default cover is one query per collection that has no uploaded
-    one, which is what a shelf of a few cards costs.
+    on a profile and in a create response. Both readings are batched over the
+    whole page: the stats come from one grouped query, the mosaics from one
+    ranked query, so the assembler costs the same few statements for four
+    cards as for one.
     """
-    stats = stats_for(db, [collection.id for collection in collections])
+    collection_ids = [collection.id for collection in collections]
+    stats = stats_for(db, collection_ids)
+    tiles = cover_tiles_for(db, collection_ids)
     return [
         CollectionRead(
             id=collection.id,
             owner=collection.owner,
             title=collection.title,
-            cover=cover_for(db, collection),
+            cover=tiles.get(collection.id, []),
             event_count=stats_of(stats, collection.id).event_count,
             first_date=stats_of(stats, collection.id).first_date,
             last_date=stats_of(stats, collection.id).last_date,
@@ -343,15 +389,11 @@ def delete_collection(db: Session, *, collection: Collection, user: User) -> Non
 
     403 for anyone but the owner. The membership rows go with it through the
     cascade; the events themselves are the analyst's published record and a
-    collection is only a view over them. The cover object is swept after the
-    commit, since nothing points at it once the row is gone.
+    collection is only a view over them, so nothing else has to be reached.
     """
     ensure_owner(collection, user)
-    collection_id = collection.id
-    previous_cover = collection.cover_key
     db.delete(collection)
     db.commit()
-    _sweep_cover(previous_cover, context=f"collection {collection_id} deleted")
 
 
 def add_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user: User) -> bool:
@@ -536,74 +578,4 @@ def list_memberships(
             in_collection=collection.id in member_ids,
         )
         for collection in collections
-    ]
-
-
-def _sweep_cover(cover_key: str | None, *, context: str) -> None:
-    """Delete the object a replaced or dropped ``cover_key`` named, if any."""
-    if not cover_key:
-        return
-    sweep_keys([cover_key], context=context)
-
-
-async def set_cover(
-    db: Session, *, collection: Collection, user: User, file: UploadFile
-) -> Collection:
-    """Store ``file`` as ``collection``'s cover and drop the previous one.
-
-    403 for anyone but the owner. Raises :class:`CoverError` when the file is
-    not an image this codebase accepts, is over the image size ceiling, or
-    cannot be decoded.
-    """
-    ensure_owner(collection, user)
-    try:
-        key = await upload_collection_cover_image(file, collection.id)
-    except ValueError as exc:
-        raise CoverError(str(exc)) from exc
-
-    previous = collection.cover_key
-    collection.cover_key = key
-    try:
-        db.commit()
-    except Exception:
-        # The object landed before the row did. Roll back, then sweep it so a
-        # failed write never leaves an addressable image with nothing pointing
-        # at it.
-        db.rollback()
-        _sweep_cover(key, context=f"collection {collection.id} cover commit failed")
-        raise
-    db.refresh(collection)
-    _sweep_cover(previous, context=f"collection {collection.id} cover replaced")
-    return collection
-
-
-def clear_cover(db: Session, *, collection: Collection, user: User) -> Collection:
-    """Drop ``collection``'s uploaded cover, column and stored object both.
-
-    403 for anyone but the owner. The card then falls back to the default
-    (:func:`default_cover`).
-    """
-    ensure_owner(collection, user)
-    previous = collection.cover_key
-    collection.cover_key = None
-    db.commit()
-    db.refresh(collection)
-    _sweep_cover(previous, context=f"collection {collection.id} cover cleared")
-    return collection
-
-
-def owned_cover_keys(db: Session, owner_id: uuid.UUID) -> list[str]:
-    """Every cover object one analyst's collections hold.
-
-    Read before a GDPR hard delete: ``collections.owner_id`` cascades, so the
-    rows go on their own, and this is what lets the sweep reach the objects
-    they pointed at, the way an avatar is swept
-    (:func:`services.admin.hard_delete_user`).
-    """
-    return [
-        key
-        for (key,) in db.query(Collection.cover_key)
-        .filter(Collection.owner_id == owner_id, Collection.cover_key.isnot(None))
-        .all()
-        if key
     ]

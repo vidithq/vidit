@@ -97,7 +97,7 @@ const COLLECTIONS: CollectionPage = {
       id: "c1",
       owner: { id: "u1", username: "ana", avatar_url: null },
       title: "Kupiansk rail corridor",
-      cover: null,
+      cover: [],
       event_count: 2,
       first_date: "2026-06-01",
       last_date: "2026-06-02",

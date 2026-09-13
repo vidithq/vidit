@@ -27,16 +27,16 @@ import type { EventListItem } from "@/types";
  * The header is the collection itself, the grammar the event page uses for an
  * event: the title, the owner's byline under it with a `Collection` pill saying
  * what kind of page this is, and the meta line the profile card prints beside
- * the cover. The cover itself is the profile card's picture and nothing else:
- * the page opens on the name of the collection, not on a band the width of the
- * page, and the owner reaches the picture through the cover panel.
+ * the mosaic. The mosaic itself is the profile card's picture and nothing
+ * else: the page opens on the name of the collection rather than on a band the
+ * width of the page.
  *
  * Then the work, widest first, the profile's own order: the items on a map, and
  * the chronological list under it. Both read one set, the items themselves, so
  * the pins and the rows can never describe different collections.
  *
- * The page is public. The owner's three verbs (the title, the cover, dropping
- * the collection) ride the header cluster with their panels under it, which is
+ * The page is public. The owner's two verbs (the title and dropping the
+ * collection) ride the header cluster with their panels under it, which is
  * where every other surface puts the controls that act on the thing the page is
  * about.
  */
@@ -114,8 +114,8 @@ export default function CollectionPage() {
         loadingMore={list.loadingMore}
         onLoadMore={list.loadMore}
         onRemoved={() => {
-          // The header's count, date range and default cover all move with the
-          // set, and the walk so far is a page of a list that just changed.
+          // The header's count and date range both move with the set, and the
+          // walk so far is a page of a list that just changed.
           refetch();
           list.reload();
         }}

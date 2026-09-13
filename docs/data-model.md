@@ -251,7 +251,6 @@ erDiagram
         UUID id PK
         UUID owner_id FK "the one owner"
         VARCHAR title
-        TEXT cover_key "nullable, server-minted storage key"
         TIMESTAMPTZ hidden_at "nullable, admin takedown"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
@@ -640,9 +639,8 @@ A named, curated set of one analyst's own events, shown on the owner's public pr
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `owner_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The one owner. Cascades, unlike `events.owner_id`: a collection is one analyst's own shelf and nothing on it outlives their account, so a GDPR hard delete passes straight through. |
+| `owner_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The one owner. Cascades, unlike `events.owner_id`: a collection is one analyst's own shelf and nothing on it outlives their account, so a GDPR hard delete passes straight through and leaves no stored object behind, a collection holding no file of its own. |
 | `title` | `VARCHAR(255)` | NOT NULL. The same width as `events.title`, from the shared `TITLE_MAX_LENGTH` in [`models/event.py`](../backend/app/models/event.py), so one cap governs an event title and a collection title alike. The API floor is 1 character. |
-| `cover_key` | `TEXT` | nullable. The storage key of the cover image, server-minted: `PUT /collections/{id}/cover` stores one metadata-stripped 400 px JPEG under `collections/{collection_id}/` and writes its key here, `DELETE` clears the column and the object. A key, where [`users.avatar_url`](#users) holds a URL, so nothing has to parse a URL back into the object it names; the read resolves it through the media host. NULL means the owner has set no cover and the read falls back (below). |
 | `hidden_at` | `TIMESTAMPTZ` | nullable. Takedown: NULL = visible, timestamp = withheld from every read but an admin's, the owner's included. The same reversible axis [`events.hidden_at`](#events) carries, set by `DELETE /admin/collections/{id}`. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, SQLAlchemy `onupdate` stamp |
@@ -650,11 +648,11 @@ A named, curated set of one analyst's own events, shown on the owner's public pr
 **Indexes:**
 - `ix_collections_owner_created_at` on `(owner_id, created_at)`. Backs the profile section's only read, this analyst's collections newest first.
 
-**What a collection shows is one predicate, not a column.** `services/event_filters.collectable_events` is a visible event (`deleted_at IS NULL AND hidden_at IS NULL`) in one of the two worked statuses, `geolocated` or `detected`. The item list, the item count, the date range, the default cover and the eligibility check the add verb runs all read it, so an event that later closes or is taken down leaves all five at once with no write to `collection_events`. A `requested` row is an ask rather than an answer; a `closed` row is one the owner rejected or retracted, and a curated shelf must not go on presenting it as work that stands.
+**What a collection shows is one predicate, not a column.** `services/event_filters.collectable_events` is a visible event (`deleted_at IS NULL AND hidden_at IS NULL`) in one of the two worked statuses, `geolocated` or `detected`. The item list, the item count, the date range, the card mosaic and the eligibility check the add verb runs all read it, so an event that later closes or is taken down leaves all five at once with no write to `collection_events`. A `requested` row is an ask rather than an answer; a `closed` row is one the owner rejected or retracted, and a curated shelf must not go on presenting it as work that stands.
 
 **Counts and the date range are computed per read.** `event_count` is the number of showable items, `first_date` and `last_date` the smallest and largest `event_date` among them. Nothing is stored, so no write path can leave a stale figure behind.
 
-**The default cover.** With `cover_key` NULL, the read serves the media of the first item in chronological order that is not flagged `is_graphic`, picked by the card-thumbnail rule (`services/thumbnails.pick_thumbnail`). Items flagged graphic are skipped rather than ending the search, so a card never shows death or injury to a reader who did not open the item, and a collection whose earliest event carries hard footage still gets a cover. The field is null when no item qualifies.
+**The card mosaic is computed, not stored.** A collection carries no cover column and no cover object. The `cover` field of the read is up to four tiles taken off the items themselves: walk the showable items in chronological order, skip one flagged `is_graphic`, take each remaining item's card media (`services/thumbnails.pick_thumbnail`, preferring an image over a clip on an item carrying both), and stop at four. A graphic item is skipped rather than ending the walk, so a card never shows death or injury to a reader who did not open the item. The list is empty when no item qualifies. See [`api.md`](api.md#get-collectionsid).
 
 **The ownership invariant lives in the service.** An event joins its owner's collection only, which spans two tables and so is no CHECK: `services/collections.add_event` enforces it, and an attempt to shelve somebody else's event is a 403. See [`api.md`](api.md#collections).
 

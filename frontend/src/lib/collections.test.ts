@@ -8,11 +8,9 @@ import {
   collectionPoints,
   createCollection,
   deleteCollection,
-  deleteCollectionCover,
   eventCollectionsPath,
   removeEventFromCollection,
   renameCollection,
-  uploadCollectionCover,
   userCollectionsPath,
   type Collection,
 } from "./collections";
@@ -32,7 +30,7 @@ const COLLECTION: Collection = {
   id: "c1",
   owner: { id: "u1", username: "ana", avatar_url: null },
   title: "Kupiansk rail corridor",
-  cover: null,
+  cover: [],
   event_count: 5,
   first_date: "2026-03-14",
   last_date: "2026-03-16",
@@ -127,27 +125,6 @@ describe("collection writes", () => {
     ]);
   });
 
-  it("uploads a cover as multipart, the avatar's own shape", async () => {
-    const file = new File(["x"], "cover.png", { type: "image/png" });
-
-    await uploadCollectionCover("c1", file);
-
-    const [path, options] = lastCall();
-    expect(path).toBe("/collections/c1/cover");
-    expect(options.method).toBe("PUT");
-    // FormData, not JSON: `apiFetch` leaves the boundary header to the browser.
-    const body = options.body as FormData;
-    expect(body.get("file")).toBe(file);
-  });
-
-  it("clears the cover through DELETE", async () => {
-    await deleteCollectionCover("c1");
-
-    expect(lastCall()).toEqual([
-      "/collections/c1/cover",
-      { method: "DELETE" },
-    ]);
-  });
 });
 
 describe("collectionMetaSegments", () => {

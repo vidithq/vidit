@@ -150,7 +150,7 @@ describe("AddToCollectionPanel", () => {
       id: "c9",
       owner: { id: "u1", username: "ana", avatar_url: null },
       title: "March strikes",
-      cover: null,
+      cover: [],
       event_count: 0,
       first_date: null,
       last_date: null,

@@ -40,7 +40,7 @@ interface Walk {
 
 /**
  * The profile's Collections section: the analyst's named sets of their own
- * events, as a grid of cover cards.
+ * events, as a grid of mosaic cards.
  *
  * It sits between Insights and Recent submissions, which is where the page
  * moves from readings of the whole body of work to the work itself: a
@@ -155,7 +155,7 @@ export function CollectionsSection({
 
       {collections.length > 0 ? (
         <>
-          {/* One column on a phone: a 16:9 cover over a two-line title in half
+          {/* One column on a phone: a 16:9 mosaic over a two-line title in half
               of a 375px column leaves the title nothing to render in. */}
           <div className="grid gap-2 sm:grid-cols-2">
             {collections.map((collection) => (

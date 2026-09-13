@@ -7,16 +7,7 @@ hands the verb its arguments, and turns a typed service error into its status.
 import uuid
 from typing import NoReturn
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    File,
-    Query,
-    Request,
-    Response,
-    UploadFile,
-    status,
-)
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_current_user_optional, get_db
@@ -81,7 +72,7 @@ def get_collection(
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
 ) -> CollectionRead:
-    """One collection's header: owner, title, cover, item count and date range.
+    """One collection's header: owner, title, item count and date range.
 
     Public, like the events it points at. A withheld collection reads as 404
     for everyone but an admin.
@@ -203,46 +194,3 @@ def remove_event_from_collection(
     collections_service.remove_event(
         db, collection=collection, event_id=event_id, user=current_user
     )
-
-
-@router.put("/{collection_id}/cover", response_model=CollectionRead)
-@limiter.limit("20/minute")
-async def set_collection_cover(
-    request: Request,
-    collection_id: uuid.UUID,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> CollectionRead:
-    """Replace your collection's cover with an uploaded image. Owner only.
-
-    The same pipeline the profile picture takes: one image (JPEG / PNG /
-    WebP), stored as a stripped and resized JPEG under
-    ``collections/{collection id}/``, and the picture it replaced is deleted.
-    """
-    collection = _resolve(db, collection_id, current_user)
-    try:
-        updated = await collections_service.set_cover(
-            db, collection=collection, user=current_user, file=file
-        )
-    except collections_service.CollectionError as exc:
-        _raise_collection_error(exc)
-    return collections_service.build_collection_read(db, updated)
-
-
-@router.delete("/{collection_id}/cover", response_model=CollectionRead)
-@limiter.limit("20/minute")
-def delete_collection_cover(
-    request: Request,
-    collection_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> CollectionRead:
-    """Drop your collection's uploaded cover. Owner only.
-
-    The cover falls back to the first chronological item's media. Idempotent:
-    removing a cover you never set returns 200.
-    """
-    collection = _resolve(db, collection_id, current_user)
-    updated = collections_service.clear_cover(db, collection=collection, user=current_user)
-    return collections_service.build_collection_read(db, updated)

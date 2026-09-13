@@ -10,16 +10,17 @@ import {
 } from "@/lib/collections";
 
 /**
- * One collection on the profile's grid: the cover, the title, and the meta line
- * the collection's own page prints under its heading.
+ * One collection on the profile's grid: the mosaic, the title, and the meta
+ * line the collection's own page prints under its heading.
  *
  * The catalogue click model, the one every row on the site uses: the whole card
  * is a stretched link to the collection, and nothing inside it competes for the
  * click. The row shell is the catalogue card's own (`bg-neutral-900` on a
  * `border-neutral-800` `rounded-md` at `p-3`, accent border on hover), so a
  * collection card and an event card read as the same object in two shapes; the
- * cover sits over the text rather than beside it, the `feed` arrangement, since
- * a cover is the collection's picture rather than a thumbnail of one item.
+ * mosaic sits over the text rather than beside it, the `feed` arrangement,
+ * since it is the collection's own picture rather than a thumbnail of one
+ * item.
  */
 export function CollectionCard({ collection }: { collection: Collection }) {
   return (
@@ -33,9 +34,9 @@ export function CollectionCard({ collection }: { collection: Collection }) {
       />
       <CollectionCover cover={collection.cover} />
       <div className="flex gap-3">
-        {/* The mark says what kind of thing the card is, which a cover cannot:
-            an uploaded cover is an arbitrary picture, and the fallback is one
-            item's own media. Accent because the whole card is the click, so
+        {/* The mark says what kind of thing the card is, which the mosaic
+            cannot: its tiles are the items' own media, and an event card shows
+            the same pictures. Accent because the whole card is the click, so
             the paint is the active-row surface rather than a decorative
             icon. */}
         <span

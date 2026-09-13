@@ -26,7 +26,7 @@ from app.schemas.admin import (
     AdminInviteCodeRead,
     AdminInviteRedeemerRead,
 )
-from app.services import collections, versions
+from app.services import versions
 from app.services.auth import bump_token_version, generate_invite_code, invite_code_status
 from app.services.evidence_intake import (
     collect_event_media_keys,
@@ -428,7 +428,7 @@ def hide_collection(
     The collection-shaped takedown, next to the event one above and on the
     same reversible ``hidden_at`` axis: a reported shelf is withheld pending
     judgement rather than removed. The events on it are untouched, each
-    carrying its own moderation state, and the cover object stays where it is.
+    carrying its own moderation state.
 
     Idempotent: an already withheld collection keeps its original timestamp
     and files no second audit row.
@@ -641,9 +641,8 @@ def hard_delete_user(
 
     1. Capture S3 keys upfront: the media URLs (all roles: source footage +
        proof images) across their events, located and requested alike, plus
-       the account's own avatar object and the cover of every collection they
-       own. The cascade about to fire would drop those rows before we could
-       read them.
+       the account's own avatar object. The cascade about to fire would drop
+       those rows before we could read them.
     2. Manually delete each event: ``owner_id`` carries no ``ON DELETE
        CASCADE`` (would mean retroactive constraint changes). Each ``db.delete``
        cascades to that row's media / contributor rows / tags. Because the
@@ -669,9 +668,6 @@ def hard_delete_user(
     for geo in geolocations:
         geo_media_keys.extend(collect_event_media_keys(db, geo))
     avatar_key = avatar_key_of(user.avatar_url)
-    # The collection rows cascade with the user; their cover objects do not,
-    # so they are read here for the sweep, the same reason the avatar is.
-    cover_keys = collections.owned_cover_keys(db, user.id)
 
     target = {
         "user_id": str(user.id),
@@ -694,7 +690,7 @@ def hard_delete_user(
 
     # 4. Best-effort S3 sweep, after the DB transaction is durable.
     sweep_keys(
-        geo_media_keys + ([avatar_key] if avatar_key else []) + cover_keys,
+        geo_media_keys + ([avatar_key] if avatar_key else []),
         context=f"user {user_id} hard-delete",
     )
 
