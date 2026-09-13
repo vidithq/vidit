@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 
-import { CollectionTitleForm } from "@/components/collections/CollectionTitleForm";
+import { CollectionDetailsForm } from "@/components/collections/CollectionDetailsForm";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ToggleRow } from "@/components/ui/ToggleRow";
@@ -26,7 +26,9 @@ import {
  *
  * It reads `GET /events/{id}/collections`, which is owner-only and lists empty
  * collections too, since putting the first event on one is what this panel is
- * for. Each row is the app's boolean row (`<ToggleRow>`), so a tap anywhere on
+ * for, and the `New collection` row opens the same two fields every other
+ * create takes, a title and a short description of what the collection holds.
+ * Each row is the app's boolean row (`<ToggleRow>`), so a tap anywhere on
  * it toggles rather than having to land on the track. It carries the
  * collection's item count as the row's `description`, which is what puts the
  * title at reading size: a title runs to 255 characters and the row's other
@@ -77,8 +79,8 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
   );
 
   const create = useMutation(
-    async (title: string) => {
-      const collection = await createCollection(title);
+    async (title: string, description: string) => {
+      const collection = await createCollection(title, description);
       await addEventToCollection(collection.id, eventId);
       return collection;
     },
@@ -146,11 +148,11 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
       {write.error && <div className={FORM_ERROR_BANNER}>{write.error}</div>}
 
       {creating ? (
-        <CollectionTitleForm
+        <CollectionDetailsForm
           submitLabel="Create and add"
           busy={create.loading}
           error={create.error}
-          onSubmit={(title) => void create.run(title)}
+          onSubmit={(title, description) => void create.run(title, description)}
           onCancel={() => setCreating(false)}
         />
       ) : (

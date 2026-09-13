@@ -6,8 +6,12 @@ Create Date: 2026-09-12 10:00:00.000000
 
 A collection is a named, curated set of one analyst's own events, shown on the
 owner's public profile. Two tables carry it: ``collections`` (owner, title,
-takedown stamp) and ``collection_events`` (the memberships, one row per event
-in one collection).
+description, takedown stamp) and ``collection_events`` (the memberships, one
+row per event in one collection).
+
+``description`` is ``TEXT`` with no width and NOT NULL: every collection says
+what it holds, and the 500-character cap lives in ``schemas/collection``, the
+shape ``users.bio`` takes, so moving the cap costs no migration.
 
 Every foreign key cascades. ``collections.owner_id`` does, unlike
 ``events.owner_id``, because a collection is one analyst's own shelf and
@@ -43,6 +47,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("owner_id", sa.Uuid(), nullable=False),
         sa.Column("title", sa.String(length=TITLE_MAX_LENGTH), nullable=False),
+        sa.Column("description", sa.Text(), nullable=False),
         sa.Column("hidden_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),

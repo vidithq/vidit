@@ -2,8 +2,10 @@
 
 A collection is a named set of one analyst's own events. What these lock in:
 
-* ``POST`` / ``PATCH`` / ``DELETE /collections``: an owner opens, retitles and
-  drops a collection, and dropping one leaves every event it held alone.
+* ``POST`` / ``PATCH`` / ``DELETE /collections``: an owner opens a collection
+  under a title and a required description, writes both together, and drops
+  one, which leaves every event it held alone. A blank or over-long
+  description is a 422 on either write.
 * ``PUT`` / ``DELETE /collections/{id}/events/{event_id}``: both idempotent,
   403 when the collection or the event belongs to someone else, 409 when the
   event's status is not one a collection shows, 404 on an unknown event.
@@ -45,6 +47,7 @@ from app.models.event import (
 )
 from app.models.media import Media
 from app.models.user import User
+from app.schemas.collection import DESCRIPTION_MAX_LENGTH
 from app.services.auth import hash_password
 from tests.conftest import login_as
 
@@ -185,9 +188,16 @@ def _make_event(
     return event
 
 
-def _make_collection(db, cleanup, *, owner: User, title: str = "Dossier") -> Collection:
+def _make_collection(
+    db,
+    cleanup,
+    *,
+    owner: User,
+    title: str = "Dossier",
+    description: str = "What this shelf holds.",
+) -> Collection:
     _, collection_ids, _ = cleanup
-    collection = Collection(owner_id=owner.id, title=title)
+    collection = Collection(owner_id=owner.id, title=title, description=description)
     db.add(collection)
     db.commit()
     db.refresh(collection)
@@ -223,13 +233,17 @@ def test_create_collection_returns_an_empty_shelf(db, cleanup, owner):
     _, collection_ids, _ = cleanup
     response = client.post(
         "/api/v1/collections",
-        json={"title": "Zaporizhzhia plant"},
+        json={
+            "title": "Zaporizhzhia plant",
+            "description": "Strikes and their aftermath at the plant, 2025 to 2026.",
+        },
         headers=login_as(client, owner),
     )
     assert response.status_code == 201
     body = response.json()
     collection_ids.append(uuid.UUID(body["id"]))
     assert body["title"] == "Zaporizhzhia plant"
+    assert body["description"] == "Strikes and their aftermath at the plant, 2025 to 2026."
     assert body["owner"]["username"] == owner.username
     assert body["event_count"] == 0
     assert body["first_date"] is None
@@ -238,36 +252,92 @@ def test_create_collection_returns_an_empty_shelf(db, cleanup, owner):
 
 
 def test_create_collection_requires_auth():
-    assert client.post("/api/v1/collections", json={"title": "Anon"}).status_code == 401
+    body = {"title": "Anon", "description": "Nobody's shelf."}
+    assert client.post("/api/v1/collections", json=body).status_code == 401
 
 
 def test_create_collection_rejects_an_empty_title(owner):
     response = client.post(
-        "/api/v1/collections", json={"title": ""}, headers=login_as(client, owner)
+        "/api/v1/collections",
+        json={"title": "", "description": "A described shelf with no name."},
+        headers=login_as(client, owner),
     )
     assert response.status_code == 422
 
 
-def test_rename_collection_is_owner_only(db, cleanup, owner, stranger):
+@pytest.mark.parametrize("description", ["", "   "])
+def test_create_collection_rejects_a_blank_description(owner, description):
+    """A description of nothing, spaces included, is a missing description."""
+    response = client.post(
+        "/api/v1/collections",
+        json={"title": "Nameless shelf", "description": description},
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 422
+
+
+def test_create_collection_rejects_a_description_past_the_cap(owner):
+    response = client.post(
+        "/api/v1/collections",
+        json={"title": "Long-winded", "description": "x" * (DESCRIPTION_MAX_LENGTH + 1)},
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 422
+
+
+def test_create_collection_strips_the_description(db, cleanup, owner):
+    _, collection_ids, _ = cleanup
+    response = client.post(
+        "/api/v1/collections",
+        json={"title": "Trimmed", "description": "  Strikes on the rail corridor.  "},
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 201
+    collection_ids.append(uuid.UUID(response.json()["id"]))
+    assert response.json()["description"] == "Strikes on the rail corridor."
+
+
+def test_update_collection_writes_both_fields_and_is_owner_only(db, cleanup, owner, stranger):
     collection = _make_collection(db, cleanup, owner=owner)
 
     mine = client.patch(
         f"/api/v1/collections/{collection.id}",
-        json={"title": "Operation reconstruction"},
+        json={
+            "title": "Operation reconstruction",
+            "description": "Every strike of the operation, in the order they landed.",
+        },
         headers=login_as(client, owner),
     )
     assert mine.status_code == 200
     assert mine.json()["title"] == "Operation reconstruction"
+    assert mine.json()["description"] == "Every strike of the operation, in the order they landed."
 
     theirs = client.patch(
         f"/api/v1/collections/{collection.id}",
-        json={"title": "Hijacked"},
+        json={"title": "Hijacked", "description": "Somebody else's words."},
         headers=login_as(client, stranger),
     )
     assert theirs.status_code == 403
 
     db.expire_all()
-    assert _reload_collection(db, collection.id).title == "Operation reconstruction"
+    reloaded = _reload_collection(db, collection.id)
+    assert reloaded.title == "Operation reconstruction"
+    assert reloaded.description == "Every strike of the operation, in the order they landed."
+
+
+def test_update_collection_rejects_a_blank_description(db, cleanup, owner):
+    """Both fields ride every edit, so a description cannot be cleared."""
+    collection = _make_collection(db, cleanup, owner=owner)
+
+    response = client.patch(
+        f"/api/v1/collections/{collection.id}",
+        json={"title": "Still named", "description": "  "},
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 422
+
+    db.expire_all()
+    assert _reload_collection(db, collection.id).description == "What this shelf holds."
 
 
 def test_delete_collection_leaves_its_events_alone(db, cleanup, owner):
@@ -469,6 +539,9 @@ def test_read_counts_and_date_range_only_showable_items(db, cleanup, owner):
     )
 
     body = client.get(f"/api/v1/collections/{collection.id}").json()
+    # The header a reader lands on: what the collection says it holds, then
+    # what it actually holds.
+    assert body["description"] == "What this shelf holds."
     assert body["event_count"] == 3
     assert body["first_date"] == "2026-03-01"
     assert body["last_date"] == "2026-07-09"

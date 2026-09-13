@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Layers, Plus } from "lucide-react";
 
 import { CollectionCard } from "@/components/collections/CollectionCard";
-import { CollectionTitleForm } from "@/components/collections/CollectionTitleForm";
+import { CollectionDetailsForm } from "@/components/collections/CollectionDetailsForm";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
@@ -99,13 +99,17 @@ export function CollectionsSection({
 
   // A collection opens on its own page, so the create hands over rather than
   // re-reading the grid: the analyst's next act is putting events on it.
-  const create = useMutation(createCollection, {
-    fallback: "Failed to create the collection",
-    onSuccess: (collection) => {
-      setCreating(false);
-      router.push(collectionHref(collection.id));
+  const create = useMutation(
+    (title: string, description: string) =>
+      createCollection(title, description),
+    {
+      fallback: "Failed to create the collection",
+      onSuccess: (collection) => {
+        setCreating(false);
+        router.push(collectionHref(collection.id));
+      },
     },
-  });
+  );
 
   // Nothing until the read lands and carries rows: the section is one of
   // three blocks the profile hides rather than blocks on, so a read that has
@@ -143,12 +147,12 @@ export function CollectionsSection({
       </div>
 
       {isOwn && creating && (
-        <CollectionTitleForm
+        <CollectionDetailsForm
           submitLabel="Create collection"
-          hint="The only free-text field. Items order themselves by event date, so a collection carries no description."
+          hint="Say what the collection holds. Items order themselves by event date, so there is no order to set."
           busy={create.loading}
           error={create.error}
-          onSubmit={(title) => void create.run(title)}
+          onSubmit={(title, description) => void create.run(title, description)}
           onCancel={() => setCreating(false)}
         />
       )}

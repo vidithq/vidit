@@ -636,7 +636,7 @@ export interface paths {
         put?: never;
         /**
          * Create Collection
-         * @description Open a collection. The title is the only field; it starts empty.
+         * @description Open a collection under a title and a description. It starts empty.
          */
         post: operations["create_collection_api_v1_collections_post"];
         delete?: never;
@@ -670,10 +670,12 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Rename Collection
-         * @description Retitle your collection. Owner only; 403 for anyone else.
+         * Update Collection
+         * @description Write your collection's title and description. Owner only; 403 for anyone else.
+         *
+         *     Both fields travel together, so one request states what the collection is.
          */
-        patch: operations["rename_collection_api_v1_collections__collection_id__patch"];
+        patch: operations["update_collection_api_v1_collections__collection_id__patch"];
         trace?: never;
     };
     "/api/v1/collections/{collection_id}/events": {
@@ -2458,11 +2460,13 @@ export interface components {
         };
         /**
          * CollectionCreate
-         * @description Body of ``POST /collections``. The title is the only field a collection
-         *     carries: items order themselves by when their events happened, so there is
-         *     no description and no manual order to submit.
+         * @description Body of ``POST /collections``: the title and the description. Items
+         *     order themselves by when their events happened, so there is no manual
+         *     order to submit.
          */
         CollectionCreate: {
+            /** Description */
+            description: string;
             /** Title */
             title: string;
         };
@@ -2499,7 +2503,8 @@ export interface components {
          *
          *     The add-to-collection popover's row. Thinner than :class:`CollectionRead`:
          *     the popover names a collection, shows a checked state and says how much
-         *     the collection already holds, so it carries no mosaic and no date range.
+         *     the collection already holds, so it carries no description, no mosaic and
+         *     no date range.
          *
          *     ``event_count`` is computed over the same predicate
          *     (``services/event_filters.collectable_events``) the collection reads use,
@@ -2522,6 +2527,10 @@ export interface components {
         /**
          * CollectionRead
          * @description One collection as every read surface renders it.
+         *
+         *     ``title`` and ``description`` are the two free-text fields the owner
+         *     writes, both required: the name of the collection and one short paragraph
+         *     saying what it holds.
          *
          *     ``event_count``, ``first_date`` and ``last_date`` are computed at read
          *     time over the events the collection may show
@@ -2551,6 +2560,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Description */
+            description: string;
             /** Event Count */
             event_count: number;
             /** First Date */
@@ -2568,10 +2579,14 @@ export interface components {
         };
         /**
          * CollectionUpdate
-         * @description Body of ``PATCH /collections/{id}``. The title is the only mutable
-         *     field, under the same cap the create takes.
+         * @description Body of ``PATCH /collections/{id}``: the title and the description
+         *     together, under the caps the create takes. Both are sent on every edit,
+         *     so one request states what the collection is rather than leaving the two
+         *     fields to be saved apart.
          */
         CollectionUpdate: {
+            /** Description */
+            description: string;
             /** Title */
             title: string;
         };
@@ -4468,7 +4483,7 @@ export interface operations {
             };
         };
     };
-    rename_collection_api_v1_collections__collection_id__patch: {
+    update_collection_api_v1_collections__collection_id__patch: {
         parameters: {
             query?: never;
             header?: never;

@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -14,11 +14,14 @@ class Collection(Base):
     Personal: one owner, and an event joins a collection only when the same
     account owns both (the invariant lives in
     ``services/collections.add_event``, not in a SQL constraint, because it
-    spans two tables). The title is the only free-text field, capped at the
-    event title's own ``TITLE_MAX_LENGTH`` so one cap governs both, and the
-    items order themselves by when the events happened, so a collection is a
-    set of facts rather than a narrative: there is no description, no manual
-    position, no denormalized count and no version history.
+    spans two tables). Two free-text fields carry what the collection is: the
+    title, capped at the event title's own ``TITLE_MAX_LENGTH`` so one cap
+    governs both, and a required short ``description`` saying what the
+    collection holds, the same class of text as the profile bio and capped by
+    ``schemas/collection.DESCRIPTION_MAX_LENGTH``. The items order themselves
+    by when the events happened, so a collection is still a set of facts
+    rather than a narrative: there is no manual position, no denormalized
+    count and no version history.
 
     ``owner_id`` carries ``ON DELETE CASCADE``, unlike ``Event.owner_id``: a
     collection is one analyst's own shelf and nothing outlives their account,
@@ -33,6 +36,10 @@ class Collection(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH), nullable=False)
+    # What the collection holds, in one short paragraph. ``Text`` with no width
+    # and the cap in the API layer, the shape ``User.bio`` takes, so moving the
+    # cap costs no migration.
+    description: Mapped[str] = mapped_column(Text, nullable=False)
     # Takedown: NULL = visible, timestamp = withheld from every read but an
     # admin's, the same axis ``Event.hidden_at`` carries and reversible the
     # same way.

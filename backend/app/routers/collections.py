@@ -58,8 +58,10 @@ def create_collection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CollectionRead:
-    """Open a collection. The title is the only field; it starts empty."""
-    collection = collections_service.create_collection(db, owner=current_user, title=body.title)
+    """Open a collection under a title and a description. It starts empty."""
+    collection = collections_service.create_collection(
+        db, owner=current_user, title=body.title, description=body.description
+    )
     return collections_service.build_collection_read(db, collection)
 
 
@@ -83,19 +85,26 @@ def get_collection(
 
 @router.patch("/{collection_id}", response_model=CollectionRead)
 @limiter.limit("30/minute")
-def rename_collection(
+def update_collection(
     request: Request,
     collection_id: uuid.UUID,
     body: CollectionUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CollectionRead:
-    """Retitle your collection. Owner only; 403 for anyone else."""
+    """Write your collection's title and description. Owner only; 403 for anyone else.
+
+    Both fields travel together, so one request states what the collection is.
+    """
     collection = _resolve(db, collection_id, current_user)
-    renamed = collections_service.rename_collection(
-        db, collection=collection, user=current_user, title=body.title
+    updated = collections_service.update_collection_details(
+        db,
+        collection=collection,
+        user=current_user,
+        title=body.title,
+        description=body.description,
     )
-    return collections_service.build_collection_read(db, renamed)
+    return collections_service.build_collection_read(db, updated)
 
 
 @router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)

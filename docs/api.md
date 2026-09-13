@@ -50,9 +50,9 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated, filterable on readiness) |
 | GET | `/events/{id}/collections` | 🔒 | Your collections, each saying whether this event is on it (owner only) |
 | **Collections** | | | |
-| POST | `/collections` | 🔒 | Open a collection (title only) |
-| GET | `/collections/{id}` | 🌐 | One collection: owner, title, item count, date range |
-| PATCH | `/collections/{id}` | 🔒 | Retitle your collection |
+| POST | `/collections` | 🔒 | Open a collection (title and description) |
+| GET | `/collections/{id}` | 🌐 | One collection: owner, title, description, item count, date range |
+| PATCH | `/collections/{id}` | 🔒 | Write your collection's title and description |
 | DELETE | `/collections/{id}` | 🔒 | Drop your collection; the events it held stay |
 | GET | `/collections/{id}/events` | 🌐 | Its items, oldest event first (cursor-paged) |
 | PUT | `/collections/{id}/events/{event_id}` | 🔒 | Put one of your events on it (idempotent) |
@@ -1350,7 +1350,7 @@ Ongoing-conflict names and dates derive from Wikipedia's "List of ongoing armed 
 
 ## Collections
 
-A collection is a named, curated set of one analyst's own events, shown on the owner's public profile. One owner, no collaborators. The title is the only free-text field, capped at the event title's own 255 characters, and the items order themselves by when their events happened, so a collection carries no description and no manual order.
+A collection is a named, curated set of one analyst's own events, shown on the owner's public profile. One owner, no collaborators. It carries two free-text fields, both required: a title capped at the event title's own 255 characters, and a short plain-text description of what it holds, capped at 500 characters, the profile bio's figure for the same class of text. The items order themselves by when their events happened, so a collection carries no manual order.
 
 What a collection may hold is one predicate, `services/event_filters.collectable_events`: a visible event (neither soft-deleted nor withheld) in one of the two worked statuses, `geolocated` or `detected`. A `requested` row is an ask rather than an answer, and a `closed` row is one the owner rejected or retracted, so neither is on a curated shelf. The same predicate governs the item list, the item count, the date range, the card mosaic, and the check `PUT /collections/{id}/events/{event_id}` runs, so an event that later closes or is taken down leaves all five at once with no write to the membership table.
 
@@ -1360,10 +1360,13 @@ Open a collection. It starts empty.
 
 **Body:**
 ```json
-{ "title": "Zaporizhzhia plant" }
+{
+  "title": "Zaporizhzhia plant",
+  "description": "Strikes and their aftermath at the plant, 2025 to 2026."
+}
 ```
 
-`title` is required, 1 to 255 characters.
+`title` is required, 1 to 255 characters. `description` is required too, 1 to 500 characters. Both are stripped of surrounding whitespace, so a value of spaces is a 422 rather than a stored blank.
 
 **Response 201:** the new `CollectionRead`, with `event_count` 0, a null date range and an empty `cover`.
 
@@ -1371,13 +1374,13 @@ Open a collection. It starts empty.
 | Code | Case |
 |------|------|
 | 401 | Not authenticated |
-| 422 | Title empty or over 255 characters |
+| 422 | Title empty or over 255 characters, or description empty or over 500 characters |
 
 ---
 
 ### `GET /collections/{id}` 🌐
 
-One collection's header: owner, title, item count, and the range its items span.
+One collection's header: owner, title, description, item count, and the range its items span.
 
 **Response 200:**
 ```json
@@ -1385,6 +1388,7 @@ One collection's header: owner, title, item count, and the range its items span.
   "id": "uuid",
   "owner": { "id": "uuid", "username": "analyst", "avatar_url": "https://…/avatars/…jpg" },
   "title": "Zaporizhzhia plant",
+  "description": "Strikes and their aftermath at the plant, 2025 to 2026.",
   "cover": [
     { "url": "https://…/uploads/geo/…jpg", "media_type": "image" },
     { "url": "https://…/uploads/geo/…mp4", "media_type": "video" }
@@ -1395,6 +1399,8 @@ One collection's header: owner, title, item count, and the range its items span.
   "created_at": "2026-08-01T09:12:00Z"
 }
 ```
+
+`title` and `description` are what the owner writes about the collection, both required and both plain text: the name of the shelf, and one short paragraph saying what is on it.
 
 `event_count`, `first_date` and `last_date` are computed per read over the events the collection may show, never stored. `first_date` and `last_date` are the smallest and largest `event_date` among those events, so both are null for an empty collection and for one whose items all lack a date.
 
@@ -1413,12 +1419,17 @@ A withheld collection (`hidden_at`, see [`DELETE /admin/collections/{id}`](#dele
 
 ### `PATCH /collections/{id}` 🔒
 
-Retitle your collection. Owner only.
+Write your collection's title and description. Owner only.
 
 **Body:**
 ```json
-{ "title": "Operation reconstruction" }
+{
+  "title": "Operation reconstruction",
+  "description": "Every strike of the operation, in the order they landed."
+}
 ```
+
+Both fields ride every edit, under the caps and the whitespace stripping [`POST /collections`](#post-collections) applies, so one request states what the collection is and a renamed collection cannot be left describing the old one.
 
 **Response 200:** the updated `CollectionRead`.
 
@@ -1428,7 +1439,7 @@ Retitle your collection. Owner only.
 | 401 | Not authenticated |
 | 403 | Not your collection |
 | 404 | `collection_not_found` |
-| 422 | Title empty or over 255 characters |
+| 422 | Title empty or over 255 characters, or description empty or over 500 characters |
 
 ---
 
@@ -1718,6 +1729,7 @@ Offset-paged, like the published-geolocations feed beside it.
       "id": "uuid",
       "owner": { "id": "uuid", "username": "analyst", "avatar_url": null },
       "title": "Zaporizhzhia plant",
+      "description": "Strikes and their aftermath at the plant, 2025 to 2026.",
       "cover": [
         { "url": "https://…/uploads/geo/…jpg", "media_type": "image" },
         { "url": "https://…/uploads/geo/…mp4", "media_type": "video" }

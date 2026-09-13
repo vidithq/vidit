@@ -10,7 +10,7 @@ import {
   deleteCollection,
   eventCollectionsPath,
   removeEventFromCollection,
-  renameCollection,
+  updateCollection,
   userCollectionsPath,
   type Collection,
 } from "./collections";
@@ -30,6 +30,7 @@ const COLLECTION: Collection = {
   id: "c1",
   owner: { id: "u1", username: "ana", avatar_url: null },
   title: "Kupiansk rail corridor",
+  description: "Three days of strikes on the eastern approach.",
   cover: [],
   event_count: 5,
   first_date: "2026-03-14",
@@ -83,25 +84,31 @@ describe("collection paths", () => {
 });
 
 describe("collection writes", () => {
-  it("opens a collection with the title alone", async () => {
-    await createCollection("Kupiansk rail corridor");
+  it("opens a collection under a title and a description", async () => {
+    await createCollection("Kupiansk rail corridor", "Three days of strikes.");
 
     const [path, options] = lastCall();
     expect(path).toBe("/collections");
     expect(options.method).toBe("POST");
     expect(JSON.parse(options.body as string)).toEqual({
       title: "Kupiansk rail corridor",
+      description: "Three days of strikes.",
     });
   });
 
-  it("retitles through PATCH", async () => {
-    await renameCollection("c1", "Operation reconstruction");
+  it("writes both details through one PATCH", async () => {
+    await updateCollection(
+      "c1",
+      "Operation reconstruction",
+      "Every strike of the operation.",
+    );
 
     const [path, options] = lastCall();
     expect(path).toBe("/collections/c1");
     expect(options.method).toBe("PATCH");
     expect(JSON.parse(options.body as string)).toEqual({
       title: "Operation reconstruction",
+      description: "Every strike of the operation.",
     });
   });
 

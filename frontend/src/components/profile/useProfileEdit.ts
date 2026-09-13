@@ -61,7 +61,6 @@ export interface ProfileEditState {
   setDraftLinks: Dispatch<SetStateAction<ExternalLinks>>;
   saving: boolean;
   saveError: string | null;
-  bioRemaining: number;
   bioOver: boolean;
   startEditing: () => void;
   cancelEditing: () => void;
@@ -257,8 +256,7 @@ export function useProfileEdit({
     await saveMutation.run();
   };
 
-  const bioRemaining = BIO_MAX_LEN - draftBio.length;
-  const bioOver = bioRemaining < 0;
+  const bioOver = draftBio.length > BIO_MAX_LEN;
 
   return {
     editing,
@@ -273,7 +271,6 @@ export function useProfileEdit({
     setDraftLinks,
     saving,
     saveError,
-    bioRemaining,
     bioOver,
     startEditing,
     cancelEditing,

@@ -8,16 +8,24 @@ import type { EventListItem, MapPoint } from "@/types";
  * readings every collection surface prints (the meta line and the item pins).
  *
  * A collection is one analyst's own curated set of `geolocated` and `detected`
- * events, shown on their public profile. The title is the only free-text field
- * and the items order themselves by when their events happened, so there is
- * nothing else here to write.
+ * events, shown on their public profile. The title and a short description are
+ * its free-text fields and the items order themselves by when their events
+ * happened, so there is nothing else here to write.
  */
 
 /** How long a collection title may be. Mirrors `models/event.TITLE_MAX_LENGTH`,
- *  which `schemas/collection` applies to the create and the rename alike: the
+ *  which `schemas/collection` applies to the create and the update alike: the
  *  field stops at the cap instead of letting the server 422 a title someone
  *  just typed out. */
 export const COLLECTION_TITLE_MAX_LEN = 255;
+
+/** How long a collection description may be. Mirrors
+ *  `schemas/collection.DESCRIPTION_MAX_LENGTH`, which the create and the update
+ *  both apply: the field stops at the cap instead of letting the server 422 a
+ *  paragraph someone just typed out. The profile bio's figure for the same
+ *  class of text, kept as its own constant because the two are separate
+ *  concepts. */
+export const COLLECTION_DESCRIPTION_MAX_LEN = 500;
 
 /** One collection's header, as every read surface renders it. */
 export type Collection = components["schemas"]["CollectionRead"];
@@ -84,20 +92,28 @@ export function collectionEventsPath(
   return cursor === null ? base : `${base}?cursor=${encodeURIComponent(cursor)}`;
 }
 
-export function createCollection(title: string): Promise<Collection> {
+/** Open a collection under a title and a description, both required. */
+export function createCollection(
+  title: string,
+  description: string,
+): Promise<Collection> {
   return apiFetch<Collection>("/collections", {
     method: "POST",
-    body: JSON.stringify({ title }),
+    body: JSON.stringify({ title, description }),
   });
 }
 
-export function renameCollection(
+/** Write a collection's title and description. Both ride every edit, so one
+ *  request states what the collection is and a renamed collection cannot be
+ *  left describing the old one. */
+export function updateCollection(
   id: string,
   title: string,
+  description: string,
 ): Promise<Collection> {
   return apiFetch<Collection>(`/collections/${encodeURIComponent(id)}`, {
     method: "PATCH",
-    body: JSON.stringify({ title }),
+    body: JSON.stringify({ title, description }),
   });
 }
 

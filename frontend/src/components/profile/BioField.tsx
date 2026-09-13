@@ -2,6 +2,7 @@
 
 import { Textarea } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
+import { CharCounter } from "@/components/ui/CharCounter";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { BIO_MAX_LEN, type ProfileEditState } from "./useProfileEdit";
 
@@ -23,13 +24,7 @@ export function BioField({ edit }: { edit: ProfileEditState }) {
     <Card>
       <div className="flex items-center justify-between">
         <SectionEyebrow title="Bio" margin="none" />
-        <span
-          className={`text-[11px] ${
-            edit.bioOver ? "text-red-400" : "text-neutral-500"
-          }`}
-        >
-          {edit.bioRemaining} / {BIO_MAX_LEN}
-        </span>
+        <CharCounter length={edit.draftBio.length} max={BIO_MAX_LEN} />
       </div>
       <Textarea
         value={edit.draftBio}

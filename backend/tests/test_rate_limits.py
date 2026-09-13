@@ -622,13 +622,19 @@ _DOCUMENTED_LIMITS = [
     # Collections. The create is the one case here that stores a row per
     # request; every other probe names an id no collection carries, so it
     # reaches the limiter and then 404s.
-    _Case("post", "/api/v1/collections", 30, "user", {"json": {"title": "rate limit probe"}}),
+    _Case(
+        "post",
+        "/api/v1/collections",
+        30,
+        "user",
+        {"json": {"title": "rate limit probe", "description": "A probe shelf."}},
+    ),
     _Case(
         "patch",
         f"/api/v1/collections/{_MISSING_ID}",
         30,
         "user",
-        {"json": {"title": "probe"}},
+        {"json": {"title": "probe", "description": "A probe shelf."}},
     ),
     _Case("delete", f"/api/v1/collections/{_MISSING_ID}", 30),
     _Case("put", f"/api/v1/collections/{_MISSING_ID}/events/{_MISSING_ID}", 60),

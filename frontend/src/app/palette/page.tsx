@@ -25,6 +25,7 @@ import {
 import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
+import { CharCounter } from "@/components/ui/CharCounter";
 import { Pill } from "@/components/ui/Pill";
 import {
   DiscordGlyph,
@@ -736,6 +737,17 @@ export default function PalettePage() {
               <label className={`${FORM_LABEL} ${FORM_INVALID_LABEL}`}>
                 Invalid field label
               </label>
+            </div>
+          </Item>
+
+          <Item name="<CharCounter>" usage="The room left in a capped free-text field: `remaining / cap`, red once the value runs over. One counter for every capped field, so the profile bio, a collection's title and a collection's description cannot spell the same reading three ways. It states what is left rather than what is used, and it turns red exactly when the submit refuses the value, so the colour and the disabled button always agree. The figure alone, no label and no box: a caller sits it at the far end of the field's label row.">
+            <div className="flex w-full max-w-sm items-center justify-between gap-2">
+              <label className={FORM_LABEL}>Bio</label>
+              <CharCounter length={120} max={500} />
+            </div>
+            <div className="flex w-full max-w-sm items-center justify-between gap-2">
+              <label className={FORM_LABEL}>Over the cap</label>
+              <CharCounter length={512} max={500} />
             </div>
           </Item>
 

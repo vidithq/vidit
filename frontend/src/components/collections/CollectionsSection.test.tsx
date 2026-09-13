@@ -13,12 +13,17 @@ const createCollection = vi.fn();
 const fetchUserCollections = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
-  createCollection: (title: string) => createCollection(title),
+  createCollection: (title: string, description: string) =>
+    createCollection(title, description),
   fetchUserCollections: (username: string, perPage: number, page: number) =>
     fetchUserCollections(username, perPage, page),
 }));
 
-import type { Collection, CollectionPage } from "@/lib/collections";
+import {
+  COLLECTION_DESCRIPTION_MAX_LEN,
+  type Collection,
+  type CollectionPage,
+} from "@/lib/collections";
 
 import { CollectionsSection } from "./CollectionsSection";
 
@@ -26,6 +31,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   id: "c1",
   owner: { id: "u1", username: "ana", avatar_url: null },
   title: "Kupiansk rail corridor",
+  description: "Three days of strikes on the eastern approach.",
   cover: [],
   event_count: 5,
   first_date: "2026-03-14",
@@ -112,10 +118,18 @@ describe("CollectionsSection", () => {
     fireEvent.change(screen.getByLabelText("Title"), {
       target: { value: "March strikes" },
     });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "  Strikes on the corridor through March.  " },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Create collection" }));
 
+    // Both fields travel, trimmed, so the server stores neither padding nor a
+    // collection that says nothing about itself.
     await waitFor(() =>
-      expect(createCollection).toHaveBeenCalledWith("March strikes"),
+      expect(createCollection).toHaveBeenCalledWith(
+        "March strikes",
+        "Strikes on the corridor through March.",
+      ),
     );
     expect(push).toHaveBeenCalledWith("/collections/c9");
   });
@@ -125,10 +139,61 @@ describe("CollectionsSection", () => {
 
     render(<CollectionsSection username="ana" isOwn />);
     fireEvent.click(screen.getByRole("button", { name: "New collection" }));
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "Described but unnamed." },
+    });
 
     expect(
       screen.getByRole("button", { name: "Create collection" }),
     ).toBeDisabled();
+  });
+
+  it("refuses to create a collection with no description", () => {
+    useApiResource.mockReturnValue({ data: page([]) });
+
+    render(<CollectionsSection username="ana" isOwn />);
+    fireEvent.click(screen.getByRole("button", { name: "New collection" }));
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "March strikes" },
+    });
+    // Whitespace is not a description: the server refuses it, so the form does.
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "   " },
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Create collection" }),
+    ).toBeDisabled();
+  });
+
+  it("refuses a description past the cap and says how far over it is", () => {
+    useApiResource.mockReturnValue({ data: page([]) });
+
+    render(<CollectionsSection username="ana" isOwn />);
+    fireEvent.click(screen.getByRole("button", { name: "New collection" }));
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "March strikes" },
+    });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "x".repeat(COLLECTION_DESCRIPTION_MAX_LEN + 3) },
+    });
+
+    expect(
+      screen.getByText(`-3 / ${COLLECTION_DESCRIPTION_MAX_LEN}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Create collection" }),
+    ).toBeDisabled();
+  });
+
+  it("clamps a card's description to two lines", () => {
+    useApiResource.mockReturnValue({ data: page([collection()]) });
+
+    render(<CollectionsSection username="ana" isOwn={false} />);
+
+    expect(
+      screen.getByText("Three days of strikes on the eastern approach."),
+    ).toHaveClass("line-clamp-2");
   });
 
   it("asks for nothing further once the whole shelf is on screen", () => {

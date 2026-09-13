@@ -323,6 +323,5 @@ describe("useProfileEdit", () => {
     act(() => result.current.startEditing());
     act(() => result.current.setDraftBio("x".repeat(BIO_MAX_LEN + 1)));
     expect(result.current.bioOver).toBe(true);
-    expect(result.current.bioRemaining).toBe(-1);
   });
 });

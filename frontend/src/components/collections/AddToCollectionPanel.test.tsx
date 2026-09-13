@@ -14,7 +14,8 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
   addEventToCollection: (c: string, e: string) => addEventToCollection(c, e),
   removeEventFromCollection: (c: string, e: string) =>
     removeEventFromCollection(c, e),
-  createCollection: (title: string) => createCollection(title),
+  createCollection: (title: string, description: string) =>
+    createCollection(title, description),
 }));
 
 import type { CollectionMemberships } from "@/lib/collections";
@@ -150,6 +151,7 @@ describe("AddToCollectionPanel", () => {
       id: "c9",
       owner: { id: "u1", username: "ana", avatar_url: null },
       title: "March strikes",
+      description: "Strikes on the corridor through March.",
       cover: [],
       event_count: 0,
       first_date: null,
@@ -163,10 +165,16 @@ describe("AddToCollectionPanel", () => {
     fireEvent.change(screen.getByLabelText("Title"), {
       target: { value: "March strikes" },
     });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "Strikes on the corridor through March." },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
 
     await waitFor(() =>
-      expect(createCollection).toHaveBeenCalledWith("March strikes"),
+      expect(createCollection).toHaveBeenCalledWith(
+        "March strikes",
+        "Strikes on the corridor through March.",
+      ),
     );
     expect(addEventToCollection).toHaveBeenCalledWith("c9", "e1");
     // The new row is appended already on, since it holds this event alone.

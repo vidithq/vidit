@@ -26,8 +26,10 @@ import type { EventListItem } from "@/types";
  *
  * The header is the collection itself, the grammar the event page uses for an
  * event: the title, the owner's byline under it with a `Collection` pill saying
- * what kind of page this is, and the meta line the profile card prints beside
- * the mosaic. The mosaic itself is the profile card's picture and nothing
+ * what kind of page this is, the meta line the profile card prints beside the
+ * mosaic, and the description under it, at reading size and whole, where the
+ * card clamps it to two lines. The mosaic itself is the profile card's picture
+ * and nothing
  * else: the page opens on the name of the collection rather than on a band the
  * width of the page.
  *
@@ -92,6 +94,13 @@ export default function CollectionPage() {
             </Pill>
           </span>
           <CollectionMetaLine collection={collection} className="text-xs" />
+          {/* What the owner says the collection holds, at reading size under
+              the two lines that identify it. `whitespace-pre-line` keeps the
+              paragraph breaks they typed; the text is plain, so nothing else
+              of what they wrote is rendered. */}
+          <p className="whitespace-pre-line text-sm text-neutral-300">
+            {collection.description}
+          </p>
         </div>
       }
       actions={actions}

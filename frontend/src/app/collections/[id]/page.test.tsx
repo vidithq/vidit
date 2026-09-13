@@ -49,6 +49,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   id: "c1",
   owner: OWNER,
   title: "Kupiansk rail corridor",
+  description: "Three days of strikes on the eastern approach.",
   cover: [],
   event_count: 5,
   first_date: "2026-03-14",
@@ -129,6 +130,25 @@ describe("CollectionPage", () => {
     expect(screen.getByText("Collection")).toBeInTheDocument();
   });
 
+  it("prints the description whole, under the meta line", () => {
+    useApiResource.mockReturnValue({
+      data: collection({
+        description: "Three days of strikes.\nThe eastern approach.",
+      }),
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(<CollectionPage />);
+
+    // One node, so the paragraph breaks the owner typed are kept rather than
+    // collapsed into a run of text.
+    const description = screen.getByText(
+      "Three days of strikes. The eastern approach.",
+    );
+    expect(description).toHaveClass("whitespace-pre-line");
+  });
+
   it("counts the items and names the span they cover", () => {
     render(<CollectionPage />);
 
@@ -192,20 +212,20 @@ describe("CollectionPage", () => {
     render(<CollectionPage />);
 
     for (const name of [
-      "Rename this collection",
+      "Edit this collection's details",
       "Remove Strike on the rail junction from this collection",
     ]) {
       expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     }
   });
 
-  it("gives the owner the title, the drop and a control per item", () => {
+  it("gives the owner the details, the drop and a control per item", () => {
     useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
 
     render(<CollectionPage />);
 
     expect(
-      screen.getByRole("button", { name: "Rename this collection" }),
+      screen.getByRole("button", { name: "Edit this collection's details" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", {

@@ -97,6 +97,7 @@ const COLLECTIONS: CollectionPage = {
       id: "c1",
       owner: { id: "u1", username: "ana", avatar_url: null },
       title: "Kupiansk rail corridor",
+      description: "Three days of strikes on the eastern approach.",
       cover: [],
       event_count: 2,
       first_date: "2026-06-01",

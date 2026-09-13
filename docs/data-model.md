@@ -251,6 +251,7 @@ erDiagram
         UUID id PK
         UUID owner_id FK "the one owner"
         VARCHAR title
+        TEXT description "what the collection holds"
         TIMESTAMPTZ hidden_at "nullable, admin takedown"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
@@ -634,13 +635,14 @@ Indexes:
 
 ### `collections`
 
-A named, curated set of one analyst's own events, shown on the owner's public profile: a spatial dossier or an operation reconstruction. Personal, with exactly one owner and no collaborators. The title is the only free-text field and the items order themselves by when their events happened, so the table carries no description, no manual position, no denormalized count and no version history.
+A named, curated set of one analyst's own events, shown on the owner's public profile: a spatial dossier or an operation reconstruction. Personal, with exactly one owner and no collaborators. Two free-text fields say what it is, the title and a required short description, and the items order themselves by when their events happened, so the table carries no manual position, no denormalized count and no version history.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `owner_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The one owner. Cascades, unlike `events.owner_id`: a collection is one analyst's own shelf and nothing on it outlives their account, so a GDPR hard delete passes straight through and leaves no stored object behind, a collection holding no file of its own. |
 | `title` | `VARCHAR(255)` | NOT NULL. The same width as `events.title`, from the shared `TITLE_MAX_LENGTH` in [`models/event.py`](../backend/app/models/event.py), so one cap governs an event title and a collection title alike. The API floor is 1 character. |
+| `description` | `TEXT` | NOT NULL. A short plain-text paragraph saying what the collection holds, written by the owner on the create and on every edit. The API layer caps it at 500 characters, the figure [`users.bio`](#users) takes for the same class of text; there is no database constraint, so changing the cap does not require a migration. The API floor is 1 character after whitespace is stripped. |
 | `hidden_at` | `TIMESTAMPTZ` | nullable. Takedown: NULL = visible, timestamp = withheld from every read but an admin's, the owner's included. The same reversible axis [`events.hidden_at`](#events) carries, set by `DELETE /admin/collections/{id}`. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, SQLAlchemy `onupdate` stamp |

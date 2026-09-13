@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 
-import { CollectionTitleForm } from "@/components/collections/CollectionTitleForm";
+import { CollectionDetailsForm } from "@/components/collections/CollectionDetailsForm";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -13,13 +13,13 @@ import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import {
   deleteCollection,
-  renameCollection,
+  updateCollection,
   type Collection,
 } from "@/lib/collections";
 
 /** Ties the trigger to the panel it opens two levels down the tree, which
  *  `aria-controls` needs since the two are not DOM siblings. */
-const RENAME_PANEL_ID = "collection-rename-panel";
+const DETAILS_PANEL_ID = "collection-details-panel";
 
 /**
  * The owner's controls for one collection, in the shape every other surface
@@ -28,8 +28,9 @@ const RENAME_PANEL_ID = "collection-rename-panel";
  * (`useEventActions` is the same split for an event).
  *
  * Two verbs, both the owner's, neither of them a version of anything: the
- * title, and dropping the collection. There is no picture to set: the card's
- * mosaic is read off the items themselves. Only the second verb is
+ * details the collection states about itself (its title and its description,
+ * written together), and dropping the collection. There is no picture to set:
+ * the card's mosaic is read off the items themselves. Only the second verb is
  * destructive, so only it is red, behind the two-click confirm every
  * destructive control on the site takes. The events a dropped collection held
  * are untouched, which is what the confirm's own label says.
@@ -45,21 +46,22 @@ export function useCollectionActions({
 }: {
   collection: Collection | null;
   isOwner: boolean;
-  /** Runs after a write that changes the header (a rename), so the page
-   *  re-reads it: the response carries the new row, but the count, the range
-   *  and the item list are read elsewhere. */
+  /** Runs after a write that changes the header (an edit of the details), so
+   *  the page re-reads it: the response carries the new row, but the count,
+   *  the range and the item list are read elsewhere. */
   onChanged: () => void;
   /** Runs once the collection is gone. */
   onDeleted: () => void;
 }): { actions: ReactNode; panels: ReactNode } {
-  const [renaming, setRenaming] = useState(false);
+  const [editing, setEditing] = useState(false);
 
-  const rename = useMutation(
-    (title: string) => renameCollection(collection?.id ?? "", title),
+  const save = useMutation(
+    (title: string, description: string) =>
+      updateCollection(collection?.id ?? "", title, description),
     {
-      fallback: "Failed to rename the collection",
+      fallback: "Failed to save the collection's details",
       onSuccess: () => {
-        setRenaming(false);
+        setEditing(false);
         onChanged();
       },
     },
@@ -85,7 +87,7 @@ export function useCollectionActions({
   // The panel belongs to the collection on screen, and this hook survives a
   // client navigation from one collection to the next.
   useEffect(() => {
-    setRenaming(false);
+    setEditing(false);
   }, [collection?.id]);
 
   if (!collection || !isOwner) return { actions: null, panels: null };
@@ -102,12 +104,12 @@ export function useCollectionActions({
         <Button
           icon
           variant="ghost"
-          onClick={() => setRenaming((open) => !open)}
-          aria-controls={RENAME_PANEL_ID}
-          aria-expanded={renaming}
-          aria-label="Rename this collection"
-          title="Rename this collection"
-          className={renaming ? ACCENT_SURFACE : ""}
+          onClick={() => setEditing((open) => !open)}
+          aria-controls={DETAILS_PANEL_ID}
+          aria-expanded={editing}
+          aria-label="Edit this collection's details"
+          title="Edit this collection's details"
+          className={editing ? ACCENT_SURFACE : ""}
         >
           <Pencil size={14} />
         </Button>
@@ -129,17 +131,20 @@ export function useCollectionActions({
     ),
     panels: (
       <>
-        {renaming && (
-          <div id={RENAME_PANEL_ID}>
+        {editing && (
+          <div id={DETAILS_PANEL_ID}>
             <Card as="section">
-              <SectionEyebrow title="Rename this collection" margin="none" />
-              <CollectionTitleForm
+              <SectionEyebrow title="Edit details" margin="none" />
+              <CollectionDetailsForm
                 initialTitle={collection.title}
-                submitLabel="Save title"
-                busy={rename.loading}
-                error={rename.error}
-                onSubmit={(title) => void rename.run(title)}
-                onCancel={() => setRenaming(false)}
+                initialDescription={collection.description}
+                submitLabel="Save details"
+                busy={save.loading}
+                error={save.error}
+                onSubmit={(title, description) =>
+                  void save.run(title, description)
+                }
+                onCancel={() => setEditing(false)}
               />
             </Card>
           </div>

@@ -329,6 +329,7 @@ def build_collection_reads(db: Session, collections: Sequence[Collection]) -> li
             id=collection.id,
             owner=collection.owner,
             title=collection.title,
+            description=collection.description,
             cover=tiles.get(collection.id, []),
             event_count=stats_of(stats, collection.id).event_count,
             first_date=stats_of(stats, collection.id).first_date,
@@ -366,19 +367,27 @@ def resolve_collection(db: Session, *, collection_id: uuid.UUID, viewer: User | 
     return collection
 
 
-def create_collection(db: Session, *, owner: User, title: str) -> Collection:
-    """Open a new, empty collection for ``owner``."""
-    collection = Collection(owner_id=owner.id, title=title)
+def create_collection(db: Session, *, owner: User, title: str, description: str) -> Collection:
+    """Open a new, empty collection for ``owner``, named and described."""
+    collection = Collection(owner_id=owner.id, title=title, description=description)
     db.add(collection)
     db.commit()
     db.refresh(collection)
     return collection
 
 
-def rename_collection(db: Session, *, collection: Collection, user: User, title: str) -> Collection:
-    """Give ``collection`` a new title. 403 for anyone but the owner."""
+def update_collection_details(
+    db: Session, *, collection: Collection, user: User, title: str, description: str
+) -> Collection:
+    """Write ``collection``'s title and description. 403 for anyone but the owner.
+
+    One verb for the pair rather than one per field: they are what the
+    collection says about itself, the edit panel carries both, and saving them
+    together is what keeps a renamed collection from describing the old one.
+    """
     ensure_owner(collection, user)
     collection.title = title
+    collection.description = description
     db.commit()
     db.refresh(collection)
     return collection

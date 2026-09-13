@@ -1,26 +1,58 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.event import TITLE_MAX_LENGTH
 from app.models.media import MediaType
 from app.schemas.user import AuthorRef
 
+# How long a collection's description may be. The profile bio's figure for the
+# same class of text, a short plain-text blurb, kept as its own constant
+# because the two are separate concepts: one says who an analyst is, the other
+# says what one collection holds.
+DESCRIPTION_MAX_LENGTH = 500
 
-class CollectionCreate(BaseModel):
-    """Body of ``POST /collections``. The title is the only field a collection
-    carries: items order themselves by when their events happened, so there is
-    no description and no manual order to submit."""
+
+class CollectionWrite(BaseModel):
+    """The fields a collection carries, as a create or an update sends them.
+
+    Both write bodies take the same pair, so opening a collection and editing
+    one cannot drift apart on a cap or on what counts as blank. The
+    description is required: a collection says what it holds, in the same
+    class of plain text as the profile bio.
+    """
 
     title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH)
+    description: str = Field(min_length=1, max_length=DESCRIPTION_MAX_LENGTH)
+
+    @field_validator("description")
+    @classmethod
+    def _description(cls, v: str) -> str:
+        """Strip surrounding whitespace, and refuse what is left empty.
+
+        The bio's normalisation (``schemas/user._normalise_optional``) without
+        its empty-to-None branch, which belongs to an optional field: a
+        description of spaces is a missing description, and the field is
+        required, so it is a 422 rather than a stored blank.
+        """
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("description must not be empty")
+        return cleaned
 
 
-class CollectionUpdate(BaseModel):
-    """Body of ``PATCH /collections/{id}``. The title is the only mutable
-    field, under the same cap the create takes."""
+class CollectionCreate(CollectionWrite):
+    """Body of ``POST /collections``: the title and the description. Items
+    order themselves by when their events happened, so there is no manual
+    order to submit."""
 
-    title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH)
+
+class CollectionUpdate(CollectionWrite):
+    """Body of ``PATCH /collections/{id}``: the title and the description
+    together, under the caps the create takes. Both are sent on every edit,
+    so one request states what the collection is rather than leaving the two
+    fields to be saved apart."""
 
 
 class CollectionCoverTile(BaseModel):
@@ -38,6 +70,10 @@ class CollectionCoverTile(BaseModel):
 
 class CollectionRead(BaseModel):
     """One collection as every read surface renders it.
+
+    ``title`` and ``description`` are the two free-text fields the owner
+    writes, both required: the name of the collection and one short paragraph
+    saying what it holds.
 
     ``event_count``, ``first_date`` and ``last_date`` are computed at read
     time over the events the collection may show
@@ -63,6 +99,7 @@ class CollectionRead(BaseModel):
     id: uuid.UUID
     owner: AuthorRef
     title: str
+    description: str
     cover: list[CollectionCoverTile]
     event_count: int
     first_date: date | None
@@ -92,7 +129,8 @@ class CollectionMembershipRead(BaseModel):
 
     The add-to-collection popover's row. Thinner than :class:`CollectionRead`:
     the popover names a collection, shows a checked state and says how much
-    the collection already holds, so it carries no mosaic and no date range.
+    the collection already holds, so it carries no description, no mosaic and
+    no date range.
 
     ``event_count`` is computed over the same predicate
     (``services/event_filters.collectable_events``) the collection reads use,

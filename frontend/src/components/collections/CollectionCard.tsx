@@ -10,8 +10,9 @@ import {
 } from "@/lib/collections";
 
 /**
- * One collection on the profile's grid: the mosaic, the title, and the meta
- * line the collection's own page prints under its heading.
+ * One collection on the profile's grid: the mosaic, the title, the description
+ * clamped to two lines, and the meta line the collection's own page prints
+ * under its heading.
  *
  * The catalogue click model, the one every row on the site uses: the whole card
  * is a stretched link to the collection, and nothing inside it competes for the
@@ -49,6 +50,12 @@ export function CollectionCard({ collection }: { collection: Collection }) {
           <h3 className="line-clamp-2 text-sm font-medium text-neutral-100 group-hover:text-orange-400">
             {collection.title}
           </h3>
+          {/* What the collection says it holds, clamped to two lines: a card
+              is one row of a grid, and the collection's own page carries the
+              description whole. */}
+          <p className="line-clamp-2 text-xs text-neutral-400">
+            {collection.description}
+          </p>
           <CollectionMetaLine collection={collection} />
         </div>
       </div>
