@@ -28,6 +28,7 @@ from shapely.geometry import Point
 
 from app.database import SessionLocal
 from app.main import app
+from app.models.collection import Collection, CollectionEvent
 from app.models.event import STATUS_DETECTED, STATUS_REQUESTED, Event
 from app.models.media import Media
 from app.models.user import User
@@ -105,7 +106,8 @@ def test_empty_query_returns_empty_groups(caller):
     assert body["geolocations"] == []
     assert body["requests"] == []
     assert body["users"] == []
-    assert body["total"] == {"geolocations": 0, "requests": 0, "users": 0}
+    assert body["collections"] == []
+    assert body["total"] == {"geolocations": 0, "requests": 0, "collections": 0, "users": 0}
     assert body["query"] == ""
     assert body["type"] == "all"
 
@@ -113,7 +115,9 @@ def test_empty_query_returns_empty_groups(caller):
 def test_whitespace_only_query_returns_empty_groups(caller):
     response = client.get("/api/v1/search?q=%20%20%20", headers=login_as(client, caller))
     assert response.status_code == 200
-    assert all(response.json()[k] == [] for k in ("geolocations", "requests", "users"))
+    assert all(
+        response.json()[k] == [] for k in ("geolocations", "requests", "collections", "users")
+    )
 
 
 def test_invalid_type_returns_422(caller):
@@ -514,12 +518,164 @@ def test_search_excludes_soft_deleted_users(db, caller):
         db.commit()
 
 
+# ── Collections ───────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def seed_collection(db, caller):
+    """Open a collection, optionally with one showable event on it.
+
+    The item's own title carries no test token, so a collection test measures
+    the collections group alone and never pulls its own item into the
+    geolocations group beside it. Both rows are dropped afterwards; the
+    membership goes with the collection through the cascade.
+    """
+    made: list[tuple[uuid.UUID, uuid.UUID | None]] = []
+
+    def _make(title, description, *, owner=None, empty=False, hidden=False):
+        collection = Collection(
+            owner_id=(owner or caller).id,
+            title=title,
+            description=description,
+            hidden_at=datetime.now(UTC) if hidden else None,
+        )
+        db.add(collection)
+        db.flush()
+        collection_id = collection.id
+        event_id = None
+        if not empty:
+            event_id = _seed_geo(db, owner or caller, f"Item {uuid.uuid4().hex[:8]}")
+            db.add(CollectionEvent(collection_id=collection_id, event_id=event_id))
+        db.commit()
+        made.append((collection_id, event_id))
+        return collection_id
+
+    yield _make
+    db.expire_all()
+    for collection_id, event_id in made:
+        db.query(Collection).filter(Collection.id == collection_id).delete(
+            synchronize_session=False
+        )
+        if event_id is not None:
+            db.query(Event).filter(Event.id == event_id).delete(synchronize_session=False)
+    db.commit()
+
+
+def test_search_matches_collection_by_title(caller, seed_collection):
+    """A title hit comes back as the card every collection surface renders:
+    the read payload whole, counts and mosaic included."""
+    token = _unique_token()
+    collection_id = seed_collection(f"Sites around {token}", "What this one holds.")
+    response = client.get(
+        f"/api/v1/search?q={token}&type=collection",
+        headers=login_as(client, caller),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert [hit["id"] for hit in body["collections"]] == [str(collection_id)]
+    assert body["total"]["collections"] == 1
+    hit = body["collections"][0]
+    assert hit["owner"]["username"] == caller.username
+    assert hit["event_count"] == 1
+    assert hit["description"] == "What this one holds."
+
+
+def test_search_matches_collection_by_description(caller, seed_collection):
+    """The document is the title and the description, so a word only the
+    description carries finds the collection."""
+    token = _unique_token()
+    collection_id = seed_collection("A plain name", f"Everything about {token}.")
+    response = client.get(f"/api/v1/search?q={token}&type=collection")
+    assert [hit["id"] for hit in response.json()["collections"]] == [str(collection_id)]
+
+
+def test_search_excludes_hidden_collections(caller, seed_collection):
+    """A withheld collection is out of search, as it is out of every read but
+    an admin's by id."""
+    token = _unique_token()
+    seed_collection(f"Withheld {token}", "Taken down.", hidden=True)
+    response = client.get(f"/api/v1/search?q={token}&type=collection")
+    assert response.json()["collections"] == []
+    assert response.json()["total"]["collections"] == 0
+
+
+def test_search_excludes_empty_collections(caller, seed_collection):
+    """A collection with nothing showable on it stays out, the rule a visitor
+    reading a profile already gets: a card that opens on an empty shelf."""
+    token = _unique_token()
+    seed_collection(f"Nothing on it {token}", "Still scaffolding.", empty=True)
+    response = client.get(f"/api/v1/search?q={token}&type=collection")
+    assert response.json()["collections"] == []
+
+
+def test_search_type_collection_returns_only_that_group(db, caller, seed_collection):
+    """``type=collection`` answers with the collections group and empty arrays
+    for the rest, the stable shape every other scope keeps."""
+    token = _unique_token()
+    collection_id = seed_collection(f"Shelf {token}", "One shelf.")
+    geo = _seed_geo(db, caller, f"Geo {token}")
+    try:
+        response = client.get(f"/api/v1/search?q={token}&type=collection")
+        body = response.json()
+        assert [hit["id"] for hit in body["collections"]] == [str(collection_id)]
+        assert body["geolocations"] == []
+        assert body["requests"] == []
+        assert body["users"] == []
+        assert body["type"] == "collection"
+    finally:
+        db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_author_filter_narrows_collections_to_that_owner(db, caller, other_author, seed_collection):
+    """``author`` names an analyst, which a collection carries: the group is
+    scoped to that owner rather than emptied."""
+    token = _unique_token()
+    mine = seed_collection(f"Mine {token}", "Owned by the caller.")
+    seed_collection(f"Theirs {token}", "Owned by somebody else.", owner=other_author)
+    response = client.get(f"/api/v1/search?q={token}&author={caller.username}")
+    body = response.json()
+    assert [hit["id"] for hit in body["collections"]] == [str(mine)]
+    assert body["total"]["collections"] == 1
+
+
+def test_event_filter_empties_the_collections_group(caller, seed_collection):
+    """Every filter but ``author`` is a predicate on an event, which a
+    collection does not carry, so it empties the group rather than reading as
+    if it applied."""
+    token = _unique_token()
+    seed_collection(f"Shelf {token}", "One shelf.")
+    response = client.get(f"/api/v1/search?q={token}&status=geolocated")
+    assert response.json()["collections"] == []
+    assert response.json()["total"]["collections"] == 0
+
+
+def test_collection_fts_query_uses_the_gin_index(db):
+    """The ORM-built collection tsvector must stay expression-tree-equal to
+    the migration's GIN index expression, the same pin the events one takes:
+    a drift is silent, and shows only as a sequential scan."""
+    from sqlalchemy import func as safunc
+    from sqlalchemy import text as satext
+
+    from app.services import search as search_service
+
+    tsquery = safunc.plainto_tsquery(search_service._TS_CONFIG, "depot")
+    stmt = db.query(Collection.id).filter(search_service._collection_tsvector().op("@@")(tsquery))
+    compiled = stmt.statement.compile(db.get_bind(), compile_kwargs={"literal_binds": True})
+    db.execute(satext("SET enable_seqscan = off"))
+    try:
+        plan = "\n".join(row[0] for row in db.execute(satext(f"EXPLAIN {compiled}")))
+    finally:
+        db.execute(satext("RESET enable_seqscan"))
+    assert "ix_collections_search_fts" in plan, plan
+
+
 # ── Grouped (type=all) ────────────────────────────────────────────────────
 
 
-def test_search_type_all_returns_three_groups(db, caller):
+def test_search_type_all_returns_every_group(db, caller, seed_collection):
     token = _unique_token()
-    # Plant one matching row per entity so we can prove all three
+    # Plant one matching row per entity so we can prove all four
     # branches fire on type=all without depending on pre-existing dev-DB rows.
     geo = Event(
         owner_id=caller.id,
@@ -555,6 +711,7 @@ def test_search_type_all_returns_three_groups(db, caller):
     )
     db.commit()
     geo_id, request_id, user_id = geo.id, request.id, user.id
+    collection_id = seed_collection(f"Shelf {token}", "One shelf.")
     try:
         response = client.get(
             f"/api/v1/search?q={token}&type=all",
@@ -567,7 +724,13 @@ def test_search_type_all_returns_three_groups(db, caller):
         assert [h["id"] for h in body["geolocations"]] == [str(geo_id)]
         assert [h["id"] for h in body["requests"]] == [str(request_id)]
         assert [h["id"] for h in body["users"]] == [str(user_id)]
-        assert body["total"] == {"geolocations": 1, "requests": 1, "users": 1}
+        assert [h["id"] for h in body["collections"]] == [str(collection_id)]
+        assert body["total"] == {
+            "geolocations": 1,
+            "requests": 1,
+            "collections": 1,
+            "users": 1,
+        }
         assert body["query"] == token
         assert body["type"] == "all"
     finally:
@@ -859,7 +1022,9 @@ def test_author_with_empty_query_browses_the_authors_view(db, caller, other_auth
 def test_author_unknown_returns_empty_groups(caller):
     response = client.get("/api/v1/search?author=no-such-analyst-here")
     assert response.status_code == 200
-    assert all(response.json()[k] == [] for k in ("geolocations", "requests", "users"))
+    assert all(
+        response.json()[k] == [] for k in ("geolocations", "requests", "collections", "users")
+    )
 
 
 def test_author_rejects_malformed_username():

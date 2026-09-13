@@ -154,12 +154,15 @@ def _items_of(collection_id: uuid.UUID) -> tuple[ColumnElement[bool], ...]:
     return (CollectionEvent.collection_id == collection_id, collectable_events())
 
 
-def _has_showable_item() -> ColumnElement[bool]:
+def has_showable_item() -> ColumnElement[bool]:
     """Correlated EXISTS: this collection holds at least one showable event.
 
     An EXISTS rather than a count, because the list only asks whether a
     collection is empty. Applied to the rows and to the ``total`` alike, so a
     pager over a stranger's profile never counts a collection the list drops.
+    The search group reads it too (``services/search.search_collections``), so
+    an empty collection is missing from a result list on the same terms it is
+    missing from a profile.
     """
     return (
         select(1)
@@ -535,7 +538,7 @@ def list_owned_collections(
     query = db.query(Collection).options(joinedload(Collection.owner))
     query = query.filter(Collection.owner_id == owner_id, Collection.hidden_at.is_(None))
     if not include_empty:
-        query = query.filter(_has_showable_item())
+        query = query.filter(has_showable_item())
     total = query.count()
     rows = (
         query.order_by(Collection.created_at.desc(), Collection.id.desc())

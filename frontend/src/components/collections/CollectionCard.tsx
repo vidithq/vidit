@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { Layers } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { CollectionCover } from "@/components/collections/CollectionCover";
+import { AuthorByline } from "@/components/ui/AuthorByline";
 import { ACCENT_SURFACE, TAPPABLE_HOVER } from "@/components/ui/styles";
 import {
   collectionHref,
@@ -23,7 +25,17 @@ import {
  * since it is the collection's own picture rather than a thumbnail of one
  * item.
  */
-export function CollectionCard({ collection }: { collection: Collection }) {
+export function CollectionCard({
+  collection,
+  showOwner = false,
+}: {
+  collection: Collection;
+  /** Lead the meta line with the owner's handle. Off on the profile, where
+   *  every card on the page belongs to the analyst the page names; on for a
+   *  search result, which stands beside other analysts' collections and where
+   *  nothing else says whose shelf this is. */
+  showOwner?: boolean;
+}) {
   return (
     <div
       className={`group relative flex flex-col gap-3 rounded-md border border-neutral-800 bg-neutral-900 p-3 ${TAPPABLE_HOVER}`}
@@ -56,7 +68,7 @@ export function CollectionCard({ collection }: { collection: Collection }) {
           <p className="line-clamp-2 text-xs text-neutral-400">
             {collection.description}
           </p>
-          <CollectionMetaLine collection={collection} />
+          <CollectionMetaLine collection={collection} owner={showOwner} />
         </div>
       </div>
     </div>
@@ -70,28 +82,51 @@ export function CollectionCard({ collection }: { collection: Collection }) {
  *
  * Each segment holds together on its own line, the profile metadata line's
  * rule, so the row wraps between segments rather than inside a date at 375px.
+ *
+ * `owner` leads with the byline, the catalogue card's own meta grammar
+ * (`by @user` first, then the readings), for the one surface where a
+ * collection stands beside other analysts': the search results.
  */
 export function CollectionMetaLine({
   collection,
   className = "text-[11px]",
+  owner = false,
 }: {
   collection: Collection;
   /** The host's own type size: `text-[11px]` on a card, `text-xs` on the page
    *  header where it sits under a heading rather than inside a row. */
   className?: string;
+  /** Lead with `by @user`. Off wherever the surface already names the owner. */
+  owner?: boolean;
 }) {
+  const segments: { key: string; node: ReactNode }[] = [
+    // The card is one stretched link, so the handle is text rather than a
+    // second anchor the mouse and the keyboard would disagree about.
+    ...(owner
+      ? [
+          {
+            key: "owner",
+            node: <AuthorByline author={collection.owner} link={false} />,
+          },
+        ]
+      : []),
+    ...collectionMetaSegments(collection).map((segment) => ({
+      key: segment,
+      node: segment,
+    })),
+  ];
   return (
     <p
       className={`flex flex-wrap items-center text-neutral-500 ${className}`}
     >
-      {collectionMetaSegments(collection).map((segment, i) => (
-        <span key={segment} className="whitespace-nowrap">
+      {segments.map(({ key, node }, i) => (
+        <span key={key} className="whitespace-nowrap">
           {i > 0 && (
             <span aria-hidden="true" className="px-1.5 text-neutral-700">
               ·
             </span>
           )}
-          {segment}
+          {node}
         </span>
       ))}
     </p>

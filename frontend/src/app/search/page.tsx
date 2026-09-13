@@ -10,7 +10,8 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { MapPin, Search as SearchIcon, Users } from "lucide-react";
+import { Layers, MapPin, Search as SearchIcon, Users } from "lucide-react";
+import { CollectionCard } from "@/components/collections/CollectionCard";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { AUTHOR_FILTER_RE, search, splitHighlights } from "@/lib/search";
 import { Avatar } from "@/components/ui/Avatar";
@@ -56,6 +57,7 @@ import { Pill } from "@/components/ui/Pill";
 const TYPE_FILTERS: { value: SearchType; label: string; icon?: ReactNode }[] = [
   { value: "all", label: "All" },
   { value: "event", label: "Events", icon: <MapPin size={11} /> },
+  { value: "collection", label: "Collections", icon: <Layers size={11} /> },
   { value: "user", label: "Analysts", icon: <Users size={11} /> },
 ];
 
@@ -235,7 +237,10 @@ function SearchPageBody() {
   const totalHits = useMemo(() => {
     if (!results) return 0;
     return (
-      results.total.geolocations + results.total.requests + results.total.users
+      results.total.geolocations +
+      results.total.requests +
+      results.total.collections +
+      results.total.users
     );
   }, [results]);
 
@@ -259,9 +264,13 @@ function SearchPageBody() {
     setTypeFilter(t);
   };
 
-  const showGroup = (group: "geolocation" | "request" | "user"): boolean => {
+  const showGroup = (
+    group: "geolocation" | "request" | "collection" | "user"
+  ): boolean => {
     if (typeFilter === "all") return true;
-    if (typeFilter === "event") return group !== "user";
+    // The Events scope is the two event groups: a collection is not an event,
+    // and the filter panel the scope opens describes none of one.
+    if (typeFilter === "event") return group === "geolocation" || group === "request";
     return typeFilter === group;
   };
 
@@ -374,7 +383,8 @@ function SearchPageBody() {
             start-typing prompt for a debounce window. */}
         {!queryInput.trim() && !hasActiveFilters && (
           <EmptyState>
-            Start typing to search across geolocations, requests and analysts.
+            Start typing to search across geolocations, requests, collections
+            and analysts.
           </EmptyState>
         )}
 
@@ -419,6 +429,29 @@ function SearchPageBody() {
                 {results.requests.map((r) => (
                   <RequestResult key={r.id} hit={r} />
                 ))}
+              </ResultGroup>
+            )}
+
+            {showGroup("collection") && results.collections.length > 0 && (
+              <ResultGroup
+                title="Collections"
+                count={results.total.collections}
+              >
+                {/* The profile's grid, so a mosaic stands at a card's width
+                    rather than as a banner across the page. One column on a
+                    phone, the rule the profile's grid keeps. */}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {results.collections.map((collection) => (
+                    // The profile's card, with the byline it hides there: a
+                    // result stands beside other analysts' shelves, so the hit
+                    // says whose this is.
+                    <CollectionCard
+                      key={collection.id}
+                      collection={collection}
+                      showOwner
+                    />
+                  ))}
+                </div>
               </ResultGroup>
             )}
 

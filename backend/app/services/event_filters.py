@@ -181,16 +181,28 @@ STATUSES = frozenset({STATUS_REQUESTED, STATUS_DETECTED, STATUS_GEOLOCATED, STAT
 VIEWS = frozenset({"located", "requested"})
 
 
-def apply_author_filter(query: SAQuery, author: str) -> SAQuery:
-    """Join the owner and match the username exactly (case-insensitive).
+def owner_username_matches(author: str) -> ColumnElement[bool]:
+    """The ``?author=`` predicate on a joined :class:`User` row.
 
     Exact, not substring: the filter means "this analyst's work", and the
     surfaces pick the value from real usernames (the author typeahead, the
     profile's links into search: every Insights tile and "Show more"), so
-    ``?author=ana`` must not sweep in every handle containing "ana". Callers gate ``author`` through
-    :data:`AUTHOR_FILTER_PATTERN` (a ``Query(pattern=...)``).
+    ``?author=ana`` must not sweep in every handle containing "ana". Callers
+    gate ``author`` through :data:`AUTHOR_FILTER_PATTERN` (a
+    ``Query(pattern=...)``).
+
+    A predicate rather than a whole query leg because two surfaces own
+    different joins to the same user: the event groups reach the owner off
+    ``Event.owner`` (:func:`apply_author_filter`), the collections group off
+    ``Collection.owner`` (``services/search.search_collections``). One home for
+    what "this analyst" means, so the two cannot end up matching differently.
     """
-    return query.join(Event.owner).filter(func.lower(User.username) == author.lower())
+    return func.lower(User.username) == author.lower()
+
+
+def apply_author_filter(query: SAQuery, author: str) -> SAQuery:
+    """Join the event's owner and match the username with the shared predicate."""
+    return query.join(Event.owner).filter(owner_username_matches(author))
 
 
 def view_predicate(view: str):
@@ -445,3 +457,13 @@ class EventFilters:
     @property
     def active(self) -> bool:
         return any(getattr(self, f.name) for f in fields(self))
+
+    @property
+    def active_beyond_author(self) -> bool:
+        """True when a filter other than ``author`` narrows the view.
+
+        ``author`` names an analyst, every other filter names a property of an
+        event. The collections group of search reads this to tell the two
+        apart: it can honour "this analyst's collections", and it empties on
+        any filter it cannot answer (``services/search.search_all``)."""
+        return any(getattr(self, f.name) for f in fields(self) if f.name != "author")

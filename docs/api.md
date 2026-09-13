@@ -58,7 +58,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | PUT | `/collections/{id}/events/{event_id}` | 🔒 | Put one of your events on it (idempotent) |
 | DELETE | `/collections/{id}/events/{event_id}` | 🔒 | Take one event off it (idempotent) |
 | **Search** | | | |
-| GET | `/search` | 🌐 | Free-text search across geolocations / requests / users |
+| GET | `/search` | 🌐 | Free-text search across geolocations / requests / collections / users |
 | GET | `/search/authors` | 🌐 | Username typeahead for the author filter |
 | **Tags** | | | |
 | GET | `/tags` | 🌐 | List tags (defaults to ones referenced by live geos) |
@@ -1178,9 +1178,9 @@ There is no `/requests` router. A **request** is a `requested` event, a **geoloc
 
 ## Search
 
-Slice-1 full-text discovery surface across the three first-class entity types. Backed by two Postgres GIN indexes on `to_tsvector('simple', …)` expressions: one over `events.title` and one over `users.username || ' ' || users.bio` (migration `o1j3k5l7m9n1`). One FTS query path serves the single `events` table. The located (`geolocations`) and requested (`requests`) groups run the same `title` index with different `WHERE` clauses (`status IN ('geolocated', 'detected') AND event_coords IS NOT NULL` vs `status = 'requested'`). The `simple` dictionary keeps matching predictable. The response is still grouped by entity type.
+Full-text discovery surface across the four result groups. Backed by three Postgres GIN indexes on `to_tsvector('simple', …)` expressions: one over `events.title` and one over `users.username || ' ' || users.bio` (migration `o1j3k5l7m9n1`), one over `collections.title || ' ' || collections.description` (migration `q5s7u9w1y3a5`). One FTS query path serves the single `events` table. The located (`geolocations`) and requested (`requests`) groups run the same `title` index with different `WHERE` clauses (`status IN ('geolocated', 'detected') AND event_coords IS NOT NULL` vs `status = 'requested'`). The `simple` dictionary keeps matching predictable. The response is grouped by entity type.
 
-**Out of scope for slice 1:** searching `source_url`, JSONB-content search (`events.proof`), per-group infinite scroll, and the filter chips beyond the entity-type pick.
+**Out of scope:** searching `source_url`, JSONB-content search (`events.proof`), and per-group infinite scroll.
 
 ### `GET /search` 🌐
 
@@ -1188,11 +1188,13 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
 | Param | Type | Description |
 |-------|------|-------------|
 | `q` | string | Free-text query. Empty / whitespace-only short-circuits to empty groups (unless a filter is active). |
-| `type` | enum | `all` (default), `event` (the two event groups: what the search page's unified "Events" chip sends), `geolocation`, `request`, or `user`. Anything else → 422. |
+| `type` | enum | `all` (default), `event` (the two event groups: what the search page's unified "Events" chip sends), `geolocation`, `request`, `collection`, or `user`. Anything else → 422. |
 | `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
 | *filter set* | | The standard event filter set, same names and semantics as [`GET /events`](#get-events): `status`, `conflict`, `capture_source`, `tag`, `media` (repeatable), `event_date_from` / `event_date_to`, `submitted_from` / `submitted_to`, `author`. Scopes the two event groups (a `status` value a group's view can't contain empties that group). |
 
-Any active filter empties the users group: the filters are event predicates, and an unfiltered analyst list next to a filtered event view would read as if the filter applied. With an empty `q` and at least one active filter, the API enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight (the profile's "Show more" entry point). Typing then narrows within it.
+Any active filter empties the users group: the filters are event predicates, and an unfiltered analyst list next to a filtered event view would read as if the filter applied. The collections group takes the same rule with one exception, `author`: a collection carries an owner, so the filter narrows the group to that analyst's collections instead of emptying it. With an empty `q` and at least one active filter, the API enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight (the profile's "Show more" entry point). Typing then narrows within it. Browse mode is the event groups alone: a collection is matched by text, so an empty `q` leaves that group empty whatever the filters say.
+
+**The collections group** matches a query against the collection's title and description as one document, ranked the same way, and each hit is the full [`CollectionRead`](#get-collectionsid) the profile card and the collection page both render (mosaic, `event_count`, date range, owner). It carries no `*_highlight` field: the card prints the collection's own text. A collection appears only where a reader could already see it on a profile, so a withheld collection, one whose owner is soft-deleted, and one holding nothing showable are all absent.
 
 **Ranking:** `ts_rank` descending then `created_at` descending as a stable tie-breaker.
 
@@ -1229,6 +1231,19 @@ Any active filter empties the users group: the filters are event predicates, and
       "tags": []
     }
   ],
+  "collections": [
+    {
+      "id": "uuid",
+      "owner": { "id": "uuid", "username": "kharkiv_osint" },
+      "title": "Kharkiv strikes, spring 2026",
+      "description": "Every strike placed inside the city over March and April.",
+      "cover": [{ "url": "…", "media_type": "image" }],
+      "event_count": 12,
+      "first_date": "2026-03-02",
+      "last_date": "2026-04-28",
+      "created_at": "2026-05-02T09:00:00Z"
+    }
+  ],
   "users": [
     {
       "id": "uuid",
@@ -1239,7 +1254,7 @@ Any active filter empties the users group: the filters are event predicates, and
       "avatar_url": null
     }
   ],
-  "total": { "geolocations": 1, "requests": 1, "users": 1 },
+  "total": { "geolocations": 1, "requests": 1, "collections": 1, "users": 1 },
   "query": "kharkiv",
   "type": "all"
 }
@@ -1249,7 +1264,7 @@ Any active filter empties the users group: the filters are event predicates, and
 
 `bio_highlight` is `null` when only the username matched. The UI uses this to hide the snippet block instead of rendering an unhighlighted bio. Groups you didn't request via `type=` come back as empty arrays.
 
-`total` is a fixed-key object (`geolocations`, `requests`, `users`), each the pre-LIMIT match count for its group (so the UI renders "3 of 142", not "3 of 3"). `type` echoes the request and is one of `all`, `geolocation`, `request`, `user`.
+`total` is a fixed-key object (`geolocations`, `requests`, `collections`, `users`), each the pre-LIMIT match count for its group (so the UI renders "3 of 142", not "3 of 3"). `type` echoes the request and is one of `all`, `event`, `geolocation`, `request`, `collection`, `user`.
 
 **Errors:**
 | Code | Case |

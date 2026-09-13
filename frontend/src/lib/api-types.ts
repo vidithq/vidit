@@ -1345,7 +1345,7 @@ export interface paths {
         };
         /**
          * Search
-         * @description Grouped FTS across the three first-class entity types.
+         * @description Grouped FTS across the four result groups.
          *
          *     Empty / whitespace-only ``q`` returns an empty response — keeps the
          *     "user is still typing" hits cheap. The frontend debounces the
@@ -1353,9 +1353,10 @@ export interface paths {
          *     the cheap short-circuit is robust against accidental load.
          *
          *     Any active filter scopes the event groups and empties the users group;
-         *     with an empty ``q`` the response browses the filtered view (the
-         *     profile's "Show more" entry point). Filter semantics are the shared
-         *     ones (see ``services/event_filters.apply_filters``).
+         *     ``author`` narrows the collections group to that owner and every other
+         *     filter empties it. With an empty ``q`` the response browses the filtered
+         *     view (the profile's "Show more" entry point). Filter semantics are the
+         *     shared ones (see ``services/event_filters.apply_filters``).
          */
         get: operations["search_api_v1_search_get"];
         put?: never;
@@ -3170,6 +3171,8 @@ export interface components {
          *     ``type=`` — keeps the JSON shape stable so the frontend skips conditional access.
          */
         SearchResponse: {
+            /** Collections */
+            collections: components["schemas"]["CollectionRead"][];
             /** Geolocations */
             geolocations: components["schemas"]["SearchEventHit"][];
             /** Query */
@@ -3181,16 +3184,19 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "all" | "event" | "geolocation" | "request" | "user";
+            type: "all" | "event" | "geolocation" | "request" | "collection" | "user";
             /** Users */
             users: components["schemas"]["SearchUserHit"][];
         };
         /**
          * SearchTotals
          * @description Per-group pre-LIMIT match counts, so the UI renders "12 geolocations, 4
-         *     requests, 1 analyst" without re-summing the (LIMIT-capped) hit lists.
+         *     requests, 2 collections, 1 analyst" without re-summing the (LIMIT-capped)
+         *     hit lists.
          */
         SearchTotals: {
+            /** Collections */
+            collections: number;
             /** Geolocations */
             geolocations: number;
             /** Requests */
@@ -5337,7 +5343,7 @@ export interface operations {
             query?: {
                 /** @description Free-text query (empty returns an empty result set) */
                 q?: string;
-                /** @description One of 'all', 'geolocation', 'request', 'user' */
+                /** @description One of 'all', 'event', 'geolocation', 'request', 'collection', 'user' */
                 type?: string;
                 /** @description Per-group cap */
                 limit?: number;

@@ -1,4 +1,4 @@
-"""``GET /search``: full-text search across geolocations, requests, users.
+"""``GET /search``: full-text search across geolocations, requests, collections, users.
 
 Single endpoint, single query box, grouped response. See
 ``services/search.py`` for the FTS plumbing. Anonymous, like the rest of the
@@ -37,7 +37,7 @@ def search(
     q: str = Query("", description="Free-text query (empty returns an empty result set)"),
     type: str = Query(
         "all",
-        description="One of 'all', 'geolocation', 'request', 'user'",
+        description="One of 'all', 'event', 'geolocation', 'request', 'collection', 'user'",
     ),
     limit: int = Query(20, ge=1, le=50, description="Per-group cap"),
     # The standard event filter set (same vocabulary as /events and
@@ -59,7 +59,7 @@ def search(
     media: list[str] | None = Query(None),
     db: Session = Depends(get_db),
 ) -> SearchResponse:
-    """Grouped FTS across the three first-class entity types.
+    """Grouped FTS across the four result groups.
 
     Empty / whitespace-only ``q`` returns an empty response — keeps the
     "user is still typing" hits cheap. The frontend debounces the
@@ -67,9 +67,10 @@ def search(
     the cheap short-circuit is robust against accidental load.
 
     Any active filter scopes the event groups and empties the users group;
-    with an empty ``q`` the response browses the filtered view (the
-    profile's "Show more" entry point). Filter semantics are the shared
-    ones (see ``services/event_filters.apply_filters``).
+    ``author`` narrows the collections group to that owner and every other
+    filter empties it. With an empty ``q`` the response browses the filtered
+    view (the profile's "Show more" entry point). Filter semantics are the
+    shared ones (see ``services/event_filters.apply_filters``).
     """
     if type not in search_service.ALLOWED_TYPES:
         raise HTTPException(
@@ -100,10 +101,12 @@ def search(
     return SearchResponse(
         geolocations=grouped["geolocations"]["hits"],
         requests=grouped["requests"]["hits"],
+        collections=grouped["collections"]["hits"],
         users=grouped["users"]["hits"],
         total=SearchTotals(
             geolocations=grouped["geolocations"]["total"],
             requests=grouped["requests"]["total"],
+            collections=grouped["collections"]["total"],
             users=grouped["users"]["total"],
         ),
         query=q,

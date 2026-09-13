@@ -23,6 +23,11 @@ a hard-deleted collection leaves a row pointing at nothing.
 The ownership invariant (an event joins its owner's collection only) lives in
 ``services/collections.add_event``, not here: it spans two tables, which a
 CHECK cannot.
+
+A GIN index over ``title || ' ' || description`` backs the collections group of
+``GET /search``, the shape the baseline migration gives events and users. The
+expression has to stay identical to the one ``services/search`` builds, config
+name included, or the planner drops the index and scans the table.
 """
 
 from typing import Sequence, Union
@@ -39,6 +44,13 @@ depends_on: Union[str, Sequence[str], None] = None
 # The ``title`` column width, mirroring ``models/event.TITLE_MAX_LENGTH``: one
 # cap governs an event title and a collection title alike.
 TITLE_MAX_LENGTH = 255
+
+# The document the collections search group matches on, reused between this
+# index and the runtime query (``services/search._collection_tsvector``):
+# Postgres refuses the index for a SELECT whose expression differs. 'simple'
+# rather than 'english' for the reason the baseline states, a corpus of place
+# names and OSINT identifiers that does not stem cleanly.
+_COLLECTION_TSVECTOR = "to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(description, ''))"
 
 
 def upgrade() -> None:
@@ -57,6 +69,11 @@ def upgrade() -> None:
     # "This analyst's collections, newest first", the profile section's read.
     op.create_index(
         "ix_collections_owner_created_at", "collections", ["owner_id", "created_at"]
+    )
+    # The collections group of `GET /search`: one document per collection, its
+    # name and what it says it holds.
+    op.execute(
+        f"CREATE INDEX ix_collections_search_fts ON collections USING GIN ({_COLLECTION_TSVECTOR})"
     )
 
     op.create_table(
@@ -78,5 +95,6 @@ def downgrade() -> None:
     # Memberships first: they hold the foreign key into ``collections``.
     op.drop_index("ix_collection_events_event_id", table_name="collection_events")
     op.drop_table("collection_events")
+    op.drop_index("ix_collections_search_fts", table_name="collections")
     op.drop_index("ix_collections_owner_created_at", table_name="collections")
     op.drop_table("collections")
