@@ -167,7 +167,7 @@ describe("CollectionPage", () => {
     expect(screen.getByText("Collection")).toBeInTheDocument();
   });
 
-  it("prints the description whole, in its own About card", async () => {
+  it("prints the description whole, in its own Description card", async () => {
     mockReads(
       collection({
         description: "Three days of strikes.\nThe eastern approach.",
@@ -176,7 +176,7 @@ describe("CollectionPage", () => {
 
     await renderPage();
 
-    expect(screen.getByText("About")).toBeInTheDocument();
+    expect(screen.getByText("Description")).toBeInTheDocument();
     // One node, so the paragraph breaks the owner typed are kept rather than
     // collapsed into a run of text.
     const description = screen.getByText(

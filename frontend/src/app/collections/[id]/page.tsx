@@ -34,9 +34,9 @@ import {
  * the page opens on the name of the collection rather than on a band the width
  * of the page.
  *
- * Then three sections, each a `Card` under its own eyebrow. **About** is what
- * the owner says the collection holds, at reading size and whole, where the
- * card clamps it to two lines; it is a section rather than a header line
+ * Then three sections, each a `Card` under its own eyebrow. **Description** is
+ * what the owner says the collection holds, at reading size and whole, where
+ * the card clamps it to two lines; it is a section rather than a header line
  * because a description runs to 500 characters and the header is the identity
  * of the page, not its content. **Coverage** is the player: the items on the
  * map with the current one lit, and that item's event in the map page's own
@@ -154,7 +154,7 @@ function CollectionPageBody() {
       {panels}
 
       <Card as="section">
-        <SectionEyebrow title="About" margin="none" />
+        <SectionEyebrow title="Description" margin="none" />
         {/* `whitespace-pre-line` keeps the paragraph breaks the owner typed;
             the text is plain, so nothing else of what they wrote is
             rendered. */}
