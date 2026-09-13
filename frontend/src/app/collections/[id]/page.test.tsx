@@ -308,15 +308,14 @@ describe("CollectionPage", () => {
   it("hands a visitor no owner control", async () => {
     await renderPage();
 
-    for (const name of [
-      "Edit this collection's details",
-      "Remove Strike on the rail junction from this collection",
-    ]) {
-      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
-    }
     expect(
-      screen.queryByRole("link", { name: "Your geolocations" }),
+      screen.queryByRole("button", {
+        name: "Remove Strike on the rail junction from this collection",
+      }),
     ).not.toBeInTheDocument();
+    for (const name of ["Edit this collection", "Your geolocations"]) {
+      expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
+    }
   });
 
   it("sends the owner to their own catalogue, where an event is shelved from", async () => {
@@ -355,24 +354,25 @@ describe("CollectionPage", () => {
     expect(column?.firstElementChild).not.toBe(remove.parentElement);
   });
 
-  it("gives the owner the details, the drop and a control per item", async () => {
+  it("gives the owner one Edit control, and a remove per item", async () => {
     useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
 
     await renderPage();
 
+    // The details and the drop both live on the edit page, so the header
+    // carries one control and the page opens no panel over the work it shows.
     expect(
-      screen.getByRole("button", { name: "Edit this collection's details" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
-        name: "Drop this collection (the events it holds stay)",
-      }),
-    ).toBeInTheDocument();
+      screen.getByRole("link", { name: "Edit this collection" }),
+    ).toHaveAttribute("href", "/collections/c1/edit");
     expect(
       await screen.findByRole("button", {
         name: "Remove Strike on the rail junction from this collection",
       }),
     ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Title")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /drop this collection/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("stands a row on its thumbnail, not on the catalogue's height floor", async () => {
@@ -394,26 +394,11 @@ describe("CollectionPage", () => {
     await renderPage();
 
     // Nothing is uploaded for a collection, so the header cluster carries the
-    // title and the drop alone and the page offers no file input anywhere.
+    // one Edit control and the page offers no file input anywhere.
     expect(
       screen.queryByRole("button", { name: /picture|cover/i }),
     ).not.toBeInTheDocument();
     expect(document.querySelector("input[type=file]")).toBeNull();
-  });
-
-  it("asks twice before dropping the collection", async () => {
-    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
-
-    await renderPage();
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Drop this collection (the events it holds stay)",
-      }),
-    );
-
-    expect(
-      screen.getByRole("button", { name: "Confirm dropping this collection" }),
-    ).toBeInTheDocument();
   });
 
   it("re-reads the header and the sequence once an item is off", async () => {

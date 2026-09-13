@@ -92,3 +92,40 @@ test.describe("collection player", () => {
     await expectNoHorizontalOverflow(page);
   });
 });
+
+/**
+ * The owner's edit page for that collection.
+ *
+ * It is the one collection surface that is a form: a title field, a
+ * description textarea and the drop control under them, which is the shape that
+ * breaks on a phone when a field is laid out narrower than the column or
+ * renders under the 16px mobile Safari zooms on. The owner is the only reader
+ * it has.
+ */
+test.describe("collection edit page", () => {
+  test("fits the form on a narrow column", async ({ context, page }) => {
+    await grantSession(context);
+    await mockApi(page);
+    await page.goto(`/collections/${COLLECTION_ID}/edit`);
+
+    // The page names the collection it edits under its own heading.
+    await expect(
+      page.getByRole("heading", { name: "Edit collection" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Title")).toHaveValue(COLLECTION.title);
+
+    // The save is what the reader came here to press, and the two fields above
+    // it are what the shared checks measure.
+    await expectNarrowViewportLayout(
+      page,
+      page.getByRole("button", { name: "Save details" }),
+    );
+
+    // The destructive zone sits at the bottom, past the fields, and its
+    // control has to be reachable inside the column too.
+    await expectControlInsideViewport(
+      page,
+      page.getByRole("button", { name: "Drop this collection" }),
+    );
+  });
+});

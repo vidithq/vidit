@@ -1,10 +1,9 @@
 import Link from "next/link";
-import { Layers } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { CollectionCover } from "@/components/collections/CollectionCover";
 import { AuthorByline } from "@/components/ui/AuthorByline";
-import { ACCENT_SURFACE, TAPPABLE_HOVER } from "@/components/ui/styles";
+import { TAPPABLE_HOVER } from "@/components/ui/styles";
 import {
   collectionHref,
   collectionMetaSegments,
@@ -24,6 +23,11 @@ import {
  * mosaic sits over the text rather than beside it, the `feed` arrangement,
  * since it is the collection's own picture rather than a thumbnail of one
  * item.
+ *
+ * The card wears no type mark beside its title. The mosaic is what identifies
+ * a collection in a grid, and a square glyph in front of the heading only takes
+ * width from the two lines the title has to render in. The surfaces that do
+ * have to name the type carry `CollectionIcon` instead.
  */
 export function CollectionCard({
   collection,
@@ -46,30 +50,17 @@ export function CollectionCard({
         className="absolute inset-0 z-10 rounded-[inherit]"
       />
       <CollectionCover cover={collection.cover} />
-      <div className="flex gap-3">
-        {/* The mark says what kind of thing the card is, which the mosaic
-            cannot: its tiles are the items' own media, and an event card shows
-            the same pictures. Accent because the whole card is the click, so
-            the paint is the active-row surface rather than a decorative
-            icon. */}
-        <span
-          aria-hidden="true"
-          className={`flex size-8 shrink-0 items-center justify-center rounded-md ${ACCENT_SURFACE}`}
-        >
-          <Layers size={14} />
-        </span>
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <h3 className="line-clamp-2 text-sm font-medium text-neutral-100 group-hover:text-orange-400">
-            {collection.title}
-          </h3>
-          {/* What the collection says it holds, clamped to two lines: a card
-              is one row of a grid, and the collection's own page carries the
-              description whole. */}
-          <p className="line-clamp-2 text-xs text-neutral-400">
-            {collection.description}
-          </p>
-          <CollectionMetaLine collection={collection} owner={showOwner} />
-        </div>
+      <div className="min-w-0 space-y-1.5">
+        <h3 className="line-clamp-2 text-sm font-medium text-neutral-100 group-hover:text-orange-400">
+          {collection.title}
+        </h3>
+        {/* What the collection says it holds, clamped to two lines: a card is
+            one row of a grid, and the collection's own page carries the
+            description whole. */}
+        <p className="line-clamp-2 text-xs text-neutral-400">
+          {collection.description}
+        </p>
+        <CollectionMetaLine collection={collection} owner={showOwner} />
       </div>
     </div>
   );

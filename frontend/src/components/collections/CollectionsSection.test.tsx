@@ -1,29 +1,19 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const push = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
-
 const useApiResource = vi.fn();
 vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => useApiResource(path),
 }));
 
-const createCollection = vi.fn();
 const fetchUserCollections = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
-  createCollection: (title: string, description: string) =>
-    createCollection(title, description),
   fetchUserCollections: (username: string, perPage: number, page: number) =>
     fetchUserCollections(username, perPage, page),
 }));
 
-import {
-  COLLECTION_DESCRIPTION_MAX_LEN,
-  type Collection,
-  type CollectionPage,
-} from "@/lib/collections";
+import { type Collection, type CollectionPage } from "@/lib/collections";
 
 import { CollectionsSection } from "./CollectionsSection";
 
@@ -58,8 +48,6 @@ const shelf = (count: number): Collection[] =>
   );
 
 beforeEach(() => {
-  push.mockReset();
-  createCollection.mockReset();
   fetchUserCollections.mockReset();
   useApiResource.mockReset();
 });
@@ -94,96 +82,47 @@ describe("CollectionsSection", () => {
     render(<CollectionsSection username="ana" isOwn={false} />);
 
     expect(
-      screen.queryByRole("button", { name: "New collection" }),
+      screen.queryByRole("link", { name: "New collection" }),
     ).not.toBeInTheDocument();
   });
 
-  it("gives the owner of an empty shelf the heading and the action that fills it", () => {
+  it("sends the owner of an empty shelf to the create page", () => {
     useApiResource.mockReturnValue({ data: page([]) });
 
     render(<CollectionsSection username="ana" isOwn />);
 
+    // A first-run surface keeps the heading and hands over: opening a
+    // collection is a page of its own, so the section grows no form.
     expect(screen.getByText("Collections")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "New collection" }),
-    ).toBeInTheDocument();
+      screen.getByRole("link", { name: "New collection" }),
+    ).toHaveAttribute("href", "/collections/new");
+    expect(screen.queryByLabelText("Title")).not.toBeInTheDocument();
   });
 
-  it("opens the new collection once it is created", async () => {
-    useApiResource.mockReturnValue({ data: page([]) });
-    createCollection.mockResolvedValue(collection({ id: "c9" }));
+  it("sends the owner of a filled shelf to the same page", () => {
+    useApiResource.mockReturnValue({ data: page([collection()]) });
 
     render(<CollectionsSection username="ana" isOwn />);
-    fireEvent.click(screen.getByRole("button", { name: "New collection" }));
-    fireEvent.change(screen.getByLabelText("Title"), {
-      target: { value: "March strikes" },
-    });
-    fireEvent.change(screen.getByLabelText("Description"), {
-      target: { value: "  Strikes on the corridor through March.  " },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Create collection" }));
 
-    // Both fields travel, trimmed, so the server stores neither padding nor a
-    // collection that says nothing about itself.
-    await waitFor(() =>
-      expect(createCollection).toHaveBeenCalledWith(
-        "March strikes",
-        "Strikes on the corridor through March.",
-      ),
-    );
-    expect(push).toHaveBeenCalledWith("/collections/c9");
+    expect(
+      screen.getByRole("link", { name: "New collection" }),
+    ).toHaveAttribute("href", "/collections/new");
   });
 
-  it("refuses to create a collection with no title", () => {
-    useApiResource.mockReturnValue({ data: page([]) });
+  it("gives a card no type square: the mosaic is its picture", () => {
+    useApiResource.mockReturnValue({ data: page([collection()]) });
 
-    render(<CollectionsSection username="ana" isOwn />);
-    fireEvent.click(screen.getByRole("button", { name: "New collection" }));
-    fireEvent.change(screen.getByLabelText("Description"), {
-      target: { value: "Described but unnamed." },
-    });
+    render(<CollectionsSection username="ana" isOwn={false} />);
 
-    expect(
-      screen.getByRole("button", { name: "Create collection" }),
-    ).toBeDisabled();
-  });
-
-  it("refuses to create a collection with no description", () => {
-    useApiResource.mockReturnValue({ data: page([]) });
-
-    render(<CollectionsSection username="ana" isOwn />);
-    fireEvent.click(screen.getByRole("button", { name: "New collection" }));
-    fireEvent.change(screen.getByLabelText("Title"), {
-      target: { value: "March strikes" },
-    });
-    // Whitespace is not a description: the server refuses it, so the form does.
-    fireEvent.change(screen.getByLabelText("Description"), {
-      target: { value: "   " },
-    });
-
-    expect(
-      screen.getByRole("button", { name: "Create collection" }),
-    ).toBeDisabled();
-  });
-
-  it("refuses a description past the cap and says how far over it is", () => {
-    useApiResource.mockReturnValue({ data: page([]) });
-
-    render(<CollectionsSection username="ana" isOwn />);
-    fireEvent.click(screen.getByRole("button", { name: "New collection" }));
-    fireEvent.change(screen.getByLabelText("Title"), {
-      target: { value: "March strikes" },
-    });
-    fireEvent.change(screen.getByLabelText("Description"), {
-      target: { value: "x".repeat(COLLECTION_DESCRIPTION_MAX_LEN + 3) },
-    });
-
-    expect(
-      screen.getByText(`-3 / ${COLLECTION_DESCRIPTION_MAX_LEN}`),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Create collection" }),
-    ).toBeDisabled();
+    // The card's only picture is the mosaic. The accent square that used to
+    // stand in front of the heading took width from the two lines the title
+    // renders in, and the mosaic already says which collection this is.
+    const card = screen
+      .getByRole("heading", { name: "Kupiansk rail corridor" })
+      .closest("div.group");
+    expect(card).not.toBeNull();
+    expect(card?.querySelector(".bg-orange-500\\/15")).toBeNull();
   });
 
   it("clamps a card's description to two lines", () => {

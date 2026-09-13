@@ -2,9 +2,10 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { CircleX, History, Layers, MapPin, Pencil } from "lucide-react";
+import { CircleX, History, MapPin, Pencil } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { CollectionIcon } from "@/lib/collections";
 import { eventHistoryHref, hasPublishedRecord } from "@/lib/events";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
 import { Button, buttonClasses } from "@/components/ui/Button";
@@ -203,7 +204,7 @@ export function useEventActions({
             // itself closes it.
             className={collecting ? ACCENT_SURFACE : ""}
           >
-            <Layers size={14} />
+            <CollectionIcon size={14} />
           </Button>
         )}
         {canSaveVersion && (

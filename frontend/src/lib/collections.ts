@@ -1,3 +1,5 @@
+import { Layers } from "lucide-react";
+
 import { apiFetch, apiFetchPage } from "./api";
 import type { components } from "./api-types";
 import { formatDate } from "./format";
@@ -48,9 +50,42 @@ export type CollectionMembership =
 export type CollectionMemberships =
   components["schemas"]["CollectionMembershipList"];
 
+/**
+ * The mark that names the type wherever a surface has to say what kind of thing
+ * it is: the `Collection` pill on the page, the search scope chip, the profile
+ * section's first-run state, and the shelving control on an event page.
+ *
+ * One export for all of them, so the glyph changes in one line. The profile
+ * card wears none: its mosaic is what tells one collection from the next, and a
+ * mark beside the title only narrows the column the title renders in.
+ */
+export const CollectionIcon = Layers;
+
 /** The collection's page. */
 export function collectionHref(id: string): string {
   return `/collections/${encodeURIComponent(id)}`;
+}
+
+/** The owner's edit page: the two details, and the one control that drops the
+ *  collection. */
+export function collectionEditHref(id: string): string {
+  return `${collectionHref(id)}/edit`;
+}
+
+/** The query parameter the create page reads the event to shelve from. */
+export const NEW_COLLECTION_EVENT_PARAM = "event";
+
+/**
+ * The create page.
+ *
+ * `eventId` asks it to put that event on the collection it opens and to return
+ * to the event afterwards, which is how the add-to-collection panel opens a
+ * collection without losing the event the analyst was shelving.
+ */
+export function newCollectionHref(eventId?: string): string {
+  return eventId
+    ? `/collections/new?${NEW_COLLECTION_EVENT_PARAM}=${encodeURIComponent(eventId)}`
+    : "/collections/new";
 }
 
 /** An analyst's collections, newest first. The endpoint is offset-paged, and

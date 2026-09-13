@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Layers, Plus } from "lucide-react";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 
 import { CollectionCard } from "@/components/collections/CollectionCard";
-import { CollectionDetailsForm } from "@/components/collections/CollectionDetailsForm";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -14,9 +13,9 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import {
-  collectionHref,
-  createCollection,
+  CollectionIcon,
   fetchUserCollections,
+  newCollectionHref,
   userCollectionsPath,
   type Collection,
   type CollectionPage,
@@ -59,6 +58,11 @@ interface Walk {
  * appends it, so a shelf grows in place rather than sending the reader
  * somewhere else. The control goes once every collection is on screen.
  *
+ * Both of the owner's entry points, the action beside the heading and the one
+ * in the first-run state, are the same link to `/collections/new`: opening a
+ * collection is a page of its own, so the profile hands over rather than
+ * growing a form inside a section that is otherwise a reading surface.
+ *
  * A failed read hides the section rather than blocking the profile, matching
  * `ProfileMap` and `ProfileInsights`.
  */
@@ -69,9 +73,7 @@ export function CollectionsSection({
   username: string;
   isOwn: boolean;
 }) {
-  const router = useRouter();
   const [walk, setWalk] = useState<Walk>({ username, items: [], next: 2 });
-  const [creating, setCreating] = useState(false);
   const { data } = useApiResource<CollectionPage>(
     userCollectionsPath(username, GRID_PAGE, 1),
   );
@@ -97,20 +99,6 @@ export function CollectionsSection({
     },
   );
 
-  // A collection opens on its own page, so the create hands over rather than
-  // re-reading the grid: the analyst's next act is putting events on it.
-  const create = useMutation(
-    (title: string, description: string) =>
-      createCollection(title, description),
-    {
-      fallback: "Failed to create the collection",
-      onSuccess: (collection) => {
-        setCreating(false);
-        router.push(collectionHref(collection.id));
-      },
-    },
-  );
-
   // Nothing until the read lands and carries rows: the section is one of
   // three blocks the profile hides rather than blocks on, so a read that has
   // not answered and a body that is not a page of collections both leave the
@@ -121,10 +109,10 @@ export function CollectionsSection({
   if (collections.length === 0 && !isOwn) return null;
 
   const newCollection = (
-    <Button variant="secondary" onClick={() => setCreating(true)}>
+    <Link href={newCollectionHref()} className={buttonClasses("secondary")}>
       <Plus size={14} strokeWidth={1.8} />
       New collection
-    </Button>
+    </Link>
   );
 
   return (
@@ -141,21 +129,10 @@ export function CollectionsSection({
               : "No collections yet."}
           </p>
         </div>
-        {isOwn && !creating && collections.length > 0 && (
+        {isOwn && collections.length > 0 && (
           <div className="shrink-0">{newCollection}</div>
         )}
       </div>
-
-      {isOwn && creating && (
-        <CollectionDetailsForm
-          submitLabel="Create collection"
-          hint="Say what the collection holds. Items order themselves by event date, so there is no order to set."
-          busy={create.loading}
-          error={create.error}
-          onSubmit={(title, description) => void create.run(title, description)}
-          onCancel={() => setCreating(false)}
-        />
-      )}
 
       {collections.length > 0 ? (
         <>
@@ -186,17 +163,15 @@ export function CollectionsSection({
         // Owner only: the visitor case returned above. A first-run surface
         // says what a collection is for, since the word alone does not, and
         // hands over the one action that fills it.
-        !creating && (
-          <EmptyState
-            variant="plain"
-            icon={Layers}
-            lead="No collections yet."
-            cta={newCollection}
-          >
-            Group your events into a named set: the sites around one place, or a
-            series of events over days.
-          </EmptyState>
-        )
+        <EmptyState
+          variant="plain"
+          icon={CollectionIcon}
+          lead="No collections yet."
+          cta={newCollection}
+        >
+          Group your events into a named set: the sites around one place, or a
+          series of events over days.
+        </EmptyState>
       )}
     </Card>
   );

@@ -8,14 +8,11 @@ vi.mock("@/hooks/useApiResource", () => ({
 
 const addEventToCollection = vi.fn();
 const removeEventFromCollection = vi.fn();
-const createCollection = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
   addEventToCollection: (c: string, e: string) => addEventToCollection(c, e),
   removeEventFromCollection: (c: string, e: string) =>
     removeEventFromCollection(c, e),
-  createCollection: (title: string, description: string) =>
-    createCollection(title, description),
 }));
 
 import type { CollectionMemberships } from "@/lib/collections";
@@ -48,7 +45,6 @@ beforeEach(() => {
   useApiResource.mockReset();
   addEventToCollection.mockReset();
   removeEventFromCollection.mockReset();
-  createCollection.mockReset();
   useApiResource.mockReturnValue({ data: MEMBERSHIPS, error: null });
 });
 
@@ -146,44 +142,15 @@ describe("AddToCollectionPanel", () => {
     );
   });
 
-  it("opens a collection and puts the event on it in one act", async () => {
-    createCollection.mockResolvedValue({
-      id: "c9",
-      owner: { id: "u1", username: "ana", avatar_url: null },
-      title: "March strikes",
-      description: "Strikes on the corridor through March.",
-      cover: [],
-      event_count: 0,
-      first_date: null,
-      last_date: null,
-      created_at: "2026-03-21T09:00:00Z",
-    });
-    addEventToCollection.mockResolvedValue(undefined);
-
+  it("sends a new collection to the create page, carrying this event", () => {
     render(<AddToCollectionPanel eventId="e1" />);
-    fireEvent.click(screen.getByRole("button", { name: "New collection" }));
-    fireEvent.change(screen.getByLabelText("Title"), {
-      target: { value: "March strikes" },
-    });
-    fireEvent.change(screen.getByLabelText("Description"), {
-      target: { value: "Strikes on the corridor through March." },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
 
-    await waitFor(() =>
-      expect(createCollection).toHaveBeenCalledWith(
-        "March strikes",
-        "Strikes on the corridor through March.",
-      ),
-    );
-    expect(addEventToCollection).toHaveBeenCalledWith("c9", "e1");
-    // The new row is appended already on, since it holds this event alone.
-    await waitFor(() =>
-      expect(row("March strikes")).toHaveAttribute("aria-checked", "true"),
-    );
-    // And counted as holding it, not as the empty shelf the create answered
-    // with before the event was put on it.
-    expect(row("March strikes")).toHaveTextContent("1 event");
+    // The page opens the collection with this event on it and comes back, so
+    // the panel writes no form of its own over the event being read.
+    expect(
+      screen.getByRole("link", { name: "New collection" }),
+    ).toHaveAttribute("href", "/collections/new?event=e1");
+    expect(screen.queryByLabelText("Title")).not.toBeInTheDocument();
   });
 
   it("offers to open the first one when the analyst holds none", () => {
@@ -193,8 +160,8 @@ describe("AddToCollectionPanel", () => {
 
     expect(screen.getByText("No collections yet.")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "New collection" }),
-    ).toBeInTheDocument();
+      screen.getByRole("link", { name: "New collection" }),
+    ).toHaveAttribute("href", "/collections/new?event=e1");
   });
 
   it("says so when the read itself fails", () => {

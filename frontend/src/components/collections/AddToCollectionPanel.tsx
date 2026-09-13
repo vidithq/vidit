@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Plus } from "lucide-react";
 
-import { CollectionDetailsForm } from "@/components/collections/CollectionDetailsForm";
-import { Button } from "@/components/ui/Button";
+import { buttonClasses } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
@@ -12,9 +12,9 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import {
   addEventToCollection,
-  createCollection,
   eventCollectionsPath,
   eventCountLabel,
+  newCollectionHref,
   removeEventFromCollection,
   type CollectionMembership,
   type CollectionMemberships,
@@ -26,9 +26,9 @@ import {
  *
  * It reads `GET /events/{id}/collections`, which is owner-only and lists empty
  * collections too, since putting the first event on one is what this panel is
- * for, and the `New collection` row opens the same two fields every other
- * create takes, a title and a short description of what the collection holds.
- * Each row is the app's boolean row (`<ToggleRow>`), so a tap anywhere on
+ * for, and the `New collection` row is a link to the create page carrying this
+ * event, which opens the collection with the event already on it and comes back
+ * here. Each row is the app's boolean row (`<ToggleRow>`), so a tap anywhere on
  * it toggles rather than having to land on the track. It carries the
  * collection's item count as the row's `description`, which is what puts the
  * title at reading size: a title runs to 255 characters and the row's other
@@ -51,7 +51,6 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
   // lands. Seeded from the read rather than derived from it: what the reader
   // sees after a click is local state the request either confirms or reverts.
   const [rows, setRows] = useState<CollectionMembership[] | null>(null);
-  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (data) setRows(data.items);
@@ -76,33 +75,6 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
       return true as const;
     },
     { fallback: "Failed to update the collection" },
-  );
-
-  const create = useMutation(
-    async (title: string, description: string) => {
-      const collection = await createCollection(title, description);
-      await addEventToCollection(collection.id, eventId);
-      return collection;
-    },
-    {
-      fallback: "Failed to create the collection",
-      onSuccess: (collection) => {
-        setCreating(false);
-        // Appended rather than re-read: the new collection holds this event
-        // and nothing else, so the panel already knows its whole state. The
-        // count is 1 rather than the create response's own 0, which was read
-        // before this event was put on it.
-        setRows((current) => [
-          ...(current ?? []),
-          {
-            id: collection.id,
-            title: collection.title,
-            event_count: 1,
-            in_collection: true,
-          },
-        ]);
-      },
-    },
   );
 
   const toggle = async (row: CollectionMembership) => {
@@ -138,29 +110,20 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
           ))}
         </div>
       ) : (
-        !creating && (
-          <EmptyState variant="plain" lead="No collections yet.">
-            Open one and this geolocation is its first item.
-          </EmptyState>
-        )
+        <EmptyState variant="plain" lead="No collections yet.">
+          Open one and this geolocation is its first item.
+        </EmptyState>
       )}
 
       {write.error && <div className={FORM_ERROR_BANNER}>{write.error}</div>}
 
-      {creating ? (
-        <CollectionDetailsForm
-          submitLabel="Create and add"
-          busy={create.loading}
-          error={create.error}
-          onSubmit={(title, description) => void create.run(title, description)}
-          onCancel={() => setCreating(false)}
-        />
-      ) : (
-        <Button variant="ghost" onClick={() => setCreating(true)}>
-          <Plus size={14} strokeWidth={1.8} />
-          New collection
-        </Button>
-      )}
+      {/* Opening a collection is its own page, and it carries this event, so
+          the analyst lands back here with the row already on rather than
+          filling a form inside a panel over the event they are reading. */}
+      <Link href={newCollectionHref(eventId)} className={buttonClasses("ghost")}>
+        <Plus size={14} strokeWidth={1.8} />
+        New collection
+      </Link>
     </div>
   );
 }

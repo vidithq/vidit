@@ -10,8 +10,9 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Layers, MapPin, Search as SearchIcon, Users } from "lucide-react";
+import { MapPin, Search as SearchIcon, Users } from "lucide-react";
 import { CollectionCard } from "@/components/collections/CollectionCard";
+import { CollectionIcon } from "@/lib/collections";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { AUTHOR_FILTER_RE, search, splitHighlights } from "@/lib/search";
 import { Avatar } from "@/components/ui/Avatar";
@@ -57,7 +58,7 @@ import { Pill } from "@/components/ui/Pill";
 const TYPE_FILTERS: { value: SearchType; label: string; icon?: ReactNode }[] = [
   { value: "all", label: "All" },
   { value: "event", label: "Events", icon: <MapPin size={11} /> },
-  { value: "collection", label: "Collections", icon: <Layers size={11} /> },
+  { value: "collection", label: "Collections", icon: <CollectionIcon size={11} /> },
   { value: "user", label: "Analysts", icon: <Users size={11} /> },
 ];
 

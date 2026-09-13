@@ -2,13 +2,14 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Layers } from "lucide-react";
+import Link from "next/link";
+import { Pencil } from "lucide-react";
 
 import { CollectionItems } from "@/components/collections/CollectionItems";
 import { CollectionMetaLine } from "@/components/collections/CollectionCard";
 import { CollectionReader } from "@/components/collections/CollectionReader";
-import { useCollectionActions } from "@/components/collections/useCollectionActions";
 import { AuthorByline } from "@/components/ui/AuthorByline";
+import { buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
@@ -17,6 +18,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { errorMessage } from "@/lib/api";
 import {
+  collectionEditHref,
+  CollectionIcon,
   collectionStepHref,
   fetchCollectionSequence,
   readerStep,
@@ -46,10 +49,12 @@ import {
  * All three read one set, the sequence this page walks once, so the pins, the
  * panel and the rows can never describe different collections.
  *
- * The page is public. The owner's two verbs (the title and dropping the
- * collection) ride the header cluster with their panels under it, which is
- * where every other surface puts the controls that act on the thing the page is
- * about.
+ * The page is public. The owner gets one control in the header cluster, where
+ * every other surface puts the control that acts on the thing the page is
+ * about: **Edit**, which opens the collection's own edit page. The details and
+ * the drop both live there, so this page stays a reading surface and no panel
+ * opens over the work it shows. The per-item remove crosses stay on the rows,
+ * being acts on an item rather than on the collection.
  */
 export default function CollectionPage() {
   // `useSearchParams` opts out of static prerender, so the body lives under a
@@ -118,15 +123,6 @@ function CollectionPageBody() {
 
   const isOwner = !!user && !!collection && user.id === collection.owner.id;
 
-  // Called before the early returns, as every hook here must be.
-  const { actions, panels } = useCollectionActions({
-    collection,
-    isOwner,
-    onChanged: refetch,
-    onDeleted: () =>
-      router.push(`/profile/${collection?.owner.username ?? ""}`),
-  });
-
   if (error) return <PageError message={error} backHref="/map" />;
   if (!collection) return <PageLoading />;
 
@@ -141,18 +137,29 @@ function CollectionPageBody() {
             {/* What kind of page this is. A collection's title reads like an
                 event's, and the two pages share a shape, so the row says which
                 one the reader is on. */}
-            <Pill tone="neutral" icon={<Layers size={11} />}>
+            <Pill tone="neutral" icon={<CollectionIcon size={11} />}>
               Collection
             </Pill>
           </span>
           <CollectionMetaLine collection={collection} className="text-xs" />
         </div>
       }
-      actions={actions}
+      actions={
+        isOwner && (
+          // Navigation, so the shape comes from `buttonClasses` on the link
+          // rather than a button nested in an anchor. One control: the details
+          // and the drop are both on the page it opens.
+          <Link
+            href={collectionEditHref(collection.id)}
+            className={buttonClasses("ghost", { icon: true })}
+            aria-label="Edit this collection"
+            title="Edit this collection"
+          >
+            <Pencil size={14} />
+          </Link>
+        )
+      }
     >
-      {/* Directly under the header, where the trigger that opened it is. */}
-      {panels}
-
       <Card as="section">
         <SectionEyebrow title="Description" margin="none" />
         {/* `whitespace-pre-line` keeps the paragraph breaks the owner typed;
