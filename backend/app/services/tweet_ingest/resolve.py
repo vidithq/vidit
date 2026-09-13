@@ -103,7 +103,7 @@ WARNING_MESSAGES: dict[str, str] = {
     SOURCE_AMBIGUOUS: "Several possible sources. Pick one at review",
     SOURCE_MISSING: "No source found. Add one at review",
     SOURCE_FOOTAGE_MISSING: "No footage from the source. Add it at review",
-    SOURCE_FETCH_FAILED: "Source unreachable. Import again later or add the footage",
+    SOURCE_FETCH_FAILED: "Source unreachable. Check the footage at review",
     SOURCE_DATE_UNKNOWN: "The source's post date is unknown. Check it at review",
     DUPLICATE_MEDIA: "Media already on Vidit. Possible duplicate",
 }
@@ -114,7 +114,7 @@ REFUSAL_MESSAGES: dict[str, str] = {
     COORDS_MISSING: "No coordinate in the post",
     COORDS_INVALID: "The post's coordinate sits outside the world",
     POST_UNREADABLE: "Post not readable on X (age-restricted, withheld or gone)",
-    FOOTAGE_UNUSABLE: "Footage too large or unreadable, add it at review",
+    FOOTAGE_UNUSABLE: "Footage too large or unreadable. Open the request by hand",
 }
 
 

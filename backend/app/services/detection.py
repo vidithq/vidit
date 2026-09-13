@@ -1058,8 +1058,9 @@ async def open_request(
     the refusal a coordinate-less thread has always earned, and a re-tag
     retries. An intake that refused the file is named instead, through
     ``refusal`` carrying ``FOOTAGE_UNUSABLE``: a clip over the video size cap is
-    not a post with no coordinate, and telling the analyst so is what lets them
-    add it at review.
+    not a post with no coordinate, and telling the analyst so is what points them
+    at opening the request by hand instead, since no row exists yet for them to
+    open at review.
 
     The map is not invalidated: a ``requested`` row carries no coordinate, so
     ``/points`` never served it.
