@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import { X } from "lucide-react";
 import Link from "next/link";
 
 import { StatusBadge } from "@/components/event/StatusBadge";
@@ -13,6 +13,7 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { useMutation } from "@/hooks/useMutation";
 import { removeEventFromCollection } from "@/lib/collections";
+import { profileSearchHref } from "@/lib/search";
 import type { EventListItem } from "@/types";
 
 /**
@@ -31,10 +32,15 @@ import type { EventListItem } from "@/types";
  * event's own page on its title, the lift `<EntityCard>` gives every link that
  * is not the card's own click.
  *
- * The owner gets one control per row, taking the item off the shelf. It is not
- * a destructive verb and does not wear the destructive colour: the event is
- * untouched, the write is idempotent, and putting it back is the panel on its
- * own page. So there is no confirm either.
+ * The owner gets one control per row, taking the item off the shelf: a red icon
+ * button at the row's bottom right, the far corner from the title, since it is
+ * the one thing on the row that takes something away. It still asks for no
+ * confirm, because the event is untouched, the write is idempotent, and putting
+ * it back is the panel on the event's own page.
+ *
+ * The header's one link is the owner's own catalogue in search, since events
+ * join a collection from their own pages and the owner has to get to one to do
+ * it. The sentence under the eyebrow says so.
  *
  * The list holds the collection's whole sequence, the one the page reads for
  * the map and the panel too, so the rows and the pins can never describe
@@ -42,6 +48,7 @@ import type { EventListItem } from "@/types";
  */
 export function CollectionItems({
   collectionId,
+  ownerUsername,
   items,
   isOwner,
   loading,
@@ -51,6 +58,8 @@ export function CollectionItems({
   onRemoved,
 }: {
   collectionId: string;
+  /** The handle the owner's catalogue link carries. */
+  ownerUsername: string;
   items: EventListItem[];
   isOwner: boolean;
   loading: boolean;
@@ -85,20 +94,22 @@ export function CollectionItems({
           <p className="text-xs text-neutral-500">
             Ordered by event date and time, earliest first. Pick a row to read
             it on the map above.
+            {isOwner && " An event joins a collection from its own page."}
           </p>
         </div>
         {isOwner && (
-          // Events join a collection from their own pages, which is where the
-          // owner can see what they are shelving, so this is a way into the
-          // work rather than a picker of its own.
+          // Where the owner goes to shelve something: their own catalogue,
+          // since an event joins a collection from its own page. No status
+          // filter, unlike the profile's "Show more", because a detection the
+          // owner has yet to confirm is still theirs to put on a collection.
+          // Same builder as every other link into a filtered catalogue.
           <Link
-            href="/submit"
+            href={profileSearchHref(ownerUsername)}
             className={buttonClasses("secondary", {
               className: "shrink-0 whitespace-nowrap",
             })}
           >
-            <Plus size={14} strokeWidth={1.8} />
-            Add events
+            Your geolocations
           </Link>
         )}
       </div>
@@ -123,11 +134,15 @@ export function CollectionItems({
               selected={index + 1 === step}
               onSelect={() => onStep(index + 1)}
               selectLabel={`Read this collection from ${item.title}`}
+              // Every row here carries the same two lines, since the byline is
+              // the one slot a collection item drops, so the catalogue's height
+              // floor would only print a band of nothing under each of them.
+              uniformHeight={false}
               action={
                 isOwner ? (
                   <Button
                     icon
-                    variant="ghost"
+                    variant="dangerGhost"
                     disabled={pending === item.id}
                     onClick={() => handleRemove(item.id)}
                     aria-label={`Remove ${item.title} from this collection`}

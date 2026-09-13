@@ -176,6 +176,7 @@ function CollectionPageBody() {
 
       <CollectionItems
         collectionId={collection.id}
+        ownerUsername={collection.owner.username}
         items={items}
         isOwner={isOwner}
         loading={sequence === null && sequenceError === null}

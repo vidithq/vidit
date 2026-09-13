@@ -132,9 +132,19 @@ interface EntityCardBaseProps {
    *  every row says nothing about any of them. */
   author?: { username: string };
   /** A control that acts on this row rather than opening it (taking an item
-   *  off a collection). It renders above the stretched link, in the badge's
-   *  column, so it takes its own click; a row with none stays one click. */
+   *  off a collection). It renders above the stretched link, at the bottom of
+   *  the badge's column, so it takes its own click and sits as far from the
+   *  row's own destination as the column allows; a row with none stays one
+   *  click. */
   action?: ReactNode;
+  /** The fixed height floor that keeps every row of a catalogue list the same
+   *  height whatever slots its entity fills (a 1-line title, tags or none).
+   *  A list whose rows all carry the same short shape turns it off: a
+   *  collection's items drop the byline and stand under a header that names
+   *  the analyst, so the floor would leave a band of empty space under two
+   *  lines of text on every row. Off, the row stands on its media column and
+   *  the text centres against it. */
+  uniformHeight?: boolean;
   /** Picks this row on the surface it sits on instead of opening it. The whole
    *  card becomes the button that does it and the title keeps `detailHref`. */
   onSelect?: () => void;
@@ -204,6 +214,7 @@ export function EntityCard({
   coords,
   source,
   tags,
+  uniformHeight = true,
   variant = "compact",
 }: EntityCardProps) {
   const name = titleText ?? (typeof title === "string" ? title : undefined);
@@ -294,13 +305,26 @@ export function EntityCard({
           on a phone: as a `shrink-0` column beside a `min-w-0` one it took its
           full width out of the title's, and a status pill is wide enough to
           leave nothing behind. */}
-      <div className="flex-1 min-w-0 flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-2">
-        {/* Fixed min-height keeps every compact card the same height. Content
-            packs to the top, so a 1-line title leaves its slack at the bottom
-            of the card rather than as a gap under the title. Dropped on a
-            phone, where the badge's own row already fills it and the floor only
-            added dead space. */}
-        <div className="flex-1 min-w-0 flex flex-col gap-1.5 sm:min-h-[5.75rem]">
+      <div className="flex-1 min-w-0 flex flex-col gap-1.5 sm:flex-row sm:items-stretch sm:gap-2">
+        {/* Under `uniformHeight`, a fixed min-height keeps every compact card
+            the same height. Content packs to the top, so a 1-line title leaves
+            its slack at the bottom of the card rather than as a gap under the
+            title. Dropped on a phone, where the badge's own row already fills
+            it and the floor only added dead space.
+
+            Without it the row stands on its media column, and text shorter
+            than that column centres against it, so two lines sit beside the
+            thumbnail instead of hanging from its top edge over a band of
+            nothing. Text taller than the column sets the row's height and
+            `justify-center` has nothing left to move, which is why a row
+            carrying a byline, a meta line and tags reads the same either
+            way. */}
+        <div
+          className={cn(
+            "flex-1 min-w-0 flex flex-col gap-1.5",
+            uniformHeight ? "sm:min-h-[5.75rem]" : "sm:justify-center",
+          )}
+        >
           <h3 className="text-sm font-medium text-neutral-100 line-clamp-2">
             {heading}
           </h3>
@@ -330,7 +354,13 @@ export function EntityCard({
           // The badge is inert and sits under the stretched link; the action is
           // a control, so it is lifted above it (`relative z-20`, the lift the
           // author link takes) and takes its own click.
-          <div className="shrink-0 flex items-start gap-1.5 sm:flex-col sm:items-end">
+          //
+          // The column holds the two apart: the badge at the top of the row and
+          // the action at its bottom right, the far corner from the title, so a
+          // control that takes the row away is never under the pointer aiming
+          // at the row itself. A column carrying only a badge keeps it at the
+          // top, which is where every other catalogue row wears it.
+          <div className="shrink-0 flex items-start justify-between gap-1.5 sm:flex-col sm:items-end">
             {badge}
             {action && <div className="relative z-20">{action}</div>}
           </div>

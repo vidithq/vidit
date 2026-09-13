@@ -27,10 +27,11 @@ test.describe("collection page", () => {
       page.getByRole("heading", { name: COLLECTION.title }),
     ).toBeVisible();
 
-    // What the owner came to do on this page: put more of their work on it.
+    // Where the owner goes to put more of their work on it: their own
+    // catalogue, since an event joins a collection from its own page.
     await expectNarrowViewportLayout(
       page,
-      page.getByRole("link", { name: "Add events" }),
+      page.getByRole("link", { name: "Your geolocations" }),
     );
   });
 

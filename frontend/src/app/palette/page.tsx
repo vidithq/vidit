@@ -1402,7 +1402,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EntityCard variant=compact>: a collection item" usage="One item of a collection: the same compact card with two differences the props carry. `author` is omitted, so the row drops its byline, because a collection is one analyst's own set and the page header names them once. `action` holds a control that acts on the row rather than opening it (here the owner's remove), rendered above the stretched link in the badge's column, so it takes its own click while the rest of the row still navigates.">
+          <Item name="<EntityCard variant=compact>: a collection item" usage="One item of a collection: the same compact card with three differences the props carry. `author` is omitted, so the row drops its byline, because a collection is one analyst's own set and the page header names them once. `action` holds a control that acts on the row rather than opening it (here the owner's remove, red because it is the one thing on the row that takes something away), rendered above the stretched link at the bottom of the badge's column, so it takes its own click, sits in the corner furthest from the title and leaves the rest of the row navigating. `uniformHeight={false}` drops the catalogue height floor, since every row here carries the same two lines and the floor would print a band of empty space under each of them: the row stands on its media column and the text centres against it.">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="compact"
@@ -1412,10 +1412,11 @@ export default function PalettePage() {
                 date={MOCK_CARD_GEO.event_date}
                 coords={{ lat: 48.0159, lng: 37.8024 }}
                 tags={MOCK_CARD_GEO.tags}
+                uniformHeight={false}
                 action={
                   <Button
                     icon
-                    variant="ghost"
+                    variant="dangerGhost"
                     aria-label="Remove from this collection"
                     title="Remove from collection"
                   >

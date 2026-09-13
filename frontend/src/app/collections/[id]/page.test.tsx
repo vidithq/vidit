@@ -314,6 +314,45 @@ describe("CollectionPage", () => {
     ]) {
       expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     }
+    expect(
+      screen.queryByRole("link", { name: "Your geolocations" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("sends the owner to their own catalogue, where an event is shelved from", async () => {
+    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
+
+    await renderPage();
+
+    // The owner's own events, detections included: the list offers no picker,
+    // because an event joins a collection from its own page, and the sentence
+    // above the rows says so.
+    expect(
+      screen.getByRole("link", { name: "Your geolocations" }),
+    ).toHaveAttribute("href", "/search?type=event&author=ana");
+    expect(
+      screen.getByText(/An event joins a collection from its own page/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /add events/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("wears the removal red, at the bottom of the row's own column", async () => {
+    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
+
+    await renderPage();
+    const remove = await screen.findByRole("button", {
+      name: "Remove Strike on the rail junction from this collection",
+    });
+
+    // The one control on the row that takes something away: red at ghost
+    // weight, held at the bottom of the badge's column, so it sits in the
+    // corner furthest from the title while the status badge keeps the top.
+    expect(remove.className).toContain("text-red-400");
+    const column = remove.parentElement?.parentElement;
+    expect(column?.className).toContain("justify-between");
+    expect(column?.firstElementChild).not.toBe(remove.parentElement);
   });
 
   it("gives the owner the details, the drop and a control per item", async () => {
@@ -334,6 +373,19 @@ describe("CollectionPage", () => {
         name: "Remove Strike on the rail junction from this collection",
       }),
     ).toBeInTheDocument();
+  });
+
+  it("stands a row on its thumbnail, not on the catalogue's height floor", async () => {
+    await renderPage();
+
+    // Every row here carries the same two lines, the byline being the one slot
+    // a collection item drops, so the floor that keeps a catalogue list even
+    // would only print a band of nothing under each of them. The text centres
+    // against the media column instead.
+    const title = await screen.findByText("Strike on the rail junction");
+    const text = title.closest("h3")?.parentElement;
+    expect(text?.className).toContain("sm:justify-center");
+    expect(text?.className).not.toContain("min-h");
   });
 
   it("hands the owner no picture control: the card reads the items", async () => {
