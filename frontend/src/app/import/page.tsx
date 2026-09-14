@@ -355,7 +355,7 @@ export default function ImportGuidePage() {
             <div className="pl-6">
               <MockPost {...MOCK_BOT} replyingTo={MOCK_ANALYST.handle}>
                 {
-                  "✅ Request opened, no coordinate found · ref 5c02be71\nReview from your profile"
+                  "✅ Geolocation request opened · ref 5c02be71\nReview from your profile"
                 }
               </MockPost>
             </div>
@@ -365,9 +365,9 @@ export default function ImportGuidePage() {
           The bot answers in-thread with your detection&apos;s reference and
           with what to fix at review: an empty source, several coordinates, a
           missing footage file or post date, or media already on Vidit. When
-          nothing imports, it names which of the three refusals it was. Replies
-          are capped per hour, so a burst of tags still creates every detection
-          while some of them go unanswered.
+          nothing imports, it names why, a link it cannot request from included.
+          Replies are capped per hour, so a burst of tags still creates every
+          detection while some of them go unanswered.
         </p>
         <div className="sm:max-w-md">
           <MockPost {...MOCK_BOT} replyingTo={MOCK_ANALYST.handle}>

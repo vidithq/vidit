@@ -38,6 +38,7 @@ from app.services.tweet_ingest import (
     DUPLICATE_MEDIA,
     FOOTAGE_UNUSABLE,
     REFUSAL_MESSAGES,
+    REQUEST_NOT_POSSIBLE,
     SEVERAL_COORDINATES,
     SOURCE_AMBIGUOUS,
     SOURCE_DATE_UNKNOWN,
@@ -84,6 +85,9 @@ MIRROR_TG_OTHER_ID = "9110000000000000005"
 # The same mirror, re-posted with the coordinate the analyst has since worked
 # out: a geolocation, which takes the detections' path beside the open request.
 MIRROR_TG_GEO_ID = "9110000000000000006"
+# The same mirror naming a host the chase does not read: footage and a source,
+# and still no request the bot can open.
+MIRROR_YT_ID = "9110000000000000007"
 
 # Both mirror posts, and the Telegram embed, come from the contract catalogue,
 # the one place the shapes are written down: the bot's request tests run the
@@ -231,6 +235,20 @@ BODIES = {
     MIRROR_TG_GEO_ID: {
         **_mirror_body(MIRROR_TG_GEO_ID, "2026-03-14T11:00:00.000Z"),
         "text": f"@viditbot\n{_MIRROR_BODY['text']}\n48.123456, 37.654321",
+    },
+    # The catalogue's mirror with one host swapped: the analyst wrote the same
+    # post about a YouTube clip, which is a source and not one a request can be
+    # opened against.
+    MIRROR_YT_ID: {
+        **_mirror_body(MIRROR_YT_ID, "2026-03-12T10:00:00.000Z"),
+        "entities": {
+            "urls": [
+                {
+                    **_MIRROR_BODY["entities"]["urls"][0],
+                    "expanded_url": "https://www.youtube.com/watch?v=FAKEVIDEO01",
+                }
+            ]
+        },
     },
     MIRROR_X_ID: {
         **_MIRROR_X_BODY,
@@ -443,7 +461,7 @@ async def test_a_tagged_post_creates_a_detection(db, linked_owner):
     assert str(event.id) not in text  # never the full UUID (a third of the reply)
     # The mocked source tweet carries no media, so the footage warning fires;
     # its date resolved, so the date warning must not.
-    assert "No footage from the source" in text
+    assert "The source served no footage" in text
     assert "post date" not in text and "already on Vidit" not in text
     # The linkless contract: no URL, no auto-linkable domain in the reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
@@ -801,7 +819,7 @@ async def test_a_coordinate_less_mirror_post_opens_a_request(
     assert payload["reply"] == {"in_reply_to_tweet_id": mention_id}
     text = payload["text"]
     assert isinstance(text, str)
-    assert text.startswith("\u2705 Request opened, no coordinate found \u00b7 ref ")
+    assert text.startswith("\u2705 Geolocation request opened \u00b7 ref ")
     assert str(row.id)[:8] in text
     assert "post date" not in text
     assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
@@ -883,6 +901,31 @@ async def test_footage_that_will_not_fetch_falls_back_to_the_refusal(db, linked_
     (payload,) = posted
     assert payload["text"].startswith("\u274c Nothing saved\n\u26a0 No coordinate in the post\n")
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == MIRROR_TG_ID).one()
+    assert ledger.outcome == "no_detection"
+
+
+async def test_a_mirror_the_bot_cannot_request_from_is_told_why(db, linked_owner, _stub_cdn):
+    """The same mirror post about a YouTube clip: footage, a source, and no
+    request the bot can open against that host.
+
+    ``coords_missing`` is true of the post and says nothing about the branch
+    that had a look, so the analyst would go hunting for a coordinate they
+    deliberately did not write. The reply names the shape instead.
+    """
+    outcome, _, posted, _ = await _run(db, [MIRROR_YT_ID])
+
+    assert outcome.requests_opened == 0
+    assert outcome.no_detection == 1
+    assert db.query(Event).filter(Event.owner_id == linked_owner.id).all() == []
+
+    (payload,) = posted
+    text = payload["text"]
+    assert isinstance(text, str)
+    assert text.startswith(
+        f"\u274c Nothing saved\n\u26a0 {REFUSAL_MESSAGES[REQUEST_NOT_POSSIBLE]}\n"
+    )
+    assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == MIRROR_YT_ID).one()
     assert ledger.outcome == "no_detection"
 
 
@@ -1082,7 +1125,7 @@ def test_compose_reply_is_linkless_and_carries_the_warnings():
     assert text.startswith("✅ 1 detection saved")
     assert event_id[:8] in text
     assert event_id not in text  # the ref is shortened
-    assert "No footage from the source" in text
+    assert "The source served no footage" in text
     assert "post date" in text
     assert "already on Vidit" in text
     assert "http" not in text and "vidit.app" not in text
@@ -1125,7 +1168,7 @@ def test_compose_reply_carries_one_line_per_warning_and_stays_in_the_cap():
 
     ambiguous = compose_reply(event_id, detections=2, warnings=[SOURCE_AMBIGUOUS, DUPLICATE_MEDIA])
     assert "Several possible sources" in ambiguous
-    assert "No footage from the source" not in ambiguous and "post date" not in ambiguous
+    assert "The source served no footage" not in ambiguous and "post date" not in ambiguous
     assert reply_weighted_len(ambiguous) <= REPLY_MAX_WEIGHTED_LEN
 
 
@@ -1172,7 +1215,7 @@ def test_compose_request_reply_carries_the_warning_and_stays_in_the_cap():
         "94183d44-1a2b-4c5d-8e9f-0a1b2c3d4e5f", warnings=[SOURCE_DATE_UNKNOWN]
     )
 
-    assert text.startswith("✅ Request opened, no coordinate found · ref 94183d44\n")
+    assert text.startswith("✅ Geolocation request opened · ref 94183d44\n")
     assert f"⚠ {WARNING_MESSAGES[SOURCE_DATE_UNKNOWN]}" in text
     assert text.endswith("Review from your profile")
     assert "94183d44-1a2b" not in text  # the shortened ref, never the full UUID

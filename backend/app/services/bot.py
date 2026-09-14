@@ -26,10 +26,12 @@ mention (the bot never mints users: an unknown handle is ledgered
 ``no_account`` and produces nothing). One branch answers off the same
 resolution: a thread carrying no coordinate but carrying footage and an X
 status or a Telegram post as its source opens a ``requested`` row through
-``detection.open_request`` instead of earning the ``coords_missing`` refusal.
-The mention then lands in the ``bot_mentions`` ledger. What is left in this
-module is orchestration: the X API, the reply, the ledger, the budget and the
-webhook drain.
+``detection.open_request`` instead of earning the ``coords_missing`` refusal;
+a coordinate-less thread that branch cannot serve at all is refused
+``request_not_possible``, which is the same refusal read with the detail only
+this entry asked for. The mention then lands in the ``bot_mentions`` ledger.
+What is left in this module is orchestration: the X API, the reply, the ledger,
+the budget and the webhook drain.
 
 Both paths share that ledger, so a mention is processed (and billed) at most
 once whichever path sees it first; the poll's ``since_id`` derives from it,
@@ -319,9 +321,7 @@ def compose_request_reply(event_id: str, *, warnings: Iterable[str]) -> str:
     Same contract as every other reply: linkless, and unique per mention
     through the event ref.
     """
-    return _reply(
-        f"✅ Request opened, no coordinate found · ref {event_id[:_REPLY_REF_CHARS]}", warnings
-    )
+    return _reply(f"✅ Geolocation request opened · ref {event_id[:_REPLY_REF_CHARS]}", warnings)
 
 
 # Where an analyst goes when the bot has nothing to diagnose. A handle mention
@@ -497,6 +497,14 @@ async def _process_mention(
             # wrong fix.
             return "no_detection", 0, None, opened.refusal
     if assembled.reason is not None:
+        if assembled.reason == COORDS_MISSING and resolution.request_reason is not None:
+            # The request branch read this coordinate-less thread and had
+            # nothing to open: its source is not an X status or a Telegram post,
+            # or it carries no footage. Saying so is the difference between
+            # "add the coordinate" and "the bot cannot request from that link",
+            # and only this entry asked for a request, so only this entry names
+            # it. Every other coordinate-less thread keeps ``coords_missing``.
+            return "no_detection", 0, None, resolution.request_reason
         return "no_detection", 0, None, assembled.reason
     if not assembled.created and not assembled.updated:
         # ``skipped`` is the dedup verdict; a persist that raised on every

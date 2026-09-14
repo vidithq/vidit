@@ -11,7 +11,9 @@ A coordinate-less thread that still carries footage and names an X status or a
 Telegram post as its source also yields a :class:`RequestDraft` beside that
 refusal, the engine's second exit, which ``services/detection.open_request``
 turns into a ``requested`` row. That exit is opened per call
-(``resolve_threads(..., with_requests=True)``) and only the bot opens it.
+(``resolve_threads(..., with_requests=True)``) and only the bot opens it; a
+coordinate-less thread it cannot serve at all reports ``request_not_possible``
+beside the refusal, for that same caller alone.
 
 Every derived field follows one contract: filled only on an explicit signal in
 the analyst's own text (a quote, a link, a coordinate), otherwise empty. No
@@ -72,6 +74,12 @@ POST_UNREADABLE = "post_unreadable"
 # evidence intake (over the video size cap, or bytes nothing could read). Worded
 # here because the reply reads one table for every code it names.
 FOOTAGE_UNUSABLE = "footage_unusable"
+# ``COORDS_MISSING`` sharpened for the caller that asked for a request and got
+# none because the thread can never yield one: its source is not an X status or
+# a Telegram post, or it carries no footage. Raised only on that caller's path
+# (:attr:`Resolution.request_refusals`), so an entry reading detections alone
+# keeps the flat ``COORDS_MISSING`` it has always had.
+REQUEST_NOT_POSSIBLE = "request_not_possible"
 
 # What a created detection still needs from its owner. Warnings, not refusals: the
 # detection lands either way and review is where they are answered. The first three
@@ -101,20 +109,21 @@ DUPLICATE_MEDIA = "duplicate_media"  # the row's media is already on another eve
 WARNING_MESSAGES: dict[str, str] = {
     SEVERAL_COORDINATES: "Several coordinates, one detection each",
     SOURCE_AMBIGUOUS: "Several possible sources. Pick one at review",
-    SOURCE_MISSING: "No source found. Add one at review",
-    SOURCE_FOOTAGE_MISSING: "No footage from the source. Add it at review",
-    SOURCE_FETCH_FAILED: "Source unreachable. Check the footage at review",
-    SOURCE_DATE_UNKNOWN: "The source's post date is unknown. Check it at review",
-    DUPLICATE_MEDIA: "Media already on Vidit. Possible duplicate",
+    SOURCE_MISSING: "No source link in the post. Add one at review",
+    SOURCE_FOOTAGE_MISSING: "The source served no footage. Add it at review",
+    SOURCE_FETCH_FAILED: "Source unreachable, no footage stored. Add it at review",
+    SOURCE_DATE_UNKNOWN: "The source's post date is missing. Add it at review",
+    DUPLICATE_MEDIA: "This footage is already on Vidit. Possible duplicate",
 }
 
 # The same, for the refusals. A surface that names no refusal (the archive email
 # reports counts) simply never reads this table.
 REFUSAL_MESSAGES: dict[str, str] = {
     COORDS_MISSING: "No coordinate in the post",
-    COORDS_INVALID: "The post's coordinate sits outside the world",
+    COORDS_INVALID: "The coordinate is out of range (latitude ±90, longitude ±180)",
     POST_UNREADABLE: "Post not readable on X (age-restricted, withheld or gone)",
     FOOTAGE_UNUSABLE: "Footage too large or unreadable. Open the request by hand",
+    REQUEST_NOT_POSSIBLE: "No coordinate, and no X or Telegram source with footage to request from",
 }
 
 
@@ -599,6 +608,12 @@ class Resolution:
     # A one-thread entry (the bot, the paste) reads :attr:`reason`; an export
     # refusing several threads reads the counts.
     refusals: dict[str, int] = field(default_factory=dict)
+    # Why a coordinate-less thread yielded no draft, counted the same way and
+    # keyed by ``REQUEST_NOT_POSSIBLE``. Filled only for a caller that asked for
+    # requests, and only for a thread that can never yield one; :attr:`refusals`
+    # and :attr:`reason` are untouched, so the entries that read detections
+    # alone see exactly what they saw before.
+    request_refusals: dict[str, int] = field(default_factory=dict)
 
     @property
     def warnings(self) -> dict[str, int]:
@@ -617,6 +632,18 @@ class Resolution:
     def reason(self) -> str | None:
         """The one refusal to name when the batch resolved no detection at all."""
         return None if self.detections else sole_refusal(self.refusals)
+
+    @property
+    def request_reason(self) -> str | None:
+        """The one code naming why no request opened, or ``None``.
+
+        Set when the caller asked for requests, got none, and every thread that
+        could have yielded one was refused for the same reason. The caller reads
+        it instead of :attr:`reason` on that thread, which is the whole gain:
+        the analyst is told the source cannot be requested from rather than to
+        add a coordinate.
+        """
+        return None if self.requests else sole_refusal(self.request_refusals)
 
 
 def own_posts(thread: list[TweetRecord]) -> list[TweetRecord]:
@@ -663,21 +690,32 @@ def resolve_threads(threads: list[list[TweetRecord]], *, with_requests: bool = F
     detections: list[Detection] = []
     requests: list[RequestDraft] = []
     refusals: dict[str, int] = {}
+    request_refusals: dict[str, int] = {}
     for thread in threads:
-        found, refusal, draft = _thread_detections(thread, with_requests=with_requests)
+        found, refusal, draft, request_refusal = _thread_detections(
+            thread, with_requests=with_requests
+        )
         detections.extend(found)
         if draft is not None:
             requests.append(draft)
         if refusal is not None:
             refusals[refusal] = refusals.get(refusal, 0) + 1
-    return Resolution(detections=detections, requests=requests, refusals=refusals)
+        if request_refusal is not None:
+            request_refusals[request_refusal] = request_refusals.get(request_refusal, 0) + 1
+    return Resolution(
+        detections=detections,
+        requests=requests,
+        refusals=refusals,
+        request_refusals=request_refusals,
+    )
 
 
 def _thread_detections(
     thread: list[TweetRecord], *, with_requests: bool
-) -> tuple[list[Detection], str | None, RequestDraft | None]:
+) -> tuple[list[Detection], str | None, RequestDraft | None, str | None]:
     """One ``Detection`` per coordinate the thread carries, or the reason it carries
-    none, plus the request draft a coordinate-less thread may still yield.
+    none, plus the request draft a coordinate-less thread may still yield and, when
+    it yields none, the code naming why.
 
     Two reasons, which is all the engine can tell apart: a coordinate-shaped
     string sat outside the world (``COORDS_INVALID``), or the analyst's own text
@@ -688,10 +726,12 @@ def _thread_detections(
     The draft rides only on the ``COORDS_MISSING`` leg (:func:`_request_draft`)
     and only for a caller that asked for it, and the refusal travels with it: an
     entry that reads detections alone still refuses the thread exactly as before.
+    ``REQUEST_NOT_POSSIBLE`` rides on the same leg, in the fourth slot, for the
+    thread whose shape rules a request out for good.
     """
     posts = own_posts(thread)
     if not posts:
-        return [], COORDS_MISSING, None
+        return [], COORDS_MISSING, None, None
     head = posts[0]
     # Expanded per record before the join: raw tweet text carries only opaque
     # ``t.co`` wrappers, so an analyst's reference link would otherwise reach the
@@ -710,8 +750,11 @@ def _thread_detections(
     scan = scan_coords(own_text)
     if not scan.coords:
         if scan.out_of_bounds:
-            return [], COORDS_INVALID, None
-        return [], COORDS_MISSING, (_request_draft(posts, own_text) if with_requests else None)
+            return [], COORDS_INVALID, None, None
+        if not with_requests:
+            return [], COORDS_MISSING, None, None
+        draft, request_refusal = _request_draft(posts, own_text)
+        return [], COORDS_MISSING, draft, request_refusal
     source_url, source_iso = resolve_source(posts)
     source_media, proof_media = split_media(posts)
     detected_post_at = _posted_at(head.created_at)
@@ -755,11 +798,15 @@ def _thread_detections(
         ],
         None,
         None,
+        None,
     )
 
 
-def _request_draft(posts: list[TweetRecord], own_text: str) -> RequestDraft | None:
-    """The request a coordinate-less thread yields, or ``None`` when it yields none.
+def _request_draft(
+    posts: list[TweetRecord], own_text: str
+) -> tuple[RequestDraft | None, str | None]:
+    """The request a coordinate-less thread yields, or the code naming why it
+    yields none.
 
     Runs the same derivations :func:`_thread_detections` runs, so a request is
     read off one grammar with the detections rather than a second one. Six
@@ -784,22 +831,35 @@ def _request_draft(posts: list[TweetRecord], own_text: str) -> RequestDraft | No
       the split left in the annotation slot, since ``create_request`` requires
       a file;
     * the title is not empty, since ``create_request`` requires one.
+
+    Two of the six say something the analyst can act on, so they come back as
+    ``REQUEST_NOT_POSSIBLE``: a declared source the bot cannot request from, and
+    a thread with no footage. The other four come back as ``None``, which leaves
+    the thread the plain ``COORDS_MISSING`` it already had, because naming them
+    would mislead: a transient chase is a retry, a quoted coordinate is a
+    geolocation the analyst can restate in their own words, and a blank title or
+    an unusable post id is not a shape they wrote. A thread that declared no
+    source at all is in that second group too: nothing was pointed at, so the
+    missing coordinate is the whole answer.
     """
     head = posts[0]
     tweet_id = _tweet_id(head.tweet_id)
     if tweet_id is None:
-        return None
+        return None, None
     if any(post.chase_outcome == "transient_failure" for post in posts):
-        return None
+        return None, None
     resolved, source_iso = resolve_source(posts)
     source_url = requestable_source_url(resolved)
     if source_url is None:
-        return None
+        # A thread that pointed at nothing (no link, no quote, or several
+        # candidates the source rule would not pick between) has no request
+        # shape to explain back, so it keeps the flat refusal.
+        return None, (REQUEST_NOT_POSSIBLE if resolved is not None else None)
     if any(
         scan_coords(expand_shortlinks(quoted.text, quoted.external_sources)).coords
         for quoted in quoted_posts(posts)
     ):
-        return None
+        return None, None
     source_media, proof_media = split_media(posts)
     candidates = list(source_media)
     fallback = first_own_video_index(proof_media)
@@ -809,12 +869,12 @@ def _request_draft(posts: list[TweetRecord], own_text: str) -> RequestDraft | No
         # and their copy of the clip is the only footage the row can be born with.
         candidates.append(proof_media[fallback])
     if not candidates:
-        return None
+        return None, REQUEST_NOT_POSSIBLE
     title = derive_title(own_text)
     if not title:
-        return None
+        return None, None
     detected_post_at = _posted_at(head.created_at)
-    return RequestDraft(
+    draft = RequestDraft(
         title=title,
         proof_text=clean_proof_text(own_text),
         source_url=source_url,
@@ -838,6 +898,7 @@ def _request_draft(posts: list[TweetRecord], own_text: str) -> RequestDraft | No
         # path tell the codes apart if a row ever did land without footage.
         source_fetch_failed=any(post.chase_outcome == "not_accessible" for post in posts),
     )
+    return draft, None
 
 
 # A post id is a snowflake, so it fits a signed 64-bit integer by construction

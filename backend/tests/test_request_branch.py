@@ -5,7 +5,11 @@ in ``tests/ingest_contract`` (``mirror_telegram_no_coord``,
 ``mirror_x_status_no_coord``); what is left here is the boundary, the threads
 that look request-shaped and are not, because each of the six conditions in
 ``resolve._request_draft`` has to be the one that refuses them, plus the one
-spelling the source is stored under.
+spelling the source is stored under. The two shapes that rule a request out for
+good, a declared source the bot cannot request from and no footage, also name
+themselves back
+(``request_not_possible``); the four a re-tag or a rewrite can still clear do
+not.
 
 The refusal always travels with the draft, so every case below also asserts
 that the thread still reports ``coords_missing``: an entry reading detections
@@ -17,6 +21,7 @@ from __future__ import annotations
 from app.services.tweet_ingest import (
     COORDS_INVALID,
     COORDS_MISSING,
+    REQUEST_NOT_POSSIBLE,
     RequestDraft,
 )
 from app.services.tweet_ingest.records import ParsedMedia, QuotedTweet, SourceLink, TweetRecord
@@ -417,3 +422,115 @@ def test_the_own_video_rides_behind_the_sources_footage_as_a_fallback() -> None:
 
     assert draft is not None
     assert [media.origin for media in draft.footage_candidates] == ["quote", "op"]
+
+
+def _request_reason(thread: list[TweetRecord]) -> str | None:
+    """Why no request opened, as the bot reads it off the resolution.
+
+    Asserts the two invariants the code must not move while it says more: the
+    thread still refuses ``coords_missing``, and the entries that never ask for
+    requests (the paste, the archive) still see no reason at all.
+    """
+    resolution = resolve_threads([thread], with_requests=True)
+    assert resolution.reason == COORDS_MISSING
+    assert resolve_threads([thread]).request_refusals == {}
+    return resolution.request_reason
+
+
+def test_a_source_the_bot_cannot_request_from_names_why_no_request_opened() -> None:
+    """A YouTube link is a source the chase does not read, so no request can
+    ever be opened from it. ``coords_missing`` is true of the post and hides
+    that, so the branch names it."""
+    assert (
+        _request_reason(
+            [
+                _rec(
+                    text="Clip worth a look\nhttps://t.co/fakeYT",
+                    media=[_VIDEO],
+                    external_sources=[_YOUTUBE],
+                )
+            ]
+        )
+        == REQUEST_NOT_POSSIBLE
+    )
+
+
+def test_a_requestable_source_with_no_footage_names_why_no_request_opened() -> None:
+    """The second shape: the source is a t.me post the bot can request from,
+    and the thread carries nothing to store as the request's evidence."""
+    assert (
+        _request_reason(
+            [_rec(text="Worth reading\nhttps://t.co/fakeTG", external_sources=[_TELEGRAM])]
+        )
+        == REQUEST_NOT_POSSIBLE
+    )
+
+
+def test_a_thread_pointing_at_no_source_keeps_the_plain_refusal() -> None:
+    """The analyst posted footage and said nothing about where it came from, so
+    there is no request shape to explain back: what their post lacks is the
+    coordinate, which is what the refusal has always said."""
+    assert _request_reason([_rec(text="Something is burning out there", media=[_VIDEO])]) is None
+
+
+def test_a_transient_chase_failure_keeps_the_plain_refusal() -> None:
+    """The next tag can still read that source, so naming the shape as
+    unrequestable would be wrong."""
+    assert (
+        _request_reason(
+            [
+                _rec(
+                    text="Channel footage worth a look\nhttps://t.co/fakeTG",
+                    media=[_VIDEO],
+                    external_sources=[_TELEGRAM],
+                    chase_outcome="transient_failure",
+                )
+            ]
+        )
+        is None
+    )
+
+
+def test_a_coordinate_in_the_quoted_post_keeps_the_plain_refusal() -> None:
+    """The source is requestable and the footage is there: what stops the
+    request is the coordinate one post down, so the analyst is told their own
+    text carries none."""
+    quote = QuotedTweet(
+        tweet_id="9200000000000000002",
+        handle="raw_feed",
+        text="Vehicles burning at 48.123456, 37.654321",
+        created_at="2026-03-11T18:40:00.000Z",
+        media=[
+            ParsedMedia(kind="video", remote_url="https://video.twimg.com/q.mp4", origin="quote")
+        ],
+    )
+    assert _request_reason([_rec(text="Geolocated the clip below", quoted=quote)]) is None
+
+
+def test_a_blank_title_keeps_the_plain_refusal() -> None:
+    """A post that is nothing but its link is not a shape to explain back: the
+    analyst wrote no line at all."""
+    assert (
+        _request_reason(
+            [_rec(text="https://t.co/fakeTG", media=[_VIDEO], external_sources=[_TELEGRAM])]
+        )
+        is None
+    )
+
+
+def test_a_post_id_the_column_cannot_hold_keeps_the_plain_refusal() -> None:
+    """No adapter writes such an id, so there is nothing for the analyst to
+    act on and the refusal stays the one it has always been."""
+    assert (
+        _request_reason(
+            [
+                _rec(
+                    tweet_id="not-a-post-id",
+                    text="Worth reading\nhttps://t.co/fakeTG",
+                    media=[_VIDEO],
+                    external_sources=[_TELEGRAM],
+                )
+            ]
+        )
+        is None
+    )
