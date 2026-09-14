@@ -4,9 +4,7 @@ import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { CollectionDetailsForm } from "@/components/collections/CollectionDetailsForm";
-import { Card } from "@/components/ui/Card";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
@@ -100,21 +98,18 @@ function NewCollectionPageBody() {
           : "A named set of your own events, shown on your profile."
       }
     >
-      <Card as="section">
-        <SectionEyebrow title="Details" margin="none" />
-        <CollectionDetailsForm
-          username={user.username}
-          initialEvents={event ? [pickableFromDetail(event)] : []}
-          submitLabel={eventId ? "Create and add" : "Create collection"}
-          hint="Say what the collection holds. Items order themselves by event date, so there is no order to set."
-          busy={create.loading}
-          error={create.error}
-          onSubmit={(title, description, eventIds) =>
-            void create.run(title, description, eventIds)
-          }
-          onCancel={() => router.push(origin)}
-        />
-      </Card>
+      <CollectionDetailsForm
+        username={user.username}
+        initialEvents={event ? [pickableFromDetail(event)] : []}
+        submitLabel={eventId ? "Create and add" : "Create collection"}
+        hint="Say what the collection holds. Items order themselves by event date, so there is no order to set."
+        busy={create.loading}
+        error={create.error}
+        onSubmit={(title, description, eventIds) =>
+          void create.run(title, description, eventIds)
+        }
+        onCancel={() => router.push(origin)}
+      />
     </PageShell>
   );
 }

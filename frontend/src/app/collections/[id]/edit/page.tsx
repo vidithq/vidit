@@ -42,15 +42,18 @@ import type { EventListItem } from "@/types";
  * It is a page rather than a panel on the collection, the shape an owned event
  * already takes at `/events/{id}/edit`: the write has its own address, so a
  * reload keeps it, a link reaches it, and the collection page stays the reading
- * surface it is. Saving returns to the collection.
+ * surface it is. Saving returns to the collection. The page carries no
+ * subtitle naming the collection, the event edit page's own answer: the Title
+ * field already says it.
  *
- * **Dropping the collection lives at the bottom**, under its own eyebrow and
- * away from the fields, which is the one place on the site a destructive act on
- * the page's own subject belongs. It keeps the two-click confirm every
- * destructive control here takes, and the sentence above it says what survives,
- * since that is the part a reader hesitates over: the events it held stay
- * exactly as they are. Once the collection is gone the page hands the owner
- * back to their profile, where their other collections are.
+ * **Dropping the collection lives at the bottom**, under its own card and past
+ * the two `<CollectionDetailsForm>` renders (Details, Events), which is the
+ * one place on the site a destructive act on the page's own subject belongs.
+ * It keeps the two-click confirm every destructive control here takes, and the
+ * sentence above it says what survives, since that is the part a reader
+ * hesitates over: the events it held stay exactly as they are. Once the
+ * collection is gone the page hands the owner back to their profile, where
+ * their other collections are.
  *
  * A reader who does not own the collection gets the event edit page's own
  * answer: the refusal the backend would give, stated before the form rather
@@ -162,24 +165,20 @@ export default function EditCollectionPage() {
       back
       backFallback={collectionHref(collection.id)}
       title="Edit collection"
-      subtitle={collection.title}
     >
-      <Card as="section">
-        <SectionEyebrow title="Details" margin="none" />
-        <CollectionDetailsForm
-          username={user.username}
-          initialTitle={collection.title}
-          initialDescription={collection.description}
-          initialEvents={items}
-          submitLabel="Save collection"
-          busy={save.loading}
-          error={save.error}
-          onSubmit={(title, description, eventIds) =>
-            void save.run(title, description, eventIds)
-          }
-          onCancel={() => router.push(collectionHref(collection.id))}
-        />
-      </Card>
+      <CollectionDetailsForm
+        username={user.username}
+        initialTitle={collection.title}
+        initialDescription={collection.description}
+        initialEvents={items}
+        submitLabel="Save collection"
+        busy={save.loading}
+        error={save.error}
+        onSubmit={(title, description, eventIds) =>
+          void save.run(title, description, eventIds)
+        }
+        onCancel={() => router.push(collectionHref(collection.id))}
+      />
 
       <Card as="section">
         <SectionEyebrow title="Drop this collection" margin="none" />

@@ -141,6 +141,23 @@ describe("NewCollectionPage", () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
+  it("splits the form into a Details card and an Events card", () => {
+    render(<NewCollectionPage />);
+
+    expect(screen.getByRole("heading", { name: "Details" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Events" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Events in this collection" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Add events" }),
+    ).toBeInTheDocument();
+    // The create page has no collection to drop yet.
+    expect(
+      screen.queryByRole("heading", { name: "Drop this collection" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("opens the collection it created", async () => {
     render(<NewCollectionPage />);
     fillForm();

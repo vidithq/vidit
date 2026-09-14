@@ -161,6 +161,31 @@ describe("EditCollectionPage", () => {
     );
   });
 
+  it("carries no subtitle naming the collection, the Title field says it", async () => {
+    await renderPage();
+
+    expect(
+      screen.getByRole("heading", { name: "Edit collection" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Kupiansk rail corridor")).not.toBeInTheDocument();
+  });
+
+  it("splits the form into a Details card and an Events card", async () => {
+    await renderPage();
+
+    expect(screen.getByRole("heading", { name: "Details" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Events" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Events in this collection" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Add events" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Drop this collection" }),
+    ).toBeInTheDocument();
+  });
+
   it("writes both details and returns to the collection", async () => {
     await renderPage();
     fireEvent.change(screen.getByLabelText("Title"), {
