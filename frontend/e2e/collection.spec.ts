@@ -12,10 +12,9 @@ import {
  * A collection page, read by its owner.
  *
  * The owner rather than a visitor, because the owner is the narrow case: the
- * header carries a long title plus a three-control cluster, and every item row
- * carries a remove control beside its status badge. `/collections` is public in
- * `proxy.ts`, so the session cookie is granted for the owner controls rather
- * than for access.
+ * header carries a long title plus the Edit control. `/collections` is public
+ * in `proxy.ts`, so the session cookie is granted for the owner controls
+ * rather than for access.
  */
 test.describe("collection page", () => {
   test("reads on a narrow column", async ({ context, page }) => {

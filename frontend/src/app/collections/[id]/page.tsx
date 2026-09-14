@@ -51,10 +51,10 @@ import {
  *
  * The page is public. The owner gets one control in the header cluster, where
  * every other surface puts the control that acts on the thing the page is
- * about: **Edit**, which opens the collection's own edit page. The details and
- * the drop both live there, so this page stays a reading surface and no panel
- * opens over the work it shows. The per-item remove crosses stay on the rows,
- * being acts on an item rather than on the collection.
+ * about: **Edit**, which opens the collection's own edit page. The details,
+ * the item picker and the drop all live there, so this page stays a reading
+ * surface with no per-row control of its own and no panel opens over the work
+ * it shows.
  */
 export default function CollectionPage() {
   // `useSearchParams` opts out of static prerender, so the body lives under a
@@ -73,20 +73,17 @@ function CollectionPageBody() {
   const { user } = useAuth();
   const id = typeof params.id === "string" ? params.id : "";
 
-  const {
-    data: collection,
-    error,
-    refetch,
-  } = useApiResource<Collection>(id ? `/collections/${id}` : null);
+  const { data: collection, error } = useApiResource<Collection>(
+    id ? `/collections/${id}` : null,
+  );
 
   // The collection's whole sequence, read once for the three sections. The
   // player has to say `N of M` and the list is what picks a step out of the
   // same set, so a page of items would leave the two counting differently;
   // `fetchCollectionSequence` follows the cursor to the end under its own
-  // ceiling. `reloads` re-runs the walk after the owner takes an item off.
+  // ceiling.
   const [sequence, setSequence] = useState<CollectionSequence | null>(null);
   const [sequenceError, setSequenceError] = useState<string | null>(null);
-  const [reloads, setReloads] = useState(0);
 
   useEffect(() => {
     if (!id) return;
@@ -101,7 +98,7 @@ function CollectionPageBody() {
         setSequenceError(errorMessage(e, "Failed to read this collection"));
       });
     return () => controller.abort();
-  }, [id, reloads]);
+  }, [id]);
 
   const items = sequence?.items ?? [];
   // Clamped at read time, so a link to a step the collection no longer holds
@@ -182,7 +179,6 @@ function CollectionPageBody() {
       )}
 
       <CollectionItems
-        collectionId={collection.id}
         ownerUsername={collection.owner.username}
         items={items}
         isOwner={isOwner}
@@ -190,12 +186,6 @@ function CollectionPageBody() {
         error={sequenceError}
         step={step}
         onStep={goToStep}
-        onRemoved={() => {
-          // The header's count and date range both move with the set, and the
-          // sequence the three sections read is a set that just changed.
-          refetch();
-          setReloads((n) => n + 1);
-        }}
       />
     </PageShell>
   );

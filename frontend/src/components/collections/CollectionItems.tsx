@@ -1,18 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { X } from "lucide-react";
 import Link from "next/link";
 
 import { StatusBadge } from "@/components/event/StatusBadge";
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
-import { useMutation } from "@/hooks/useMutation";
-import { removeEventFromCollection } from "@/lib/collections";
 import { profileSearchHref } from "@/lib/search";
 import type { EventListItem } from "@/types";
 
@@ -28,27 +24,23 @@ import type { EventListItem } from "@/types";
  * **The list is the player's step control.** A click anywhere on a row moves
  * the player above it to that item, and the row the player stands on wears the
  * accent border, so the list doubles as the index of the walk instead of
- * carrying a second control per row to start one. A row carries one gesture:
- * the title renders as plain text, and the event's own page is reached from
- * the player panel's own title above the list.
- *
- * The owner gets one control per row, taking the item off the shelf: a red icon
- * button at the row's bottom right, the far corner from the title, since it is
- * the one thing on the row that takes something away. It still asks for no
- * confirm, because the event is untouched, the write is idempotent, and putting
- * it back is the panel on the event's own page.
+ * carrying a second control per row to start one. A row carries one gesture,
+ * the same for the owner and a visitor: the title renders as plain text, and
+ * the event's own page is reached from the player panel's own title above the
+ * list.
  *
  * The header's one link is the owner's own catalogue in search, since an event
  * joins a collection from its own page and the owner has to get to one to do
  * it. The sentence under the eyebrow says so, and names the other way, the
- * picker on the collection's edit page.
+ * picker on the collection's edit page, which is also where an item leaves the
+ * collection: this page only reads the set, so its rows carry no control of
+ * their own.
  *
  * The list holds the collection's whole sequence, the one the page reads for
  * the map and the panel too, so the rows and the pins can never describe
  * different collections and the row numbers and `N of M` are one count.
  */
 export function CollectionItems({
-  collectionId,
   ownerUsername,
   items,
   isOwner,
@@ -56,9 +48,7 @@ export function CollectionItems({
   error,
   step,
   onStep,
-  onRemoved,
 }: {
-  collectionId: string;
   /** The handle the owner's catalogue link carries. */
   ownerUsername: string;
   items: EventListItem[];
@@ -68,25 +58,7 @@ export function CollectionItems({
   /** Which item the player above the list stands on, 1-based. */
   step: number;
   onStep: (step: number) => void;
-  /** Runs once an item is off the collection: the page re-reads the header,
-   *  whose count, date range and mosaic all move with the set. */
-  onRemoved: () => void;
 }) {
-  // Which row's removal is in flight. One banner for the section and one
-  // pending id, rather than an error line inside a card that has no slot for
-  // one: only one removal is ever in flight, since the control that started it
-  // is the one that goes quiet.
-  const [pending, setPending] = useState<string | null>(null);
-  const remove = useMutation(
-    (eventId: string) => removeEventFromCollection(collectionId, eventId),
-    { fallback: "Failed to take the event off this collection", onSuccess: onRemoved },
-  );
-
-  const handleRemove = (eventId: string) => {
-    setPending(eventId);
-    void remove.run(eventId).finally(() => setPending(null));
-  };
-
   return (
     <Card as="section">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -118,7 +90,6 @@ export function CollectionItems({
       </div>
 
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
-      {remove.error && <div className={FORM_ERROR_BANNER}>{remove.error}</div>}
 
       {items.length > 0 ? (
         <div className="space-y-2">
@@ -141,20 +112,6 @@ export function CollectionItems({
               // the one slot a collection item drops, so the catalogue's height
               // floor would only print a band of nothing under each of them.
               uniformHeight={false}
-              action={
-                isOwner ? (
-                  <Button
-                    icon
-                    variant="dangerGhost"
-                    disabled={pending === item.id}
-                    onClick={() => handleRemove(item.id)}
-                    aria-label={`Remove ${item.title} from this collection`}
-                    title="Remove from collection"
-                  >
-                    <X size={14} />
-                  </Button>
-                ) : undefined
-              }
             />
           ))}
         </div>

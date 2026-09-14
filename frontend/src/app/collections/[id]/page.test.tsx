@@ -59,14 +59,11 @@ vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => useApiResource(path),
 }));
 
-const removeEventFromCollection = vi.fn();
 // The page walks the cursor once and hands that one sequence to the player,
 // the panel and the list, so a spec picks the set it measures here.
 const fetchCollectionSequence = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
-  removeEventFromCollection: (c: string, e: string) =>
-    removeEventFromCollection(c, e),
   fetchCollectionSequence: (id: string, signal?: AbortSignal) =>
     fetchCollectionSequence(id, signal),
 }));
@@ -147,7 +144,6 @@ async function renderPage() {
 beforeEach(() => {
   useAuth.mockReset();
   useApiResource.mockReset();
-  removeEventFromCollection.mockReset();
   fetchCollectionSequence.mockReset();
   replace.mockReset();
   searchParams.delete("step");
@@ -344,38 +340,22 @@ describe("CollectionPage", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("wears the removal red, at the bottom of the row's own column", async () => {
-    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
-
-    await renderPage();
-    const remove = await screen.findByRole("button", {
-      name: "Remove Strike on the rail junction from this collection",
-    });
-
-    // The one control on the row that takes something away: red at ghost
-    // weight, held at the bottom of the badge's column, so it sits in the
-    // corner furthest from the title while the status badge keeps the top.
-    expect(remove.className).toContain("text-red-400");
-    const column = remove.parentElement?.parentElement;
-    expect(column?.className).toContain("justify-between");
-    expect(column?.firstElementChild).not.toBe(remove.parentElement);
-  });
-
-  it("gives the owner one Edit control, and a remove per item", async () => {
+  it("gives the owner one Edit control, and no per-item control", async () => {
     useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
 
     await renderPage();
 
-    // The details and the drop both live on the edit page, so the header
-    // carries one control and the page opens no panel over the work it shows.
+    // The details, the item picker and the drop all live on the edit page, so
+    // the header carries one control and the page opens no panel over the
+    // work it shows, with no per-row control of its own.
     expect(
       screen.getByRole("link", { name: "Edit this collection" }),
     ).toHaveAttribute("href", "/collections/c1/edit");
     expect(
-      await screen.findByRole("button", {
+      screen.queryByRole("button", {
         name: "Remove Strike on the rail junction from this collection",
       }),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Title")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /drop this collection/i }),
@@ -408,24 +388,4 @@ describe("CollectionPage", () => {
     expect(document.querySelector("input[type=file]")).toBeNull();
   });
 
-  it("re-reads the header and the sequence once an item is off", async () => {
-    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
-    removeEventFromCollection.mockResolvedValue(undefined);
-
-    await renderPage();
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Remove Strike on the rail junction from this collection",
-      }),
-    );
-
-    await waitFor(() =>
-      expect(removeEventFromCollection).toHaveBeenCalledWith("c1", "e1"),
-    );
-    // The count, the date range and the mosaic all move with the set, and so
-    // does the sequence the three sections read.
-    await waitFor(() =>
-      expect(fetchCollectionSequence).toHaveBeenCalledTimes(2),
-    );
-  });
 });

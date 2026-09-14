@@ -57,8 +57,8 @@ function chronological(events: PickableEvent[]): PickableEvent[] {
  * **A row is the catalogue's own compact card** in its plain mode, with its
  * lifecycle badge, its title linking to the event and one control in the
  * `action` slot, the same icon-button shape on both blocks. On the first
- * block that control is the red cross that takes the row off, the one a
- * collection's own item list carries, in the same corner. On the second it is
+ * block that control is the red cross that takes the row off, the one control
+ * that lets an item leave a collection anywhere on the site. On the second it is
  * an accent plus icon that adds the row, and a row already on the first block
  * shows a disabled check icon instead of dropping out of the results: the
  * analyst searched for that event, and answering with nothing says less than

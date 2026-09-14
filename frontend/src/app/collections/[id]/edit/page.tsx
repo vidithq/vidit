@@ -35,9 +35,9 @@ import type { EventListItem } from "@/types";
  * The form is the create page's, so both write pages ask for the same three
  * things: the title, the description, and the events on the shelf. The picker
  * opens holding what the collection holds and the save writes the difference,
- * through the same idempotent membership routes the collection page's own
- * remove crosses take, which stay where they are: taking one item off while
- * reading is an act on that item, not a pass over the whole set.
+ * through the same idempotent membership routes: one `PUT` per row added and
+ * one `DELETE` per row taken off. This is the one place an item leaves a
+ * collection; the collection's own page only reads the set.
  *
  * It is a page rather than a panel on the collection, the shape an owned event
  * already takes at `/events/{id}/edit`: the write has its own address, so a
