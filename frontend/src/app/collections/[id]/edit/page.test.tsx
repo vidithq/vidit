@@ -36,9 +36,9 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
     searchPickableEvents(username, q),
 }));
 
-// The picker's browse list, held empty: what these lock in is the diff the
-// save writes, which is the picker's selection against the items the page
-// opened on.
+// The add block's list, held empty: what these lock in is the diff the save
+// writes, which is what the picker holds against the items the page opened
+// on.
 const useCursorList = vi.fn();
 vi.mock("@/hooks/useCursorList", () => ({
   useCursorList: () => useCursorList(),
@@ -49,6 +49,35 @@ import type { Collection } from "@/lib/collections";
 import EditCollectionPage from "./page";
 
 const USER = { id: "u1", username: "ana" };
+
+/** One of the analyst's own events, as the sequence walk and the add block
+ *  both hand it over. */
+const event = (id: string, title: string) => ({
+  id,
+  title,
+  status: "geolocated",
+  media: null,
+  is_graphic: false,
+  event_date: "2026-03-15",
+  event_coords: { lat: 49.71, lng: 37.616 },
+  tags: [],
+  owner: USER,
+  conflicts: [],
+  before_closed_status: null,
+});
+
+/** What the add block lists, `useCursorList`'s own shape. */
+function mockBrowse(items: unknown[]) {
+  useCursorList.mockReturnValue({
+    items,
+    error: null,
+    loading: false,
+    loadingMore: false,
+    hasMore: false,
+    loadMore: vi.fn(),
+    reload: vi.fn(),
+  });
+}
 
 const collection = (over: Partial<Collection> = {}): Collection => ({
   id: "c1",
@@ -73,11 +102,11 @@ function mockRead(data: Collection | null, error: string | null = null) {
   });
 }
 
-/** One item of the collection the page opens on, as the sequence walk hands
- *  it over. Only the id matters here: it is what the picker starts ticked and
- *  what the save diffs against. */
+/** The collection the page opens on, as the sequence walk hands it over: the
+ *  rows the picker's first block renders, and the baseline the save diffs
+ *  against. */
 const sequenceOf = (...ids: string[]) => ({
-  items: ids.map((id) => ({ id })),
+  items: ids.map((id) => event(id, `Strike ${id}`)),
   capped: false,
 });
 
@@ -107,15 +136,7 @@ beforeEach(() => {
   addEventToCollection.mockResolvedValue(undefined);
   removeEventFromCollection.mockResolvedValue(undefined);
   searchPickableEvents.mockResolvedValue({ items: [], total: 0 });
-  useCursorList.mockReturnValue({
-    items: [],
-    error: null,
-    loading: false,
-    loadingMore: false,
-    hasMore: false,
-    loadMore: vi.fn(),
-    reload: vi.fn(),
-  });
+  mockBrowse([]);
 });
 
 describe("EditCollectionPage", () => {
@@ -163,87 +184,56 @@ describe("EditCollectionPage", () => {
     await renderPage();
 
     expect(fetchCollectionSequence).toHaveBeenCalledWith("c1");
-    // The count line is the picker's own reading of the set, so the edit
-    // starts on the collection rather than on nothing.
-    expect(screen.getByText("2 selected")).toBeInTheDocument();
+    // The first block is the collection's current items, each with the cross
+    // that takes it off, so the edit starts on the collection rather than on
+    // nothing.
+    expect(
+      screen.getByText("2 events, ordered by event date, earliest first."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Remove Strike e1 from this collection",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("writes the difference the picker made, after the details", async () => {
-    useCursorList.mockReturnValue({
-      items: [
-        {
-          id: "e3",
-          title: "Strike on the depot",
-          status: "geolocated",
-          media: null,
-          is_graphic: false,
-          event_date: "2026-03-15",
-          event_coords: { lat: 49.71, lng: 37.616 },
-          tags: [],
-          owner: USER,
-          conflicts: [],
-          before_closed_status: null,
-        },
-      ],
-      error: null,
-      loading: false,
-      loadingMore: false,
-      hasMore: false,
-      loadMore: vi.fn(),
-      reload: vi.fn(),
-    });
-    // The collection opens holding `e3`, which the click below takes off, and
-    // `e2`, which it keeps.
+    mockBrowse([event("e4", "Strike on the depot")]);
+    // The collection opens holding `e3`, which the cross below takes off, and
+    // `e2`, which it keeps. `e4` is added from the block under them.
     fetchCollectionSequence.mockResolvedValue(sequenceOf("e2", "e3"));
 
     await renderPage();
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Take Strike on the depot off this collection",
+        name: "Remove Strike e3 from this collection",
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Add Strike on the depot to this collection",
       }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Save collection" }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/collections/c1"));
-    // The details first, then only what moved: the row still ticked is left
-    // alone, since both membership routes are idempotent but a write per row
-    // would be a request for every item on a long shelf.
+    // The details first, then only what moved: the row the picker still holds
+    // is left alone, since both membership routes are idempotent but a write
+    // per row would be a request for every item on a long shelf.
     expect(updateCollection).toHaveBeenCalled();
-    expect(addEventToCollection).not.toHaveBeenCalled();
+    expect(addEventToCollection).toHaveBeenCalledWith("c1", "e4");
     expect(removeEventFromCollection).toHaveBeenCalledWith("c1", "e3");
+    expect(removeEventFromCollection).toHaveBeenCalledTimes(1);
   });
 
   it("stops at the first refusal the difference meets", async () => {
-    useCursorList.mockReturnValue({
-      items: [
-        {
-          id: "e1",
-          title: "Strike on the depot",
-          status: "geolocated",
-          media: null,
-          is_graphic: false,
-          event_date: "2026-03-15",
-          event_coords: { lat: 49.71, lng: 37.616 },
-          tags: [],
-          owner: USER,
-          conflicts: [],
-          before_closed_status: null,
-        },
-      ],
-      error: null,
-      loading: false,
-      loadingMore: false,
-      hasMore: false,
-      loadMore: vi.fn(),
-      reload: vi.fn(),
-    });
     fetchCollectionSequence.mockResolvedValue(sequenceOf("e1"));
     removeEventFromCollection.mockRejectedValue(new Error("Nope."));
 
     await renderPage();
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Take Strike on the depot off this collection",
+        name: "Remove Strike e1 from this collection",
       }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Save collection" }));

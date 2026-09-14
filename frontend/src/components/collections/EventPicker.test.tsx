@@ -22,7 +22,9 @@ import { EventPicker } from "./EventPicker";
  *  out. */
 const DEBOUNCE_MS = 300;
 
-const row = (over: Partial<PickableEvent> & Pick<PickableEvent, "id">): PickableEvent => ({
+const row = (
+  over: Partial<PickableEvent> & Pick<PickableEvent, "id">,
+): PickableEvent => ({
   title: "Strike on the rail junction",
   status: "geolocated",
   media: null,
@@ -47,10 +49,27 @@ function mockBrowse(items: PickableEvent[], over: Record<string, unknown> = {}) 
   });
 }
 
-/** The row's stretched control, which is what ticks it. */
-function pickRow(title: string): HTMLElement {
-  return screen.getByRole("button", { name: `Put ${title} on this collection` });
+/** The add block's control on one row. */
+function addRow(title: string): HTMLElement {
+  return screen.getByRole("button", { name: `Add ${title} to this collection` });
 }
+
+/** The first block's control on one row. */
+function removeRow(title: string): HTMLElement {
+  return screen.getByRole("button", {
+    name: `Remove ${title} from this collection`,
+  });
+}
+
+/** Five rows, which is exactly the cap, plus a sixth the block has to drop. */
+const sixRows = [
+  row({ id: "e1", title: "One" }),
+  row({ id: "e2", title: "Two" }),
+  row({ id: "e3", title: "Three" }),
+  row({ id: "e4", title: "Four" }),
+  row({ id: "e5", title: "Five" }),
+  row({ id: "e6", title: "Six" }),
+];
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -64,26 +83,159 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("EventPicker", () => {
-  it("browses the analyst's own catalogue with nothing typed", () => {
+describe("EventPicker, the events the collection holds", () => {
+  it("opens on what it was handed, earliest event first", () => {
     render(
       <EventPicker
         username="ana"
-        selectedIds={new Set()}
-        onToggle={vi.fn()}
+        events={[
+          row({ id: "e9", title: "Later strike", event_date: "2026-03-16" }),
+          row({ id: "e8", title: "Earlier strike", event_date: "2026-03-14" }),
+        ]}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
       />,
     );
 
-    // The cursor-paged list endpoint, scoped to the owner and to the two
-    // statuses a collection may hold.
+    expect(screen.getByText("2 events, ordered by event date, earliest first.")).toBeInTheDocument();
+    // The order the collection's own page reads its items in, so the pending
+    // list and the collection it becomes read alike.
+    const held = screen.getAllByRole("button", { name: /^Remove/ });
+    expect(held.map((control) => control.getAttribute("aria-label"))).toEqual([
+      "Remove Earlier strike from this collection",
+      "Remove Later strike from this collection",
+    ]);
+  });
+
+  it("hands the row's id back on the red cross", () => {
+    const onRemove = vi.fn();
+
+    render(
+      <EventPicker
+        username="ana"
+        events={[row({ id: "e9", title: "Later strike" })]}
+        onAdd={vi.fn()}
+        onRemove={onRemove}
+      />,
+    );
+    fireEvent.click(removeRow("Later strike"));
+
+    expect(onRemove).toHaveBeenCalledWith("e9");
+  });
+
+  it("points an empty collection at the block below", () => {
+    render(
+      <EventPicker
+        username="ana"
+        events={[]}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText("Nothing on this collection yet."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Add your own geolocations from the search below."),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("EventPicker, the add block", () => {
+  it("shows the analyst's most recent with nothing typed", () => {
+    render(
+      <EventPicker
+        username="ana"
+        events={[]}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    // The cursor-paged list endpoint, scoped to the owner, to the two statuses
+    // a collection may hold, and to the rows the block shows.
     const buildPath = useCursorList.mock.calls[0][0] as (
       cursor: string | null,
     ) => string;
     expect(buildPath(null)).toBe(
-      "/events?view=located&status=geolocated&status=detected&author=ana",
+      "/events?view=located&status=geolocated&status=detected&author=ana&limit=5",
     );
-    expect(screen.getByText("Strike on the rail junction")).toBeInTheDocument();
+    expect(addRow("Strike on the rail junction")).toBeInTheDocument();
     expect(searchPickableEvents).not.toHaveBeenCalled();
+  });
+
+  it("hands the whole row back on Add", () => {
+    const onAdd = vi.fn();
+    const only = row({ id: "e1" });
+    mockBrowse([only]);
+
+    render(
+      <EventPicker
+        username="ana"
+        events={[]}
+        onAdd={onAdd}
+        onRemove={vi.fn()}
+      />,
+    );
+    fireEvent.click(addRow("Strike on the rail junction"));
+
+    // The row itself, not its id: the block above renders the catalogue card
+    // for what the collection holds, and nothing else on the page has it.
+    expect(onAdd).toHaveBeenCalledWith(only);
+  });
+
+  it("moves an added row up, and says so where it stood", () => {
+    const added = row({ id: "e1" });
+    mockBrowse([added]);
+
+    const { rerender } = render(
+      <EventPicker
+        username="ana"
+        events={[]}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    rerender(
+      <EventPicker
+        username="ana"
+        events={[added]}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    // On the first block now, with the cross that takes it off again.
+    expect(removeRow("Strike on the rail junction")).toBeInTheDocument();
+    // And still in the results, saying why it cannot be added twice rather
+    // than dropping out of an answer the analyst searched for.
+    const control = screen.getByRole("button", {
+      name: "Added Strike on the rail junction to this collection",
+    });
+    expect(control).toBeDisabled();
+    expect(control).toHaveTextContent("Added");
+  });
+
+  it("shows five rows at most, and says how to reach the rest", () => {
+    mockBrowse(sixRows, { hasMore: true });
+
+    render(
+      <EventPicker
+        username="ana"
+        events={[]}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByRole("button", { name: /to this collection$/ })).toHaveLength(5);
+    expect(screen.queryByText("Six")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Showing your most recent. Search to reach the rest of your catalogue.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("sends what was typed to search, once the field settles", async () => {
@@ -95,8 +247,9 @@ describe("EventPicker", () => {
     render(
       <EventPicker
         username="ana"
-        selectedIds={new Set()}
-        onToggle={vi.fn()}
+        events={[]}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
       />,
     );
     fireEvent.change(screen.getByRole("searchbox"), {
@@ -112,90 +265,26 @@ describe("EventPicker", () => {
     });
 
     expect(searchPickableEvents).toHaveBeenCalledWith("ana", "Kakhovka");
-    expect(screen.getByText("Kakhovka dam")).toBeInTheDocument();
-    // The list is the answer to the query, so the browsed row is not under it.
+    expect(addRow("Kakhovka dam")).toBeInTheDocument();
+    // The rows are the answer to the query, so the browsed row is not under
+    // them.
     expect(
       screen.queryByText("Strike on the rail junction"),
     ).not.toBeInTheDocument();
   });
 
-  it("hands the row's id back on a click, and marks a ticked row", () => {
-    const onToggle = vi.fn();
-
-    const { rerender } = render(
-      <EventPicker username="ana" selectedIds={new Set()} onToggle={onToggle} />,
-    );
-    fireEvent.click(pickRow("Strike on the rail junction"));
-
-    expect(onToggle).toHaveBeenCalledWith("e1");
-
-    // Ticked, the same row offers the act that undoes it.
-    rerender(
-      <EventPicker
-        username="ana"
-        selectedIds={new Set(["e1"])}
-        onToggle={onToggle}
-      />,
-    );
-    expect(
-      screen.getByRole("button", {
-        name: "Take Strike on the rail junction off this collection",
-      }),
-    ).toHaveAttribute("aria-current", "true");
-  });
-
-  it("counts what stands, whatever the list below is showing", async () => {
-    render(
-      <EventPicker
-        username="ana"
-        selectedIds={new Set(["e1", "e7"])}
-        onToggle={vi.fn()}
-      />,
-    );
-
-    // Two ticked, one of them a row no list here shows: the count is the
-    // selection's, not the page's.
-    expect(screen.getByText("2 selected")).toBeInTheDocument();
-
-    fireEvent.change(screen.getByRole("searchbox"), {
-      target: { value: "Kakhovka" },
-    });
-    // `act` awaited, so the timer fires and the answer it starts lands
-    // before the assertions below.
-    await act(async () => {
-      vi.advanceTimersByTime(DEBOUNCE_MS);
-    });
-
-    expect(screen.getByText("2 selected")).toBeInTheDocument();
-  });
-
-  it("walks the catalogue a page at a time while browsing", () => {
-    const loadMore = vi.fn();
-    mockBrowse([row({ id: "e1" })], { hasMore: true, loadMore });
-
-    render(
-      <EventPicker
-        username="ana"
-        selectedIds={new Set()}
-        onToggle={vi.fn()}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
-
-    expect(loadMore).toHaveBeenCalled();
-  });
-
   it("says what a capped search left out", async () => {
     searchPickableEvents.mockResolvedValue({
-      items: [row({ id: "e2", title: "Kakhovka dam" })],
+      items: sixRows.slice(0, 5),
       total: 62,
     });
 
     render(
       <EventPicker
         username="ana"
-        selectedIds={new Set()}
-        onToggle={vi.fn()}
+        events={[]}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
       />,
     );
     fireEvent.change(screen.getByRole("searchbox"), {
@@ -210,11 +299,30 @@ describe("EventPicker", () => {
     // The search endpoint hands out no cursor, so the block states the figure
     // rather than offering a walk it cannot take.
     expect(
-      screen.getByText(/Showing the first 50 of 62 matches/),
+      screen.getByText(
+        "Showing 5 of 62 matches. Refine the search to reach the rest.",
+      ),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Show more" }),
-    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the collection's own rows through a search that lists none of them", async () => {
+    render(
+      <EventPicker
+        username="ana"
+        events={[row({ id: "e9", title: "Later strike" })]}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "Kakhovka" },
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(DEBOUNCE_MS);
+    });
+
+    expect(removeRow("Later strike")).toBeInTheDocument();
+    expect(screen.getByText("1 event, ordered by event date, earliest first.")).toBeInTheDocument();
   });
 
   it("says so when the analyst has nothing a collection may hold", () => {
@@ -223,8 +331,9 @@ describe("EventPicker", () => {
     render(
       <EventPicker
         username="ana"
-        selectedIds={new Set()}
-        onToggle={vi.fn()}
+        events={[]}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
       />,
     );
 

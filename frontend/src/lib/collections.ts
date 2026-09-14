@@ -6,6 +6,7 @@ import { eventListPath } from "./events";
 import { formatDate } from "./format";
 import { search } from "./search";
 import type {
+  EventDetail,
   EventListItem,
   EventStatus,
   MapPoint,
@@ -213,9 +214,10 @@ export function readerStep(raw: string | null, total: number): number {
  */
 export const COLLECTABLE_STATUSES: EventStatus[] = ["geolocated", "detected"];
 
-/** One row of the event picker: the slots a compact `<EntityCard>` fills.
- *  A catalogue row (`EventListItem`) already is one; a search hit becomes one
- *  through `pickableFromHit`, so the two sources the picker reads render as
+/** One row of the event picker, on either of its blocks: the slots a compact
+ *  `<EntityCard>` fills. A catalogue row (`EventListItem`) already is one; a
+ *  search hit becomes one through `pickableFromHit` and an event's own read
+ *  through `pickableFromDetail`, so every source the picker reads renders as
  *  the same row. */
 export type PickableEvent = Pick<
   EventListItem,
@@ -229,16 +231,16 @@ export type PickableEvent = Pick<
   | "tags"
 >;
 
-/** How many matches one typed query brings back. `/search` caps a group at 50
- *  and hands out no cursor, so this is the whole answer to a query rather than
- *  its first page: the picker says so, and narrowing the words is how a reader
- *  reaches what it left out. */
-export const PICKER_SEARCH_LIMIT = 50;
+/** How many rows the picker's add block ever shows, whichever source answers
+ *  it. The block is a way to reach one event, not a second catalogue, so both
+ *  halves ask their endpoint for this many and the block says how to reach
+ *  what it left out. */
+export const PICKER_ROW_LIMIT = 5;
 
-/** One page of the analyst's own collectable events, newest first: what the
- *  picker browses with nothing typed. The list endpoint serves this half
- *  because it is the cursor-paged one, so `Show more` walks the whole
- *  catalogue instead of stopping at a group cap. */
+/** The analyst's own collectable events, newest first: what the add block
+ *  shows with nothing typed. The list endpoint serves this half because it is
+ *  the cursor-paged one, so the block knows from the cursor whether more of
+ *  the catalogue stands behind the rows it shows. */
 export function pickerBrowsePath(
   username: string,
   cursor: string | null,
@@ -247,8 +249,26 @@ export function pickerBrowsePath(
     view: "located",
     status: COLLECTABLE_STATUSES,
     author: username,
+    limit: PICKER_ROW_LIMIT,
     cursor,
   });
+}
+
+/** An event's own read as a picker row. The create page reads the one event a
+ *  `?event=` link carries this way, so the row it opens holding renders like
+ *  every other row on the page. The detail carries all of its media and the
+ *  card slot takes one, which is the first, the order the gallery renders. */
+export function pickableFromDetail(event: EventDetail): PickableEvent {
+  return {
+    id: event.id,
+    title: event.title,
+    status: event.status,
+    media: event.media[0] ?? null,
+    is_graphic: event.is_graphic,
+    event_date: event.event_date,
+    event_coords: event.event_coords,
+    tags: event.tags,
+  };
 }
 
 /** A search hit as a picker row: the hit carries its coordinates flat and its
@@ -273,7 +293,7 @@ function pickableFromHit(hit: SearchEventHit): PickableEvent {
  * `/search` serves the typed half because it is the endpoint that reads the
  * words: `type=event` for the located group and `author=` for their own
  * catalogue, the pair every profile link into search already carries. `total`
- * is the pre-cap match count, so the picker can say what its list leaves out.
+ * is the pre-cap match count, so the block can say what its rows leave out.
  */
 export async function searchPickableEvents(
   username: string,
@@ -284,19 +304,12 @@ export async function searchPickableEvents(
     type: "event",
     author: username,
     status: COLLECTABLE_STATUSES,
-    limit: PICKER_SEARCH_LIMIT,
+    limit: PICKER_ROW_LIMIT,
   });
   return {
     items: response.geolocations.map(pickableFromHit),
     total: response.total.geolocations,
   };
-}
-
-/** How many events are ticked, as the picker says it. One phrasing for the
- *  create page and the edit page, the way `eventCountLabel` is the one
- *  phrasing for what a collection holds. */
-export function selectedCountLabel(count: number): string {
-  return `${count} selected`;
 }
 
 /**

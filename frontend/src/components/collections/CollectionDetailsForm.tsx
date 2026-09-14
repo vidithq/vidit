@@ -10,6 +10,7 @@ import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 import {
   COLLECTION_DESCRIPTION_MAX_LEN,
   COLLECTION_TITLE_MAX_LEN,
+  type PickableEvent,
 } from "@/lib/collections";
 
 /**
@@ -30,15 +31,16 @@ import {
  *
  * **The picker sits under them** (`<EventPicker>`), because the set is part of
  * what the analyst is writing: naming a collection and choosing what goes on
- * it is one act on one page. The selection is a set of ids, seeded from
- * `initialEventIds` (the collection's current items on an edit, the event a
- * `?event=` create arrived with) and handed back whole on submit, so the
+ * it is one act on one page. The pending set is rows rather than ids, since the
+ * picker's first block renders what the collection will hold: it is seeded from
+ * `initialEvents` (the collection's current items on an edit, the event a
+ * `?event=` create arrived with) and handed back as ids on submit, so the
  * caller writes the create or the diff rather than tracking clicks.
  */
 export function CollectionDetailsForm({
   initialTitle = "",
   initialDescription = "",
-  initialEventIds = [],
+  initialEvents = [],
   username,
   hint,
   submitLabel,
@@ -51,9 +53,9 @@ export function CollectionDetailsForm({
   initialTitle?: string;
   /** Seed for an edit; empty for a create. */
   initialDescription?: string;
-  /** The rows ticked when the form opens: the collection's current items on an
+  /** What the collection holds when the form opens: its current items on an
    *  edit, the one event a `?event=` create carries, none otherwise. */
-  initialEventIds?: string[];
+  initialEvents?: PickableEvent[];
   /** Whose events the picker lists: the signed-in analyst, since a collection
    *  holds its owner's own work. */
   username: string;
@@ -71,16 +73,21 @@ export function CollectionDetailsForm({
 }) {
   const [title, setTitle] = useState(initialTitle);
   const [description, setDescription] = useState(initialDescription);
-  const [eventIds, setEventIds] = useState(() => new Set(initialEventIds));
+  const [events, setEvents] = useState<PickableEvent[]>(initialEvents);
   const titleId = useId();
   const descriptionId = useId();
 
-  const toggleEvent = (eventId: string) =>
-    setEventIds((current) => {
-      const next = new Set(current);
-      if (!next.delete(eventId)) next.add(eventId);
-      return next;
-    });
+  // Both acts are pending state: nothing is written until the caller's submit
+  // runs, and adding a row already held is the same set, so the guard keeps
+  // the block from printing it twice.
+  const addEvent = (event: PickableEvent) =>
+    setEvents((current) =>
+      current.some((held) => held.id === event.id)
+        ? current
+        : [...current, event],
+    );
+  const removeEvent = (eventId: string) =>
+    setEvents((current) => current.filter((held) => held.id !== eventId));
 
   const titleOver = title.length > COLLECTION_TITLE_MAX_LEN;
   const descriptionOver = description.length > COLLECTION_DESCRIPTION_MAX_LEN;
@@ -131,8 +138,9 @@ export function CollectionDetailsForm({
 
       <EventPicker
         username={username}
-        selectedIds={eventIds}
-        onToggle={toggleEvent}
+        events={events}
+        onAdd={addEvent}
+        onRemove={removeEvent}
       />
 
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
@@ -142,7 +150,11 @@ export function CollectionDetailsForm({
           variant="primary"
           disabled={!ready || busy}
           onClick={() =>
-            onSubmit(title.trim(), description.trim(), [...eventIds])
+            onSubmit(
+              title.trim(),
+              description.trim(),
+              events.map((event) => event.id),
+            )
           }
         >
           {busy ? "Saving…" : submitLabel}

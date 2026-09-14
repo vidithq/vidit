@@ -5,15 +5,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { CollectionDetailsForm } from "@/components/collections/CollectionDetailsForm";
 import { Card } from "@/components/ui/Card";
-import { PageLoading, PageShell } from "@/components/ui/PageShell";
+import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
   collectionHref,
   createCollection,
   NEW_COLLECTION_EVENT_PARAM,
+  pickableFromDetail,
 } from "@/lib/collections";
+import type { EventDetail } from "@/types";
 
 /**
  * Opening a collection: its own page, the address `/submit` is for an event.
@@ -24,11 +27,14 @@ import {
  * here, the profile's Collections section and the add-to-collection panel on an
  * event, and both hand over rather than growing a form of their own.
  *
- * `?event=<id>` is the second of those: the event arrives ticked in the
- * picker, so it rides the create like every other row the analyst picks, and
- * the page returns to the event, which makes shelving on a collection that
+ * `?event=<id>` is the second of those: the event arrives on the picker's
+ * first block, so it rides the create like every other row the analyst adds,
+ * and the page returns to the event, which makes shelving on a collection that
  * does not exist yet one trip away from the event and back. Without it the
- * page opens the collection it just created.
+ * page opens the collection it just created. The event is read here (the row
+ * the block renders is the catalogue card's, which needs the event and not
+ * only its id) and the form waits on that read, since it seeds its blocks
+ * once.
  *
  * The page is behind the wall (`useRequireAuth`, the client-side bounce every
  * write sub-route under a public prefix takes), and both its exits, Cancel and
@@ -49,6 +55,12 @@ function NewCollectionPageBody() {
   const searchParams = useSearchParams();
   const { user, loading } = useRequireAuth();
   const eventId = searchParams.get(NEW_COLLECTION_EVENT_PARAM);
+
+  // The one event a `?event=` link carries, as the picker's first block
+  // renders it. Skipped entirely without the parameter.
+  const { data: event, error: eventError } = useApiResource<EventDetail>(
+    eventId ? `/events/${encodeURIComponent(eventId)}` : null,
+  );
 
   // Where the reader came from, and where both exits land: the event they were
   // shelving, or their own profile, which is where the section that offers this
@@ -71,6 +83,11 @@ function NewCollectionPageBody() {
   );
 
   if (loading || !user) return <PageLoading />;
+  if (eventError) return <PageError message={eventError} backHref={origin} />;
+  // The form seeds its blocks once, so it waits on the event: mounting it
+  // before the read lands would open the collection holding nothing, and the
+  // create would drop the event the analyst was shelving.
+  if (eventId && !event) return <PageLoading />;
 
   return (
     <PageShell
@@ -87,7 +104,7 @@ function NewCollectionPageBody() {
         <SectionEyebrow title="Details" margin="none" />
         <CollectionDetailsForm
           username={user.username}
-          initialEventIds={eventId ? [eventId] : []}
+          initialEvents={event ? [pickableFromDetail(event)] : []}
           submitLabel={eventId ? "Create and add" : "Create collection"}
           hint="Say what the collection holds. Items order themselves by event date, so there is no order to set."
           busy={create.loading}

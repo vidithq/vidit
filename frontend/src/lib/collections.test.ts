@@ -11,13 +11,13 @@ import {
   deleteCollection,
   eventCollectionsPath,
   fetchCollectionSequence,
-  PICKER_SEARCH_LIMIT,
+  PICKER_ROW_LIMIT,
   pickerBrowsePath,
   READER_MAX_ITEMS,
   readerStep,
   removeEventFromCollection,
+  pickableFromDetail,
   searchPickableEvents,
-  selectedCountLabel,
   updateCollection,
   userCollectionsPath,
   type Collection,
@@ -305,14 +305,14 @@ describe("collectionPoints", () => {
 
 describe("the event picker's two sources", () => {
   it("browses the analyst's own collectable events, newest first", () => {
-    // The cursor-paged list endpoint, scoped to the owner and to the two
-    // statuses a collection may hold, so `Show more` walks the catalogue and
-    // no row the add verb would refuse is offered.
+    // The cursor-paged list endpoint, scoped to the owner, to the two statuses
+    // a collection may hold, so no row the add verb would refuse is offered,
+    // and to the rows the block shows.
     expect(pickerBrowsePath("ana", null)).toBe(
-      "/events?view=located&status=geolocated&status=detected&author=ana",
+      "/events?view=located&status=geolocated&status=detected&author=ana&limit=5",
     );
     expect(pickerBrowsePath("ana", "c2")).toBe(
-      "/events?view=located&status=geolocated&status=detected&author=ana&cursor=c2",
+      "/events?view=located&status=geolocated&status=detected&author=ana&limit=5&cursor=c2",
     );
   });
 
@@ -335,7 +335,7 @@ describe("the event picker's two sources", () => {
     expect(query.get("type")).toBe("event");
     expect(query.get("author")).toBe("ana");
     expect(query.getAll("status")).toEqual(["geolocated", "detected"]);
-    expect(query.get("limit")).toBe(String(PICKER_SEARCH_LIMIT));
+    expect(query.get("limit")).toBe(String(PICKER_ROW_LIMIT));
   });
 
   it("turns a hit into the row the browse list renders", async () => {
@@ -384,9 +384,52 @@ describe("the event picker's two sources", () => {
   });
 });
 
-describe("selectedCountLabel", () => {
-  it("says how many rows stand, whatever the list below shows", () => {
-    expect(selectedCountLabel(0)).toBe("0 selected");
-    expect(selectedCountLabel(3)).toBe("3 selected");
+describe("pickableFromDetail", () => {
+  it("turns an event's own read into the row both blocks render", () => {
+    const detail = {
+      id: "e1",
+      title: "Kakhovka dam",
+      status: "geolocated",
+      media: [
+        { id: "m1", storage_url: "https://media/one.jpg", media_type: "image" },
+        { id: "m2", storage_url: "https://media/two.jpg", media_type: "image" },
+      ],
+      is_graphic: true,
+      event_date: "2026-03-14",
+      event_coords: { lat: 46.77, lng: 33.37 },
+      tags: [{ id: "t1", name: "dam" }],
+    } as unknown as Parameters<typeof pickableFromDetail>[0];
+
+    // The detail carries all of its media and the card slot takes one, which
+    // is the first, the order the gallery renders.
+    expect(pickableFromDetail(detail)).toEqual({
+      id: "e1",
+      title: "Kakhovka dam",
+      status: "geolocated",
+      media: {
+        id: "m1",
+        storage_url: "https://media/one.jpg",
+        media_type: "image",
+      },
+      is_graphic: true,
+      event_date: "2026-03-14",
+      event_coords: { lat: 46.77, lng: 33.37 },
+      tags: [{ id: "t1", name: "dam" }],
+    });
+  });
+
+  it("carries no media for an event that has none", () => {
+    const detail = {
+      id: "e2",
+      title: "Sourceless detection",
+      status: "detected",
+      media: [],
+      is_graphic: false,
+      event_date: null,
+      event_coords: null,
+      tags: [],
+    } as unknown as Parameters<typeof pickableFromDetail>[0];
+
+    expect(pickableFromDetail(detail).media).toBeNull();
   });
 });

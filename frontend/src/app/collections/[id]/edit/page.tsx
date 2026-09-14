@@ -26,6 +26,7 @@ import {
   updateCollection,
   type Collection,
 } from "@/lib/collections";
+import type { EventListItem } from "@/types";
 
 /**
  * Owner edit of one collection: everything it carries, and the one act that
@@ -33,7 +34,7 @@ import {
  *
  * The form is the create page's, so both write pages ask for the same three
  * things: the title, the description, and the events on the shelf. The picker
- * opens on what the collection holds and the save writes the difference,
+ * opens holding what the collection holds and the save writes the difference,
  * through the same idempotent membership routes the collection page's own
  * remove crosses take, which stay where they are: taking one item off while
  * reading is an act on that item, not a pass over the whole set.
@@ -65,11 +66,12 @@ export default function EditCollectionPage() {
     user && id ? `/collections/${id}` : null,
   );
 
-  // What the collection holds when the form opens, so the picker starts on the
-  // set the page is editing and the save has a baseline to diff against. The
-  // page's own read of the sequence, the walk `<CollectionItems>` renders from
-  // on the collection itself.
-  const [itemIds, setItemIds] = useState<string[] | null>(null);
+  // What the collection holds when the form opens, so the picker's first block
+  // opens on the set the page is editing and the save has a baseline to diff
+  // against. The page's own read of the sequence, the walk
+  // `<CollectionItems>` renders from on the collection itself, rows and all:
+  // the block renders the catalogue card for each of them.
+  const [items, setItems] = useState<EventListItem[] | null>(null);
   const [itemsError, setItemsError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -78,7 +80,7 @@ export default function EditCollectionPage() {
     fetchCollectionSequence(id, controller.signal)
       .then((walk) => {
         if (controller.signal.aborted) return;
-        setItemIds(walk.items.map((item) => item.id));
+        setItems(walk.items);
       })
       .catch((e: unknown) => {
         if (controller.signal.aborted) return;
@@ -95,7 +97,7 @@ export default function EditCollectionPage() {
     // handed a save that half happened without a word.
     async (title: string, description: string, eventIds: string[]) => {
       await updateCollection(id, title, description);
-      const before = new Set(itemIds ?? []);
+      const before = new Set((items ?? []).map((item) => item.id));
       const after = new Set(eventIds);
       for (const eventId of eventIds) {
         if (!before.has(eventId)) await addEventToCollection(id, eventId);
@@ -151,9 +153,9 @@ export default function EditCollectionPage() {
   }
 
   // The form seeds its picker once, so it waits on the items read: mounting it
-  // on an unknown set would open the edit with every current item unticked,
-  // and the first save would strip the collection.
-  if (itemIds === null) return <PageLoading />;
+  // on an unknown set would open the edit holding nothing, and the first save
+  // would strip the collection.
+  if (items === null) return <PageLoading />;
 
   return (
     <PageShell
@@ -168,7 +170,7 @@ export default function EditCollectionPage() {
           username={user.username}
           initialTitle={collection.title}
           initialDescription={collection.description}
-          initialEventIds={itemIds}
+          initialEvents={items}
           submitLabel="Save collection"
           busy={save.loading}
           error={save.error}

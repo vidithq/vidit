@@ -1,20 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Plus, Search, X } from "lucide-react";
 
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { Input } from "@/components/ui/Input";
-import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { errorMessage } from "@/lib/api";
 import {
-  PICKER_SEARCH_LIMIT,
+  eventCountLabel,
+  PICKER_ROW_LIMIT,
   pickerBrowsePath,
   searchPickableEvents,
-  selectedCountLabel,
   type PickableEvent,
 } from "@/lib/collections";
 import { useCursorList } from "@/hooks/useCursorList";
@@ -24,51 +25,71 @@ import type { EventListItem } from "@/types";
  *  search page uses on the same endpoint. */
 const DEBOUNCE_MS = 300;
 
+/** The rows a collection holds, in the order its page reads them: by when the
+ *  events happened, earliest first. A row with no date sits at the end, since
+ *  there is nothing to place it against. The server orders a stored collection
+ *  this way, so the pending list and the collection it becomes read alike. */
+function chronological(events: PickableEvent[]): PickableEvent[] {
+  return [...events].sort((a, b) =>
+    (a.event_date ?? "9999").localeCompare(b.event_date ?? "9999"),
+  );
+}
+
 /**
- * The analyst's own events, to pick the ones a collection holds.
+ * The events a collection is being written to hold, and the search that adds
+ * to them.
  *
  * Both collection writes carry it, opening one and editing one, so the set a
  * collection holds is chosen where its title and description are written
- * rather than one event at a time afterwards.
+ * rather than one event at a time afterwards. The two pages read the same:
+ * nothing here knows which of them it is standing on.
  *
- * **Two sources, one row.** With nothing typed the block browses the analyst's
- * catalogue newest first through `GET /events` (`view=located`, `author=`,
- * scoped to the two statuses a collection may hold), which is the cursor-paged
- * endpoint, so `Show more` walks the whole catalogue a page at a time. A typed
- * query goes to `GET /search` (`type=event`, `author=`), the endpoint that
- * reads words, which answers one capped group and hands out no cursor: the
- * block says how many matched when it is showing fewer, and narrowing the
- * words is how a reader reaches the rest. Either way a row is a `PickableEvent`
- * ([`lib/collections.ts`](../../lib/collections.ts)), so the two sources render
- * as one list.
+ * **Two blocks, and the first one is the answer.** *Events in this collection*
+ * is what the collection will hold if the analyst saves now: the rows the edit
+ * page opened on, the one event a `?event=` create arrived with, and everything
+ * added since, under the count line and the order the collection's own page
+ * takes. *Add events* is the way in, and it is deliberately short: at most
+ * `PICKER_ROW_LIMIT` rows, the most recent of the analyst's own eligible events
+ * with nothing typed and the first matches once something is. Neither block
+ * writes anything: both move rows in and out of the pending list the form
+ * holds, and the page's own submit is what reaches the server.
  *
- * **A row is the catalogue's own compact card**, with its lifecycle badge, and
- * ticking one is `<EntityCard>`'s `selected` / `onSelect`: the stretched
- * surface becomes the button that picks the row and the title renders as
- * plain text, a row carrying one gesture, the shape the collection page's step
- * list already takes. So the picker grows no checkbox of its own, and a row
- * here reads as the same object as the same event in a search result or on a
- * profile.
+ * **A row is the catalogue's own compact card** in its plain mode, with its
+ * lifecycle badge, its title linking to the event and one control in the
+ * `action` slot. On the first block that control is the red cross that takes
+ * the row off, the one a collection's own item list carries, in the same
+ * corner. On the second it is an *Add* button, and a row already on the first
+ * block shows a disabled *Added* instead of dropping out of the results: the
+ * analyst searched for that event, and answering with nothing says less than
+ * answering with the row and the reason it cannot be added twice.
  *
- * **The selection is ids, and it survives the query.** The parent holds them,
- * so a row ticked while browsing is still ticked after a search that does not
- * list it, and the count line above the list says how many stand, whatever the
- * list below is showing.
+ * **Two sources, one row.** With nothing typed the add block reads the
+ * analyst's catalogue newest first through `GET /events` (`view=located`,
+ * `author=`, scoped to the two statuses a collection may hold), the
+ * cursor-paged endpoint, whose cursor is how the block knows more stands behind
+ * the rows it shows. A typed query goes to `GET /search` (`type=event`,
+ * `author=`), the endpoint that reads words, which answers the pre-cap match
+ * count beside its rows. Either way a row is a `PickableEvent`
+ * ([`lib/collections.ts`](../../lib/collections.ts)), and either way the line
+ * under the rows says how many there are and that narrowing the words is how to
+ * reach them.
  */
 export function EventPicker({
   username,
-  selectedIds,
-  onToggle,
+  events,
+  onAdd,
+  onRemove,
 }: {
-  /** Whose events the picker lists: the signed-in analyst, since a collection
-   *  holds its owner's own work and nothing else. */
+  /** Whose events the add block lists: the signed-in analyst, since a
+   *  collection holds its owner's own work and nothing else. */
   username: string;
-  /** The ids ticked so far, held by the form that submits them. */
-  selectedIds: Set<string>;
-  onToggle: (eventId: string) => void;
+  /** What the collection will hold, held by the form that submits it. */
+  events: PickableEvent[];
+  onAdd: (event: PickableEvent) => void;
+  onRemove: (eventId: string) => void;
 }) {
   const [query, setQuery] = useState("");
-  // What the last request was made under, `null` while nothing is typed. The
+  // What the last request was made under, empty while nothing is typed. The
   // field moves on every keystroke and this follows it a beat later, the
   // debounce the search page keeps on the same endpoint.
   const [committed, setCommitted] = useState("");
@@ -120,106 +141,165 @@ export function EventPicker({
     };
   }, [committed, username]);
 
+  const held = chronological(events);
+  const heldIds = useMemo(() => new Set(events.map((e) => e.id)), [events]);
+
   const searching = committed.length > 0;
   const found = matches?.query === committed ? matches : null;
   const failed = searchError?.query === committed ? searchError : null;
-  const rows: PickableEvent[] = searching ? (found?.items ?? []) : browse.items;
+  const results: PickableEvent[] = (
+    searching ? (found?.items ?? []) : browse.items
+  ).slice(0, PICKER_ROW_LIMIT);
   const error = searching ? (failed?.message ?? null) : browse.error;
   const loading = searching ? found === null && failed === null : browse.loading;
-  // How many matched past what the group carries. The search endpoint caps its
-  // group and offers no next page, so the block states the figure instead of
-  // offering a walk it cannot take.
-  const beyondTheCap = found === null ? 0 : found.total - found.items.length;
+  // What the block is not showing. A search states the figure, since the
+  // endpoint answers the pre-cap count; a browse only knows there is another
+  // page, which is enough to say that the search is the way past these rows.
+  const refine = searching
+    ? found !== null && found.total > results.length
+      ? `Showing ${results.length} of ${found.total} matches. Refine the search to reach the rest.`
+      : null
+    : browse.hasMore
+      ? "Showing your most recent. Search to reach the rest of your catalogue."
+      : null;
 
   return (
-    <div className="space-y-3">
-      <span className="flex items-center justify-between gap-2">
-        <span className={FORM_LABEL}>Events</span>
-        <span className="text-xs text-neutral-500">
-          {selectedCountLabel(selectedIds.size)}
-        </span>
-      </span>
+    <div className="space-y-6">
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <SectionEyebrow
+            title="Events in this collection"
+            as="h3"
+            margin="none"
+          />
+          <p className="text-xs text-neutral-500">
+            {eventCountLabel(held.length)}, ordered by event date, earliest
+            first.
+          </p>
+        </div>
 
-      <Input
-        type="search"
-        icon={<Search size={14} />}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search your geolocations by title…"
-      />
-
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
-
-      {loading && !error && (
-        <p className="text-sm text-neutral-500">Loading your geolocations…</p>
-      )}
-
-      {!loading && !error && rows.length === 0 && (
-        <EmptyState
-          variant="plain"
-          lead={
-            searching
-              ? "Nothing of yours matches those words."
-              : "No geolocations to put on a collection yet."
-          }
-        >
-          {searching
-            ? "Try fewer words, or clear the field to browse everything you have."
-            : "A collection holds your own geolocated and detected events."}
-        </EmptyState>
-      )}
-
-      {rows.length > 0 && (
-        <div className="space-y-2">
-          {rows.map((row) => {
-            const picked = selectedIds.has(row.id);
-            return (
-              <EntityCard
+        {held.length > 0 ? (
+          <div className="space-y-2">
+            {held.map((row) => (
+              <PickerRow
                 key={row.id}
-                variant="compact"
-                detailHref={`/events/${row.id}`}
-                title={row.title}
-                badge={<StatusBadge status={row.status} />}
-                media={row.media ?? undefined}
-                isGraphic={row.is_graphic}
-                date={row.event_date ?? undefined}
-                coords={row.event_coords}
-                tags={row.tags}
-                selected={picked}
-                onSelect={() => onToggle(row.id)}
-                selectLabel={
-                  picked
-                    ? `Take ${row.title} off this collection`
-                    : `Put ${row.title} on this collection`
+                row={row}
+                action={
+                  <Button
+                    icon
+                    variant="dangerGhost"
+                    onClick={() => onRemove(row.id)}
+                    aria-label={`Remove ${row.title} from this collection`}
+                    title="Remove from collection"
+                  >
+                    <X size={14} />
+                  </Button>
                 }
-                // Every row carries the same two lines, since the picker drops
-                // the byline the way a collection's item list does: the
-                // catalogue's height floor would only print a band of nothing
-                // under each of them.
-                uniformHeight={false}
               />
-            );
-          })}
+            ))}
+          </div>
+        ) : (
+          <EmptyState variant="plain" lead="Nothing on this collection yet.">
+            Add your own geolocations from the search below.
+          </EmptyState>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <SectionEyebrow title="Add events" as="h3" margin="none" />
+          <p className="text-xs text-neutral-500">
+            Your own geolocated and detected events, {PICKER_ROW_LIMIT} at a
+            time.
+          </p>
         </div>
-      )}
 
-      {beyondTheCap > 0 && (
-        <p className="text-xs text-neutral-500">
-          {`Showing the first ${PICKER_SEARCH_LIMIT} of ${found?.total} matches. Narrow the words to reach the rest.`}
-        </p>
-      )}
+        <Input
+          type="search"
+          icon={<Search size={14} />}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search your geolocations by title…"
+        />
 
-      {!searching && browse.hasMore && (
-        <div className="flex justify-center">
-          <Button
-            variant="secondary"
-            disabled={browse.loadingMore}
-            onClick={browse.loadMore}
+        {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+
+        {loading && !error && (
+          <p className="text-sm text-neutral-500">Loading your geolocations…</p>
+        )}
+
+        {!loading && !error && results.length === 0 && (
+          <EmptyState
+            variant="plain"
+            lead={
+              searching
+                ? "Nothing of yours matches those words."
+                : "No geolocations to put on a collection yet."
+            }
           >
-            {browse.loadingMore ? "Loading…" : "Show more"}
-          </Button>
-        </div>
-      )}
+            {searching
+              ? "Try fewer words, or clear the field to see your most recent."
+              : "A collection holds your own geolocated and detected events."}
+          </EmptyState>
+        )}
+
+        {results.length > 0 && (
+          <div className="space-y-2">
+            {results.map((row) => {
+              const added = heldIds.has(row.id);
+              return (
+                <PickerRow
+                  key={row.id}
+                  row={row}
+                  action={
+                    <Button
+                      variant="secondary"
+                      disabled={added}
+                      onClick={() => onAdd(row)}
+                      aria-label={`${added ? "Added" : "Add"} ${row.title} to this collection`}
+                    >
+                      {!added && <Plus size={14} />}
+                      {added ? "Added" : "Add"}
+                    </Button>
+                  }
+                />
+              );
+            })}
+          </div>
+        )}
+
+        {refine && <p className="text-xs text-neutral-500">{refine}</p>}
+      </div>
     </div>
+  );
+}
+
+/** One row of either block: the catalogue's own compact card carrying the
+ *  block's control. The two blocks differ by that control alone, so the slots
+ *  a row fills are written once. */
+function PickerRow({
+  row,
+  action,
+}: {
+  row: PickableEvent;
+  action: ReactNode;
+}) {
+  return (
+    <EntityCard
+      variant="compact"
+      detailHref={`/events/${row.id}`}
+      title={row.title}
+      badge={<StatusBadge status={row.status} />}
+      media={row.media ?? undefined}
+      isGraphic={row.is_graphic}
+      date={row.event_date ?? undefined}
+      coords={row.event_coords}
+      tags={row.tags}
+      // Every row carries the same two lines, since the picker drops the
+      // byline the way a collection's item list does: the catalogue's height
+      // floor would only print a band of nothing under each of them.
+      uniformHeight={false}
+      action={action}
+    />
   );
 }

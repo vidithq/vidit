@@ -12,6 +12,13 @@ vi.mock("next/navigation", () => ({
 const useAuth = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => useAuth() }));
 
+// The read behind `?event=`: the page renders the event's own row on the
+// picker's first block, so it reads the event rather than only its id.
+const useApiResource = vi.fn();
+vi.mock("@/hooks/useApiResource", () => ({
+  useApiResource: (path: string | null) => useApiResource(path),
+}));
+
 const createCollection = vi.fn();
 const searchPickableEvents = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
@@ -22,9 +29,9 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
     searchPickableEvents(username, q),
 }));
 
-// The picker's browse list. The walk itself is `useCursorList`'s own test and
-// the picker's; here it only has to render without reaching the network, so
-// the page's own acts are what these assert.
+// The add block's list. The walk itself is `useCursorList`'s own test and the
+// picker's; here it only has to render without reaching the network, so the
+// page's own acts are what these assert.
 const useCursorList = vi.fn();
 vi.mock("@/hooks/useCursorList", () => ({
   useCursorList: () => useCursorList(),
@@ -35,6 +42,38 @@ import type { Collection } from "@/lib/collections";
 import NewCollectionPage from "./page";
 
 const USER = { id: "u1", username: "ana" };
+
+/** One of the analyst's own events, as the add block lists it and as the
+ *  `?event=` read answers. */
+const EVENT = {
+  id: "e1",
+  title: "Strike on the rail junction",
+  status: "geolocated",
+  media: null,
+  is_graphic: false,
+  event_date: "2026-03-14",
+  event_coords: { lat: 49.71, lng: 37.616 },
+  tags: [],
+  owner: USER,
+  conflicts: [],
+  before_closed_status: null,
+};
+
+/** The same event as its own detail read, whose media is a list. */
+const EVENT_DETAIL = { ...EVENT, media: [] };
+
+/** What the add block lists, `useCursorList`'s own shape. */
+function mockBrowse(items: unknown[]) {
+  useCursorList.mockReturnValue({
+    items,
+    error: null,
+    loading: false,
+    loadingMore: false,
+    hasMore: false,
+    loadMore: vi.fn(),
+    reload: vi.fn(),
+  });
+}
 
 const created: Collection = {
   id: "c9",
@@ -62,22 +101,23 @@ beforeEach(() => {
   push.mockReset();
   replace.mockReset();
   useAuth.mockReset();
+  useApiResource.mockReset();
   createCollection.mockReset();
   searchPickableEvents.mockReset();
   useCursorList.mockReset();
   searchParams.delete("event");
   useAuth.mockReturnValue({ user: USER, loading: false });
-  createCollection.mockResolvedValue(created);
-  searchPickableEvents.mockResolvedValue({ items: [], total: 0 });
-  useCursorList.mockReturnValue({
-    items: [],
+  // The hook's own contract: it reads nothing while the path is null, which
+  // is every render without `?event=`.
+  useApiResource.mockImplementation((path: string | null) => ({
+    data: path === null ? null : EVENT_DETAIL,
     error: null,
     loading: false,
-    loadingMore: false,
-    hasMore: false,
-    loadMore: vi.fn(),
-    reload: vi.fn(),
-  });
+    refetch: vi.fn(),
+  }));
+  createCollection.mockResolvedValue(created);
+  searchPickableEvents.mockResolvedValue({ items: [], total: 0 });
+  mockBrowse([]);
 });
 
 describe("NewCollectionPage", () => {
@@ -126,12 +166,20 @@ describe("NewCollectionPage", () => {
     expect(
       screen.getByText("The collection opens with this event on it."),
     ).toBeInTheDocument();
+    // The event's own row, on the block that says what the collection will
+    // hold, read off `/events/{id}` rather than guessed from the id.
+    expect(useApiResource).toHaveBeenCalledWith("/events/e1");
+    expect(
+      screen.getByRole("button", {
+        name: "Remove Strike on the rail junction from this collection",
+      }),
+    ).toBeInTheDocument();
     fillForm();
     fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
 
-    // `?event=` is a pre-selection in the picker, so the event rides the
-    // create like every other row the analyst ticks, and one refusal takes
-    // the whole act with it. Then the reader lands back on the event.
+    // `?event=` puts the event on the picker's first block, so it rides the
+    // create like every other row the analyst adds, and one refusal takes the
+    // whole act with it. Then the reader lands back on the event.
     await waitFor(() =>
       expect(createCollection).toHaveBeenCalledWith(
         "March strikes",
@@ -142,41 +190,24 @@ describe("NewCollectionPage", () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith("/events/e1"));
   });
 
-  it("puts the picker under the fields, counting what stands", () => {
-    useCursorList.mockReturnValue({
-      items: [
-        {
-          id: "e1",
-          title: "Strike on the rail junction",
-          status: "geolocated",
-          media: null,
-          is_graphic: false,
-          event_date: "2026-03-14",
-          event_coords: { lat: 49.71, lng: 37.616 },
-          tags: [],
-          owner: USER,
-          conflicts: [],
-          before_closed_status: null,
-        },
-      ],
-      error: null,
-      loading: false,
-      loadingMore: false,
-      hasMore: false,
-      loadMore: vi.fn(),
-      reload: vi.fn(),
-    });
+  it("opens empty, and an added row is what the create carries", () => {
+    mockBrowse([EVENT]);
 
     render(<NewCollectionPage />);
     fillForm();
-    expect(screen.getByText("0 selected")).toBeInTheDocument();
+    expect(
+      screen.getByText("0 events, ordered by event date, earliest first."),
+    ).toBeInTheDocument();
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Put Strike on the rail junction on this collection",
+        name: "Add Strike on the rail junction to this collection",
       }),
     );
-    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    // The row moved onto the block above, which is what the create writes.
+    expect(
+      screen.getByText("1 event, ordered by event date, earliest first."),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Create collection" }));
     expect(createCollection).toHaveBeenCalledWith(
