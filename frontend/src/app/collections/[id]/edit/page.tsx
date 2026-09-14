@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -8,18 +7,16 @@ import { CollectionDetailsForm } from "@/components/collections/CollectionDetail
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { useApiResource } from "@/hooks/useApiResource";
+import { useCollectionSequence } from "@/hooks/useCollectionSequence";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { errorMessage } from "@/lib/api";
 import {
   addEventToCollection,
   collectionHref,
-  fetchCollectionSequence,
   removeEventFromCollection,
   updateCollection,
   type Collection,
 } from "@/lib/collections";
-import type { EventListItem } from "@/types";
 
 /**
  * Owner edit of one collection: everything it carries.
@@ -58,26 +55,9 @@ export default function EditCollectionPage() {
 
   // What the collection holds when the form opens, so the picker's first block
   // opens on the set the page is editing and the save has a baseline to diff
-  // against. The page's own read of the sequence, the walk
-  // `<CollectionItems>` renders from on the collection itself, rows and all:
-  // the block renders the catalogue card for each of them.
-  const [items, setItems] = useState<EventListItem[] | null>(null);
-  const [itemsError, setItemsError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!id) return;
-    const controller = new AbortController();
-    fetchCollectionSequence(id, controller.signal)
-      .then((walk) => {
-        if (controller.signal.aborted) return;
-        setItems(walk.items);
-      })
-      .catch((e: unknown) => {
-        if (controller.signal.aborted) return;
-        setItemsError(errorMessage(e, "Failed to read what this collection holds"));
-      });
-    return () => controller.abort();
-  }, [id]);
+  // against. The same walk the collection's own page reads, rows and all: the
+  // block renders the catalogue card for each of them.
+  const { items, error: itemsError } = useCollectionSequence(id);
 
   const save = useMutation(
     // The details first, then the memberships the picker moved, each through

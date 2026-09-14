@@ -210,17 +210,16 @@ describe("fetchCollectionSequence", () => {
       .mockResolvedValueOnce(page([item({ id: "e1" })], "c2"))
       .mockResolvedValueOnce(page([item({ id: "e2" })], null));
 
-    const sequence = await fetchCollectionSequence("c1");
+    const items = await fetchCollectionSequence("c1");
 
-    expect(sequence.items.map((i) => i.id)).toEqual(["e1", "e2"]);
-    expect(sequence.capped).toBe(false);
+    expect(items.map((i) => i.id)).toEqual(["e1", "e2"]);
     expect(mockFetchPage.mock.calls.map((call) => call[0])).toEqual([
       "/collections/c1/events",
       "/collections/c1/events?cursor=c2",
     ]);
   });
 
-  it("stops at the ceiling and says the collection holds more", async () => {
+  it("stops at the ceiling", async () => {
     const many = Array.from({ length: READER_MAX_ITEMS }, (_, i) =>
       item({ id: `e${i}` }),
     );
@@ -228,21 +227,9 @@ describe("fetchCollectionSequence", () => {
       .mockResolvedValueOnce(page(many, "c2"))
       .mockResolvedValueOnce(page([item({ id: "over" })], null));
 
-    const sequence = await fetchCollectionSequence("c1");
-
-    expect(sequence.items).toHaveLength(READER_MAX_ITEMS);
-    expect(sequence.capped).toBe(true);
+    expect(await fetchCollectionSequence("c1")).toHaveLength(READER_MAX_ITEMS);
     // The walk stopped rather than reading the page behind the ceiling.
     expect(mockFetchPage).toHaveBeenCalledTimes(1);
-  });
-
-  it("reads a collection that ends exactly on the ceiling as whole", async () => {
-    const many = Array.from({ length: READER_MAX_ITEMS }, (_, i) =>
-      item({ id: `e${i}` }),
-    );
-    mockFetchPage.mockResolvedValueOnce(page(many, null));
-
-    expect((await fetchCollectionSequence("c1")).capped).toBe(false);
   });
 });
 

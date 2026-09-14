@@ -103,10 +103,8 @@ function mockRead(data: Collection | null, error: string | null = null) {
 /** The collection the page opens on, as the sequence walk hands it over: the
  *  rows the picker's first block renders, and the baseline the save diffs
  *  against. */
-const sequenceOf = (...ids: string[]) => ({
-  items: ids.map((id) => event(id, `Strike ${id}`)),
-  capped: false,
-});
+const sequenceOf = (...ids: string[]) =>
+  ids.map((id) => event(id, `Strike ${id}`));
 
 /** Render, then wait for the two reads the form needs before it mounts. */
 async function renderPage() {

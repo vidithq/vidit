@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Check, Plus, Search, X } from "lucide-react";
 
-import { StatusBadge } from "@/components/event/StatusBadge";
+import { CollectionItemCard } from "@/components/collections/CollectionItemCard";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { EntityCard } from "@/components/ui/EntityCard";
 import { Input } from "@/components/ui/Input";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
@@ -19,6 +18,7 @@ import {
   type PickableEvent,
 } from "@/lib/collections";
 import { useCursorList } from "@/hooks/useCursorList";
+import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import type { EventListItem } from "@/types";
 
 /** How long the field waits before a typed query is sent, the debounce the
@@ -54,15 +54,16 @@ function chronological(events: PickableEvent[]): PickableEvent[] {
  * writes anything: both move rows in and out of the pending list the form
  * holds, and the page's own submit is what reaches the server.
  *
- * **A row is the catalogue's own compact card** in its plain mode, with its
- * lifecycle badge, its title linking to the event and one control in the
- * `action` slot, the same icon-button shape on both blocks. On the first
- * block that control is the red cross that takes the row off, the one control
- * that lets an item leave a collection anywhere on the site. On the second it is
- * an accent plus icon that adds the row, and a row already on the first block
- * shows a disabled check icon instead of dropping out of the results: the
- * analyst searched for that event, and answering with nothing says less than
- * answering with the row and the reason it cannot be added twice.
+ * **A row is `<CollectionItemCard>`**, the row every collection surface
+ * renders, here in its plain mode: the title links to the event and the block's
+ * own control fills the `action` slot, the same icon-button shape on both
+ * blocks. On the first block that control is the red cross that takes the row
+ * off, the one control that lets an item leave a collection anywhere on the
+ * site. On the second it is an accent plus icon that adds the row, and a row
+ * already on the first block shows a disabled check icon instead of dropping
+ * out of the results: the analyst searched for that event, and answering with
+ * nothing says less than answering with the row and the reason it cannot be
+ * added twice.
  *
  * **Two sources, one row.** With nothing typed the add block reads the
  * analyst's catalogue newest first through `GET /events` (`view=located`,
@@ -90,15 +91,7 @@ export function EventPicker({
   onRemove: (eventId: string) => void;
 }) {
   const [query, setQuery] = useState("");
-  // What the last request was made under, empty while nothing is typed. The
-  // field moves on every keystroke and this follows it a beat later, the
-  // debounce the search page keeps on the same endpoint.
-  const [committed, setCommitted] = useState("");
-
-  useEffect(() => {
-    const timer = setTimeout(() => setCommitted(query.trim()), DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [query]);
+  const typed = query.trim();
 
   const buildPath = useCallback(
     (cursor: string | null) => pickerBrowsePath(username, cursor),
@@ -106,53 +99,56 @@ export function EventPicker({
   );
   const browse = useCursorList<EventListItem>(buildPath);
 
-  // Both answers carry the query they belong to, which is what makes a result
-  // from an earlier query recognisable as stale: the words move while a
-  // request is in flight, and the rows of the query before them are not the
-  // rows of this one.
-  const [matches, setMatches] = useState<{
+  // The one answer the typed half holds, carrying the query it belongs to:
+  // the words move while a request is in flight, and the rows of the query
+  // before them are not the rows of this one, so the block shows an answer
+  // only while its query is still the one in the field.
+  const [answer, setAnswer] = useState<{
     query: string;
     items: PickableEvent[];
     total: number;
-  } | null>(null);
-  const [searchError, setSearchError] = useState<{
-    query: string;
-    message: string;
+    error: string | null;
   } | null>(null);
 
-  useEffect(() => {
-    if (!committed) return;
-    // An answer that lands after the field has moved on is dropped by the
-    // effect's own cleanup, the rule the list walk keeps with its abort.
-    let live = true;
-    searchPickableEvents(username, committed)
-      .then((result) => {
-        if (live) setMatches({ query: committed, ...result });
-      })
-      .catch((e: unknown) => {
-        if (live) {
-          setSearchError({
-            query: committed,
-            message: errorMessage(e, "Failed to search your events"),
-          });
-        }
-      });
-    return () => {
-      live = false;
-    };
-  }, [committed, username]);
+  // The debounce the search page keeps on the same endpoint. The in-flight
+  // guard rides the effect's cleanup, which runs the moment the field moves
+  // on, so an answer to a query the reader has left never lands.
+  useDebouncedEffect(
+    () => {
+      if (!typed) return;
+      let live = true;
+      searchPickableEvents(username, typed)
+        .then((result) => {
+          if (live) setAnswer({ query: typed, ...result, error: null });
+        })
+        .catch((e: unknown) => {
+          if (live) {
+            setAnswer({
+              query: typed,
+              items: [],
+              total: 0,
+              error: errorMessage(e, "Failed to search your events"),
+            });
+          }
+        });
+      return () => {
+        live = false;
+      };
+    },
+    [typed, username],
+    DEBOUNCE_MS,
+  );
 
   const held = chronological(events);
   const heldIds = useMemo(() => new Set(events.map((e) => e.id)), [events]);
 
-  const searching = committed.length > 0;
-  const found = matches?.query === committed ? matches : null;
-  const failed = searchError?.query === committed ? searchError : null;
+  const searching = typed.length > 0;
+  const found = answer?.query === typed ? answer : null;
   const results: PickableEvent[] = (
     searching ? (found?.items ?? []) : browse.items
   ).slice(0, PICKER_ROW_LIMIT);
-  const error = searching ? (failed?.message ?? null) : browse.error;
-  const loading = searching ? found === null && failed === null : browse.loading;
+  const error = searching ? (found?.error ?? null) : browse.error;
+  const loading = searching ? found === null : browse.loading;
   // What the block is not showing. A search states the figure, since the
   // endpoint answers the pre-cap count; a browse only knows there is another
   // page, which is enough to say that the search is the way past these rows.
@@ -182,9 +178,9 @@ export function EventPicker({
         {held.length > 0 ? (
           <div className="space-y-2">
             {held.map((row) => (
-              <PickerRow
+              <CollectionItemCard
                 key={row.id}
-                row={row}
+                item={row}
                 action={
                   <Button
                     icon
@@ -249,9 +245,9 @@ export function EventPicker({
             {results.map((row) => {
               const added = heldIds.has(row.id);
               return (
-                <PickerRow
+                <CollectionItemCard
                   key={row.id}
-                  row={row}
+                  item={row}
                   action={
                     added ? (
                       <Button
@@ -284,35 +280,5 @@ export function EventPicker({
         {refine && <p className="text-xs text-neutral-500">{refine}</p>}
       </div>
     </div>
-  );
-}
-
-/** One row of either block: the catalogue's own compact card carrying the
- *  block's control. The two blocks differ by that control alone, so the slots
- *  a row fills are written once. */
-function PickerRow({
-  row,
-  action,
-}: {
-  row: PickableEvent;
-  action: ReactNode;
-}) {
-  return (
-    <EntityCard
-      variant="compact"
-      detailHref={`/events/${row.id}`}
-      title={row.title}
-      badge={<StatusBadge status={row.status} />}
-      media={row.media ?? undefined}
-      isGraphic={row.is_graphic}
-      date={row.event_date ?? undefined}
-      coords={row.event_coords}
-      tags={row.tags}
-      // Every row carries the same two lines, since the picker drops the
-      // byline the way a collection's item list does: the catalogue's height
-      // floor would only print a band of nothing under each of them.
-      uniformHeight={false}
-      action={action}
-    />
   );
 }

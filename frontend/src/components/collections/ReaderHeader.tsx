@@ -3,45 +3,21 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
-import { READER_MAX_ITEMS } from "@/lib/collections";
-
-/** Past this many items the strip stops being one segment per event: a segment
- *  thinner than a hairline says nothing, so the bar fills continuously
- *  instead. The figure is what fits the 384px panel at 2px gaps. */
-const SEGMENTED_UP_TO = 24;
 
 /**
- * How far along the reader is, drawn on the panel's top edge.
+ * How far along the reader is, drawn on the panel's top edge as a continuous
+ * fill.
  *
- * One segment per event while a collection is short enough for a segment to be
- * visible, a continuous fill past that. Decorative: the same two numbers are
- * written out as `N of M` under it, so nothing here is announced twice.
+ * Decorative: the same two numbers are written out as `N of M` under it, so
+ * nothing here is announced twice.
  */
 function ProgressStrip({ step, total }: { step: number; total: number }) {
-  if (total > SEGMENTED_UP_TO) {
-    return (
-      <div className="h-[3px] bg-neutral-700" aria-hidden="true">
-        <div
-          className="h-full bg-orange-500"
-          style={{ width: `${(step / total) * 100}%` }}
-        />
-      </div>
-    );
-  }
   return (
-    <div className="flex gap-[2px] h-[3px]" aria-hidden="true">
-      {Array.from({ length: total }, (_, i) => (
-        <span
-          key={i}
-          className={`flex-1 ${
-            i + 1 === step
-              ? "bg-orange-500"
-              : i + 1 < step
-                ? "bg-orange-500/45"
-                : "bg-neutral-700"
-          }`}
-        />
-      ))}
+    <div className="h-[3px] bg-neutral-700" aria-hidden="true">
+      <div
+        className="h-full bg-orange-500"
+        style={{ width: `${(step / total) * 100}%` }}
+      />
     </div>
   );
 }
@@ -63,14 +39,11 @@ function ProgressStrip({ step, total }: { step: number; total: number }) {
 export function ReaderHeader({
   step,
   total,
-  capped,
   onStep,
 }: {
   /** Which item is being read, 1-based. */
   step: number;
   total: number;
-  /** True when the collection holds more than the page steps through. */
-  capped: boolean;
   onStep: (step: number) => void;
 }) {
   return (
@@ -87,11 +60,6 @@ export function ReaderHeader({
           <p className="max-sm:hidden text-[11px] text-neutral-500">
             &larr; &rarr; to step
           </p>
-          {capped && (
-            <p className="text-[11px] text-neutral-500">
-              First {READER_MAX_ITEMS} events of this collection.
-            </p>
-          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">

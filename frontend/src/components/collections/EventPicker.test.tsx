@@ -153,14 +153,9 @@ describe("EventPicker, the add block", () => {
       />,
     );
 
-    // The cursor-paged list endpoint, scoped to the owner, to the two statuses
-    // a collection may hold, and to the rows the block shows.
-    const buildPath = useCursorList.mock.calls[0][0] as (
-      cursor: string | null,
-    ) => string;
-    expect(buildPath(null)).toBe(
-      "/events?view=located&status=geolocated&status=detected&author=ana&limit=5",
-    );
+    // The rows come off the browse walk, and nothing is asked of the endpoint
+    // that reads words until something is typed. What that walk asks for is
+    // `pickerBrowsePath`'s own spec, in `lib/collections.test.ts`.
     expect(addRow("Strike on the rail junction")).toBeInTheDocument();
     expect(searchPickableEvents).not.toHaveBeenCalled();
   });

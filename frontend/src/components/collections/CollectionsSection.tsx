@@ -12,9 +12,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
+import { apiFetch } from "@/lib/api";
 import {
   CollectionIcon,
-  fetchUserCollections,
   newCollectionHref,
   userCollectionsPath,
   type Collection,
@@ -84,17 +84,17 @@ export function CollectionsSection({
   // grid grow without the first read being re-run.
   const appended = walk.username === username ? walk : null;
   const more = useMutation(
-    () => fetchUserCollections(username, GRID_PAGE, appended?.next ?? 2),
+    () =>
+      apiFetch<CollectionPage>(
+        userCollectionsPath(username, GRID_PAGE, appended?.next ?? 2),
+      ),
     {
       fallback: "Failed to read more collections",
       onSuccess: (page) =>
-        setWalk((prev) => {
-          const kept = prev.username === username ? prev.items : [];
-          return {
-            username,
-            items: [...kept, ...page.items],
-            next: page.page + 1,
-          };
+        setWalk({
+          username,
+          items: [...(appended?.items ?? []), ...page.items],
+          next: page.page + 1,
         }),
     },
   );

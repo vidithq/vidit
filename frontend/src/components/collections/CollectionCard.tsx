@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
 
 import { CollectionCover } from "@/components/collections/CollectionCover";
 import { AuthorByline } from "@/components/ui/AuthorByline";
@@ -90,36 +89,29 @@ export function CollectionMetaLine({
   /** Lead with `by @user`. Off wherever the surface already names the owner. */
   owner?: boolean;
 }) {
-  const segments: { key: string; node: ReactNode }[] = [
-    // The card is one stretched link, so the handle is text rather than a
-    // second anchor the mouse and the keyboard would disagree about.
-    ...(owner
-      ? [
-          {
-            key: "owner",
-            node: <AuthorByline author={collection.owner} link={false} />,
-          },
-        ]
-      : []),
-    ...collectionMetaSegments(collection).map((segment) => ({
-      key: segment,
-      node: segment,
-    })),
-  ];
   return (
-    <p
-      className={`flex flex-wrap items-center text-neutral-500 ${className}`}
-    >
-      {segments.map(({ key, node }, i) => (
-        <span key={key} className="whitespace-nowrap">
-          {i > 0 && (
-            <span aria-hidden="true" className="px-1.5 text-neutral-700">
-              ·
-            </span>
-          )}
-          {node}
+    <p className={`flex flex-wrap items-center text-neutral-500 ${className}`}>
+      {owner && (
+        // The card is one stretched link, so the handle is text rather than a
+        // second anchor the mouse and the keyboard would disagree about.
+        <span className="whitespace-nowrap">
+          <AuthorByline author={collection.owner} link={false} />
+        </span>
+      )}
+      {collectionMetaSegments(collection).map((segment, i) => (
+        <span key={segment} className="whitespace-nowrap">
+          {(owner || i > 0) && SEPARATOR}
+          {segment}
         </span>
       ))}
     </p>
   );
 }
+
+/** The dot between two segments. Decorative, so a reader who is read the line
+ *  hears the readings and not the punctuation between them. */
+const SEPARATOR = (
+  <span aria-hidden="true" className="px-1.5 text-neutral-700">
+    ·
+  </span>
+);

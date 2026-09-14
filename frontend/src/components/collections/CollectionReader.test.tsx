@@ -86,9 +86,7 @@ const ITEMS = [item("e1", 49.1), item("e2", 49.2), item("e3", null), item("e4", 
 
 function renderReader(step = 2) {
   const onStep = vi.fn();
-  render(
-    <CollectionReader items={ITEMS} capped={false} step={step} onStep={onStep} />,
-  );
+  render(<CollectionReader items={ITEMS} step={step} onStep={onStep} />);
   return { onStep };
 }
 
@@ -159,12 +157,7 @@ describe("CollectionReader", () => {
     render(
       <>
         <input aria-label="somewhere to type" />
-        <CollectionReader
-          items={ITEMS}
-          capped={false}
-          step={2}
-          onStep={onStep}
-        />
+        <CollectionReader items={ITEMS} step={2} onStep={onStep} />
       </>,
     );
 

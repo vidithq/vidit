@@ -135,14 +135,6 @@ export interface EventListParams {
   cursor?: string | null;
 }
 
-/** One value, several, or none, as a list: what a repeatable query parameter
- *  takes, so a caller passing a single status and one passing a set build the
- *  same query. */
-function toList<T>(value: T | T[] | undefined): T[] {
-  if (value === undefined) return [];
-  return Array.isArray(value) ? value : [value];
-}
-
 /** Build the `GET /events` query string for one lifecycle view. Defaults to
  *  `view=located`; the requested queue passes `view=requested`. The response
  *  is capped at 100 rows whatever `limit` asks for, so reading further means
@@ -150,7 +142,13 @@ function toList<T>(value: T | T[] | undefined): T[] {
 export function eventListPath(params: EventListParams = {}): string {
   const search = new URLSearchParams();
   if (params.view) search.set("view", params.view);
-  for (const status of toList(params.status)) search.append("status", status);
+  // `status` repeats, so a caller passing one and a caller passing a set build
+  // the same query.
+  if (params.status) {
+    for (const status of [params.status].flat()) {
+      search.append("status", status);
+    }
+  }
   if (params.tag) search.set("tag", params.tag);
   if (params.author) search.set("author", params.author);
   if (params.limit !== undefined) search.set("limit", String(params.limit));

@@ -146,10 +146,6 @@ interface EntityCardBaseProps {
    *  lines of text on every row. Off, the row stands on its media column and
    *  the text centres against it. */
   uniformHeight?: boolean;
-  /** What that button is called, since the title beside it already carries the
-   *  row's own name and two controls reading the same words say nothing about
-   *  either. Falls back to the title. */
-  selectLabel?: string;
   /** True for the row the surface currently stands on: the card wears the
    *  accent border its hover treatment already uses, and the stretched control
    *  is marked as the current one. */
@@ -168,12 +164,16 @@ interface EntityCardBaseProps {
 // renders as plain text and the entity's own page is reached elsewhere in
 // that mode.
 type SelectableProps =
-  | { onSelect?: undefined; detailHref: string }
+  | { onSelect?: undefined; detailHref: string; selectLabel?: undefined }
   | {
       /** Picks this row on the surface it sits on instead of opening it. The
        *  whole card becomes the button that does it. */
       onSelect: () => void;
       detailHref?: string;
+      /** What that button is called. Required, since the title beside it
+       *  already carries the row's own name and two controls reading the same
+       *  words say nothing about either. */
+      selectLabel: string;
     };
 
 type EntityCardProps = EntityCardBaseProps & TitleProps & SelectableProps;
@@ -233,7 +233,7 @@ export function EntityCard({
     <button
       type="button"
       onClick={onSelect}
-      aria-label={selectLabel ?? name}
+      aria-label={selectLabel}
       aria-current={selected ? "true" : undefined}
       className="absolute inset-0 z-10 rounded-[inherit]"
     />

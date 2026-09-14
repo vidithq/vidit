@@ -165,9 +165,9 @@ export const COLLECTION_ID = "77777777-7777-4777-8777-777777777771";
 
 /**
  * The collection that spec reads, owned by the signed-in user so the owner's
- * controls render and get measured: the header's Edit control, the per-row
- * control that takes an item off the shelf, and the edit page behind that
- * link.
+ * controls render and get measured: the header's Edit and Drop controls, the
+ * link to the owner's own catalogue, and the edit page behind the first of
+ * them, where the item picker lives.
  *
  * It carries a one-tile mosaic, which the profile card wears and the
  * collection's own page does not. The title is long enough to take the whole

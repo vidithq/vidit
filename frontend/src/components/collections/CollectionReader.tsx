@@ -9,7 +9,7 @@ import { ReaderHeader } from "@/components/collections/ReaderHeader";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { useApiResource } from "@/hooks/useApiResource";
-import { collectionPoints } from "@/lib/collections";
+import { collectionPoints, eventCountLabel } from "@/lib/collections";
 import type { EventDetail, EventListItem } from "@/types";
 
 // The same dynamic import every other map surface takes: MapLibre touches
@@ -57,14 +57,11 @@ function isTypingTarget(target: EventTarget | null): boolean {
  */
 export function CollectionReader({
   items,
-  capped,
   step,
   onStep,
 }: {
   /** The collection's items, in the order they happened. */
   items: EventListItem[];
-  /** True when the collection holds more than these items. */
-  capped: boolean;
   /** Which item is being read, 1-based and already clamped into `items`. */
   step: number;
   onStep: (step: number) => void;
@@ -125,7 +122,7 @@ export function CollectionReader({
       <div className="flex items-center justify-between gap-3">
         <SectionEyebrow title="Coverage" margin="none" />
         <span className="text-xs text-neutral-500">
-          {points.length} {points.length === 1 ? "event" : "events"} on the map
+          {eventCountLabel(points.length)} on the map
         </span>
       </div>
 
@@ -135,9 +132,9 @@ export function CollectionReader({
           columns stack and each takes its own height, the map fixed like every
           other embedded map and the panel as long as its event. */}
       <div className="flex flex-col gap-3 sm:flex-row sm:h-[32rem] sm:max-h-[calc(100dvh-4.5rem)]">
-        {/* A set with no mappable point renders no map at all, the rule
-            `<CoverageMap>` keeps: an empty world map says less than no map,
-            and the panel and the list below say the rest. */}
+        {/* A set with no mappable point renders no map at all, the rule the
+            profile's own coverage map keeps: an empty world map says less than
+            no map, and the panel and the list below say the rest. */}
         {bounds && (
           // `sm:flex-1` and not `flex-1`: while the columns are stacked the
           // flex axis is vertical, and a basis of 0 there collapses the map to
@@ -163,14 +160,7 @@ export function CollectionReader({
           placement="inline"
           detail={detail}
           loading={loading}
-          header={
-            <ReaderHeader
-              step={step}
-              total={total}
-              capped={capped}
-              onStep={onStep}
-            />
-          }
+          header={<ReaderHeader step={step} total={total} onStep={onStep} />}
         />
       </div>
     </Card>

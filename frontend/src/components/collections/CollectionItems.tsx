@@ -2,11 +2,10 @@
 
 import Link from "next/link";
 
-import { StatusBadge } from "@/components/event/StatusBadge";
+import { CollectionItemCard } from "@/components/collections/CollectionItemCard";
 import { buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { EntityCard } from "@/components/ui/EntityCard";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { profileSearchHref } from "@/lib/search";
@@ -15,11 +14,9 @@ import type { EventListItem } from "@/types";
 /**
  * A collection's items, in the order the events happened.
  *
- * Each row is the catalogue's own compact card, with its lifecycle badge, so a
- * collection item and the same event in a search result or on a profile read as
- * one object. The byline is the one thing the row drops: a collection is one
- * analyst's own work and the header above names them, so the same handle on
- * every row would only push the title's column narrower.
+ * Each row is `<CollectionItemCard>`, the row every collection surface renders,
+ * so an item here and the same event on the edit page's picker fill the same
+ * slots.
  *
  * **The list is the player's step control.** A click anywhere on a row moves
  * the player above it to that item, and the row the player stands on wears the
@@ -94,24 +91,11 @@ export function CollectionItems({
       {items.length > 0 ? (
         <div className="space-y-2">
           {items.map((item, index) => (
-            <EntityCard
+            <CollectionItemCard
               key={item.id}
-              variant="compact"
-              detailHref={`/events/${item.id}`}
-              title={item.title}
-              badge={<StatusBadge status={item.status} />}
-              media={item.media ?? undefined}
-              isGraphic={item.is_graphic}
-              date={item.event_date ?? undefined}
-              coords={item.event_coords}
-              tags={item.tags}
+              item={item}
               selected={index + 1 === step}
               onSelect={() => onStep(index + 1)}
-              selectLabel={`Read this collection from ${item.title}`}
-              // Every row here carries the same two lines, since the byline is
-              // the one slot a collection item drops, so the catalogue's height
-              // floor would only print a band of nothing under each of them.
-              uniformHeight={false}
             />
           ))}
         </div>

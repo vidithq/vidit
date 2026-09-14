@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Pencil, Trash2 } from "lucide-react";
@@ -18,18 +18,16 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
+import { useCollectionSequence } from "@/hooks/useCollectionSequence";
 import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
-import { errorMessage } from "@/lib/api";
 import {
   collectionEditHref,
   CollectionIcon,
   collectionStepHref,
   deleteCollection,
-  fetchCollectionSequence,
   readerStep,
   type Collection,
-  type CollectionSequence,
 } from "@/lib/collections";
 
 /**
@@ -94,28 +92,14 @@ function CollectionPageBody() {
 
   // The collection's whole sequence, read once for the three sections. The
   // player has to say `N of M` and the list is what picks a step out of the
-  // same set, so a page of items would leave the two counting differently;
-  // `fetchCollectionSequence` follows the cursor to the end under its own
-  // ceiling.
-  const [sequence, setSequence] = useState<CollectionSequence | null>(null);
-  const [sequenceError, setSequenceError] = useState<string | null>(null);
+  // same set, so a page of items would leave the two counting differently.
+  const {
+    items: sequence,
+    error: sequenceError,
+    loading: sequenceLoading,
+  } = useCollectionSequence(id);
 
-  useEffect(() => {
-    if (!id) return;
-    const controller = new AbortController();
-    fetchCollectionSequence(id, controller.signal)
-      .then((walk) => {
-        if (controller.signal.aborted) return;
-        setSequence(walk);
-      })
-      .catch((e: unknown) => {
-        if (controller.signal.aborted) return;
-        setSequenceError(errorMessage(e, "Failed to read this collection"));
-      });
-    return () => controller.abort();
-  }, [id]);
-
-  const items = sequence?.items ?? [];
+  const items = sequence ?? [];
   // Clamped at read time, so a link to a step the collection no longer holds
   // opens on its nearest real one and taking the current item off the shelf
   // lands on whatever is nearest to where the reader was, with no write to the
@@ -246,19 +230,14 @@ function CollectionPageBody() {
       {/* A collection with nothing on it has nothing to step through, and the
           list below says so in its own words. */}
       {items.length > 0 && (
-        <CollectionReader
-          items={items}
-          capped={sequence?.capped ?? false}
-          step={step}
-          onStep={goToStep}
-        />
+        <CollectionReader items={items} step={step} onStep={goToStep} />
       )}
 
       <CollectionItems
         ownerUsername={collection.owner.username}
         items={items}
         isOwner={isOwner}
-        loading={sequence === null && sequenceError === null}
+        loading={sequenceLoading}
         error={sequenceError}
         step={step}
         onStep={goToStep}

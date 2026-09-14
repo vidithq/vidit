@@ -3,13 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ReaderHeader } from "./ReaderHeader";
 
-function renderHeader(over: { step?: number; total?: number; capped?: boolean } = {}) {
+function renderHeader(over: { step?: number; total?: number } = {}) {
   const onStep = vi.fn();
   render(
     <ReaderHeader
       step={over.step ?? 3}
       total={over.total ?? 12}
-      capped={over.capped ?? false}
       onStep={onStep}
     />,
   );
@@ -39,33 +38,15 @@ describe("ReaderHeader", () => {
     expect(onStep).toHaveBeenCalledWith(2);
   });
 
-  it("refuses to step off either end", () => {
-    const first = renderHeader({ step: 1 });
-    expect(screen.getByRole("button", { name: "Previous event" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Next event" })).toBeEnabled();
-    expect(first.onStep).not.toHaveBeenCalled();
+  // The end of the sequence is where a step has nowhere to go, so the control
+  // that would take it there is the one that is off.
+  it.each([
+    { step: 1, off: "Previous event", on: "Next event" },
+    { step: 12, off: "Next event", on: "Previous event" },
+  ])("refuses to step off the end at $step", ({ step, off, on }) => {
+    renderHeader({ step });
 
-    screen.getByText("1 of 12");
-  });
-
-  it("disables the next control on the last step", () => {
-    renderHeader({ step: 12 });
-
-    expect(screen.getByRole("button", { name: "Next event" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Previous event" })).toBeEnabled();
-  });
-
-  it("says so when the walk stopped at the ceiling", () => {
-    renderHeader({ capped: true, total: 500 });
-
-    expect(
-      screen.getByText("First 500 events of this collection."),
-    ).toBeInTheDocument();
-  });
-
-  it("says nothing about a ceiling it did not reach", () => {
-    renderHeader({ capped: false });
-
-    expect(screen.queryByText(/First 500 events/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: off })).toBeDisabled();
+    expect(screen.getByRole("button", { name: on })).toBeEnabled();
   });
 });

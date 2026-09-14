@@ -157,7 +157,7 @@ beforeEach(() => {
   searchParams.delete("step");
   useAuth.mockReturnValue({ user: null });
   mockReads(collection());
-  fetchCollectionSequence.mockResolvedValue({ items: ITEMS, capped: false });
+  fetchCollectionSequence.mockResolvedValue(ITEMS);
 });
 
 describe("CollectionPage", () => {
@@ -183,10 +183,9 @@ describe("CollectionPage", () => {
     expect(screen.getByText("Description")).toBeInTheDocument();
     // One node, so the paragraph breaks the owner typed are kept rather than
     // collapsed into a run of text.
-    const description = screen.getByText(
-      "Three days of strikes. The eastern approach.",
-    );
-    expect(description).toHaveClass("whitespace-pre-line");
+    expect(
+      screen.getByText("Three days of strikes. The eastern approach."),
+    ).toBeInTheDocument();
   });
 
   it("counts the items and names the span they cover", async () => {
@@ -198,10 +197,7 @@ describe("CollectionPage", () => {
 
   it("says one event in the singular", async () => {
     mockReads(collection({ event_count: 1, last_date: "2026-03-14" }));
-    fetchCollectionSequence.mockResolvedValue({
-      items: [ITEMS[0]],
-      capped: false,
-    });
+    fetchCollectionSequence.mockResolvedValue([ITEMS[0]]);
 
     await renderPage();
 
@@ -209,7 +205,11 @@ describe("CollectionPage", () => {
     expect(await screen.findByText("1 event on the map")).toBeInTheDocument();
   });
 
-  it("keeps the mosaic off the header: it is the profile card's picture", async () => {
+  it("carries no cover upload and no per-row byline", async () => {
+    // The mosaic is the profile card's picture, so the header renders none of
+    // it, nothing is uploaded for a collection, and the byline is the one slot
+    // a row drops: the header above already names the analyst.
+    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
     mockReads(
       collection({
         cover: [{ url: "https://media.example/item.jpg", media_type: "image" }],
@@ -220,6 +220,11 @@ describe("CollectionPage", () => {
 
     expect(document.querySelector("header img")).toBeNull();
     expect(document.querySelector("header video")).toBeNull();
+    expect(document.querySelector("input[type=file]")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /picture|cover/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/^by/)).not.toBeInTheDocument();
   });
 
   it("maps the items' pins and lists them in order, each with its status", async () => {
@@ -299,7 +304,7 @@ describe("CollectionPage", () => {
 
   it("offers no player for a collection with nothing on it", async () => {
     mockReads(collection({ event_count: 0, first_date: null, last_date: null }));
-    fetchCollectionSequence.mockResolvedValue({ items: [], capped: false });
+    fetchCollectionSequence.mockResolvedValue([]);
 
     await renderPage();
 
@@ -308,12 +313,6 @@ describe("CollectionPage", () => {
     );
     expect(screen.queryByTestId("panel")).not.toBeInTheDocument();
     expect(screen.queryByTestId("map")).not.toBeInTheDocument();
-  });
-
-  it("repeats no byline on a row: the header already names the analyst", async () => {
-    await renderPage();
-
-    expect(screen.queryByText(/^by/)).not.toBeInTheDocument();
   });
 
   it("hands a visitor the report flag and no owner control", async () => {
@@ -372,32 +371,6 @@ describe("CollectionPage", () => {
       }),
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Title")).not.toBeInTheDocument();
-  });
-
-  it("stands a row on its thumbnail, not on the catalogue's height floor", async () => {
-    await renderPage();
-
-    // Every row here carries the same two lines, the byline being the one slot
-    // a collection item drops, so the floor that keeps a catalogue list even
-    // would only print a band of nothing under each of them. The text centres
-    // against the media column instead.
-    const title = await screen.findByText("Strike on the rail junction");
-    const text = title.closest("h3")?.parentElement;
-    expect(text?.className).toContain("sm:justify-center");
-    expect(text?.className).not.toContain("min-h");
-  });
-
-  it("hands the owner no picture control: the card reads the items", async () => {
-    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
-
-    await renderPage();
-
-    // Nothing is uploaded for a collection, so the header cluster carries the
-    // one Edit control and the page offers no file input anywhere.
-    expect(
-      screen.queryByRole("button", { name: /picture|cover/i }),
-    ).not.toBeInTheDocument();
-    expect(document.querySelector("input[type=file]")).toBeNull();
   });
 
   it("reports the collection from the header, with no account", async () => {

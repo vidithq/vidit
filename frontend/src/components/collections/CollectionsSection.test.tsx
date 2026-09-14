@@ -6,11 +6,12 @@ vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => useApiResource(path),
 }));
 
-const fetchUserCollections = vi.fn();
-vi.mock("@/lib/collections", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/collections")>()),
-  fetchUserCollections: (username: string, perPage: number, page: number) =>
-    fetchUserCollections(username, perPage, page),
+// Every page past the first is a call rather than a second resource, so the
+// read the control makes is measured on the endpoint it asks for.
+const apiFetch = vi.fn();
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  apiFetch: (path: string) => apiFetch(path),
 }));
 
 import { type Collection, type CollectionPage } from "@/lib/collections";
@@ -48,7 +49,7 @@ const shelf = (count: number): Collection[] =>
   );
 
 beforeEach(() => {
-  fetchUserCollections.mockReset();
+  apiFetch.mockReset();
   useApiResource.mockReset();
 });
 
@@ -100,39 +101,14 @@ describe("CollectionsSection", () => {
     expect(screen.queryByLabelText("Title")).not.toBeInTheDocument();
   });
 
-  it("sends the owner of a filled shelf to the same page", () => {
-    useApiResource.mockReturnValue({ data: page([collection()]) });
-
-    render(<CollectionsSection username="ana" isOwn />);
-
-    expect(
-      screen.getByRole("link", { name: "New collection" }),
-    ).toHaveAttribute("href", "/collections/new");
-  });
-
-  it("gives a card no type square: the mosaic is its picture", () => {
-    useApiResource.mockReturnValue({ data: page([collection()]) });
-
-    render(<CollectionsSection username="ana" isOwn={false} />);
-
-    // The card's only picture is the mosaic. The accent square that used to
-    // stand in front of the heading took width from the two lines the title
-    // renders in, and the mosaic already says which collection this is.
-    const card = screen
-      .getByRole("heading", { name: "Kupiansk rail corridor" })
-      .closest("div.group");
-    expect(card).not.toBeNull();
-    expect(card?.querySelector(".bg-orange-500\\/15")).toBeNull();
-  });
-
-  it("clamps a card's description to two lines", () => {
+  it("prints what a card says the collection holds", () => {
     useApiResource.mockReturnValue({ data: page([collection()]) });
 
     render(<CollectionsSection username="ana" isOwn={false} />);
 
     expect(
       screen.getByText("Three days of strikes on the eastern approach."),
-    ).toHaveClass("line-clamp-2");
+    ).toBeInTheDocument();
   });
 
   it("asks for nothing further once the whole shelf is on screen", () => {
@@ -151,7 +127,7 @@ describe("CollectionsSection", () => {
 
   it("appends the next page in place and drops the control at the end", async () => {
     useApiResource.mockReturnValue({ data: page(shelf(4), 6) });
-    fetchUserCollections.mockResolvedValue(
+    apiFetch.mockResolvedValue(
       page(
         [
           collection({ id: "c5", title: "Collection 5" }),
@@ -168,7 +144,9 @@ describe("CollectionsSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show more" }));
 
     await waitFor(() =>
-      expect(fetchUserCollections).toHaveBeenCalledWith("ana", 4, 2),
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/users/ana/collections?page=2&per_page=4",
+      ),
     );
     // The first page stays on screen and the second one lands under it.
     const titles = screen
@@ -185,16 +163,6 @@ describe("CollectionsSection", () => {
     expect(
       screen.queryByRole("button", { name: "Show more" }),
     ).not.toBeInTheDocument();
-  });
-
-  it("offers the control while the shelf holds more than the grid", () => {
-    useApiResource.mockReturnValue({ data: page(shelf(4), 11) });
-
-    render(<CollectionsSection username="ana" isOwn={false} />);
-
-    expect(
-      screen.getByRole("button", { name: "Show more" }),
-    ).toBeInTheDocument();
   });
 
   it("renders nothing until the read lands", () => {

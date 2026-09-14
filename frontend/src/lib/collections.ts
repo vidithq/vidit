@@ -108,18 +108,6 @@ export function userCollectionsPath(
   return `/users/${encodeURIComponent(username)}/collections?page=${page}&per_page=${perPage}`;
 }
 
-/** One page of an analyst's collections. The profile grid reads its first page
- *  declaratively and calls this for each page the reader then asks for. */
-export function fetchUserCollections(
-  username: string,
-  perPage: number,
-  page: number,
-): Promise<CollectionPage> {
-  return apiFetch<CollectionPage>(
-    userCollectionsPath(username, perPage, page),
-  );
-}
-
 /** The owner's collections, each carrying whether this event is on it. */
 export function eventCollectionsPath(eventId: string): string {
   return `/events/${encodeURIComponent(eventId)}/collections`;
@@ -144,16 +132,8 @@ export function collectionStepHref(id: string, step: number): string {
 
 /** How many items the page ever steps through. A collection is a curated set,
  *  so this is a ceiling on a runaway read rather than a page size: past it the
- *  page holds the first 500 items and says on screen that it stopped there. */
+ *  page holds the first 500 items. */
 export const READER_MAX_ITEMS = 500;
-
-/** A collection's items in reading order, and whether the walk hit the
- *  ceiling. */
-export interface CollectionSequence {
-  items: EventListItem[];
-  /** True when the collection holds more than the page walks. */
-  capped: boolean;
-}
 
 /**
  * Every page of a collection's items, in one read.
@@ -167,7 +147,7 @@ export interface CollectionSequence {
 export async function fetchCollectionSequence(
   id: string,
   signal?: AbortSignal,
-): Promise<CollectionSequence> {
+): Promise<EventListItem[]> {
   const items: EventListItem[] = [];
   let cursor: string | null = null;
   for (;;) {
@@ -178,15 +158,8 @@ export async function fetchCollectionSequence(
         signal,
       });
     items.push(...page.items);
-    if (items.length >= READER_MAX_ITEMS) {
-      return {
-        items: items.slice(0, READER_MAX_ITEMS),
-        // The last page can land exactly on the ceiling with nothing behind
-        // it, which is a whole collection rather than a truncated one.
-        capped: items.length > READER_MAX_ITEMS || page.nextCursor !== null,
-      };
-    }
-    if (page.nextCursor === null) return { items, capped: false };
+    if (items.length >= READER_MAX_ITEMS) return items.slice(0, READER_MAX_ITEMS);
+    if (page.nextCursor === null) return items;
     cursor = page.nextCursor;
   }
 }

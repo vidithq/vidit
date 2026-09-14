@@ -10,9 +10,8 @@ import type { CollectionCoverTile } from "@/lib/collections";
  * The tiles are the media of the collection's own items, so each carries the
  * kind of file it is. Most source media in the corpus are clips, and an `<img>`
  * pointed at one paints an empty band, which is the defect the kind locks out.
- * The arrangement is the count, and one tile more or fewer is a different
- * picture, so each count is pinned on what a reader can see: how many pictures
- * there are, and whether the earliest one is the tall cell.
+ * The arrangement is the count, so each count is pinned on what a reader can
+ * see: how many cells the mosaic draws and how many pictures land in them.
  */
 const IMAGE: CollectionCoverTile = {
   url: "https://media.example/uploads/geo/abc.jpg",
@@ -57,24 +56,11 @@ describe("CollectionCover", () => {
     );
   });
 
-  it("stands the earliest of three tiles tall beside the other two", () => {
-    const { container } = render(<CollectionCover cover={tiles(3)} />);
+  it.each([3, 4])("gives each of %i tiles its own cell", (count) => {
+    const { container } = render(<CollectionCover cover={tiles(count)} />);
 
-    const cells = container.firstElementChild!.children;
-    expect(cells).toHaveLength(3);
-    expect(cells[0].className).toContain("row-span-2");
-    expect(cells[1].className).not.toContain("row-span-2");
-  });
-
-  it("fills a square with four tiles, and no cell takes two rows", () => {
-    const { container } = render(<CollectionCover cover={tiles(4)} />);
-
-    const cells = container.firstElementChild!.children;
-    expect(cells).toHaveLength(4);
-    expect(document.querySelectorAll("img")).toHaveLength(4);
-    for (const cell of cells) {
-      expect(cell.className).not.toContain("row-span-2");
-    }
+    expect(container.firstElementChild!.children).toHaveLength(count);
+    expect(document.querySelectorAll("img")).toHaveLength(count);
   });
 
   it("plays a video tile as a clip, seeked to its first frame", () => {

@@ -18,23 +18,6 @@ import {
  * controls rather than for access.
  */
 test.describe("collection page", () => {
-  test("reads on a narrow column", async ({ context, page }) => {
-    await grantSession(context);
-    await mockApi(page);
-    await page.goto(`/collections/${COLLECTION_ID}`);
-
-    await expect(
-      page.getByRole("heading", { name: COLLECTION.title }),
-    ).toBeVisible();
-
-    // Where the owner goes to put more of their work on it: their own
-    // catalogue, since an event joins a collection from its own page.
-    await expectNarrowViewportLayout(
-      page,
-      page.getByRole("link", { name: "Your geolocations" }),
-    );
-  });
-
   test("the header stays inside the column", async ({ context, page }) => {
     await grantSession(context);
     await mockApi(page);
@@ -69,6 +52,14 @@ test.describe("collection page", () => {
     await expectControlInsideViewport(
       page,
       page.getByRole("button", { name: "Drop this collection" }),
+    );
+
+    // Where the owner goes to put more of their work on it: their own
+    // catalogue, since an event joins a collection from its own page. It sits
+    // in the Events header, the other row on this page that wraps.
+    await expectControlInsideViewport(
+      page,
+      page.getByRole("link", { name: "Your geolocations" }),
     );
 
     // The flag opens a select and a textarea under the header, the only form
