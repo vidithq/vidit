@@ -1,10 +1,12 @@
 """The admin side of content reports: the queue, the verdicts, the overrides.
 
-``GET /admin/reports`` reads open reports first, ``POST
-/admin/reports/{id}/resolve`` closes one with a verdict that may mutate the
-event, and ``PATCH /admin/events/{id}/moderation`` moves the same two fields
-with no report behind it. Every mutation leaves an ``admin_events`` row, which
-is what these tests pin alongside the state changes.
+``GET /admin/reports`` reads open reports first, whatever they were filed
+against, ``POST /admin/reports/{id}/resolve`` closes one with a verdict that
+may mutate the target, and ``PATCH /admin/events/{id}/moderation`` moves the
+same two fields with no report behind it. A report names an event or a
+collection, so the queue tests cover both and the verdict tests cover which
+ones each kind takes. Every mutation leaves an ``admin_events`` row, which is
+what these tests pin alongside the state changes.
 """
 
 import uuid
@@ -14,10 +16,12 @@ import pytest
 from fastapi.testclient import TestClient
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
+from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
 from app.main import app
 from app.models.admin_event import AdminEvent
+from app.models.collection import Collection
 from app.models.content_report import ContentReport
 from app.models.event import Event
 from app.models.user import User
@@ -76,11 +80,11 @@ def regular_user(db):
     yield user
     db.expire_all()
     db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-    # Reports outlive their event (``event_id`` is SET NULL), so reap what the
-    # delete above orphaned rather than leaving it in the next test's queue.
-    db.query(ContentReport).filter(ContentReport.event_id.is_(None)).delete(
-        synchronize_session=False
-    )
+    # A report outlives its target (both id columns are SET NULL), so reap what
+    # the delete above orphaned rather than leaving it in the next test's queue.
+    db.query(ContentReport).filter(
+        ContentReport.event_id.is_(None), ContentReport.collection_id.is_(None)
+    ).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
@@ -101,11 +105,40 @@ def event(db, regular_user):
     return row
 
 
+@pytest.fixture
+def collection(db, regular_user):
+    """One live collection of the reporting user's, the other report target."""
+    row = Collection(
+        owner_id=regular_user.id,
+        title=f"Shelf {uuid.uuid4().hex[:8]}",
+        description="What this shelf holds.",
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    yield row
+    db.expire_all()
+    db.query(ContentReport).filter(ContentReport.collection_id == row.id).delete(
+        synchronize_session=False
+    )
+    db.query(Collection).filter(Collection.id == row.id).delete(synchronize_session=False)
+    db.commit()
+
+
 def _report(db, event, *, reason: str = "other", resolved: bool = False) -> ContentReport:
     row = ContentReport(event_id=event.id, reason=reason)
     if resolved:
         row.resolved_at = datetime.now(UTC)
         row.resolution = "dismissed"
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def _collection_report(db, collection, *, reason: str = "other") -> ContentReport:
+    """One open report filed against a collection, written straight to the table."""
+    row = ContentReport(collection_id=collection.id, reason=reason)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -164,6 +197,7 @@ def test_resolve_marked_graphic_sets_the_flag_and_stamps_the_report(db, admin_us
     assert _audit(db, admin_user, "report_resolved").target == {
         "report_id": str(report.id),
         "event_id": str(event.id),
+        "collection_id": None,
         "resolution": "marked_graphic",
     }
     assert _audit(db, admin_user, "event_marked_graphic").target == {"event_id": str(event.id)}
@@ -254,7 +288,7 @@ def test_resolve_403_for_regular_user(db, regular_user, event):
     assert response.status_code == 403
 
 
-# ── A report outlives the event it was filed against ──────────────────────
+# ── A report outlives the target it was filed against ─────────────────────
 
 
 def _hard_delete(db, event) -> None:
@@ -299,7 +333,7 @@ def test_orphaned_report_refuses_an_event_mutating_verdict(db, admin_user, event
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 409
-    assert response.json()["detail"]["code"] == "report_event_gone"
+    assert response.json()["detail"]["code"] == "report_target_gone"
 
     db.expire_all()
     assert db.query(ContentReport).filter(ContentReport.id == report.id).one().resolved_at is None
@@ -323,6 +357,7 @@ def test_orphaned_report_can_still_be_dismissed(db, admin_user, event):
     assert _audit(db, admin_user, "report_resolved").target == {
         "report_id": str(report.id),
         "event_id": None,
+        "collection_id": None,
         "resolution": "dismissed",
     }
 
@@ -415,3 +450,104 @@ def test_moderation_403_for_regular_user(regular_user, event):
         headers=login_as(client, regular_user),
     )
     assert response.status_code == 403
+
+
+# ── A collection is the other report target ───────────────────────────────
+
+
+def test_queue_lists_reports_of_both_kinds(db, admin_user, event, collection, regular_user):
+    """One queue answers for both. A collection row carries the title and the
+    owner, because a collection has no public index an admin recognises it by;
+    an event row carries its id, which the queue links out on."""
+    event_report = _report(db, event)
+    collection_report = _collection_report(db, collection, reason="privacy")
+
+    response = client.get("/api/v1/admin/reports", headers=login_as(client, admin_user))
+    assert response.status_code == 200, response.text
+    rows = {row["id"]: row for row in response.json()["items"]}
+
+    assert rows[str(event_report.id)]["event_id"] == str(event.id)
+    assert rows[str(event_report.id)]["collection"] is None
+
+    reported = rows[str(collection_report.id)]
+    assert reported["event_id"] is None
+    assert reported["collection"]["id"] == str(collection.id)
+    assert reported["collection"]["title"] == collection.title
+    assert reported["collection"]["owner"]["username"] == regular_user.username
+
+
+def test_resolve_hidden_withholds_the_collection(db, admin_user, collection):
+    """The verdict writes the stamp ``DELETE /admin/collections/{id}`` writes,
+    so the shelf leaves every public read and the trail reads the same."""
+    report = _collection_report(db, collection, reason="illegal_content")
+
+    response = client.post(
+        f"/api/v1/admin/reports/{report.id}/resolve",
+        json={"resolution": "hidden"},
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["resolution"] == "hidden"
+
+    db.expire_all()
+    assert db.query(Collection).filter(Collection.id == collection.id).one().hidden_at is not None
+    # Withheld, so its own page answers 404 for a reader. The cookie jar still
+    # holds the admin session that resolved it, and an admin reads what was
+    # taken down in order to judge it.
+    client.cookies.clear()
+    assert client.get(f"/api/v1/collections/{collection.id}").status_code == 404
+
+    assert _audit(db, admin_user, "collection_hidden").target == {
+        "collection_id": str(collection.id),
+        "title": collection.title,
+    }
+    assert _audit(db, admin_user, "report_resolved").target == {
+        "report_id": str(report.id),
+        "event_id": None,
+        "collection_id": str(collection.id),
+        "resolution": "hidden",
+    }
+
+
+def test_resolve_marked_graphic_is_refused_for_a_collection(db, admin_user, collection):
+    """The flag is a column on ``events`` and a collection carries no footage of
+    its own, so the verdict is a 409 and the report stays open for a real one."""
+    report = _collection_report(db, collection, reason="graphic_not_flagged")
+
+    response = client.post(
+        f"/api/v1/admin/reports/{report.id}/resolve",
+        json={"resolution": "marked_graphic"},
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "report_verdict_not_applicable"
+
+    db.expire_all()
+    assert db.query(ContentReport).filter(ContentReport.id == report.id).one().resolved_at is None
+    assert db.query(Collection).filter(Collection.id == collection.id).one().hidden_at is None
+
+
+def test_resolve_dismissed_leaves_the_collection_untouched(db, admin_user, collection):
+    report = _collection_report(db, collection)
+
+    response = client.post(
+        f"/api/v1/admin/reports/{report.id}/resolve",
+        json={"resolution": "dismissed"},
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 200, response.text
+
+    db.expire_all()
+    assert db.query(Collection).filter(Collection.id == collection.id).one().hidden_at is None
+    client.cookies.clear()
+    assert client.get(f"/api/v1/collections/{collection.id}").status_code == 200
+    assert _audit(db, admin_user, "collection_hidden") is None
+
+
+def test_a_report_names_one_target_at_most(db, event, collection):
+    """``ck_content_reports_one_target``: the database refuses a row pointing at
+    both, so no queue row can ever describe two things at once."""
+    db.add(ContentReport(event_id=event.id, collection_id=collection.id, reason="other"))
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.rollback()

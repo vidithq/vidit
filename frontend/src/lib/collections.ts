@@ -2,7 +2,7 @@ import { Layers } from "lucide-react";
 
 import { apiFetch, apiFetchPage } from "./api";
 import type { components } from "./api-types";
-import { eventListPath } from "./events";
+import { eventListPath, type ContentReport } from "./events";
 import { formatDate } from "./format";
 import { search } from "./search";
 import type {
@@ -350,6 +350,24 @@ export function deleteCollection(id: string): Promise<void> {
   return apiFetch<void>(`/collections/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
+}
+
+/**
+ * Report a collection: `POST /collections/{id}/report`. The event report's
+ * twin (`reportEvent`), down to the body and the per-IP cap: open to anyone,
+ * signed in or not, because the reader who notices a shelf misrepresenting
+ * what it holds is rarely the one who holds an account here. `apiFetch` omits
+ * the CSRF header when no session cookie is present, so the same call works
+ * logged out.
+ */
+export function reportCollection(
+  id: string,
+  body: components["schemas"]["ContentReportCreate"],
+): Promise<ContentReport> {
+  return apiFetch<ContentReport>(
+    `/collections/${encodeURIComponent(id)}/report`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
 }
 
 /** Put one of the analyst's own events on one of their collections. Idempotent

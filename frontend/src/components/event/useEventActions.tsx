@@ -14,7 +14,7 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ACCENT_SURFACE } from "@/components/ui/styles";
 import { closeActionLabel, CloseEventForm } from "@/components/event/CloseEventForm";
 import ShareButtons from "@/components/event/ShareButtons";
-import { useReportEvent } from "@/components/event/useReportEvent";
+import { useReportContent } from "@/components/report/useReportContent";
 import type { EventDetail } from "@/types";
 
 /**
@@ -45,8 +45,8 @@ import type { EventDetail } from "@/types";
  *    keeps it readable with its reason, and removing one for good is an admin
  *    act.
  *
- * The hook returns nodes rather than rendering them, the shape `useReportEvent`
- * already uses, because the row and the panels its triggers open land in two
+ * The hook returns nodes rather than rendering them, the shape
+ * `useReportContent` already uses, because the row and the panels its triggers open land in two
  * different slots: `actions` goes in `PageShell`'s `actions` (or the map
  * panel's byline row) and `panels` goes directly under the header, where the
  * trigger that opened it is. It is called before a surface's early returns,
@@ -119,7 +119,7 @@ export function useEventActions({
   // The report control is its own state machine (it works signed out and
   // outlives a surface's other actions), consumed here so the utilities tier is
   // assembled once.
-  const report = useReportEvent(event?.id ?? "");
+  const report = useReportContent("event", event?.id ?? "");
   // Whether the inline close panel is open.
   const [closing, setClosing] = useState(false);
   // Whether the add-to-collection panel is open.

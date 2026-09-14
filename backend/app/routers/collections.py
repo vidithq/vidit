@@ -7,11 +7,12 @@ hands the verb its arguments, and turns a typed service error into its status.
 import uuid
 from typing import NoReturn
 
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_current_user_optional, get_db
 from app.models.collection import Collection
+from app.models.content_report import ContentReport
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers._errors import raise_typed_error
@@ -22,7 +23,9 @@ from app.schemas.collection import (
     CollectionUpdate,
 )
 from app.schemas.event import EventList
+from app.schemas.report import ContentReportCreate, ContentReportRead
 from app.services import collections as collections_service
+from app.services import reports as reports_service
 from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_chronological_cursor,
@@ -77,6 +80,48 @@ def create_collection(
     except collections_service.CollectionError as exc:
         _raise_collection_error(exc)
     return collections_service.build_collection_read(db, collection)
+
+
+# Defined ahead of the ``/{collection_id}`` reads below, the order
+# ``routers/events/item.py`` states for the report it serves: the extra path
+# segment means the catch-all cannot shadow it.
+@router.post(
+    "/{collection_id}/report",
+    response_model=ContentReportRead,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit("10/hour")
+def report_collection(
+    request: Request,
+    collection_id: uuid.UUID,
+    body: ContentReportCreate,
+    background_tasks: BackgroundTasks,
+    current_user: User | None = Depends(get_current_user_optional),
+    db: Session = Depends(get_db),
+) -> ContentReport:
+    """Report a collection for moderation.
+
+    The same gesture, the same body and the same per-IP limit as reporting an
+    event: open to anonymous viewers, since the reader who notices a shelf
+    misrepresenting what it holds rarely holds an account here. A signed-in
+    reporter is recorded on the row; an anonymous one leaves
+    ``reporter_user_id`` NULL.
+
+    An unknown, withheld or orphaned collection answers 404: all three are
+    invisible to the caller, so all three read the same.
+    """
+    try:
+        return reports_service.create_collection_report(
+            db,
+            collection_id=collection_id,
+            reason=body.reason,
+            details=body.details,
+            reporter_user_id=current_user.id if current_user is not None else None,
+            reporter_username=current_user.username if current_user is not None else None,
+            background_tasks=background_tasks,
+        )
+    except reports_service.ReportError as exc:
+        raise_typed_error(exc, reports_service.REPORT_ERROR_STATUS)
 
 
 @router.get("/{collection_id}", response_model=CollectionRead)

@@ -12,9 +12,10 @@ import {
  * A collection page, read by its owner.
  *
  * The owner rather than a visitor, because the owner is the narrow case: the
- * header carries a long title plus the Edit control. `/collections` is public
- * in `proxy.ts`, so the session cookie is granted for the owner controls
- * rather than for access.
+ * header carries a long title plus the whole cluster, the report flag every
+ * reader gets and the two controls only the owner does. `/collections` is
+ * public in `proxy.ts`, so the session cookie is granted for the owner
+ * controls rather than for access.
  */
 test.describe("collection page", () => {
   test("reads on a narrow column", async ({ context, page }) => {
@@ -52,6 +53,35 @@ test.describe("collection page", () => {
     });
 
     expect(overflow, "the header runs past the column").toBeLessThanOrEqual(1);
+  });
+
+  test("opens the report form inside the column", async ({ context, page }) => {
+    await grantSession(context);
+    await mockApi(page);
+    await page.goto(`/collections/${COLLECTION_ID}`);
+
+    await expect(
+      page.getByRole("heading", { name: COLLECTION.title }),
+    ).toBeVisible();
+
+    // The drop is the rightmost control in the cluster, so it is the one a
+    // wrapping row pushes off the column first.
+    await expectControlInsideViewport(
+      page,
+      page.getByRole("button", { name: "Drop this collection" }),
+    );
+
+    // The flag opens a select and a textarea under the header, the only form
+    // this reading page ever shows: both have to render at the size that
+    // keeps mobile Safari from zooming the column in on focus.
+    await page.getByRole("button", { name: "Report" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Report this collection" }),
+    ).toBeVisible();
+    await expectNarrowViewportLayout(
+      page,
+      page.getByRole("button", { name: "Send report" }),
+    );
   });
 });
 

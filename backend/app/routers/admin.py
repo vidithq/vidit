@@ -382,12 +382,15 @@ def resolve_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ContentReportRead:
-    """Close one report with a verdict, applying it to the reported event.
+    """Close one report with a verdict, applying it to what the report names.
 
-    404 on an unknown report, 409 on one that already carries a verdict
-    (reports are resolved once, never reopened). The service owns the event
-    mutation and the audit trail; the points cache is dropped here, and only
-    when the event actually left the map.
+    One route for both kinds of target: the service reads which one the row
+    names and applies the verdicts that kind takes, so an event report and a
+    collection report are answered through the same call. 404 on an unknown
+    report, 409 on one that already carries a verdict (reports are resolved
+    once, never reopened) and on a verdict the target cannot take. The service
+    owns the mutation and the audit trail; the points cache is dropped here,
+    and only when an event actually left the map.
     """
     try:
         report, hidden_changed = reports_service.resolve_report(

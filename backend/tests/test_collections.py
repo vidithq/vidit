@@ -18,6 +18,9 @@ A collection is a named set of one analyst's own events. What these lock in:
   repeats nor skips a row.
 * Withheld collections (``hidden_at``) read as 404 for everyone but an admin,
   and ``DELETE /admin/collections/{id}`` is what sets the stamp.
+* ``POST /collections/{id}/report``: the same gesture as reporting an event,
+  open to anonymous viewers, recording a signed-in reporter, and answering 404
+  for a collection nobody can read.
 * ``GET /users/{username}/collections``: a reader sees the collections that
   hold something, the owner sees their empty ones too, and ``total`` agrees
   with the rows either way.
@@ -42,6 +45,7 @@ from shapely.geometry import Point
 from app.database import SessionLocal
 from app.main import app
 from app.models.collection import Collection, CollectionEvent
+from app.models.content_report import ContentReport
 from app.models.event import (
     STATUS_CLOSED,
     STATUS_DETECTED,
@@ -107,6 +111,12 @@ def cleanup(db):
 
     db.expire_all()
     if collection_ids:
+        # Reports first: ``content_reports.collection_id`` is SET NULL, so a
+        # report left behind here would sit in the next test's admin queue as
+        # an orphan row naming nothing.
+        db.query(ContentReport).filter(ContentReport.collection_id.in_(collection_ids)).delete(
+            synchronize_session=False
+        )
         db.query(Collection).filter(Collection.id.in_(collection_ids)).delete(
             synchronize_session=False
         )
@@ -825,6 +835,83 @@ def test_withheld_collection_is_out_of_the_profile_list(db, cleanup, owner, admi
     body = client.get(f"/api/v1/users/{owner.username}/collections").json()
     assert body["total"] == 0
     assert body["items"] == []
+
+
+# ── POST /collections/{id}/report ─────────────────────────────────────────
+
+
+def test_anonymous_report_of_a_collection_is_accepted(db, cleanup, owner):
+    """No account needed, the same as reporting an event: the reader who
+    notices a shelf misrepresenting what it holds rarely holds one."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    client.cookies.clear()
+
+    response = client.post(
+        f"/api/v1/collections/{collection.id}/report",
+        json={"reason": "privacy", "details": "This shelf names a private address."},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["collection"]["id"] == str(collection.id)
+    assert body["collection"]["title"] == collection.title
+    assert body["collection"]["owner"]["username"] == owner.username
+    # One target per row, and no verdict yet.
+    assert body["event_id"] is None
+    assert body["reporter_user_id"] is None
+    assert body["resolved_at"] is None
+
+    db.expire_all()
+    stored = db.query(ContentReport).filter(ContentReport.id == body["id"]).one()
+    assert stored.collection_id == collection.id
+    assert stored.event_id is None
+    assert stored.details == "This shelf names a private address."
+
+
+def test_authenticated_report_of_a_collection_records_the_reporter(db, cleanup, owner, stranger):
+    collection = _make_collection(db, cleanup, owner=owner)
+    response = client.post(
+        f"/api/v1/collections/{collection.id}/report",
+        json={"reason": "copyright"},
+        headers=login_as(client, stranger),
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["reporter_user_id"] == str(stranger.id)
+    assert response.json()["details"] is None
+
+
+def test_report_a_withheld_collection_is_404(db, cleanup, owner, admin):
+    """A withheld collection is invisible, so it cannot be reported again: the
+    reporter gets the same 404 as for an id that never existed."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    client.delete(f"/api/v1/admin/collections/{collection.id}", headers=login_as(client, admin))
+    client.cookies.clear()
+
+    response = client.post(f"/api/v1/collections/{collection.id}/report", json={"reason": "other"})
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "collection_not_found"
+
+
+def test_report_an_unknown_collection_is_404():
+    response = client.post(f"/api/v1/collections/{uuid.uuid4()}/report", json={"reason": "other"})
+    assert response.status_code == 404
+
+
+def test_report_a_collection_rejects_an_unknown_reason(db, cleanup, owner):
+    collection = _make_collection(db, cleanup, owner=owner)
+    response = client.post(
+        f"/api/v1/collections/{collection.id}/report",
+        json={"reason": "i-just-dont-like-it"},
+    )
+    assert response.status_code == 422
+
+
+def test_report_a_collection_rejects_over_long_details(db, cleanup, owner):
+    collection = _make_collection(db, cleanup, owner=owner)
+    response = client.post(
+        f"/api/v1/collections/{collection.id}/report",
+        json={"reason": "other", "details": "x" * 2001},
+    )
+    assert response.status_code == 422
 
 
 # ── GET /users/{username}/collections ─────────────────────────────────────

@@ -142,7 +142,7 @@ def report_event(
     are invisible to the caller, so all three read the same.
     """
     try:
-        return reports_service.create_report(
+        return reports_service.create_event_report(
             db,
             event_id=geolocation_id,
             reason=body.reason,

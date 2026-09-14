@@ -323,12 +323,15 @@ export interface paths {
         put?: never;
         /**
          * Resolve Report
-         * @description Close one report with a verdict, applying it to the reported event.
+         * @description Close one report with a verdict, applying it to what the report names.
          *
-         *     404 on an unknown report, 409 on one that already carries a verdict
-         *     (reports are resolved once, never reopened). The service owns the event
-         *     mutation and the audit trail; the points cache is dropped here, and only
-         *     when the event actually left the map.
+         *     One route for both kinds of target: the service reads which one the row
+         *     names and applies the verdicts that kind takes, so an event report and a
+         *     collection report are answered through the same call. 404 on an unknown
+         *     report, 409 on one that already carries a verdict (reports are resolved
+         *     once, never reopened) and on a verdict the target cannot take. The service
+         *     owns the mutation and the audit trail; the points cache is dropped here,
+         *     and only when an event actually left the map.
          */
         post: operations["resolve_report_api_v1_admin_reports__report_id__resolve_post"];
         delete?: never;
@@ -736,6 +739,35 @@ export interface paths {
          *     The event itself is untouched.
          */
         delete: operations["remove_event_from_collection_api_v1_collections__collection_id__events__event_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Collection
+         * @description Report a collection for moderation.
+         *
+         *     The same gesture, the same body and the same per-IP limit as reporting an
+         *     event: open to anonymous viewers, since the reader who notices a shelf
+         *     misrepresenting what it holds rarely holds an account here. A signed-in
+         *     reporter is recorded on the row; an anonymous one leaves
+         *     ``reporter_user_id`` NULL.
+         *
+         *     An unknown, withheld or orphaned collection answers 404: all three are
+         *     invisible to the caller, so all three read the same.
+         */
+        post: operations["report_collection_api_v1_collections__collection_id__report_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2654,11 +2686,13 @@ export interface components {
         };
         /**
          * ContentReportCreate
-         * @description Body for ``POST /events/{id}/report``.
+         * @description Body for ``POST /events/{id}/report`` and ``POST /collections/{id}/report``.
          *
          *     ``reason`` picks one of the five buckets (see ``ContentReportReason``);
          *     ``details`` is the reporter's own words, optional because the bucket alone
-         *     is often the whole report.
+         *     is often the whole report. One body for both targets: what a reader says
+         *     about a shelf is what they say about a piece of footage, and the path is
+         *     what names the thing.
          */
         ContentReportCreate: {
             /** Details */
@@ -2696,8 +2730,14 @@ export interface components {
          *     ``resolved_at`` / ``resolution`` / ``resolved_by`` are all NULL while the
          *     report is open and all set once it is resolved (the DB holds them together),
          *     so ``resolved_at is None`` is the open test on the wire too.
+         *
+         *     A row names one target. ``event_id`` is set for a report against an event
+         *     and ``collection`` for one against a collection; both are NULL once that
+         *     target is destroyed, which is the orphan row every report can become and
+         *     which only ``dismissed`` closes.
          */
         ContentReportRead: {
+            collection?: components["schemas"]["ReportedCollection"] | null;
             /**
              * Created At
              * Format: date-time
@@ -3101,6 +3141,26 @@ export interface components {
              * @constant
              */
             status: "pending_confirmation";
+        };
+        /**
+         * ReportedCollection
+         * @description The reported collection, as the admin queue names it in a row.
+         *
+         *     Read at queue time off the live collection rather than copied onto the
+         *     report when it was filed, so a renamed collection reads under its current
+         *     name. A collection page is not a public index the way an event's is: the
+         *     queue prints the title and the owner so an admin can judge the row, and
+         *     links out for the rest.
+         */
+        ReportedCollection: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            owner: components["schemas"]["AuthorRef"];
+            /** Title */
+            title: string;
         };
         /**
          * ResendConfirmationRequest
@@ -4634,6 +4694,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_collection_api_v1_collections__collection_id__report_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContentReportCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentReportRead"];
+                };
             };
             /** @description Validation Error */
             422: {

@@ -46,7 +46,7 @@ flowchart LR
   versions[("`**event_versions**
   the superseded state, as version_no moves on`")]:::store
   reports[("`**content_reports**
-  any viewer, signed in or not`")]:::store
+  any viewer, signed in or not; a row names an event or a collection`")]:::store
   shelve["`**PUT /collections/{id}/events/{event_id}**
   the owner puts one of their own rows on a named shelf`"]:::spec
   shelves[("`**collections** + **collection_events**
@@ -188,6 +188,7 @@ erDiagram
     content_reports {
         UUID id PK
         UUID event_id FK "nullable, NULL once the event is hard-deleted"
+        UUID collection_id FK "nullable, the other target; never set with event_id"
         VARCHAR reason "illegal_content | graphic_not_flagged | copyright | privacy | other"
         TEXT details "nullable, capped at 2000 chars by the schema"
         UUID reporter_user_id FK "nullable, anonymous reports leave this NULL"
@@ -288,6 +289,7 @@ erDiagram
     users ||--o{ event_versions : "edited_by_id"
     users ||--o{ event_versions : "redacted_by_id"
     events |o--o{ content_reports : "event_id"
+    collections |o--o{ content_reports : "collection_id"
     users ||--o{ content_reports : "reporter_user_id"
     users ||--o{ content_reports : "resolved_by"
     users ||--o{ collections : "owner_id"
@@ -587,27 +589,32 @@ The system writes this list wholesale, not row by row. A create sets the full or
 
 ### `content_reports`
 
-One viewer's report against one event. Open to anonymous viewers: a takedown request must not require an account, since the people a piece of footage harms are rarely the people who hold one. Rows accumulate rather than dedupe: several viewers may report the same event, and each report is resolved on its own. A report is never deleted, only resolved, so the table is an audit trail of what was reported and what was decided. Resolved rows stay in the table.
+One viewer's report against one event or one collection. Open to anonymous viewers: a takedown request must not require an account, since the people a piece of footage harms are rarely the people who hold one. Rows accumulate rather than dedupe: several viewers may report the same target, and each report is resolved on its own. A report is never deleted, only resolved, so the table is an audit trail of what was reported and what was decided. Resolved rows stay in the table.
+
+One row names one target, through `event_id` or `collection_id`. Two real foreign keys rather than a `(target_type, target_id)` pair, so the database is what keeps a report pointing at a row that exists and what empties the pointer when that row is destroyed.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `event_id` | `UUID` | FK → `events.id` ON DELETE SET NULL, nullable. NULL once the reported event is hard-deleted: the report is the record that a complaint was filed and how it was answered, so it outlives the event. An orphaned report accepts only the `dismissed` verdict; the other two mutate an event row that is gone, and answer 409 `report_event_gone`. |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE SET NULL, nullable. NULL once the reported event is hard-deleted: the report is the record that a complaint was filed and how it was answered, so it outlives the event. NULL too on a report filed against a collection. An orphaned report accepts only the `dismissed` verdict; every other verdict mutates a row that is gone, and answers 409 `report_target_gone`. |
+| `collection_id` | `UUID` | FK → `collections.id` ON DELETE SET NULL, nullable. The other target, on the same terms as `event_id` above and NULL for a report filed against an event. It empties when the collection goes, which a collection only does with its owner's account (`collections.owner_id` cascades), and the report survives that erasure the way it survives an event's. |
 | `reason` | `VARCHAR(30)` | NOT NULL, CHECK in `('illegal_content', 'graphic_not_flagged', 'copyright', 'privacy', 'other')`. `illegal_content` is the legal escalation (material whose hosting is itself unlawful); `graphic_not_flagged` says the footage shows death, injury or human remains without the author's `events.is_graphic` declaration; `copyright` and `privacy` are third-party rights claims; `other` keeps the form answerable when none of the four fits, with `details` carrying the story. |
 | `details` | `TEXT` | nullable. The reporter's own words. Bounded to 2000 characters by the schema, not the column, which stays unbounded `TEXT`. |
 | `reporter_user_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. NULL for an anonymous report, and again once the reporter's account is erased (the report outlives the account, including a GDPR erasure). |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL. The application stamps it on insert; the column carries no server default, so a raw `INSERT` must supply it. |
 | `resolved_at` | `TIMESTAMPTZ` | nullable. Non-NULL exactly when `resolution` is (`ck_content_reports_resolution_stamp`), so `resolved_at IS NULL` is the single-column test for an open report. |
-| `resolution` | `VARCHAR(30)` | nullable, CHECK in `('marked_graphic', 'hidden', 'dismissed')` when set. `marked_graphic` sets `events.is_graphic`, `hidden` withholds the event from every public read via `events.hidden_at`, `dismissed` closes the report and leaves the event untouched. There is no re-resolve: a report already carrying a verdict answers a second resolve attempt with 409. |
+| `resolution` | `VARCHAR(30)` | nullable, CHECK in `('marked_graphic', 'hidden', 'dismissed')` when set. `marked_graphic` sets `events.is_graphic`, `hidden` withholds the target from every public read via `events.hidden_at` or `collections.hidden_at`, `dismissed` closes the report and leaves the target untouched. `marked_graphic` is an event verdict only: the flag is a column on the event, so a collection report answering it is a 409 `report_verdict_not_applicable` rather than a verdict that changed nothing. There is no re-resolve: a report already carrying a verdict answers a second resolve attempt with 409. |
 | `resolved_by` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The admin who resolved it, NULL until then and again after a GDPR erasure of that admin's account. |
 
 **Check constraints:**
 - `ck_content_reports_reason_valid`: pins the `reason` domain at the database, mirroring the `ContentReportReason` alias so a bad write is rejected by Postgres, not only by the app-layer `Literal`.
 - `ck_content_reports_resolution_valid`: pins the `resolution` domain the same way, mirroring `ContentReportResolution`.
 - `ck_content_reports_resolution_stamp`: `(resolution IS NULL AND resolved_at IS NULL) OR (resolution IS NOT NULL AND resolved_at IS NOT NULL)`. The verdict and its timestamp travel together in both directions: a resolved row can't forget what was decided, and an open row can't carry a stale verdict.
+- `ck_content_reports_one_target`: `num_nonnulls(event_id, collection_id) <= 1`. One report names one thing, so no queue row can describe two at once. The test is "never both" rather than "exactly one" because both columns are `SET NULL`: a report whose target is destroyed ends up naming neither, and that orphan row has to stay legal. Exactly one is set at insert, which the two report routes hold by each naming one target.
 
 **Indexes:**
 - `ix_content_reports_event_id` on `(event_id)`. Backs the FK's ON DELETE SET NULL sweep and a per-event report lookup.
+- `ix_content_reports_collection_id` on `(collection_id)`. The same pair of reads for the other target.
 - `ix_content_reports_queue`: expression index on `((resolved_at IS NOT NULL), created_at DESC, id DESC)`. Backs the admin queue's read, open reports first then newest first, with the id breaking ties so the offset walk is total. The index repeats the query's `ORDER BY` expression for expression, so Postgres walks it instead of sorting the table. Change the sort and you change this index.
 
 ---
@@ -643,7 +650,7 @@ A named, curated set of one analyst's own events, shown on the owner's public pr
 | `owner_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The one owner. Cascades, unlike `events.owner_id`: a collection is one analyst's own shelf and nothing on it outlives their account, so a GDPR hard delete passes straight through and leaves no stored object behind, a collection holding no file of its own. |
 | `title` | `VARCHAR(255)` | NOT NULL. The same width as `events.title`, from the shared `TITLE_MAX_LENGTH` in [`models/event.py`](../backend/app/models/event.py), so one cap governs an event title and a collection title alike. The API floor is 1 character. |
 | `description` | `TEXT` | NOT NULL. A short plain-text paragraph saying what the collection holds, written by the owner on the create and on every edit. The API layer caps it at 500 characters, the figure [`users.bio`](#users) takes for the same class of text; there is no database constraint, so changing the cap does not require a migration. The API floor is 1 character after whitespace is stripped. |
-| `hidden_at` | `TIMESTAMPTZ` | nullable. Takedown: NULL = visible, timestamp = withheld from every read but an admin's, the owner's included. The same reversible axis [`events.hidden_at`](#events) carries, set by `DELETE /admin/collections/{id}`. |
+| `hidden_at` | `TIMESTAMPTZ` | nullable. Takedown: NULL = visible, timestamp = withheld from every read but an admin's, the owner's included. The same reversible axis [`events.hidden_at`](#events) carries. Set by `DELETE /admin/collections/{id}`, or by resolving a [content report](#content_reports) filed against the collection as `hidden`, which writes the same stamp. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, SQLAlchemy `onupdate` stamp |
 

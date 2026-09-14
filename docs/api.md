@@ -10,7 +10,7 @@ All responses are JSON.
 
 **Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side effect: `login` on success, `failed_login` on any rejected login (with `user_id` set only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches, so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL because no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches, so the audit trail carries a rate-of-requests signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best effort inside a SAVEPOINT. An audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `version_not_found`, `x_handle_conflict`, `invite_code_used`); every `POST /events/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `report_not_found`, `report_already_resolved`, `report_event_gone`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. Every `/collections` path adds `collection_not_found`; `PUT /collections/{id}/events/{event_id}` and `POST /collections` (for an id in its `event_ids`) add `event_not_found` and `event_not_collectable` (the event's state is not one a collection shows), and `DELETE /admin/collections/{id}` adds `collection_not_found`. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`; `POST /events/{id}/versions` adds it when the row is not `geolocated`, plus `nothing_changed` (the edit moves no versioned field) and `version_limit` (the event already carries 100 versions). `POST /events/import-from-tweet` adds `invalid_tweet_url`, `not_your_post`, `post_unreadable`, `upstream_unreadable` and `upstream_busy`. Every write path carrying an archived-copy field (`source_snapshot_url`, `secondary_snapshot_urls`, `detected_from_snapshot_url`) adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url` and `snapshot_not_a_snapshot_code`; they run the same checks, so one paste is answered the same way wherever it arrives. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `version_not_found`, `x_handle_conflict`, `invite_code_used`); every `POST /events/{id}/report`, `POST /collections/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `collection_not_found`, `report_not_found`, `report_already_resolved`, `report_target_gone`, `report_verdict_not_applicable`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. Every `/collections` path adds `collection_not_found`; `PUT /collections/{id}/events/{event_id}` and `POST /collections` (for an id in its `event_ids`) add `event_not_found` and `event_not_collectable` (the event's state is not one a collection shows), and `DELETE /admin/collections/{id}` adds `collection_not_found`. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`; `POST /events/{id}/versions` adds it when the row is not `geolocated`, plus `nothing_changed` (the edit moves no versioned field) and `version_limit` (the event already carries 100 versions). `POST /events/import-from-tweet` adds `invalid_tweet_url`, `not_your_post`, `post_unreadable`, `upstream_unreadable` and `upstream_busy`. Every write path carrying an archived-copy field (`source_snapshot_url`, `secondary_snapshot_urls`, `detected_from_snapshot_url`) adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url` and `snapshot_not_a_snapshot_code`; they run the same checks, so one paste is answered the same way wherever it arrives. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
 ---
 
 ## Endpoints at a glance
@@ -51,6 +51,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/{id}/collections` | 🔒 | Your collections, each saying whether this event is on it (owner only) |
 | **Collections** | | | |
 | POST | `/collections` | 🔒 | Open a collection (title, description, and the events it holds) |
+| POST | `/collections/{id}/report` | 🌐 | Report a collection for moderation (anonymous allowed) |
 | GET | `/collections/{id}` | 🌐 | One collection: owner, title, description, item count, date range |
 | PATCH | `/collections/{id}` | 🔒 | Write your collection's title and description |
 | DELETE | `/collections/{id}` | 🔒 | Drop your collection; the events it held stay |
@@ -92,8 +93,8 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
 | DELETE | `/admin/collections/{id}` | 🛡️ | Withhold a collection from public view (sets `hidden_at`) |
 | PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
-| GET | `/admin/reports` | 🛡️ | The moderation queue: open reports first, then newest first |
-| POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to the event |
+| GET | `/admin/reports` | 🛡️ | The moderation queue: event and collection reports, open ones first |
+| POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to what the report names |
 | PATCH | `/admin/events/{id}/moderation` | 🛡️ | Set an event's graphic flag / takedown directly, no report behind it |
 | POST | `/admin/events/{id}/versions/{version_no}/redact` | 🛡️ | Blank one filed version, keeping its number |
 | POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, pending regs) |
@@ -136,6 +137,7 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | **Collections** | |
 | `GET /collections/{id}`, `GET /collections/{id}/events` | 120/min |
 | `POST /collections`, `PATCH /collections/{id}`, `DELETE /collections/{id}` | 30/min |
+| `POST /collections/{id}/report` | 10/hour (anonymous allowed; the event report's own figure, so one reporter cannot trade one target for the other) |
 | `PUT`/`DELETE /collections/{id}/events/{event_id}` | 60/min |
 | **Search / Tags** | |
 | `GET /search`, `GET /search/authors` | 60/min |
@@ -712,6 +714,7 @@ Report an event for moderation. Open to anonymous viewers: the people a piece of
 {
   "id": "uuid",
   "event_id": "uuid",
+  "collection": null,
   "reason": "graphic_not_flagged",
   "details": "Shows a body at 0:14, no graphic-content warning on the card.",
   "reporter_user_id": null,
@@ -720,6 +723,8 @@ Report an event for moderation. Open to anonymous viewers: the people a piece of
   "resolution": null
 }
 ```
+
+One report names one target. `event_id` is set here and `collection` is `null`; [`POST /collections/{id}/report`](#post-collectionsidreport) fills the other one. The two travel through the same table and the same [queue](#get-adminreports).
 
 **Errors:**
 | Code | Case |
@@ -1401,6 +1406,49 @@ Each id goes through the checks [`PUT /collections/{id}/events/{event_id}`](#put
 
 ---
 
+### `POST /collections/{id}/report` 🌐
+
+Report a collection for moderation. The twin of [`POST /events/{id}/report`](#post-eventsidreport): the same body, the same buckets, the same per-IP cap, and open to anonymous viewers for the same reason, since the reader who notices a shelf misrepresenting what it holds rarely holds an account here. A signed-in reporter is recorded on the row (`reporter_user_id`); an anonymous one leaves it `null`.
+
+**Request body:**
+```json
+{
+  "reason": "privacy",
+  "details": "The title names a private individual who is not in any of the footage."
+}
+```
+
+`reason` is one of `illegal_content`, `graphic_not_flagged`, `copyright`, `privacy`, `other`. `details` is optional free text, capped at 2000 characters.
+
+**Response 201:**
+```json
+{
+  "id": "uuid",
+  "event_id": null,
+  "collection": {
+    "id": "uuid",
+    "title": "Zaporizhzhia plant",
+    "owner": { "id": "uuid", "username": "analyst", "avatar_url": "https://…/avatars/…jpg" }
+  },
+  "reason": "privacy",
+  "details": "The title names a private individual who is not in any of the footage.",
+  "reporter_user_id": null,
+  "created_at": "2026-08-12T09:14:00Z",
+  "resolved_at": null,
+  "resolution": null
+}
+```
+
+The row lands in the same [`GET /admin/reports`](#get-adminreports) queue an event report lands in, and an admin answers it with the verdicts a collection takes: `hidden`, which stamps `collections.hidden_at` exactly as [`DELETE /admin/collections/{id}`](#delete-admincollectionsid) does, or `dismissed`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `collection_not_found`: unknown id, already withheld, or belonging to a soft-deleted account. All three answer the same way, so the response can't be used to probe which. An admin gets this too: reading a withheld collection to judge it is not a reason to file one more report against it |
+| 429 | Rate-limited (10/hour/IP) |
+
+---
+
 ### `GET /collections/{id}` 🌐
 
 One collection's header: owner, title, description, item count, and the range its items span.
@@ -2078,7 +2126,7 @@ Link or clear the X handle the bot attributes mentions to; the interactive write
 
 ### `GET /admin/reports` 🛡️
 
-The moderation queue: open reports first, then newest first within each group. Resolved reports stay in the list rather than dropping out of it: a report is never deleted, so the queue doubles as the record of what was reported and what was decided. Offset-paged, capped at 100 rows per page. No rate limit.
+The moderation queue: open reports first, then newest first within each group. One list for both kinds of report, the ones filed against an event and the ones filed against a collection. Resolved reports stay in the list rather than dropping out of it: a report is never deleted, so the queue doubles as the record of what was reported and what was decided. Offset-paged, capped at 100 rows per page. No rate limit.
 
 **Query params:**
 | Param | Type | Description |
@@ -2093,32 +2141,54 @@ The moderation queue: open reports first, then newest first within each group. R
     {
       "id": "uuid",
       "event_id": "uuid",
+      "collection": null,
       "reason": "graphic_not_flagged",
       "details": "Shows a body at 0:14, no graphic-content warning on the card.",
       "reporter_user_id": null,
       "created_at": "2026-08-12T09:14:00Z",
       "resolved_at": null,
       "resolution": null
+    },
+    {
+      "id": "uuid",
+      "event_id": null,
+      "collection": {
+        "id": "uuid",
+        "title": "Zaporizhzhia plant",
+        "owner": { "id": "uuid", "username": "analyst", "avatar_url": null }
+      },
+      "reason": "privacy",
+      "details": null,
+      "reporter_user_id": "uuid",
+      "created_at": "2026-08-12T09:20:00Z",
+      "resolved_at": null,
+      "resolution": null
     }
   ],
-  "total": 1,
+  "total": 2,
   "page": 1,
   "per_page": 20
 }
 ```
 
-`resolved_at` and `resolution` are both `null` while a report is open and both set once it is resolved, so `resolved_at is null` is the open test on the wire too. The admin who resolved it is recorded on the row and in `admin_events`, not on the wire. `event_id` is `null` when the reported event was hard-deleted after the report was filed: the report outlives it, and the admin panel renders those rows as *Event deleted* with `dismissed` as the only verdict on offer.
+`resolved_at` and `resolution` are both `null` while a report is open and both set once it is resolved, so `resolved_at is null` is the open test on the wire too. The admin who resolved it is recorded on the row and in `admin_events`, not on the wire.
+
+A row names one target. `event_id` carries the reported event's id, and the panel links out on it; `collection` carries the reported collection whole, its current title and its owner, because a collection is a name rather than a page an admin recognises from an id. It is read off the live row at queue time, so a renamed collection reads under its current name.
+
+Both are `null` when the reported target is gone: an event that was hard-deleted, or a collection that went with its owner's erased account. The report outlives either, and the admin panel renders those rows as *Reported item deleted* with `dismissed` as the only verdict on offer.
 
 ### `POST /admin/reports/{id}/resolve` 🛡️
 
-Close one report with a verdict, applying it to the reported event. Reports are resolved once and never reopened: a second resolve is a conflict, not an overwrite. Audited via `admin_events` (`action = "report_resolved"`, `target` carrying `report_id` / `event_id` / `resolution`); a verdict that also changes the event appends the matching event action too (`event_marked_graphic` for `marked_graphic`, `event_hidden` for `hidden`), so the trail reads the same whether the change came from the queue or from the direct moderation endpoint below. Invalidates the `/events/points` cache when the verdict actually hides the event.
+Close one report with a verdict, applying it to what the report names. One route for both kinds of target: the service reads which one the row names and applies the verdicts that kind takes. Reports are resolved once and never reopened: a second resolve is a conflict, not an overwrite. Audited via `admin_events` (`action = "report_resolved"`, `target` carrying `report_id` / `event_id` / `collection_id` / `resolution`, the target key that does not apply reading `null`); a verdict that also changes the target appends the matching action too (`event_marked_graphic` for `marked_graphic`, `event_hidden` or `collection_hidden` for `hidden`), so the trail reads the same whether the change came from the queue or from the admin verb that performs it directly. Invalidates the `/events/points` cache when the verdict actually hides an event.
 
 **Request body:**
 ```json
 { "resolution": "hidden" }
 ```
 
-`resolution` is one of `marked_graphic` (sets the event's `is_graphic` over the author's declaration), `hidden` (withholds the event from every public read, stamping `hidden_at`), or `dismissed` (closes the report, event untouched).
+`resolution` is one of `marked_graphic` (sets the event's `is_graphic` over the author's declaration), `hidden` (withholds the target from every public read, stamping `events.hidden_at` or `collections.hidden_at`), or `dismissed` (closes the report, target untouched).
+
+`marked_graphic` is an event verdict only: the flag is a column on the event, and a collection carries no footage of its own, only items each moderated on their own. A collection report answering it is a 409 rather than a verdict that changed nothing, and the report stays open.
 
 **Response 200:** the resolved `ContentReportRead` (same shape as the queue item above, now carrying `resolved_at` / `resolution`).
 
@@ -2127,7 +2197,8 @@ Close one report with a verdict, applying it to the reported event. Reports are 
 |------|------|
 | 404 | `report_not_found`: unknown report id |
 | 409 | `report_already_resolved`: the report already carries a verdict |
-| 409 | `report_event_gone`: the reported event was hard-deleted, so `marked_graphic` and `hidden` have nothing to act on. Resolve the report as `dismissed` instead |
+| 409 | `report_target_gone`: the reported event or collection was deleted, so every verdict but `dismissed` has nothing to act on. Resolve the report as `dismissed` instead |
+| 409 | `report_verdict_not_applicable`: `marked_graphic` against a collection report |
 
 Rate-limited to 60/hour.
 

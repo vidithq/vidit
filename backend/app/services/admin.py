@@ -417,28 +417,22 @@ def soft_delete_geolocation(
     return geo
 
 
-def hide_collection(
-    db: Session,
-    *,
-    actor_id: uuid.UUID,
-    collection_id: uuid.UUID,
-) -> Collection:
-    """Withhold one collection from every read but an admin's.
+def withhold_collection(db: Session, *, collection: Collection, actor_id: uuid.UUID) -> bool:
+    """Stamp one collection's takedown and file the audit row. No commit.
 
-    The collection-shaped takedown, next to the event one above and on the
-    same reversible ``hidden_at`` axis: a reported shelf is withheld pending
-    judgement rather than removed. The events on it are untouched, each
-    carrying its own moderation state.
+    The mutation itself, so the two admin doors onto it write the same thing:
+    :func:`hide_collection` below, which an admin reaches by id, and
+    :func:`services.reports.resolve_report`, which reaches it by resolving a
+    report filed against the collection. The verb lives here rather than in
+    ``services/reports`` because that module imports this one for
+    :func:`log_admin_event`, so the dependency runs one way only.
 
-    Idempotent: an already withheld collection keeps its original timestamp
-    and files no second audit row.
+    Returns whether the row actually changed: an already withheld collection
+    keeps its original timestamp and files no second audit row, which is what
+    makes the takedown idempotent through either door.
     """
-    collection = db.query(Collection).filter(Collection.id == collection_id).first()
-    if collection is None:
-        raise CollectionNotFoundError("Collection not found")
     if collection.hidden_at is not None:
-        return collection
-
+        return False
     collection.hidden_at = datetime.now(UTC)
     log_admin_event(
         db,
@@ -446,6 +440,35 @@ def hide_collection(
         action="collection_hidden",
         target={"collection_id": str(collection.id), "title": collection.title},
     )
+    return True
+
+
+def hide_collection(
+    db: Session,
+    *,
+    actor_id: uuid.UUID,
+    collection_id: uuid.UUID,
+) -> Collection:
+    """Withhold one collection from every read but an admin's, by id.
+
+    The collection-shaped takedown, next to the event one above and on the
+    same reversible ``hidden_at`` axis: a reported shelf is withheld pending
+    judgement rather than removed. The events on it are untouched, each
+    carrying its own moderation state.
+
+    Locked like the event a report verdict mutates, so this door and the
+    report queue's serialize on the row instead of interleaving their writes.
+    """
+    collection = (
+        db.query(Collection)
+        .filter(Collection.id == collection_id)
+        .populate_existing()
+        .with_for_update()
+        .first()
+    )
+    if collection is None:
+        raise CollectionNotFoundError("Collection not found")
+    withhold_collection(db, collection=collection, actor_id=actor_id)
     db.commit()
     db.refresh(collection)
     return collection

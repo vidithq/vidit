@@ -296,11 +296,22 @@ def event_link(event_id: str) -> str:
     return f"{settings.frontend_url.rstrip('/')}/events/{event_id}"
 
 
+def collection_link(collection_id: str) -> str:
+    """The absolute URL of one collection's page.
+
+    A withheld collection answers 404 there for everyone but an admin, which
+    is who this link is written for.
+    """
+    return f"{settings.frontend_url.rstrip('/')}/collections/{collection_id}"
+
+
 def content_report_email(
     *,
     to: str,
-    event_id: str,
-    event_title: str,
+    target: str,
+    target_id: str,
+    target_title: str,
+    target_link: str,
     reason: str,
     details: str | None,
     reporter: str,
@@ -312,16 +323,22 @@ def content_report_email(
     judge from the message whether it needs opening now. ``reporter`` is a
     username or the word ``anonymous``: reporting needs no account, and which
     of the two it was changes how much weight the report carries.
+
+    ``target`` is the word for what was reported, ``event`` or ``collection``,
+    and it names every line that describes the thing. One message for both
+    kinds, so a collection report reads exactly like an event report with the
+    noun swapped.
     """
     detail_block = f"Details:\n\n{details}\n\n" if details else ""
+    label = target.capitalize()
     return Email(
         to=to,
         subject=f"Vidit content report: {reason}",
         text=(
-            "A viewer reported an event on Vidit.\n"
+            f"A viewer reported {'an' if target[0] in 'aeiou' else 'a'} {target} on Vidit.\n"
             "\n"
-            f"Event:    {event_title}\n"
-            f"Event id: {event_id}\n"
+            f"{label}:    {target_title}\n"
+            f"{label} id: {target_id}\n"
             f"Reason:   {reason}\n"
             f"Reporter: {reporter}\n"
             f"Filed:    {created_at.isoformat()}\n"
@@ -331,9 +348,9 @@ def content_report_email(
             "\n"
             f"  {admin_reports_link()}\n"
             "\n"
-            "The reported event:\n"
+            f"The reported {target}:\n"
             "\n"
-            f"  {event_link(event_id)}\n"
+            f"  {target_link}\n"
             "\n"
             "— Vidit\n"
         ),

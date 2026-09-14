@@ -1,12 +1,18 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, type Mock } from "vitest";
 
-import { useReportEvent } from "./useReportEvent";
+import { useReportContent } from "./useReportContent";
+import { reportCollection } from "@/lib/collections";
 import { reportEvent } from "@/lib/events";
 
 vi.mock("@/lib/events", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/events")>()),
   reportEvent: vi.fn(),
+}));
+
+vi.mock("@/lib/collections", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/collections")>()),
+  reportCollection: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -18,13 +24,21 @@ vi.mock("@/contexts/AuthContext", () => ({
 }));
 
 const mockReport = reportEvent as unknown as Mock;
+const mockReportCollection = reportCollection as unknown as Mock;
 
 beforeEach(() => {
   mockReport.mockReset();
+  mockReportCollection.mockReset();
 });
 
-function ReportHarness({ eventId }: { eventId: string }) {
-  const { trigger, panel } = useReportEvent(eventId);
+function ReportHarness({
+  eventId,
+  kind = "event",
+}: {
+  eventId: string;
+  kind?: "event" | "collection";
+}) {
+  const { trigger, panel } = useReportContent(kind, eventId);
   return (
     <>
       {trigger}
@@ -33,14 +47,14 @@ function ReportHarness({ eventId }: { eventId: string }) {
   );
 }
 
-describe("useReportEvent state per event", () => {
+describe("useReportContent state per target", () => {
   it("ties aria-controls to the form only while it is open", () => {
     render(<ReportHarness eventId="e1" />);
     const trigger = screen.getByRole("button", { name: "Report" });
     expect(trigger).not.toHaveAttribute("aria-controls");
 
     fireEvent.click(trigger);
-    expect(trigger).toHaveAttribute("aria-controls", "report-event-form");
+    expect(trigger).toHaveAttribute("aria-controls", "report-content-form");
   });
 
   it("resets an open, half-filled form when the event changes", () => {
@@ -81,5 +95,30 @@ describe("useReportEvent state per event", () => {
     expect(
       screen.getByRole("button", { name: "Report" })
     ).toBeInTheDocument();
+  });
+});
+
+describe("useReportContent per kind", () => {
+  it("sends a collection report to the collection endpoint", async () => {
+    mockReportCollection.mockResolvedValue(undefined);
+    render(<ReportHarness kind="collection" eventId="c1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Report" }));
+    // The form names what it is about, so a reader knows what they are
+    // flagging.
+    expect(screen.getByText("Report this collection")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Details (optional)"), {
+      target: { value: "  not what it says  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send report" }));
+
+    await waitFor(() =>
+      expect(mockReportCollection).toHaveBeenCalledWith("c1", {
+        reason: "illegal_content",
+        details: "not what it says",
+      })
+    );
+    // One target per report: the event endpoint is never touched.
+    expect(mockReport).not.toHaveBeenCalled();
   });
 });

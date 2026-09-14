@@ -3,24 +3,29 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 
 import { CollectionItems } from "@/components/collections/CollectionItems";
 import { CollectionMetaLine } from "@/components/collections/CollectionCard";
 import { CollectionReader } from "@/components/collections/CollectionReader";
+import { useReportContent } from "@/components/report/useReportContent";
 import { AuthorByline } from "@/components/ui/AuthorByline";
-import { buttonClasses } from "@/components/ui/Button";
+import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
+import { useConfirmAction } from "@/hooks/useConfirmAction";
+import { useMutation } from "@/hooks/useMutation";
 import { errorMessage } from "@/lib/api";
 import {
   collectionEditHref,
   CollectionIcon,
   collectionStepHref,
+  deleteCollection,
   fetchCollectionSequence,
   readerStep,
   type Collection,
@@ -49,12 +54,23 @@ import {
  * All three read one set, the sequence this page walks once, so the pins, the
  * panel and the rows can never describe different collections.
  *
- * The page is public. The owner gets one control in the header cluster, where
- * every other surface puts the control that acts on the thing the page is
- * about: **Edit**, which opens the collection's own edit page. The details,
- * the item picker and the drop all live there, so this page stays a reading
- * surface with no per-row control of its own and no panel opens over the work
- * it shows.
+ * The page is public, and so is the header cluster's first control: **Report**,
+ * the red flag every detail surface carries, open to a reader with no account
+ * because the person who notices a shelf misrepresenting what it holds is
+ * rarely the person holding an account here. It opens the same panel an event
+ * page opens (`useReportContent`), directly under the header.
+ *
+ * The owner's two controls come after it, in the slot every other surface puts
+ * the controls that act on the thing the page is about. **Edit** opens the
+ * collection's own edit page, where the details and the item picker live.
+ * **Drop** is the red trash, under the two-click confirm every destructive
+ * control on the site takes, and on success the owner lands on their profile
+ * where their other collections are. The edit page keeps its own Drop card:
+ * this one is the gesture an owner reaches for while reading the collection,
+ * that one is the end of the page that rewrites it.
+ *
+ * Nothing else opens over the work the page shows: the item picker and the
+ * per-row controls stay on the edit page.
  */
 export default function CollectionPage() {
   // `useSearchParams` opts out of static prerender, so the body lives under a
@@ -120,6 +136,30 @@ function CollectionPageBody() {
 
   const isOwner = !!user && !!collection && user.id === collection.owner.id;
 
+  // Its own state machine, called before the early returns like every hook
+  // here: the flag works signed out, and the panel it opens renders under the
+  // header where the trigger is.
+  const report = useReportContent("collection", id);
+
+  const drop = useMutation(() => deleteCollection(id), {
+    fallback: "Failed to drop the collection",
+    // Back to the owner's profile, where their other collections are: the page
+    // they are on no longer exists.
+    onSuccess: () => router.push(`/profile/${collection?.owner.username ?? ""}`),
+  });
+
+  // Two clicks, disarming on its own after a few seconds and on any click or
+  // focus landing elsewhere: the confirm the edit page's Drop card takes, so
+  // the same act asks the same way from both places.
+  const {
+    armed: dropArmed,
+    trigger: triggerDrop,
+    controlRef: dropButtonRef,
+  } = useConfirmAction(() => void drop.run(), {
+    timeoutMs: 4000,
+    dismissOnOutside: true,
+  });
+
   if (error) return <PageError message={error} backHref="/map" />;
   if (!collection) return <PageLoading />;
 
@@ -142,21 +182,58 @@ function CollectionPageBody() {
         </div>
       }
       actions={
-        isOwner && (
-          // Navigation, so the shape comes from `buttonClasses` on the link
-          // rather than a button nested in an anchor. One control: the details
-          // and the drop are both on the page it opens.
-          <Link
-            href={collectionEditHref(collection.id)}
-            className={buttonClasses("ghost", { icon: true })}
-            aria-label="Edit this collection"
-            title="Edit this collection"
-          >
-            <Pencil size={14} />
-          </Link>
-        )
+        // `flex-wrap` plus `justify-end`, the event cluster's own row: it
+        // breaks into stacked right-aligned lines on a phone instead of
+        // pushing the header sideways.
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          {report.trigger}
+          {isOwner && (
+            <>
+              {/* Navigation, so the shape comes from `buttonClasses` on the
+                  link rather than a button nested in an anchor. */}
+              <Link
+                href={collectionEditHref(collection.id)}
+                className={buttonClasses("ghost", { icon: true })}
+                aria-label="Edit this collection"
+                title="Edit this collection"
+              >
+                <Pencil size={14} />
+              </Link>
+              <Button
+                ref={dropButtonRef}
+                icon
+                variant="danger"
+                disabled={drop.loading}
+                onClick={triggerDrop}
+                className={dropArmed ? DANGER_CONFIRM : ""}
+                // The label is what says which click this is, since an icon
+                // button has no text to swap.
+                aria-label={
+                  dropArmed
+                    ? "Confirm dropping this collection"
+                    : "Drop this collection"
+                }
+                title={
+                  dropArmed
+                    ? "Confirm dropping this collection"
+                    : "Drop this collection"
+                }
+              >
+                <Trash2 size={14} />
+              </Button>
+            </>
+          )}
+        </div>
       }
     >
+      {/* Directly under the header, where the trigger that opened it is. */}
+      {report.panel}
+      {drop.error && (
+        <div className={FORM_ERROR_BANNER} role="alert">
+          {drop.error}
+        </div>
+      )}
+
       <Card as="section">
         <SectionEyebrow title="Description" margin="none" />
         {/* `whitespace-pre-line` keeps the paragraph breaks the owner typed;

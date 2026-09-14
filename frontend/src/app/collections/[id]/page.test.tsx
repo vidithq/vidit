@@ -3,12 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 
 const replace = vi.fn();
+const push = vi.fn();
 const searchParams = new URLSearchParams();
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "c1" }),
   usePathname: () => "/collections/c1",
   useSearchParams: () => searchParams,
-  useRouter: () => ({ push: vi.fn(), replace, back: vi.fn() }),
+  useRouter: () => ({ push, replace, back: vi.fn() }),
 }));
 
 // MapLibre touches `window` at module scope, so the player's map never loads
@@ -62,10 +63,14 @@ vi.mock("@/hooks/useApiResource", () => ({
 // The page walks the cursor once and hands that one sequence to the player,
 // the panel and the list, so a spec picks the set it measures here.
 const fetchCollectionSequence = vi.fn();
+const deleteCollection = vi.fn();
+const reportCollection = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
   fetchCollectionSequence: (id: string, signal?: AbortSignal) =>
     fetchCollectionSequence(id, signal),
+  deleteCollection: (id: string) => deleteCollection(id),
+  reportCollection: (id: string, body: unknown) => reportCollection(id, body),
 }));
 
 import type { Collection } from "@/lib/collections";
@@ -145,7 +150,10 @@ beforeEach(() => {
   useAuth.mockReset();
   useApiResource.mockReset();
   fetchCollectionSequence.mockReset();
+  deleteCollection.mockReset();
+  reportCollection.mockReset();
   replace.mockReset();
+  push.mockReset();
   searchParams.delete("step");
   useAuth.mockReturnValue({ user: null });
   mockReads(collection());
@@ -308,13 +316,18 @@ describe("CollectionPage", () => {
     expect(screen.queryByText(/^by/)).not.toBeInTheDocument();
   });
 
-  it("hands a visitor no owner control", async () => {
+  it("hands a visitor the report flag and no owner control", async () => {
     await renderPage();
 
+    // Reporting works signed out, which is the whole point of the control.
+    expect(screen.getByRole("button", { name: "Report" })).toBeInTheDocument();
     expect(
       screen.queryByRole("button", {
         name: "Remove Strike on the rail junction from this collection",
       }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Drop this collection" }),
     ).not.toBeInTheDocument();
     for (const name of ["Edit this collection", "Your geolocations"]) {
       expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
@@ -340,26 +353,25 @@ describe("CollectionPage", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("gives the owner one Edit control, and no per-item control", async () => {
+  it("gives the owner Edit and Drop, and no per-item control", async () => {
     useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
 
     await renderPage();
 
-    // The details, the item picker and the drop all live on the edit page, so
-    // the header carries one control and the page opens no panel over the
-    // work it shows, with no per-row control of its own.
+    // The details and the item picker live on the edit page, so the header
+    // carries the two acts on the collection itself and no per-row control.
     expect(
       screen.getByRole("link", { name: "Edit this collection" }),
     ).toHaveAttribute("href", "/collections/c1/edit");
+    expect(
+      screen.getByRole("button", { name: "Drop this collection" }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", {
         name: "Remove Strike on the rail junction from this collection",
       }),
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Title")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /drop this collection/i }),
-    ).not.toBeInTheDocument();
   });
 
   it("stands a row on its thumbnail, not on the catalogue's height floor", async () => {
@@ -388,4 +400,64 @@ describe("CollectionPage", () => {
     expect(document.querySelector("input[type=file]")).toBeNull();
   });
 
+  it("reports the collection from the header, with no account", async () => {
+    reportCollection.mockResolvedValue(undefined);
+
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Report" }));
+    // The panel names what it is about, so the flag cannot be mistaken for a
+    // report on the item the player is standing on.
+    expect(screen.getByText("Report this collection")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Reason"), {
+      target: { value: "copyright" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send report" }));
+
+    await waitFor(() =>
+      expect(reportCollection).toHaveBeenCalledWith("c1", {
+        reason: "copyright",
+        details: null,
+      }),
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Report received",
+    );
+  });
+
+  it("drops the collection on a second click, then lands on the profile", async () => {
+    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
+    deleteCollection.mockResolvedValue(undefined);
+
+    await renderPage();
+
+    // One click arms; nothing is written yet.
+    fireEvent.click(screen.getByRole("button", { name: "Drop this collection" }));
+    expect(deleteCollection).not.toHaveBeenCalled();
+
+    const armed = screen.getByRole("button", {
+      name: "Confirm dropping this collection",
+    });
+    fireEvent.click(armed);
+
+    await waitFor(() => expect(deleteCollection).toHaveBeenCalledWith("c1"));
+    // The page it was on is gone, so the owner lands where their other
+    // collections are.
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/profile/ana"));
+  });
+
+  it("keeps the collection and says so when the drop fails", async () => {
+    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
+    deleteCollection.mockRejectedValue(new Error("nope"));
+
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Drop this collection" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirm dropping this collection" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("nope");
+    expect(push).not.toHaveBeenCalled();
+  });
 });

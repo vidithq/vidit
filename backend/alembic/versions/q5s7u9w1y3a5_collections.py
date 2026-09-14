@@ -24,6 +24,16 @@ The ownership invariant (an event joins its owner's collection only) lives in
 ``services/collections.add_event``, not here: it spans two tables, which a
 CHECK cannot.
 
+``content_reports`` gains ``collection_id`` here, beside the ``event_id`` it
+already carries and on the same ``SET NULL`` terms, so one queue answers both
+kinds of report. The column lands in this migration because the foreign key
+needs ``collections`` to exist, which the statements above create. The CHECK
+is ``num_nonnulls(event_id, collection_id) <= 1``, "never both" rather than
+"exactly one": a report whose target is hard-deleted has that column set to
+NULL, so both-NULL is the orphan state every report can reach and the row has
+to stay legal in it. Exactly one is set at insert, which the two report routes
+hold by each naming one target.
+
 A GIN index over ``title || ' ' || description`` backs the collections group of
 ``GET /search``, the shape the baseline migration gives events and users. The
 expression has to stay identical to the one ``services/search`` builds, config
@@ -51,6 +61,11 @@ TITLE_MAX_LENGTH = 255
 # rather than 'english' for the reason the baseline states, a corpus of place
 # names and OSINT identifiers that does not stem cleanly.
 _COLLECTION_TSVECTOR = "to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(description, ''))"
+
+# One report names one target. Mirrors the constraint on
+# ``models/content_report.ContentReport``; see the module docstring for why the
+# test is "never both" rather than "exactly one".
+_ONE_TARGET = "num_nonnulls(event_id, collection_id) <= 1"
 
 
 def upgrade() -> None:
@@ -90,9 +105,31 @@ def upgrade() -> None:
     # add-to-collection popover and the event page both read.
     op.create_index("ix_collection_events_event_id", "collection_events", ["event_id"])
 
+    # A collection is reportable like an event, through the same table and the
+    # same queue.
+    op.add_column("content_reports", sa.Column("collection_id", sa.Uuid(), nullable=True))
+    op.create_foreign_key(
+        "fk_content_reports_collection_id",
+        "content_reports",
+        "collections",
+        ["collection_id"],
+        ["id"],
+        ondelete="SET NULL",
+    )
+    # "The reports filed against this collection", which the queue reads when
+    # it hydrates a row and an admin reads when judging a shelf.
+    op.create_index("ix_content_reports_collection_id", "content_reports", ["collection_id"])
+    op.create_check_constraint("ck_content_reports_one_target", "content_reports", _ONE_TARGET)
+
 
 def downgrade() -> None:
-    # Memberships first: they hold the foreign key into ``collections``.
+    # The report column first: its foreign key points into ``collections``.
+    op.drop_constraint("ck_content_reports_one_target", "content_reports", type_="check")
+    op.drop_index("ix_content_reports_collection_id", table_name="content_reports")
+    op.drop_constraint("fk_content_reports_collection_id", "content_reports", type_="foreignkey")
+    op.drop_column("content_reports", "collection_id")
+
+    # Memberships next: they hold the foreign key into ``collections``.
     op.drop_index("ix_collection_events_event_id", table_name="collection_events")
     op.drop_table("collection_events")
     op.drop_index("ix_collections_search_fts", table_name="collections")
