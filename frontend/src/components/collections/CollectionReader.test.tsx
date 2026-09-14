@@ -140,10 +140,35 @@ describe("CollectionReader", () => {
     const { onStep } = renderReader(2);
 
     fireEvent.keyDown(window, { key: "ArrowRight" });
-    expect(onStep).toHaveBeenCalledWith(3);
+    expect(onStep).toHaveBeenLastCalledWith(3);
 
+    // Back from where the last press left the reader, not from the step the
+    // URL still holds while the caller lands the first one.
     fireEvent.keyDown(window, { key: "ArrowLeft" });
-    expect(onStep).toHaveBeenCalledWith(1);
+    expect(onStep).toHaveBeenLastCalledWith(2);
+  });
+
+  it("walks a held key instead of re-reading the step it left", () => {
+    // The caller lands the step in the URL, so the prop is still 1 when the
+    // second press arrives: a handler counting off the prop would ask for
+    // step 2 twice and the collection would stand still under a held key.
+    const { onStep } = renderReader(1);
+
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+
+    expect(onStep.mock.calls).toEqual([[2], [3]]);
+  });
+
+  it("stops the held key at the last item", () => {
+    const { onStep } = renderReader(3);
+
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+
+    // Four items: the walk reaches the end and the next press is the
+    // browser's again.
+    expect(onStep.mock.calls).toEqual([[4]]);
   });
 
   it("holds at either end of the sequence", () => {

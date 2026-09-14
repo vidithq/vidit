@@ -39,7 +39,8 @@ import {
  * **The toggle is optimistic, and it rolls back.** Membership is one bit and
  * both writes are idempotent, so the row flips on the click and the request
  * follows it; a refusal puts the bit back where it was and says why in the
- * panel's one error banner. Waiting for the round trip instead would leave a
+ * panel's one error banner. The count line moves with the bit, since the row
+ * states what the collection holds and the click is what changes it. Waiting for the round trip instead would leave a
  * reader who is shelving several events watching a row that has not moved, and
  * a stale bit is the one failure a rollback fully undoes.
  */
@@ -56,12 +57,23 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
     if (data) setRows(data.items);
   }, [data]);
 
+  // The bit and the count move together: the count line under the title is
+  // what the collection holds, so shelving an event has to add to it rather
+  // than leaving the row saying the figure from before the click. A call that
+  // sets the bit it already holds changes nothing, which is what keeps a
+  // rollback from counting twice.
   const setMembership = (id: string, on: boolean) =>
     setRows((current) =>
       current === null
         ? current
         : current.map((row) =>
-            row.id === id ? { ...row, in_collection: on } : row,
+            row.id === id && row.in_collection !== on
+              ? {
+                  ...row,
+                  in_collection: on,
+                  event_count: Math.max(0, row.event_count + (on ? 1 : -1)),
+                }
+              : row,
           ),
     );
 

@@ -132,12 +132,6 @@ interface EntityCardBaseProps {
    *  its header (a collection's item list), where repeating the same handle on
    *  every row says nothing about any of them. */
   author?: { username: string };
-  /** A control that acts on this row rather than opening it (taking an item
-   *  off a collection). It renders above the stretched link, at the bottom of
-   *  the badge's column, so it takes its own click and sits as far from the
-   *  row's own destination as the column allows; a row with none stays one
-   *  click. */
-  action?: ReactNode;
   /** The fixed height floor that keeps every row of a catalogue list the same
    *  height whatever slots its entity fills (a 1-line title, tags or none).
    *  A list whose rows all carry the same short shape turns it off: a
@@ -156,8 +150,24 @@ interface EntityCardBaseProps {
    *  muted "To confirm" label for it. */
   source?: { url: string | null };
   tags?: { id: string; name: string }[];
-  variant?: "feed" | "compact";
 }
+
+// The row control belongs to the compact row, which has a column to hang it
+// in: the badge's, at the bottom right. The feed card has no such column (its
+// badge floats over the media in the corner), so the type refuses the prop
+// there rather than letting a feed caller pass a control that renders
+// nowhere.
+type VariantProps =
+  | {
+      variant?: "compact";
+      /** A control that acts on this row rather than opening it (taking an
+       *  item off a collection). It renders above the stretched link, at the
+       *  bottom of the badge's column, so it takes its own click and sits as
+       *  far from the row's own destination as the column allows; a row with
+       *  none stays one click. */
+      action?: ReactNode;
+    }
+  | { variant: "feed"; action?: undefined };
 
 // A card carries one gesture. The default mode's stretched link needs
 // `detailHref`; `onSelect`'s stretched button needs none, since the title
@@ -176,7 +186,10 @@ type SelectableProps =
       selectLabel: string;
     };
 
-type EntityCardProps = EntityCardBaseProps & TitleProps & SelectableProps;
+type EntityCardProps = EntityCardBaseProps &
+  TitleProps &
+  SelectableProps &
+  VariantProps;
 
 function formatCoord(lat: number, lng: number): string {
   const latDir = lat >= 0 ? "N" : "S";

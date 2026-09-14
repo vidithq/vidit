@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import type { FormEvent } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const searchPickableEvents = vi.fn();
@@ -104,6 +105,28 @@ describe("EventPicker, the events the collection holds", () => {
     expect(held.map((control) => control.getAttribute("aria-label"))).toEqual([
       "Remove Earlier strike from this collection",
       "Remove Later strike from this collection",
+    ]);
+  });
+
+  it("orders two same-day rows the way the server will", () => {
+    render(
+      <EventPicker
+        username="ana"
+        events={[
+          row({ id: "e9", title: "Picked first", event_date: "2026-03-14" }),
+          row({ id: "e2", title: "Picked second", event_date: "2026-03-14" }),
+        ]}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    // The id is the server's last sort key, so a shared date reads here in the
+    // order the saved collection will read it, not in the order of the clicks.
+    const held = screen.getAllByRole("button", { name: /^Remove/ });
+    expect(held.map((control) => control.getAttribute("aria-label"))).toEqual([
+      "Remove Picked second from this collection",
+      "Remove Picked first from this collection",
     ]);
   });
 
@@ -293,10 +316,66 @@ describe("EventPicker, the add block", () => {
     // The search endpoint hands out no cursor, so the block states the figure
     // rather than offering a walk it cannot take.
     expect(
+      screen.getByText(/Showing 5 of 62 matches\. Refine the search/),
+    ).toBeInTheDocument();
+  });
+
+  it("says that a search reaches no event without coordinates", async () => {
+    searchPickableEvents.mockResolvedValue({
+      items: [row({ id: "e2", title: "Kakhovka dam" })],
+      total: 1,
+    });
+
+    render(
+      <EventPicker
+        username="ana"
+        events={[]}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "Kakhovka" },
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(DEBOUNCE_MS);
+    });
+
+    // The two halves serve different sets: the browse list is the only way to
+    // a collectable event carrying no coordinates, so the line says so even
+    // when nothing was capped.
+    expect(
       screen.getByText(
-        "Showing 5 of 62 matches. Refine the search to reach the rest.",
+        "Search reaches your events that carry coordinates; clear the field to see the rest.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("searches on Enter instead of submitting the collection form", () => {
+    const onSubmit = vi.fn((e: FormEvent) => e.preventDefault());
+
+    render(
+      <form onSubmit={onSubmit}>
+        <EventPicker
+          username="ana"
+          events={[]}
+          onAdd={vi.fn()}
+          onRemove={vi.fn()}
+        />
+      </form>,
+    );
+    const field = screen.getByRole("searchbox");
+    fireEvent.change(field, { target: { value: "Kakhovka" } });
+    const defaultPrevented = !fireEvent.keyDown(field, {
+      key: "Enter",
+      code: "Enter",
+      charCode: 13,
+    });
+
+    // The picker sits inside the collection form: Enter in the field must not
+    // write a collection the analyst is still choosing the events for.
+    expect(defaultPrevented).toBe(true);
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it("keeps the collection's own rows through a search that lists none of them", async () => {

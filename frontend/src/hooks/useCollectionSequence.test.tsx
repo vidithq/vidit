@@ -52,6 +52,68 @@ describe("useCollectionSequence", () => {
     expect(result.current.items).toBeNull();
   });
 
+  it("shows nothing of the collection just left while the next one reads", async () => {
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) => useCollectionSequence(id),
+      { initialProps: { id: "c1" } },
+    );
+
+    await waitFor(() => expect(result.current.items).toEqual(ITEMS));
+
+    let land: (items: EventListItem[]) => void = () => {};
+    fetchCollectionSequence.mockReturnValue(
+      new Promise<EventListItem[]>((resolve) => {
+        land = resolve;
+      }),
+    );
+    rerender({ id: "c2" });
+
+    expect(result.current.items).toBeNull();
+    expect(result.current.loading).toBe(true);
+
+    const NEXT = [{ id: "e3" }] as unknown as EventListItem[];
+    land(NEXT);
+    await waitFor(() => expect(result.current.items).toEqual(NEXT));
+  });
+
+  it("clears the error of the collection just left", async () => {
+    fetchCollectionSequence.mockRejectedValue(new Error("Gone."));
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) => useCollectionSequence(id),
+      { initialProps: { id: "c1" } },
+    );
+
+    await waitFor(() => expect(result.current.error).toBe("Gone."));
+
+    fetchCollectionSequence.mockResolvedValue(ITEMS);
+    rerender({ id: "c2" });
+
+    expect(result.current.error).toBeNull();
+    await waitFor(() => expect(result.current.items).toEqual(ITEMS));
+  });
+
+  it("drops a walk that lands after the id moved on", async () => {
+    let land: (items: EventListItem[]) => void = () => {};
+    fetchCollectionSequence.mockReturnValueOnce(
+      new Promise<EventListItem[]>((resolve) => {
+        land = resolve;
+      }),
+    );
+    const NEXT = [{ id: "e3" }] as unknown as EventListItem[];
+    fetchCollectionSequence.mockResolvedValue(NEXT);
+
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) => useCollectionSequence(id),
+      { initialProps: { id: "c1" } },
+    );
+    rerender({ id: "c2" });
+
+    // The first walk answers after the reader opened another collection.
+    land(ITEMS);
+    await waitFor(() => expect(result.current.items).toEqual(NEXT));
+    expect(result.current.items).not.toEqual(ITEMS);
+  });
+
   it("aborts the walk it leaves behind", async () => {
     const { unmount } = renderHook(() => useCollectionSequence("c1"));
 

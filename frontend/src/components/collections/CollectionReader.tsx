@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { pointsBounds } from "@/components/map/bounds";
 import { DetailSidePanel } from "@/components/map/DetailSidePanel";
@@ -53,7 +53,9 @@ function isTypingTarget(target: EventTarget | null): boolean {
  *
  * The step itself belongs to the caller, which keeps it in the URL: the step
  * is the share unit, and a component that held it in state would make a shared
- * link open somewhere else.
+ * link open somewhere else. The arrow keys keep a cursor of their own over
+ * that same number, so a held key walks the collection rather than waiting on
+ * the round trip through the URL for each press.
  */
 export function CollectionReader({
   items,
@@ -99,6 +101,17 @@ export function CollectionReader({
     [items, onStep],
   );
 
+  // Where the keys have walked to: the step on screen, plus the presses the
+  // caller has not landed in the URL yet. A held arrow repeats faster than the
+  // router's `replace` round trip, so counting from the `step` prop would
+  // compute every press of a burst off the same stale number and walk one step
+  // however long the key is held. Re-synced from the prop on every step that
+  // lands, wherever it came from: the URL, the header buttons, a pin click.
+  const walked = useRef(step);
+  useEffect(() => {
+    walked.current = step;
+  }, [step]);
+
   // The arrow keys step. They are read on the window, since the reader's own
   // focus may be anywhere on the page (or nowhere), and skipped while a field
   // has the caret or a modifier is held, where the same press means something
@@ -108,14 +121,18 @@ export function CollectionReader({
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       if (isTypingTarget(event.target)) return;
-      const next = event.key === "ArrowLeft" ? step - 1 : step + 1;
+      const next = walked.current + (event.key === "ArrowLeft" ? -1 : 1);
+      // At either end the press is the browser's again, which is what keeps a
+      // page-length collection scrolling under a key the reader holds past the
+      // last item.
       if (next < 1 || next > total) return;
       event.preventDefault();
+      walked.current = next;
       onStep(next);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [step, total, onStep]);
+  }, [total, onStep]);
 
   return (
     <Card as="section">

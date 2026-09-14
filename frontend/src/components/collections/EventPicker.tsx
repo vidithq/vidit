@@ -28,10 +28,21 @@ const DEBOUNCE_MS = 300;
 /** The rows a collection holds, in the order its page reads them: by when the
  *  events happened, earliest first. A row with no date sits at the end, since
  *  there is nothing to place it against. The server orders a stored collection
- *  this way, so the pending list and the collection it becomes read alike. */
+ *  this way (`services/collections.chronological_key`), so the pending list and
+ *  the collection it becomes read alike.
+ *
+ *  Two rows sharing a date fall back to their id, the server's last key, which
+ *  is what makes the order total: without it two same-day rows sit in whichever
+ *  order they were picked in, and the collection reorders them on save. The
+ *  server's middle keys, `event_time` then `created_at`, are not on the card
+ *  shape either half of the picker reads (`EventList`, `SearchEventHit`), so
+ *  two rows sharing a date and differing in time can still swap places between
+ *  this list and the saved collection. */
 function chronological(events: PickableEvent[]): PickableEvent[] {
-  return [...events].sort((a, b) =>
-    (a.event_date ?? "9999").localeCompare(b.event_date ?? "9999"),
+  return [...events].sort(
+    (a, b) =>
+      (a.event_date ?? "9999").localeCompare(b.event_date ?? "9999") ||
+      a.id.localeCompare(b.id),
   );
 }
 
@@ -75,6 +86,13 @@ function chronological(events: PickableEvent[]): PickableEvent[] {
  * ([`lib/collections.ts`](../../lib/collections.ts)), and either way the line
  * under the rows says how many there are and that narrowing the words is how to
  * reach them.
+ *
+ * The two halves serve different sets in one respect, and the line under the
+ * rows says so: search answers out of its located group, which requires
+ * coordinates, while the browse list serves every collectable event. A
+ * collection may hold an event with no coordinates, so the browse list is the
+ * only way to one. `GET /events` reads no words, so there is no one endpoint
+ * to put both halves on.
  */
 export function EventPicker({
   username,
@@ -152,10 +170,20 @@ export function EventPicker({
   // What the block is not showing. A search states the figure, since the
   // endpoint answers the pre-cap count; a browse only knows there is another
   // page, which is enough to say that the search is the way past these rows.
+  //
+  // A search also says what it cannot reach at all: `/search` serves its
+  // located group, which requires coordinates, while the browse list serves
+  // every collectable event of the analyst's. So an event carrying no
+  // coordinates answers no query here, and clearing the field is the only way
+  // to it.
+  const capped =
+    found !== null && found.total > results.length
+      ? `Showing ${results.length} of ${found.total} matches. Refine the search to reach the rest. `
+      : "";
   const refine = searching
-    ? found !== null && found.total > results.length
-      ? `Showing ${results.length} of ${found.total} matches. Refine the search to reach the rest.`
-      : null
+    ? found === null
+      ? null
+      : `${capped}Search reaches your events that carry coordinates; clear the field to see the rest.`
     : browse.hasMore
       ? "Showing your most recent. Search to reach the rest of your catalogue."
       : null;
@@ -216,6 +244,13 @@ export function EventPicker({
           icon={<Search size={14} />}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          // The field sits inside the collection form, where Enter submits.
+          // Typing words and pressing Enter has to search, not write the
+          // collection the analyst is still choosing the events for: the rows
+          // arrive on the debounce, so the key has nothing left to do.
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.preventDefault();
+          }}
           placeholder="Search your geolocations by title…"
         />
 

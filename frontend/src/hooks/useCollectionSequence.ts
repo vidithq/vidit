@@ -6,6 +6,14 @@ import { errorMessage } from "@/lib/api";
 import { fetchCollectionSequence } from "@/lib/collections";
 import type { EventListItem } from "@/types";
 
+interface SequenceResult {
+  items: EventListItem[] | null;
+  error: string | null;
+  // Which collection this result answers. A result kept across an id change is
+  // stale and must not leak into the new page state.
+  id: string | null;
+}
+
 /**
  * A collection's items in reading order, walked once.
  *
@@ -13,7 +21,8 @@ import type { EventListItem } from "@/types";
  * one path: the walk follows the `Link: rel="next"` cursor to the end, aborts
  * on unmount and on an id change, and is skipped while `id` is empty (route
  * params not ready). `items` is null until the walk lands, which is what
- * `loading` reports.
+ * `loading` reports. A result carries the id it answers, so the items and the
+ * error of the collection just left never render under the one just opened.
  *
  * Both collection pages take it, so neither reads the set its own way. The
  * collection's page draws its pins, its panel and its rows from the one
@@ -25,8 +34,11 @@ export function useCollectionSequence(id: string): {
   error: string | null;
   loading: boolean;
 } {
-  const [items, setItems] = useState<EventListItem[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<SequenceResult>({
+    items: null,
+    error: null,
+    id: null,
+  });
 
   useEffect(() => {
     if (!id) return;
@@ -34,14 +46,25 @@ export function useCollectionSequence(id: string): {
     fetchCollectionSequence(id, controller.signal)
       .then((walk) => {
         if (controller.signal.aborted) return;
-        setItems(walk);
+        setResult({ items: walk, error: null, id });
       })
       .catch((e: unknown) => {
         if (controller.signal.aborted) return;
-        setError(errorMessage(e, "Failed to read this collection"));
+        setResult({
+          items: null,
+          error: errorMessage(e, "Failed to read this collection"),
+          id,
+        });
       });
     return () => controller.abort();
   }, [id]);
 
-  return { items, error, loading: items === null && error === null };
+  const fresh = result.id === id ? result : null;
+  return {
+    items: fresh ? fresh.items : null,
+    error: fresh ? fresh.error : null,
+    // An empty id reads as loading, not as an empty collection: the route
+    // params are still resolving and the page has nothing to say yet.
+    loading: fresh === null,
+  };
 }

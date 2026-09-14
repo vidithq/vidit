@@ -873,11 +873,17 @@ function FitBoundsCamera({ bounds }: { bounds: MapBounds }) {
  *  (`fitBounds`), and flying away from that frame on mount would take the
  *  shape of the set off the screen before the reader has seen it. `flyTo`
  *  carries no `essential` flag, so a reader who asked their system for reduced
- *  motion gets the same camera without the flight. */
-function FlyToCamera({ target }: { target: { lat: number; lng: number } }) {
+ *  motion gets the same camera without the flight.
+ *
+ *  Mounted for the life of the map, including while the target is null, so the
+ *  latch is spent once on the frame the caller set up. Mounting it only on a
+ *  target would rebuild the latch after every item without coordinates, and
+ *  the step after such an item would keep the camera where it was. */
+function FlyToCamera({ target }: { target: { lat: number; lng: number } | null }) {
   const { current: map } = useMap();
   const framed = useRef(false);
-  const { lat, lng } = target;
+  const lat = target?.lat ?? null;
+  const lng = target?.lng ?? null;
 
   useEffect(() => {
     if (!map) return;
@@ -885,6 +891,7 @@ function FlyToCamera({ target }: { target: { lat: number; lng: number } }) {
       framed.current = true;
       return;
     }
+    if (lat === null || lng === null) return;
     map.flyTo({
       center: [lng, lat],
       zoom: Math.max(map.getZoom(), FLY_ZOOM),
@@ -1280,7 +1287,7 @@ export default function Map({
         spider={spider}
       />
       {fitBounds && <FitBoundsCamera bounds={fitBounds} />}
-      {flyTo && <FlyToCamera target={flyTo} />}
+      <FlyToCamera target={flyTo ?? null} />
       <BoundsReporter onBoundsChange={onBoundsChange} />
       {process.env.NODE_ENV !== "production" && <DevMapHandle />}
       <NavigationControl position="bottom-left" showCompass={false} />

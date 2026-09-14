@@ -5,7 +5,7 @@ import Link from "next/link";
 import { CircleX, History, MapPin, Pencil } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
-import { CollectionIcon } from "@/lib/collections";
+import { COLLECTABLE_STATUSES, CollectionIcon } from "@/lib/collections";
 import { eventHistoryHref, hasPublishedRecord } from "@/lib/events";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
 import { Button, buttonClasses } from "@/components/ui/Button";
@@ -36,12 +36,12 @@ import type { EventDetail } from "@/types";
  * 2. **The flow action**, at most one, filled: what this surface exists to move
  *    forward. Only an open request carries one (geolocate it).
  * 3. **Owner management**: the controls only the author holds, as icon buttons
- *    in the row like every other control in it. The event page carries shelving
- *    the row on one of the author's own collections, which writes no version
- *    and changes nothing a reader sees on the record. The event page carries editing
- *    a published geolocation, which files a version rather than overwriting the
- *    record, as a pencil; both detail pages carry closing the row, which is how
- *    an author takes their own work back. Nothing here destroys a row: closing
+ *    in the row like every other control in it. The event page carries two of
+ *    them: shelving the row on one of the author's own collections, which
+ *    writes no version and changes nothing a reader sees on the record, and
+ *    editing a published geolocation, which files a version rather than
+ *    overwriting the record, as a pencil. Both detail pages carry closing the
+ *    row, which is how an author takes their own work back. Nothing here destroys a row: closing
  *    keeps it readable with its reason, and removing one for good is an admin
  *    act.
  *
@@ -158,9 +158,7 @@ export function useEventActions({
   // belongs on a curated shelf and the control is absent rather than offered
   // and refused.
   const canCollect =
-    isAuthor &&
-    tiers.collect &&
-    (event.status === "geolocated" || event.status === "detected");
+    isAuthor && tiers.collect && COLLECTABLE_STATUSES.includes(event.status);
 
   // A surface whose every tier is off, or off for this row, gets nothing rather
   // than an empty row: the wrapper is itself an item in the host's own cluster,

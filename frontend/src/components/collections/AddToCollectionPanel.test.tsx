@@ -109,6 +109,47 @@ describe("AddToCollectionPanel", () => {
     );
   });
 
+  it("counts the event onto the collection as the row flips", async () => {
+    addEventToCollection.mockResolvedValue(undefined);
+
+    render(<AddToCollectionPanel eventId="e1" />);
+    fireEvent.click(row("Kupiansk rail corridor"));
+
+    // The line says what the collection holds, so it moves with the bit.
+    expect(screen.getByText("2 events")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(addEventToCollection).toHaveBeenCalledWith("c1", "e1"),
+    );
+    expect(screen.getByText("2 events")).toBeInTheDocument();
+  });
+
+  it("counts the event off a collection it leaves", async () => {
+    removeEventFromCollection.mockResolvedValue(undefined);
+
+    render(<AddToCollectionPanel eventId="e1" />);
+    fireEvent.click(row("Zaporizhzhia plant perimeter"));
+
+    await waitFor(() =>
+      expect(removeEventFromCollection).toHaveBeenCalledWith("c2", "e1"),
+    );
+    expect(screen.getByText("11 events")).toBeInTheDocument();
+  });
+
+  it("rolls the count back with the bit", async () => {
+    addEventToCollection.mockRejectedValue(new Error("Nope."));
+
+    render(<AddToCollectionPanel eventId="e1" />);
+    fireEvent.click(row("Kupiansk rail corridor"));
+
+    await waitFor(() => expect(screen.getByText("Nope.")).toBeInTheDocument());
+    // Both halves of the optimistic flip are undone, not just the switch.
+    expect(row("Kupiansk rail corridor")).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    expect(screen.getByText("1 event")).toBeInTheDocument();
+  });
+
   it("puts the bit back and says why when the write is refused", async () => {
     addEventToCollection.mockRejectedValue(
       new Error("This geolocation cannot be shelved."),

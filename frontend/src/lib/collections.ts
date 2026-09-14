@@ -132,7 +132,13 @@ export function collectionStepHref(id: string, step: number): string {
 
 /** How many items the page ever steps through. A collection is a curated set,
  *  so this is a ceiling on a runaway read rather than a page size: past it the
- *  page holds the first 500 items. */
+ *  page holds the first 500 items.
+ *
+ *  What the reader sees at the ceiling: the first 500 items of the reading
+ *  order, which is the earliest 500 by event date, and nothing of what happened
+ *  after them. The counter, the pins and the list all read the same truncated
+ *  walk, so a longer collection counts to 500 and nothing on the page marks
+ *  where the cut falls. */
 export const READER_MAX_ITEMS = 500;
 
 /**
@@ -229,14 +235,17 @@ export function pickerBrowsePath(
 
 /** An event's own read as a picker row. The create page reads the one event a
  *  `?event=` link carries this way, so the row it opens holding renders like
- *  every other row on the page. The detail carries all of its media and the
- *  card slot takes one, which is the first, the order the gallery renders. */
+ *  every other row on the page. The card slot takes the detail's own picked
+ *  `thumbnail`, the pick every other card surface renders (the source
+ *  attachment, else the first proof image): `media` carries source attachments
+ *  alone, so reading its first row tiles nothing for an event whose picture is
+ *  a proof image. */
 export function pickableFromDetail(event: EventDetail): PickableEvent {
   return {
     id: event.id,
     title: event.title,
     status: event.status,
-    media: event.media[0] ?? null,
+    media: event.thumbnail,
     is_graphic: event.is_graphic,
     event_date: event.event_date,
     event_coords: event.event_coords,

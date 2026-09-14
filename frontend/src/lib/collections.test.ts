@@ -381,14 +381,19 @@ describe("pickableFromDetail", () => {
         { id: "m1", storage_url: "https://media/one.jpg", media_type: "image" },
         { id: "m2", storage_url: "https://media/two.jpg", media_type: "image" },
       ],
+      thumbnail: {
+        id: "m1",
+        storage_url: "https://media/one.jpg",
+        media_type: "image",
+      },
       is_graphic: true,
       event_date: "2026-03-14",
       event_coords: { lat: 46.77, lng: 33.37 },
       tags: [{ id: "t1", name: "dam" }],
     } as unknown as Parameters<typeof pickableFromDetail>[0];
 
-    // The detail carries all of its media and the card slot takes one, which
-    // is the first, the order the gallery renders.
+    // The card slot takes the detail's own picked thumbnail, the pick every
+    // other card surface renders.
     expect(pickableFromDetail(detail)).toEqual({
       id: "e1",
       title: "Kakhovka dam",
@@ -405,12 +410,40 @@ describe("pickableFromDetail", () => {
     });
   });
 
+  it("tiles an event whose picture is a proof image", () => {
+    // `media` carries source attachments alone, so this event's card picture
+    // is on `thumbnail` and nowhere else: reading the first source row would
+    // open the create page on an untiled row.
+    const detail = {
+      id: "e3",
+      title: "Proof-only geolocation",
+      status: "geolocated",
+      media: [],
+      thumbnail: {
+        id: "p1",
+        storage_url: "https://media/proof.jpg",
+        media_type: "image",
+      },
+      is_graphic: false,
+      event_date: "2026-03-14",
+      event_coords: { lat: 46.77, lng: 33.37 },
+      tags: [],
+    } as unknown as Parameters<typeof pickableFromDetail>[0];
+
+    expect(pickableFromDetail(detail).media).toEqual({
+      id: "p1",
+      storage_url: "https://media/proof.jpg",
+      media_type: "image",
+    });
+  });
+
   it("carries no media for an event that has none", () => {
     const detail = {
       id: "e2",
       title: "Sourceless detection",
       status: "detected",
       media: [],
+      thumbnail: null,
       is_graphic: false,
       event_date: null,
       event_coords: null,
