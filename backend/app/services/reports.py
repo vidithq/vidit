@@ -41,9 +41,9 @@ from app.models.content_report import (
     ContentReportResolution,
 )
 from app.models.event import Event
-from app.models.user import User
 from app.services import email
 from app.services.admin import log_admin_event, withhold_collection
+from app.services.collections import visible_collections
 from app.services.event_filters import visible_events
 
 logger = logging.getLogger(__name__)
@@ -309,18 +309,16 @@ def create_collection_report(
 
     A collection that does not exist, is already withheld, or belongs to a
     soft-deleted account reads as :class:`CollectionNotFoundError` (404), the
-    three states its own page already answers 404 for. The read is deliberately
+    three states its own page already answers 404 for, through the one
+    readability predicate that page reads
+    (``services/collections.visible_collections``). The read is deliberately
     viewer-blind, unlike ``services/collections.resolve_collection``: an admin
     reads a withheld collection in order to judge it, which is not a reason to
     let one more report be filed against a shelf already taken down.
     """
     visible = (
         db.query(Collection.id, Collection.title)
-        .filter(
-            Collection.id == collection_id,
-            Collection.hidden_at.is_(None),
-            Collection.owner.has(User.deleted_at.is_(None)),
-        )
+        .filter(Collection.id == collection_id, *visible_collections())
         .first()
     )
     if visible is None:

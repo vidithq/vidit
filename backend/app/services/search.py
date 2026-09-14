@@ -37,7 +37,11 @@ from app.models.event import (
 )
 from app.models.user import User
 from app.schemas.collection import CollectionRead
-from app.services.collections import build_collection_reads, has_showable_item
+from app.services.collections import (
+    build_collection_reads,
+    has_showable_item,
+    visible_collections,
+)
 from app.services.event_filters import EventFilters, owner_username_matches, visible_events
 from app.services.thumbnails import pick_thumbnail, thumbnail_media_criteria
 
@@ -305,27 +309,35 @@ def search_collections(
     (:func:`_collection_tsvector`), ranked by ``ts_rank`` with ``created_at``
     descending as the tie-break, the ranking the event and user groups take.
 
-    What a reader may find is what a reader may already see on a profile: a
-    withheld collection (``hidden_at``) is out, one whose owner is
-    soft-deleted is out with the profile that held it, and one with nothing
-    showable on it is out through the profile list's own predicate
-    (``services/collections.has_showable_item``), so search never hands over a
-    card that opens on an empty shelf.
+    What a reader may find is what a reader may already see on a profile: the
+    readable-collection predicate the collection's own page reads
+    (``services/collections.visible_collections``), plus the profile list's own
+    emptiness predicate (``services/collections.has_showable_item``), so search
+    never hands over a card that opens on an empty shelf.
 
     ``author`` scopes the group to one owner, the same exact, case-insensitive
     match the event groups take (``services/event_filters``). No highlights:
     the hit is the profile card, which prints the collection's own title and
     description rather than a matched fragment.
+
+    The ranked query selects the collection itself, its owner eagerly loaded,
+    rather than ranking ids and re-fetching them: unlike the event groups, the
+    payload needs no per-hit highlight to key back onto, so one statement
+    returns the rows already in rank order and the assembler reads them as they
+    come.
     """
     q = query.strip()
     if not q:
         return [], 0
     tsquery = func.plainto_tsquery(_TS_CONFIG, q)
-    stmt = db.query(Collection.id, func.count().over().label("total_count")).filter(
-        Collection.hidden_at.is_(None),
-        Collection.owner.has(User.deleted_at.is_(None)),
-        has_showable_item(),
-        _collection_tsvector().op("@@")(tsquery),
+    stmt = (
+        db.query(Collection, func.count().over().label("total_count"))
+        .options(joinedload(Collection.owner))
+        .filter(
+            *visible_collections(),
+            has_showable_item(),
+            _collection_tsvector().op("@@")(tsquery),
+        )
     )
     if author:
         stmt = stmt.filter(Collection.owner.has(owner_username_matches(author)))
@@ -339,21 +351,7 @@ def search_collections(
     )
     if not rows:
         return [], 0
-
-    total = int(rows[0].total_count)
-    ids = [r.id for r in rows]
-    # Rank then hydrate, the pattern the event groups use: ``IN (...)`` does
-    # not preserve order, so the ranked id list re-sorts the rows in Python
-    # before the shared assembler builds the payload.
-    collections = (
-        db.query(Collection)
-        .options(joinedload(Collection.owner))
-        .filter(Collection.id.in_(ids))
-        .all()
-    )
-    by_id = {collection.id: collection for collection in collections}
-    ordered = [by_id[hit_id] for hit_id in ids if hit_id in by_id]
-    return build_collection_reads(db, ordered), total
+    return build_collection_reads(db, [row[0] for row in rows]), int(rows[0].total_count)
 
 
 def search_users(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:

@@ -417,7 +417,7 @@ def soft_delete_geolocation(
     return geo
 
 
-def withhold_collection(db: Session, *, collection: Collection, actor_id: uuid.UUID) -> bool:
+def withhold_collection(db: Session, *, collection: Collection, actor_id: uuid.UUID) -> None:
     """Stamp one collection's takedown and file the audit row. No commit.
 
     The mutation itself, so the two admin doors onto it write the same thing:
@@ -427,12 +427,12 @@ def withhold_collection(db: Session, *, collection: Collection, actor_id: uuid.U
     ``services/reports`` because that module imports this one for
     :func:`log_admin_event`, so the dependency runs one way only.
 
-    Returns whether the row actually changed: an already withheld collection
-    keeps its original timestamp and files no second audit row, which is what
-    makes the takedown idempotent through either door.
+    Idempotent: an already withheld collection keeps its original timestamp and
+    files no second audit row, so a takedown reads the same through either
+    door however many times it arrives.
     """
     if collection.hidden_at is not None:
-        return False
+        return
     collection.hidden_at = datetime.now(UTC)
     log_admin_event(
         db,
@@ -440,7 +440,6 @@ def withhold_collection(db: Session, *, collection: Collection, actor_id: uuid.U
         action="collection_hidden",
         target={"collection_id": str(collection.id), "title": collection.title},
     )
-    return True
 
 
 def hide_collection(

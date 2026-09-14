@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.event import TITLE_MAX_LENGTH
 from app.models.media import MediaType
@@ -131,8 +131,6 @@ class CollectionRead(BaseModel):
     first_date: date | None
     last_date: date | None
     created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 class CollectionList(BaseModel):

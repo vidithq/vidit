@@ -79,6 +79,38 @@ def _decode(cursor: str) -> Any:
     return orjson.loads(base64.urlsafe_b64decode(padded))
 
 
+def _malformed_cursor() -> HTTPException:
+    """The one 422 every decoder below answers a cursor it cannot read with.
+
+    One message whichever way a cursor is wrong, the base64, the payload shape
+    or a value that does not convert: the caller's fix is the same in all
+    three, drop the cursor and read the list from its first page.
+    """
+    return HTTPException(status_code=422, detail="cursor is malformed")
+
+
+def _decode_parts(cursor: str, count: int) -> list[str]:
+    """Decode a cursor into exactly ``count`` strings, or raise the 422.
+
+    The shared half of the two list-shaped decoders: the base64 undo, the shape
+    check, and the refusal. The shape is checked before any caller converts a
+    part, so a payload that decodes to something other than ``count`` strings
+    (``["2026-01-01T00:00:00", 5]``) is rejected here rather than raising out
+    of ``uuid.UUID``.
+    """
+    try:
+        decoded = _decode(cursor)
+    except (ValueError, TypeError, binascii.Error) as exc:
+        raise _malformed_cursor() from exc
+    if not (
+        isinstance(decoded, list)
+        and len(decoded) == count
+        and all(isinstance(part, str) for part in decoded)
+    ):
+        raise _malformed_cursor()
+    return decoded
+
+
 def encode_cursor(created_at: datetime, row_id: uuid.UUID) -> str:
     """Opaque cursor naming the last row of the page just served."""
     return _encode([created_at.isoformat(), str(row_id)])
@@ -88,28 +120,18 @@ def decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
     """Parse a cursor back into its ``(created_at, id)`` pair.
 
     A malformed cursor is a 422: the alternative is feeding a half-parsed
-    value into the keyset predicate and answering 500. The shape is checked
-    before either conversion runs, so a payload that decodes to something
-    other than a pair of strings (``["2026-01-01T00:00:00", 5]``) is rejected
-    rather than raising out of ``uuid.UUID``.
+    value into the keyset predicate and answering 500.
 
     Well-formed is the whole test: a caller who assembles a pair of their own
     gets the rows that pair sorts before, which is the same answer a minted
     cursor naming the same position would give. There is nothing to forge, the
     encoding hides no authorisation, and every filter still applies.
     """
+    created_raw, id_raw = _decode_parts(cursor, 2)
     try:
-        decoded = _decode(cursor)
-        if not (
-            isinstance(decoded, list)
-            and len(decoded) == 2
-            and all(isinstance(part, str) for part in decoded)
-        ):
-            raise ValueError("cursor does not decode to a [created_at, id] pair")
-        created_raw, id_raw = decoded
         return datetime.fromisoformat(created_raw), uuid.UUID(id_raw)
-    except (ValueError, TypeError, binascii.Error) as exc:
-        raise HTTPException(status_code=422, detail="cursor is malformed") from exc
+    except ValueError as exc:
+        raise _malformed_cursor() from exc
 
 
 def encode_ordinal_cursor(value: int) -> str:
@@ -131,11 +153,11 @@ def decode_ordinal_cursor(cursor: str) -> int:
     """
     try:
         decoded = _decode(cursor)
-        if isinstance(decoded, bool) or not isinstance(decoded, int):
-            raise ValueError("cursor does not decode to an integer")
-        return decoded
     except (ValueError, TypeError, binascii.Error) as exc:
-        raise HTTPException(status_code=422, detail="cursor is malformed") from exc
+        raise _malformed_cursor() from exc
+    if isinstance(decoded, bool) or not isinstance(decoded, int):
+        raise _malformed_cursor()
+    return decoded
 
 
 def encode_chronological_cursor(
@@ -158,27 +180,18 @@ def encode_chronological_cursor(
 def decode_chronological_cursor(cursor: str) -> tuple[date, time, datetime, uuid.UUID]:
     """Parse a chronological cursor back into its four sort values, 422 on anything else.
 
-    Same contract as :func:`decode_cursor`: the shape is checked before any
-    conversion runs, so a payload that decodes to something other than four
-    strings is rejected rather than raising out of ``uuid.UUID``.
+    Same contract as :func:`decode_cursor`, over four parts instead of two.
     """
+    date_raw, time_raw, created_raw, id_raw = _decode_parts(cursor, 4)
     try:
-        decoded = _decode(cursor)
-        if not (
-            isinstance(decoded, list)
-            and len(decoded) == 4
-            and all(isinstance(part, str) for part in decoded)
-        ):
-            raise ValueError("cursor does not decode to a four-value chronological key")
-        date_raw, time_raw, created_raw, id_raw = decoded
         return (
             date.fromisoformat(date_raw),
             time.fromisoformat(time_raw),
             datetime.fromisoformat(created_raw),
             uuid.UUID(id_raw),
         )
-    except (ValueError, TypeError, binascii.Error) as exc:
-        raise HTTPException(status_code=422, detail="cursor is malformed") from exc
+    except ValueError as exc:
+        raise _malformed_cursor() from exc
 
 
 def keyset_after(

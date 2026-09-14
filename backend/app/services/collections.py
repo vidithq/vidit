@@ -54,10 +54,11 @@ class CollectionError(Exception):
 
     Carries a stable ``code`` so the router maps it to a status without
     matching on prose, the same contract as
-    :class:`app.services.evidence_intake.EvidenceIntakeError`.
+    :class:`app.services.evidence_intake.EvidenceIntakeError`. Declared and not
+    valued: every raise is one of the subclasses below, each naming its own.
     """
 
-    code: str = "collection_not_found"
+    code: str
 
 
 class CollectionNotFoundError(CollectionError):
@@ -152,9 +153,22 @@ class CollectionStats(NamedTuple):
 _EMPTY_STATS = CollectionStats(event_count=0, first_date=None, last_date=None)
 
 
-def _items_of(collection_id: uuid.UUID) -> tuple[ColumnElement[bool], ...]:
-    """The filter pair naming the events one collection may show."""
-    return (CollectionEvent.collection_id == collection_id, collectable_events())
+def visible_collections() -> tuple[ColumnElement[bool], ColumnElement[bool]]:
+    """The predicate pair naming a collection a reader may see.
+
+    The single home for what "readable collection" means: not withheld
+    (``hidden_at``), and owned by an account that is not soft-deleted. Every
+    surface that resolves, lists or searches a collection for a reader spreads
+    it into its filter (``*visible_collections()``), the shape
+    :func:`services.event_filters.visible_events` has for an event, so a third
+    axis added later lands here instead of at every call site.
+
+    The one deliberate non-caller is the admin door: an admin reads a withheld
+    collection in order to judge what was taken down
+    (:func:`resolve_collection` drops the pair for them, and
+    ``services/admin.hide_collection`` reaches the row by id).
+    """
+    return Collection.hidden_at.is_(None), Collection.owner.has(User.deleted_at.is_(None))
 
 
 def has_showable_item() -> ColumnElement[bool]:
@@ -182,7 +196,7 @@ def stats_for(db: Session, collection_ids: Sequence[uuid.UUID]) -> dict[uuid.UUI
 
     One statement for a whole page of collections rather than three per row.
     A collection holding nothing showable has no group, so it is absent from
-    the mapping; callers read it through :func:`stats_of`.
+    the mapping; callers read it with :data:`_EMPTY_STATS` as the default.
     """
     if not collection_ids:
         return {}
@@ -205,11 +219,6 @@ def stats_for(db: Session, collection_ids: Sequence[uuid.UUID]) -> dict[uuid.UUI
         )
         for collection_id, count, first_date, last_date in rows
     }
-
-
-def stats_of(stats: dict[uuid.UUID, CollectionStats], collection_id: uuid.UUID) -> CollectionStats:
-    """One collection's stats out of a :func:`stats_for` mapping, zeros if absent."""
-    return stats.get(collection_id, _EMPTY_STATS)
 
 
 # How many tiles the profile card's mosaic holds. Four, the playlist-icon
@@ -330,20 +339,23 @@ def build_collection_reads(db: Session, collections: Sequence[Collection]) -> li
     collection_ids = [collection.id for collection in collections]
     stats = stats_for(db, collection_ids)
     tiles = cover_tiles_for(db, collection_ids)
-    return [
-        CollectionRead(
-            id=collection.id,
-            owner=collection.owner,
-            title=collection.title,
-            description=collection.description,
-            cover=tiles.get(collection.id, []),
-            event_count=stats_of(stats, collection.id).event_count,
-            first_date=stats_of(stats, collection.id).first_date,
-            last_date=stats_of(stats, collection.id).last_date,
-            created_at=collection.created_at,
+    reads: list[CollectionRead] = []
+    for collection in collections:
+        row_stats = stats.get(collection.id, _EMPTY_STATS)
+        reads.append(
+            CollectionRead(
+                id=collection.id,
+                owner=collection.owner,
+                title=collection.title,
+                description=collection.description,
+                cover=tiles.get(collection.id, []),
+                event_count=row_stats.event_count,
+                first_date=row_stats.first_date,
+                last_date=row_stats.last_date,
+                created_at=collection.created_at,
+            )
         )
-        for collection in collections
-    ]
+    return reads
 
 
 def build_collection_read(db: Session, collection: Collection) -> CollectionRead:
@@ -354,19 +366,17 @@ def build_collection_read(db: Session, collection: Collection) -> CollectionRead
 def resolve_collection(db: Session, *, collection_id: uuid.UUID, viewer: User | None) -> Collection:
     """Fetch a readable collection by id, or raise :class:`CollectionNotFoundError`.
 
-    A withheld collection (``hidden_at``) reads as not found for everyone but
-    an admin, who still has to read what was taken down in order to judge it,
-    the same branch ``GET /events/{id}`` takes. A collection whose owner is
-    soft-deleted reads the same way: the owner's own profile 404s, so their
-    shelf cannot stay open beside it.
+    Readable is :func:`visible_collections`: a withheld collection
+    (``hidden_at``) reads as not found for everyone but an admin, who still has
+    to read what was taken down in order to judge it, the same branch
+    ``GET /events/{id}`` takes. A collection whose owner is soft-deleted reads
+    the same way: the owner's own profile 404s, so their shelf cannot stay open
+    beside it.
     """
     query = db.query(Collection).options(joinedload(Collection.owner))
     query = query.filter(Collection.id == collection_id)
     if viewer is None or not viewer.is_admin:
-        query = query.filter(
-            Collection.hidden_at.is_(None),
-            Collection.owner.has(User.deleted_at.is_(None)),
-        )
+        query = query.filter(*visible_collections())
     collection = query.first()
     if collection is None:
         raise CollectionNotFoundError("Collection not found")
@@ -386,24 +396,29 @@ def ensure_collectable(db: Session, *, event_ids: Sequence[uuid.UUID], user: Use
     One home for the three, asked over a set: :func:`add_event` passes the one
     id the route carries and :func:`create_collection` passes what the create
     page's picker ticked, so a shelving and a create answer the same refusal
-    for the same row. Two statements whatever the count, which is what keeps a
-    create at the cap from costing a round trip per id.
+    for the same row. One statement whatever the count, projecting the two
+    columns the refusals read and the predicate itself as a boolean, which is
+    what keeps a create at the cap from costing a round trip per id and keeps
+    it from hydrating events nothing here renders.
     """
     if not event_ids:
         return
-    events = {event.id: event for event in db.query(Event).filter(Event.id.in_(event_ids)).all()}
-    collectable = {
-        event_id
-        for (event_id,) in db.query(Event.id).filter(Event.id.in_(event_ids), collectable_events())
+    rows = {
+        row.id: row
+        for row in db.query(
+            Event.id,
+            Event.owner_id,
+            collectable_events().label("collectable"),
+        ).filter(Event.id.in_(event_ids))
     }
     for event_id in event_ids:
-        event = events.get(event_id)
-        if event is None:
+        row = rows.get(event_id)
+        if row is None:
             raise EventNotFoundError("Event not found")
         # The same 403 every owner-only verb raises, so a foreign id is
         # refused here in the one shape the rest of the site refuses one.
-        ensure_owner(event, user)
-        if event_id not in collectable:
+        ensure_owner(row, user)
+        if not row.collectable:
             raise EventNotCollectableError("This event is not one a collection can hold")
 
 
@@ -473,8 +488,8 @@ def delete_collection(db: Session, *, collection: Collection, user: User) -> Non
     db.commit()
 
 
-def add_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user: User) -> bool:
-    """Put one event on ``collection``. Idempotent: ``False`` if already there.
+def add_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user: User) -> None:
+    """Put one event on ``collection``. Idempotent: adding it twice writes one row.
 
     Three refusals, in order. The collection is the caller's or it is a 403.
     Then the event's own three, which :func:`ensure_collectable` holds for
@@ -486,34 +501,26 @@ def add_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user:
     and the caller owns it, but its state is not one a curated shelf shows. An
     id matching no event at all is a 404.
 
-    The idempotency shape is ``services/social.follow_user``'s: check, then
-    stage the INSERT in a SAVEPOINT so the loser of a race rolls back its own
-    statement and answers idempotently instead of poisoning the transaction.
+    The membership's composite primary key is the idempotency: the INSERT is
+    staged in a SAVEPOINT, so a row already there (or a race that lands one
+    first) rolls back its own statement on the ``IntegrityError`` and the verb
+    answers idempotently instead of poisoning the transaction. The shape is
+    ``services/social.follow_user``'s minus its pre-SELECT, which here would
+    only ask what the key answers one statement later.
     """
     ensure_owner(collection, user)
     ensure_collectable(db, event_ids=[event_id], user=user)
 
-    existing = (
-        db.query(CollectionEvent)
-        .filter(
-            CollectionEvent.collection_id == collection.id,
-            CollectionEvent.event_id == event_id,
-        )
-        .first()
-    )
-    if existing is not None:
-        return False
     try:
         with db.begin_nested():
             db.add(CollectionEvent(collection_id=collection.id, event_id=event_id))
     except IntegrityError:
-        return False
+        return
     db.commit()
-    return True
 
 
-def remove_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user: User) -> bool:
-    """Take one event off ``collection``. Idempotent: ``False`` if it was not there.
+def remove_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user: User) -> None:
+    """Take one event off ``collection``. Idempotent: a membership it never held is a no-op.
 
     403 for anyone but the owner. The event is untouched: removing it from a
     shelf is not a judgement on the geolocation. Eligibility is not re-checked
@@ -530,10 +537,9 @@ def remove_event(db: Session, *, collection: Collection, event_id: uuid.UUID, us
         .first()
     )
     if row is None:
-        return False
+        return
     db.delete(row)
     db.commit()
-    return True
 
 
 def list_items(
@@ -569,7 +575,7 @@ def list_items(
             selectinload(Event.conflicts),
             selectinload(Event.media.and_(thumbnail_media_criteria())),
         )
-        .filter(*_items_of(collection_id))
+        .filter(CollectionEvent.collection_id == collection_id, collectable_events())
     )
     if cursor is not None:
         query = query.filter(keyset_after(key, cursor))
@@ -592,12 +598,13 @@ def list_owned_collections(
     The flag narrows the ``total`` as well as the rows, so the pager describes
     the set it is walking.
 
-    Withheld collections are in neither view, the owner's included: a takedown
-    freezes a collection for its owner too, exactly as it does an event, and
-    only an admin reads one, by its id.
+    The rows are the readable ones (:func:`visible_collections`), so a withheld
+    collection is in neither view, the owner's included: a takedown freezes a
+    collection for its owner too, exactly as it does an event, and only an
+    admin reads one, by its id.
     """
     query = db.query(Collection).options(joinedload(Collection.owner))
-    query = query.filter(Collection.owner_id == owner_id, Collection.hidden_at.is_(None))
+    query = query.filter(Collection.owner_id == owner_id, *visible_collections())
     if not include_empty:
         query = query.filter(has_showable_item())
     total = query.count()
@@ -625,7 +632,7 @@ def list_memberships(
     """
     collections = (
         db.query(Collection)
-        .filter(Collection.owner_id == owner.id, Collection.hidden_at.is_(None))
+        .filter(Collection.owner_id == owner.id, *visible_collections())
         .order_by(Collection.created_at.desc(), Collection.id.desc())
         .limit(MAX_POPOVER_COLLECTIONS)
         .all()
@@ -647,7 +654,7 @@ def list_memberships(
         CollectionMembershipRead(
             id=collection.id,
             title=collection.title,
-            event_count=stats_of(stats, collection.id).event_count,
+            event_count=stats.get(collection.id, _EMPTY_STATS).event_count,
             in_collection=collection.id in member_ids,
         )
         for collection in collections
