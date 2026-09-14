@@ -211,10 +211,9 @@ describe("EventPicker, the add block", () => {
     // And still in the results, saying why it cannot be added twice rather
     // than dropping out of an answer the analyst searched for.
     const control = screen.getByRole("button", {
-      name: "Added Strike on the rail junction to this collection",
+      name: "Already in this collection",
     });
     expect(control).toBeDisabled();
-    expect(control).toHaveTextContent("Added");
   });
 
   it("shows five rows at most, and says how to reach the rest", () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Plus, Search, X } from "lucide-react";
+import { Check, Plus, Search, X } from "lucide-react";
 
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { Button } from "@/components/ui/Button";
@@ -56,10 +56,11 @@ function chronological(events: PickableEvent[]): PickableEvent[] {
  *
  * **A row is the catalogue's own compact card** in its plain mode, with its
  * lifecycle badge, its title linking to the event and one control in the
- * `action` slot. On the first block that control is the red cross that takes
- * the row off, the one a collection's own item list carries, in the same
- * corner. On the second it is an *Add* button, and a row already on the first
- * block shows a disabled *Added* instead of dropping out of the results: the
+ * `action` slot, the same icon-button shape on both blocks. On the first
+ * block that control is the red cross that takes the row off, the one a
+ * collection's own item list carries, in the same corner. On the second it is
+ * an accent plus icon that adds the row, and a row already on the first block
+ * shows a disabled check icon instead of dropping out of the results: the
  * analyst searched for that event, and answering with nothing says less than
  * answering with the row and the reason it cannot be added twice.
  *
@@ -252,15 +253,27 @@ export function EventPicker({
                   key={row.id}
                   row={row}
                   action={
-                    <Button
-                      variant="secondary"
-                      disabled={added}
-                      onClick={() => onAdd(row)}
-                      aria-label={`${added ? "Added" : "Add"} ${row.title} to this collection`}
-                    >
-                      {!added && <Plus size={14} />}
-                      {added ? "Added" : "Add"}
-                    </Button>
+                    added ? (
+                      <Button
+                        icon
+                        variant="ghost"
+                        disabled
+                        aria-label="Already in this collection"
+                        title="Already in this collection"
+                      >
+                        <Check size={14} />
+                      </Button>
+                    ) : (
+                      <Button
+                        icon
+                        variant="ghost"
+                        onClick={() => onAdd(row)}
+                        aria-label={`Add ${row.title} to this collection`}
+                        title="Add to collection"
+                      >
+                        <Plus size={14} />
+                      </Button>
+                    )
                   }
                 />
               );
