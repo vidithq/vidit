@@ -4,8 +4,8 @@ A collection is a named set of one analyst's own events. What these lock in:
 
 * ``POST`` / ``PATCH`` / ``DELETE /collections``: an owner opens a collection
   under a title and a required description, writes both together, and drops
-  one, which leaves every event it held alone. A blank or over-long
-  description is a 422 on either write.
+  one, which leaves every event it held alone. A blank or over-long title or
+  description is a 422 on either write, whitespace included.
 * ``POST /collections`` with ``event_ids``: the collection opens holding what
   the create page's picker ticked, duplicate ids collapse to one membership, a
   body past the cap is a 422, and a foreign (403), ineligible (409) or unknown
@@ -16,8 +16,9 @@ A collection is a named set of one analyst's own events. What these lock in:
 * ``GET /collections/{id}/events``: chronological order with items missing a
   date sorting last, and a ``Link: rel="next"`` cursor walk that neither
   repeats nor skips a row.
-* Withheld collections (``hidden_at``) read as 404 for everyone but an admin,
-  and ``DELETE /admin/collections/{id}`` is what sets the stamp.
+* Withheld collections (``hidden_at``) read as 404 for everyone but an admin.
+  ``PATCH /admin/collections/{id}/moderation`` moves the stamp either way and
+  ``DELETE /admin/collections/{id}`` is the takedown alias.
 * ``POST /collections/{id}/report``: the same gesture as reporting an event,
   open to anonymous viewers, recording a signed-in reporter, and answering 404
   for a collection nobody can read.
@@ -41,6 +42,7 @@ import pytest
 from fastapi.testclient import TestClient
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
+from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
 from app.main import app
@@ -56,6 +58,7 @@ from app.models.event import (
 from app.models.media import Media
 from app.models.user import User
 from app.schemas.collection import DESCRIPTION_MAX_LENGTH, MAX_CREATE_EVENTS
+from app.services import collections as collections_service
 from app.services.auth import hash_password
 from tests.conftest import login_as
 
@@ -270,10 +273,12 @@ def test_create_collection_requires_auth():
     assert client.post("/api/v1/collections", json=body).status_code == 401
 
 
-def test_create_collection_rejects_an_empty_title(owner):
+@pytest.mark.parametrize("title", ["", "   "])
+def test_create_collection_rejects_a_blank_title(owner, title):
+    """A title of nothing, spaces included, is a missing title."""
     response = client.post(
         "/api/v1/collections",
-        json={"title": "", "description": "A described shelf with no name."},
+        json={"title": title, "description": "A described shelf with no name."},
         headers=login_as(client, owner),
     )
     assert response.status_code == 422
@@ -494,6 +499,22 @@ def test_update_collection_rejects_a_blank_description(db, cleanup, owner):
     assert _reload_collection(db, collection.id).description == "What this shelf holds."
 
 
+def test_update_collection_rejects_a_blank_title(db, cleanup, owner):
+    """The title takes the same refusal as the description it rides with."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    before = _reload_collection(db, collection.id).title
+
+    response = client.patch(
+        f"/api/v1/collections/{collection.id}",
+        json={"title": "   ", "description": "Still described."},
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 422
+
+    db.expire_all()
+    assert _reload_collection(db, collection.id).title == before
+
+
 def test_delete_collection_leaves_its_events_alone(db, cleanup, owner):
     collection = _make_collection(db, cleanup, owner=owner)
     event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
@@ -550,6 +571,34 @@ def test_add_event_is_idempotent(db, cleanup, owner):
         .count()
         == 1
     )
+
+
+def test_add_event_surfaces_a_violation_that_is_not_the_duplicate(db, cleanup, owner):
+    """Only the duplicate answers idempotently; a vanished parent row raises.
+
+    The savepoint swallows SQLSTATE 23505 alone. Here the collection is
+    deleted under the request, so the INSERT fails the foreign key instead
+    (23503) and has to surface rather than tell the analyst a shelving landed
+    when no membership row exists.
+    """
+    collection = _make_collection(db, cleanup, owner=owner)
+    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    # Load what the verb reads off the collection before the row goes away, so
+    # the refusal comes from the INSERT and not from a lazy load.
+    db.refresh(collection)
+
+    other = SessionLocal()
+    try:
+        other.query(Collection).filter(Collection.id == collection.id).delete(
+            synchronize_session=False
+        )
+        other.commit()
+    finally:
+        other.close()
+
+    with pytest.raises(IntegrityError):
+        collections_service.add_event(db, collection=collection, event_id=event.id, user=owner)
+    db.rollback()
 
 
 def test_remove_event_is_idempotent(db, cleanup, owner):
@@ -824,6 +873,76 @@ def test_admin_takedown_requires_admin(db, cleanup, owner):
         f"/api/v1/admin/collections/{collection.id}", headers=login_as(client, owner)
     )
     assert response.status_code == 403
+
+
+def _moderate(collection_id, *, hidden: bool, as_user):
+    return client.patch(
+        f"/api/v1/admin/collections/{collection_id}/moderation",
+        json={"hidden": hidden},
+        headers=login_as(client, as_user),
+    )
+
+
+def test_admin_moderation_hides_then_restores_a_collection(db, cleanup, owner, admin):
+    """The takedown is reversible: what the PATCH withholds, the PATCH puts back."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    _add(db, collection, _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1)))
+
+    hidden = _moderate(collection.id, hidden=True, as_user=admin)
+    assert hidden.status_code == 200
+    assert hidden.json()["hidden_at"] is not None
+    client.cookies.clear()
+    assert client.get(f"/api/v1/collections/{collection.id}").status_code == 404
+
+    restored = _moderate(collection.id, hidden=False, as_user=admin)
+    assert restored.status_code == 200
+    assert restored.json()["hidden_at"] is None
+    assert restored.json()["collection_id"] == str(collection.id)
+    client.cookies.clear()
+    assert client.get(f"/api/v1/collections/{collection.id}").status_code == 200
+    # The owner's profile shelf carries it again, so the restore is the whole
+    # way back and not just the detail read.
+    body = client.get(f"/api/v1/users/{owner.username}/collections").json()
+    assert [item["id"] for item in body["items"]] == [str(collection.id)]
+
+
+def test_admin_moderation_takedown_alias_is_undone_by_the_patch(db, cleanup, owner, admin):
+    """``DELETE`` sets the stamp the ``PATCH`` clears: one axis, two doors."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    client.delete(f"/api/v1/admin/collections/{collection.id}", headers=login_as(client, admin))
+    client.cookies.clear()
+
+    assert _moderate(collection.id, hidden=False, as_user=admin).json()["hidden_at"] is None
+    client.cookies.clear()
+    assert client.get(f"/api/v1/collections/{collection.id}").status_code == 200
+
+
+def test_admin_moderation_is_idempotent_both_ways(db, cleanup, owner, admin):
+    collection = _make_collection(db, cleanup, owner=owner)
+
+    first = _moderate(collection.id, hidden=True, as_user=admin).json()
+    client.cookies.clear()
+    second = _moderate(collection.id, hidden=True, as_user=admin).json()
+    # An already withheld collection keeps its original stamp.
+    assert first["hidden_at"] == second["hidden_at"]
+
+    client.cookies.clear()
+    assert _moderate(collection.id, hidden=False, as_user=admin).json()["hidden_at"] is None
+    client.cookies.clear()
+    third = _moderate(collection.id, hidden=False, as_user=admin)
+    assert third.status_code == 200
+    assert third.json()["hidden_at"] is None
+
+
+def test_admin_moderation_requires_admin(db, cleanup, owner):
+    """Not even the owner may restore their own shelf."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    assert _moderate(collection.id, hidden=False, as_user=owner).status_code == 403
+
+
+def test_admin_moderation_404s_on_an_unknown_collection(db, cleanup, admin):
+    response = _moderate(uuid.uuid4(), hidden=False, as_user=admin)
+    assert response.status_code == 404
 
 
 def test_withheld_collection_is_out_of_the_profile_list(db, cleanup, owner, admin):

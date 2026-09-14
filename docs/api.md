@@ -10,7 +10,7 @@ All responses are JSON.
 
 **Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side effect: `login` on success, `failed_login` on any rejected login (with `user_id` set only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches, so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL because no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches, so the audit trail carries a rate-of-requests signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best effort inside a SAVEPOINT. An audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `version_not_found`, `x_handle_conflict`, `invite_code_used`); every `POST /events/{id}/report`, `POST /collections/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `collection_not_found`, `report_not_found`, `report_already_resolved`, `report_target_gone`, `report_verdict_not_applicable`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. Every `/collections` path adds `collection_not_found`; `PUT /collections/{id}/events/{event_id}` and `POST /collections` (for an id in its `event_ids`) add `event_not_found` and `event_not_collectable` (the event's state is not one a collection shows), and `DELETE /admin/collections/{id}` adds `collection_not_found`. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`; `POST /events/{id}/versions` adds it when the row is not `geolocated`, plus `nothing_changed` (the edit moves no versioned field) and `version_limit` (the event already carries 100 versions). `POST /events/import-from-tweet` adds `invalid_tweet_url`, `not_your_post`, `post_unreadable`, `upstream_unreadable` and `upstream_busy`. Every write path carrying an archived-copy field (`source_snapshot_url`, `secondary_snapshot_urls`, `detected_from_snapshot_url`) adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url` and `snapshot_not_a_snapshot_code`; they run the same checks, so one paste is answered the same way wherever it arrives. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `version_not_found`, `x_handle_conflict`, `invite_code_used`); every `POST /events/{id}/report`, `POST /collections/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `collection_not_found`, `report_not_found`, `report_already_resolved`, `report_target_gone`, `report_verdict_not_applicable`); and every `POST /events`, `POST /events/requests`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. Every `/collections` path adds `collection_not_found`; `PUT /collections/{id}/events/{event_id}` and `POST /collections` (for an id in its `event_ids`) add `event_not_found` and `event_not_collectable` (the event's state is not one a collection shows), and `PATCH /admin/collections/{id}/moderation` and `DELETE /admin/collections/{id}` add `collection_not_found`. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`; `POST /events/{id}/versions` adds it when the row is not `geolocated`, plus `nothing_changed` (the edit moves no versioned field) and `version_limit` (the event already carries 100 versions). `POST /events/import-from-tweet` adds `invalid_tweet_url`, `not_your_post`, `post_unreadable`, `upstream_unreadable` and `upstream_busy`. Every write path carrying an archived-copy field (`source_snapshot_url`, `secondary_snapshot_urls`, `detected_from_snapshot_url`) adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url` and `snapshot_not_a_snapshot_code`; they run the same checks, so one paste is answered the same way wherever it arrives. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
 ---
 
 ## Endpoints at a glance
@@ -91,7 +91,8 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/admin/users/{id}` | 🛡️ | Soft delete (default) or `?hard=true` GDPR erasure |
 | DELETE | `/admin/users/{id}/detected-events` | 🛡️ | Purge every detection the user owns, account untouched |
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
-| DELETE | `/admin/collections/{id}` | 🛡️ | Withhold a collection from public view (sets `hidden_at`) |
+| PATCH | `/admin/collections/{id}/moderation` | 🛡️ | Withhold a collection from public view, or restore it (moves `hidden_at`) |
+| DELETE | `/admin/collections/{id}` | 🛡️ | Withhold a collection from public view (the takedown alias of the PATCH above) |
 | PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
 | GET | `/admin/reports` | 🛡️ | The moderation queue: event and collection reports, open ones first |
 | POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to what the report names |
@@ -152,7 +153,7 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
-| `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` · `DELETE /admin/collections/{id}` | 60/hour |
+| `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` · `PATCH /admin/collections/{id}/moderation` · `DELETE /admin/collections/{id}` | 60/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
 
 The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/reports` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: the POST verifies the HMAC signature over the raw body (one HMAC, cheaper than any limiter bookkeeping), and the GET only ever signs tokens matching X's URL-safe CRC shape, the charset gate that keeps the responder from being a signing oracle for forged webhook bodies.
@@ -1126,6 +1127,8 @@ The add-to-collection popover's read, owner only: a collection is personal and o
 
 Thinner than [`CollectionRead`](#get-collectionsid): the popover names a collection, shows a checked state and says how much the collection already holds, so it carries no mosaic and no date range. `event_count` is computed over the same predicate as the collection reads, so the number under a title here is the number that collection's own page prints.
 
+Unpaged and capped at 100 rows (`MAX_POPOVER_COLLECTIONS` in [`services/collections.py`](../backend/app/services/collections.py)), newest first. An analyst holding more than 100 collections gets their 100 newest, and the older ones are absent from the response with nothing marking the cut.
+
 **Errors:**
 | Code | Case |
 |------|------|
@@ -1439,7 +1442,7 @@ Report a collection for moderation. The twin of [`POST /events/{id}/report`](#po
 }
 ```
 
-The row lands in the same [`GET /admin/reports`](#get-adminreports) queue an event report lands in, and an admin answers it with the verdicts a collection takes: `hidden`, which stamps `collections.hidden_at` exactly as [`DELETE /admin/collections/{id}`](#delete-admincollectionsid) does, or `dismissed`.
+The row lands in the same [`GET /admin/reports`](#get-adminreports) queue an event report lands in, and an admin answers it with the verdicts a collection takes: `hidden`, which stamps `collections.hidden_at` exactly as [`PATCH /admin/collections/{id}/moderation`](#patch-admincollectionsidmoderation) does, or `dismissed`.
 
 **Errors:**
 | Code | Case |
@@ -1479,7 +1482,7 @@ One collection's header: owner, title, description, item count, and the range it
 
 `cover[].media_type` is the media-kind domain `image` or `video`, so a client picks the element that can render each tile. Most source media are clips, and an `<img>` pointed at one paints an empty band. Each `url` is a Media row's own `storage_url` and takes the derivatives every other Media url takes.
 
-A withheld collection (`hidden_at`, see [`DELETE /admin/collections/{id}`](#delete-admincollectionsid)) answers 404 for everyone but an admin, its owner included, the same branch [`GET /events/{id}`](#get-eventsid) takes. So does a collection whose owner is soft-deleted.
+A withheld collection (`hidden_at`, see [`PATCH /admin/collections/{id}/moderation`](#patch-admincollectionsidmoderation)) answers 404 for everyone but an admin, its owner included, the same branch [`GET /events/{id}`](#get-eventsid) takes. So does a collection whose owner is soft-deleted.
 
 **Errors:**
 | Code | Case |
@@ -2086,13 +2089,41 @@ For `mode = "hard"`, `deleted_at` is `null` and `media_count` (every file swept)
 
 **Response 404:** unknown id.
 
+### `PATCH /admin/collections/{id}/moderation` 🛡️
+
+Set a collection's moderation state: withhold it, or restore it.
+
+Moves `collections.hidden_at`, the same reversible axis an event carries, and the collection counterpart of [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation). `hidden: true` stamps the takedown, so a reported shelf is withheld pending judgement rather than destroyed; `hidden: false` clears it. One axis rather than the event's two: `is_graphic` is a column on the event, and a collection holds no footage of its own.
+
+A withheld collection answers 404 on [`GET /collections/{id}`](#get-collectionsid) for everyone but an admin, its owner included, and drops off [`GET /users/{username}/collections`](#get-usersusernamecollections) entirely. The events on it are untouched in both directions: each is moderated on its own, so restoring a shelf says nothing about what it holds.
+
+Idempotent: a collection already in the requested state keeps its current timestamp and files no audit row. Files an `admin_events` row on the write that does take effect, `collection_hidden` on the takedown and `collection_restored` on the restore.
+
+**Request body:**
+```json
+{ "hidden": false }
+```
+
+**Response 200:**
+```json
+{ "collection_id": "uuid", "title": "Zaporizhzhia plant", "hidden_at": null }
+```
+
+`hidden_at` is `null` when the collection is live, a timestamp when it is withheld, so the response also says when the takedown landed.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | Not an admin |
+| 404 | `{"code": "collection_not_found", …}` |
+
+Rate-limited to 60/hour.
+
 ### `DELETE /admin/collections/{id}` 🛡️
 
 Withhold a collection from every read but an admin's.
 
-Sets `collections.hidden_at`, the same reversible axis an event carries, so a reported shelf is withheld pending judgement rather than destroyed. The events on it are untouched: each is moderated on its own. A withheld collection answers 404 on [`GET /collections/{id}`](#get-collectionsid) for everyone but an admin, its owner included, and drops off [`GET /users/{username}/collections`](#get-usersusernamecollections) entirely.
-
-Idempotent: a collection already withheld keeps its original timestamp and files no second audit row. Files an `admin_events` row with action `collection_hidden` on the write that does take effect.
+The takedown alias of [`PATCH /admin/collections/{id}/moderation`](#patch-admincollectionsidmoderation) with `{"hidden": true}`: same stamp, same `collection_hidden` audit row, same response, same idempotence. Use the PATCH to restore one.
 
 **Response 200:**
 ```json

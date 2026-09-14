@@ -24,27 +24,31 @@ class CollectionWrite(BaseModel):
     """The fields a collection carries, as a create or an update sends them.
 
     Both write bodies take the same pair, so opening a collection and editing
-    one cannot drift apart on a cap or on what counts as blank. The
-    description is required: a collection says what it holds, in the same
-    class of plain text as the profile bio.
+    one cannot drift apart on a cap or on what counts as blank. Both fields
+    are required: a collection carries a name and says what it holds, in the
+    same class of plain text as the profile bio.
     """
 
     title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH)
     description: str = Field(min_length=1, max_length=DESCRIPTION_MAX_LENGTH)
 
-    @field_validator("description")
+    @field_validator("title", "description")
     @classmethod
-    def _description(cls, v: str) -> str:
+    def _required_text(cls, v: str) -> str:
         """Strip surrounding whitespace, and refuse what is left empty.
 
         The bio's normalisation (``schemas/user._normalise_optional``) without
-        its empty-to-None branch, which belongs to an optional field: a
-        description of spaces is a missing description, and the field is
-        required, so it is a 422 rather than a stored blank.
+        its empty-to-None branch, which belongs to an optional field: a value
+        of spaces is a missing value, and both fields are required, so it is a
+        422 rather than a stored blank.
+
+        One validator over the pair rather than one per field, so a title of
+        spaces and a description of spaces are refused on the same terms, on
+        the create and on the update alike.
         """
         cleaned = v.strip()
         if not cleaned:
-            raise ValueError("description must not be empty")
+            raise ValueError("must not be empty")
         return cleaned
 
 

@@ -18,15 +18,45 @@ export interface paths {
          * Hide Collection Admin
          * @description Withhold a collection from every read but an admin's.
          *
-         *     Sets ``hidden_at``, the reversible takedown an event carries too, so the
-         *     shelf is withheld pending judgement rather than destroyed. The events on
-         *     it are untouched: each is moderated on its own. Idempotent, and 404 on an
-         *     unknown collection.
+         *     The takedown alias of ``PATCH /admin/collections/{id}/moderation`` with
+         *     ``{"hidden": true}``: same stamp, same audit row, same response. Use the
+         *     PATCH to restore one. Idempotent, and 404 on an unknown collection.
          */
         delete: operations["hide_collection_admin_api_v1_admin_collections__collection_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/collections/{collection_id}/moderation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Collection Moderation
+         * @description Set a collection's moderation state: withhold it, or restore it.
+         *
+         *     ``hidden`` moves the one axis a collection carries. ``true`` stamps
+         *     ``hidden_at`` and drops the shelf out of every read but an admin's;
+         *     ``false`` clears the stamp and puts it back. The events on the collection
+         *     are untouched either way: each is moderated on its own, so restoring a
+         *     shelf says nothing about what it holds.
+         *
+         *     The counterpart of ``PATCH /admin/events/{id}/moderation``, and the verb
+         *     that undoes ``DELETE /admin/collections/{id}``. Idempotent: a state equal
+         *     to the one the row already holds changes nothing and writes no audit row.
+         *     404 on an unknown collection.
+         */
+        patch: operations["set_collection_moderation_api_v1_admin_collections__collection_id__moderation_patch"];
         trace?: never;
     };
     "/api/v1/admin/detection-stats": {
@@ -1748,11 +1778,14 @@ export interface components {
         };
         /**
          * AdminCollectionHideResponse
-         * @description Response for ``DELETE /admin/collections/{id}``.
+         * @description Response for ``PATCH /admin/collections/{id}/moderation`` and its
+         *     takedown alias ``DELETE /admin/collections/{id}``.
          *
-         *     Names the collection that was withheld and when, so the panel states the
-         *     outcome without a re-query. ``hidden_at`` is the original stamp on a
-         *     collection that was already withheld: the verb is idempotent.
+         *     Names the collection whose takedown moved and where it landed, so the
+         *     panel states the outcome without a re-query. ``hidden_at`` is the stamp
+         *     the collection now carries: the original one on a collection that was
+         *     already withheld, and ``None`` once it is restored. Both verbs are
+         *     idempotent.
          */
         AdminCollectionHideResponse: {
             /**
@@ -1764,6 +1797,20 @@ export interface components {
             hidden_at: string | null;
             /** Title */
             title: string;
+        };
+        /**
+         * AdminCollectionModerationUpdate
+         * @description Body for ``PATCH /admin/collections/{id}/moderation``.
+         *
+         *     One axis, because a collection carries one: ``hidden`` withholds it from
+         *     every public read or restores it. The event's counterpart
+         *     (:class:`AdminEventModerationUpdate`) carries a second, ``is_graphic``,
+         *     which is a column on the event; a collection holds no footage of its own,
+         *     so there is nothing here to declare.
+         */
+        AdminCollectionModerationUpdate: {
+            /** Hidden */
+            hidden: boolean;
         };
         /**
          * AdminDetectionStatsRead
@@ -3570,6 +3617,43 @@ export interface operations {
             };
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCollectionHideResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_collection_moderation_api_v1_admin_collections__collection_id__moderation_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCollectionModerationUpdate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

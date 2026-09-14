@@ -99,8 +99,15 @@ NO_TIME = time(23, 59, 59, 999999)
 
 # How many rows the add-to-collection popover lists. An analyst's shelf is a
 # small set, and the popover shows it whole rather than paging; the cap is
-# what keeps the payload bounded if one ever grows past it.
+# what keeps the payload bounded if one ever grows past it. Past the cap the
+# analyst sees their 100 newest collections and the older ones are simply
+# absent from the popover, with nothing saying so.
 MAX_POPOVER_COLLECTIONS = 100
+
+# SQLSTATE 23505, the unique violation. The only integrity error
+# :func:`add_event` treats as "already there"; psycopg2 carries the code on
+# the driver error SQLAlchemy wraps, as ``exc.orig.pgcode``.
+_UNIQUE_VIOLATION = "23505"
 
 
 def chronological_key() -> tuple[Any, ...]:
@@ -503,10 +510,17 @@ def add_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user:
 
     The membership's composite primary key is the idempotency: the INSERT is
     staged in a SAVEPOINT, so a row already there (or a race that lands one
-    first) rolls back its own statement on the ``IntegrityError`` and the verb
+    first) rolls back its own statement on the unique violation and the verb
     answers idempotently instead of poisoning the transaction. The shape is
     ``services/social.follow_user``'s minus its pre-SELECT, which here would
     only ask what the key answers one statement later.
+
+    Only the unique violation is swallowed (:data:`_UNIQUE_VIOLATION`). The
+    other integrity errors the same statement can raise mean something else
+    entirely: a foreign-key violation says the collection or the event went
+    away under the request, and answering that 204 would tell the analyst a
+    shelving landed when no row exists. It is re-raised, so it surfaces as a
+    500 rather than as a silent success.
     """
     ensure_owner(collection, user)
     ensure_collectable(db, event_ids=[event_id], user=user)
@@ -514,7 +528,9 @@ def add_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user:
     try:
         with db.begin_nested():
             db.add(CollectionEvent(collection_id=collection.id, event_id=event_id))
-    except IntegrityError:
+    except IntegrityError as exc:
+        if getattr(exc.orig, "pgcode", None) != _UNIQUE_VIOLATION:
+            raise
         return
     db.commit()
 

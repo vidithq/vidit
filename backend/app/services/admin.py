@@ -442,21 +442,47 @@ def withhold_collection(db: Session, *, collection: Collection, actor_id: uuid.U
     )
 
 
-def hide_collection(
+def restore_collection(db: Session, *, collection: Collection, actor_id: uuid.UUID) -> None:
+    """Clear one collection's takedown and file the audit row. No commit.
+
+    The other direction of :func:`withhold_collection`, so the reversible
+    ``hidden_at`` axis the model declares has a verb that actually reverses
+    it. The events on the collection are untouched: each carries its own
+    moderation state, and restoring the shelf says nothing about them.
+
+    Idempotent: a collection that is not withheld files no audit row, so a
+    restore that changes nothing is not an administrative act.
+    """
+    if collection.hidden_at is None:
+        return
+    collection.hidden_at = None
+    log_admin_event(
+        db,
+        actor_id=actor_id,
+        action="collection_restored",
+        target={"collection_id": str(collection.id), "title": collection.title},
+    )
+
+
+def set_collection_moderation(
     db: Session,
     *,
     actor_id: uuid.UUID,
     collection_id: uuid.UUID,
+    hidden: bool,
 ) -> Collection:
-    """Withhold one collection from every read but an admin's, by id.
+    """Move one collection's takedown either way, by id.
 
-    The collection-shaped takedown, next to the event one above and on the
-    same reversible ``hidden_at`` axis: a reported shelf is withheld pending
-    judgement rather than removed. The events on it are untouched, each
-    carrying its own moderation state.
+    The collection-shaped moderation verb, next to the event one
+    (``services/reports.set_event_moderation``) and on the same reversible
+    ``hidden_at`` axis: a reported shelf is withheld pending judgement rather
+    than removed, and restored once judged. ``hidden=True`` writes the stamp
+    :func:`withhold_collection` writes, so this door and the report queue's
+    agree; ``hidden=False`` clears it.
 
     Locked like the event a report verdict mutates, so this door and the
     report queue's serialize on the row instead of interleaving their writes.
+    Raises :class:`CollectionNotFoundError` (404) for an unknown id.
     """
     collection = (
         db.query(Collection)
@@ -467,10 +493,30 @@ def hide_collection(
     )
     if collection is None:
         raise CollectionNotFoundError("Collection not found")
-    withhold_collection(db, collection=collection, actor_id=actor_id)
+    if hidden:
+        withhold_collection(db, collection=collection, actor_id=actor_id)
+    else:
+        restore_collection(db, collection=collection, actor_id=actor_id)
     db.commit()
     db.refresh(collection)
     return collection
+
+
+def hide_collection(
+    db: Session,
+    *,
+    actor_id: uuid.UUID,
+    collection_id: uuid.UUID,
+) -> Collection:
+    """Withhold one collection from every read but an admin's, by id.
+
+    The takedown half of :func:`set_collection_moderation`, kept as its own
+    function because ``DELETE /admin/collections/{id}`` is the takedown alias
+    the queue reaches for. Idempotent, and 404 on an unknown collection.
+    """
+    return set_collection_moderation(
+        db, actor_id=actor_id, collection_id=collection_id, hidden=True
+    )
 
 
 def hard_delete_geolocation(
