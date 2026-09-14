@@ -1266,7 +1266,7 @@ def test_compose_request_reply_carries_the_warning_and_stays_in_the_cap():
 
     assert text.startswith("✅ Geolocation request opened · ref 94183d44\n")
     assert f"⚠ {WARNING_MESSAGES[SOURCE_DATE_UNKNOWN]}" in text
-    assert text.endswith("Review from your profile")
+    assert text.endswith("Edit it from your profile")
     assert "94183d44-1a2b" not in text  # the shortened ref, never the full UUID
     assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
     assert "http" not in text and ".app" not in text and ".com" not in text

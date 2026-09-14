@@ -265,22 +265,29 @@ def acquire_tagged_thread(
 _REPLY_REF_CHARS = 8
 
 
-def _reply(header: str, warnings: Iterable[str]) -> str:
+def _reply(
+    header: str, warnings: Iterable[str], *, footer: str = "Review from your profile"
+) -> str:
     """The ✅ reply's shape: the header, the ⚠ lines, the footer.
 
     The body both success composers share, so the two verdicts cannot drift on
-    the glyph, the warning order or the footer. One ⚠ line per warning the pass
-    raised, worded by ``WARNING_MESSAGES`` and read in its order: the reply owns
-    the glyph and the length discipline, never the sentence, since the same
+    the glyph or the warning order. One ⚠ line per warning the pass raised,
+    worded by ``WARNING_MESSAGES`` and read in its order: the reply owns the
+    glyph and the length discipline, never the sentence, since the same
     sentence reaches the archive's outcome email and the import panel. Which
     warnings a row carries is the engine's and the write path's answer
     (``detection.persist_detections``, ``detection.open_request``), not the
     reply's.
+
+    ``footer`` is the one line the two composers do not share: a detection
+    points the analyst at review, a request points them at the edit they
+    reach from the profile's *Open requests* block, so :func:`compose_reply`
+    and :func:`compose_request_reply` each pass their own.
     """
     raised = set(warnings)
     lines = [header]
     lines.extend(f"⚠ {message}" for code, message in WARNING_MESSAGES.items() if code in raised)
-    lines.append("Review from your profile")
+    lines.append(footer)
     return _within_reply_cap("\n".join(lines))
 
 
@@ -317,11 +324,18 @@ def compose_request_reply(event_id: str, *, warnings: Iterable[str]) -> str:
     and a source but no coordinate: the same :func:`_reply` body, and a header
     naming a request rather than a detection, so the analyst is told what
     actually landed and does not go looking for a coordinate the bot never read.
+    The footer names the edit rather than review, since a request has no
+    review queue to open: the profile's *Open requests* block leads to *Edit
+    this request*.
 
     Same contract as every other reply: linkless, and unique per mention
     through the event ref.
     """
-    return _reply(f"✅ Geolocation request opened · ref {event_id[:_REPLY_REF_CHARS]}", warnings)
+    return _reply(
+        f"✅ Geolocation request opened · ref {event_id[:_REPLY_REF_CHARS]}",
+        warnings,
+        footer="Edit it from your profile",
+    )
 
 
 # Where an analyst goes when the bot has nothing to diagnose. A handle mention

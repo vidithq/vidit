@@ -972,9 +972,9 @@ def _existing_row_for(db: Session, owner: User, draft: RequestDraft) -> Event | 
     """The row ``owner`` already holds for the draft's post or its source.
 
     The same legs a detection matches on (:func:`_match_legs`), minus the
-    coordinate, which a request has none of. Any live match at all blocks the
-    request, whatever state the row is in: the analyst already holds something
-    for that post or that footage, and a request is not the machine's to open
+    coordinate, which a request has none of. Any match at all blocks the
+    request, a soft-deleted one aside: the analyst already holds something for
+    that post or that footage, and a request is not the machine's to open
     beside it. Oldest first, so a repeat mention names the same row every time.
 
     Soft-deleted rows are excluded, unlike the detections' own match

@@ -41,7 +41,7 @@ flowchart LR
   chase["`**chase_thread**
   the sole source candidate: X status or Telegram embed, retries`"]:::shared
   resolve["`**resolve_threads**
-  pure: one Detection per coordinate, warnings and refusals`"]:::core
+  pure: one Detection per coordinate, or a RequestDraft when asked, warnings and refusals`"]:::core
   persist["`**persist_detections**
   re-import match, media, write`"]:::core
   rows[("`**events**
@@ -49,7 +49,7 @@ flowchart LR
 
   subgraph feedback [What the analyst gets]
     direction LR
-    f1["`**compose_reply**
+    f1["`**compose_reply, compose_request_reply**
     bot: in-thread reply, ref plus warnings`"]:::spec
     f2["`**TweetImportRead**
     paste: detection ids and warnings; review opens on a clean run`"]:::spec
@@ -104,11 +104,14 @@ flowchart LR
   first line beyond coordinates and links; the raw text, t.co expanded`"]:::shared
   detection["`**Detection**
   one per coordinate, plus its warnings`"]:::core
+  draft["`**RequestDraft**
+  no coordinate, footage and a named source, when the caller asks; travels beside the refusal`"]:::core
 
   text --> coords
   coords -- "no coordinate" --> refuse
   coords --> src --> media --> title --> detection
   src --> sec --> detection
+  title -- "no coordinate, footage, a source, asked" --> draft
 ```
 
 **In**: the threads the entry acquired. Never across authors, and one hop for a post with content of its own ([see what acquisition reads](#what-acquisition-reads)), so an analyst posts the coordinate and replies to themselves with the source link, and provenance anchors on the parent whichever of the two the entry was pointed at. The archive reads its threads from the export, which carries every reply edge inline. Acquisition runs [the chase](#the-chase), so resolution does no I/O.
@@ -257,9 +260,9 @@ Each row is one input shape and the outcome the engine produces for it. The thre
 | Input shape | Outcome |
 |---|---|
 | No coordinate anywhere (`no_coord`) | `0`, no coordinate (`coords_missing`) |
-| No coordinate, an own video and a sole Telegram link (`mirror_telegram_no_coord`) | `0`, no coordinate (`coords_missing`); the bot opens 1 request, source is the chased t.me post, `n/a` for the paste and the archive |
-| No coordinate, no media and a sole third-party X status link (`mirror_x_status_no_coord`) | `0`, no coordinate (`coords_missing`); the bot opens 1 request, source is the chased status and its video is the footage, `n/a` for the paste and the archive |
-| No coordinate, an own video and a sole link off the chase vocabulary (`mirror_other_host_no_coord`) | `0`, no coordinate (`coords_missing`); the bot opens 1 request, source is the link as the post wrote it with no date, the own video is the footage, `n/a` for the paste and the archive |
+| No coordinate, an own video and a sole Telegram link (`mirror_telegram_no_coord`) | `0`, no coordinate (`coords_missing`); the bot opens 1 request, source is the chased t.me post; the paste and the archive refuse without a request |
+| No coordinate, no media and a sole third-party X status link (`mirror_x_status_no_coord`) | `0`, no coordinate (`coords_missing`); the bot opens 1 request, source is the chased status and its video is the footage; the paste and the archive refuse without a request |
+| No coordinate, an own video and a sole link off the chase vocabulary (`mirror_other_host_no_coord`) | `0`, no coordinate (`coords_missing`); the bot opens 1 request, source is the link as the post wrote it with no date, the own video is the footage; the paste and the archive refuse without a request |
 | Coordinate inside prose, no link and no quote (`referenceless_annotation`) | 1 detection, source empty |
 | Coordinate inside prose behind an `@mention` prefix (`mention_prefix`) | 1 detection, source empty |
 | Coordinate alone on its line, or beside its maps link, no other link and no quote | 1 detection, source empty, title empty |
@@ -268,7 +271,7 @@ Each row is one input shape and the outcome the engine produces for it. The thre
 | Hemisphere or DMS coordinate | 1 detection |
 | Google Maps `@lat,lng` link carrying the only coordinate | 1 detection |
 | Coordinate out of bounds and nothing else | `0`, coordinate out of bounds (`coords_invalid`) |
-| Coordinate only in the quoted post (`quote_coord_in_quoted`) | `0`, no coordinate (`coords_missing`) |
+| Coordinate only in the quoted post (`quote_coord_in_quoted`) | `0`, no coordinate (`coords_missing`); no request for the bot, a coordinate in the quoted post is a geolocation |
 | `T:` / `C:` / `S:` marker lines (`marker_lines`) | 1 detection, the markers kept as text |
 | `Source:` line naming one of two links | 1 detection, source empty, two mirrors |
 | Two links, no `Source:` line | 1 detection, source empty, two mirrors |
@@ -362,7 +365,7 @@ Only the bot opens requests. The paste and the archive never ask the engine for 
 |---|---|---|
 | Detections created | In-thread reply, opening ✅: the detection count, a bare event ref, one ⚠ line per [warning](#warnings), in one fixed order | Always (budget permitting) |
 | No detection created, an open one overwritten | The same ✅ reply, reading *updated* rather than *saved* and naming the detection it landed on | Always (budget permitting). A tag on a post the analyst edited since importing it is an answered tag, ledgered `updated` |
-| No coordinate, on a footage-carrying thread that names a source | The same ✅ reply, naming a request rather than a detection | Always (budget permitting), when the author is linked and holds no live row for that post or that source |
+| No coordinate, on a footage-carrying thread that names a source | The same ✅ reply, naming a request rather than a detection | Always (budget permitting), when the author is linked and holds no row for that post or that source, a soft-deleted one aside |
 | Nothing created | The same shape with an ❌ header and one ⚠ line naming the [refusal](#warnings); no recited lesson and no fix recipe (the guide lives behind the bio link) | Author linked AND the tagged tweet is not itself a reply to the bot (the loop guard: a courtesy answer to the bot's own reply auto-mentions it and must not earn another reply, forever) |
 | Nothing created because the write path raised on every detection | The same ❌ reply, its ⚠ line stating that the case is unexpected and naming the admin contact | The same two conditions |
 | Anything else | Nothing | A tag that matched a row and moved nothing on it (`skipped`), plus `no_account` and every unlinked author, stay fully silent |

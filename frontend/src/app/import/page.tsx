@@ -356,7 +356,7 @@ export default function ImportGuidePage() {
             <div className="pl-6">
               <MockPost {...MOCK_BOT} replyingTo={MOCK_ANALYST.handle}>
                 {
-                  "✅ Geolocation request opened · ref 5c02be71\nReview from your profile"
+                  "✅ Geolocation request opened · ref 5c02be71\nEdit it from your profile"
                 }
               </MockPost>
             </div>
