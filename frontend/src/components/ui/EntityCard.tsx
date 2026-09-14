@@ -20,9 +20,11 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 //   stays independently clickable. No nested <a>.
 // - `onSelect` swaps that one link for a stretched button, for a list whose
 //   rows pick a position on the surface they sit on rather than leave it (the
-//   collection page's step list). `detailHref` then rides the title, lifted
-//   above the button the same way the byline is, so the row keeps the way to
-//   the entity's own page without growing a control for it.
+//   collection page's step list). A card carries one gesture: the title is
+//   plain text in this mode (same typography as the linked title, minus the
+//   link styling and the z-20 lift) and `detailHref` renders nowhere on the
+//   row. The entity's own page stays reachable elsewhere (the player panel's
+//   own title, above the list).
 // - It renders the slots that carry data; an entity without `coords` (a request)
 //   simply omits that bit. No `kind` flag.
 // - The thumbnail is the private `MediaThumb` below: the real media when
@@ -119,7 +121,6 @@ type TitleProps =
   | { title: ReactNode; titleText: string };
 
 interface EntityCardBaseProps {
-  detailHref: string;
   /** A rendered status pill: `<StatusBadge>` (any lifecycle state). */
   badge?: ReactNode;
   media?: Media;
@@ -145,9 +146,6 @@ interface EntityCardBaseProps {
    *  lines of text on every row. Off, the row stands on its media column and
    *  the text centres against it. */
   uniformHeight?: boolean;
-  /** Picks this row on the surface it sits on instead of opening it. The whole
-   *  card becomes the button that does it and the title keeps `detailHref`. */
-  onSelect?: () => void;
   /** What that button is called, since the title beside it already carries the
    *  row's own name and two controls reading the same words say nothing about
    *  either. Falls back to the title. */
@@ -165,7 +163,20 @@ interface EntityCardBaseProps {
   variant?: "feed" | "compact";
 }
 
-type EntityCardProps = EntityCardBaseProps & TitleProps;
+// A card carries one gesture. The default mode's stretched link needs
+// `detailHref`; `onSelect`'s stretched button needs none, since the title
+// renders as plain text and the entity's own page is reached elsewhere in
+// that mode.
+type SelectableProps =
+  | { onSelect?: undefined; detailHref: string }
+  | {
+      /** Picks this row on the surface it sits on instead of opening it. The
+       *  whole card becomes the button that does it. */
+      onSelect: () => void;
+      detailHref?: string;
+    };
+
+type EntityCardProps = EntityCardBaseProps & TitleProps & SelectableProps;
 
 function formatCoord(lat: number, lng: number): string {
   const latDir = lat >= 0 ? "N" : "S";
@@ -233,17 +244,10 @@ export function EntityCard({
       className="absolute inset-0 z-10 rounded-[inherit]"
     />
   );
-  // The title, and on a selecting row the way to the entity's own page: an
-  // explicit `TEXT_LINK` lifted above the stretched button, the lift the
-  // byline takes. On every other row the whole card is that link already, so
-  // the heading stays plain text and the card carries one destination.
-  const heading = onSelect ? (
-    <Link href={detailHref} className={`relative z-20 ${TEXT_LINK}`}>
-      {title}
-    </Link>
-  ) : (
-    title
-  );
+  // A card carries one gesture: on a selecting row the title is plain text,
+  // same as every other row, where the whole card is the link already. It
+  // carries no `detailHref` of its own in that mode; the entity's own page is
+  // reached elsewhere (the player panel's own title, on the collection page).
   // The one border a selected row wears, the accent its hover already reaches
   // for, so standing on a row and pointing at one read as the same colour.
   const shell = cn(SHELL, selected && "border-orange-500/60");
@@ -279,7 +283,7 @@ export function EntityCard({
           </div>
         </div>
         <div className="space-y-3">
-          <h2 className="text-sm font-medium text-neutral-100">{heading}</h2>
+          <h2 className="text-sm font-medium text-neutral-100">{title}</h2>
           <MediaThumb
             media={media}
             isGraphic={isGraphic}
@@ -326,7 +330,7 @@ export function EntityCard({
           )}
         >
           <h3 className="text-sm font-medium text-neutral-100 line-clamp-2">
-            {heading}
+            {title}
           </h3>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500">
             {author && (

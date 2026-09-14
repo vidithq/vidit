@@ -44,10 +44,11 @@ const DEBOUNCE_MS = 300;
  *
  * **A row is the catalogue's own compact card**, with its lifecycle badge, and
  * ticking one is `<EntityCard>`'s `selected` / `onSelect`: the stretched
- * surface becomes the button that picks the row and the title keeps the way to
- * the event's own page, the shape the collection page's step list already
- * takes. So the picker grows no checkbox of its own, and a row here reads as
- * the same object as the same event in a search result or on a profile.
+ * surface becomes the button that picks the row and the title renders as
+ * plain text, a row carrying one gesture, the shape the collection page's step
+ * list already takes. So the picker grows no checkbox of its own, and a row
+ * here reads as the same object as the same event in a search result or on a
+ * profile.
  *
  * **The selection is ids, and it survives the query.** The parent holds them,
  * so a row ticked while browsing is still ticked after a search that does not

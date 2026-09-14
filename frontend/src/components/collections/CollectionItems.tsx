@@ -28,9 +28,9 @@ import type { EventListItem } from "@/types";
  * **The list is the player's step control.** A click anywhere on a row moves
  * the player above it to that item, and the row the player stands on wears the
  * accent border, so the list doubles as the index of the walk instead of
- * carrying a second control per row to start one. The row keeps the way to the
- * event's own page on its title, the lift `<EntityCard>` gives every link that
- * is not the card's own click.
+ * carrying a second control per row to start one. A row carries one gesture:
+ * the title renders as plain text, and the event's own page is reached from
+ * the player panel's own title above the list.
  *
  * The owner gets one control per row, taking the item off the shelf: a red icon
  * button at the row's bottom right, the far corner from the title, since it is

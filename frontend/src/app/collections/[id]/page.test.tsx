@@ -278,12 +278,19 @@ describe("CollectionPage", () => {
     });
   });
 
-  it("keeps the way to the event's own page on the row", async () => {
+  it("carries one gesture per row: the title is plain text, not a second link", async () => {
     await renderPage();
 
     expect(
-      screen.getByRole("link", { name: "Strike on the rail junction" }),
-    ).toHaveAttribute("href", "/events/e1");
+      screen.queryByRole("link", { name: "Strike on the rail junction" }),
+    ).not.toBeInTheDocument();
+    // The stretched button still carries the row's accessible name, so the
+    // one click a row offers is still nameable and still moves the player.
+    expect(
+      screen.getByRole("button", {
+        name: "Read this collection from Strike on the rail junction",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("offers no player for a collection with nothing on it", async () => {
