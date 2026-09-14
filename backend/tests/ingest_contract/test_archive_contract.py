@@ -120,12 +120,12 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
 
     assert _rows_for(db, owner, "no_coord") == []
     # The export runs the same write path as the bot and the paste, so a thread
-    # it refuses is counted under the code they name back. Three threads carry
-    # no coordinate here, the two mirror shapes included: the archive writes
+    # it refuses is counted under the code they name back. Four threads carry
+    # no coordinate here, the three mirror shapes included: the archive writes
     # detections and nothing else, so a mirror post is a plain refusal on this
     # entry whatever second exit the engine offers the bot. ``reason`` stays
     # unset because rows landed.
-    assert outcome.refusals == {COORDS_MISSING: 3}
+    assert outcome.refusals == {COORDS_MISSING: 4}
     assert outcome.reason is None
 
     # Source-less typologies: source_url NULL, source_posted_at NULL.

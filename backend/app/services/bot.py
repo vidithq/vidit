@@ -24,8 +24,8 @@ and ``detection.persist_detections`` writes what it read, owned by the account
 ``detection.linked_owner`` maps the tagged author's handle to, read once per
 mention (the bot never mints users: an unknown handle is ledgered
 ``no_account`` and produces nothing). One branch answers off the same
-resolution: a thread carrying no coordinate but carrying footage and an X
-status or a Telegram post as its source opens a ``requested`` row through
+resolution: a thread carrying no coordinate but carrying footage and a source
+link opens a ``requested`` row through
 ``detection.open_request`` instead of earning the ``coords_missing`` refusal;
 a coordinate-less thread that branch cannot serve at all is refused
 ``request_not_possible``, which is the same refusal read with the detail only
@@ -499,11 +499,11 @@ async def _process_mention(
     if assembled.reason is not None:
         if assembled.reason == COORDS_MISSING and resolution.request_reason is not None:
             # The request branch read this coordinate-less thread and had
-            # nothing to open: its source is not an X status or a Telegram post,
-            # or it carries no footage. Saying so is the difference between
-            # "add the coordinate" and "the bot cannot request from that link",
-            # and only this entry asked for a request, so only this entry names
-            # it. Every other coordinate-less thread keeps ``coords_missing``.
+            # nothing to open: it points at a source and carries no footage.
+            # Saying so is the difference between "add the coordinate" and
+            # "attach the clip", and only this entry asked for a request, so
+            # only this entry names it. Every other coordinate-less thread keeps
+            # ``coords_missing``.
             return "no_detection", 0, None, resolution.request_reason
         return "no_detection", 0, None, assembled.reason
     if not assembled.created and not assembled.updated:

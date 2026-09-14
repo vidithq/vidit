@@ -1,14 +1,14 @@
 """The engine's second exit: which coordinate-less threads draft a request.
 
-Pure, no DB. The two shapes that do draft one are pinned typology by typology
+Pure, no DB. The three shapes that do draft one are pinned typology by typology
 in ``tests/ingest_contract`` (``mirror_telegram_no_coord``,
-``mirror_x_status_no_coord``); what is left here is the boundary, the threads
-that look request-shaped and are not, because each of the six conditions in
-``resolve._request_draft`` has to be the one that refuses them, plus the one
-spelling the source is stored under. The two shapes that rule a request out for
-good, a declared source the bot cannot request from and no footage, also name
-themselves back
-(``request_not_possible``); the four a re-tag or a rewrite can still clear do
+``mirror_x_status_no_coord``, ``mirror_other_host_no_coord``); what is left here
+is the boundary, the threads that look request-shaped and are not, because each
+of the six conditions in ``resolve._request_draft`` has to be the one that
+refuses them, plus the one spelling the source is stored under. The one shape
+that rules a request out for good, a source pointed at and no footage to store,
+also names itself back
+(``request_not_possible``); the five a re-tag or a rewrite can still clear do
 not.
 
 The refusal always travels with the draft, so every case below also asserts
@@ -80,37 +80,25 @@ def test_a_mirror_post_with_a_telegram_link_and_a_video_drafts_a_request() -> No
     assert draft.source_posted_at is None
 
 
-def test_a_sole_youtube_link_drafts_nothing() -> None:
-    """Every link is a source candidate, but only the two the chase reads name a
-    post a request can be opened against. A YouTube link is a source and still
-    a refusal."""
-    assert (
-        _draft(
-            [
-                _rec(
-                    text="Clip worth a look\nhttps://t.co/fakeYT",
-                    media=[_VIDEO],
-                    external_sources=[_YOUTUBE],
-                )
-            ]
-        )
-        is None
+def test_a_sole_link_off_the_chase_vocabulary_drafts_over_the_own_video() -> None:
+    """A source is a source whatever its host. Nothing chases a YouTube link, so
+    the analyst's own clip is the footage and the source's date is unknown; the
+    link is stored as the post wrote it, since nothing here knows which half of
+    such a URL names the post."""
+    draft = _draft(
+        [
+            _rec(
+                text="Clip worth a look\nhttps://t.co/fakeYT",
+                media=[_VIDEO],
+                external_sources=[_YOUTUBE],
+            )
+        ]
     )
 
-
-def test_a_sole_tiktok_link_drafts_nothing() -> None:
-    assert (
-        _draft(
-            [
-                _rec(
-                    text="Clip worth a look\nhttps://t.co/fakeTT",
-                    media=[_VIDEO],
-                    external_sources=[_TIKTOK],
-                )
-            ]
-        )
-        is None
-    )
+    assert draft is not None
+    assert draft.source_url == "https://www.youtube.com/watch?v=FAKEVIDEO01"
+    assert draft.footage_candidates == [_VIDEO]
+    assert draft.source_posted_at is None
 
 
 def test_a_video_with_no_link_and_no_quote_drafts_nothing() -> None:
@@ -228,8 +216,8 @@ def test_two_candidate_links_draft_nothing() -> None:
 
 def test_a_quoted_status_carrying_footage_drafts_a_request() -> None:
     """A quote is a source the analyst declared by quoting, and a quoted X
-    status is as requestable as a linked one: the footage is the quoted post's,
-    and its date comes free."""
+    status opens a request exactly as a linked one does: the footage is the
+    quoted post's, and its date comes free."""
     quote = QuotedTweet(
         tweet_id="9200000000000000002",
         handle="front_owl",
@@ -272,8 +260,7 @@ def test_a_coordinate_in_the_quoted_post_drafts_nothing() -> None:
     geolocation, never a request.
 
     The analyst's own text carries none, so nothing is detected (the coordinate
-    is the quoted party's), and the quoted status is a requestable source
-    carrying footage. Opening a request over it would ask the board to
+    is the quoted party's), and the quoted status is a source carrying footage. Opening a request over it would ask the board to
     geolocate footage that is already geolocated one post down, so the thread
     keeps the refusal it earns.
     """
@@ -437,27 +424,22 @@ def _request_reason(thread: list[TweetRecord]) -> str | None:
     return resolution.request_reason
 
 
-def test_a_source_the_bot_cannot_request_from_names_why_no_request_opened() -> None:
-    """A YouTube link is a source the chase does not read, so no request can
-    ever be opened from it. ``coords_missing`` is true of the post and hides
-    that, so the branch names it."""
+def test_a_source_off_the_chase_vocabulary_and_no_own_clip_names_why() -> None:
+    """Nothing chases a TikTok link, so the only footage such a thread can offer
+    is the analyst's own, and this one attached none. ``coords_missing`` is true
+    of the post and hides that, so the branch names what to attach."""
     assert (
         _request_reason(
-            [
-                _rec(
-                    text="Clip worth a look\nhttps://t.co/fakeYT",
-                    media=[_VIDEO],
-                    external_sources=[_YOUTUBE],
-                )
-            ]
+            [_rec(text="Clip worth a look\nhttps://t.co/fakeTT", external_sources=[_TIKTOK])]
         )
         == REQUEST_NOT_POSSIBLE
     )
 
 
-def test_a_requestable_source_with_no_footage_names_why_no_request_opened() -> None:
-    """The second shape: the source is a t.me post the bot can request from,
-    and the thread carries nothing to store as the request's evidence."""
+def test_a_chased_source_with_no_footage_names_why_no_request_opened() -> None:
+    """The same on a host the chase does read: the t.me post served no media and
+    the analyst attached none, so the thread has nothing to store as the
+    request's evidence."""
     assert (
         _request_reason(
             [_rec(text="Worth reading\nhttps://t.co/fakeTG", external_sources=[_TELEGRAM])]
@@ -474,8 +456,8 @@ def test_a_thread_pointing_at_no_source_keeps_the_plain_refusal() -> None:
 
 
 def test_a_transient_chase_failure_keeps_the_plain_refusal() -> None:
-    """The next tag can still read that source, so naming the shape as
-    unrequestable would be wrong."""
+    """The next tag can still read that source, so naming the thread as one no
+    request can ever serve would be wrong."""
     assert (
         _request_reason(
             [
@@ -492,7 +474,7 @@ def test_a_transient_chase_failure_keeps_the_plain_refusal() -> None:
 
 
 def test_a_coordinate_in_the_quoted_post_keeps_the_plain_refusal() -> None:
-    """The source is requestable and the footage is there: what stops the
+    """The source is there and so is the footage: what stops the
     request is the coordinate one post down, so the analyst is told their own
     text carries none."""
     quote = QuotedTweet(

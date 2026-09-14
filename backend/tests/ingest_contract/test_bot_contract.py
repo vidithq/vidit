@@ -48,9 +48,17 @@ def test_typology_matches_the_bot_contract(typology: str) -> None:
     loader.assert_resolution_matches(typology, _PATH, _resolution(typology))
 
 
-@pytest.mark.parametrize("typology", ["mirror_telegram_no_coord", "mirror_x_status_no_coord"])
+# Every typology the catalogue says drafts a request, read off the fixtures
+# rather than listed here, so a mirror shape added to the catalogue enters this
+# test with it.
+_MIRROR_TYPOLOGIES = [
+    typology for typology in loader.typology_names() if "request" in loader.load_expected(typology)
+]
+
+
+@pytest.mark.parametrize("typology", _MIRROR_TYPOLOGIES)
 def test_a_coordinate_less_mirror_post_drafts_one_request(typology: str) -> None:
-    """The two mirror shapes: no coordinate, so the thread refuses as it always
+    """The mirror shapes: no coordinate, so the thread refuses as it always
     did, and the same resolution carries one request draft the bot reads off the
     second exit. Both halves travel together, which is what keeps an entry that
     reads detections alone refusing exactly as before."""

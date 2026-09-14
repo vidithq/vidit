@@ -85,9 +85,11 @@ MIRROR_TG_OTHER_ID = "9110000000000000005"
 # The same mirror, re-posted with the coordinate the analyst has since worked
 # out: a geolocation, which takes the detections' path beside the open request.
 MIRROR_TG_GEO_ID = "9110000000000000006"
-# The same mirror naming a host the chase does not read: footage and a source,
-# and still no request the bot can open.
+# The same mirror naming a host the chase does not read, with and without the
+# analyst's own clip: that clip is the only footage such a post can offer, so it
+# is what tells a request from a refusal.
 MIRROR_YT_ID = "9110000000000000007"
+MIRROR_YT_NO_VIDEO_ID = "9110000000000000008"
 
 # Both mirror posts, and the Telegram embed, come from the contract catalogue,
 # the one place the shapes are written down: the bot's request tests run the
@@ -102,6 +104,9 @@ _MIRROR_X_BODY = load_body(_MIRROR_X_TYPOLOGY)
 _MIRROR_X_SOURCE_BODY = load_chased(
     _MIRROR_X_TYPOLOGY, load_expected(_MIRROR_X_TYPOLOGY)["chased_status_id"]
 )
+_MIRROR_OTHER_TYPOLOGY = "mirror_other_host_no_coord"
+_MIRROR_OTHER_BODY = load_body(_MIRROR_OTHER_TYPOLOGY)
+_OTHER_HOST_SOURCE = _MIRROR_OTHER_BODY["entities"]["urls"][0]["expanded_url"]
 
 
 def _telegram_embed() -> str:
@@ -131,6 +136,25 @@ def _mirror_body(tweet_id: str, created_at: str, handle: str = HANDLE) -> dict:
         "user": {"screen_name": handle},
         "text": f"@viditbot\n{_MIRROR_BODY['text']}",
     }
+
+
+def _other_host_mirror(tweet_id: str, created_at: str, *, with_video: bool) -> dict:
+    """The catalogue's other-host mirror, re-anchored on one mention.
+
+    Dropping the clip is the whole difference between the two shapes it builds:
+    nothing chases a YouTube link, so the analyst's own upload is the only
+    footage such a post can offer.
+    """
+    body = {
+        **_MIRROR_OTHER_BODY,
+        "id_str": tweet_id,
+        "created_at": created_at,
+        "user": {"screen_name": HANDLE},
+        "text": f"@viditbot\n{_MIRROR_OTHER_BODY['text']}",
+    }
+    if not with_video:
+        del body["mediaDetails"]
+    return body
 
 
 _SOURCE_URL = f"https://x.com/warfootage/status/{SOURCE_ID}"
@@ -236,20 +260,13 @@ BODIES = {
         **_mirror_body(MIRROR_TG_GEO_ID, "2026-03-14T11:00:00.000Z"),
         "text": f"@viditbot\n{_MIRROR_BODY['text']}\n48.123456, 37.654321",
     },
-    # The catalogue's mirror with one host swapped: the analyst wrote the same
-    # post about a YouTube clip, which is a source and not one a request can be
-    # opened against.
-    MIRROR_YT_ID: {
-        **_mirror_body(MIRROR_YT_ID, "2026-03-12T10:00:00.000Z"),
-        "entities": {
-            "urls": [
-                {
-                    **_MIRROR_BODY["entities"]["urls"][0],
-                    "expanded_url": "https://www.youtube.com/watch?v=FAKEVIDEO01",
-                }
-            ]
-        },
-    },
+    # The catalogue's other-host mirror: the analyst re-uploaded a YouTube clip
+    # and linked the video, which nothing chases, so their own upload is the
+    # footage. The second is the same post with that upload left off.
+    MIRROR_YT_ID: _other_host_mirror(MIRROR_YT_ID, "2026-03-12T10:00:00.000Z", with_video=True),
+    MIRROR_YT_NO_VIDEO_ID: _other_host_mirror(
+        MIRROR_YT_NO_VIDEO_ID, "2026-03-12T10:30:00.000Z", with_video=False
+    ),
     MIRROR_X_ID: {
         **_MIRROR_X_BODY,
         "id_str": MIRROR_X_ID,
@@ -904,15 +921,47 @@ async def test_footage_that_will_not_fetch_falls_back_to_the_refusal(db, linked_
     assert ledger.outcome == "no_detection"
 
 
-async def test_a_mirror_the_bot_cannot_request_from_is_told_why(db, linked_owner, _stub_cdn):
-    """The same mirror post about a YouTube clip: footage, a source, and no
-    request the bot can open against that host.
+async def test_a_mirror_of_a_clip_on_another_host_opens_a_request(db, linked_owner, _stub_cdn):
+    """The same mirror post about a YouTube clip.
+
+    The host decides what gets fetched, never what gets requested: the link is
+    the source as the analyst wrote it, their own upload is the footage, and the
+    request opens. Nothing chased the video, so the source has no post date and
+    the reply says so.
+    """
+    outcome, _, posted, _ = await _run(db, [MIRROR_YT_ID])
+
+    assert outcome.requests_opened == 1
+    row = _request_row(db, linked_owner)
+    assert row.status == STATUS_REQUESTED
+    assert row.source_url == _OTHER_HOST_SOURCE
+    assert row.source_posted_at is None
+
+    (media,) = db.query(Media).filter(Media.event_id == row.id).all()
+    assert media.role == "source"
+    assert media.media_type == "video"
+
+    (payload,) = posted
+    text = payload["text"]
+    assert isinstance(text, str)
+    assert text.startswith("\u2705 Geolocation request opened \u00b7 ref ")
+    assert WARNING_MESSAGES[SOURCE_DATE_UNKNOWN] in text
+    assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == MIRROR_YT_ID).one()
+    assert ledger.outcome == "requested"
+
+
+async def test_a_mirror_carrying_no_clip_of_its_own_is_told_to_attach_one(
+    db, linked_owner, _stub_cdn
+):
+    """The same post with the upload left off: a YouTube link is chased by
+    nothing, so the thread points at footage and carries none to store.
 
     ``coords_missing`` is true of the post and says nothing about the branch
     that had a look, so the analyst would go hunting for a coordinate they
-    deliberately did not write. The reply names the shape instead.
+    deliberately did not write. The reply names what to attach instead.
     """
-    outcome, _, posted, _ = await _run(db, [MIRROR_YT_ID])
+    outcome, _, posted, _ = await _run(db, [MIRROR_YT_NO_VIDEO_ID])
 
     assert outcome.requests_opened == 0
     assert outcome.no_detection == 1
@@ -925,7 +974,7 @@ async def test_a_mirror_the_bot_cannot_request_from_is_told_why(db, linked_owner
         f"\u274c Nothing saved\n\u26a0 {REFUSAL_MESSAGES[REQUEST_NOT_POSSIBLE]}\n"
     )
     assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
-    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == MIRROR_YT_ID).one()
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == MIRROR_YT_NO_VIDEO_ID).one()
     assert ledger.outcome == "no_detection"
 
 

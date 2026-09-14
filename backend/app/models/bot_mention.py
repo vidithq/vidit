@@ -19,7 +19,7 @@ from app.database import Base
 # ``skipped``: every detection deduped against an existing row and moved
 # nothing on it.
 # ``requested``: the thread carried no coordinate but did carry footage and a
-# requestable source, so a ``requested`` row was opened instead of a refusal
+# source link, so a ``requested`` row was opened instead of a refusal
 # (``services/bot``, the request branch).
 # ``self``: the bot's own post surfaced in its mentions timeline (recorded so
 # the ``since_id`` cursor advances past it instead of re-billing it every

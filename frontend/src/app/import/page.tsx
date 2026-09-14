@@ -334,10 +334,11 @@ export default function ImportGuidePage() {
             becomes the source, its own clip becomes the evidence, and the
             request goes on the board for anyone to geolocate. It is yours: it
             sits with your other open requests on your profile, where you edit
-            it or withdraw it. The copy you attached is used only when the
-            linked post serves no clip of its own. It works when the link is an
-            X post or a public Telegram post, and when the thread carries
-            footage. Tag the same post again and nothing is duplicated.
+            it or withdraw it. When the link is an X post or a public Telegram
+            post, the bot reads the clip and the date from it and the copy you
+            attached is the fallback. Any other link, a YouTube video or a news
+            page, works too, as long as you attach the clip yourself. Tag the
+            same post again and nothing is duplicated.
           </p>
           <div className="space-y-3">
             <MockPost
@@ -365,9 +366,9 @@ export default function ImportGuidePage() {
           The bot answers in-thread with your detection&apos;s reference and
           with what to fix at review: an empty source, several coordinates, a
           missing footage file or post date, or media already on Vidit. When
-          nothing imports, it names why, a link it cannot request from included.
-          Replies are capped per hour, so a burst of tags still creates every
-          detection while some of them go unanswered.
+          nothing imports, it names why, a mirror with no clip attached
+          included. Replies are capped per hour, so a burst of tags still
+          creates every detection while some of them go unanswered.
         </p>
         <div className="sm:max-w-md">
           <MockPost {...MOCK_BOT} replyingTo={MOCK_ANALYST.handle}>

@@ -1,0 +1,28 @@
+{
+  "id_str": "9220000000000000001",
+  "created_at": "2026-03-14T07:20:00.000Z",
+  "user": { "screen_name": "relay_heron" },
+  "text": "Armour column on the eastern ring road\nSource: https://t.co/fakeMIRRORYT",
+  "mediaDetails": [
+    {
+      "type": "video",
+      "video_info": {
+        "variants": [
+          {
+            "bitrate": "832000",
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/94/vid/480x852/FAKEMIRRORYT.mp4?tag=12"
+          }
+        ]
+      }
+    }
+  ],
+  "entities": {
+    "urls": [
+      {
+        "url": "https://t.co/fakeMIRRORYT",
+        "expanded_url": "https://www.youtube.com/watch?v=FAKEMIRROR01"
+      }
+    ]
+  }
+}
