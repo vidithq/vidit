@@ -227,7 +227,7 @@ jobs:
       # when the suite goes red, so a green run publishes nothing.
       - name: Upload the failing run's traces
         if: failure()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-test-results
           path: frontend/test-results/
