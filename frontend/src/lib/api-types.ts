@@ -636,7 +636,13 @@ export interface paths {
         put?: never;
         /**
          * Create Collection
-         * @description Open a collection under a title and a description. It starts empty.
+         * @description Open a collection under a title and a description, holding ``event_ids``.
+         *
+         *     The ids are optional: without them the collection starts empty. With them
+         *     the create and the shelving are one act, under the refusals
+         *     ``PUT /collections/{id}/events/{event_id}`` states, so a foreign or
+         *     ineligible id fails the create whole rather than landing a collection
+         *     holding part of what was asked for.
          */
         post: operations["create_collection_api_v1_collections_post"];
         delete?: never;
@@ -2461,13 +2467,26 @@ export interface components {
         };
         /**
          * CollectionCreate
-         * @description Body of ``POST /collections``: the title and the description. Items
-         *     order themselves by when their events happened, so there is no manual
-         *     order to submit.
+         * @description Body of ``POST /collections``: the title, the description, and the
+         *     events the collection opens with.
+         *
+         *     ``event_ids`` is optional and empty by default, so a collection still
+         *     opens on its two fields alone. When it carries ids, the create and the
+         *     shelving are one act: the service puts every one of them on the
+         *     collection inside the same transaction, through the checks
+         *     ``PUT /collections/{id}/events/{event_id}`` runs, so an ineligible or
+         *     foreign id fails the whole create and no half-filled collection lands.
+         *
+         *     The ids are de-duplicated in the order they arrived, because ticking one
+         *     row twice is one membership, and capped at
+         *     :data:`MAX_CREATE_EVENTS`. Items order themselves by when their events
+         *     happened, so the order the ids arrive in carries nothing else.
          */
         CollectionCreate: {
             /** Description */
             description: string;
+            /** Event Ids */
+            event_ids?: string[];
             /** Title */
             title: string;
         };

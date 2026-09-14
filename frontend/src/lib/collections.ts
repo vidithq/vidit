@@ -2,8 +2,15 @@ import { Layers } from "lucide-react";
 
 import { apiFetch, apiFetchPage } from "./api";
 import type { components } from "./api-types";
+import { eventListPath } from "./events";
 import { formatDate } from "./format";
-import type { EventListItem, MapPoint } from "@/types";
+import { search } from "./search";
+import type {
+  EventListItem,
+  EventStatus,
+  MapPoint,
+  SearchEventHit,
+} from "@/types";
 
 /**
  * The collections surface: the routes, the one hand-kept cap, and the two
@@ -197,14 +204,118 @@ export function readerStep(raw: string | null, total: number): number {
   return Math.min(Math.max(Number.parseInt(raw, 10), 1), total);
 }
 
-/** Open a collection under a title and a description, both required. */
+/**
+ * The two statuses a collection may hold, as the picker asks the read surfaces
+ * for them. Mirrors `services/event_filters.collectable_events`, the one
+ * predicate the item list, the count, the date range, the mosaic and the add
+ * verb all read: a picker offering a row the add verb then refuses hands the
+ * analyst a 409 on something they were invited to tick.
+ */
+export const COLLECTABLE_STATUSES: EventStatus[] = ["geolocated", "detected"];
+
+/** One row of the event picker: the slots a compact `<EntityCard>` fills.
+ *  A catalogue row (`EventListItem`) already is one; a search hit becomes one
+ *  through `pickableFromHit`, so the two sources the picker reads render as
+ *  the same row. */
+export type PickableEvent = Pick<
+  EventListItem,
+  | "id"
+  | "title"
+  | "status"
+  | "media"
+  | "is_graphic"
+  | "event_date"
+  | "event_coords"
+  | "tags"
+>;
+
+/** How many matches one typed query brings back. `/search` caps a group at 50
+ *  and hands out no cursor, so this is the whole answer to a query rather than
+ *  its first page: the picker says so, and narrowing the words is how a reader
+ *  reaches what it left out. */
+export const PICKER_SEARCH_LIMIT = 50;
+
+/** One page of the analyst's own collectable events, newest first: what the
+ *  picker browses with nothing typed. The list endpoint serves this half
+ *  because it is the cursor-paged one, so `Show more` walks the whole
+ *  catalogue instead of stopping at a group cap. */
+export function pickerBrowsePath(
+  username: string,
+  cursor: string | null,
+): string {
+  return eventListPath({
+    view: "located",
+    status: COLLECTABLE_STATUSES,
+    author: username,
+    cursor,
+  });
+}
+
+/** A search hit as a picker row: the hit carries its coordinates flat and its
+ *  picked thumbnail as a list of at most one, which is the card's `media`. */
+function pickableFromHit(hit: SearchEventHit): PickableEvent {
+  return {
+    id: hit.id,
+    title: hit.title,
+    status: hit.status,
+    media: hit.media[0] ?? null,
+    is_graphic: hit.is_graphic,
+    event_date: hit.event_date,
+    event_coords: { lat: hit.lat, lng: hit.lng },
+    tags: hit.tags,
+  };
+}
+
+/**
+ * The analyst's own collectable events matching a typed query, and how many
+ * matched in all.
+ *
+ * `/search` serves the typed half because it is the endpoint that reads the
+ * words: `type=event` for the located group and `author=` for their own
+ * catalogue, the pair every profile link into search already carries. `total`
+ * is the pre-cap match count, so the picker can say what its list leaves out.
+ */
+export async function searchPickableEvents(
+  username: string,
+  q: string,
+): Promise<{ items: PickableEvent[]; total: number }> {
+  const response = await search({
+    q,
+    type: "event",
+    author: username,
+    status: COLLECTABLE_STATUSES,
+    limit: PICKER_SEARCH_LIMIT,
+  });
+  return {
+    items: response.geolocations.map(pickableFromHit),
+    total: response.total.geolocations,
+  };
+}
+
+/** How many events are ticked, as the picker says it. One phrasing for the
+ *  create page and the edit page, the way `eventCountLabel` is the one
+ *  phrasing for what a collection holds. */
+export function selectedCountLabel(count: number): string {
+  return `${count} selected`;
+}
+
+/**
+ * Open a collection under a title and a description, both required, holding
+ * the events the create page's picker ticked.
+ *
+ * `eventIds` rides the create rather than following it as a request per row:
+ * the server puts them on inside the same transaction, so a refusal on any one
+ * of them takes the whole create with it and the analyst is never left with a
+ * collection holding part of what they picked.
+ */
 export function createCollection(
   title: string,
   description: string,
+  eventIds: string[] = [],
 ): Promise<Collection> {
   return apiFetch<Collection>("/collections", {
     method: "POST",
-    body: JSON.stringify({ title, description }),
+    body: JSON.stringify({ title, description, event_ids: eventIds }),
   });
 }
 

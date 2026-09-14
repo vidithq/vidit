@@ -19,11 +19,29 @@ vi.mock("@/hooks/useApiResource", () => ({
 
 const updateCollection = vi.fn();
 const deleteCollection = vi.fn();
+const fetchCollectionSequence = vi.fn();
+const addEventToCollection = vi.fn();
+const removeEventFromCollection = vi.fn();
+const searchPickableEvents = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
   updateCollection: (id: string, title: string, description: string) =>
     updateCollection(id, title, description),
   deleteCollection: (id: string) => deleteCollection(id),
+  fetchCollectionSequence: (id: string) => fetchCollectionSequence(id),
+  addEventToCollection: (c: string, e: string) => addEventToCollection(c, e),
+  removeEventFromCollection: (c: string, e: string) =>
+    removeEventFromCollection(c, e),
+  searchPickableEvents: (username: string, q: string) =>
+    searchPickableEvents(username, q),
+}));
+
+// The picker's browse list, held empty: what these lock in is the diff the
+// save writes, which is the picker's selection against the items the page
+// opened on.
+const useCursorList = vi.fn();
+vi.mock("@/hooks/useCursorList", () => ({
+  useCursorList: () => useCursorList(),
 }));
 
 import type { Collection } from "@/lib/collections";
@@ -55,6 +73,20 @@ function mockRead(data: Collection | null, error: string | null = null) {
   });
 }
 
+/** One item of the collection the page opens on, as the sequence walk hands
+ *  it over. Only the id matters here: it is what the picker starts ticked and
+ *  what the save diffs against. */
+const sequenceOf = (...ids: string[]) => ({
+  items: ids.map((id) => ({ id })),
+  capped: false,
+});
+
+/** Render, then wait for the two reads the form needs before it mounts. */
+async function renderPage() {
+  render(<EditCollectionPage />);
+  await screen.findByLabelText("Title");
+}
+
 beforeEach(() => {
   push.mockReset();
   replace.mockReset();
@@ -62,10 +94,28 @@ beforeEach(() => {
   useApiResource.mockReset();
   updateCollection.mockReset();
   deleteCollection.mockReset();
+  fetchCollectionSequence.mockReset();
+  addEventToCollection.mockReset();
+  removeEventFromCollection.mockReset();
+  searchPickableEvents.mockReset();
+  useCursorList.mockReset();
   useAuth.mockReturnValue({ user: USER, loading: false });
   mockRead(collection());
   updateCollection.mockResolvedValue(collection());
   deleteCollection.mockResolvedValue(undefined);
+  fetchCollectionSequence.mockResolvedValue(sequenceOf("e1", "e2"));
+  addEventToCollection.mockResolvedValue(undefined);
+  removeEventFromCollection.mockResolvedValue(undefined);
+  searchPickableEvents.mockResolvedValue({ items: [], total: 0 });
+  useCursorList.mockReturnValue({
+    items: [],
+    error: null,
+    loading: false,
+    loadingMore: false,
+    hasMore: false,
+    loadMore: vi.fn(),
+    reload: vi.fn(),
+  });
 });
 
 describe("EditCollectionPage", () => {
@@ -78,8 +128,8 @@ describe("EditCollectionPage", () => {
     expect(screen.queryByLabelText("Title")).not.toBeInTheDocument();
   });
 
-  it("opens on what the collection currently says about itself", () => {
-    render(<EditCollectionPage />);
+  it("opens on what the collection currently says about itself", async () => {
+    await renderPage();
 
     expect(useApiResource).toHaveBeenCalledWith("/collections/c1");
     expect(screen.getByLabelText("Title")).toHaveValue(
@@ -91,11 +141,11 @@ describe("EditCollectionPage", () => {
   });
 
   it("writes both details and returns to the collection", async () => {
-    render(<EditCollectionPage />);
+    await renderPage();
     fireEvent.change(screen.getByLabelText("Title"), {
       target: { value: "Kupiansk rail corridor, March" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save details" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save collection" }));
 
     // Both fields ride every write, so a renamed collection cannot be left
     // describing the old one.
@@ -109,11 +159,106 @@ describe("EditCollectionPage", () => {
     expect(push).toHaveBeenCalledWith("/collections/c1");
   });
 
+  it("opens the picker on what the collection holds", async () => {
+    await renderPage();
+
+    expect(fetchCollectionSequence).toHaveBeenCalledWith("c1");
+    // The count line is the picker's own reading of the set, so the edit
+    // starts on the collection rather than on nothing.
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
+  });
+
+  it("writes the difference the picker made, after the details", async () => {
+    useCursorList.mockReturnValue({
+      items: [
+        {
+          id: "e3",
+          title: "Strike on the depot",
+          status: "geolocated",
+          media: null,
+          is_graphic: false,
+          event_date: "2026-03-15",
+          event_coords: { lat: 49.71, lng: 37.616 },
+          tags: [],
+          owner: USER,
+          conflicts: [],
+          before_closed_status: null,
+        },
+      ],
+      error: null,
+      loading: false,
+      loadingMore: false,
+      hasMore: false,
+      loadMore: vi.fn(),
+      reload: vi.fn(),
+    });
+    // The collection opens holding `e3`, which the click below takes off, and
+    // `e2`, which it keeps.
+    fetchCollectionSequence.mockResolvedValue(sequenceOf("e2", "e3"));
+
+    await renderPage();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Take Strike on the depot off this collection",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save collection" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/collections/c1"));
+    // The details first, then only what moved: the row still ticked is left
+    // alone, since both membership routes are idempotent but a write per row
+    // would be a request for every item on a long shelf.
+    expect(updateCollection).toHaveBeenCalled();
+    expect(addEventToCollection).not.toHaveBeenCalled();
+    expect(removeEventFromCollection).toHaveBeenCalledWith("c1", "e3");
+  });
+
+  it("stops at the first refusal the difference meets", async () => {
+    useCursorList.mockReturnValue({
+      items: [
+        {
+          id: "e1",
+          title: "Strike on the depot",
+          status: "geolocated",
+          media: null,
+          is_graphic: false,
+          event_date: "2026-03-15",
+          event_coords: { lat: 49.71, lng: 37.616 },
+          tags: [],
+          owner: USER,
+          conflicts: [],
+          before_closed_status: null,
+        },
+      ],
+      error: null,
+      loading: false,
+      loadingMore: false,
+      hasMore: false,
+      loadMore: vi.fn(),
+      reload: vi.fn(),
+    });
+    fetchCollectionSequence.mockResolvedValue(sequenceOf("e1"));
+    removeEventFromCollection.mockRejectedValue(new Error("Nope."));
+
+    await renderPage();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Take Strike on the depot off this collection",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save collection" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("Nope.")).toBeInTheDocument(),
+    );
+    expect(push).not.toHaveBeenCalled();
+  });
+
   it("stays on the page and says why when the save is refused", async () => {
     updateCollection.mockRejectedValue(new Error("Title already used."));
 
-    render(<EditCollectionPage />);
-    fireEvent.click(screen.getByRole("button", { name: "Save details" }));
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Save collection" }));
 
     await waitFor(() =>
       expect(screen.getByText("Title already used.")).toBeInTheDocument(),
@@ -121,8 +266,8 @@ describe("EditCollectionPage", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it("cancels back to the collection, writing nothing", () => {
-    render(<EditCollectionPage />);
+  it("cancels back to the collection, writing nothing", async () => {
+    await renderPage();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(updateCollection).not.toHaveBeenCalled();
@@ -154,7 +299,7 @@ describe("EditCollectionPage", () => {
   });
 
   it("asks twice before dropping the collection, then returns to the profile", async () => {
-    render(<EditCollectionPage />);
+    await renderPage();
 
     // The sentence beside the control says what survives the act, since that
     // is the part a reader hesitates over.
@@ -178,7 +323,7 @@ describe("EditCollectionPage", () => {
   it("stays on the page and says why when the drop is refused", async () => {
     deleteCollection.mockRejectedValue(new Error("Nope."));
 
-    render(<EditCollectionPage />);
+    await renderPage();
     fireEvent.click(
       screen.getByRole("button", { name: "Drop this collection" }),
     );

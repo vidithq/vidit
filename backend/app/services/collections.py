@@ -10,9 +10,12 @@ public profile. Two rules hold everywhere in this module:
   soft-deleted therefore leaves every one of them at once, with no write to
   ``collection_events``.
 * **An event joins its owner's collection only.** The invariant spans two
-  tables, so no SQL constraint carries it: :func:`add_event` enforces it with
-  the same :func:`services.permissions.ensure_owner` every owner-only verb
-  uses, which means an attempt to shelve somebody else's event is a 403.
+  tables, so no SQL constraint carries it: :func:`ensure_collectable` enforces
+  it with the same :func:`services.permissions.ensure_owner` every owner-only
+  verb uses, which means an attempt to shelve somebody else's event is a 403.
+  Both verbs that shelve one read it, :func:`add_event` for the route that
+  takes a single event and :func:`create_collection` for the create that opens
+  a collection on a picked set.
 
 A collection stores no file of its own: the picture its profile card wears is
 the mosaic :func:`cover_tiles_for` reads off the items at request time, so
@@ -370,11 +373,73 @@ def resolve_collection(db: Session, *, collection_id: uuid.UUID, viewer: User | 
     return collection
 
 
-def create_collection(db: Session, *, owner: User, title: str, description: str) -> Collection:
-    """Open a new, empty collection for ``owner``, named and described."""
+def ensure_collectable(db: Session, *, event_ids: Sequence[uuid.UUID], user: User) -> None:
+    """Refuse any id that is not one of ``user``'s collectable events.
+
+    The event half of the membership refusals, in the order the route states
+    them and per id in the order the ids arrived: an id matching no event at
+    all is a 404, somebody else's event is a 403 (the ownership invariant that
+    keeps a collection one analyst's own work), and an event whose state is
+    not one a collection shows
+    (:func:`services.event_filters.collectable_events`) is a 409.
+
+    One home for the three, asked over a set: :func:`add_event` passes the one
+    id the route carries and :func:`create_collection` passes what the create
+    page's picker ticked, so a shelving and a create answer the same refusal
+    for the same row. Two statements whatever the count, which is what keeps a
+    create at the cap from costing a round trip per id.
+    """
+    if not event_ids:
+        return
+    events = {event.id: event for event in db.query(Event).filter(Event.id.in_(event_ids)).all()}
+    collectable = {
+        event_id
+        for (event_id,) in db.query(Event.id).filter(Event.id.in_(event_ids), collectable_events())
+    }
+    for event_id in event_ids:
+        event = events.get(event_id)
+        if event is None:
+            raise EventNotFoundError("Event not found")
+        # The same 403 every owner-only verb raises, so a foreign id is
+        # refused here in the one shape the rest of the site refuses one.
+        ensure_owner(event, user)
+        if event_id not in collectable:
+            raise EventNotCollectableError("This event is not one a collection can hold")
+
+
+def create_collection(
+    db: Session,
+    *,
+    owner: User,
+    title: str,
+    description: str,
+    event_ids: Sequence[uuid.UUID] = (),
+) -> Collection:
+    """Open a collection for ``owner``, named, described, and holding ``event_ids``.
+
+    The ids are what the create page's picker ticked, empty for a collection
+    opened on its two fields alone. They join in the same transaction as the
+    collection itself, through :func:`ensure_collectable`, so a refusal on any
+    one of them takes the whole create with it and no half-filled collection
+    lands for the analyst to find and clean up. The caller de-duplicates and
+    caps them (``schemas/collection.CollectionCreate``), and the collection is
+    new, so there is no membership to check first.
+    """
     collection = Collection(owner_id=owner.id, title=title, description=description)
     db.add(collection)
-    db.commit()
+    try:
+        db.flush()
+        ensure_collectable(db, event_ids=event_ids, user=owner)
+        db.add_all(
+            CollectionEvent(collection_id=collection.id, event_id=event_id)
+            for event_id in event_ids
+        )
+        db.commit()
+    except Exception:
+        # The refusals leave through here as well as the database errors, and
+        # both mean the same thing: nothing of this create stands.
+        db.rollback()
+        raise
     db.refresh(collection)
     return collection
 
@@ -412,8 +477,10 @@ def add_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user:
     """Put one event on ``collection``. Idempotent: ``False`` if already there.
 
     Three refusals, in order. The collection is the caller's or it is a 403.
-    The event is the caller's too, the ownership invariant, or it is a 403 as
-    well. And a collection may only hold a visible, worked row
+    Then the event's own three, which :func:`ensure_collectable` holds for
+    this route and for the create alike: the event is the caller's too, the
+    ownership invariant, or it is a 403 as well; and a collection may only
+    hold a visible, worked row
     (:func:`services.event_filters.collectable_events`), so a request, a
     closed row, a takedown or a soft-deleted row is a 409: the event exists
     and the caller owns it, but its state is not one a curated shelf shows. An
@@ -424,13 +491,7 @@ def add_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user:
     statement and answers idempotently instead of poisoning the transaction.
     """
     ensure_owner(collection, user)
-    event = db.query(Event).filter(Event.id == event_id).first()
-    if event is None:
-        raise EventNotFoundError("Event not found")
-    ensure_owner(event, user)
-    showable = db.query(Event.id).filter(Event.id == event_id, collectable_events()).first()
-    if showable is None:
-        raise EventNotCollectableError("This event is not one a collection can hold")
+    ensure_collectable(db, event_ids=[event_id], user=user)
 
     existing = (
         db.query(CollectionEvent)

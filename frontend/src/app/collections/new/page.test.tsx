@@ -13,12 +13,21 @@ const useAuth = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => useAuth() }));
 
 const createCollection = vi.fn();
-const addEventToCollection = vi.fn();
+const searchPickableEvents = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
-  createCollection: (title: string, description: string) =>
-    createCollection(title, description),
-  addEventToCollection: (c: string, e: string) => addEventToCollection(c, e),
+  createCollection: (title: string, description: string, ids: string[]) =>
+    createCollection(title, description, ids),
+  searchPickableEvents: (username: string, q: string) =>
+    searchPickableEvents(username, q),
+}));
+
+// The picker's browse list. The walk itself is `useCursorList`'s own test and
+// the picker's; here it only has to render without reaching the network, so
+// the page's own acts are what these assert.
+const useCursorList = vi.fn();
+vi.mock("@/hooks/useCursorList", () => ({
+  useCursorList: () => useCursorList(),
 }));
 
 import type { Collection } from "@/lib/collections";
@@ -54,11 +63,21 @@ beforeEach(() => {
   replace.mockReset();
   useAuth.mockReset();
   createCollection.mockReset();
-  addEventToCollection.mockReset();
+  searchPickableEvents.mockReset();
+  useCursorList.mockReset();
   searchParams.delete("event");
   useAuth.mockReturnValue({ user: USER, loading: false });
   createCollection.mockResolvedValue(created);
-  addEventToCollection.mockResolvedValue(undefined);
+  searchPickableEvents.mockResolvedValue({ items: [], total: 0 });
+  useCursorList.mockReturnValue({
+    items: [],
+    error: null,
+    loading: false,
+    loadingMore: false,
+    hasMore: false,
+    loadMore: vi.fn(),
+    reload: vi.fn(),
+  });
 });
 
 describe("NewCollectionPage", () => {
@@ -88,18 +107,19 @@ describe("NewCollectionPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create collection" }));
 
     // Both fields travel, trimmed, so the server stores neither padding nor a
-    // collection that says nothing about itself.
+    // collection that says nothing about itself. Nothing was ticked, so the
+    // collection opens empty.
     await waitFor(() =>
       expect(createCollection).toHaveBeenCalledWith(
         "March strikes",
         "Strikes on the corridor through March.",
+        [],
       ),
     );
-    expect(addEventToCollection).not.toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith("/collections/c9");
   });
 
-  it("shelves the event it was opened for and returns to it", async () => {
+  it("carries the event it was opened for and returns to it", async () => {
     searchParams.set("event", "e1");
 
     render(<NewCollectionPage />);
@@ -109,11 +129,61 @@ describe("NewCollectionPage", () => {
     fillForm();
     fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
 
-    await waitFor(() => expect(createCollection).toHaveBeenCalled());
-    // One act: the collection is opened and the event is put on it, then the
-    // reader lands back on the event they were shelving.
-    expect(addEventToCollection).toHaveBeenCalledWith("c9", "e1");
+    // `?event=` is a pre-selection in the picker, so the event rides the
+    // create like every other row the analyst ticks, and one refusal takes
+    // the whole act with it. Then the reader lands back on the event.
+    await waitFor(() =>
+      expect(createCollection).toHaveBeenCalledWith(
+        "March strikes",
+        "Strikes on the corridor through March.",
+        ["e1"],
+      ),
+    );
     await waitFor(() => expect(push).toHaveBeenCalledWith("/events/e1"));
+  });
+
+  it("puts the picker under the fields, counting what stands", () => {
+    useCursorList.mockReturnValue({
+      items: [
+        {
+          id: "e1",
+          title: "Strike on the rail junction",
+          status: "geolocated",
+          media: null,
+          is_graphic: false,
+          event_date: "2026-03-14",
+          event_coords: { lat: 49.71, lng: 37.616 },
+          tags: [],
+          owner: USER,
+          conflicts: [],
+          before_closed_status: null,
+        },
+      ],
+      error: null,
+      loading: false,
+      loadingMore: false,
+      hasMore: false,
+      loadMore: vi.fn(),
+      reload: vi.fn(),
+    });
+
+    render(<NewCollectionPage />);
+    fillForm();
+    expect(screen.getByText("0 selected")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Put Strike on the rail junction on this collection",
+      }),
+    );
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create collection" }));
+    expect(createCollection).toHaveBeenCalledWith(
+      "March strikes",
+      "Strikes on the corridor through March.",
+      ["e1"],
+    );
   });
 
   it("stays on the page and says why when the create is refused", async () => {

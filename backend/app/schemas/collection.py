@@ -13,6 +13,12 @@ from app.schemas.user import AuthorRef
 # says what one collection holds.
 DESCRIPTION_MAX_LENGTH = 500
 
+# How many events one create may put on a collection. The create page's picker
+# sends what the analyst ticked, so this is a ceiling on the body rather than a
+# rule about curation: a collection is a curated set, and the cap is what keeps
+# a runaway request from opening one transaction over the whole catalogue.
+MAX_CREATE_EVENTS = 500
+
 
 class CollectionWrite(BaseModel):
     """The fields a collection carries, as a create or an update sends them.
@@ -43,9 +49,29 @@ class CollectionWrite(BaseModel):
 
 
 class CollectionCreate(CollectionWrite):
-    """Body of ``POST /collections``: the title and the description. Items
-    order themselves by when their events happened, so there is no manual
-    order to submit."""
+    """Body of ``POST /collections``: the title, the description, and the
+    events the collection opens with.
+
+    ``event_ids`` is optional and empty by default, so a collection still
+    opens on its two fields alone. When it carries ids, the create and the
+    shelving are one act: the service puts every one of them on the
+    collection inside the same transaction, through the checks
+    ``PUT /collections/{id}/events/{event_id}`` runs, so an ineligible or
+    foreign id fails the whole create and no half-filled collection lands.
+
+    The ids are de-duplicated in the order they arrived, because ticking one
+    row twice is one membership, and capped at
+    :data:`MAX_CREATE_EVENTS`. Items order themselves by when their events
+    happened, so the order the ids arrive in carries nothing else.
+    """
+
+    event_ids: list[uuid.UUID] = Field(default_factory=list, max_length=MAX_CREATE_EVENTS)
+
+    @field_validator("event_ids")
+    @classmethod
+    def _unique(cls, v: list[uuid.UUID]) -> list[uuid.UUID]:
+        """Collapse repeats, keeping the first occurrence of each id."""
+        return list(dict.fromkeys(v))
 
 
 class CollectionUpdate(CollectionWrite):

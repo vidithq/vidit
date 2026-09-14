@@ -11,9 +11,13 @@ import {
   deleteCollection,
   eventCollectionsPath,
   fetchCollectionSequence,
+  PICKER_SEARCH_LIMIT,
+  pickerBrowsePath,
   READER_MAX_ITEMS,
   readerStep,
   removeEventFromCollection,
+  searchPickableEvents,
+  selectedCountLabel,
   updateCollection,
   userCollectionsPath,
   type Collection,
@@ -96,9 +100,29 @@ describe("collection writes", () => {
     const [path, options] = lastCall();
     expect(path).toBe("/collections");
     expect(options.method).toBe("POST");
+    // The ids ride every create, empty for a collection opened on its two
+    // fields alone.
     expect(JSON.parse(options.body as string)).toEqual({
       title: "Kupiansk rail corridor",
       description: "Three days of strikes.",
+      event_ids: [],
+    });
+  });
+
+  it("opens a collection holding what the picker ticked", async () => {
+    await createCollection("March strikes", "Strikes through March.", [
+      "e1",
+      "e2",
+    ]);
+
+    // One request, so a refusal on any id takes the whole create with it and
+    // no half-filled collection lands.
+    const [path, options] = lastCall();
+    expect(path).toBe("/collections");
+    expect(JSON.parse(options.body as string)).toEqual({
+      title: "March strikes",
+      description: "Strikes through March.",
+      event_ids: ["e1", "e2"],
     });
   });
 
@@ -137,7 +161,6 @@ describe("collection writes", () => {
       { method: "DELETE" },
     ]);
   });
-
 });
 
 describe("the step link", () => {
@@ -277,5 +300,93 @@ describe("collectionPoints", () => {
     expect(collectionPoints([item({ id: "e1", event_coords: null })])).toEqual(
       [],
     );
+  });
+});
+
+describe("the event picker's two sources", () => {
+  it("browses the analyst's own collectable events, newest first", () => {
+    // The cursor-paged list endpoint, scoped to the owner and to the two
+    // statuses a collection may hold, so `Show more` walks the catalogue and
+    // no row the add verb would refuse is offered.
+    expect(pickerBrowsePath("ana", null)).toBe(
+      "/events?view=located&status=geolocated&status=detected&author=ana",
+    );
+    expect(pickerBrowsePath("ana", "c2")).toBe(
+      "/events?view=located&status=geolocated&status=detected&author=ana&cursor=c2",
+    );
+  });
+
+  it("sends a typed query to search, scoped the same way", async () => {
+    mockFetch.mockResolvedValue({
+      geolocations: [],
+      requests: [],
+      collections: [],
+      users: [],
+      total: { geolocations: 0, requests: 0, collections: 0, users: 0 },
+      query: "kakhovka",
+      type: "event",
+    });
+
+    await searchPickableEvents("ana", "kakhovka");
+
+    const [path] = lastCall();
+    const query = new URLSearchParams(path.split("?")[1]);
+    expect(query.get("q")).toBe("kakhovka");
+    expect(query.get("type")).toBe("event");
+    expect(query.get("author")).toBe("ana");
+    expect(query.getAll("status")).toEqual(["geolocated", "detected"]);
+    expect(query.get("limit")).toBe(String(PICKER_SEARCH_LIMIT));
+  });
+
+  it("turns a hit into the row the browse list renders", async () => {
+    mockFetch.mockResolvedValue({
+      geolocations: [
+        {
+          id: "e1",
+          title: "Kakhovka dam",
+          title_highlight: "Kakhovka dam",
+          lat: 46.77,
+          lng: 33.37,
+          event_date: "2026-03-14",
+          is_graphic: false,
+          status: "detected",
+          owner: { id: "u1", username: "ana", avatar_url: null },
+          media: [],
+          tags: [],
+        },
+      ],
+      requests: [],
+      collections: [],
+      users: [],
+      total: { geolocations: 62, requests: 0, collections: 0, users: 0 },
+      query: "kakhovka",
+      type: "event",
+    });
+
+    const found = await searchPickableEvents("ana", "kakhovka");
+
+    // The hit carries its coordinates flat and its thumbnail as a list of at
+    // most one; a picker row carries the card's own pair.
+    expect(found.items).toEqual([
+      {
+        id: "e1",
+        title: "Kakhovka dam",
+        status: "detected",
+        media: null,
+        is_graphic: false,
+        event_date: "2026-03-14",
+        event_coords: { lat: 46.77, lng: 33.37 },
+        tags: [],
+      },
+    ]);
+    // The pre-cap count, so the picker can say what its list leaves out.
+    expect(found.total).toBe(62);
+  });
+});
+
+describe("selectedCountLabel", () => {
+  it("says how many rows stand, whatever the list below shows", () => {
+    expect(selectedCountLabel(0)).toBe("0 selected");
+    expect(selectedCountLabel(3)).toBe("3 selected");
   });
 });

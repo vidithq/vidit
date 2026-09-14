@@ -94,13 +94,49 @@ test.describe("collection player", () => {
 });
 
 /**
+ * The create page, which is the same form before there is a collection.
+ *
+ * It is the longest form on this surface: two text fields, then the picker,
+ * whose rows are catalogue cards carrying a thumbnail, a title, a meta line
+ * and a status badge. A card row is where a phone column gets pushed open, so
+ * what this measures is the whole page against the column, with the picker's
+ * own field under the same 16px rule the two above it take.
+ */
+test.describe("collection create page", () => {
+  test("fits the form and its picker on a narrow column", async ({
+    context,
+    page,
+  }) => {
+    await grantSession(context);
+    await mockApi(page);
+    await page.goto("/collections/new");
+
+    await expect(
+      page.getByRole("heading", { name: "New collection" }),
+    ).toBeVisible();
+
+    // The picker is under the two fields, with its own search box and the line
+    // that counts what stands.
+    await expect(
+      page.getByPlaceholder("Search your geolocations by title…"),
+    ).toBeVisible();
+    await expect(page.getByText("0 selected")).toBeVisible();
+
+    await expectNarrowViewportLayout(
+      page,
+      page.getByRole("button", { name: "Create collection" }),
+    );
+  });
+});
+
+/**
  * The owner's edit page for that collection.
  *
- * It is the one collection surface that is a form: a title field, a
- * description textarea and the drop control under them, which is the shape that
- * breaks on a phone when a field is laid out narrower than the column or
- * renders under the 16px mobile Safari zooms on. The owner is the only reader
- * it has.
+ * It is the same form over a collection that exists: the title field, the
+ * description textarea, the picker opened on what the collection holds, and
+ * the drop control under them, which is the shape that breaks on a phone when
+ * a field is laid out narrower than the column or renders under the 16px
+ * mobile Safari zooms on. The owner is the only reader it has.
  */
 test.describe("collection edit page", () => {
   test("fits the form on a narrow column", async ({ context, page }) => {
@@ -114,11 +150,12 @@ test.describe("collection edit page", () => {
     ).toBeVisible();
     await expect(page.getByLabel("Title")).toHaveValue(COLLECTION.title);
 
-    // The save is what the reader came here to press, and the two fields above
-    // it are what the shared checks measure.
+    // The save is what the reader came here to press, and the fields above it,
+    // the two text ones and the picker's search box, are what the shared
+    // checks measure.
     await expectNarrowViewportLayout(
       page,
-      page.getByRole("button", { name: "Save details" }),
+      page.getByRole("button", { name: "Save collection" }),
     );
 
     // The destructive zone sits at the bottom, past the fields, and its

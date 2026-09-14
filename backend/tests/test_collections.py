@@ -6,6 +6,10 @@ A collection is a named set of one analyst's own events. What these lock in:
   under a title and a required description, writes both together, and drops
   one, which leaves every event it held alone. A blank or over-long
   description is a 422 on either write.
+* ``POST /collections`` with ``event_ids``: the collection opens holding what
+  the create page's picker ticked, duplicate ids collapse to one membership, a
+  body past the cap is a 422, and a foreign (403), ineligible (409) or unknown
+  (404) id fails the create whole, leaving no collection behind.
 * ``PUT`` / ``DELETE /collections/{id}/events/{event_id}``: both idempotent,
   403 when the collection or the event belongs to someone else, 409 when the
   event's status is not one a collection shows, 404 on an unknown event.
@@ -47,7 +51,7 @@ from app.models.event import (
 )
 from app.models.media import Media
 from app.models.user import User
-from app.schemas.collection import DESCRIPTION_MAX_LENGTH
+from app.schemas.collection import DESCRIPTION_MAX_LENGTH, MAX_CREATE_EVENTS
 from app.services.auth import hash_password
 from tests.conftest import login_as
 
@@ -295,6 +299,146 @@ def test_create_collection_strips_the_description(db, cleanup, owner):
     assert response.status_code == 201
     collection_ids.append(uuid.UUID(response.json()["id"]))
     assert response.json()["description"] == "Strikes on the rail corridor."
+
+
+def _collections_of(db, owner: User) -> int:
+    """How many collections this analyst holds, read fresh."""
+    db.expire_all()
+    return db.query(Collection).filter(Collection.owner_id == owner.id).count()
+
+
+def test_create_collection_opens_it_on_the_picked_events(db, cleanup, owner):
+    """The create page's picker sends ids, and the collection opens holding them."""
+    _, collection_ids, _ = cleanup
+    first = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    second = _make_event(
+        db, cleanup, owner=owner, status=STATUS_DETECTED, event_date=date(2026, 5, 4)
+    )
+
+    response = client.post(
+        "/api/v1/collections",
+        json={
+            "title": "Kupiansk rail corridor",
+            "description": "Three days of strikes on the corridor.",
+            "event_ids": [str(first.id), str(second.id)],
+        },
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 201
+    body = response.json()
+    collection_ids.append(uuid.UUID(body["id"]))
+    # The read is computed over the memberships the same transaction wrote, so
+    # the count and the range describe the picked set right away.
+    assert body["event_count"] == 2
+    assert body["first_date"] == "2026-05-01"
+    assert body["last_date"] == "2026-05-04"
+
+    db.expire_all()
+    held = {
+        row.event_id
+        for row in db.query(CollectionEvent).filter(
+            CollectionEvent.collection_id == uuid.UUID(body["id"])
+        )
+    }
+    assert held == {first.id, second.id}
+
+
+def test_create_collection_refuses_a_foreign_event_and_lands_nothing(db, cleanup, owner, stranger):
+    """A foreign id is the membership route's 403, and it takes the create with it."""
+    theirs = _make_event(db, cleanup, owner=stranger, event_date=date(2026, 5, 1))
+
+    response = client.post(
+        "/api/v1/collections",
+        json={
+            "title": "Somebody else's work",
+            "description": "A shelf built out of another analyst's rows.",
+            "event_ids": [str(theirs.id)],
+        },
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 403
+    assert _collections_of(db, owner) == 0
+
+
+def test_create_collection_refuses_an_ineligible_event_and_lands_nothing(db, cleanup, owner):
+    """A request is an ask rather than an answer: 409, and no half-filled shelf."""
+    asked = _make_event(db, cleanup, owner=owner, status=STATUS_REQUESTED)
+    good = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+
+    response = client.post(
+        "/api/v1/collections",
+        json={
+            "title": "Mixed pick",
+            "description": "One row that stands and one that is only an ask.",
+            "event_ids": [str(good.id), str(asked.id)],
+        },
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "event_not_collectable"
+    # The eligible id in the same body is not shelved either: the create is
+    # one act, so nothing of it stands.
+    assert _collections_of(db, owner) == 0
+    db.expire_all()
+    assert db.query(CollectionEvent).filter(CollectionEvent.event_id == good.id).count() == 0
+
+
+def test_create_collection_refuses_an_unknown_event(db, owner):
+    response = client.post(
+        "/api/v1/collections",
+        json={
+            "title": "Phantom",
+            "description": "A shelf pointing at an id no event carries.",
+            "event_ids": [str(uuid.uuid4())],
+        },
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "event_not_found"
+    assert _collections_of(db, owner) == 0
+
+
+def test_create_collection_caps_the_event_ids(db, owner):
+    """Past the cap the body is refused outright, before any row is read."""
+    response = client.post(
+        "/api/v1/collections",
+        json={
+            "title": "Runaway",
+            "description": "More ids than one create may carry.",
+            "event_ids": [str(uuid.uuid4()) for _ in range(MAX_CREATE_EVENTS + 1)],
+        },
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 422
+    assert _collections_of(db, owner) == 0
+
+
+def test_create_collection_collapses_duplicate_event_ids(db, cleanup, owner):
+    """Ticking one row is one membership, however many times the id arrives."""
+    _, collection_ids, _ = cleanup
+    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+
+    response = client.post(
+        "/api/v1/collections",
+        json={
+            "title": "Doubled",
+            "description": "The same row, sent twice.",
+            "event_ids": [str(event.id), str(event.id)],
+        },
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 201
+    body = response.json()
+    collection_ids.append(uuid.UUID(body["id"]))
+    assert body["event_count"] == 1
+
+    db.expire_all()
+    assert (
+        db.query(CollectionEvent)
+        .filter(CollectionEvent.collection_id == uuid.UUID(body["id"]))
+        .count()
+        == 1
+    )
 
 
 def test_update_collection_writes_both_fields_and_is_owner_only(db, cleanup, owner, stranger):

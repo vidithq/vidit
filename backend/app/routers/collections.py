@@ -58,10 +58,24 @@ def create_collection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CollectionRead:
-    """Open a collection under a title and a description. It starts empty."""
-    collection = collections_service.create_collection(
-        db, owner=current_user, title=body.title, description=body.description
-    )
+    """Open a collection under a title and a description, holding ``event_ids``.
+
+    The ids are optional: without them the collection starts empty. With them
+    the create and the shelving are one act, under the refusals
+    ``PUT /collections/{id}/events/{event_id}`` states, so a foreign or
+    ineligible id fails the create whole rather than landing a collection
+    holding part of what was asked for.
+    """
+    try:
+        collection = collections_service.create_collection(
+            db,
+            owner=current_user,
+            title=body.title,
+            description=body.description,
+            event_ids=body.event_ids,
+        )
+    except collections_service.CollectionError as exc:
+        _raise_collection_error(exc)
     return collections_service.build_collection_read(db, collection)
 
 

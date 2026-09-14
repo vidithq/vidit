@@ -10,7 +10,6 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
-  addEventToCollection,
   collectionHref,
   createCollection,
   NEW_COLLECTION_EVENT_PARAM,
@@ -25,11 +24,11 @@ import {
  * here, the profile's Collections section and the add-to-collection panel on an
  * event, and both hand over rather than growing a form of their own.
  *
- * `?event=<id>` is the second of those: the new collection receives that event
- * on the same act and the page returns to the event, so shelving an event on a
- * collection that does not exist yet is one trip away from the event and back.
- * Without it the page opens the collection it just created, which is where its
- * items are put on it.
+ * `?event=<id>` is the second of those: the event arrives ticked in the
+ * picker, so it rides the create like every other row the analyst picks, and
+ * the page returns to the event, which makes shelving on a collection that
+ * does not exist yet one trip away from the event and back. Without it the
+ * page opens the collection it just created.
  *
  * The page is behind the wall (`useRequireAuth`, the client-side bounce every
  * write sub-route under a public prefix takes), and both its exits, Cancel and
@@ -59,13 +58,11 @@ function NewCollectionPageBody() {
     : `/profile/${encodeURIComponent(user?.username ?? "")}`;
 
   const create = useMutation(
-    async (title: string, description: string) => {
-      const collection = await createCollection(title, description);
-      // The shelving is part of the same act, so a refusal here says so on
-      // this page rather than landing the reader on an empty collection.
-      if (eventId) await addEventToCollection(collection.id, eventId);
-      return collection;
-    },
+    // One request: the picked events ride the create, so a refusal on any of
+    // them says so on this page rather than landing the reader on a
+    // collection holding part of what they picked.
+    (title: string, description: string, eventIds: string[]) =>
+      createCollection(title, description, eventIds),
     {
       fallback: "Failed to create the collection",
       onSuccess: (collection) =>
@@ -89,11 +86,15 @@ function NewCollectionPageBody() {
       <Card as="section">
         <SectionEyebrow title="Details" margin="none" />
         <CollectionDetailsForm
+          username={user.username}
+          initialEventIds={eventId ? [eventId] : []}
           submitLabel={eventId ? "Create and add" : "Create collection"}
           hint="Say what the collection holds. Items order themselves by event date, so there is no order to set."
           busy={create.loading}
           error={create.error}
-          onSubmit={(title, description) => void create.run(title, description)}
+          onSubmit={(title, description, eventIds) =>
+            void create.run(title, description, eventIds)
+          }
           onCancel={() => router.push(origin)}
         />
       </Card>

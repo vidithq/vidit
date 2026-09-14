@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 
+import { EventPicker } from "@/components/collections/EventPicker";
 import { Button } from "@/components/ui/Button";
 import { CharCounter } from "@/components/ui/CharCounter";
 import { Input, Textarea } from "@/components/ui/Input";
@@ -12,24 +13,33 @@ import {
 } from "@/lib/collections";
 
 /**
- * The one form behind every collection write that takes its details: the create
- * panel on the profile, the edit panel on the collection page, and the
- * add-to-collection panel's *New collection* row.
+ * The one form behind every collection write: what the collection is called,
+ * what it says it holds, and which of the analyst's events it holds.
  *
- * A collection carries two free-text fields, the title and a short description
- * of what it holds, so all three surfaces are the same pair with a different
- * verb on the button, and a per-caller copy is how the counters, the caps and
- * the refusals end up spelled three ways. The drafts live here: a caller passes
- * the values it starts from and is handed both on submit.
+ * Both write pages carry it, `/collections/new` and `/collections/{id}/edit`,
+ * so opening a collection and changing one are the same form with a different
+ * verb on the button, and a per-page copy is how the counters, the caps and
+ * the refusals end up spelled twice. The drafts live here: a caller passes the
+ * values it starts from and is handed all three on submit.
  *
- * Both fields are required, so the submit refuses a blank or over-long value on
- * either rather than letting the server answer 422 on text the analyst has
- * already typed. Each carries the shared `remaining / cap` counter
- * (`<CharCounter>`), which turns red exactly when the submit starts refusing.
+ * The two free-text fields are required, so the submit refuses a blank or
+ * over-long value on either rather than letting the server answer 422 on text
+ * the analyst has already typed. Each carries the shared `remaining / cap`
+ * counter (`<CharCounter>`), which turns red exactly when the submit starts
+ * refusing.
+ *
+ * **The picker sits under them** (`<EventPicker>`), because the set is part of
+ * what the analyst is writing: naming a collection and choosing what goes on
+ * it is one act on one page. The selection is a set of ids, seeded from
+ * `initialEventIds` (the collection's current items on an edit, the event a
+ * `?event=` create arrived with) and handed back whole on submit, so the
+ * caller writes the create or the diff rather than tracking clicks.
  */
 export function CollectionDetailsForm({
   initialTitle = "",
   initialDescription = "",
+  initialEventIds = [],
+  username,
   hint,
   submitLabel,
   onSubmit,
@@ -41,12 +51,18 @@ export function CollectionDetailsForm({
   initialTitle?: string;
   /** Seed for an edit; empty for a create. */
   initialDescription?: string;
+  /** The rows ticked when the form opens: the collection's current items on an
+   *  edit, the one event a `?event=` create carries, none otherwise. */
+  initialEventIds?: string[];
+  /** Whose events the picker lists: the signed-in analyst, since a collection
+   *  holds its owner's own work. */
+  username: string;
   /** A line under the fields, where the surface has room to say what they are
-   *  for (the create panel). */
+   *  for (the create page). */
   hint?: string;
   /** The verb: *Create collection*, *Save details*, *Create and add*. */
   submitLabel: string;
-  onSubmit: (title: string, description: string) => void;
+  onSubmit: (title: string, description: string, eventIds: string[]) => void;
   onCancel: () => void;
   /** The caller's write is in flight: both controls refuse the click. */
   busy?: boolean;
@@ -55,8 +71,16 @@ export function CollectionDetailsForm({
 }) {
   const [title, setTitle] = useState(initialTitle);
   const [description, setDescription] = useState(initialDescription);
+  const [eventIds, setEventIds] = useState(() => new Set(initialEventIds));
   const titleId = useId();
   const descriptionId = useId();
+
+  const toggleEvent = (eventId: string) =>
+    setEventIds((current) => {
+      const next = new Set(current);
+      if (!next.delete(eventId)) next.add(eventId);
+      return next;
+    });
 
   const titleOver = title.length > COLLECTION_TITLE_MAX_LEN;
   const descriptionOver = description.length > COLLECTION_DESCRIPTION_MAX_LEN;
@@ -105,13 +129,21 @@ export function CollectionDetailsForm({
         {hint && <span className="block text-xs text-neutral-500">{hint}</span>}
       </div>
 
+      <EventPicker
+        username={username}
+        selectedIds={eventIds}
+        onToggle={toggleEvent}
+      />
+
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
 
       <div className="flex items-center gap-3">
         <Button
           variant="primary"
           disabled={!ready || busy}
-          onClick={() => onSubmit(title.trim(), description.trim())}
+          onClick={() =>
+            onSubmit(title.trim(), description.trim(), [...eventIds])
+          }
         >
           {busy ? "Saving…" : submitLabel}
         </Button>

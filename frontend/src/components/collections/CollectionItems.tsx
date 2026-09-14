@@ -38,9 +38,10 @@ import type { EventListItem } from "@/types";
  * confirm, because the event is untouched, the write is idempotent, and putting
  * it back is the panel on the event's own page.
  *
- * The header's one link is the owner's own catalogue in search, since events
- * join a collection from their own pages and the owner has to get to one to do
- * it. The sentence under the eyebrow says so.
+ * The header's one link is the owner's own catalogue in search, since an event
+ * joins a collection from its own page and the owner has to get to one to do
+ * it. The sentence under the eyebrow says so, and names the other way, the
+ * picker on the collection's edit page.
  *
  * The list holds the collection's whole sequence, the one the page reads for
  * the map and the panel too, so the rows and the pins can never describe
@@ -94,14 +95,16 @@ export function CollectionItems({
           <p className="text-xs text-neutral-500">
             Ordered by event date and time, earliest first. Pick a row to read
             it on the map above.
-            {isOwner && " An event joins a collection from its own page."}
+            {isOwner &&
+              " An event joins a collection from its own page, or from the picker on the edit page."}
           </p>
         </div>
         {isOwner && (
           // Where the owner goes to shelve something: their own catalogue,
-          // since an event joins a collection from its own page. No status
-          // filter, unlike the profile's "Show more", because a detection the
-          // owner has yet to confirm is still theirs to put on a collection.
+          // since an event joins a collection from its own page or from the
+          // edit page's picker. No status filter, unlike the profile's "Show
+          // more", because a detection the owner has yet to confirm is still
+          // theirs to put on a collection.
           // Same builder as every other link into a filtered catalogue.
           <Link
             href={profileSearchHref(ownerUsername)}
