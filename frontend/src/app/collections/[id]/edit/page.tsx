@@ -3,24 +3,17 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Trash2 } from "lucide-react";
 
 import { CollectionDetailsForm } from "@/components/collections/CollectionDetailsForm";
-import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { TEXT_LINK } from "@/components/ui/styles";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { useApiResource } from "@/hooks/useApiResource";
-import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { errorMessage } from "@/lib/api";
 import {
   addEventToCollection,
   collectionHref,
-  deleteCollection,
   fetchCollectionSequence,
   removeEventFromCollection,
   updateCollection,
@@ -29,8 +22,7 @@ import {
 import type { EventListItem } from "@/types";
 
 /**
- * Owner edit of one collection: everything it carries, and the one act that
- * ends it.
+ * Owner edit of one collection: everything it carries.
  *
  * The form is the create page's, so both write pages ask for the same three
  * things: the title, the description, and the events on the shelf. The picker
@@ -46,14 +38,9 @@ import type { EventListItem } from "@/types";
  * subtitle naming the collection, the event edit page's own answer: the Title
  * field already says it.
  *
- * **Dropping the collection lives at the bottom**, under its own card and past
- * the two `<CollectionDetailsForm>` renders (Details, Events), which is the
- * one place on the site a destructive act on the page's own subject belongs.
- * It keeps the two-click confirm every destructive control here takes, and the
- * sentence above it says what survives, since that is the part a reader
- * hesitates over: the events it held stay exactly as they are. Once the
- * collection is gone the page hands the owner back to their profile, where
- * their other collections are.
+ * Dropping the collection lives on the collection page's own header, not here:
+ * this page is Details and Events only, and a destructive act on the page's
+ * own subject belongs where the owner reads it, not where they rewrite it.
  *
  * A reader who does not own the collection gets the event edit page's own
  * answer: the refusal the backend would give, stated before the form rather
@@ -115,24 +102,6 @@ export default function EditCollectionPage() {
     },
   );
 
-  const drop = useMutation(() => deleteCollection(id), {
-    fallback: "Failed to drop the collection",
-    onSuccess: () =>
-      router.push(`/profile/${collection?.owner.username ?? ""}`),
-  });
-
-  // Two clicks, disarming on its own after a few seconds and on any click or
-  // focus landing elsewhere: the same confirm every destructive control here
-  // takes.
-  const {
-    armed: dropArmed,
-    trigger: triggerDrop,
-    controlRef: dropButtonRef,
-  } = useConfirmAction(() => void drop.run(), {
-    timeoutMs: 4000,
-    dismissOnOutside: true,
-  });
-
   if (authLoading || !user) return <PageLoading />;
   if (error) return <PageError message={error} backHref="/map" />;
   if (itemsError) return <PageError message={itemsError} backHref="/map" />;
@@ -179,27 +148,6 @@ export default function EditCollectionPage() {
         }
         onCancel={() => router.push(collectionHref(collection.id))}
       />
-
-      <Card as="section">
-        <SectionEyebrow title="Drop this collection" margin="none" />
-        <p className="text-sm text-neutral-400">
-          The events it holds stay exactly as they are. Only the collection
-          goes, and it does not come back.
-        </p>
-        <Button
-          ref={dropButtonRef}
-          variant="danger"
-          disabled={drop.loading}
-          onClick={triggerDrop}
-          className={dropArmed ? DANGER_CONFIRM : ""}
-        >
-          <Trash2 size={14} />
-          {dropArmed
-            ? "Confirm dropping this collection"
-            : "Drop this collection"}
-        </Button>
-        {drop.error && <div className={FORM_ERROR_BANNER}>{drop.error}</div>}
-      </Card>
     </PageShell>
   );
 }

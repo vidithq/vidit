@@ -18,7 +18,6 @@ vi.mock("@/hooks/useApiResource", () => ({
 }));
 
 const updateCollection = vi.fn();
-const deleteCollection = vi.fn();
 const fetchCollectionSequence = vi.fn();
 const addEventToCollection = vi.fn();
 const removeEventFromCollection = vi.fn();
@@ -27,7 +26,6 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
   updateCollection: (id: string, title: string, description: string) =>
     updateCollection(id, title, description),
-  deleteCollection: (id: string) => deleteCollection(id),
   fetchCollectionSequence: (id: string) => fetchCollectionSequence(id),
   addEventToCollection: (c: string, e: string) => addEventToCollection(c, e),
   removeEventFromCollection: (c: string, e: string) =>
@@ -122,7 +120,6 @@ beforeEach(() => {
   useAuth.mockReset();
   useApiResource.mockReset();
   updateCollection.mockReset();
-  deleteCollection.mockReset();
   fetchCollectionSequence.mockReset();
   addEventToCollection.mockReset();
   removeEventFromCollection.mockReset();
@@ -131,7 +128,6 @@ beforeEach(() => {
   useAuth.mockReturnValue({ user: USER, loading: false });
   mockRead(collection());
   updateCollection.mockResolvedValue(collection());
-  deleteCollection.mockResolvedValue(undefined);
   fetchCollectionSequence.mockResolvedValue(sequenceOf("e1", "e2"));
   addEventToCollection.mockResolvedValue(undefined);
   removeEventFromCollection.mockResolvedValue(undefined);
@@ -181,9 +177,10 @@ describe("EditCollectionPage", () => {
     expect(
       screen.getByRole("heading", { name: "Add events" }),
     ).toBeInTheDocument();
+    // No drop card here: dropping the collection lives on its own page header.
     expect(
-      screen.getByRole("heading", { name: "Drop this collection" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("heading", { name: "Drop this collection" }),
+    ).not.toBeInTheDocument();
   });
 
   it("writes both details and returns to the collection", async () => {
@@ -311,42 +308,5 @@ describe("EditCollectionPage", () => {
     render(<EditCollectionPage />);
 
     expect(screen.getByText("Not found")).toBeInTheDocument();
-  });
-
-  it("asks twice before dropping the collection, then returns to the profile", async () => {
-    await renderPage();
-
-    // The sentence beside the control says what survives the act, since that
-    // is the part a reader hesitates over.
-    expect(
-      screen.getByText(/The events it holds stay exactly as they are/),
-    ).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Drop this collection" }),
-    );
-    expect(deleteCollection).not.toHaveBeenCalled();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Confirm dropping this collection" }),
-    );
-
-    await waitFor(() => expect(deleteCollection).toHaveBeenCalledWith("c1"));
-    // Where the owner's other collections are.
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/profile/ana"));
-  });
-
-  it("stays on the page and says why when the drop is refused", async () => {
-    deleteCollection.mockRejectedValue(new Error("Nope."));
-
-    await renderPage();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Drop this collection" }),
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Confirm dropping this collection" }),
-    );
-
-    await waitFor(() => expect(screen.getByText("Nope.")).toBeInTheDocument());
-    expect(push).not.toHaveBeenCalled();
   });
 });

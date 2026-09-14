@@ -65,9 +65,8 @@ import {
  * collection's own edit page, where the details and the item picker live.
  * **Drop** is the red trash, under the two-click confirm every destructive
  * control on the site takes, and on success the owner lands on their profile
- * where their other collections are. The edit page keeps its own Drop card:
- * this one is the gesture an owner reaches for while reading the collection,
- * that one is the end of the page that rewrites it.
+ * where their other collections are. This is the one place the act lives: the
+ * edit page is Details and Events only.
  *
  * Nothing else opens over the work the page shows: the item picker and the
  * per-row controls stay on the edit page.

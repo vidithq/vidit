@@ -173,10 +173,12 @@ test.describe("collection create page", () => {
  * The owner's edit page for that collection.
  *
  * It is the same form over a collection that exists: the title field, the
- * description textarea, the picker holding what the collection holds, and
- * the drop control under them, which is the shape that breaks on a phone when
- * a field is laid out narrower than the column or renders under the 16px
- * mobile Safari zooms on. The owner is the only reader it has.
+ * description textarea, the picker holding what the collection holds, and the
+ * Save / Cancel row below both cards, which is the shape that breaks on a
+ * phone when a field is laid out narrower than the column or renders under
+ * the 16px mobile Safari zooms on. Dropping the collection is not on this
+ * page; it is the header trash on the collection page itself. The owner is
+ * the only reader it has.
  */
 test.describe("collection edit page", () => {
   test("fits the form on a narrow column", async ({ context, page }) => {
@@ -198,11 +200,10 @@ test.describe("collection edit page", () => {
       page.getByRole("button", { name: "Save collection" }),
     );
 
-    // The destructive zone sits at the bottom, past the fields, and its
-    // control has to be reachable inside the column too.
+    // Cancel sits beside it, in the page's own action row below both cards.
     await expectControlInsideViewport(
       page,
-      page.getByRole("button", { name: "Drop this collection" }),
+      page.getByRole("button", { name: "Cancel" }),
     );
   });
 });

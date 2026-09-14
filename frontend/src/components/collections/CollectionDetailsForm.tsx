@@ -25,11 +25,15 @@ import {
  * the refusals end up spelled twice. The drafts live here: a caller passes the
  * values it starts from and is handed all three on submit.
  *
- * **It renders its own two cards.** *Details* holds the two free-text fields,
- * and *Events* holds the picker plus the one Save / Cancel row, past the
- * picker's own two blocks and before the edit page's separate Drop card. One
- * component owns the state and the submit either way, so the create and edit
- * pages hand it their values and render nothing of the form themselves.
+ * **It renders its own two cards, plus the page's own action row past them.**
+ * *Details* holds the two free-text fields, *Events* holds the picker and
+ * nothing else, and the Save / Cancel row sits below both, the way the submit
+ * and event edit pages place theirs: past the last field block rather than
+ * inside it. One `<form>` wraps all three, so Enter in a field submits like it
+ * does on those pages, and the primary button is `type="submit"` rather than
+ * a bare click handler. One component owns the state and the submit either
+ * way, so the create and edit pages hand it their values and render nothing of
+ * the form themselves.
  *
  * The two free-text fields are required, so the submit refuses a blank or
  * over-long value on either rather than letting the server answer 422 on text
@@ -106,7 +110,18 @@ export function CollectionDetailsForm({
     !descriptionOver;
 
   return (
-    <>
+    <form
+      className="space-y-6"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!ready || busy) return;
+        onSubmit(
+          title.trim(),
+          description.trim(),
+          events.map((event) => event.id),
+        );
+      }}
+    >
       <Card as="section">
         <SectionEyebrow title="Details" margin="none" />
 
@@ -159,28 +174,20 @@ export function CollectionDetailsForm({
           onAdd={addEvent}
           onRemove={removeEvent}
         />
-
-        {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
-
-        <div className="flex items-center gap-3">
-          <Button
-            variant="primary"
-            disabled={!ready || busy}
-            onClick={() =>
-              onSubmit(
-                title.trim(),
-                description.trim(),
-                events.map((event) => event.id),
-              )
-            }
-          >
-            {busy ? "Saving…" : submitLabel}
-          </Button>
-          <Button variant="ghost" disabled={busy} onClick={onCancel}>
-            Cancel
-          </Button>
-        </div>
       </Card>
-    </>
+
+      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+
+      {/* The page's own action row, past both cards, the way the submit and
+          event edit pages place theirs. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="submit" variant="primary" disabled={!ready || busy}>
+          {busy ? "Saving…" : submitLabel}
+        </Button>
+        <Button type="button" variant="ghost" disabled={busy} onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
   );
 }
