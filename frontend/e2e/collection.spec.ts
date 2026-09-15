@@ -165,7 +165,7 @@ test.describe("collection create page", () => {
  *
  * It is the same form over a collection that exists: the title field, the
  * description textarea, the picker holding what the collection holds, and the
- * Save / Cancel row below both cards, which is the shape that breaks on a
+ * Save / Cancel row below all three cards, which is the shape that breaks on a
  * phone when a field is laid out narrower than the column or renders under
  * the 16px mobile Safari zooms on. Dropping the collection is not on this
  * page; it is the header trash on the collection page itself. The owner is
@@ -191,7 +191,7 @@ test.describe("collection edit page", () => {
       page.getByRole("button", { name: "Save collection" }),
     );
 
-    // Cancel sits beside it, in the page's own action row below both cards.
+    // Cancel sits beside it, in the page's own action row below all three cards.
     await expectControlInsideViewport(
       page,
       page.getByRole("button", { name: "Cancel" }),

@@ -141,11 +141,10 @@ describe("NewCollectionPage", () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
-  it("splits the form into a Details card and an Events card", () => {
+  it("splits the form into a Details card, an Events in this collection card, and an Add events card", () => {
     render(<NewCollectionPage />);
 
     expect(screen.getByRole("heading", { name: "Details" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Events" })).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Events in this collection" }),
     ).toBeInTheDocument();

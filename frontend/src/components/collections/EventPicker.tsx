@@ -5,6 +5,7 @@ import { Check, Plus, Search, X } from "lucide-react";
 
 import { CollectionItemCard } from "@/components/collections/CollectionItemCard";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -55,31 +56,31 @@ function chronological(events: PickableEvent[]): PickableEvent[] {
  * rather than one event at a time afterwards. The two pages read the same:
  * nothing here knows which of them it is standing on.
  *
- * **Two blocks, and the first one is the answer.** *Events in this collection*
+ * **Two cards, and the first one is the answer.** *Events in this collection*
  * is what the collection will hold if the analyst saves now: the rows the edit
  * page opened on, the one event a `?event=` create arrived with, and everything
  * added since, under the count line and the order the collection's own page
  * takes. *Add events* is the way in, and it is deliberately short: at most
  * `PICKER_ROW_LIMIT` rows, the most recent of the analyst's own eligible events
- * with nothing typed and the first matches once something is. Neither block
+ * with nothing typed and the first matches once something is. Neither card
  * writes anything: both move rows in and out of the pending list the form
  * holds, and the page's own submit is what reaches the server.
  *
  * **A row is `<CollectionItemCard>`**, the row every collection surface
- * renders, here in its plain mode: the title links to the event and the block's
+ * renders, here in its plain mode: the title links to the event and the card's
  * own control fills the `action` slot, the same icon-button shape on both
- * blocks. On the first block that control is the red cross that takes the row
+ * cards. On the first card that control is the red cross that takes the row
  * off, the one control that lets an item leave a collection anywhere on the
  * site. On the second it is an accent plus icon that adds the row, and a row
- * already on the first block shows a disabled check icon instead of dropping
+ * already on the first card shows a disabled check icon instead of dropping
  * out of the results: the analyst searched for that event, and answering with
  * nothing says less than answering with the row and the reason it cannot be
  * added twice.
  *
- * **Two sources, one row.** With nothing typed the add block reads the
+ * **Two sources, one row.** With nothing typed the add card reads the
  * analyst's catalogue newest first through `GET /events` (`view=located`,
  * `author=`, scoped to the two statuses a collection may hold), the
- * cursor-paged endpoint, whose cursor is how the block knows more stands behind
+ * cursor-paged endpoint, whose cursor is how the card knows more stands behind
  * the rows it shows. A typed query goes to `GET /search` (`type=event`,
  * `author=`), the endpoint that reads words, which answers the pre-cap match
  * count beside its rows. Either way a row is a `PickableEvent`
@@ -100,7 +101,7 @@ export function EventPicker({
   onAdd,
   onRemove,
 }: {
-  /** Whose events the add block lists: the signed-in analyst, since a
+  /** Whose events the add card lists: the signed-in analyst, since a
    *  collection holds its owner's own work and nothing else. */
   username: string;
   /** What the collection will hold, held by the form that submits it. */
@@ -119,7 +120,7 @@ export function EventPicker({
 
   // The one answer the typed half holds, carrying the query it belongs to:
   // the words move while a request is in flight, and the rows of the query
-  // before them are not the rows of this one, so the block shows an answer
+  // before them are not the rows of this one, so the card shows an answer
   // only while its query is still the one in the field.
   const [answer, setAnswer] = useState<{
     query: string;
@@ -167,7 +168,7 @@ export function EventPicker({
   ).slice(0, PICKER_ROW_LIMIT);
   const error = searching ? (found?.error ?? null) : browse.error;
   const loading = searching ? found === null : browse.loading;
-  // What the block is not showing. A search states the figure, since the
+  // What the card is not showing. A search states the figure, since the
   // endpoint answers the pre-cap count; a browse only knows there is another
   // page, which is enough to say that the search is the way past these rows.
   //
@@ -189,14 +190,10 @@ export function EventPicker({
       : null;
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-3">
+    <>
+      <Card as="section">
         <div className="space-y-1">
-          <SectionEyebrow
-            title="Events in this collection"
-            as="h3"
-            margin="none"
-          />
+          <SectionEyebrow title="Events in this collection" margin="none" />
           <p className="text-xs text-neutral-500">
             {eventCountLabel(held.length)}, ordered by event date, earliest
             first.
@@ -228,11 +225,11 @@ export function EventPicker({
             Add your own geolocations from the search below.
           </EmptyState>
         )}
-      </div>
+      </Card>
 
-      <div className="space-y-3">
+      <Card as="section">
         <div className="space-y-1">
-          <SectionEyebrow title="Add events" as="h3" margin="none" />
+          <SectionEyebrow title="Add events" margin="none" />
           <p className="text-xs text-neutral-500">
             Your own geolocated and detected events, {PICKER_ROW_LIMIT} at a
             time.
@@ -313,7 +310,7 @@ export function EventPicker({
         )}
 
         {refine && <p className="text-xs text-neutral-500">{refine}</p>}
-      </div>
-    </div>
+      </Card>
+    </>
   );
 }

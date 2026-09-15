@@ -25,15 +25,15 @@ import {
  * the refusals end up spelled twice. The drafts live here: a caller passes the
  * values it starts from and is handed all three on submit.
  *
- * **It renders its own two cards, plus the page's own action row past them.**
- * *Details* holds the two free-text fields, *Events* holds the picker and
- * nothing else, and the Save / Cancel row sits below both, the way the submit
- * and event edit pages place theirs: past the last field block rather than
- * inside it. One `<form>` wraps all three, so Enter in a field submits like it
- * does on those pages, and the primary button is `type="submit"` rather than
- * a bare click handler. One component owns the state and the submit either
- * way, so the create and edit pages hand it their values and render nothing of
- * the form themselves.
+ * **It renders three cards, plus the page's own action row past them.**
+ * *Details* holds the two free-text fields, `<EventPicker>` renders the other
+ * two as *Events in this collection* and *Add events*, and the Save / Cancel
+ * row sits below all three, the way the submit and event edit pages place
+ * theirs: past the last field block rather than inside it. One `<form>` wraps
+ * every card, so Enter in a field submits like it does on those pages, and the
+ * primary button is `type="submit"` rather than a bare click handler. One
+ * component owns the state and the submit either way, so the create and edit
+ * pages hand it their values and render nothing of the form themselves.
  *
  * The two free-text fields are required, so the submit refuses a blank or
  * over-long value on either rather than letting the server answer 422 on text
@@ -41,10 +41,10 @@ import {
  * counter (`<CharCounter>`), which turns red exactly when the submit starts
  * refusing.
  *
- * **The picker sits in the Events card** (`<EventPicker>`), because the set is
- * part of what the analyst is writing: naming a collection and choosing what
- * goes on it is one act on one page. The pending set is rows rather than ids,
- * since the picker's first block renders what the collection will hold: it is
+ * **The picker renders its own two cards** (`<EventPicker>`), because the set
+ * is part of what the analyst is writing: naming a collection and choosing
+ * what goes on it is one act on one page. The pending set is rows rather than
+ * ids, since the first card renders what the collection will hold: it is
  * seeded from `initialEvents` (the collection's current items on an edit, the
  * event a `?event=` create arrived with) and handed back as ids on submit, so
  * the caller writes the create or the diff rather than tracking clicks.
@@ -165,21 +165,17 @@ export function CollectionDetailsForm({
         </div>
       </Card>
 
-      <Card as="section">
-        <SectionEyebrow title="Events" margin="none" />
-
-        <EventPicker
-          username={username}
-          events={events}
-          onAdd={addEvent}
-          onRemove={removeEvent}
-        />
-      </Card>
+      <EventPicker
+        username={username}
+        events={events}
+        onAdd={addEvent}
+        onRemove={removeEvent}
+      />
 
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
 
-      {/* The page's own action row, past both cards, the way the submit and
-          event edit pages place theirs. */}
+      {/* The page's own action row, past all three cards, the way the submit
+          and event edit pages place theirs. */}
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" variant="primary" disabled={!ready || busy}>
           {busy ? "Saving…" : submitLabel}

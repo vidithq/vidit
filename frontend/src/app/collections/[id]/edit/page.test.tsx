@@ -164,11 +164,10 @@ describe("EditCollectionPage", () => {
     expect(screen.queryByText("Kupiansk rail corridor")).not.toBeInTheDocument();
   });
 
-  it("splits the form into a Details card and an Events card", async () => {
+  it("splits the form into a Details card, an Events in this collection card, and an Add events card", async () => {
     await renderPage();
 
     expect(screen.getByRole("heading", { name: "Details" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Events" })).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Events in this collection" }),
     ).toBeInTheDocument();
