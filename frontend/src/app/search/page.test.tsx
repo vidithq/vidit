@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 let searchParams = new URLSearchParams();
@@ -15,9 +15,12 @@ vi.mock("@/hooks/useApiResource", () => ({
 }));
 
 const search = vi.fn();
+// The typeahead behind the Author section is stubbed out: these tests drive
+// the field by hand, so the suggestion list only has to stay empty.
 vi.mock("@/lib/search", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/search")>()),
   search: (opts: unknown) => search(opts),
+  suggestAuthors: () => Promise.resolve([]),
 }));
 
 import type { Collection } from "@/lib/collections";
@@ -143,6 +146,50 @@ describe("the search page's Collections group", () => {
     render(<SearchPage />);
 
     expect(await screen.findByText("Nova Kakhovka dam")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(search).toHaveBeenCalledWith(
+        expect.objectContaining({ q: "", type: "collection", author: "ana" }),
+      ),
+    );
+  });
+});
+
+describe("the filter panel on the Collections scope", () => {
+  const toggle = (title: string) =>
+    screen.queryByRole("button", { name: `Toggle ${title}` });
+
+  it("offers the Author section alone", async () => {
+    // The backend narrows collections on the author and empties the group on
+    // every other event predicate, so no other section may open here.
+    searchParams = new URLSearchParams("type=collection&author=ana");
+    search.mockResolvedValue(
+      response({ type: "collection", query: "", collections: [collection()] }),
+    );
+
+    render(<SearchPage />);
+
+    expect(await screen.findByText("Nova Kakhovka dam")).toBeInTheDocument();
+    expect(toggle("Author")).toBeInTheDocument();
+    for (const title of ["Status", "Source media", "Event date", "Added", "Tags"]) {
+      expect(toggle(title)).not.toBeInTheDocument();
+    }
+  });
+
+  it("commits a picked author into the URL, the way the event scope does", async () => {
+    searchParams = new URLSearchParams("type=collection");
+    search.mockResolvedValue(response({ type: "collection", query: "" }));
+
+    render(<SearchPage />);
+
+    fireEvent.click(toggle("Author")!);
+    const field = screen.getByLabelText("Author username");
+    fireEvent.change(field, { target: { value: "ana" } });
+    // Enter commits the draft, the same gesture the event scope takes.
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith("/search?type=collection&author=ana"),
+    );
     await waitFor(() =>
       expect(search).toHaveBeenCalledWith(
         expect.objectContaining({ q: "", type: "collection", author: "ana" }),

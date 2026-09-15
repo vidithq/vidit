@@ -24,7 +24,11 @@ import type { Concept } from "@/lib/fieldHelp";
  * Source media → the surface's date sections → Tags → Author), so a change to the
  * filter vocabulary lands on both surfaces at once. The surfaces differ only
  * in their date controls (the map's timeline scrubbers vs the search page's
- * date inputs), injected as data via `dateSections`.
+ * date inputs), injected as data via `dateSections`, and in how much of the
+ * stack they offer: `sections` names the subset, so a scope no section
+ * narrows (the search page's Collections group, which `author` alone
+ * narrows) opens the same panel on its own sections rather than a panel of
+ * its own.
  *
  * State stays surface-owned (the map's context survives navigation, the
  * search page syncs the URL): this component receives one `values` object and
@@ -53,6 +57,28 @@ export const EMPTY_EVENT_FILTERS: EventFilterValues = {
 };
 
 export type EventFilterPatch = (patch: Partial<EventFilterValues>) => void;
+
+/** The panel's own sections, named so a surface can offer a subset. The
+ *  injected date sections are not listed: a surface drops those by passing no
+ *  `dateSections`. */
+export type EventFilterSectionName =
+  | "status"
+  | "conflict"
+  | "capture_source"
+  | "source_media"
+  | "tags"
+  | "author";
+
+/** The whole stack, in render order: what a surface gets when it names no
+ *  subset. */
+export const ALL_FILTER_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
+  "status",
+  "conflict",
+  "capture_source",
+  "source_media",
+  "tags",
+  "author",
+];
 
 /** The two date windows both event surfaces carry, whatever control drives them
  *  (the map's timeline scrubbers, the search page's date inputs). Empty string
@@ -215,7 +241,7 @@ export function EventFilterSections({
   values,
   onPatch,
   dateSections = [],
-  showStatus = true,
+  sections = ALL_FILTER_SECTIONS,
 }: {
   /** Live tag taxonomy driving the capture-source + free chip buckets. */
   tags: Tag[];
@@ -224,12 +250,14 @@ export function EventFilterSections({
   values: EventFilterValues;
   onPatch: EventFilterPatch;
   dateSections?: InjectedSection[];
-  /** Whether to render the Status section. Default on; a surface scoped to a
-   *  view where neither offered status can match (the search page's legacy
-   *  request scope) hides it rather than offering chips that can only empty
-   *  the result. */
-  showStatus?: boolean;
+  /** Which sections this surface offers. Defaults to the whole stack; a
+   *  surface scoped to a view a section cannot narrow leaves it out rather
+   *  than offering a control that can only empty the result (the search
+   *  page's legacy request scope has no Status, its Collections scope has the
+   *  Author alone). */
+  sections?: ReadonlyArray<EventFilterSectionName>;
 }) {
+  const offers = (name: EventFilterSectionName) => sections.includes(name);
   const [showAllTags, setShowAllTags] = useState(false);
   // The author input is commit-style, like picking a tag chip: typing stays
   // local and fetches real usernames to pick from (the filter itself is an
@@ -306,7 +334,7 @@ export function EventFilterSections({
 
   return (
     <div className="bg-neutral-900 rounded-lg border border-neutral-700 px-3">
-      {showStatus && (
+      {offers("status") && (
         <FilterSection
           title="Status"
           concept="status"
@@ -327,7 +355,7 @@ export function EventFilterSections({
         </FilterSection>
       )}
 
-      {conflicts.length > 0 && (
+      {offers("conflict") && conflicts.length > 0 && (
         <FilterSection
           title="Conflict"
           concept="conflict"
@@ -344,7 +372,7 @@ export function EventFilterSections({
         </FilterSection>
       )}
 
-      {captureSourceTags.length > 0 && (
+      {offers("capture_source") && captureSourceTags.length > 0 && (
         <FilterSection
           title="Capture source"
           concept="capture_source"
@@ -361,20 +389,22 @@ export function EventFilterSections({
         </FilterSection>
       )}
 
-      <FilterSection
-        title="Source media"
-        concept="source_media"
-        summary={chipSummary(values.mediaTypes.map(capitalize))}
-        active={values.mediaTypes.length > 0}
-        open={!!openSections["Source media"]}
-        onToggle={() => toggleSection("Source media")}
-      >
-        <ChipBucket
-          options={MEDIA_TYPES.map(([value, label]) => ({ id: value, name: value, label }))}
-          selected={values.mediaTypes}
-          onToggle={(n) => toggleIn("mediaTypes", n)}
-        />
-      </FilterSection>
+      {offers("source_media") && (
+        <FilterSection
+          title="Source media"
+          concept="source_media"
+          summary={chipSummary(values.mediaTypes.map(capitalize))}
+          active={values.mediaTypes.length > 0}
+          open={!!openSections["Source media"]}
+          onToggle={() => toggleSection("Source media")}
+        >
+          <ChipBucket
+            options={MEDIA_TYPES.map(([value, label]) => ({ id: value, name: value, label }))}
+            selected={values.mediaTypes}
+            onToggle={(n) => toggleIn("mediaTypes", n)}
+          />
+        </FilterSection>
+      )}
 
       {dateSections.map((section) => (
         <FilterSection
@@ -390,7 +420,7 @@ export function EventFilterSections({
         </FilterSection>
       ))}
 
-      {freeTags.length > 0 && (
+      {offers("tags") && freeTags.length > 0 && (
         <FilterSection
           title="Tags"
           summary={chipSummary(values.tags)}
@@ -414,54 +444,56 @@ export function EventFilterSections({
         </FilterSection>
       )}
 
-      <FilterSection
-        title="Author"
-        summary={values.author.trim() || "Any"}
-        active={!!values.author.trim()}
-        open={!!openSections["Author"]}
-        onToggle={() => toggleSection("Author")}
-      >
-        <div className="space-y-2">
-          {values.author.trim() && (
-            <div className="flex flex-wrap gap-1.5">
-              <Pill
-                tone="accent"
-                title="Remove the author filter"
-                onClick={() => onPatch({ author: "" })}
-              >
-                @{values.author.trim()}
-              </Pill>
-            </div>
-          )}
-          <Input
-            type="text"
-            value={authorDraft}
-            onChange={(e) => setAuthorDraft(e.target.value)}
-            // Enter commits the top suggestion (a real handle) when one is
-            // up, else the raw draft. No blur commit: clicking away
-            // mid-typing must not apply a partial username, the
-            // accidental-filter behavior the commit style exists to prevent.
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commitAuthor(authorSuggestions[0] ?? authorDraft);
-              }
-            }}
-            placeholder="Type a username…"
-            aria-label="Author username"
-            className="bg-neutral-800 sm:text-[11px]"
-          />
-          {authorSuggestions.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {authorSuggestions.map((name) => (
-                <Pill key={name} onClick={() => commitAuthor(name)}>
-                  @{name}
+      {offers("author") && (
+        <FilterSection
+          title="Author"
+          summary={values.author.trim() || "Any"}
+          active={!!values.author.trim()}
+          open={!!openSections["Author"]}
+          onToggle={() => toggleSection("Author")}
+        >
+          <div className="space-y-2">
+            {values.author.trim() && (
+              <div className="flex flex-wrap gap-1.5">
+                <Pill
+                  tone="accent"
+                  title="Remove the author filter"
+                  onClick={() => onPatch({ author: "" })}
+                >
+                  @{values.author.trim()}
                 </Pill>
-              ))}
-            </div>
-          )}
-        </div>
-      </FilterSection>
+              </div>
+            )}
+            <Input
+              type="text"
+              value={authorDraft}
+              onChange={(e) => setAuthorDraft(e.target.value)}
+              // Enter commits the top suggestion (a real handle) when one is
+              // up, else the raw draft. No blur commit: clicking away
+              // mid-typing must not apply a partial username, the
+              // accidental-filter behavior the commit style exists to prevent.
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitAuthor(authorSuggestions[0] ?? authorDraft);
+                }
+              }}
+              placeholder="Type a username…"
+              aria-label="Author username"
+              className="bg-neutral-800 sm:text-[11px]"
+            />
+            {authorSuggestions.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {authorSuggestions.map((name) => (
+                  <Pill key={name} onClick={() => commitAuthor(name)}>
+                    @{name}
+                  </Pill>
+                ))}
+              </div>
+            )}
+          </div>
+        </FilterSection>
+      )}
 
     </div>
   );
