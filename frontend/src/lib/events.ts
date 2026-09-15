@@ -124,7 +124,10 @@ export type EventView = "located" | "requested";
 
 export interface EventListParams {
   view?: EventView;
-  status?: EventStatus;
+  /** One status, or several: the endpoint takes `?status=` repeated and
+   *  any-matches within the set, which is how a surface asks for a subset of
+   *  a view (the collection picker's two collectable statuses). */
+  status?: EventStatus | EventStatus[];
   tag?: string;
   author?: string;
   limit?: number;
@@ -139,7 +142,13 @@ export interface EventListParams {
 export function eventListPath(params: EventListParams = {}): string {
   const search = new URLSearchParams();
   if (params.view) search.set("view", params.view);
-  if (params.status) search.set("status", params.status);
+  // `status` repeats, so a caller passing one and a caller passing a set build
+  // the same query.
+  if (params.status) {
+    for (const status of [params.status].flat()) {
+      search.append("status", status);
+    }
+  }
   if (params.tag) search.set("tag", params.tag);
   if (params.author) search.set("author", params.author);
   if (params.limit !== undefined) search.set("limit", String(params.limit));

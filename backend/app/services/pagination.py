@@ -22,9 +22,12 @@ ordering total, so rows inserted while a caller walks pages can neither
 duplicate a row onto the next page nor skip one, the way an ``OFFSET`` walk
 does. A list whose rows already carry a unique ordinal pages on that instead
 (:func:`encode_ordinal_cursor`), which needs no tiebreaker and no timestamp;
-one event's version history is the case, ordered on ``version_no``. Both forms
-are opaque on purpose (base64 of a compact JSON payload): the shape is this
-module's business, not a contract callers build values for.
+one event's version history is the case, ordered on ``version_no``. A list read
+in the order its events happened pages on all four of
+``event_date, event_time, created_at, id`` ascending
+(:func:`encode_chronological_cursor`); a collection's items are the case. The
+three forms are opaque on purpose (base64 of a compact JSON payload): the shape
+is this module's business, not a contract callers build values for.
 """
 
 from __future__ import annotations
@@ -32,7 +35,8 @@ from __future__ import annotations
 import base64
 import binascii
 import uuid
-from datetime import datetime
+from collections.abc import Sequence
+from datetime import date, datetime, time
 from typing import Any
 
 import orjson
@@ -75,6 +79,38 @@ def _decode(cursor: str) -> Any:
     return orjson.loads(base64.urlsafe_b64decode(padded))
 
 
+def _malformed_cursor() -> HTTPException:
+    """The one 422 every decoder below answers a cursor it cannot read with.
+
+    One message whichever way a cursor is wrong, the base64, the payload shape
+    or a value that does not convert: the caller's fix is the same in all
+    three, drop the cursor and read the list from its first page.
+    """
+    return HTTPException(status_code=422, detail="cursor is malformed")
+
+
+def _decode_parts(cursor: str, count: int) -> list[str]:
+    """Decode a cursor into exactly ``count`` strings, or raise the 422.
+
+    The shared half of the two list-shaped decoders: the base64 undo, the shape
+    check, and the refusal. The shape is checked before any caller converts a
+    part, so a payload that decodes to something other than ``count`` strings
+    (``["2026-01-01T00:00:00", 5]``) is rejected here rather than raising out
+    of ``uuid.UUID``.
+    """
+    try:
+        decoded = _decode(cursor)
+    except (ValueError, TypeError, binascii.Error) as exc:
+        raise _malformed_cursor() from exc
+    if not (
+        isinstance(decoded, list)
+        and len(decoded) == count
+        and all(isinstance(part, str) for part in decoded)
+    ):
+        raise _malformed_cursor()
+    return decoded
+
+
 def encode_cursor(created_at: datetime, row_id: uuid.UUID) -> str:
     """Opaque cursor naming the last row of the page just served."""
     return _encode([created_at.isoformat(), str(row_id)])
@@ -84,28 +120,18 @@ def decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
     """Parse a cursor back into its ``(created_at, id)`` pair.
 
     A malformed cursor is a 422: the alternative is feeding a half-parsed
-    value into the keyset predicate and answering 500. The shape is checked
-    before either conversion runs, so a payload that decodes to something
-    other than a pair of strings (``["2026-01-01T00:00:00", 5]``) is rejected
-    rather than raising out of ``uuid.UUID``.
+    value into the keyset predicate and answering 500.
 
     Well-formed is the whole test: a caller who assembles a pair of their own
     gets the rows that pair sorts before, which is the same answer a minted
     cursor naming the same position would give. There is nothing to forge, the
     encoding hides no authorisation, and every filter still applies.
     """
+    created_raw, id_raw = _decode_parts(cursor, 2)
     try:
-        decoded = _decode(cursor)
-        if not (
-            isinstance(decoded, list)
-            and len(decoded) == 2
-            and all(isinstance(part, str) for part in decoded)
-        ):
-            raise ValueError("cursor does not decode to a [created_at, id] pair")
-        created_raw, id_raw = decoded
         return datetime.fromisoformat(created_raw), uuid.UUID(id_raw)
-    except (ValueError, TypeError, binascii.Error) as exc:
-        raise HTTPException(status_code=422, detail="cursor is malformed") from exc
+    except ValueError as exc:
+        raise _malformed_cursor() from exc
 
 
 def encode_ordinal_cursor(value: int) -> str:
@@ -127,11 +153,62 @@ def decode_ordinal_cursor(cursor: str) -> int:
     """
     try:
         decoded = _decode(cursor)
-        if isinstance(decoded, bool) or not isinstance(decoded, int):
-            raise ValueError("cursor does not decode to an integer")
-        return decoded
     except (ValueError, TypeError, binascii.Error) as exc:
-        raise HTTPException(status_code=422, detail="cursor is malformed") from exc
+        raise _malformed_cursor() from exc
+    if isinstance(decoded, bool) or not isinstance(decoded, int):
+        raise _malformed_cursor()
+    return decoded
+
+
+def encode_chronological_cursor(
+    event_date: date, event_time: time, created_at: datetime, row_id: uuid.UUID
+) -> str:
+    """Opaque cursor for a list ordered by when its events happened.
+
+    A collection's items page this way: the order is
+    ``event_date, event_time, created_at, id`` ascending, so the cursor names
+    all four. The caller passes the sort values it ordered by, the stand-ins
+    for a missing date or hour included
+    (``services/collections.chronological_key``), so the values that cut the
+    page are the values the next page's predicate compares against.
+    """
+    return _encode(
+        [event_date.isoformat(), event_time.isoformat(), created_at.isoformat(), str(row_id)]
+    )
+
+
+def decode_chronological_cursor(cursor: str) -> tuple[date, time, datetime, uuid.UUID]:
+    """Parse a chronological cursor back into its four sort values, 422 on anything else.
+
+    Same contract as :func:`decode_cursor`, over four parts instead of two.
+    """
+    date_raw, time_raw, created_raw, id_raw = _decode_parts(cursor, 4)
+    try:
+        return (
+            date.fromisoformat(date_raw),
+            time.fromisoformat(time_raw),
+            datetime.fromisoformat(created_raw),
+            uuid.UUID(id_raw),
+        )
+    except ValueError as exc:
+        raise _malformed_cursor() from exc
+
+
+def keyset_after(
+    columns: Sequence[ColumnElement[Any]], cursor: tuple[Any, ...]
+) -> ColumnElement[bool]:
+    """Predicate for the rows after ``cursor`` under an ascending ORDER BY.
+
+    The ascending twin of :func:`keyset_before`, over as many columns as the
+    ordering takes. A row comparison for the same reason: Postgres evaluates
+    ``(a, b, …) > (:x, :y, …)`` directly, and the caller passes the very
+    expressions it ordered by, so the page cut cannot disagree with the sort
+    it was cut from. Every column must be non-NULL for every row, a row
+    comparison against NULL being unknown rather than true or false; a
+    nullable sort column reaches here wrapped in its stand-in
+    (``services/collections.chronological_key``).
+    """
+    return tuple_(*columns) > cursor
 
 
 def keyset_before(

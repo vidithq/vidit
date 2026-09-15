@@ -75,7 +75,7 @@ function previousEntries() {
 
 const carried = previousEntries();
 const recorded = {};
-for (const name of ["demo", "bot-embed", "portfolio", "import-review"]) {
+for (const name of ["demo", "bot-embed", "portfolio", "import-review", "collections"]) {
   const file = path.join(CLIPS_DIR, `${name}.mp4`);
   if (!fs.existsSync(file)) {
     if (carried[name]) {

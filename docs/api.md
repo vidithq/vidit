@@ -10,7 +10,7 @@ All responses are JSON.
 
 **Auth audit log.** The `/auth/*` endpoints write to the `auth_events` table as a side effect: `login` on success, `failed_login` on any rejected login (with `user_id` set only when the address matched a live user), `logout`, `register_pending` (on `POST /auth/register`), `register_resent` (on `POST /auth/resend-confirmation`, on both the matched-pending and no-matching-pending branches, so the rate-of-requests signal survives the always-204 discipline; `user_id` is always NULL because no user row exists yet), `register_confirmed` (on `POST /auth/confirm-registration`), `password_reset_requested` (on `POST /auth/forgot-password`, on both the known-email and unknown-email branches, so the audit trail carries a rate-of-requests signal), `password_reset_completed`, and `password_changed` (on `POST /auth/change-password`). Writes are best effort inside a SAVEPOINT. An audit failure never breaks the auth flow.
 
-**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `version_not_found`, `x_handle_conflict`, `invite_code_used`); every `POST /events/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `report_not_found`, `report_already_resolved`, `report_event_gone`); and every `POST /events`, `POST /events/requests`, `POST /events/{id}/request`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`; `POST /events/{id}/request` adds it when the row is no longer `requested`; `POST /events/{id}/versions` adds it when the row is not `geolocated`, plus `nothing_changed` (the edit moves no versioned field) and `version_limit` (the event already carries 100 versions). `POST /events/import-from-tweet` adds `invalid_tweet_url`, `not_your_post`, `post_unreadable`, `upstream_unreadable` and `upstream_busy`. Every write path carrying an archived-copy field (`source_snapshot_url`, `secondary_snapshot_urls`, `detected_from_snapshot_url`) adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url` and `snapshot_not_a_snapshot_code`; they run the same checks, so one paste is answered the same way wherever it arrives. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
+**Error envelope.** Three shapes appear on the `detail` field of non-2xx responses. The frontend `apiFetch` helper ([`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts)) normalizes all three. (1) **Plain string**: `{"detail": "Invite code not found"}`, for direct `HTTPException` raises in routers (for example, `DELETE /admin/invite-codes/{id}` returning 404). (2) **Pydantic validation array**: `{"detail": [{"loc": [...], "msg": "...", "type": "..."}, ...]}`, for request-body or query-string validation failures (the FastAPI default). (3) **Typed envelope**: `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}`, for business-rule errors raised from the service layer and translated by the router. This envelope covers every `/auth/register`, `/auth/confirm-registration`, and `/auth/resend-confirmation` error branch (codes: `invalid_invite`, `email_already_registered`, `username_already_taken`, `email_pending_confirmation`, `username_pending_confirmation`, `invalid_or_expired_token`); every `/admin/*` business-rule error branch (codes: `user_not_found`, `geolocation_not_found`, `version_not_found`, `x_handle_conflict`, `invite_code_used`); every `POST /events/{id}/report`, `POST /collections/{id}/report`, `POST /admin/reports/{id}/resolve`, and `PATCH /admin/events/{id}/moderation` business-rule branch (codes: `event_not_found`, `collection_not_found`, `report_not_found`, `report_already_resolved`, `report_target_gone`, `report_verdict_not_applicable`); and every `POST /events`, `POST /events/requests`, `POST /events/{id}/request`, and `POST /events/{id}/geolocate` business-rule branch (codes: `invalid_coordinates`, `too_many_files`, `media_required`, `invalid_proof`, `proof_image_required`, `tag_requirements_not_met`, `invalid_file`, `evidence_processing_failed`, `proof_files_mismatch`, `source_media_conflict`; the create, request, and geolocate paths share the file and media codes through `services/evidence_intake`). `PUT /users/me/avatar` adds `invalid_avatar` when the uploaded file is not an accepted image type, is over the image size ceiling, or cannot be decoded. Every `/collections` path adds `collection_not_found`; `PUT /collections/{id}/events/{event_id}` and `POST /collections` (for an id in its `event_ids`) add `event_not_found` and `event_not_collectable` (the event's state is not one a collection shows), and `PATCH /admin/collections/{id}/moderation` and `DELETE /admin/collections/{id}` add `collection_not_found`. `POST /events/{id}/geolocate` and `POST /events/{id}/close` add `invalid_state` when the row is not `requested` or `detected`; `POST /events/{id}/request` adds it when the row is no longer `requested`; `POST /events/{id}/versions` adds it when the row is not `geolocated`, plus `nothing_changed` (the edit moves no versioned field) and `version_limit` (the event already carries 100 versions). `POST /events/import-from-tweet` adds `invalid_tweet_url`, `not_your_post`, `post_unreadable`, `upstream_unreadable` and `upstream_busy`. Every write path carrying an archived-copy field (`source_snapshot_url`, `secondary_snapshot_urls`, `detected_from_snapshot_url`) adds `original_url_not_on_event`, `snapshot_url_invalid`, `snapshot_url_too_long`, `snapshot_url_not_https`, `snapshot_provider_not_allowed`, `snapshot_not_a_replay_url` and `snapshot_not_a_snapshot_code`; they run the same checks, so one paste is answered the same way wherever it arrives. The `429` responses from the [rate limiter](#rate-limits) use the same envelope (codes `rate_limited`, `read_quota_exceeded`). Branch on `code`, not on `message`: `code` is the stable contract surface. Status codes follow the per-endpoint contracts below.
 ---
 
 ## Endpoints at a glance
@@ -49,8 +49,18 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/{id}/versions/{version_no}` | 🌐 | One superseded version, by its number |
 | POST | `/events/{id}/close` | 🔒 | Withdraw, reject or retract an event, owner only (→ `closed`) |
 | GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated, filterable on readiness) |
+| GET | `/events/{id}/collections` | 🔒 | Your collections, each saying whether this event is on it (owner only) |
+| **Collections** | | | |
+| POST | `/collections` | 🔒 | Open a collection (title, description, and the events it holds) |
+| POST | `/collections/{id}/report` | 🌐 | Report a collection for moderation (anonymous allowed) |
+| GET | `/collections/{id}` | 🌐 | One collection: owner, title, description, item count, date range |
+| PATCH | `/collections/{id}` | 🔒 | Write your collection's title and description |
+| DELETE | `/collections/{id}` | 🔒 | Drop your collection; the events it held stay |
+| GET | `/collections/{id}/events` | 🌐 | Its items, oldest event first (cursor-paged) |
+| PUT | `/collections/{id}/events/{event_id}` | 🔒 | Put one of your events on it (idempotent) |
+| DELETE | `/collections/{id}/events/{event_id}` | 🔒 | Take one event off it (idempotent) |
 | **Search** | | | |
-| GET | `/search` | 🌐 | Free-text search across geolocations / requests / users |
+| GET | `/search` | 🌐 | Free-text search across geolocations / requests / collections / users |
 | GET | `/search/authors` | 🌐 | Username typeahead for the author filter |
 | **Tags** | | | |
 | GET | `/tags` | 🌐 | List tags (defaults to ones referenced by live geos) |
@@ -64,6 +74,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | PUT | `/users/me/avatar` | 🔒 | Upload your profile picture (multipart) |
 | DELETE | `/users/me/avatar` | 🔒 | Remove your profile picture |
 | GET | `/users/{username}/events` | 🌐 | List an analyst's published geolocations |
+| GET | `/users/{username}/collections` | 🌐 | List an analyst's collections |
 | POST | `/users/{username}/follow` | 🔒 | Follow (idempotent; self-follow → 400) |
 | DELETE | `/users/{username}/follow` | 🔒 | Unfollow (idempotent; unknown user → 404) |
 | **Timeline** | | | |
@@ -81,9 +92,11 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/admin/users/{id}` | 🛡️ | Soft delete (default) or `?hard=true` GDPR erasure |
 | DELETE | `/admin/users/{id}/detected-events` | 🛡️ | Purge every detection the user owns, account untouched |
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
+| PATCH | `/admin/collections/{id}/moderation` | 🛡️ | Withhold a collection from public view, or restore it (moves `hidden_at`) |
+| DELETE | `/admin/collections/{id}` | 🛡️ | Withhold a collection from public view (the takedown alias of the PATCH above) |
 | PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
-| GET | `/admin/reports` | 🛡️ | The moderation queue: open reports first, then newest first |
-| POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to the event |
+| GET | `/admin/reports` | 🛡️ | The moderation queue: event and collection reports, open ones first |
+| POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to what the report names |
 | PATCH | `/admin/events/{id}/moderation` | 🛡️ | Set an event's graphic flag / takedown directly, no report behind it |
 | POST | `/admin/events/{id}/versions/{version_no}/redact` | 🛡️ | Blank one filed version, keeping its number |
 | POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (auth tokens, pending regs) |
@@ -122,20 +135,26 @@ CI pins every limit on this page behaviorally: N requests succeed, and request N
 | `POST /events/batch-complete` | 10/min |
 | `POST /events/{id}/close` | 60/min |
 | `POST /events/{id}/report` | 10/hour (anonymous allowed; reporting has no per-account tier, only the per-IP one) |
+| `GET /events/{id}/collections` | 120/min |
+| **Collections** | |
+| `GET /collections/{id}`, `GET /collections/{id}/events` | 120/min |
+| `POST /collections`, `PATCH /collections/{id}`, `DELETE /collections/{id}` | 30/min |
+| `POST /collections/{id}/report` | 10/hour (anonymous allowed; the event report's own figure, so one reporter cannot trade one target for the other) |
+| `PUT`/`DELETE /collections/{id}/events/{event_id}` | 60/min |
 | **Search / Tags** | |
 | `GET /search`, `GET /search/authors` | 60/min |
 | `GET /tags` | 60/min |
 | `POST /tags` | 30/min |
 | `GET /conflicts` | 60/min |
 | **Users / Timeline** | |
-| `GET /users/{username}`, `GET /users/{username}/stats`, `GET /users/{username}/events`, `GET /timeline` | 120/min |
+| `GET /users/{username}`, `GET /users/{username}/stats`, `GET /users/{username}/events`, `GET /users/{username}/collections`, `GET /timeline` | 120/min |
 | `PATCH /users/me` | 30/min |
 | `PUT`/`DELETE /users/me/avatar` | 20/min |
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
-| `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` | 60/hour |
+| `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` · `PATCH /admin/collections/{id}/moderation` · `DELETE /admin/collections/{id}` | 60/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
 
 The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/reports` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: the POST verifies the HMAC signature over the raw body (one HMAC, cheaper than any limiter bookkeeping), and the GET only ever signs tokens matching X's URL-safe CRC shape, the charset gate that keeps the responder from being a signing oracle for forged webhook bodies.
@@ -144,11 +163,11 @@ The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/u
 
 **1000/hour per account.** One bucket is shared across the whole read surface, not one bucket per endpoint:
 
-`GET /events` · `/events/{id}` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/timeline`
+`GET /events` · `/events/{id}` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/collections/{id}` · `/collections/{id}/events` · `/timeline`
 
 The key is `User.id`, read from the signature-verified session cookie. A forged `sub` cannot mint a bucket, so the cap travels with the account rather than with its source address: the per-IP table caps one client, and this quota caps one account's read throughput wherever it reads from. The two layers stack, and the backend evaluates the table limit first, so a request the table limit rejects costs the account nothing.
 
-This quota is defense in depth, not a wall on its own. Ten of the thirteen paths answer anonymously, so if you drop the session cookie, you leave the quota behind and fall back to the per-IP limits alone. The quota adds a ceiling the per-IP table cannot express: a bound on how much one account pulls, however many addresses it pulls from. Governing the anonymous catalog surface is the per-IP table's job.
+This quota is defense in depth, not a wall on its own. Thirteen of the sixteen paths answer anonymously, so if you drop the session cookie, you leave the quota behind and fall back to the per-IP limits alone. The quota adds a ceiling the per-IP table cannot express: a bound on how much one account pulls, however many addresses it pulls from. Governing the anonymous catalog surface is the per-IP table's job.
 
 Anonymous callers are exempt from the quota and keep the per-IP limits alone. So is every authenticated read absent from the list above, including `GET /auth/me` and the read-only admin probes. One endpoint is absent by decision rather than by nature: `GET /events/import-archive/{job_id}`. A single import polls it hard enough to drain a shared budget on its own. Exempting it cannot widen the catalog surface, because it returns no catalog rows: one job's own progress counters, with no listing, search, or enumeration to walk.
 
@@ -697,6 +716,7 @@ Report an event for moderation. Open to anonymous viewers: the people a piece of
 {
   "id": "uuid",
   "event_id": "uuid",
+  "collection": null,
   "reason": "graphic_not_flagged",
   "details": "Shows a body at 0:14, no graphic-content warning on the card.",
   "reporter_user_id": null,
@@ -705,6 +725,8 @@ Report an event for moderation. Open to anonymous viewers: the people a piece of
   "resolution": null
 }
 ```
+
+One report names one target. `event_id` is set here and `collection` is `null`; [`POST /collections/{id}/report`](#post-collectionsidreport) fills the other one. The two travel through the same table and the same [queue](#get-adminreports).
 
 **Errors:**
 | Code | Case |
@@ -1135,6 +1157,35 @@ The live row is the current version and is not filed, so its own number answers 
 
 ---
 
+### `GET /events/{id}/collections` 🔒
+
+Your collections, each saying whether this event is already on it.
+
+The add-to-collection popover's read, owner only: a collection is personal and only an event's owner may shelve it, so nobody else has an answer to give here. Empty collections are listed, since putting the first event on one is what the popover is for. Withheld collections are not.
+
+**Response 200:**
+```json
+{
+  "items": [
+    { "id": "uuid", "title": "Zaporizhzhia plant", "event_count": 12, "in_collection": true },
+    { "id": "uuid", "title": "March strikes", "event_count": 0, "in_collection": false }
+  ]
+}
+```
+
+Thinner than [`CollectionRead`](#get-collectionsid): the popover names a collection, shows a checked state and says how much the collection already holds, so it carries no mosaic and no date range. `event_count` is computed over the same predicate as the collection reads, so the number under a title here is the number that collection's own page prints.
+
+Unpaged and capped at 100 rows (`MAX_POPOVER_COLLECTIONS` in [`services/collections.py`](../backend/app/services/collections.py)), newest first. An analyst holding more than 100 collections gets their 100 newest, and the older ones are absent from the response with nothing marking the cut.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 401 | Not authenticated |
+| 403 | Not your event |
+| 404 | Unknown, soft-deleted or withheld event |
+
+---
+
 ### `POST /events/{id}/close` 🔒
 
 Close an event, owner-only, in one verb. The row stays publicly visible with the reason attached, and `before_closed_status` records which state it left, which is what the close means:
@@ -1183,9 +1234,9 @@ There is no `/requests` router. A **request** is a `requested` event, a **geoloc
 
 ## Search
 
-Slice-1 full-text discovery surface across the three first-class entity types. Backed by two Postgres GIN indexes on `to_tsvector('simple', …)` expressions: one over `events.title` and one over `users.username || ' ' || users.bio` (migration `o1j3k5l7m9n1`). One FTS query path serves the single `events` table. The located (`geolocations`) and requested (`requests`) groups run the same `title` index with different `WHERE` clauses (`status IN ('geolocated', 'detected') AND event_coords IS NOT NULL` vs `status = 'requested'`). The `simple` dictionary keeps matching predictable. The response is still grouped by entity type.
+Full-text discovery surface across the four result groups. Backed by three Postgres GIN indexes on `to_tsvector('simple', …)` expressions: one over `events.title` and one over `users.username || ' ' || users.bio` (migration `o1j3k5l7m9n1`), one over `collections.title || ' ' || collections.description` (migration `q5s7u9w1y3a5`). One FTS query path serves the single `events` table. The located (`geolocations`) and requested (`requests`) groups run the same `title` index with different `WHERE` clauses (`status IN ('geolocated', 'detected') AND event_coords IS NOT NULL` vs `status = 'requested'`). The `simple` dictionary keeps matching predictable. The response is grouped by entity type.
 
-**Out of scope for slice 1:** searching `source_url`, JSONB-content search (`events.proof`), per-group infinite scroll, and the filter chips beyond the entity-type pick.
+**Out of scope:** searching `source_url`, JSONB-content search (`events.proof`), and per-group infinite scroll.
 
 ### `GET /search` 🌐
 
@@ -1193,11 +1244,13 @@ Slice-1 full-text discovery surface across the three first-class entity types. B
 | Param | Type | Description |
 |-------|------|-------------|
 | `q` | string | Free-text query. Empty / whitespace-only short-circuits to empty groups (unless a filter is active). |
-| `type` | enum | `all` (default), `event` (the two event groups: what the search page's unified "Events" chip sends), `geolocation`, `request`, or `user`. Anything else → 422. |
+| `type` | enum | `all` (default), `event` (the two event groups: what the search page's unified "Events" chip sends), `geolocation`, `request`, `collection`, or `user`. Anything else → 422. |
 | `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
 | *filter set* | | The standard event filter set, same names and semantics as [`GET /events`](#get-events): `status`, `conflict`, `capture_source`, `tag`, `media` (repeatable), `event_date_from` / `event_date_to`, `submitted_from` / `submitted_to`, `author`. Scopes the two event groups (a `status` value a group's view can't contain empties that group). |
 
-Any active filter empties the users group: the filters are event predicates, and an unfiltered analyst list next to a filtered event view would read as if the filter applied. With an empty `q` and at least one active filter, the API enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight (the profile's "Show more" entry point). Typing then narrows within it.
+Any active filter empties the users group: the filters are event predicates, and an unfiltered analyst list next to a filtered event view would read as if the filter applied. The collections group takes the same rule with one exception, `author`: a collection carries an owner, so the filter narrows the group to that analyst's collections instead of emptying it. With an empty `q` and at least one active filter, the API enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight (the profile's "Show more" entry points). Typing then narrows within it. The collections group browses on `author` alone: that is the one filter it reads, so `author` with an empty `q` lists the analyst's collections newest first, and any other active filter empties the group as it does under a typed query. An empty `q` with no filter at all returns empty groups.
+
+**The collections group** matches a query against the collection's title and description as one document, ranked the same way, and each hit is the full [`CollectionRead`](#get-collectionsid) the profile card and the collection page both render (mosaic, `event_count`, date range, owner). It carries no `*_highlight` field: the card prints the collection's own text. A collection appears only where a reader could already see it on a profile, so a withheld collection, one whose owner is soft-deleted, and one holding nothing showable are all absent. The same visibility and non-empty rules hold in browse mode, and `total` is the pre-`LIMIT` count on both paths.
 
 **Ranking:** `ts_rank` descending then `created_at` descending as a stable tie-breaker.
 
@@ -1234,6 +1287,19 @@ Any active filter empties the users group: the filters are event predicates, and
       "tags": []
     }
   ],
+  "collections": [
+    {
+      "id": "uuid",
+      "owner": { "id": "uuid", "username": "kharkiv_osint" },
+      "title": "Kharkiv strikes, spring 2026",
+      "description": "Every strike placed inside the city over March and April.",
+      "cover": [{ "url": "…", "media_type": "image" }],
+      "event_count": 12,
+      "first_date": "2026-03-02",
+      "last_date": "2026-04-28",
+      "created_at": "2026-05-02T09:00:00Z"
+    }
+  ],
   "users": [
     {
       "id": "uuid",
@@ -1244,7 +1310,7 @@ Any active filter empties the users group: the filters are event predicates, and
       "avatar_url": null
     }
   ],
-  "total": { "geolocations": 1, "requests": 1, "users": 1 },
+  "total": { "geolocations": 1, "requests": 1, "collections": 1, "users": 1 },
   "query": "kharkiv",
   "type": "all"
 }
@@ -1254,7 +1320,7 @@ Any active filter empties the users group: the filters are event predicates, and
 
 `bio_highlight` is `null` when only the username matched. The UI uses this to hide the snippet block instead of rendering an unhighlighted bio. Groups you didn't request via `type=` come back as empty arrays.
 
-`total` is a fixed-key object (`geolocations`, `requests`, `users`), each the pre-LIMIT match count for its group (so the UI renders "3 of 142", not "3 of 3"). `type` echoes the request and is one of `all`, `geolocation`, `request`, `user`.
+`total` is a fixed-key object (`geolocations`, `requests`, `collections`, `users`), each the pre-LIMIT match count for its group (so the UI renders "3 of 142", not "3 of 3"). `type` echoes the request and is one of `all`, `event`, `geolocation`, `request`, `collection`, `user`.
 
 **Errors:**
 | Code | Case |
@@ -1350,6 +1416,230 @@ List the conflict referential, ordered `ongoing` first then by name. Server-mana
 `start_year` / `end_year` disambiguate same-named historical entries. `tier` is the Wikipedia death-toll tier (`major`, `minor`, `conflict`; see [`data-model.md`](data-model.md#conflicts)), NULL for rows the sync has never classified; clients use it to rank the default picker list. `last_seen_at` and `source` are sync internals and stay off the wire.
 
 Ongoing-conflict names and dates derive from Wikipedia's "List of ongoing armed conflicts," available under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Any surface that lists them must carry that attribution.
+
+---
+
+## Collections
+
+A collection is a named, curated set of one analyst's own events, shown on the owner's public profile. One owner, no collaborators. It carries two free-text fields, both required: a title capped at the event title's own 255 characters, and a short plain-text description of what it holds, capped at 500 characters, the profile bio's figure for the same class of text. The items order themselves by when their events happened, so a collection carries no manual order.
+
+What a collection may hold is one predicate, `services/event_filters.collectable_events`: a visible event (neither soft-deleted nor withheld) in one of the two worked statuses, `geolocated` or `detected`. A `requested` row is an ask rather than an answer, and a `closed` row is one the owner rejected or retracted, so neither is on a curated shelf. The same predicate governs the item list, the item count, the date range, the card mosaic, and the check `PUT /collections/{id}/events/{event_id}` runs, so an event that later closes or is taken down leaves all five at once with no write to the membership table.
+
+### `POST /collections` 🔒
+
+Open a collection, holding the events you pick.
+
+**Body:**
+```json
+{
+  "title": "Zaporizhzhia plant",
+  "description": "Strikes and their aftermath at the plant, 2025 to 2026.",
+  "event_ids": ["7c9e6679-7425-40de-944b-e07fc1f90ae7"]
+}
+```
+
+`title` is required, 1 to 255 characters. `description` is required too, 1 to 500 characters. Both are stripped of surrounding whitespace, so a value of spaces is a 422 rather than a stored blank.
+
+`event_ids` is optional and defaults to empty, which opens a collection holding nothing. Repeated ids collapse to one membership, and a body carrying more than 500 ids is a 422.
+
+Each id goes through the checks [`PUT /collections/{id}/events/{event_id}`](#put-collectionsidevents_event_id) runs, in the same transaction as the collection itself: the event must exist (404), be yours (403), and be in a state a collection shows (409). A refusal on any id fails the whole create, so no collection lands holding part of what was asked for.
+
+**Response 201:** the new `CollectionRead`, counting and dating the events it opened with, and wearing the mosaic they give it.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 401 | Not authenticated |
+| 403 | One of `event_ids` belongs to someone else |
+| 404 | `{"code": "event_not_found", …}`: an id no event carries |
+| 409 | `{"code": "event_not_collectable", …}`: an event's state is not one a collection shows |
+| 422 | Title empty or over 255 characters, description empty or over 500 characters, or more than 500 `event_ids` |
+
+---
+
+### `POST /collections/{id}/report` 🌐
+
+Report a collection for moderation. The twin of [`POST /events/{id}/report`](#post-eventsidreport): the same body, the same buckets, the same per-IP cap, and open to anonymous viewers for the same reason, since the reader who notices a shelf misrepresenting what it holds rarely holds an account here. A signed-in reporter is recorded on the row (`reporter_user_id`); an anonymous one leaves it `null`.
+
+**Request body:**
+```json
+{
+  "reason": "privacy",
+  "details": "The title names a private individual who is not in any of the footage."
+}
+```
+
+`reason` is one of `illegal_content`, `graphic_not_flagged`, `copyright`, `privacy`, `other`. `details` is optional free text, capped at 2000 characters.
+
+**Response 201:**
+```json
+{
+  "id": "uuid",
+  "event_id": null,
+  "collection": {
+    "id": "uuid",
+    "title": "Zaporizhzhia plant",
+    "owner": { "id": "uuid", "username": "analyst", "avatar_url": "https://…/avatars/…jpg" }
+  },
+  "reason": "privacy",
+  "details": "The title names a private individual who is not in any of the footage.",
+  "reporter_user_id": null,
+  "created_at": "2026-08-12T09:14:00Z",
+  "resolved_at": null,
+  "resolution": null
+}
+```
+
+The row lands in the same [`GET /admin/reports`](#get-adminreports) queue an event report lands in, and an admin answers it with the verdicts a collection takes: `hidden`, which stamps `collections.hidden_at` exactly as [`PATCH /admin/collections/{id}/moderation`](#patch-admincollectionsidmoderation) does, or `dismissed`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `collection_not_found`: unknown id, already withheld, or belonging to a soft-deleted account. All three answer the same way, so the response can't be used to probe which. An admin gets this too: reading a withheld collection to judge it is not a reason to file one more report against it |
+| 429 | Rate-limited (10/hour/IP) |
+
+---
+
+### `GET /collections/{id}` 🌐
+
+One collection's header: owner, title, description, item count, and the range its items span.
+
+**Response 200:**
+```json
+{
+  "id": "uuid",
+  "owner": { "id": "uuid", "username": "analyst", "avatar_url": "https://…/avatars/…jpg" },
+  "title": "Zaporizhzhia plant",
+  "description": "Strikes and their aftermath at the plant, 2025 to 2026.",
+  "cover": [
+    { "url": "https://…/uploads/geo/…jpg", "media_type": "image" },
+    { "url": "https://…/uploads/geo/…mp4", "media_type": "video" }
+  ],
+  "event_count": 12,
+  "first_date": "2026-03-01",
+  "last_date": "2026-07-09",
+  "created_at": "2026-08-01T09:12:00Z"
+}
+```
+
+`title` and `description` are what the owner writes about the collection, both required and both plain text: the name of the shelf, and one short paragraph saying what is on it.
+
+`event_count`, `first_date` and `last_date` are computed per read over the events the collection may show, never stored. `first_date` and `last_date` are the smallest and largest `event_date` among those events, so both are null for an empty collection and for one whose items all lack a date.
+
+`cover` is the mosaic the profile card wears, zero to four tiles computed per read and never stored: walk the items the collection may show in chronological order, skip one flagged graphic, take each remaining item's card media by the same rule as [`GET /events`](#get-events) (preferring an image over a clip where the item carries both), and stop at four. A graphic item is skipped rather than ending the walk, so a card never shows death or injury to a reader who did not open the item. The list is empty when no item qualifies. There is no cover upload: a collection stores no picture of its own.
+
+`cover[].media_type` is the media-kind domain `image` or `video`, so a client picks the element that can render each tile. Most source media are clips, and an `<img>` pointed at one paints an empty band. Each `url` is a Media row's own `storage_url` and takes the derivatives every other Media url takes.
+
+A withheld collection (`hidden_at`, see [`PATCH /admin/collections/{id}/moderation`](#patch-admincollectionsidmoderation)) answers 404 for everyone but an admin, its owner included, the same branch [`GET /events/{id}`](#get-eventsid) takes. So does a collection whose owner is soft-deleted.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `{"code": "collection_not_found", …}`: unknown, withheld, or the owner is soft-deleted |
+
+---
+
+### `PATCH /collections/{id}` 🔒
+
+Write your collection's title and description. Owner only.
+
+**Body:**
+```json
+{
+  "title": "Operation reconstruction",
+  "description": "Every strike of the operation, in the order they landed."
+}
+```
+
+Both fields ride every edit, under the caps and the whitespace stripping [`POST /collections`](#post-collections) applies, so one request states what the collection is and a renamed collection cannot be left describing the old one.
+
+**Response 200:** the updated `CollectionRead`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 401 | Not authenticated |
+| 403 | Not your collection |
+| 404 | `collection_not_found` |
+| 422 | Title empty or over 255 characters, or description empty or over 500 characters |
+
+---
+
+### `DELETE /collections/{id}` 🔒
+
+Drop your collection. Owner only.
+
+Every event it held stays exactly as it was: a collection is a view over the analyst's published record, so removing the view is not a judgement on any geolocation. The membership rows go with it, and nothing else has to be reached: a collection stores no file of its own.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 401 | Not authenticated |
+| 403 | Not your collection |
+| 404 | `collection_not_found` |
+
+---
+
+### `GET /collections/{id}/events` 🌐
+
+The collection's items, in the order the events happened.
+
+Ordered by `event_date`, then `event_time`, then `created_at`, then `id`, ascending. An item missing its date sorts after every dated one, and an item missing its hour after every timed one on the same day, so the list reads forward through the dossier and ends on what is not yet dated. `created_at` and `id` break every tie, which makes the ordering total and lets the cursor key on it.
+
+Capped at 100 rows however large `limit` is. A caller reading further follows the `cursor` in the `Link: rel="next"` header, present exactly when the next page holds at least one row (see [Pagination](#pagination)).
+
+**Query params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `limit` | int | Rows per page (default and maximum 100). Below 1 returns 422. |
+| `cursor` | string | Opaque cursor from a `Link: rel="next"` header. Malformed returns 422. |
+
+**Response 200:** an array of the same `EventList` cards [`GET /events`](#get-events) serves.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `collection_not_found` |
+| 422 | Malformed `cursor`, or `limit` below 1 |
+
+---
+
+### `PUT /collections/{id}/events/{event_id}` 🔒
+
+Put one of your events on one of your collections.
+
+Idempotent: an event already on the collection returns 204 and writes no second row.
+
+Three refusals, in this order. The collection must be yours, or 403. The event must be yours too, the ownership invariant that keeps a collection one analyst's own work, or 403 again. And the event's state must be one a collection shows, or 409: the row exists and you own it, but a request, a rejected detection, a retraction, a takedown or a soft-deleted row is not something a curated shelf presents as standing work.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 401 | Not authenticated |
+| 403 | The collection or the event belongs to someone else |
+| 404 | `collection_not_found`, or `event_not_found` for an id no event carries |
+| 409 | `{"code": "event_not_collectable", …}`: the event's state is not one a collection shows |
+
+---
+
+### `DELETE /collections/{id}/events/{event_id}` 🔒
+
+Take one event off your collection. Owner only.
+
+Idempotent: an event the collection does not hold returns 204. The event itself is untouched, and eligibility is not re-checked, so an owner can always clear a membership whose event has since closed or been withheld.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 401 | Not authenticated |
+| 403 | Not your collection |
+| 404 | `collection_not_found` |
 
 ---
 
@@ -1536,6 +1826,54 @@ Offset-paged, not cursor-paged: the ordering this feed reads by is `event_date`,
 ```
 
 `media` is the picked card thumbnail (same rule as [`GET /events`](#get-events)), `null` when the event has neither a source attachment nor a proof image; the full media list is on the detail payload only.
+
+---
+
+### `GET /users/{username}/collections`
+
+One analyst's collections, newest first.
+
+A collection holding nothing a reader may see is scaffolding rather than published work, so a reader gets the collections that hold something and the owner gets all of theirs, empty ones included. The narrowing applies to `total` as well as to the rows, so the pager never counts a collection the list will not serve. Withheld collections are in neither view.
+
+Offset-paged, like the published-geolocations feed beside it.
+
+**Query params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `page` | int | Page number (default 1). Below 1 or non-numeric returns 422. |
+| `per_page` | int | Rows per page (default 20). Clamped to the 100-row [cap](#pagination); below 1 or non-numeric returns 422. |
+
+**Response 200:**
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "owner": { "id": "uuid", "username": "analyst", "avatar_url": null },
+      "title": "Zaporizhzhia plant",
+      "description": "Strikes and their aftermath at the plant, 2025 to 2026.",
+      "cover": [
+        { "url": "https://…/uploads/geo/…jpg", "media_type": "image" },
+        { "url": "https://…/uploads/geo/…mp4", "media_type": "video" }
+      ],
+      "event_count": 12,
+      "first_date": "2026-03-01",
+      "last_date": "2026-07-09",
+      "created_at": "2026-08-01T09:12:00Z"
+    }
+  ],
+  "total": 3,
+  "page": 1,
+  "per_page": 20
+}
+```
+
+Each item is the same [`CollectionRead`](#get-collectionsid) the collection's own page serves.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | User not found or soft-deleted |
 
 ---
 
@@ -1742,7 +2080,7 @@ Remove a user. Default is soft delete (sets `users.deleted_at` *and* cascade-sof
 
 **Soft delete**: the user can no longer log in (opaque 401 like wrong credentials); their public profile 404s; their author handle still renders on events preserved in the audit trail. Idempotent: re-soft-deleting preserves the original timestamp.
 
-**Hard delete**: drops the user row, cascade-drops every event they owned (which cascade to media of every role + tag links + contributor rows), then sweeps the S3 objects (event media, source and proof roles alike). `invite_codes.created_by` and `invite_codes.used_by` flip to NULL via `ON DELETE SET NULL` so the codes survive as audit rows even after the issuer or consumer is gone. DB transaction commits before the S3 attempt so a flaky storage backend can't strand DB rows pointing at live keys.
+**Hard delete**: drops the user row, cascade-drops every event they owned (which cascade to media of every role + tag links + contributor rows) and every [collection](#collections) they owned (which cascades to its memberships), then sweeps the S3 objects (event media of both roles and the profile picture). `invite_codes.created_by` and `invite_codes.used_by` flip to NULL via `ON DELETE SET NULL` so the codes survive as audit rows even after the issuer or consumer is gone. DB transaction commits before the S3 attempt so a flaky storage backend can't strand DB rows pointing at live keys.
 
 **Response 200:**
 ```json
@@ -1799,6 +2137,55 @@ For `mode = "hard"`, `deleted_at` is `null` and `media_count` (every file swept)
 
 **Response 404:** unknown id.
 
+### `PATCH /admin/collections/{id}/moderation` 🛡️
+
+Set a collection's moderation state: withhold it, or restore it.
+
+Moves `collections.hidden_at`, the same reversible axis an event carries, and the collection counterpart of [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation). `hidden: true` stamps the takedown, so a reported shelf is withheld pending judgement rather than destroyed; `hidden: false` clears it. One axis rather than the event's two: `is_graphic` is a column on the event, and a collection holds no footage of its own.
+
+A withheld collection answers 404 on [`GET /collections/{id}`](#get-collectionsid) for everyone but an admin, its owner included, and drops off [`GET /users/{username}/collections`](#get-usersusernamecollections) entirely. The events on it are untouched in both directions: each is moderated on its own, so restoring a shelf says nothing about what it holds.
+
+Idempotent: a collection already in the requested state keeps its current timestamp and files no audit row. Files an `admin_events` row on the write that does take effect, `collection_hidden` on the takedown and `collection_restored` on the restore.
+
+**Request body:**
+```json
+{ "hidden": false }
+```
+
+**Response 200:**
+```json
+{ "collection_id": "uuid", "title": "Zaporizhzhia plant", "hidden_at": null }
+```
+
+`hidden_at` is `null` when the collection is live, a timestamp when it is withheld, so the response also says when the takedown landed.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | Not an admin |
+| 404 | `{"code": "collection_not_found", …}` |
+
+Rate-limited to 60/hour.
+
+### `DELETE /admin/collections/{id}` 🛡️
+
+Withhold a collection from every read but an admin's.
+
+The takedown alias of [`PATCH /admin/collections/{id}/moderation`](#patch-admincollectionsidmoderation) with `{"hidden": true}`: same stamp, same `collection_hidden` audit row, same response, same idempotence. Use the PATCH to restore one.
+
+**Response 200:**
+```json
+{ "collection_id": "uuid", "title": "Zaporizhzhia plant", "hidden_at": "2026-09-12T10:00:00Z" }
+```
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | Not an admin |
+| 404 | `{"code": "collection_not_found", …}` |
+
+---
+
 ### `PATCH /admin/users/{id}/x-handle` 🛡️
 
 Link or clear the X handle the bot attributes mentions to; the interactive write path for `users.x_handle` (registration also copies an invite-bound handle, and self-serve linking waits on verify-by-post), and the repair path when an invite-bound handle failed to link at redemption. A non-null value is normalized (single leading `@` stripped, lowercased) and must match `^[a-z0-9_]{1,15}$`; `null` clears the link. Audited via `admin_events` (`action = "x_handle_linked"` / `"x_handle_cleared"`).
@@ -1818,7 +2205,7 @@ Link or clear the X handle the bot attributes mentions to; the interactive write
 
 ### `GET /admin/reports` 🛡️
 
-The moderation queue: open reports first, then newest first within each group. Resolved reports stay in the list rather than dropping out of it: a report is never deleted, so the queue doubles as the record of what was reported and what was decided. Offset-paged, capped at 100 rows per page. No rate limit.
+The moderation queue: open reports first, then newest first within each group. One list for both kinds of report, the ones filed against an event and the ones filed against a collection. Resolved reports stay in the list rather than dropping out of it: a report is never deleted, so the queue doubles as the record of what was reported and what was decided. Offset-paged, capped at 100 rows per page. No rate limit.
 
 **Query params:**
 | Param | Type | Description |
@@ -1833,32 +2220,54 @@ The moderation queue: open reports first, then newest first within each group. R
     {
       "id": "uuid",
       "event_id": "uuid",
+      "collection": null,
       "reason": "graphic_not_flagged",
       "details": "Shows a body at 0:14, no graphic-content warning on the card.",
       "reporter_user_id": null,
       "created_at": "2026-08-12T09:14:00Z",
       "resolved_at": null,
       "resolution": null
+    },
+    {
+      "id": "uuid",
+      "event_id": null,
+      "collection": {
+        "id": "uuid",
+        "title": "Zaporizhzhia plant",
+        "owner": { "id": "uuid", "username": "analyst", "avatar_url": null }
+      },
+      "reason": "privacy",
+      "details": null,
+      "reporter_user_id": "uuid",
+      "created_at": "2026-08-12T09:20:00Z",
+      "resolved_at": null,
+      "resolution": null
     }
   ],
-  "total": 1,
+  "total": 2,
   "page": 1,
   "per_page": 20
 }
 ```
 
-`resolved_at` and `resolution` are both `null` while a report is open and both set once it is resolved, so `resolved_at is null` is the open test on the wire too. The admin who resolved it is recorded on the row and in `admin_events`, not on the wire. `event_id` is `null` when the reported event was hard-deleted after the report was filed: the report outlives it, and the admin panel renders those rows as *Event deleted* with `dismissed` as the only verdict on offer.
+`resolved_at` and `resolution` are both `null` while a report is open and both set once it is resolved, so `resolved_at is null` is the open test on the wire too. The admin who resolved it is recorded on the row and in `admin_events`, not on the wire.
+
+A row names one target. `event_id` carries the reported event's id, and the panel links out on it; `collection` carries the reported collection whole, its current title and its owner, because a collection is a name rather than a page an admin recognises from an id. It is read off the live row at queue time, so a renamed collection reads under its current name.
+
+Both are `null` when the reported target is gone: an event that was hard-deleted, or a collection that went with its owner's erased account. The report outlives either, and the admin panel renders those rows as *Reported item deleted* with `dismissed` as the only verdict on offer.
 
 ### `POST /admin/reports/{id}/resolve` 🛡️
 
-Close one report with a verdict, applying it to the reported event. Reports are resolved once and never reopened: a second resolve is a conflict, not an overwrite. Audited via `admin_events` (`action = "report_resolved"`, `target` carrying `report_id` / `event_id` / `resolution`); a verdict that also changes the event appends the matching event action too (`event_marked_graphic` for `marked_graphic`, `event_hidden` for `hidden`), so the trail reads the same whether the change came from the queue or from the direct moderation endpoint below. Invalidates the `/events/points` cache when the verdict actually hides the event.
+Close one report with a verdict, applying it to what the report names. One route for both kinds of target: the service reads which one the row names and applies the verdicts that kind takes. Reports are resolved once and never reopened: a second resolve is a conflict, not an overwrite. Audited via `admin_events` (`action = "report_resolved"`, `target` carrying `report_id` / `event_id` / `collection_id` / `resolution`, the target key that does not apply reading `null`); a verdict that also changes the target appends the matching action too (`event_marked_graphic` for `marked_graphic`, `event_hidden` or `collection_hidden` for `hidden`), so the trail reads the same whether the change came from the queue or from the admin verb that performs it directly. Invalidates the `/events/points` cache when the verdict actually hides an event.
 
 **Request body:**
 ```json
 { "resolution": "hidden" }
 ```
 
-`resolution` is one of `marked_graphic` (sets the event's `is_graphic` over the author's declaration), `hidden` (withholds the event from every public read, stamping `hidden_at`), or `dismissed` (closes the report, event untouched).
+`resolution` is one of `marked_graphic` (sets the event's `is_graphic` over the author's declaration), `hidden` (withholds the target from every public read, stamping `events.hidden_at` or `collections.hidden_at`), or `dismissed` (closes the report, target untouched).
+
+`marked_graphic` is an event verdict only: the flag is a column on the event, and a collection carries no footage of its own, only items each moderated on their own. A collection report answering it is a 409 rather than a verdict that changed nothing, and the report stays open.
 
 **Response 200:** the resolved `ContentReportRead` (same shape as the queue item above, now carrying `resolved_at` / `resolution`).
 
@@ -1867,7 +2276,8 @@ Close one report with a verdict, applying it to the reported event. Reports are 
 |------|------|
 | 404 | `report_not_found`: unknown report id |
 | 409 | `report_already_resolved`: the report already carries a verdict |
-| 409 | `report_event_gone`: the reported event was hard-deleted, so `marked_graphic` and `hidden` have nothing to act on. Resolve the report as `dismissed` instead |
+| 409 | `report_target_gone`: the reported event or collection was deleted, so every verdict but `dismissed` has nothing to act on. Resolve the report as `dismissed` instead |
+| 409 | `report_verdict_not_applicable`: `marked_graphic` against a collection report |
 
 Rate-limited to 60/hour.
 
@@ -1993,7 +2403,7 @@ Link: <https://api.vidit.app/api/v1/events?view=requested&cursor=WyIyMDI2LTA4LTE
 
 The URL carries the whole query the page was minted under, so a walk stays inside one filter set. No header means no further rows. The header is on the CORS `Access-Control-Expose-Headers` list, so a browser client can read it. The cursor is opaque: it encodes the position of the page's last row in that list's ordering, and it's not a value you need to construct.
 
-Cursor-paged: [`GET /events`](#get-events), `GET /admin/invite-codes` and [`GET /events/{id}/versions`](#get-eventsidversions). The first two order by `created_at DESC, id DESC`; the version history orders by `version_no DESC`, a number unique per event. Either ordering is total and immutable, which is what makes a walk safe: rows inserted mid-walk land ahead of the cursor, on pages already served, so no row is served twice and none is skipped, the way an `OFFSET` walk does both when the set shifts under it.
+Cursor-paged: [`GET /events`](#get-events), `GET /admin/invite-codes`, [`GET /events/{id}/versions`](#get-eventsidversions) and [`GET /collections/{id}/events`](#get-collectionsidevents). The first two order by `created_at DESC, id DESC`; the version history orders by `version_no DESC`, a number unique per event; a collection's items order by `event_date, event_time, created_at, id` ascending, with `created_at, id` breaking every tie of the two nullable columns ahead of them. Each ordering is total, which is what makes a walk safe: rows inserted mid-walk land ahead of the cursor, on pages already served, so no row is served twice and none is skipped, the way an `OFFSET` walk does both when the set shifts under it.
 
 Endpoints that page return this envelope, `total` being the pre-cap match count:
 ```json
@@ -2009,7 +2419,7 @@ Endpoints that page return this envelope, `total` being the pre-cap match count:
 
 The other lists sit outside the cursor scheme:
 
-- [`GET /users/{username}/events`](#get-usersusernameevents), [`GET /events/detections`](#get-eventsdetections), and [`GET /timeline`](#get-timeline) are offset-paged and capped. `GET /users/{username}/events` orders by `event_date`, which is nullable and editable and so cannot key a cursor; `created_at DESC, id DESC` follows it as the tiebreaker, which makes the offset walk stable across pages even though `event_date` ties are common. The other two are owner- or follow-scoped queues whose clients render a page number, not a walk.
+- [`GET /users/{username}/events`](#get-usersusernameevents), [`GET /users/{username}/collections`](#get-usersusernamecollections), [`GET /events/detections`](#get-eventsdetections), and [`GET /timeline`](#get-timeline) are offset-paged and capped. `GET /users/{username}/events` orders by `event_date`, which is nullable and editable and so cannot key a cursor; `created_at DESC, id DESC` follows it as the tiebreaker, which makes the offset walk stable across pages even though `event_date` ties are common. `GET /users/{username}/collections` renders a pager over a small set on the profile. The other two are owner- or follow-scoped queues whose clients render a page number, not a walk.
 - [`GET /search`](#get-search) caps each result group at 50 and offers no offset or cursor at all. It ranks by relevance, and `ts_rank` ties are not a stable key; the walkable path over the same filter vocabulary is `GET /events`.
 - [`GET /tags`](#get-tags) and [`GET /conflicts`](#get-conflicts) are server-managed vocabularies returned whole, since their pickers filter them client-side and a page of a vocabulary is a page of missing options. They are bounded by a referential ceiling (2000 rows) instead.
 

@@ -9,11 +9,13 @@ import {
   type ContentReportList,
   type ContentReportResolution,
 } from "@/lib/admin";
+import { collectionHref } from "@/lib/collections";
 import { REPORT_REASON_LABELS, type ContentReport } from "@/lib/events";
 import { formatInstant } from "@/lib/format";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
+import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
@@ -27,15 +29,24 @@ import { TEXT_LINK } from "@/components/ui/styles";
  * rather than dropping out of it, so the queue doubles as the record of what
  * was reported and what was decided.
  *
- * Each open row carries the three verdicts. `hidden` withholds the event from
- * every public read, so it takes the two-click confirm the delete panel uses;
- * the other two are recoverable through the moderation panel beside this one.
+ * A report names an event or a collection, and one list answers for both. An
+ * event row links out by id, the way every other admin surface reaches one; a
+ * collection row prints the title and the owner it came back with, because a
+ * collection is a name rather than a page an admin recognises from its id.
  *
- * A report whose event was hard-deleted since carries a null `event_id`: the
- * row survives the deletion, so the row says the event is gone instead of
- * linking to it, and offers Dismiss alone. The other two verdicts would mutate
- * an event that no longer exists, and the API answers them with 409
- * `report_event_gone`.
+ * Each open row carries the verdicts its target can take. `hidden` withholds
+ * the target from every public read, event or collection, so it takes the
+ * two-click confirm the delete panel uses. `Mark graphic` is an event verdict
+ * only: the flag is a column on the event, and a collection carries no footage
+ * of its own, so a collection row does not offer it and the API answers it
+ * with 409 `report_verdict_not_applicable`. Both are recoverable, the event
+ * through the moderation panel beside this one and the collection through the
+ * admin takedown.
+ *
+ * A report whose target was deleted since carries neither: the row survives
+ * the deletion, so it says the target is gone instead of linking to it, and
+ * offers Dismiss alone. Every other verdict would mutate a row that no longer
+ * exists, and the API answers them with 409 `report_target_gone`.
  */
 
 const PER_PAGE = 20;
@@ -68,8 +79,12 @@ function ReportRow({
 
   const open = report.resolved_at === null;
   const busy = resolveMutation.loading;
-  // Hard-deleted since it was reported: nothing left to mark or hide.
-  const eventGone = report.event_id === null;
+  // Which kind of row this is. A report names one target, so at most one of
+  // the two is set; neither is set once that target was deleted, and then
+  // there is nothing left to mark or hide.
+  const collection = report.collection;
+  const isEvent = report.event_id !== null;
+  const targetGone = !isEvent && collection === null;
 
   return (
     <li className="border border-neutral-800 rounded-md p-3 space-y-2">
@@ -84,12 +99,21 @@ function ReportRow({
         <span className="text-neutral-500">
           {report.reporter_user_id ? "signed in" : "anonymous"}
         </span>
-        {eventGone ? (
-          <span className="text-neutral-500">Event deleted</span>
-        ) : (
+        {isEvent && (
           <Link href={`/events/${report.event_id}`} className={TEXT_LINK}>
             Open the event
           </Link>
+        )}
+        {collection && (
+          <>
+            <Link href={collectionHref(collection.id)} className={TEXT_LINK}>
+              {collection.title}
+            </Link>
+            <AuthorByline author={collection.owner} size="xs" />
+          </>
+        )}
+        {targetGone && (
+          <span className="text-neutral-500">Reported item deleted</span>
         )}
       </div>
 
@@ -107,25 +131,29 @@ function ReportRow({
 
       {open && (
         <div className="flex flex-wrap items-center gap-2">
-          {!eventGone && (
+          {isEvent && (
+            <Button
+              variant="secondary"
+              disabled={busy}
+              onClick={() => {
+                confirmHide.cancel();
+                void resolveMutation.run("marked_graphic");
+              }}
+            >
+              Mark graphic
+            </Button>
+          )}
+          {!targetGone && (
             <>
-              <Button
-                variant="secondary"
-                disabled={busy}
-                onClick={() => {
-                  confirmHide.cancel();
-                  void resolveMutation.run("marked_graphic");
-                }}
-              >
-                Mark graphic
-              </Button>
               <Button
                 variant="danger"
                 disabled={busy}
                 className={confirmHide.armed ? DANGER_CONFIRM : ""}
                 onClick={() => confirmHide.trigger()}
               >
-                {confirmHide.armed ? "Confirm" : "Hide the event"}
+                {confirmHide.armed
+                  ? "Confirm"
+                  : `Hide the ${isEvent ? "event" : "collection"}`}
               </Button>
               {confirmHide.armed && (
                 <Button variant="ghost" onClick={() => confirmHide.cancel()}>
@@ -146,8 +174,8 @@ function ReportRow({
           </Button>
           {confirmHide.armed && (
             <span className="text-xs text-amber-400/90">
-              Hiding drops the event from every public read until it is
-              restored.
+              Hiding drops the {isEvent ? "event" : "collection"} from every
+              public read until it is restored.
             </span>
           )}
         </div>
@@ -171,10 +199,11 @@ export function ReportsPanel() {
       <header>
         <SectionEyebrow title="Content reports" margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">
-          Anyone can report an event, signed in or not. Open reports come first.
-          A report is resolved once: mark the event graphic, hide it from every
-          public read, or dismiss the report. Nothing here is deleted, so the
-          queue records what was reported and what was decided.
+          Anyone can report an event or a collection, signed in or not. Open
+          reports come first. A report is resolved once: mark the event graphic,
+          hide the reported item from every public read, or dismiss the report.
+          Nothing here is deleted, so the queue records what was reported and
+          what was decided.
         </p>
       </header>
 

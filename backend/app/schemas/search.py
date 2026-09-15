@@ -1,5 +1,7 @@
 """Pydantic shapes for ``GET /search``.
 
+Four groups: the two event views, collections, and analysts.
+
 Hits carry ``*_highlight`` fields with sentinel-delimited match fragments (see
 ``services.search.HIGHLIGHT_START`` / ``HIGHLIGHT_STOP``) that the frontend
 turns into ``<mark>`` tags. No raw HTML crosses the wire — XSS-safe by
@@ -21,6 +23,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.models.event import EventStatus
+from app.schemas.collection import CollectionRead
 from app.schemas.media import MediaRead
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
@@ -28,15 +31,17 @@ from app.schemas.user import AuthorRef
 # The ``type=`` query values, echoed back on the response. Mirrors
 # ``services.search.ALLOWED_TYPES`` (kept a plain set there for the runtime
 # membership check); this Literal is the typed contract the OpenAPI spec ships.
-SearchType = Literal["all", "event", "geolocation", "request", "user"]
+SearchType = Literal["all", "event", "geolocation", "request", "collection", "user"]
 
 
 class SearchTotals(BaseModel):
     """Per-group pre-LIMIT match counts, so the UI renders "12 geolocations, 4
-    requests, 1 analyst" without re-summing the (LIMIT-capped) hit lists."""
+    requests, 2 collections, 1 analyst" without re-summing the (LIMIT-capped)
+    hit lists."""
 
     geolocations: int
     requests: int
+    collections: int
     users: int
 
 
@@ -109,10 +114,18 @@ class SearchResponse(BaseModel):
 
     geolocations: list[SearchEventHit]
     requests: list[SearchRequestHit]
+    # A collection hit is the collection itself, in the one shape every read
+    # surface renders (``CollectionRead``, mosaic and counts included), so a
+    # result renders as the card the profile prints rather than as a second
+    # kind of collection payload. No ``*_highlight`` field with it: the card
+    # prints the collection's own title and description, and marking a
+    # fragment of a two-line clamp would cut the mark as often as it showed
+    # it.
+    collections: list[CollectionRead]
     users: list[SearchUserHit]
 
     # Denormalised totals so the UI renders group counts ("12 geolocations, 4
-    # requests, 1 analyst") without re-summing the lists.
+    # requests, 2 collections, 1 analyst") without re-summing the lists.
     total: SearchTotals
 
     # Echoes the inputs so the frontend can confirm the response matches the

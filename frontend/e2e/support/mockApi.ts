@@ -9,6 +9,9 @@ import {
   MEDIA_ORIGIN,
 } from "./environment";
 import {
+  COLLECTED_EVENT,
+  COLLECTION,
+  COLLECTION_ID,
   CONFLICTS,
   CURATED_TAGS,
   EMPTY_BASEMAP_STYLE,
@@ -17,6 +20,9 @@ import {
   EVENT_ID,
   ONE_PIXEL_PNG,
   REQUESTED_EVENT,
+  SECOND_COLLECTED_EVENT,
+  SECOND_COLLECTED_EVENT_DETAIL,
+  SECOND_COLLECTED_EVENT_ID,
   SIGNED_IN_USER,
 } from "./fixtures";
 
@@ -48,6 +54,23 @@ const ROUTES: [RegExp, unknown][] = [
   [/^\/tags$/, CURATED_TAGS],
   [/^\/conflicts$/, CONFLICTS],
   [new RegExp(`^/events/${EVENT_ID}$`), EVENT],
+  [
+    new RegExp(`^/events/${SECOND_COLLECTED_EVENT_ID}$`),
+    SECOND_COLLECTED_EVENT_DETAIL,
+  ],
+  // The collection page: its header, then the one page of items the player,
+  // the map and the list all read. Each item's own read answers above, which
+  // is what the player's panel renders on the step it stands on.
+  [new RegExp(`^/collections/${COLLECTION_ID}$`), COLLECTION],
+  [
+    new RegExp(`^/collections/${COLLECTION_ID}/events$`),
+    [COLLECTED_EVENT, SECOND_COLLECTED_EVENT],
+  ],
+  // The profile's Collections grid, which the signed-in analyst owns.
+  [
+    new RegExp(`^/users/${SIGNED_IN_USER.username}/collections$`),
+    { items: [COLLECTION], total: 1, page: 1, per_page: 4 },
+  ],
 ];
 
 /** The prefix `lib/api.ts` puts in front of every path it requests. */

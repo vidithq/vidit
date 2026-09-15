@@ -485,6 +485,12 @@ async function closeFinder(page) {
 // body has to carry the same aspect ratio, or `objectFit: cover` crops the
 // recording. 1280x720 is the 16:9 laptop the v0.4 take films; a taller window
 // fits more of a long page above the fold.
+//
+// `crf` is the intermediate's quality, and it is the ceiling on the promo: the
+// final render can only lose what this already threw away. The default suits a
+// take the comp draws SMALLER than it was captured, where the downscale hides
+// what the encode rounded off; a take recorded at the size it is drawn at has
+// no such headroom and asks for a lower number.
 function createRecorder({
   clipsDir,
   metaPath,
@@ -492,6 +498,7 @@ function createRecorder({
   fps = 60,
   dpr = 2,
   viewport = { width: 1280, height: 720 },
+  crf = 16,
 }) {
   // Opens a fresh context (cookies optional), hands the page to `flow`, and
   // encodes the grabbed frames into <clipsDir>/<name>.mp4 at the measured
@@ -647,7 +654,7 @@ function createRecorder({
           }:flags=lanczos`,
           "-c:v", "libx264",
           "-pix_fmt", "yuv420p",
-          "-crf", "16",
+          "-crf", String(crf),
           outPath,
         ],
         { stdio: ["ignore", "ignore", "inherit"] }

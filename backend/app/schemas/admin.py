@@ -166,6 +166,35 @@ class AdminEventDeleteResponse(BaseModel):
     media_count: int = 0
 
 
+class AdminCollectionHideResponse(BaseModel):
+    """Response for ``PATCH /admin/collections/{id}/moderation`` and its
+    takedown alias ``DELETE /admin/collections/{id}``.
+
+    Names the collection whose takedown moved and where it landed, so the
+    panel states the outcome without a re-query. ``hidden_at`` is the stamp
+    the collection now carries: the original one on a collection that was
+    already withheld, and ``None`` once it is restored. Both verbs are
+    idempotent.
+    """
+
+    collection_id: uuid.UUID
+    title: str
+    hidden_at: datetime | None
+
+
+class AdminCollectionModerationUpdate(BaseModel):
+    """Body for ``PATCH /admin/collections/{id}/moderation``.
+
+    One axis, because a collection carries one: ``hidden`` withholds it from
+    every public read or restores it. The event's counterpart
+    (:class:`AdminEventModerationUpdate`) carries a second, ``is_graphic``,
+    which is a column on the event; a collection holds no footage of its own,
+    so there is nothing here to declare.
+    """
+
+    hidden: bool
+
+
 class AdminEventModerationUpdate(BaseModel):
     """Body for ``PATCH /admin/events/{id}/moderation``.
 

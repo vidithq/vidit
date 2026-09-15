@@ -1,4 +1,4 @@
-"""Full-text search across events (located + requested) and users.
+"""Full-text search across events (located + requested), users and collections.
 
 Postgres FTS: ``plainto_tsquery`` parses user input (forgiving of spaces /
 punctuation, no operator surface to escape), the GIN indexes from migration
@@ -15,8 +15,9 @@ the same predicates `/events` and `/events/points` take. The TSVECTOR
 expressions must stay expression-tree-equal to the migration's
 ``CREATE INDEX`` expressions (config name as a SQL literal, never a bound
 parameter) or Postgres falls back to a sequential scan; the event one is the
-``_geo_tsvector`` builder, the user one a module constant, so the queries and
-the migration can't drift.
+``_geo_tsvector`` builder, the collection one the ``_collection_tsvector``
+builder, the user one a module constant, so the queries and the migration
+can't drift.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from sqlalchemy import func, literal_column, text
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql.elements import ColumnClause
 
+from app.models.collection import Collection
 from app.models.event import (
     STATUS_DETECTED,
     STATUS_GEOLOCATED,
@@ -34,7 +36,13 @@ from app.models.event import (
     Event,
 )
 from app.models.user import User
-from app.services.event_filters import EventFilters, visible_events
+from app.schemas.collection import CollectionRead
+from app.services.collections import (
+    build_collection_reads,
+    has_showable_item,
+    visible_collections,
+)
+from app.services.event_filters import EventFilters, owner_username_matches, visible_events
 from app.services.thumbnails import pick_thumbnail, thumbnail_media_criteria
 
 # Sentinel bytes ``ts_headline`` wraps around matched fragments. STX / ETX
@@ -85,6 +93,24 @@ def _geo_tsvector():
     """``to_tsvector('simple', coalesce(title, ''))`` — must stay
     expression-tree-equal to the migration's GIN index expression."""
     return func.to_tsvector(_TS_CONFIG, func.coalesce(Event.title, literal_column("''")))
+
+
+def _collection_tsvector():
+    """``to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(description, ''))``.
+
+    The collection's two free-text fields as one document, so a query matches
+    the name of a collection or what it says it holds. Built from ORM ``func``
+    calls for the reason :func:`_geo_tsvector` is, and expression-tree-equal to
+    the ``ix_collections_search_fts`` expression in migration ``q5s7u9w1y3a5``:
+    Postgres concatenates left to right, so the parenthesising here is the
+    parsing there.
+    """
+    document = (
+        func.coalesce(Collection.title, literal_column("''"))
+        .op("||")(literal_column("' '"))
+        .op("||")(func.coalesce(Collection.description, literal_column("''")))
+    )
+    return func.to_tsvector(_TS_CONFIG, document)
 
 
 def _search_events(
@@ -274,6 +300,64 @@ def search_requests(
     return out, total
 
 
+def search_collections(
+    db: Session, *, query: str, limit: int, author: str | None = None
+) -> tuple[list[CollectionRead], int]:
+    """Top-N collections matching ``query`` + the pre-LIMIT total.
+
+    The FTS runs over the title and the description as one document
+    (:func:`_collection_tsvector`), ranked by ``ts_rank`` with ``created_at``
+    descending as the tie-break, the ranking the event and user groups take.
+
+    What a reader may find is what a reader may already see on a profile: the
+    readable-collection predicate the collection's own page reads
+    (``services/collections.visible_collections``), plus the profile list's own
+    emptiness predicate (``services/collections.has_showable_item``), so search
+    never hands over a card that opens on an empty shelf.
+
+    ``author`` scopes the group to one owner, the same exact, case-insensitive
+    match the event groups take (``services/event_filters``). No highlights:
+    the hit is the profile card, which prints the collection's own title and
+    description rather than a matched fragment.
+
+    With an **empty** ``query`` and an ``author`` the FTS predicate drops
+    entirely: browse mode, that analyst's shelf newest first, the event
+    groups' behaviour under the same empty query. The profile's Collections
+    "Show more" lands here, and typing then narrows within it. An empty query
+    with no author still returns nothing, since "every collection there is" is
+    a listing rather than a search.
+
+    The ranked query selects the collection itself, its owner eagerly loaded,
+    rather than ranking ids and re-fetching them: unlike the event groups, the
+    payload needs no per-hit highlight to key back onto, so one statement
+    returns the rows already in rank order and the assembler reads them as they
+    come. ``total`` is the pre-``LIMIT`` match count from ``COUNT(*) OVER ()``
+    on both paths, the figure the other groups report.
+    """
+    q = query.strip()
+    if not q and not author:
+        return [], 0
+    stmt = (
+        db.query(Collection, func.count().over().label("total_count"))
+        .options(joinedload(Collection.owner))
+        .filter(*visible_collections(), has_showable_item())
+    )
+    if author:
+        stmt = stmt.filter(Collection.owner.has(owner_username_matches(author)))
+    if q:
+        tsquery = func.plainto_tsquery(_TS_CONFIG, q)
+        stmt = stmt.filter(_collection_tsvector().op("@@")(tsquery)).order_by(
+            func.ts_rank(_collection_tsvector(), tsquery).desc(),
+            Collection.created_at.desc(),
+        )
+    else:
+        stmt = stmt.order_by(Collection.created_at.desc())
+    rows = stmt.limit(limit).all()
+    if not rows:
+        return [], 0
+    return build_collection_reads(db, [row[0] for row in rows]), int(rows[0].total_count)
+
+
 def search_users(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
     """Top-N analyst handles matching ``query`` + the pre-LIMIT total.
 
@@ -364,17 +448,24 @@ def search_all(
 ) -> dict[str, dict]:
     """Run grouped FTS across the requested entity types.
 
-    ``types`` is a subset of ``{"geolocation", "request", "user"}`` (the
-    router expands ``type=all`` before calling). An empty / whitespace-only
-    query short-circuits to empty, keeping index cost off "typed but didn't
-    submit" hits — unless a filter is active, which flips the event groups
-    into browse mode (the filtered view, newest first).
+    ``types`` is a subset of ``{"geolocation", "request", "collection",
+    "user"}`` (the router expands ``type=all`` before calling). An empty /
+    whitespace-only query short-circuits to empty, keeping index cost off
+    "typed but didn't submit" hits, unless a filter is active, which flips
+    the event groups into browse mode (the filtered view, newest first).
 
     ``filters`` (the standard event filter set) scopes the two event groups;
     while any filter is active the users group empties: the filters are
     event predicates, and an unfiltered analyst list next to a filtered
-    event view would read as if the filter applied. The response shape stays
-    stable either way.
+    event view would read as if the filter applied. The collections group
+    takes the same rule with one exception, ``author``: a collection has an
+    owner, so "this analyst's collections" is a question it can answer, and
+    the filter narrows the group instead of emptying it. Every other filter
+    names a property of an event, which a collection does not carry, so it
+    empties the group (``EventFilters.active_beyond_author``). That one
+    exception carries browse mode with it: ``author`` alone and an empty
+    query lists the analyst's shelf newest first, the way the event groups
+    browse their filtered view. The response shape stays stable either way.
 
     Returns ``{group: {"hits": [...], "total": int}}`` for every group:
     ``hits`` capped at ``limit``, ``total`` the pre-LIMIT match count for
@@ -385,6 +476,7 @@ def search_all(
     result: dict[str, dict] = {
         "geolocations": {"hits": [], "total": 0},
         "requests": {"hits": [], "total": 0},
+        "collections": {"hits": [], "total": 0},
         "users": {"hits": [], "total": 0},
     }
     if not query.strip() and not filters.active:
@@ -396,6 +488,11 @@ def search_all(
     if "request" in types:
         hits, total = search_requests(db, query=query, limit=limit, filters=filters)
         result["requests"] = {"hits": hits, "total": total}
+    if "collection" in types and not filters.active_beyond_author:
+        collection_hits, total = search_collections(
+            db, query=query, limit=limit, author=filters.author
+        )
+        result["collections"] = {"hits": collection_hits, "total": total}
     if "user" in types and not filters.active:
         hits, total = search_users(db, query=query, limit=limit)
         result["users"] = {"hits": hits, "total": total}
@@ -440,7 +537,9 @@ def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
 # of the two event groups (the search page's unified "Events" chip: the filter
 # set only applies to events, so the picker doesn't force the geolocation vs
 # request split); the two singletons stay for callers that want one group.
-ALLOWED_TYPES = {"all", "event", "geolocation", "request", "user"}
+# ``collection`` is its own group and its own chip: a collection is not an
+# event, and the event filters do not describe one.
+ALLOWED_TYPES = {"all", "event", "geolocation", "request", "collection", "user"}
 
 
 def types_from_param(param: str) -> set[str]:
@@ -451,7 +550,7 @@ def types_from_param(param: str) -> set[str]:
     ``param in ALLOWED_TYPES`` first, so this trusts its input.
     """
     if param == "all":
-        return {"geolocation", "request", "user"}
+        return {"geolocation", "request", "collection", "user"}
     if param == "event":
         return {"geolocation", "request"}
     return {param}

@@ -8,22 +8,24 @@ import { filterPointsByStatus, type MapPoint } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { AUTHOR_FILTER_RE } from "@/lib/search";
 import { hasFiniteCoords, pointsBounds } from "@/components/map/bounds";
-import { WORLD_BOUNDS, toBboxParam } from "@/lib/viewport";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { WORLD_BOUNDS, toBboxParam } from "@/lib/viewport";
 
 // Same dynamic import as the map page and the event detail page: MapLibre
 // touches `window` at module scope, so it never server-renders.
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
 /**
- * The analyst's own geolocations on a map, framed on their work.
+ * The analyst's own geolocations on a map, framed on their work: the profile's
+ * Coverage card.
  *
  * One fetch of `/events/points?author=…`, the author filter the map page
  * already uses, with an explicit world `bbox` so the request asks for the
- * whole body of work rather than a viewport slice. The camera is fitted to
- * the returned points (`fitBounds` on the shared `<Map>`), so a profile
- * opens on the region the analyst covers instead of a default camera.
+ * whole body of work rather than a viewport slice. The camera is fitted to the
+ * points that answer (`fitBounds` on the shared `<Map>`), so the map opens on
+ * the region the work covers rather than on a default camera, and `embedded`
+ * hands the one-finger swipe back to the page.
  *
  * Both live statuses are mapped: `geolocated` submissions and the `detected`
  * machine detections behind them, which the shared `<Map>` already paints in its
@@ -39,9 +41,10 @@ const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
  * explain the gap.
  *
  * Renders nothing until the points arrive and nothing at all for an analyst
- * with no located events (a requests-only profile gets no empty world map);
- * a failed fetch hides the section rather than blocking the profile, matching
- * `ProfileInsights`.
+ * with no located event (a requests-only profile gets no empty world map, and
+ * an empty world map says less than no map at all); a failed fetch hides the
+ * section rather than blocking the profile, matching `ProfileInsights`. The
+ * Recent submissions list below says the rest either way.
  */
 export function ProfileMap({ username }: { username: string }) {
   const router = useRouter();
@@ -62,11 +65,11 @@ export function ProfileMap({ username }: { username: string }) {
   );
   const bounds = useMemo(() => pointsBounds(points), [points]);
 
-  if (!bounds) return null;
-
   const geolocatedCount = points.length - detectedCount;
   const counts = [`${geolocatedCount} geolocated`];
   if (detectedCount > 0) counts.push(`${detectedCount} detected`);
+
+  if (!bounds) return null;
 
   return (
     <Card as="section">

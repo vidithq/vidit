@@ -10,6 +10,8 @@
     "record:v05b": "node record-v05b.js",
     "render:v05": "node gen-clips-manifest.js && remotion render src/index.ts PromoV05 out/promo-v05.mp4 --codec h264 --crf 16",
     "render:v05b": "node gen-clips-manifest.js && remotion render src/index.ts PromoV05B out/promo-v05b.mp4 --codec h264 --crf 16",
+    "record:collections": "node record-collections.js",
+    "render:collections": "node gen-clips-manifest.js && remotion render src/index.ts PromoCollections out/promo-collections.mp4 --codec h264 --crf 14",
     "render:feature-import": "node gen-clips-manifest.js && remotion render src/index.ts FeatureImport out/feature-import.mp4 --codec h264 --crf 16"
   },
   "dependencies": {

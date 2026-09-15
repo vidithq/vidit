@@ -7,6 +7,7 @@
  * Typed as the generated frontend aliases, so a backend schema change reaches
  * the suite through the same drift gate every other reader goes through.
  */
+import type { Collection } from "@/lib/collections";
 import type {
   Conflict,
   EventDetail,
@@ -157,6 +158,88 @@ export const REQUESTED_EVENT: EventListItem = {
   },
   tags: [CURATED_TAGS[3]],
   conflicts: CONFLICTS,
+};
+
+/** Id of the collection the collection-page spec opens. */
+export const COLLECTION_ID = "77777777-7777-4777-8777-777777777771";
+
+/**
+ * The collection that spec reads, owned by the signed-in user so the owner's
+ * controls render and get measured: the header's Edit and Drop controls, the
+ * link to the owner's own catalogue, and the edit page behind the first of
+ * them, where the item picker lives.
+ *
+ * It carries a one-tile mosaic, which the profile card wears and the
+ * collection's own page does not. The title is long enough to take the whole
+ * heading row at 320px, which is what pushes the action cluster onto its own
+ * line, and the description runs past one line at both phone widths.
+ */
+export const COLLECTION: Collection = {
+  id: COLLECTION_ID,
+  owner: {
+    id: SIGNED_IN_USER.id,
+    username: SIGNED_IN_USER.username,
+    avatar_url: null,
+  },
+  title: "Kupiansk rail corridor: three days of strikes on the eastern approach",
+  description:
+    "Every strike on the rail corridor between 3 and 5 January 2025, with the damage each one left on the line.",
+  cover: [{ url: MEDIA_URL, media_type: "image" }],
+  event_count: 2,
+  first_date: "2025-01-03",
+  last_date: "2025-01-04",
+  created_at: "2025-01-05T08:00:00Z",
+};
+
+/**
+ * The collection's first item: a published geolocation, the only kind a
+ * collection shows. It carries the long tag and the coordinates line, so the
+ * row is measured with everything a card can hold plus the owner's remove
+ * control in the badge column.
+ */
+export const COLLECTED_EVENT: EventListItem = {
+  id: EVENT_ID,
+  title: EVENT.title,
+  status: "geolocated",
+  before_closed_status: null,
+  event_coords: { lat: 48.4647, lng: 35.0462 },
+  event_date: "2025-01-03",
+  is_graphic: false,
+  media: EVENT.thumbnail,
+  owner: {
+    id: SIGNED_IN_USER.id,
+    username: SIGNED_IN_USER.username,
+    avatar_url: null,
+  },
+  tags: [CURATED_TAGS[3]],
+  conflicts: CONFLICTS,
+};
+
+/** Id of the collection's second item. */
+export const SECOND_COLLECTED_EVENT_ID = "11111111-1111-4111-8111-111111111112";
+
+/**
+ * The collection's second item.
+ *
+ * Two items and not one, because the page's step player is what the spec
+ * measures: with a single item both step controls are disabled and the run
+ * never says whether a reader on a phone can actually reach the next event.
+ */
+export const SECOND_COLLECTED_EVENT: EventListItem = {
+  ...COLLECTED_EVENT,
+  id: SECOND_COLLECTED_EVENT_ID,
+  title: "Damaged locomotive shed at the yard's western end",
+  event_coords: { lat: 48.4712, lng: 35.0588 },
+  event_date: "2025-01-04",
+};
+
+/** That item's own read, which the player's panel renders on step 2. */
+export const SECOND_COLLECTED_EVENT_DETAIL: EventDetail = {
+  ...EVENT,
+  id: SECOND_COLLECTED_EVENT_ID,
+  title: SECOND_COLLECTED_EVENT.title,
+  event_coords: SECOND_COLLECTED_EVENT.event_coords,
+  event_date: "2025-01-04",
 };
 
 /** An empty first page of the owner's detection queue, as the sidebar reads it. */

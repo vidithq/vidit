@@ -3,6 +3,10 @@ import { Demo, DEMO_DURATION } from "./Demo";
 import { PromoV04, PROMO_V04_DURATION } from "./PromoV04";
 import { PromoV05, PROMO_V05_DURATION } from "./PromoV05";
 import { PromoV05B, PROMO_V05B_DURATION } from "./PromoV05B";
+import {
+  PromoCollections,
+  PROMO_COLLECTIONS_DURATION,
+} from "./PromoCollections";
 import { FeatureImport, FEATURE_IMPORT_DURATION } from "./FeatureImport";
 
 export const RemotionRoot = () => {
@@ -41,6 +45,16 @@ export const RemotionRoot = () => {
         id="PromoV05B"
         component={PromoV05B}
         durationInFrames={PROMO_V05B_DURATION}
+        fps={60}
+        width={1920}
+        height={1080}
+      />
+      {/* The collections promo (see record-collections.js +
+          PromoCollections.tsx). */}
+      <Composition
+        id="PromoCollections"
+        component={PromoCollections}
+        durationInFrames={PROMO_COLLECTIONS_DURATION}
         fps={60}
         width={1920}
         height={1080}

@@ -11,6 +11,8 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MapPin, Search as SearchIcon, Users } from "lucide-react";
+import { CollectionCard } from "@/components/collections/CollectionCard";
+import { CollectionIcon } from "@/lib/collections";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { AUTHOR_FILTER_RE, search, splitHighlights } from "@/lib/search";
 import { Avatar } from "@/components/ui/Avatar";
@@ -31,6 +33,7 @@ import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
 import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { rangeSummary } from "@/components/ui/FilterSection";
 import {
+  ALL_FILTER_SECTIONS,
   EMPTY_DATE_WINDOWS,
   EMPTY_EVENT_FILTERS,
   EventFilterSections,
@@ -42,6 +45,7 @@ import {
   hasAnyFilter,
   type DateWindows,
   type EventFilterPatch,
+  type EventFilterSectionName,
   type EventFilterValues,
 } from "@/components/filters/EventFilterSections";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -56,12 +60,25 @@ import { Pill } from "@/components/ui/Pill";
 const TYPE_FILTERS: { value: SearchType; label: string; icon?: ReactNode }[] = [
   { value: "all", label: "All" },
   { value: "event", label: "Events", icon: <MapPin size={11} /> },
+  { value: "collection", label: "Collections", icon: <CollectionIcon size={11} /> },
   { value: "user", label: "Analysts", icon: <Users size={11} /> },
 ];
 
 // The type values that scope to events (the legacy singletons stay valid in
 // a shared URL even though the picker no longer offers them).
 const EVENT_TYPES: ReadonlyArray<SearchType> = ["event", "geolocation", "request"];
+
+// The requests group serves status `requested` only, so on the legacy request
+// scope (shared URLs; the picker no longer offers it) both offered status
+// chips could only empty the result. A URL-carried status still shows as a
+// removable pill above, so it can't narrow the view invisibly.
+const REQUEST_SECTIONS = ALL_FILTER_SECTIONS.filter((s) => s !== "status");
+
+// The backend narrows collections on `author` and empties the group on every
+// other event predicate, so that scope opens the panel on the Author section
+// alone (the same typeahead the event filters use) and carries no date
+// sections either.
+const COLLECTION_SECTIONS: ReadonlyArray<EventFilterSectionName> = ["author"];
 
 // Debounce window: reactive enough to feel live, long enough not to fire
 // on every keystroke of a long phrase.
@@ -147,6 +164,16 @@ function SearchPageBody() {
   ];
   const hasActiveFilters = hasAnyFilter(values, dates);
   const onEventScope = EVENT_TYPES.includes(typeFilter);
+  // The panel sections the current scope offers, or null where no filter in
+  // the vocabulary narrows what the scope shows (Analysts, and All, which
+  // spans all four groups).
+  const filterSections: ReadonlyArray<EventFilterSectionName> | null = onEventScope
+    ? typeFilter === "request"
+      ? REQUEST_SECTIONS
+      : ALL_FILTER_SECTIONS
+    : typeFilter === "collection"
+      ? COLLECTION_SECTIONS
+      : null;
 
   // Monotonic request token: each fetch increments it, late responses
   // apply only if their token is still latest. Comparing on `response.query`
@@ -235,33 +262,44 @@ function SearchPageBody() {
   const totalHits = useMemo(() => {
     if (!results) return 0;
     return (
-      results.total.geolocations + results.total.requests + results.total.users
+      results.total.geolocations +
+      results.total.requests +
+      results.total.collections +
+      results.total.users
     );
   }, [results]);
 
   const onChipClick = (t: SearchType) => {
     // The filters are event predicates: leaving the Events scope while some
     // are active would silently keep constraining the event groups, so they
-    // clear with the scope. The committed snapshot updates in the same
-    // render: the fetch effect keys on it plus the type, and letting the
-    // debounce catch up 300 ms later would fire one request with the STALE
-    // filters first (type=user&conflict=… flashing "No matches").
+    // clear with the scope. Collections keep the author, the one predicate
+    // that narrows that group instead of emptying it, so stepping from an
+    // analyst's events to their shelf stays on the same analyst. The
+    // committed snapshot updates in the same render: the fetch effect keys on
+    // it plus the type, and letting the debounce catch up 300 ms later would
+    // fire one request with the STALE filters first (type=user&conflict=…
+    // flashing "No matches").
     if (!EVENT_TYPES.includes(t) && hasActiveFilters) {
-      clearFilters();
-      setCommitted({
-        q: queryInput,
-        values: EMPTY_EVENT_FILTERS,
-        dates: EMPTY_DATE_WINDOWS,
-      });
+      const kept: EventFilterValues =
+        t === "collection" && values.author.trim()
+          ? { ...EMPTY_EVENT_FILTERS, author: values.author.trim() }
+          : EMPTY_EVENT_FILTERS;
+      setValues(kept);
+      setDates(EMPTY_DATE_WINDOWS);
+      setCommitted({ q: queryInput, values: kept, dates: EMPTY_DATE_WINDOWS });
     } else {
       setCommitted({ q: queryInput, values, dates });
     }
     setTypeFilter(t);
   };
 
-  const showGroup = (group: "geolocation" | "request" | "user"): boolean => {
+  const showGroup = (
+    group: "geolocation" | "request" | "collection" | "user"
+  ): boolean => {
     if (typeFilter === "all") return true;
-    if (typeFilter === "event") return group !== "user";
+    // The Events scope is the two event groups: a collection is not an event,
+    // and the filter panel the scope opens describes none of one.
+    if (typeFilter === "event") return group === "geolocation" || group === "request";
     return typeFilter === group;
   };
 
@@ -296,21 +334,18 @@ function SearchPageBody() {
 
         <ActiveFilterPills filters={activeFilters} onClearAll={clearFilters} />
 
-        {/* Picking the Events scope surfaces the filter panel directly (the
-            sections collapse individually); no separate toggle to find. */}
-        {onEventScope && (
+        {/* Picking a scope the filters describe surfaces the panel directly
+            (the sections collapse individually); no separate toggle to find.
+            The date windows are event predicates, so they ride with the event
+            scopes and stay off the Collections one. */}
+        {filterSections && (
           <EventFilterSections
             tags={tagsData ?? []}
             conflicts={conflictsData ?? []}
             values={values}
             onPatch={onPatch}
-            // The requests group serves status `requested` only, so on the
-            // legacy request scope (shared URLs; the picker no longer offers
-            // it) both offered chips could only empty the result: hide the
-            // section there. A URL-carried status still shows as a removable
-            // pill above, so it can't narrow the view invisibly.
-            showStatus={typeFilter !== "request"}
-            dateSections={[
+            sections={filterSections}
+            dateSections={onEventScope ? [
               {
                 title: "Event date",
                 concept: "event_date",
@@ -339,7 +374,7 @@ function SearchPageBody() {
                   />
                 ),
               },
-            ]}
+            ] : []}
           />
         )}
 
@@ -374,7 +409,8 @@ function SearchPageBody() {
             start-typing prompt for a debounce window. */}
         {!queryInput.trim() && !hasActiveFilters && (
           <EmptyState>
-            Start typing to search across geolocations, requests and analysts.
+            Start typing to search across geolocations, requests, collections
+            and analysts.
           </EmptyState>
         )}
 
@@ -419,6 +455,29 @@ function SearchPageBody() {
                 {results.requests.map((r) => (
                   <RequestResult key={r.id} hit={r} />
                 ))}
+              </ResultGroup>
+            )}
+
+            {showGroup("collection") && results.collections.length > 0 && (
+              <ResultGroup
+                title="Collections"
+                count={results.total.collections}
+              >
+                {/* The profile's grid, so a mosaic stands at a card's width
+                    rather than as a banner across the page. One column on a
+                    phone, the rule the profile's grid keeps. */}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {results.collections.map((collection) => (
+                    // The profile's card, with the byline it hides there: a
+                    // result stands beside other analysts' shelves, so the hit
+                    // says whose this is.
+                    <CollectionCard
+                      key={collection.id}
+                      collection={collection}
+                      showOwner
+                    />
+                  ))}
+                </div>
               </ResultGroup>
             )}
 

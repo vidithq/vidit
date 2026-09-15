@@ -522,6 +522,147 @@ never writes to the database, and produces one file: the trimmed zip. Trimming
 is what the import panel itself recommends, and it keeps a 2 GB export inside
 a single take.
 
+## Collections promo (`PromoCollections`)
+
+One collection read end to end and then written to: the brand intro, ONE
+unbroken take, the closing card. Recorded **signed in as the collection's
+owner**, because the edit page is a beat and only the owner reaches it.
+
+```bash
+make promo-collections   # record + render + both outputs
+```
+
+Or step by step:
+
+```bash
+cd video
+npm run record:collections   # -> public/clips/collections.mp4 + its marks
+npm run render:collections   # -> out/promo-collections.mp4 (1920x1080, 60 fps)
+```
+
+`make promo-collections` adds the two staged outputs the other promos take:
+`out/promo-collections-master.mp4` (the same 1080p stream remuxed with
+`+faststart`, for S3) and `out/promo-collections-readme.mp4` (720p / 30 fps, for
+a GitHub attachment URL).
+
+### The take signs in, and it writes
+
+The take mints cookies through `POST /auth/login` before the browser opens, the
+way `record-v04.js` signs in for its fixture account, so no login form is ever
+on camera. It reads the account from `PROMO_LOGIN_EMAIL` and
+`PROMO_LOGIN_PASSWORD`, which default to the local dev fixture
+`mpgeoint@gmail.com` / `vidit-dev-preview`. Nothing prints them and no frame
+shows them.
+
+The edit beat **writes**: it puts one event on the collection and saves, so the
+collection ends a geolocation longer than it started. Undo it after the render,
+with the same credentials, so the next run finds the collection as this one did:
+
+```bash
+curl -X DELETE "$API/collections/$COLLECTION/events/$EVENT" \
+  -b cookies.txt -H "X-CSRF-Token: $CSRF"
+```
+
+The take prints the event id it added when it finishes. `verifyTarget` refuses
+to record while that event is still held, since the picker answers a held row
+with a disabled check and the add beat has nothing to click.
+
+### One take, no cuts
+
+The recorded part is a single continuous window of `collections.mp4`. Every
+page change is an in-page push the take performs on camera: the collection card
+on the profile, the Edit control in the collection's header, the save's own
+return, the owner's handle in the byline, and the shelf's `Show more` link. The
+only two transitions in the video are the crossfades into and out of the
+recorded part.
+
+The take is paced in real time, holds included, and its length IS the promo's
+recorded length, so re-pace it in `record-collections.js` rather than in the
+composition. It is cut to run 40 to 50 seconds: holds sit between 0.8 and 1.5
+seconds and scrolls run at `SCROLL_MS`, the shortest eased travel that still
+reads as motion at 60 fps. The same two rules the other unbroken takes run on
+apply: a silent warm-up pass visits every route before the first frame, and
+nothing inside the recorded pass navigates with `page.goto`.
+
+| Beat | What is on camera | Caption |
+|---|---|---|
+| Intro | The wordmark, the release, and the tagline | |
+| 1 | The profile's Collections section, scrolled onto and held: the analyst's named sets as a grid of mosaic cards, then one card under the cursor with its title, count and date span. | Collections |
+| 2 | The collection's own page as it opens, whole in one frame: the title, the owner's byline, the `Collection` pill, the Description card, and the player under them at step 1. | Every geolocation of one operation, in the order it happened |
+| 3 | Two presses of the player's next control, each flying the map to the next item, dimming the step behind it, swapping the panel beside it and counting `N of 12`. | Step through them on the map |
+| 4 | The Edit control in the page's header, then the edit page: Details, `Events in this collection`, a query typed into the Add events search, the add control clicked on the first result, the scroll to Save, the save, and the collection coming back with 13 events. | Add events with a search |
+| 5 | Back on the profile through the byline, then the whole shelf in search under the Author filter the `Show more` link carries. | Every collection an analyst publishes |
+| 6 | One query typed into the field, narrowing the shelf without leaving the Collections scope. | Search reaches collections too |
+| Outro | The wordmark and vidit.app (`OutroV04`, shared with the other promos) | |
+
+### Why the capture window is 1392x830
+
+It is the browser body the composition draws the take in, at the CSS size that
+body actually occupies in a 1920x1080 frame. `PromoCollections.tsx` derives the
+body from the frame minus the chrome header, the top margin and the caption
+band: 830 px tall, and 1392 wide at the take's aspect. Recording at exactly
+that means the render draws the picture at scale 1 instead of magnifying a
+smaller window into it, which is what read soft.
+
+The pair is a fixed point: `BODY_WIDTH` returns 1392 for a 1392x830 capture, so
+the viewport and the geometry agree without either being tuned to the other.
+Move the caption band or the chrome header and re-derive both.
+
+At DPR 2 the encode holds 2784x1660 device px behind those 1392x830 CSS px, so
+the only resampling left anywhere in the chain is a 2:1 downscale. The take's
+own mux runs at CRF 13, passed to `createRecorder`, because the intermediate is
+the ceiling on the promo: the final render at CRF 14 can only lose what the mux
+already threw away. The harness default of 16 suits a take the composition
+draws smaller than it was captured, where the downscale hides what the encode
+rounded off.
+
+1392 keeps the desktop layout. The content column caps at `max-w-4xl` whatever
+the window width, and no collection, profile or search surface carries an `xl`
+breakpoint, so the layout at 1392 is the layout at 1040 with wider gutters. 830
+clears the player's `calc(100dvh - 4.5rem)` cap on its 32rem block with room to
+spare, so the player films at the height it was designed at and the whole
+collection page fits one frame with nothing scrolled for.
+
+### This promo stands on a flat ground
+
+`PromoCollections` paints `#0a0a0a` and nothing else, where the other promos
+use the shared `<Background>` and its two radial blooms. The take is a bright
+product page filling most of the frame, and a bloom behind it reads as a smear
+around the window rather than as depth. `<Intro>` and `<OutroV04>` take a
+`flat` prop here, which drops the orange bloom behind the wordmark's V: that
+bloom is the one radial either of them paints. Both default to the bloom, so
+the other promos are unchanged.
+
+### What the take needs from the instance
+
+`verifyTarget` checks all of it before a frame is captured and refuses to
+record otherwise:
+
+- The signed-in account owns `TARGET_COLLECTION`. The header's Edit control,
+  the edit page behind it and the save are owner-only, so any other session
+  films the page's refusal.
+- `TARGET_COLLECTION` carries a description, since the Description card is a
+  beat.
+- Its sequence is longer than `STEPS`, and every item in it carries
+  coordinates, since the map is half of the stepping beat.
+- Every item in it carries source media, since the panel beside the map opens
+  on the Source media block and an item without one films `No media available`
+  on whichever step lands on it.
+- `ADD_QUERY` reaches at least one of the analyst's own collectable events, and
+  the first result is not already on the collection, so the picker answers it
+  with the add control the beat clicks rather than a disabled check.
+- The analyst has more than four collections, because the profile grid holds
+  four and only grows the `Show more` link past that. Without the link the take
+  has no way into search.
+- `QUERY` reaches at least one collection under the scope the last beat arrives
+  in, so the closing caption does not run over an empty group. Search reads a
+  collection's title and description and not the places its events sit in, so
+  pick words the analyst wrote on the set rather than a city every item on the
+  map carries.
+
+Retarget it by changing `HANDLE`, `TARGET_COLLECTION`, `ADD_QUERY` and `QUERY`
+at the top of `record-collections.js`; `PROMO_COLLECTION`, `PROMO_ADD_QUERY`
+and `PROMO_QUERY` override the last three for a shoot.
 ## Shared capture harness
 
 `capture-lib.js` holds everything the takes have in common: the DOM cursor

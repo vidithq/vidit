@@ -9,6 +9,7 @@ import { eventListPath } from "@/lib/events";
 import type { PublicProfile } from "@/lib/users";
 import type { EventListItem } from "@/types";
 import { Button } from "@/components/ui/Button";
+import { CollectionsSection } from "@/components/collections/CollectionsSection";
 import { BioField } from "@/components/profile/BioField";
 import { LinkedAccountsFields } from "@/components/profile/LinkedAccounts";
 import {
@@ -163,6 +164,8 @@ export default function ProfilePage() {
           <ProfileMap username={profile.username} />
 
           <ProfileInsights username={profile.username} />
+
+          <CollectionsSection username={profile.username} isOwn={isOwn} />
 
           <RecentSubmissions
             profile={profile}

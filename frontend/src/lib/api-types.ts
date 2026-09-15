@@ -4,6 +4,61 @@
  */
 
 export interface paths {
+    "/api/v1/admin/collections/{collection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Hide Collection Admin
+         * @description Withhold a collection from every read but an admin's.
+         *
+         *     The takedown alias of ``PATCH /admin/collections/{id}/moderation`` with
+         *     ``{"hidden": true}``: same stamp, same audit row, same response. Use the
+         *     PATCH to restore one. Idempotent, and 404 on an unknown collection.
+         */
+        delete: operations["hide_collection_admin_api_v1_admin_collections__collection_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/collections/{collection_id}/moderation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Collection Moderation
+         * @description Set a collection's moderation state: withhold it, or restore it.
+         *
+         *     ``hidden`` moves the one axis a collection carries. ``true`` stamps
+         *     ``hidden_at`` and drops the shelf out of every read but an admin's;
+         *     ``false`` clears the stamp and puts it back. The events on the collection
+         *     are untouched either way: each is moderated on its own, so restoring a
+         *     shelf says nothing about what it holds.
+         *
+         *     The counterpart of ``PATCH /admin/events/{id}/moderation``, and the verb
+         *     that undoes ``DELETE /admin/collections/{id}``. Idempotent: a state equal
+         *     to the one the row already holds changes nothing and writes no audit row.
+         *     404 on an unknown collection.
+         */
+        patch: operations["set_collection_moderation_api_v1_admin_collections__collection_id__moderation_patch"];
+        trace?: never;
+    };
     "/api/v1/admin/detection-stats": {
         parameters: {
             query?: never;
@@ -298,12 +353,15 @@ export interface paths {
         put?: never;
         /**
          * Resolve Report
-         * @description Close one report with a verdict, applying it to the reported event.
+         * @description Close one report with a verdict, applying it to what the report names.
          *
-         *     404 on an unknown report, 409 on one that already carries a verdict
-         *     (reports are resolved once, never reopened). The service owns the event
-         *     mutation and the audit trail; the points cache is dropped here, and only
-         *     when the event actually left the map.
+         *     One route for both kinds of target: the service reads which one the row
+         *     names and applies the verdicts that kind takes, so an event report and a
+         *     collection report are answered through the same call. 404 on an unknown
+         *     report, 409 on one that already carries a verdict (reports are resolved
+         *     once, never reopened) and on a verdict the target cannot take. The service
+         *     owns the mutation and the audit trail; the points cache is dropped here,
+         *     and only when an event actually left the map.
          */
         post: operations["resolve_report_api_v1_admin_reports__report_id__resolve_post"];
         delete?: never;
@@ -594,6 +652,151 @@ export interface paths {
         put?: never;
         /** Reset Password */
         post: operations["reset_password_api_v1_auth_reset_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Collection
+         * @description Open a collection under a title and a description, holding ``event_ids``.
+         *
+         *     The ids are optional: without them the collection starts empty. With them
+         *     the create and the shelving are one act, under the refusals
+         *     ``PUT /collections/{id}/events/{event_id}`` states, so a foreign or
+         *     ineligible id fails the create whole rather than landing a collection
+         *     holding part of what was asked for.
+         */
+        post: operations["create_collection_api_v1_collections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Collection
+         * @description One collection's header: owner, title, item count and date range.
+         *
+         *     Public, like the events it points at. A withheld collection reads as 404
+         *     for everyone but an admin.
+         */
+        get: operations["get_collection_api_v1_collections__collection_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Collection
+         * @description Drop your collection. Owner only. Every event it held stays as it is.
+         */
+        delete: operations["delete_collection_api_v1_collections__collection_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Collection
+         * @description Write your collection's title and description. Owner only; 403 for anyone else.
+         *
+         *     Both fields travel together, so one request states what the collection is.
+         */
+        patch: operations["update_collection_api_v1_collections__collection_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Collection Events
+         * @description The collection's items, in the order the events happened.
+         *
+         *     Ordered by ``event_date``, then ``event_time``, then ``created_at``, then
+         *     ``id``, ascending, with an item missing its date or its hour sorting after
+         *     the ones that carry them. Capped at 100 rows however large ``limit`` is; a
+         *     caller reading further follows the ``cursor`` in the ``Link: rel="next"``
+         *     header, which goes out exactly when the next page holds a row.
+         */
+        get: operations["list_collection_events_api_v1_collections__collection_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add Event To Collection
+         * @description Put one of your events on one of your collections.
+         *
+         *     Idempotent: adding an event already on the collection returns 204 and
+         *     writes no second row. 403 when either the collection or the event belongs
+         *     to someone else, 409 when the event's state is not one a collection shows.
+         */
+        put: operations["add_event_to_collection_api_v1_collections__collection_id__events__event_id__put"];
+        post?: never;
+        /**
+         * Remove Event From Collection
+         * @description Take one event off your collection. Owner only.
+         *
+         *     Idempotent: removing an event the collection does not hold returns 204.
+         *     The event itself is untouched.
+         */
+        delete: operations["remove_event_from_collection_api_v1_collections__collection_id__events__event_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Collection
+         * @description Report a collection for moderation.
+         *
+         *     The same gesture, the same body and the same per-IP limit as reporting an
+         *     event: open to anonymous viewers, since the reader who notices a shelf
+         *     misrepresenting what it holds rarely holds an account here. A signed-in
+         *     reporter is recorded on the row; an anonymous one leaves
+         *     ``reporter_user_id`` NULL.
+         *
+         *     An unknown, withheld or orphaned collection answers 404: all three are
+         *     invisible to the caller, so all three read the same.
+         */
+        post: operations["report_collection_api_v1_collections__collection_id__report_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1019,6 +1222,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/{geolocation_id}/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Event Collections
+         * @description Your collections, each saying whether this event is already on it.
+         *
+         *     The add-to-collection popover's read, owner-only: a collection is
+         *     personal, and only the event's owner may shelve it, so nobody else has an
+         *     answer to give here. Empty collections are listed, since putting the first
+         *     event on one is what the popover is for. 404 on a soft-deleted or withheld
+         *     event, 403 when the event is somebody else's.
+         */
+        get: operations["list_event_collections_api_v1_events__geolocation_id__collections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events/{geolocation_id}/geolocate": {
         parameters: {
             query?: never;
@@ -1217,7 +1446,7 @@ export interface paths {
         };
         /**
          * Search
-         * @description Grouped FTS across the three first-class entity types.
+         * @description Grouped FTS across the four result groups.
          *
          *     Empty / whitespace-only ``q`` returns an empty response — keeps the
          *     "user is still typing" hits cheap. The frontend debounces the
@@ -1225,9 +1454,11 @@ export interface paths {
          *     the cheap short-circuit is robust against accidental load.
          *
          *     Any active filter scopes the event groups and empties the users group;
-         *     with an empty ``q`` the response browses the filtered view (the
-         *     profile's "Show more" entry point). Filter semantics are the shared
-         *     ones (see ``services/event_filters.apply_filters``).
+         *     ``author`` narrows the collections group to that owner and every other
+         *     filter empties it. With an empty ``q`` the response browses the filtered
+         *     view, the collections group included when ``author`` is the only filter
+         *     (the profile's two "Show more" entry points). Filter semantics are the
+         *     shared ones (see ``services/event_filters.apply_filters``).
          */
         get: operations["search_api_v1_search_get"];
         put?: never;
@@ -1400,6 +1631,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/{username}/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Collections
+         * @description One analyst's collections, newest first.
+         *
+         *     A collection with nothing showable on it is scaffolding rather than
+         *     published work, so a reader gets the ones that have something on them and
+         *     the owner gets all of theirs. The narrowing applies to ``total`` as well as
+         *     to the rows, so the pager describes the set it walks. Withheld collections
+         *     are in neither view.
+         *
+         *     Offset-paged, like the published-geolocations feed beside it, and capped at
+         *     100 rows per page.
+         */
+        get: operations["get_user_collections_api_v1_users__username__collections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{username}/events": {
         parameters: {
             query?: never;
@@ -1549,6 +1809,42 @@ export interface components {
             count: number;
             /** Period */
             period: string;
+        };
+        /**
+         * AdminCollectionHideResponse
+         * @description Response for ``PATCH /admin/collections/{id}/moderation`` and its
+         *     takedown alias ``DELETE /admin/collections/{id}``.
+         *
+         *     Names the collection whose takedown moved and where it landed, so the
+         *     panel states the outcome without a re-query. ``hidden_at`` is the stamp
+         *     the collection now carries: the original one on a collection that was
+         *     already withheld, and ``None`` once it is restored. Both verbs are
+         *     idempotent.
+         */
+        AdminCollectionHideResponse: {
+            /**
+             * Collection Id
+             * Format: uuid
+             */
+            collection_id: string;
+            /** Hidden At */
+            hidden_at: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * AdminCollectionModerationUpdate
+         * @description Body for ``PATCH /admin/collections/{id}/moderation``.
+         *
+         *     One axis, because a collection carries one: ``hidden`` withholds it from
+         *     every public read or restores it. The event's counterpart
+         *     (:class:`AdminEventModerationUpdate`) carries a second, ``is_graphic``,
+         *     which is a column on the event; a collection holds no footage of its own,
+         *     so there is nothing here to declare.
+         */
+        AdminCollectionModerationUpdate: {
+            /** Hidden */
+            hidden: boolean;
         };
         /**
          * AdminDetectionStatsRead
@@ -2319,6 +2615,169 @@ export interface components {
             new_password: string;
         };
         /**
+         * CollectionCoverTile
+         * @description One tile of the mosaic a collection wears, and what kind of file it is.
+         *
+         *     ``url`` points at the media of one item the collection holds. ``media_type``
+         *     is the media-kind domain ``models/media.MediaType`` defines, so a client
+         *     picks the element that can render the file: most source media in the corpus
+         *     are clips, and an ``<img>`` pointed at one paints an empty band.
+         */
+        CollectionCoverTile: {
+            /**
+             * Media Type
+             * @enum {string}
+             */
+            media_type: "image" | "video";
+            /** Url */
+            url: string;
+        };
+        /**
+         * CollectionCreate
+         * @description Body of ``POST /collections``: the title, the description, and the
+         *     events the collection opens with.
+         *
+         *     ``event_ids`` is optional and empty by default, so a collection still
+         *     opens on its two fields alone. When it carries ids, the create and the
+         *     shelving are one act: the service puts every one of them on the
+         *     collection inside the same transaction, through the checks
+         *     ``PUT /collections/{id}/events/{event_id}`` runs, so an ineligible or
+         *     foreign id fails the whole create and no half-filled collection lands.
+         *
+         *     The ids are de-duplicated in the order they arrived, because ticking one
+         *     row twice is one membership, and capped at
+         *     :data:`MAX_CREATE_EVENTS`. Items order themselves by when their events
+         *     happened, so the order the ids arrive in carries nothing else.
+         */
+        CollectionCreate: {
+            /** Description */
+            description: string;
+            /** Event Ids */
+            event_ids?: string[];
+            /** Title */
+            title: string;
+        };
+        /**
+         * CollectionList
+         * @description One page of an analyst's collections, newest first.
+         *
+         *     Offset-paged rather than cursor-paged, like the profile feed beside it
+         *     (``GET /users/{username}/events``): the profile renders a pager over a
+         *     small set, and ``total`` counts the collections the caller may see, so the
+         *     pager never counts a row the list will not serve.
+         */
+        CollectionList: {
+            /** Items */
+            items: components["schemas"]["CollectionRead"][];
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * CollectionMembershipList
+         * @description Every collection the caller owns, as the popover reads them.
+         */
+        CollectionMembershipList: {
+            /** Items */
+            items: components["schemas"]["CollectionMembershipRead"][];
+        };
+        /**
+         * CollectionMembershipRead
+         * @description One of the caller's collections, and whether one event is already in it.
+         *
+         *     The add-to-collection popover's row. Thinner than :class:`CollectionRead`:
+         *     the popover names a collection, shows a checked state and says how much
+         *     the collection already holds, so it carries no description, no mosaic and
+         *     no date range.
+         *
+         *     ``event_count`` is computed over the same predicate
+         *     (``services/event_filters.collectable_events``) the collection reads use,
+         *     so the number under a title in the popover is the number the collection's
+         *     own page prints.
+         */
+        CollectionMembershipRead: {
+            /** Event Count */
+            event_count: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** In Collection */
+            in_collection: boolean;
+            /** Title */
+            title: string;
+        };
+        /**
+         * CollectionRead
+         * @description One collection as every read surface renders it.
+         *
+         *     ``title`` and ``description`` are the two free-text fields the owner
+         *     writes, both required: the name of the collection and one short paragraph
+         *     saying what it holds.
+         *
+         *     ``event_count``, ``first_date`` and ``last_date`` are computed at read
+         *     time over the events the collection may show
+         *     (``services/event_filters.collectable_events``), never stored: a row that
+         *     closes, is taken down or is soft-deleted leaves the count and the range
+         *     without a write to the membership table. ``first_date`` and ``last_date``
+         *     are the smallest and largest ``event_date`` among those events, so both
+         *     are null for a collection holding nothing and for one whose items all
+         *     lack a date.
+         *
+         *     ``cover`` is the mosaic the profile card wears: zero to four tiles, each
+         *     the media of one item the collection holds, computed at read time and
+         *     never stored (``services/collections.cover_tiles_for`` states the rule).
+         *     The list is empty when nothing on the collection carries media a card may
+         *     show, and the collection's own page shows no cover at all.
+         *
+         *     Each tile's url and kind travel together rather than as a bare url,
+         *     because most source media in the corpus are clips: a tile taken off a
+         *     video item is an ``.mp4``, and a client handed the url alone renders it in
+         *     an ``<img>`` and shows an empty band.
+         */
+        CollectionRead: {
+            /** Cover */
+            cover: components["schemas"]["CollectionCoverTile"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Event Count */
+            event_count: number;
+            /** First Date */
+            first_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Date */
+            last_date: string | null;
+            owner: components["schemas"]["AuthorRef"];
+            /** Title */
+            title: string;
+        };
+        /**
+         * CollectionUpdate
+         * @description Body of ``PATCH /collections/{id}``: the title and the description
+         *     together, under the caps the create takes. Both are sent on every edit,
+         *     so one request states what the collection is rather than leaving the two
+         *     fields to be saved apart.
+         */
+        CollectionUpdate: {
+            /** Description */
+            description: string;
+            /** Title */
+            title: string;
+        };
+        /**
          * ConfirmRegistrationRequest
          * @description Body for ``POST /auth/confirm-registration``.
          *
@@ -2362,11 +2821,13 @@ export interface components {
         };
         /**
          * ContentReportCreate
-         * @description Body for ``POST /events/{id}/report``.
+         * @description Body for ``POST /events/{id}/report`` and ``POST /collections/{id}/report``.
          *
          *     ``reason`` picks one of the five buckets (see ``ContentReportReason``);
          *     ``details`` is the reporter's own words, optional because the bucket alone
-         *     is often the whole report.
+         *     is often the whole report. One body for both targets: what a reader says
+         *     about a shelf is what they say about a piece of footage, and the path is
+         *     what names the thing.
          */
         ContentReportCreate: {
             /** Details */
@@ -2404,8 +2865,14 @@ export interface components {
          *     ``resolved_at`` / ``resolution`` / ``resolved_by`` are all NULL while the
          *     report is open and all set once it is resolved (the DB holds them together),
          *     so ``resolved_at is None`` is the open test on the wire too.
+         *
+         *     A row names one target. ``event_id`` is set for a report against an event
+         *     and ``collection`` for one against a collection; both are NULL once that
+         *     target is destroyed, which is the orphan row every report can become and
+         *     which only ``dismissed`` closes.
          */
         ContentReportRead: {
+            collection?: components["schemas"]["ReportedCollection"] | null;
             /**
              * Created At
              * Format: date-time
@@ -2811,6 +3278,26 @@ export interface components {
             status: "pending_confirmation";
         };
         /**
+         * ReportedCollection
+         * @description The reported collection, as the admin queue names it in a row.
+         *
+         *     Read at queue time off the live collection rather than copied onto the
+         *     report when it was filed, so a renamed collection reads under its current
+         *     name. A collection page is not a public index the way an event's is: the
+         *     queue prints the title and the owner so an admin can judge the row, and
+         *     links out for the rest.
+         */
+        ReportedCollection: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            owner: components["schemas"]["AuthorRef"];
+            /** Title */
+            title: string;
+        };
+        /**
          * ResendConfirmationRequest
          * @description Body for ``POST /auth/resend-confirmation``.
          *
@@ -2898,6 +3385,8 @@ export interface components {
          *     ``type=`` — keeps the JSON shape stable so the frontend skips conditional access.
          */
         SearchResponse: {
+            /** Collections */
+            collections: components["schemas"]["CollectionRead"][];
             /** Geolocations */
             geolocations: components["schemas"]["SearchEventHit"][];
             /** Query */
@@ -2909,16 +3398,19 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "all" | "event" | "geolocation" | "request" | "user";
+            type: "all" | "event" | "geolocation" | "request" | "collection" | "user";
             /** Users */
             users: components["schemas"]["SearchUserHit"][];
         };
         /**
          * SearchTotals
          * @description Per-group pre-LIMIT match counts, so the UI renders "12 geolocations, 4
-         *     requests, 1 analyst" without re-summing the (LIMIT-capped) hit lists.
+         *     requests, 2 collections, 1 analyst" without re-summing the (LIMIT-capped)
+         *     hit lists.
          */
         SearchTotals: {
+            /** Collections */
+            collections: number;
             /** Geolocations */
             geolocations: number;
             /** Requests */
@@ -3201,6 +3693,76 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    hide_collection_admin_api_v1_admin_collections__collection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCollectionHideResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_collection_moderation_api_v1_admin_collections__collection_id__moderation_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCollectionModerationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCollectionHideResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     detection_stats_api_v1_admin_detection_stats_get: {
         parameters: {
             query?: never;
@@ -4079,6 +4641,280 @@ export interface operations {
             };
         };
     };
+    create_collection_api_v1_collections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_collection_api_v1_collections__collection_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_collection_api_v1_collections__collection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_collection_api_v1_collections__collection_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_collection_events_api_v1_collections__collection_id__events_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor from a Link: rel=next header */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventList"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_event_to_collection_api_v1_collections__collection_id__events__event_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+                event_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_event_from_collection_api_v1_collections__collection_id__events__event_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+                event_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_collection_api_v1_collections__collection_id__report_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContentReportCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_conflicts_api_v1_conflicts_get: {
         parameters: {
             query?: {
@@ -4575,6 +5411,39 @@ export interface operations {
             };
         };
     };
+    list_event_collections_api_v1_events__geolocation_id__collections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionMembershipList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     geolocate_event_api_v1_events__geolocation_id__geolocate_post: {
         parameters: {
             query?: never;
@@ -4799,7 +5668,7 @@ export interface operations {
             query?: {
                 /** @description Free-text query (empty returns an empty result set) */
                 q?: string;
-                /** @description One of 'all', 'geolocation', 'request', 'user' */
+                /** @description One of 'all', 'event', 'geolocation', 'request', 'collection', 'user' */
                 type?: string;
                 /** @description Per-group cap */
                 limit?: number;
@@ -5095,6 +5964,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserProfile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_collections_api_v1_users__username__collections_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                per_page?: number;
+            };
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionList"];
                 };
             };
             /** @description Validation Error */

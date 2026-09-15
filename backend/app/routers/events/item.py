@@ -52,6 +52,7 @@ from app.routers.events._common import (
     raise_version_error,
     resolve_live_event,
 )
+from app.schemas.collection import CollectionMembershipList
 from app.schemas.event import (
     VERSION_NOTE_MAX_LENGTH,
     EventCloseRequest,
@@ -60,6 +61,7 @@ from app.schemas.event import (
     EventVersionRead,
 )
 from app.schemas.report import ContentReportCreate, ContentReportRead
+from app.services import collections as collections_service
 from app.services import events as events_service
 from app.services import reports as reports_service
 from app.services import versions as versions_service
@@ -71,6 +73,7 @@ from app.services.pagination import (
     page_size,
     take_page,
 )
+from app.services.permissions import ensure_owner
 from app.services.source_archive import SnapshotRejected
 from app.services.thumbnails import thumbnail_media_criteria
 
@@ -140,7 +143,7 @@ def report_event(
     are invisible to the caller, so all three read the same.
     """
     try:
-        return reports_service.create_report(
+        return reports_service.create_event_report(
             db,
             event_id=geolocation_id,
             reason=body.reason,
@@ -648,6 +651,29 @@ def get_event_version(
     if row is None:
         raise HTTPException(status_code=404, detail="Version not found")
     return build_version_read(row)
+
+
+@router.get("/{geolocation_id}/collections", response_model=CollectionMembershipList)
+@limiter.limit("120/minute")
+def list_event_collections(
+    request: Request,
+    geolocation_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Your collections, each saying whether this event is already on it.
+
+    The add-to-collection popover's read, owner-only: a collection is
+    personal, and only the event's owner may shelve it, so nobody else has an
+    answer to give here. Empty collections are listed, since putting the first
+    event on one is what the popover is for. 404 on a soft-deleted or withheld
+    event, 403 when the event is somebody else's.
+    """
+    geo = resolve_live_event(db, geolocation_id)
+    ensure_owner(geo, current_user)
+    return CollectionMembershipList(
+        items=collections_service.list_memberships(db, owner=current_user, event_id=geo.id)
+    )
 
 
 @router.post("/{geolocation_id}/close", response_model=EventRead)

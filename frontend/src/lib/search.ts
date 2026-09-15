@@ -47,23 +47,26 @@ export function search(opts: {
 }
 
 /**
- * A `/search` URL scoped to one analyst's events: the profile's single entry
- * point into the filtered catalogue, shared by the Insights tiles and
- * `RecentSubmissions`' *Show more* so the two cannot drift.
+ * A `/search` URL scoped to one analyst: the profile's single entry point into
+ * the filtered catalogue, shared by the Insights tiles, `RecentSubmissions`'
+ * *Show more* and the Collections section's, so they cannot drift.
  *
- * `type=event` because every filter here is an event predicate, and the search
- * page reads the type back rather than guessing. `author` is an exact username
- * match server-side (`services/event_filters.apply_author_filter`), so the
- * handle travels verbatim. `filters` takes the URL vocabulary the search page
- * parses (`status`, `conflict`, `capture_source`, ...), one value per key,
- * which is what a link off a single figure carries; the panel on the page
- * widens it from there.
+ * `author` is an exact username match server-side
+ * (`services/event_filters.apply_author_filter`), so the handle travels
+ * verbatim, and the search page reads the scope back off `type` rather than
+ * guessing. `type` defaults to the two event groups, since every filter below
+ * is an event predicate; `collection` scopes to that analyst's shelf, the one
+ * other group `author` narrows instead of emptying. `filters` takes the URL
+ * vocabulary the search page parses (`status`, `conflict`, `capture_source`,
+ * ...), one value per key, which is what a link off a single figure carries;
+ * the panel on the page widens it from there.
  */
 export function profileSearchHref(
   username: string,
   filters: Record<string, string> = {},
+  type: SearchType = "event",
 ): string {
-  const params = new URLSearchParams({ type: "event", author: username });
+  const params = new URLSearchParams({ type, author: username });
   for (const [key, value] of Object.entries(filters)) params.set(key, value);
   return `/search?${params.toString()}`;
 }

@@ -109,6 +109,34 @@ export const RECORDED: Record<string, RecordedClip> = {
       "submitClick": 51.836,
       "nextDraft": 53.649
     }
+  },
+  "collections": {
+    "src": "clips/collections.mp4",
+    "fps": 60,
+    "durationSec": 42.828,
+    "marks": {
+      "shelf": 0,
+      "cardHover": 3.43,
+      "cardClick": 5.647,
+      "collectionUrl": 6.601,
+      "collectionOpen": 6.736,
+      "step": 8.237,
+      "editClick": 12.437,
+      "editUrl": 13.932,
+      "editOpen": 14.04,
+      "addQuery": 17.411,
+      "addClick": 21.8,
+      "saveClick": 25.962,
+      "savedUrl": 27.316,
+      "saved": 27.457,
+      "bylineClick": 29.524,
+      "profileUrl": 30.863,
+      "showMore": 33.726,
+      "searchUrl": 35.066,
+      "searchOpen": 35.147,
+      "query": 36.648,
+      "queryResult": 39.412
+    }
   }
 };
 

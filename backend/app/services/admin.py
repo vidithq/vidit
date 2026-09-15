@@ -10,6 +10,7 @@ from app.models.admin_event import AdminEvent
 from app.models.archive_import_job import ArchiveImportJob
 from app.models.auth_event import EVENT_LOGIN, AuthEvent
 from app.models.bot_mention import BotMention
+from app.models.collection import Collection
 from app.models.event import (
     STATUS_CLOSED,
     STATUS_DETECTED,
@@ -71,6 +72,12 @@ class InviteCodeUsedError(AdminError):
     """The code names a redeemer, so its row belongs to the audit trail."""
 
     code = "invite_code_used"
+
+
+class CollectionNotFoundError(AdminError):
+    """No collection carries that id."""
+
+    code = "collection_not_found"
 
 
 def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInviteRedeemerRead]:
@@ -410,6 +417,108 @@ def soft_delete_geolocation(
     return geo
 
 
+def withhold_collection(db: Session, *, collection: Collection, actor_id: uuid.UUID) -> None:
+    """Stamp one collection's takedown and file the audit row. No commit.
+
+    The mutation itself, so the two admin doors onto it write the same thing:
+    :func:`hide_collection` below, which an admin reaches by id, and
+    :func:`services.reports.resolve_report`, which reaches it by resolving a
+    report filed against the collection. The verb lives here rather than in
+    ``services/reports`` because that module imports this one for
+    :func:`log_admin_event`, so the dependency runs one way only.
+
+    Idempotent: an already withheld collection keeps its original timestamp and
+    files no second audit row, so a takedown reads the same through either
+    door however many times it arrives.
+    """
+    if collection.hidden_at is not None:
+        return
+    collection.hidden_at = datetime.now(UTC)
+    log_admin_event(
+        db,
+        actor_id=actor_id,
+        action="collection_hidden",
+        target={"collection_id": str(collection.id), "title": collection.title},
+    )
+
+
+def restore_collection(db: Session, *, collection: Collection, actor_id: uuid.UUID) -> None:
+    """Clear one collection's takedown and file the audit row. No commit.
+
+    The other direction of :func:`withhold_collection`, so the reversible
+    ``hidden_at`` axis the model declares has a verb that actually reverses
+    it. The events on the collection are untouched: each carries its own
+    moderation state, and restoring the shelf says nothing about them.
+
+    Idempotent: a collection that is not withheld files no audit row, so a
+    restore that changes nothing is not an administrative act.
+    """
+    if collection.hidden_at is None:
+        return
+    collection.hidden_at = None
+    log_admin_event(
+        db,
+        actor_id=actor_id,
+        action="collection_restored",
+        target={"collection_id": str(collection.id), "title": collection.title},
+    )
+
+
+def set_collection_moderation(
+    db: Session,
+    *,
+    actor_id: uuid.UUID,
+    collection_id: uuid.UUID,
+    hidden: bool,
+) -> Collection:
+    """Move one collection's takedown either way, by id.
+
+    The collection-shaped moderation verb, next to the event one
+    (``services/reports.set_event_moderation``) and on the same reversible
+    ``hidden_at`` axis: a reported shelf is withheld pending judgement rather
+    than removed, and restored once judged. ``hidden=True`` writes the stamp
+    :func:`withhold_collection` writes, so this door and the report queue's
+    agree; ``hidden=False`` clears it.
+
+    Locked like the event a report verdict mutates, so this door and the
+    report queue's serialize on the row instead of interleaving their writes.
+    Raises :class:`CollectionNotFoundError` (404) for an unknown id.
+    """
+    collection = (
+        db.query(Collection)
+        .filter(Collection.id == collection_id)
+        .populate_existing()
+        .with_for_update()
+        .first()
+    )
+    if collection is None:
+        raise CollectionNotFoundError("Collection not found")
+    if hidden:
+        withhold_collection(db, collection=collection, actor_id=actor_id)
+    else:
+        restore_collection(db, collection=collection, actor_id=actor_id)
+    db.commit()
+    db.refresh(collection)
+    return collection
+
+
+def hide_collection(
+    db: Session,
+    *,
+    actor_id: uuid.UUID,
+    collection_id: uuid.UUID,
+) -> Collection:
+    """Withhold one collection from every read but an admin's, by id.
+
+    The takedown half of :func:`set_collection_moderation`, kept as its own
+    function because ``DELETE /admin/collections/{id}`` is the takedown alias
+    the queue reaches for. Idempotent, and 404 on an unknown collection.
+    """
+    return set_collection_moderation(
+        db, actor_id=actor_id, collection_id=collection_id, hidden=True
+    )
+
+
 def hard_delete_geolocation(
     db: Session,
     *,
@@ -607,8 +716,9 @@ def hard_delete_user(
        cascades to that row's media / contributor rows / tags. Because the
        owner is always among an event's geolocators, no ``geolocated`` event
        is left below one geolocator.
-    3. Delete the user. ``auth_tokens`` and their contributor rows on other
-       people's events cascade-drop; ``admin_events.actor_id`` and
+    3. Delete the user. ``auth_tokens``, their collections (and the
+       memberships under them) and their contributor rows on other people's
+       events cascade-drop; ``admin_events.actor_id`` and
        ``invite_codes.used_by`` flip to NULL via migration f1a3b5c7d9e0:
        invite-code rows are audit trail and should outlive the user.
     4. Commit, *then* sweep S3 (see :func:`services.storage.sweep_keys`).

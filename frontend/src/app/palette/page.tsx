@@ -19,11 +19,13 @@ import {
   Search as SearchIcon,
   Swords,
   Upload,
+  X,
 } from "lucide-react";
 
 import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
+import { CharCounter } from "@/components/ui/CharCounter";
 import { Pill } from "@/components/ui/Pill";
 import {
   DiscordGlyph,
@@ -32,6 +34,7 @@ import {
 } from "@/components/ui/BrandGlyphs";
 import { TagPicker } from "@/components/ui/TagPicker";
 import { EntityCard } from "@/components/ui/EntityCard";
+import { CollectionCover } from "@/components/collections/CollectionCover";
 import { DetectionQueueRow } from "@/components/detections/DetectionQueueRow";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -273,6 +276,17 @@ const MOCK_CARD_GEO = {
     { id: "t3", name: "Donetsk", category: "free" as const },
   ],
 };
+
+// Four tiles for the collection mosaic, the shape `GET /collections/{id}`
+// hands over: one item's media per tile, in the order the collection lists its
+// items. The app's own OG image stands in for the stored media, extensionless
+// so `displayUrlsFor` finds no sibling and every size resolves to it.
+const MOCK_COVER_TILES = [
+  { url: "/opengraph-image", media_type: "image" as const },
+  { url: "/opengraph-image", media_type: "image" as const },
+  { url: "/opengraph-image", media_type: "image" as const },
+  { url: "/opengraph-image", media_type: "image" as const },
+];
 
 const MOCK_CURATED: Tag[] = [
   { id: "cs1", name: "Drone", category: "capture_source" },
@@ -723,6 +737,17 @@ export default function PalettePage() {
               <label className={`${FORM_LABEL} ${FORM_INVALID_LABEL}`}>
                 Invalid field label
               </label>
+            </div>
+          </Item>
+
+          <Item name="<CharCounter>" usage="The room left in a capped free-text field: `remaining / cap`, red once the value runs over. One counter for every capped field, so the profile bio, a collection's title and a collection's description cannot spell the same reading three ways. It states what is left rather than what is used, and it turns red exactly when the submit refuses the value, so the colour and the disabled button always agree. The figure alone, no label and no box: a caller sits it at the far end of the field's label row.">
+            <div className="flex w-full max-w-sm items-center justify-between gap-2">
+              <label className={FORM_LABEL}>Bio</label>
+              <CharCounter length={120} max={500} />
+            </div>
+            <div className="flex w-full max-w-sm items-center justify-between gap-2">
+              <label className={FORM_LABEL}>Over the cap</label>
+              <CharCounter length={512} max={500} />
             </div>
           </Item>
 
@@ -1374,6 +1399,61 @@ export default function PalettePage() {
                 coords={MOCK_DETAIL.event_coords}
                 tags={MOCK_DETAIL.tags}
               />
+            </div>
+          </Item>
+
+          <Item name="<EntityCard variant=compact>: a collection item" usage="One item of a collection, held on its edit page's picker: the same compact card with three differences the props carry. `author` is omitted, so the row drops its byline, because a collection is one analyst's own set and the page header names them once. `action` holds a control that acts on the row rather than opening it (here the picker's remove, red because it is the one thing on the row that takes something away), rendered above the stretched link at the bottom of the badge's column, so it takes its own click, sits in the corner furthest from the title and leaves the rest of the row navigating. The collection's own page reads the same row with no `action`: taking an item off is an edit act, not something the reading page offers. `uniformHeight={false}` drops the catalogue height floor, since every row here carries the same two lines and the floor would print a band of empty space under each of them: the row stands on its media column and the text centres against it.">
+            <div className="w-full max-w-xl">
+              <EntityCard
+                variant="compact"
+                detailHref="/events/demo"
+                title={MOCK_CARD_GEO.title}
+                badge={<StatusBadge status="geolocated" />}
+                date={MOCK_CARD_GEO.event_date}
+                coords={{ lat: 48.0159, lng: 37.8024 }}
+                tags={MOCK_CARD_GEO.tags}
+                uniformHeight={false}
+                action={
+                  <Button
+                    icon
+                    variant="dangerGhost"
+                    aria-label="Remove from this collection"
+                    title="Remove from collection"
+                  >
+                    <X size={14} />
+                  </Button>
+                }
+              />
+            </div>
+          </Item>
+
+          <Item name="<CollectionCover>" usage="A collection's mosaic: the 16:9 slot the profile card wears, made of the media of the first few items the collection holds, the way a playlist icon is made of what is on it. Nothing is uploaded and nothing is stored; the collection's own page carries none. Each tile is EntityCard's own MediaThumb slot fed one item's media, so a clip plays as a clip and a collection with nothing to show falls back to the one no-media placeholder rather than to a stand-in of its own. The arrangement is the tile count: one fills the slot, two split it, three put the earliest item tall on the left, four fill a 2x2, with 2px gaps in the card's own neutral. It spans the column it is given, so a caller sizes it by that column.">
+            <div className="w-full max-w-xl space-y-3">
+              <Variant label="nothing to show">
+                <div className="w-56">
+                  <CollectionCover cover={[]} />
+                </div>
+              </Variant>
+              <Variant label="one tile">
+                <div className="w-56">
+                  <CollectionCover cover={MOCK_COVER_TILES.slice(0, 1)} />
+                </div>
+              </Variant>
+              <Variant label="two tiles">
+                <div className="w-56">
+                  <CollectionCover cover={MOCK_COVER_TILES.slice(0, 2)} />
+                </div>
+              </Variant>
+              <Variant label="three tiles">
+                <div className="w-56">
+                  <CollectionCover cover={MOCK_COVER_TILES.slice(0, 3)} />
+                </div>
+              </Variant>
+              <Variant label="four tiles">
+                <div className="w-56">
+                  <CollectionCover cover={MOCK_COVER_TILES} />
+                </div>
+              </Variant>
             </div>
           </Item>
 

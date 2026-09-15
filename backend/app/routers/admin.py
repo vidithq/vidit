@@ -11,6 +11,8 @@ from app.ratelimit import limiter
 from app.routers._errors import raise_typed_error
 from app.routers.events._common import build_version_read
 from app.schemas.admin import (
+    AdminCollectionHideResponse,
+    AdminCollectionModerationUpdate,
     AdminDetectionStatsRead,
     AdminEventDeleteResponse,
     AdminEventModerationRead,
@@ -44,6 +46,7 @@ _ADMIN_ERROR_STATUS: dict[str, int] = {
     "user_not_found": 404,
     "geolocation_not_found": 404,
     "version_not_found": 404,
+    "collection_not_found": 404,
     "x_handle_conflict": 409,
     "invite_code_used": 409,
 }
@@ -313,6 +316,77 @@ def delete_geolocation_admin(
     )
 
 
+@router.delete(
+    "/collections/{collection_id}",
+    response_model=AdminCollectionHideResponse,
+)
+@limiter.limit("60/hour")
+def hide_collection_admin(
+    request: Request,
+    collection_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> AdminCollectionHideResponse:
+    """Withhold a collection from every read but an admin's.
+
+    The takedown alias of ``PATCH /admin/collections/{id}/moderation`` with
+    ``{"hidden": true}``: same stamp, same audit row, same response. Use the
+    PATCH to restore one. Idempotent, and 404 on an unknown collection.
+    """
+    try:
+        collection = admin_service.hide_collection(
+            db, actor_id=current_user.id, collection_id=collection_id
+        )
+    except admin_service.AdminError as exc:
+        _raise_admin_error(exc)
+    return AdminCollectionHideResponse(
+        collection_id=collection.id,
+        title=collection.title,
+        hidden_at=collection.hidden_at,
+    )
+
+
+@router.patch(
+    "/collections/{collection_id}/moderation",
+    response_model=AdminCollectionHideResponse,
+)
+@limiter.limit("60/hour")
+def set_collection_moderation(
+    request: Request,
+    collection_id: uuid.UUID,
+    body: AdminCollectionModerationUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> AdminCollectionHideResponse:
+    """Set a collection's moderation state: withhold it, or restore it.
+
+    ``hidden`` moves the one axis a collection carries. ``true`` stamps
+    ``hidden_at`` and drops the shelf out of every read but an admin's;
+    ``false`` clears the stamp and puts it back. The events on the collection
+    are untouched either way: each is moderated on its own, so restoring a
+    shelf says nothing about what it holds.
+
+    The counterpart of ``PATCH /admin/events/{id}/moderation``, and the verb
+    that undoes ``DELETE /admin/collections/{id}``. Idempotent: a state equal
+    to the one the row already holds changes nothing and writes no audit row.
+    404 on an unknown collection.
+    """
+    try:
+        collection = admin_service.set_collection_moderation(
+            db,
+            actor_id=current_user.id,
+            collection_id=collection_id,
+            hidden=body.hidden,
+        )
+    except admin_service.AdminError as exc:
+        _raise_admin_error(exc)
+    return AdminCollectionHideResponse(
+        collection_id=collection.id,
+        title=collection.title,
+        hidden_at=collection.hidden_at,
+    )
+
+
 # ── Content reports ──────────────────────────────────────────────────────
 
 
@@ -349,12 +423,15 @@ def resolve_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ContentReportRead:
-    """Close one report with a verdict, applying it to the reported event.
+    """Close one report with a verdict, applying it to what the report names.
 
-    404 on an unknown report, 409 on one that already carries a verdict
-    (reports are resolved once, never reopened). The service owns the event
-    mutation and the audit trail; the points cache is dropped here, and only
-    when the event actually left the map.
+    One route for both kinds of target: the service reads which one the row
+    names and applies the verdicts that kind takes, so an event report and a
+    collection report are answered through the same call. 404 on an unknown
+    report, 409 on one that already carries a verdict (reports are resolved
+    once, never reopened) and on a verdict the target cannot take. The service
+    owns the mutation and the audit trail; the points cache is dropped here,
+    and only when an event actually left the map.
     """
     try:
         report, hidden_changed = reports_service.resolve_report(
