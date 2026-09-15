@@ -35,12 +35,14 @@ from .acquire import (
     acquire_pasted_thread,
     acquire_thread,
     read_pasted_post,
+    record_by_id,
 )
 from .archive import archive_media_fetcher, fetch_cdn_media, read_tweets
 from .chase import chase_thread
 from .errors import (
     InvalidTweetUrl,
     TweetFetchFailed,
+    TweetImportError,
     TweetNotAccessible,
     TweetUpstreamBusy,
 )
@@ -49,6 +51,7 @@ from .extract import (
     clean_proof_text,
     derive_title,
     extract_coords,
+    tags_bot,
 )
 from .records import ParsedMedia, TweetRecord
 from .resolve import (
@@ -98,6 +101,7 @@ __all__ = [
     "RequestDraft",
     "Resolution",
     "TweetFetchFailed",
+    "TweetImportError",
     "TweetNotAccessible",
     "TweetRecord",
     "TweetUpstreamBusy",
@@ -114,7 +118,9 @@ __all__ = [
     "normalise_tweet_url",
     "read_pasted_post",
     "read_tweets",
+    "record_by_id",
     "resolve_threads",
     "sole_refusal",
     "stitch",
+    "tags_bot",
 ]

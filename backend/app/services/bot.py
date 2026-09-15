@@ -12,6 +12,13 @@ feed the same per-mention pipeline (:func:`process_single_mention`):
   (``X_WEBHOOK_ENABLED``), a mention first seen here raises a "webhook gap"
   Sentry message so a silently dead webhook pages.
 
+A mention counts as a tag only when the author typed it. X prefixes a reply
+with the parent's author and the parent's mentions minus the replier, so
+answering a colleague's tagging post mentions the bot without typing it:
+:func:`_tag_is_inherited` reads that off the text and, where only the parent
+can settle it, off one syndication read of the parent, and an inherited tag
+is ledgered ``inherited`` without acquiring, answering or billing anything.
+
 The bot runs the same engine as the pasted import and the archive backfill;
 nothing about the grammar lives here. Acquisition is
 :func:`tweet_ingest.acquire_thread`, shared with the paste: the tagged post plus
@@ -82,10 +89,13 @@ from app.services.tweet_ingest import (
     REFUSAL_MESSAGES,
     WARNING_MESSAGES,
     AcquiredThread,
+    TweetImportError,
     TweetNotAccessible,
     acquire_thread,
     fetch_cdn_media,
+    record_by_id,
     resolve_threads,
+    tags_bot,
 )
 from app.services.x_api import Mention, XApiError, fetch_mentions, post_reply
 
@@ -227,6 +237,9 @@ class BotRunOutcome:
     # re-tagged posts does not read as an idle one.
     events_updated: int = 0
     replies_posted: int = 0
+    # Mentions whose tag the author never typed: X's reply prefix carried it.
+    # Nothing was acquired and nothing answered.
+    inherited: int = 0
     no_detection: int = 0
     no_account: int = 0
     skipped: int = 0
@@ -257,6 +270,67 @@ def acquire_tagged_thread(
     id (``events.detected_from_tweet_id``), which no spelling can move.
     """
     return acquire_thread(tweet_id, handle=author_handle.lower(), client=client)
+
+
+def _parent_carries_tag(parent_id: str, handle: str, *, client: httpx.Client | None) -> bool:
+    """Whether the post ``parent_id`` mentions the bot, or cannot be read.
+
+    The tag rule's one I/O step, and it costs one syndication read, the free
+    path, on the same budget the acquisition spends from. It runs only for a
+    reply whose sole ``@ViditBot`` sits in the run of mentions X wrote
+    (:func:`_tag_is_inherited`), so a tag the analyst typed spends nothing.
+
+    ``record_by_id`` is the acquisition's own reader and raises what
+    ``fetch_syndication`` raises; a parent that will not read (deleted,
+    protected, withheld) answers ``True``, because silence beats a spurious ❌
+    on someone else's thread.
+
+    ``handle`` is the fallback ``record_by_id`` takes for an author the body
+    does not name. Only the parent's text is read here, so it never lands
+    anywhere.
+    """
+    try:
+        parent = record_by_id(parent_id, handle=handle, client=client)
+    except TweetImportError:
+        return True
+    return tags_bot(parent.text, settings.x_bot_handle, inherits_prefix=False)
+
+
+async def _tag_is_inherited(mention: Mention, *, client: httpx.Client | None) -> bool:
+    """Whether X wrote this mention's ``@ViditBot`` rather than its author.
+
+    X prefixes a reply with the parent's author and the parent's mentions minus
+    the replier, so an analyst answering a colleague's tagging post mentions the
+    bot without typing a character. Three questions, each spending only what the
+    one before could not settle:
+
+    * a post that is not a reply carries no inherited prefix, so the tag is
+      typed;
+    * a reply whose tag sits past the prefix is typed (:func:`tags_bot`), which
+      is every analyst who writes their sentence and tags after it;
+    * otherwise the parent decides, and a parent that mentions the bot means the
+      prefix is where this mention's tag came from. A reply to the bot's own
+      post is that case without the read, since its parent mentions nobody the
+      reply did not inherit.
+
+    An inherited tag is not a tag: the caller acquires nothing, replies nothing
+    and ledgers ``inherited``. A parent that mentions no bot leaves the tag
+    typed, which is what keeps the bare ``@ViditBot`` under the analyst's own
+    coordinate post, and the climb it triggers, working.
+    """
+    if mention.in_reply_to_status_id is None:
+        return False
+    if tags_bot(mention.text, settings.x_bot_handle, inherits_prefix=True):
+        return False
+    if mention.in_reply_to_user_id == settings.x_bot_user_id:
+        return True
+    # Blocking network I/O, offloaded like the acquisition's.
+    return await asyncio.to_thread(
+        _parent_carries_tag,
+        mention.in_reply_to_status_id,
+        mention.author_handle,
+        client=client,
+    )
 
 
 # The ref shown in the success reply: the UUID's first block, enough to
@@ -605,6 +679,17 @@ async def process_single_mention(
             outcome.already_handled += 1
             return "already_handled"
         return "self"
+    # A mention the author never typed (:func:`_tag_is_inherited`): X put the
+    # bot in the prefix of a reply to someone else's tagging post. Ledgered
+    # before the acquisition, so it costs the parent read and nothing else, and
+    # answered with nothing: the thread under it is a colleague's, and a ❌
+    # there refuses a tag nobody made.
+    if await _tag_is_inherited(mention, client=syndication_client):
+        if not _record(db, mention, outcome="inherited"):
+            outcome.already_handled += 1
+            return "already_handled"
+        outcome.inherited += 1
+        return "inherited"
     # The one handle-to-account read of the mention: the account every detection is
     # attributed to, and the failure-reply gate, since an unlinked author stays
     # fully silent whatever the tweet yields.
@@ -784,6 +869,10 @@ def _mention_from_payload(payload: dict) -> Mention | None:
     author_handle = payload.get("author_handle")
     text = payload.get("text")
     reply_to = payload.get("in_reply_to_user_id")
+    # Absent from a row the webhook queued before the field existed, which
+    # reads as "not a reply": the tag rule then counts every mention as typed,
+    # the answer that path gave before.
+    reply_to_status = payload.get("in_reply_to_status_id")
     if (
         not isinstance(tweet_id, str)
         or not isinstance(author_id, str)
@@ -796,6 +885,7 @@ def _mention_from_payload(payload: dict) -> Mention | None:
         author_handle=author_handle,
         text=text if isinstance(text, str) else "",
         in_reply_to_user_id=reply_to if isinstance(reply_to, str) else None,
+        in_reply_to_status_id=reply_to_status if isinstance(reply_to_status, str) else None,
     )
 
 

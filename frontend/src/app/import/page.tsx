@@ -292,7 +292,10 @@ export default function ImportGuidePage() {
           within seconds. You do not leave your feed and you retype nothing. The
           bot imports only for X handles linked to a Vidit account: it stays
           silent for any other handle and creates nothing. It reads public posts
-          only, so a tag from a protected account imports nothing.
+          only, so a tag from a protected account imports nothing. Replying to a
+          post that tagged the bot does not tag it again: X carries the mentions
+          over into your reply, and the bot reads only the tag you type after
+          your own words.
         </p>
         <div className={TILE}>
           <h3 className={TILE_TITLE}>Your post, then your own reply</h3>

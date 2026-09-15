@@ -21,12 +21,22 @@ from app.database import Base
 # ``requested``: the thread carried no coordinate but did carry footage and a
 # source link, so a ``requested`` row was opened instead of a refusal
 # (``services/bot``, the request branch).
+# ``inherited``: the author never typed the tag, X's reply prefix carried it
+# over from the parent, so nothing was acquired and nothing answered.
 # ``self``: the bot's own post surfaced in its mentions timeline (recorded so
 # the ``since_id`` cursor advances past it instead of re-billing it every
 # pull). ``failed``: processing raised (captured to Sentry; delete the row to
 # retry that mention on the next run).
 BotMentionOutcome = Literal[
-    "created", "updated", "requested", "no_detection", "no_account", "skipped", "self", "failed"
+    "created",
+    "updated",
+    "requested",
+    "inherited",
+    "no_detection",
+    "no_account",
+    "skipped",
+    "self",
+    "failed",
 ]
 
 

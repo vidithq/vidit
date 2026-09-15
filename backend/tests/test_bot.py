@@ -45,6 +45,7 @@ from app.services.tweet_ingest import (
     SOURCE_FETCH_FAILED,
     SOURCE_FOOTAGE_MISSING,
     WARNING_MESSAGES,
+    tags_bot,
 )
 from app.services.tweet_ingest.syndication import _cache_clear
 from app.services.tweet_ingest.urls import TELEGRAM_HOST_RE
@@ -72,6 +73,25 @@ FOREIGN_PARENT_TAG_ID = "9100000000000000014"
 # answers the tombstone body for this id, so nothing is ever read from it. Its
 # ``BODIES`` entry exists only to feed the mentions payload's ``text``.
 TOMBSTONE_ID = "9100000000000000017"
+# The inherited tag: a colleague's post that tags the bot, and the analyst's
+# reply under it, whose text X opens with the parent's author and the parent's
+# mentions. ``TYPED_UNDER_FOREIGN_ID`` is the same position with the tag typed
+# after the analyst's own words, which is a tag.
+INHERITED_PARENT_ID = "9100000000000000021"
+INHERITED_REPLY_ID = "9100000000000000022"
+TYPED_UNDER_FOREIGN_ID = "9100000000000000023"
+# The bare tag under the analyst's own coordinate post, whose parent tags
+# nobody: the tag is typed, so the climb runs.
+BARE_TAG_ID = "9100000000000000024"
+# The analyst's own follow-up under their own tagging post: the tag came with
+# the prefix, and the parent was answered when it was tagged.
+OWN_FOLLOW_UP_ID = "9100000000000000025"
+# A reply whose parent syndication serves to nobody, so what the prefix carried
+# cannot be checked.
+ORPHAN_REPLY_ID = "9100000000000000026"
+# The post ``ORPHAN_REPLY_ID`` replies to: deliberately absent from ``BODIES``,
+# so the mock answers 404 for it.
+UNREADABLE_PARENT_ID = "9100000000000000027"
 SOURCE_ID = "9100000000000000042"
 # The request branch: a mirror post carries footage and names the original, but
 # no coordinate. ``MIRROR_TG_REPOST_ID`` is the same mirror posted twice (the
@@ -242,6 +262,66 @@ BODIES = {
         "text": _STRUCT_TEXT,
         "entities": _SOURCE_ENTITIES,
     },
+    # A colleague's tagging post, and the analyst's reply under it: X wrote the
+    # reply's first four mentions, the bot third, and the analyst typed only the
+    # sentence after them. The reply carries no coordinate of its own, so before
+    # the tag rule it earned a ❌ on someone else's thread.
+    INHERITED_PARENT_ID: {
+        "id_str": INHERITED_PARENT_ID,
+        "created_at": "2026-03-13T08:00:00.000Z",
+        "user": {"screen_name": "other_analyst"},
+        "text": "@viditbot 48.123456, 37.654321 depot strike",
+    },
+    INHERITED_REPLY_ID: {
+        "id_str": INHERITED_REPLY_ID,
+        "created_at": "2026-03-13T08:05:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": (
+            "@other_analyst @geoconfirmed @viditbot @uacontrolmap "
+            "The guy who opens the window is on the third floor"
+        ),
+        "in_reply_to_status_id_str": INHERITED_PARENT_ID,
+    },
+    # The same position, tagged on purpose: the analyst wrote their geolocation
+    # under a colleague's post and typed the tag after it.
+    TYPED_UNDER_FOREIGN_ID: {
+        "id_str": TYPED_UNDER_FOREIGN_ID,
+        "created_at": "2026-03-13T08:10:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": (
+            "@other_analyst Strike on the vehicle depot\n"
+            "48.123456, 37.654321\n"
+            "https://t.co/src\n"
+            "@ViditBot"
+        ),
+        "entities": _SOURCE_ENTITIES,
+        "in_reply_to_status_id_str": INHERITED_PARENT_ID,
+    },
+    # The bare tag under the analyst's own coordinate post: nothing but the tag,
+    # and a parent that mentions nobody, so it is theirs and it climbs.
+    BARE_TAG_ID: {
+        "id_str": BARE_TAG_ID,
+        "created_at": "2026-03-13T08:15:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "@ViditBot",
+        "in_reply_to_status_id_str": TWO_POST_PARENT_ID,
+    },
+    # The analyst's own follow-up under the post they already tagged.
+    OWN_FOLLOW_UP_ID: {
+        "id_str": OWN_FOLLOW_UP_ID,
+        "created_at": "2026-03-13T08:20:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "@viditbot one more angle on it",
+        "in_reply_to_status_id_str": TAGGED_ID,
+    },
+    # A reply whose parent X serves to nobody.
+    ORPHAN_REPLY_ID: {
+        "id_str": ORPHAN_REPLY_ID,
+        "created_at": "2026-03-13T08:25:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "@other_analyst @viditbot agreed, that is the tower",
+        "in_reply_to_status_id_str": UNREADABLE_PARENT_ID,
+    },
     # The linked status, chased for its post date (no media, so the assemble
     # step fetches nothing).
     SOURCE_ID: {
@@ -286,13 +366,19 @@ BODIES = {
 }
 
 
-def _syndication_client() -> httpx.Client:
+def _syndication_client(fetched: list[str] | None = None) -> httpx.Client:
+    """``fetched`` records every post id syndication was asked for, in order,
+    which is what tells a mention that spent one parent read from one that
+    acquired a thread."""
+
     def handler(req: httpx.Request) -> httpx.Response:
         if TELEGRAM_HOST_RE.match(req.url.host.lower()) is not None:
             # The Telegram chase reads a public embed rather than syndication;
             # one client carries both upstreams, as it does in production.
             return httpx.Response(200, text=_telegram_embed())
         tweet_id = req.url.params.get("id", "")
+        if fetched is not None:
+            fetched.append(tweet_id)
         if tweet_id == TOMBSTONE_ID:
             # X's 200-with-no-tweet for a post readable only behind a login
             # (age-restricted, withheld): the shape conflict footage lands in.
@@ -310,16 +396,28 @@ def _mentions_client(
     seen_params: list[dict[str, str]],
     reply_to: dict[str, str] | None = None,
     handle: str = HANDLE,
+    parent_of: dict[str, str] | None = None,
 ) -> httpx.Client:
-    """The paid mentions read, every mention authored by ``handle``."""
+    """The paid mentions read, every mention authored by ``handle``.
+
+    ``parent_of`` maps a mention id to the post it replies to, served the way
+    the v2 timeline serves it, in ``referenced_tweets``. A mention absent from
+    it is not a reply, so every mention in its text is one the author typed.
+    """
 
     def handler(req: httpx.Request) -> httpx.Response:
         seen_params.append(dict(req.url.params))
-        data: list[dict[str, str]] = []
+        data: list[dict[str, object]] = []
         for mid in mention_ids:
-            entry = {"id": mid, "author_id": "u1", "text": BODIES[mid]["text"]}
+            entry: dict[str, object] = {
+                "id": mid,
+                "author_id": "u1",
+                "text": BODIES[mid]["text"],
+            }
             if reply_to and mid in reply_to:
                 entry["in_reply_to_user_id"] = reply_to[mid]
+            if parent_of and mid in parent_of:
+                entry["referenced_tweets"] = [{"type": "replied_to", "id": parent_of[mid]}]
             data.append(entry)
         return httpx.Response(
             200,
@@ -416,14 +514,22 @@ def _cleanup():
 
 
 async def _run(
-    db, mention_ids, seen_params=None, posted=None, liked=None, reply_to=None, handle=HANDLE
+    db,
+    mention_ids,
+    seen_params=None,
+    posted=None,
+    liked=None,
+    reply_to=None,
+    handle=HANDLE,
+    parent_of=None,
+    fetched=None,
 ):
     seen_params = seen_params if seen_params is not None else []
     posted = posted if posted is not None else []
     liked = liked if liked is not None else []
     with (
-        _syndication_client() as syn,
-        _mentions_client(mention_ids, seen_params, reply_to, handle) as read,
+        _syndication_client(fetched) as syn,
+        _mentions_client(mention_ids, seen_params, reply_to, handle, parent_of) as read,
         _write_client(posted, liked) as write,
     ):
         outcome = await run_bot_once(
@@ -734,6 +840,156 @@ async def test_failure_reply_loop_guard_on_replies_to_the_bot(db, linked_owner):
     assert liked == []
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == NO_COORD_ID).one()
     assert ledger.reply_tweet_id is None
+
+
+# ── The tag rule: who typed the @ViditBot ─────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("text", "is_reply", "typed"),
+    [
+        # Not a reply: X wrote no prefix, so every mention is the author's.
+        ("@other_analyst @viditbot look at this", False, True),
+        # The field shape: four mentions X carried over, the bot third, then
+        # the analyst's own sentence.
+        (
+            "@other_analyst @geoconfirmed @viditbot @uacontrolmap "
+            "The guy who opens the window is on the third floor",
+            True,
+            False,
+        ),
+        # The run reads across newlines as well as spaces.
+        ("@other_analyst\n@viditbot\nagreed", True, False),
+        # A reply whose whole text is the run, the bare tag included: the
+        # parent is what settles both.
+        ("@other_analyst @viditbot", True, False),
+        ("@viditbot", True, False),
+        # A mention in the middle of the text, and one at the end: the author
+        # typed both.
+        ("@other_analyst agreed @viditbot, that is the tower", True, True),
+        ("@other_analyst that is the tower @viditbot", True, True),
+        # Case is X's to render, never the analyst's to get right.
+        ("@other_analyst the depot @ViditBot", True, True),
+        ("@ViditBot @other_analyst the depot", True, False),
+        # The dot-mention: the period is a character X never writes into a
+        # prefix, so it ends the run and the tag reads as typed.
+        (".@ViditBot 48.123456, 37.654321", True, True),
+        # Somebody else's handle, whatever its position.
+        ("@other_analyst @uacontrolmap the depot", True, False),
+        ("", True, False),
+    ],
+)
+def test_tags_bot_reads_who_typed_the_tag(text, is_reply, typed):
+    assert tags_bot(text, "viditbot", inherits_prefix=is_reply) is typed
+
+
+def test_tags_bot_without_the_prefix_rule_answers_the_parent_question():
+    # What a parent post is asked: does it mention the bot at all, wherever the
+    # mention came from. Its own inherited prefix counts, since a tag reaching
+    # this reply through it came from there either way.
+    assert tags_bot("@other_analyst @viditbot relayed", "viditbot", inherits_prefix=False) is True
+    assert tags_bot("48.123456, 37.654321 depot", "viditbot", inherits_prefix=False) is False
+
+
+async def test_a_reply_that_only_inherits_the_tag_is_not_a_mention(db, linked_owner):
+    # The real occurrence: the analyst answers a colleague whose post tagged the
+    # bot, X opens their reply with the parent's mentions, and their own thread
+    # carries no coordinate. Before the rule that earned them a ❌ on somebody
+    # else's thread for a tag they never typed.
+    fetched: list[str] = []
+    outcome, _, posted, liked = await _run(
+        db,
+        [INHERITED_REPLY_ID],
+        parent_of={INHERITED_REPLY_ID: INHERITED_PARENT_ID},
+        fetched=fetched,
+    )
+
+    assert outcome.inherited == 1
+    assert outcome.no_detection == 0
+    assert outcome.events_created == 0
+    assert posted == []
+    assert liked == []
+    # One syndication read, the parent's: nothing of the analyst's own thread is
+    # acquired, so the rule costs one free read and no billed call.
+    assert fetched == [INHERITED_PARENT_ID]
+    assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 0
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == INHERITED_REPLY_ID).one()
+    assert ledger.outcome == "inherited"
+    assert ledger.reply_tweet_id is None
+
+
+async def test_a_tag_typed_under_someone_elses_post_is_processed(db, linked_owner):
+    # Same position, the tag typed after the analyst's own words: a tag, read
+    # exactly as it was before the rule. The foreign parent still joins nothing,
+    # so the coordinate is the one on the tagging post.
+    outcome, _, posted, _ = await _run(
+        db,
+        [TYPED_UNDER_FOREIGN_ID],
+        parent_of={TYPED_UNDER_FOREIGN_ID: INHERITED_PARENT_ID},
+    )
+
+    assert outcome.inherited == 0
+    assert outcome.events_created == 1
+    assert outcome.replies_posted == 1
+    event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
+    assert event.detected_from_url == f"https://x.com/{HANDLE}/status/{TYPED_UNDER_FOREIGN_ID}"
+    point = to_shape(event.event_coords)
+    assert point.y == pytest.approx(48.123456)
+    ledger = (
+        db.query(BotMention).filter(BotMention.mention_tweet_id == TYPED_UNDER_FOREIGN_ID).one()
+    )
+    assert ledger.outcome == "created"
+    assert posted
+
+
+async def test_a_bare_tag_under_an_untagged_parent_still_climbs(db, linked_owner):
+    # The bare tag an analyst drops under their own geolocation: its whole text
+    # is the run, so the parent decides, and a parent that tags nobody leaves
+    # the tag typed. The climb then re-anchors on the coordinate post.
+    outcome, _, posted, _ = await _run(
+        db, [BARE_TAG_ID], parent_of={BARE_TAG_ID: TWO_POST_PARENT_ID}
+    )
+
+    assert outcome.inherited == 0
+    assert outcome.events_created == 1
+    event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
+    assert event.detected_from_url == f"https://x.com/{HANDLE}/status/{TWO_POST_PARENT_ID}"
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == BARE_TAG_ID).one()
+    assert ledger.outcome == "created"
+    assert posted
+
+
+async def test_a_follow_up_under_the_analysts_own_tagged_post_inherits(db, linked_owner):
+    # The analyst's own thread: the post above already tagged the bot and was
+    # answered when it did, so the prefix on this follow-up is not a second tag.
+    outcome, _, posted, _ = await _run(
+        db, [OWN_FOLLOW_UP_ID], parent_of={OWN_FOLLOW_UP_ID: TAGGED_ID}
+    )
+
+    assert outcome.inherited == 1
+    assert outcome.events_created == 0
+    assert posted == []
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == OWN_FOLLOW_UP_ID).one()
+    assert ledger.outcome == "inherited"
+
+
+async def test_an_unreadable_parent_reads_as_an_inherited_tag(db, linked_owner):
+    # The parent is deleted or protected, so what the prefix carried cannot be
+    # checked: silence beats a ❌ on a thread the tag may never have been meant
+    # for.
+    fetched: list[str] = []
+    outcome, _, posted, _ = await _run(
+        db,
+        [ORPHAN_REPLY_ID],
+        parent_of={ORPHAN_REPLY_ID: UNREADABLE_PARENT_ID},
+        fetched=fetched,
+    )
+
+    assert outcome.inherited == 1
+    assert posted == []
+    assert fetched == [UNREADABLE_PARENT_ID]
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == ORPHAN_REPLY_ID).one()
+    assert ledger.outcome == "inherited"
 
 
 @pytest.mark.parametrize("cap", ["bot_max_replies_per_hour", "bot_max_replies_per_author_per_hour"])

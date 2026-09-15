@@ -56,6 +56,7 @@ def main() -> None:
         f"{result.requests_opened} requests opened, "
         f"{result.replies_posted} replies posted, "
         f"{result.no_detection} without detection, "
+        f"{result.inherited} inheriting the tag from a parent, "
         f"{result.no_account} without a linked account, "
         f"{result.skipped} deduped, {result.already_handled} already handled, "
         f"{result.failed} failed."
