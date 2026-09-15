@@ -388,7 +388,9 @@ async function clipCollections({ addEvent, heldAfter, queryHits }) {
     console.log("→ the profile's Collections shelf");
     rec.mark("shelf");
     await wait(HOLD_SHORT);
-    await slowScrollToLocator(page, collectionsHeading, SCROLL_MS, 60);
+    // The opening scroll is the one the viewer reads the page by, so it runs
+    // at twice the pace of every later scroll.
+    await slowScrollToLocator(page, collectionsHeading, SCROLL_MS * 2, 60);
     await wait(HOLD_SHORT);
 
     // 2. One card, hovered. The mosaic, the title, the count and the date
