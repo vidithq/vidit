@@ -1423,7 +1423,8 @@ export interface paths {
          *     Any active filter scopes the event groups and empties the users group;
          *     ``author`` narrows the collections group to that owner and every other
          *     filter empties it. With an empty ``q`` the response browses the filtered
-         *     view (the profile's "Show more" entry point). Filter semantics are the
+         *     view, the collections group included when ``author`` is the only filter
+         *     (the profile's two "Show more" entry points). Filter semantics are the
          *     shared ones (see ``services/event_filters.apply_filters``).
          */
         get: operations["search_api_v1_search_get"];

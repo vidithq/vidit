@@ -320,35 +320,39 @@ def search_collections(
     the hit is the profile card, which prints the collection's own title and
     description rather than a matched fragment.
 
+    With an **empty** ``query`` and an ``author`` the FTS predicate drops
+    entirely: browse mode, that analyst's shelf newest first, the event
+    groups' behaviour under the same empty query. The profile's Collections
+    "Show more" lands here, and typing then narrows within it. An empty query
+    with no author still returns nothing, since "every collection there is" is
+    a listing rather than a search.
+
     The ranked query selects the collection itself, its owner eagerly loaded,
     rather than ranking ids and re-fetching them: unlike the event groups, the
     payload needs no per-hit highlight to key back onto, so one statement
     returns the rows already in rank order and the assembler reads them as they
-    come.
+    come. ``total`` is the pre-``LIMIT`` match count from ``COUNT(*) OVER ()``
+    on both paths, the figure the other groups report.
     """
     q = query.strip()
-    if not q:
+    if not q and not author:
         return [], 0
-    tsquery = func.plainto_tsquery(_TS_CONFIG, q)
     stmt = (
         db.query(Collection, func.count().over().label("total_count"))
         .options(joinedload(Collection.owner))
-        .filter(
-            *visible_collections(),
-            has_showable_item(),
-            _collection_tsvector().op("@@")(tsquery),
-        )
+        .filter(*visible_collections(), has_showable_item())
     )
     if author:
         stmt = stmt.filter(Collection.owner.has(owner_username_matches(author)))
-    rows = (
-        stmt.order_by(
+    if q:
+        tsquery = func.plainto_tsquery(_TS_CONFIG, q)
+        stmt = stmt.filter(_collection_tsvector().op("@@")(tsquery)).order_by(
             func.ts_rank(_collection_tsvector(), tsquery).desc(),
             Collection.created_at.desc(),
         )
-        .limit(limit)
-        .all()
-    )
+    else:
+        stmt = stmt.order_by(Collection.created_at.desc())
+    rows = stmt.limit(limit).all()
     if not rows:
         return [], 0
     return build_collection_reads(db, [row[0] for row in rows]), int(rows[0].total_count)
@@ -458,8 +462,10 @@ def search_all(
     owner, so "this analyst's collections" is a question it can answer, and
     the filter narrows the group instead of emptying it. Every other filter
     names a property of an event, which a collection does not carry, so it
-    empties the group (``EventFilters.active_beyond_author``). The response
-    shape stays stable either way.
+    empties the group (``EventFilters.active_beyond_author``). That one
+    exception carries browse mode with it: ``author`` alone and an empty
+    query lists the analyst's shelf newest first, the way the event groups
+    browse their filtered view. The response shape stays stable either way.
 
     Returns ``{group: {"hits": [...], "total": int}}`` for every group:
     ``hits`` capped at ``limit``, ``total`` the pre-LIMIT match count for

@@ -96,16 +96,12 @@ export function newCollectionHref(eventId?: string): string {
     : "/collections/new";
 }
 
-/** An analyst's collections, newest first. The endpoint is offset-paged, and
- *  the profile grid walks it a page at a time: `perPage` is the grid's own page
- *  size rather than the endpoint's default, and `page` is the one the reader
- *  asked for. */
-export function userCollectionsPath(
-  username: string,
-  perPage: number,
-  page: number,
-): string {
-  return `/users/${encodeURIComponent(username)}/collections?page=${page}&per_page=${perPage}`;
+/** An analyst's collections, newest first. The profile grid reads the first
+ *  page and asks for as many rows as it shows, so `perPage` is the grid's own
+ *  size rather than the endpoint's default; the whole shelf is walked in
+ *  `/search` instead. */
+export function userCollectionsPath(username: string, perPage: number): string {
+  return `/users/${encodeURIComponent(username)}/collections?per_page=${perPage}`;
 }
 
 /** The owner's collections, each carrying whether this event is on it. */

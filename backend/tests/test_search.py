@@ -650,6 +650,62 @@ def test_event_filter_empties_the_collections_group(caller, seed_collection):
     assert response.json()["total"]["collections"] == 0
 
 
+def test_browse_lists_the_authors_collections_newest_first(caller, seed_collection):
+    """An empty query plus ``author`` browses that analyst's shelf, newest
+    first: the entry point the profile's Collections "Show more" opens."""
+    token = _unique_token()
+    older = seed_collection(f"Older {token}", "Shelved first.")
+    newer = seed_collection(f"Newer {token}", "Shelved second.")
+    response = client.get(f"/api/v1/search?type=collection&author={caller.username}")
+    assert response.status_code == 200
+    body = response.json()
+    assert [hit["id"] for hit in body["collections"]] == [str(newer), str(older)]
+    assert body["total"]["collections"] == 2
+    # The full card, as the typed path serves it.
+    assert body["collections"][0]["event_count"] == 1
+
+
+def test_browse_excludes_hidden_and_empty_collections(caller, seed_collection):
+    """Browse reads the same visibility and non-empty predicates the typed
+    path does, so it never hands over a card a profile would drop."""
+    token = _unique_token()
+    shown = seed_collection(f"Shown {token}", "Holds something.")
+    seed_collection(f"Withheld {token}", "Taken down.", hidden=True)
+    seed_collection(f"Bare {token}", "Still scaffolding.", empty=True)
+    response = client.get(f"/api/v1/search?type=collection&author={caller.username}")
+    body = response.json()
+    assert [hit["id"] for hit in body["collections"]] == [str(shown)]
+    assert body["total"]["collections"] == 1
+
+
+def test_browse_without_an_author_leaves_the_group_empty(caller, seed_collection):
+    """ "Every collection there is" is a listing rather than a search, so an
+    empty query with no author still answers with nothing. A filter that is
+    not ``author`` empties the group as it does under a typed query."""
+    token = _unique_token()
+    seed_collection(f"Shelf {token}", "One shelf.")
+    assert client.get("/api/v1/search?type=collection").json()["collections"] == []
+    filtered = client.get(
+        f"/api/v1/search?type=collection&author={caller.username}&status=geolocated"
+    ).json()
+    assert filtered["collections"] == []
+    assert filtered["total"]["collections"] == 0
+
+
+def test_typed_query_still_narrows_within_an_author(caller, seed_collection):
+    """Typing narrows within the browse: the text predicate applies alongside
+    ``author`` rather than being replaced by it."""
+    token = _unique_token()
+    wanted = seed_collection(f"Kupiansk {token}", "The eastern approach.")
+    seed_collection(f"Kherson {token}", "The river bank.")
+    response = client.get(
+        f"/api/v1/search?q=Kupiansk {token}&type=collection&author={caller.username}"
+    )
+    body = response.json()
+    assert [hit["id"] for hit in body["collections"]] == [str(wanted)]
+    assert body["total"]["collections"] == 1
+
+
 def test_collection_fts_query_uses_the_gin_index(db):
     """The ORM-built collection tsvector must stay expression-tree-equal to
     the migration's GIN index expression, the same pin the events one takes:

@@ -1,17 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const useApiResource = vi.fn();
 vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => useApiResource(path),
-}));
-
-// Every page past the first is a call rather than a second resource, so the
-// read the control makes is measured on the endpoint it asks for.
-const apiFetch = vi.fn();
-vi.mock("@/lib/api", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/api")>()),
-  apiFetch: (path: string) => apiFetch(path),
 }));
 
 import { type Collection, type CollectionPage } from "@/lib/collections";
@@ -49,7 +41,6 @@ const shelf = (count: number): Collection[] =>
   );
 
 beforeEach(() => {
-  apiFetch.mockReset();
   useApiResource.mockReset();
 });
 
@@ -111,58 +102,32 @@ describe("CollectionsSection", () => {
     ).toBeInTheDocument();
   });
 
-  it("asks for nothing further once the whole shelf is on screen", () => {
+  it("offers no expansion once the whole shelf is on screen", () => {
     useApiResource.mockReturnValue({ data: page(shelf(4)) });
 
     render(<CollectionsSection username="ana" isOwn={false} />);
 
     expect(useApiResource).toHaveBeenCalledWith(
-      "/users/ana/collections?page=1&per_page=4",
+      "/users/ana/collections?per_page=4",
     );
     expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(4);
     expect(
-      screen.queryByRole("button", { name: "Show more" }),
+      screen.queryByRole("link", { name: "Show more" }),
     ).not.toBeInTheDocument();
   });
 
-  it("appends the next page in place and drops the control at the end", async () => {
+  it("sends the reader to the analyst's collections in search past four", () => {
     useApiResource.mockReturnValue({ data: page(shelf(4), 6) });
-    apiFetch.mockResolvedValue(
-      page(
-        [
-          collection({ id: "c5", title: "Collection 5" }),
-          collection({ id: "c6", title: "Collection 6" }),
-        ],
-        6,
-        2,
-      ),
-    );
 
     render(<CollectionsSection username="ana" isOwn={false} />);
+
+    // The grid still previews four; the whole shelf is walked in search,
+    // scoped to this analyst on the one filter a collection carries.
     expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(4);
-
-    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
-
-    await waitFor(() =>
-      expect(apiFetch).toHaveBeenCalledWith(
-        "/users/ana/collections?page=2&per_page=4",
-      ),
+    expect(screen.getByRole("link", { name: "Show more" })).toHaveAttribute(
+      "href",
+      "/search?type=collection&author=ana",
     );
-    // The first page stays on screen and the second one lands under it.
-    const titles = screen
-      .getAllByRole("heading", { level: 3 })
-      .map((row) => row.textContent);
-    expect(titles).toEqual([
-      "Collection 1",
-      "Collection 2",
-      "Collection 3",
-      "Collection 4",
-      "Collection 5",
-      "Collection 6",
-    ]);
-    expect(
-      screen.queryByRole("button", { name: "Show more" }),
-    ).not.toBeInTheDocument();
   });
 
   it("renders nothing until the read lands", () => {

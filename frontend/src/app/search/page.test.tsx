@@ -130,4 +130,23 @@ describe("the search page's Collections group", () => {
       ),
     );
   });
+
+  it("browses one analyst's shelf on an author alone", async () => {
+    // Where the profile's Collections `Show more` lands: no query, the author
+    // as the only filter. The empty query is a valid search here, so the page
+    // must issue the read rather than hold at the start-typing prompt.
+    searchParams = new URLSearchParams("type=collection&author=ana");
+    search.mockResolvedValue(
+      response({ type: "collection", query: "", collections: [collection()] }),
+    );
+
+    render(<SearchPage />);
+
+    expect(await screen.findByText("Nova Kakhovka dam")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(search).toHaveBeenCalledWith(
+        expect.objectContaining({ q: "", type: "collection", author: "ana" }),
+      ),
+    );
+  });
 });

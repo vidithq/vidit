@@ -83,12 +83,12 @@ describe("collection paths", () => {
     );
   });
 
-  it("asks the profile endpoint for one page at the grid's own size", () => {
-    expect(userCollectionsPath("ana", 4, 1)).toBe(
-      "/users/ana/collections?page=1&per_page=4",
+  it("asks the profile endpoint for the grid's own number of rows", () => {
+    expect(userCollectionsPath("ana", 4)).toBe(
+      "/users/ana/collections?per_page=4",
     );
-    expect(userCollectionsPath("ana", 4, 2)).toBe(
-      "/users/ana/collections?page=2&per_page=4",
+    expect(userCollectionsPath("a n/a", 4)).toBe(
+      "/users/a%20n%2Fa/collections?per_page=4",
     );
   });
 });
