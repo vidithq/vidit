@@ -190,10 +190,18 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
           compact={compact}
         />
       )}
-      {/* The post a detection was imported from, distinct from Source (the
-          footage origin), never folded into it. */}
+      {/* The post a machine import read this row from, distinct from Source
+          (the footage origin), never folded into it. The bot writes it on a
+          request it opened as well as on a detection, and the label follows
+          which one landed: `requested_by` is the stamp that says the row was
+          opened as a request, and it survives fulfilment, so the label does not
+          flip to "Detected from" the day someone geolocates it. */}
       {geo.detected_from_url && (
-        <DetailRow label="Detected from" concept="detected_from" compact={compact}>
+        <DetailRow
+          label={geo.requested_by ? "Requested from" : "Detected from"}
+          concept="detected_from"
+          compact={compact}
+        >
           <span className="flex min-w-0 items-baseline justify-end">
             {/* Same display nature as Source: SourceLabel reduces the URL to its
                 host, so the two provenance rows read alike rather than one

@@ -7,6 +7,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    ColumnElement,
     Date,
     DateTime,
     ForeignKey,
@@ -16,9 +17,11 @@ from sqlalchemy import (
     Text,
     Time,
     UniqueConstraint,
+    and_,
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -320,6 +323,30 @@ class Event(Base):
     # the detection first came from. NULL for human submits and for rows that predate
     # the column.
     detected_via: Mapped[DetectedVia | None] = mapped_column(String(20), nullable=True)
+
+    @hybrid_property
+    def is_machine_detection(self) -> bool:
+        """Whether this row is a machine extraction the pipeline is judged on.
+
+        The one home for the predicate, beside the two columns it reads. A row
+        imported from X carries ``detected_from_url``, and a request carries
+        ``requested_at`` for life, since the per-state entry stamps above are
+        never cleared. So the pair separates a detection from a request the bot
+        opened, which carries both, whatever state either row reaches:
+        a fulfilled request stays a request, and a human submit carries neither.
+
+        Read by ``services/admin.detection_quality_stats`` for its cohort. The
+        ``ix_events_detected_from_url`` index below backs the first leg alone
+        and is left that way: the second leg narrows a cohort the first already
+        cut down to the imported rows.
+        """
+        return self.detected_from_url is not None and self.requested_at is None
+
+    @is_machine_detection.inplace.expression
+    @classmethod
+    def _is_machine_detection_expression(cls) -> ColumnElement[bool]:
+        return and_(cls.detected_from_url.isnot(None), cls.requested_at.is_(None))
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),

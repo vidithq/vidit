@@ -36,6 +36,20 @@ def test_typology_matches_the_paste_contract(typology: str) -> None:
     loader.assert_resolution_matches(typology, _PATH, resolve_threads([acquired.records]))
 
 
+@pytest.mark.parametrize("typology", ["mirror_telegram_no_coord", "mirror_x_status_no_coord"])
+def test_a_coordinate_less_mirror_post_drafts_nothing_for_the_paste(typology: str) -> None:
+    """The second exit is opened per call and the paste never asks: the two
+    mirror shapes the bot opens a request for are a plain ``coords_missing``
+    refusal here, which is what the analyst has always been answered with."""
+    body = loader.load_body(typology)
+    with loader.syndication_client(typology) as client:
+        acquired = acquire_pasted_thread(loader.owner_url(body), client=client)
+    resolution = resolve_threads([acquired.records])
+
+    assert resolution.requests == []
+    assert resolution.reason == "coords_missing"
+
+
 def test_the_paste_reads_the_same_authors_parent() -> None:
     """The two-post field format, pasted on the reply: the coordinate sits on
     the analyst's post and the footage link on their own reply. Provenance

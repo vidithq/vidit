@@ -706,8 +706,8 @@ def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
     See :class:`AdminDetectionStatsRead` for the exact definitions. Two cheap
     aggregate queries, each one grouped pass with conditional counts:
 
-    1. Reject-rate over every machine detection (``detected_from_url`` set):
-       the ``count(*) FILTER (WHERE ...)`` of dismissed
+    1. Reject-rate over every machine detection (``Event.is_machine_detection``,
+       the model's predicate): the ``count(*) FILTER (WHERE ...)`` of dismissed
        detections over the total. A machine detection dismissed before it was
        published counts as a reject whichever door it left through: an owner close off
        ``detected`` or an admin soft-delete that never left ``detected``. A
@@ -719,7 +719,10 @@ def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
        excluded), counting the detections missing a source media, a proof image,
        or a source URL, the pieces the geolocate floor will demand.
     """
-    machine = Event.detected_from_url.isnot(None)
+    # A bot-opened request carries ``detected_from_url`` too, so the cohort is
+    # the model's own predicate (``Event.is_machine_detection``, beside the two
+    # columns it reads) rather than a second spelling of it here.
+    machine = Event.is_machine_detection
     rejected = or_(
         and_(Event.status == STATUS_CLOSED, Event.before_closed_status == STATUS_DETECTED),
         and_(Event.deleted_at.isnot(None), Event.status == STATUS_DETECTED),
@@ -733,11 +736,7 @@ def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
         .one()
     )
 
-    pending = and_(
-        Event.status == STATUS_DETECTED,
-        Event.deleted_at.is_(None),
-        Event.detected_from_url.isnot(None),
-    )
+    pending = and_(Event.status == STATUS_DETECTED, Event.deleted_at.is_(None), machine)
     has_source = Event.media.any(Media.role == "source")
     has_proof = Event.media.any(and_(Media.role == "proof", Media.media_type == "image"))
     (

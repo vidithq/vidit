@@ -10,7 +10,7 @@ Single-responsibility bricks behind one import surface:
   every path.
 * ``stitch``: recombine records into threads (union-find on reply edges).
 * ``resolve``: the engine, threads to one ``Detection`` per coordinate plus the
-  reason a thread produced none.
+  reason a thread produced none and any ``RequestDraft`` that reason carries.
 * ``syndication``: X I/O (fetch + token + cache, payload mappers).
 * ``chase``: the one chase step (``chase_thread``), one module per technology
   behind one dispatcher, for the single fetch a thread's declared source costs.
@@ -35,12 +35,14 @@ from .acquire import (
     acquire_pasted_thread,
     acquire_thread,
     read_pasted_post,
+    record_by_id,
 )
 from .archive import archive_media_fetcher, fetch_cdn_media, read_tweets
 from .chase import chase_thread
 from .errors import (
     InvalidTweetUrl,
     TweetFetchFailed,
+    TweetImportError,
     TweetNotAccessible,
     TweetUpstreamBusy,
 )
@@ -49,14 +51,17 @@ from .extract import (
     clean_proof_text,
     derive_title,
     extract_coords,
+    tags_bot,
 )
 from .records import ParsedMedia, TweetRecord
 from .resolve import (
     COORDS_INVALID,
     COORDS_MISSING,
     DUPLICATE_MEDIA,
+    FOOTAGE_UNUSABLE,
     POST_UNREADABLE,
     REFUSAL_MESSAGES,
+    REQUEST_NOT_POSSIBLE,
     SEVERAL_COORDINATES,
     SOURCE_AMBIGUOUS,
     SOURCE_DATE_UNKNOWN,
@@ -65,6 +70,7 @@ from .resolve import (
     SOURCE_MISSING,
     WARNING_MESSAGES,
     Detection,
+    RequestDraft,
     Resolution,
     resolve_threads,
     sole_refusal,
@@ -76,8 +82,10 @@ __all__ = [
     "COORDS_INVALID",
     "COORDS_MISSING",
     "DUPLICATE_MEDIA",
+    "FOOTAGE_UNUSABLE",
     "POST_UNREADABLE",
     "REFUSAL_MESSAGES",
+    "REQUEST_NOT_POSSIBLE",
     "SEVERAL_COORDINATES",
     "SOURCE_AMBIGUOUS",
     "SOURCE_DATE_UNKNOWN",
@@ -90,8 +98,10 @@ __all__ = [
     "InvalidTweetUrl",
     "ParsedCoord",
     "ParsedMedia",
+    "RequestDraft",
     "Resolution",
     "TweetFetchFailed",
+    "TweetImportError",
     "TweetNotAccessible",
     "TweetRecord",
     "TweetUpstreamBusy",
@@ -108,7 +118,9 @@ __all__ = [
     "normalise_tweet_url",
     "read_pasted_post",
     "read_tweets",
+    "record_by_id",
     "resolve_threads",
     "sole_refusal",
     "stitch",
+    "tags_bot",
 ]

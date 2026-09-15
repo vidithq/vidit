@@ -413,11 +413,19 @@ def test_non_mention_event_is_skipped(db):
     assert resp.json() == {"queued": 0}
 
 
-def test_reply_carries_in_reply_to_user_id(db):
-    event = _tweet_create_event(BARE_ID, in_reply_to_user_id_str=BOT_USER_ID)
+def test_reply_carries_both_reply_edges(db):
+    # Who the reply answers, for the failure-reply loop guard, and which post it
+    # answers, for the tag rule: an inherited @ViditBot is settled by reading
+    # the parent, so the queued payload has to name it.
+    event = _tweet_create_event(
+        BARE_ID,
+        in_reply_to_user_id_str=BOT_USER_ID,
+        in_reply_to_status_id_str=COORD_ID,
+    )
     _post_payload({"for_user_id": BOT_USER_ID, "tweet_create_events": [event]})
     (mention,) = _queued_mentions(db)
     assert mention["in_reply_to_user_id"] == BOT_USER_ID
+    assert mention["in_reply_to_status_id"] == COORD_ID
 
 
 # ── Queue drain through the shared pipeline ────────────────────────────────

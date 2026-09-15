@@ -292,7 +292,10 @@ export default function ImportGuidePage() {
           within seconds. You do not leave your feed and you retype nothing. The
           bot imports only for X handles linked to a Vidit account: it stays
           silent for any other handle and creates nothing. It reads public posts
-          only, so a tag from a protected account imports nothing.
+          only, so a tag from a protected account imports nothing. Replying to a
+          post that tagged the bot does not tag it again: X carries the mentions
+          over into your reply, and the bot reads only the tag you type after
+          your own words.
         </p>
         <div className={TILE}>
           <h3 className={TILE_TITLE}>Your post, then your own reply</h3>
@@ -326,13 +329,49 @@ export default function ImportGuidePage() {
             </div>
           </div>
         </div>
+        <div className={TILE}>
+          <h3 className={TILE_TITLE}>No coordinate yet? It opens a request</h3>
+          <p className={`mt-1.5 mb-4 ${NOTE}`}>
+            Mirror someone else&apos;s footage with no coordinate of your own
+            and the bot opens a request instead of refusing: the post you linked
+            becomes the source, its own clip becomes the evidence, and the
+            request goes on the board for anyone to geolocate. It is yours: it
+            sits with your other open requests on your profile, where you edit
+            it or withdraw it. When the link is an X post or a public Telegram
+            post, the bot reads the clip and the date from it and the copy you
+            attached is the fallback. Any other link, a YouTube video or a news
+            page, works too, as long as you attach the clip yourself. Tag the
+            same post again and nothing is duplicated.
+          </p>
+          <div className="space-y-3">
+            <MockPost
+              {...MOCK_ANALYST}
+              media={{
+                kind: "video",
+                label: "your copy, kept only if the channel post serves none",
+              }}
+            >
+              {"Wild Division work in the 82nd Brigade sector\n"}
+              <MockPostLink>t.me/wilddivision82/351</MockPostLink>
+              {"\n"}
+              <MockPostLink>@viditbot</MockPostLink>
+            </MockPost>
+            <div className="pl-6">
+              <MockPost {...MOCK_BOT} replyingTo={MOCK_ANALYST.handle}>
+                {
+                  "✅ Geolocation request opened · ref 5c02be71\nEdit it from your profile"
+                }
+              </MockPost>
+            </div>
+          </div>
+        </div>
         <p className={NOTE}>
           The bot answers in-thread with your detection&apos;s reference and
           with what to fix at review: an empty source, several coordinates, a
           missing footage file or post date, or media already on Vidit. When
-          nothing imports, it names which of the three refusals it was. Replies
-          are capped per hour, so a burst of tags still creates every detection
-          while some of them go unanswered.
+          nothing imports, it names why, a mirror with no clip attached
+          included. Replies are capped per hour, so a burst of tags still
+          creates every detection while some of them go unanswered.
         </p>
         <div className="sm:max-w-md">
           <MockPost {...MOCK_BOT} replyingTo={MOCK_ANALYST.handle}>

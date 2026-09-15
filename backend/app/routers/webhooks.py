@@ -122,12 +122,14 @@ def _event_to_mention(event: object) -> Mention | None:
     full_text = extended.get("full_text") if extended is not None else None
     text = full_text if isinstance(full_text, str) else event.get("text")
     reply_to = event.get("in_reply_to_user_id_str")
+    reply_to_status = event.get("in_reply_to_status_id_str")
     return Mention(
         tweet_id=tweet_id,
         author_id=author_id,
         author_handle=author_handle.lower(),
         text=text if isinstance(text, str) else "",
         in_reply_to_user_id=reply_to if isinstance(reply_to, str) else None,
+        in_reply_to_status_id=reply_to_status if isinstance(reply_to_status, str) else None,
     )
 
 

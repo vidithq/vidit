@@ -94,11 +94,14 @@ _EXTENSION_FOR_CONTENT_TYPE = {
 }
 
 
-def _safe_storage_extension(content_type: str | None) -> str:
+def safe_storage_extension(content_type: str | None) -> str:
     """Return the canonical extension for an allowed MIME type.
 
-    Falls back to ``""`` for anything off the map — safer than emitting an
-    attacker-controlled string into an S3 key.
+    Falls back to ``""`` for anything off the map, safer than emitting an
+    attacker-controlled string into an S3 key. The one home for the mapping:
+    every key this module mints reads it, and so does the machine writer that
+    names the file it hands the evidence intake
+    (``detection.open_request``).
     """
     if content_type is None:
         return ""
@@ -635,7 +638,7 @@ async def _upload_with_optional_strip(
 
 
 async def upload_file(file: UploadFile, geolocation_id: UUID) -> UploadResult:
-    ext = _safe_storage_extension(file.content_type)
+    ext = safe_storage_extension(file.content_type)
     key = f"uploads/{geolocation_id}/{uuid4()}{ext}"
     return await _upload_with_optional_strip(file, key)
 
@@ -643,8 +646,12 @@ async def upload_file(file: UploadFile, geolocation_id: UUID) -> UploadResult:
 def detected_media_key(geolocation_id: UUID, content_type: str) -> str:
     """S3 key for a machine detection's media — a distinct ``detected/`` prefix
     keeps it separable from human ``uploads/``. The extension derives from the
-    validated MIME (a safe short ASCII suffix), never an attacker filename."""
-    ext = _safe_storage_extension(content_type)
+    validated MIME (a safe short ASCII suffix), never an attacker filename.
+
+    A request the bot opens stores its footage under ``uploads/`` like a manual
+    request, since it is written through ``events.create_request`` and the row
+    is the analyst's own submission; ``detected/`` holds the detections."""
+    ext = safe_storage_extension(content_type)
     return f"detected/{geolocation_id}/{uuid4()}{ext}"
 
 
@@ -660,7 +667,7 @@ async def upload_proof_image(file: UploadFile, user_id: UUID) -> UploadResult:
     ``<img src=…>`` via the raw storage URL, so hero/thumb JPEGs would be
     two unfetched objects per upload, locked 365 days under Object Lock.
     """
-    ext = _safe_storage_extension(file.content_type)
+    ext = safe_storage_extension(file.content_type)
     key = f"proof/{user_id}/{uuid4()}{ext}"
     return await _upload_with_optional_strip(file, key, produce_derivatives=False)
 

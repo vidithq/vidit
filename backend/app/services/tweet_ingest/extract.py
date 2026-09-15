@@ -243,7 +243,7 @@ def is_retweet(text: str) -> bool:
 
 
 # A mention as X writes it: ``@`` plus a handle.
-_MENTION_RE = re.compile(rf"@{_HANDLE}")
+_MENTION_RE = re.compile(rf"@({_HANDLE})")
 
 
 def is_mentions_only(text: str) -> bool:
@@ -256,6 +256,51 @@ def is_mentions_only(text: str) -> bool:
     says something (:func:`acquire._is_bare_tag`).
     """
     return not _MENTION_RE.sub("", text).strip()
+
+
+def _past_leading_mentions(text: str) -> str:
+    """``text`` past the run of mentions that opens it.
+
+    X writes the first line of a reply for the author: the parent's author,
+    then the parent's own mentions minus the replier, one ``@handle`` after
+    another. The run ends at the first token that is not one of those, and
+    everything from there on is what the author typed. Two shapes end it early
+    and leave their mention in the typed region: any other character before a
+    mention, and any non-whitespace character directly after one, so both the
+    period of a dot-mention (``.@viditbot``) and the comma of ``@viditbot,
+    look`` read as typed.
+    """
+    end = 0
+    for match in _MENTION_RE.finditer(text):
+        if text[end : match.start()].strip():
+            break
+        trailing = text[match.end() : match.end() + 1]
+        if trailing and not trailing.isspace():
+            break
+        end = match.end()
+    return text[end:]
+
+
+def tags_bot(text: str, handle: str, *, inherits_prefix: bool) -> bool:
+    """Whether ``text`` carries an ``@handle`` tag its author typed.
+
+    The tag rule, pure: the text goes in and the verdict comes out, so the two
+    deliveries and the parent read share one answer. Entities carry no position,
+    and position is the whole rule, so the text is what it reads; both
+    deliveries carry the full text (the webhook prefers
+    ``extended_tweet.full_text``, which holds a tag past the truncation point).
+
+    ``inherits_prefix`` says X may have written a leading run of mentions the
+    author never typed, which is true of every reply: only the region past that
+    run (:func:`_past_leading_mentions`) counts. Pass ``False`` for a post that
+    is not a reply, and for the plain question "does this text mention the
+    handle at all", which is what a parent post is asked.
+    """
+    if not handle:
+        return False
+    wanted = handle.lower()
+    region = _past_leading_mentions(text) if inherits_prefix else text
+    return any(match.group(1).lower() == wanted for match in _MENTION_RE.finditer(region))
 
 
 def strip_bot_tag(text: str, handle: str) -> str:

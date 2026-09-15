@@ -1,0 +1,36 @@
+{
+  "description": "A mirror post whose source sits off the chase vocabulary: the analyst re-uploads a YouTube clip, links the video and writes no coordinate. Nothing is detected on any entry (coords_missing). Nothing chases a YouTube link, so the source is the link as the post wrote it, its date is unknown, and the analyst's own video is both the promoted source media and the request draft's footage.",
+  "coords": [],
+  "source_url": "https://www.youtube.com/watch?v=FAKEMIRROR01",
+  "secondary_source_urls": [],
+  "source_posted_at": null,
+  "event_date": "2026-03-14",
+  "title": "Armour column on the eastern ring road",
+  "source_media": [
+    [
+      "video",
+      "op"
+    ]
+  ],
+  "proof_media": [],
+  "warnings": [],
+  "request": {
+    "source_url": "https://www.youtube.com/watch?v=FAKEMIRROR01",
+    "title": "Armour column on the eastern ring road",
+    "footage": [
+      "video",
+      "op"
+    ]
+  },
+  "paths": {
+    "bot": {
+      "reason": "coords_missing"
+    },
+    "paste": {
+      "reason": "coords_missing"
+    },
+    "archive": {
+      "reason": "coords_missing"
+    }
+  }
+}

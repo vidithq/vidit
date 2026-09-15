@@ -8,15 +8,19 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
-// The signed-in reader IS the row's author in every case below, which is the
-// only interesting one here: the owner tier is what the surfaces disagree on.
+// The signed-in reader, fixed. Who they are *to the row* is what the harness
+// varies: `viewer="visitor"` hands them a row somebody else owns, which is what
+// an open request looks like to the analyst who might answer it.
+const AUTHOR = { id: "u1", username: "ana" };
+const SOMEONE_ELSE = { id: "u2", username: "bo" };
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: { id: "u1", username: "ana" } }),
 }));
 
 function eventFixture(
   status: EventStatus,
-  beforeClosedStatus: BeforeClosedStatus | null = null
+  beforeClosedStatus: BeforeClosedStatus | null = null,
+  owner: { id: string; username: string } = AUTHOR
 ): EventDetail {
   return {
     id: "e1",
@@ -35,7 +39,7 @@ function eventFixture(
     before_closed_status: beforeClosedStatus,
     detected_from_url: null,
     detected_via: null,
-    owner: { id: "u1", username: "ana" },
+    owner,
     tags: [],
     conflicts: [],
     source_url: "https://t.me/channel/12345",
@@ -56,13 +60,19 @@ function Harness({
   status,
   surface,
   beforeClosedStatus = null,
+  viewer = "author",
 }: {
   status: EventStatus;
   surface: ActionSurface;
   beforeClosedStatus?: BeforeClosedStatus | null;
+  viewer?: "author" | "visitor";
 }) {
   const { actions, panels } = useEventActions({
-    event: eventFixture(status, beforeClosedStatus),
+    event: eventFixture(
+      status,
+      beforeClosedStatus,
+      viewer === "author" ? AUTHOR : SOMEONE_ELSE
+    ),
     surface,
   });
   return (
@@ -109,6 +119,43 @@ describe("owner management: correcting, taking back, and never destroying", () =
     (status) => {
       render(<Harness status={status} surface="event" />);
       expect(screen.queryByRole("link", { name: "Edit this geolocation" })).toBeNull();
+    }
+  );
+
+  // The owner's other edit, on the row in the other state: an open request is
+  // overwritten rather than versioned, so the label promises no version, and
+  // both detail surfaces carry it since both serve requests.
+  it.each<ActionSurface>(["event", "request"])(
+    "offers the request edit on the %s surface as a visible icon",
+    (surface) => {
+      render(<Harness status="requested" surface={surface} />);
+      expect(screen.getByRole("link", { name: "Edit this request" })).toHaveAttribute(
+        "href",
+        "/events/e1/edit"
+      );
+      // The two edits never stand together: no row is both requested and
+      // published.
+      expect(screen.queryByRole("link", { name: "Edit this geolocation" })).toBeNull();
+    }
+  );
+
+  it.each<EventStatus>(["geolocated", "detected", "closed"])(
+    "shows no request edit for a %s row",
+    (status) => {
+      render(<Harness status={status} surface="request" />);
+      expect(screen.queryByRole("link", { name: "Edit this request" })).toBeNull();
+    }
+  );
+
+  // Anyone may answer an open request; only the analyst who asked rewrites the
+  // question. A visitor therefore gets the geolocate and nothing of the owner
+  // tier, on either surface that serves requests.
+  it.each<ActionSurface>(["event", "request"])(
+    "shows a visitor no request edit on the %s surface",
+    (surface) => {
+      render(<Harness status="requested" surface={surface} viewer="visitor" />);
+      expect(screen.queryByRole("link", { name: "Edit this request" })).toBeNull();
+      expect(closeControl()).toBeNull();
     }
   );
 

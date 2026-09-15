@@ -34,6 +34,11 @@ TELEGRAM_HOST_RE = re.compile(r"^(?:www\.)?t\.me$", re.IGNORECASE)
 # profile or a search page.
 X_STATUS_URL_RE = re.compile(r"(?:x|twitter)\.com/(?:\w+/status|i/web/status)/(\d+)", re.IGNORECASE)
 
+# A public t.me post path: ``/<channel>/<id>``, channel a bare username, id
+# numeric. Excludes the private ``/c/<n>/<m>`` and ``/joinchat/...`` forms
+# (extra path segments / non-numeric id), which have no public embed anyway.
+TELEGRAM_POST_PATH_RE = re.compile(r"^/([A-Za-z0-9_]{1,64})/(\d{1,19})$")
+
 
 def hostname(url: str) -> str:
     """``url``'s lowercased host, ``""`` when it has none or does not parse."""
@@ -55,6 +60,32 @@ def x_status_id(url: str) -> str | None:
         return None
     match = X_STATUS_URL_RE.search(url)
     return match.group(1) if match is not None else None
+
+
+def telegram_post_url(url: str) -> str | None:
+    """The canonical ``https://t.me/<channel>/<id>`` post URL, or ``None``.
+
+    The SSRF gate the Telegram chase fetches behind: returns a URL only for a
+    public Telegram post (a ``t.me`` host per :data:`TELEGRAM_HOST_RE`, a bare
+    channel, a numeric id). A private ``t.me/c/...`` link, a ``joinchat``
+    invite, a channel-only link, embedded credentials, a non-standard port, or
+    any non-Telegram host all yield ``None`` and are never fetched.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return None
+    if parsed.scheme not in ("http", "https"):
+        return None
+    if parsed.username or parsed.password or parsed.port:
+        return None
+    if TELEGRAM_HOST_RE.match((parsed.hostname or "").lower()) is None:
+        return None
+    match = TELEGRAM_POST_PATH_RE.match(parsed.path)
+    if match is None:
+        return None
+    channel, post_id = match.group(1), match.group(2)
+    return f"https://t.me/{channel}/{post_id}"
 
 
 # ── Reading a post URL ────────────────────────────────────────────────────

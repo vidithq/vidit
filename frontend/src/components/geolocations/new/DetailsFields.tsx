@@ -55,9 +55,15 @@ interface DetailsFieldsProps {
   eventTime: string;
   setEventTime: (v: string) => void;
   /** When the source posted the media: a datetime-local value
-   *  ("YYYY-MM-DDTHH:MM", UTC). Required: a post always has a time. */
+   *  ("YYYY-MM-DDTHH:MM", UTC). */
   sourcePostedAt: string;
   setSourcePostedAt: (v: string) => void;
+  /** Whether this surface's floor holds the instant. True everywhere a post
+   *  time is part of publishing; the request edit sets it false, since the bot
+   *  opens requests whose source date it could not read and that form saves
+   *  with the field empty. It marks the input `required`, so the a11y tree
+   *  announces a required field only where the form has one. */
+  sourcePostedAtRequired?: boolean;
   /** The author's graphic-content declaration. Never required: an unflagged
    *  event is a complete form. */
   isGraphic: boolean;
@@ -110,6 +116,7 @@ export function DetailsFields({
   setEventTime,
   sourcePostedAt,
   setSourcePostedAt,
+  sourcePostedAtRequired = true,
   isGraphic,
   setIsGraphic,
   graphicLocked = false,
@@ -198,7 +205,7 @@ export function DetailsFields({
         <DateTimeInput
           id="source_posted_at"
           type="datetime-local"
-          required
+          required={sourcePostedAtRequired}
           value={sourcePostedAt}
           onChange={(e) => setSourcePostedAt(e.target.value)}
           invalid={sourcePostedAtInvalid}

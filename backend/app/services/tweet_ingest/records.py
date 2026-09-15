@@ -78,6 +78,12 @@ class QuotedTweet:
     text: str
     created_at: str  # ISO 8601 UTC
     media: list[ParsedMedia] = field(default_factory=list)
+    # The URLs the quoted post links (``entities.urls``), carried for one
+    # reader: the request branch scans a quoted post's text for a coordinate,
+    # and raw text carries only opaque ``t.co`` wrappers, so a maps link would
+    # otherwise read as no coordinate at all. Never a source candidate: the
+    # source rule reads the analyst's own links (:func:`resolve.thread_candidates`).
+    external_sources: list[SourceLink] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

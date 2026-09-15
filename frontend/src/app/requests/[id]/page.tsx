@@ -12,9 +12,10 @@ import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
  * A request is a ``requested`` event (see ``docs/data-model.md`` → ``events``),
  * served by the same ``GET /events/{id}`` a located row uses; this page renders
  * the shared ``EventDetailBody`` under the shared action cluster. The request
- * surface is the one that carries all three tiers: the geolocate flow action,
- * the author's close, and the share and report utilities. ``useEventActions``
- * owns every one of them, so this page holds nothing of its own. Close captures
+ * surface is the one that carries all four tiers: the geolocate flow action,
+ * the author's edit of the question, their close, and the share and report
+ * utilities. ``useEventActions`` owns every one of them, so this page holds
+ * nothing of its own. Close captures
  * a required free-text reason via ``CloseEventForm``, shown as the Reason
  * beside the status badge, which is what tells a withdrawn request from a
  * rejected detection.

@@ -65,8 +65,11 @@ export function DetectionStatsPanel() {
         <p className="text-xs text-neutral-500 mt-0.5">
           Quality signal on the machine-extraction pipeline. A{" "}
           <span className="text-neutral-300">machine detection</span> is a row
-          imported from X (the archive backfill or the bot;{" "}
-          <code className="text-neutral-400">detected_from_url</code> set). The{" "}
+          imported from X and never a request (the archive backfill or the bot;{" "}
+          <code className="text-neutral-400">detected_from_url</code> set and{" "}
+          <code className="text-neutral-400">requested_at</code> null). A
+          request the bot opened carries both, and its stamp is never cleared,
+          so it stays out of the cohort for its whole life. The{" "}
           <span className="text-neutral-300">reject-rate</span> is the share of
           machine detections dismissed before publication, whichever door
           they left through: an owner closed straight out of{" "}

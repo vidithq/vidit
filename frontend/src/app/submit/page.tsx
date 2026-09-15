@@ -3,12 +3,10 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { cleanNumber } from "@/lib/coordinates";
 import {
-  archivedCopies,
   createEvent,
   createEventRequest,
   FIELD_LABELS,
@@ -34,15 +32,10 @@ import { Pill } from "@/components/ui/Pill";
 import { XGlyph } from "@/components/ui/BrandGlyphs";
 import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
 import {
-  TaxonomyFields,
-  useTaxonomy,
-} from "@/components/geolocations/TaxonomyFields";
-import { DetailsFields } from "@/components/geolocations/new/DetailsFields";
+  EventFormFields,
+  useEventForm,
+} from "@/components/geolocations/EventFormFields";
 import { DuplicateProbe } from "@/components/geolocations/new/DuplicateProbe";
-import { LocationPicker } from "@/components/geolocations/new/LocationPicker";
-import { SourceMediaField } from "@/components/geolocations/SourceMediaField";
-import { TitleField } from "@/components/geolocations/TitleField";
-import { ProofEditorPanel } from "@/components/geolocations/new/ProofEditorPanel";
 
 // Three entry paths, picked at the top: they differ only in where the work
 // starts from. `single` is one event by hand, `xpost` reads one of your own X
@@ -140,56 +133,31 @@ function SubmitForm() {
     searchParams.get("import") === "1" ? "bulk" : "single"
   );
 
-  const [title, setTitle] = useState("");
-  const [lat, setLat] = useState("");
-  const [lng, setLng] = useState("");
-  // Optional camera position (where the footage was shot from), distinct from
-  // the subject lat/lng. Both-or-neither is enforced at publish.
-  const [captureLat, setCaptureLat] = useState("");
-  const [captureLng, setCaptureLng] = useState("");
-  const [sourceUrl, setSourceUrl] = useState("");
-  // The snapshot of that source the analyst archived while filling the form.
-  // Optional on both publish paths, and never part of either floor.
-  const [sourceSnapshotUrl, setSourceSnapshotUrl] = useState("");
-  // Optional mirrors of the same media (other networks, other same-POV posts),
-  // ordered. Never part of either publish floor.
-  const [secondarySourceUrls, setSecondarySourceUrls] = useState<string[]>([]);
-  // One archived-copy paste per mirror, index-aligned with the list above:
-  // `LinkListInput` moves both together, so a removed row takes its copy with
-  // it. Optional per row, like the source's.
-  const [secondarySnapshotUrls, setSecondarySnapshotUrls] = useState<string[]>(
-    []
-  );
-  const [eventDate, setEventDate] = useState("");
-  // Optional event time-of-day (HH:MM, UTC).
-  const [eventTime, setEventTime] = useState("");
-  // When the source posted the media: a datetime-local value (UTC). Required:
-  // a post always has a time.
-  const [sourcePostedAt, setSourcePostedAt] = useState("");
-  // The author's graphic-content declaration. Off by default: flagging is the
-  // deliberate act, and the backend column defaults to FALSE too.
-  const [isGraphic, setIsGraphic] = useState(false);
-  const [proof, setProof] = useState<Record<string, unknown> | null>(null);
-  // The proof body's inline images, held locally by the editor and uploaded as
-  // `proof_files[]` at publish (nothing hits S3 while typing). Both publish
-  // paths carry them: a geolocation requires an image, a request may attach them
-  // (work started but not finished) or stay imageless.
-  const [proofFiles, setProofFiles] = useState<File[]>([]);
-  const [files, setFiles] = useState<File[]>([]);
-  // Curated selectors (conflict + capture source) plus the free-tag list, all
-  // owned by the shared taxonomy block. Required only to publish a geolocation,
-  // so the field itself is optional; the readiness list names them as part of
-  // the geolocation floor.
-  const taxonomy = useTaxonomy();
-  const { curatedTags } = taxonomy;
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  const [selectedConflictIds, setSelectedConflictIds] = useState<string[]>([]);
-
-  // In-form red outlines: set when a publish action is clicked while its floor
-  // is short, so the analyst sees which fields to fix (the tick-list says what,
-  // the outline says where). The single notice banner isn't rendered here; the
-  // tick-list is the standing summary.
-  const { invalidKeys, flagIncomplete, clearIncomplete } = useIncompleteForm();
+  // Every field both publish paths fill in, empty: this form mounts before a
+  // request it may be fulfilling has loaded, so the effect below seeds what
+  // that request carries. In-form red outlines (`invalidKeys`) come with them,
+  // set when a publish action is clicked while its floor is short, so the
+  // analyst sees which fields to fix (the tick-list says what, the outline says
+  // where). The single notice banner isn't rendered here; the tick-list is the
+  // standing summary.
+  const form = useEventForm();
+  const { invalidKeys, flagIncomplete, clearIncomplete } = form;
+  // The setters the pre-fill effect drives, pulled out as the stable
+  // `useState` functions they are so the effect depends on them rather than on
+  // the state bundle, which is new on every render.
+  const {
+    setTitle,
+    setSourceUrl,
+    setSecondarySourceUrls,
+    setSecondarySnapshotUrls,
+    setIsGraphic,
+    setEventDate,
+    setEventTime,
+    setSourcePostedAt,
+    setProof,
+    setSelectedTagIds,
+    setSelectedConflictIds,
+  } = form;
 
   // Load the request being fulfilled to pre-fill + lock inherited fields.
   // On fulfilment the server forces only `source_url` + media from the request;
@@ -231,7 +199,24 @@ function SubmitForm() {
         setSelectedConflictIds(b.conflicts.map((c) => c.id));
       })
       .catch((err: Error) => setRequestError(err.message));
-  }, [requestIdParam]);
+  }, [
+    requestIdParam,
+    setTitle,
+    setSourceUrl,
+    setSecondarySourceUrls,
+    setSecondarySnapshotUrls,
+    setIsGraphic,
+    setEventDate,
+    setEventTime,
+    setSourcePostedAt,
+    setProof,
+    setSelectedTagIds,
+    setSelectedConflictIds,
+  ]);
+
+  // Stable reference (memoised in `useTaxonomy`), so the readiness memos below
+  // can depend on it without recomputing every render.
+  const { curatedTags } = form.taxonomy;
 
   const lockedFromRequest = request !== null;
   // Import (a pasted post or a bulk archive) is offered only on a fresh create,
@@ -243,24 +228,14 @@ function SubmitForm() {
   const requestMutation = useMutation(
     () =>
       createEventRequest({
-        title: title.trim(),
-        source_url: sourceUrl.trim(),
-        source_snapshot_url: sourceSnapshotUrl,
-        secondary_source_urls: secondarySourceUrls,
-        secondary_snapshot_urls: secondarySnapshotUrls,
-        proof,
+        ...form.shared(),
+        title: form.title.trim(),
+        source_url: form.sourceUrl.trim(),
         // Optional approximate guess, both-or-neither, same strict parse as the
         // camera point below (no silent truncation of a half-typed coordinate).
-        ...parseGuessCoords(lat, lng),
-        ...parseCaptureCoords(captureLat, captureLng),
-        event_date: eventDate || undefined,
-        event_time: eventTime || undefined,
-        source_posted_at: sourcePostedAt,
-        is_graphic: isGraphic,
-        tag_ids: selectedTagIds,
-        conflict_ids: selectedConflictIds,
-        files,
-        proof_files: proofFiles,
+        ...parseGuessCoords(form.lat, form.lng),
+        ...parseCaptureCoords(form.captureLat, form.captureLng),
+        files: form.newFiles,
       }),
     {
       fallback: "Submission failed",
@@ -273,53 +248,33 @@ function SubmitForm() {
       // Required here (gated by `geoReady`), parsed strictly like the camera
       // point so the same coordinate can't read valid one way and invalid the
       // other; the gate keeps a NaN from ever reaching a publish.
-      const latNum = cleanNumber(lat) ?? NaN;
-      const lngNum = cleanNumber(lng) ?? NaN;
-      const capture = parseCaptureCoords(captureLat, captureLng);
+      const latNum = cleanNumber(form.lat) ?? NaN;
+      const lngNum = cleanNumber(form.lng) ?? NaN;
+      const capture = parseCaptureCoords(form.captureLat, form.captureLng);
       // Fulfilling a request is a lifecycle move on that same event: geolocate
       // (``requested`` to ``geolocated``) transfers ownership to the fulfiller.
       // Its source media is already on the row, so no source files are staged /
       // removed here; the fulfiller's proof images still upload at publish.
       if (request) {
         return geolocateEventApi(request.id, {
-          title,
+          ...form.shared(),
+          title: form.title,
           lat: latNum,
           lng: lngNum,
           ...capture,
-          source_url: sourceUrl,
-          source_snapshot_url: sourceSnapshotUrl,
-          secondary_source_urls: secondarySourceUrls,
-          secondary_snapshot_urls: secondarySnapshotUrls,
-          event_date: eventDate || undefined,
-          event_time: eventTime || undefined,
-          source_posted_at: sourcePostedAt,
-          is_graphic: isGraphic,
-          proof,
-          tag_ids: selectedTagIds,
-          conflict_ids: selectedConflictIds,
+          source_url: form.sourceUrl,
           remove_media_ids: [],
           files: [],
-          proof_files: proofFiles,
         });
       }
       return createEvent({
-        title,
+        ...form.shared(),
+        title: form.title,
         lat: latNum,
         lng: lngNum,
         ...capture,
-        source_url: sourceUrl,
-        source_snapshot_url: sourceSnapshotUrl,
-        secondary_source_urls: secondarySourceUrls,
-        secondary_snapshot_urls: secondarySnapshotUrls,
-        event_date: eventDate || undefined,
-        event_time: eventTime || undefined,
-        source_posted_at: sourcePostedAt,
-        is_graphic: isGraphic,
-        proof,
-        tag_ids: selectedTagIds,
-        conflict_ids: selectedConflictIds,
-        files,
-        proof_files: proofFiles,
+        source_url: form.sourceUrl,
+        files: form.newFiles,
       });
     },
     {
@@ -339,43 +294,44 @@ function SubmitForm() {
     () =>
       missingEventFields(
         {
-          title,
-          lat,
-          lng,
-          sourceUrl,
-          sourcePostedAt,
-          proof,
-          mediaCount: files.length,
-          hasConflictTag: selectedConflictIds.length > 0,
+          title: form.title,
+          lat: form.lat,
+          lng: form.lng,
+          sourceUrl: form.sourceUrl,
+          sourcePostedAt: form.sourcePostedAt,
+          proof: form.proof,
+          mediaCount: form.newFiles.length,
+          hasConflictTag: form.selectedConflictIds.length > 0,
           hasCaptureSourceTag: curatedTags.some(
-            (t) => t.category === "capture_source" && selectedTagIds.includes(t.id)
+            (t) =>
+              t.category === "capture_source" && form.selectedTagIds.includes(t.id)
           ),
         },
         { requireMedia: !lockedFromRequest }
       ),
     [
-      title,
-      lat,
-      lng,
-      sourceUrl,
-      sourcePostedAt,
-      proof,
-      files.length,
+      form.title,
+      form.lat,
+      form.lng,
+      form.sourceUrl,
+      form.sourcePostedAt,
+      form.proof,
+      form.newFiles.length,
       curatedTags,
-      selectedTagIds,
-      selectedConflictIds,
+      form.selectedTagIds,
+      form.selectedConflictIds,
       lockedFromRequest,
     ]
   );
   const reqMissing = useMemo(
     () =>
       missingEventRequestFields({
-        title,
-        sourceUrl,
-        sourcePostedAt,
-        mediaCount: files.length,
+        title: form.title,
+        sourceUrl: form.sourceUrl,
+        sourcePostedAt: form.sourcePostedAt,
+        mediaCount: form.newFiles.length,
       }),
-    [title, sourceUrl, sourcePostedAt, files.length]
+    [form.title, form.sourceUrl, form.sourcePostedAt, form.newFiles.length]
   );
   const geoMissingKeys = useMemo(
     () => new Set<MissingFieldKey>(geoMissing.map((m) => m.key)),
@@ -388,7 +344,8 @@ function SubmitForm() {
   // Readiness drives the button emphasis: full strength when the floor is met,
   // dimmed while short. The button stays clickable so a click still flags the
   // gaps red; the dim is the at-a-glance "not ready yet" cue.
-  const geoReady = geoMissing.length === 0 && taxonomy.blockedMessage === null;
+  const geoReady =
+    geoMissing.length === 0 && form.taxonomy.blockedMessage === null;
   const reqReady = reqMissing.length === 0;
 
   // Both publish handlers clear the shared error banner (the two mutations share
@@ -404,7 +361,7 @@ function SubmitForm() {
   // would have failed says why. Not a missing field (every archive here is
   // optional), so it never enters the tick-list.
   const snapshotUnusable =
-    [sourceSnapshotUrl, ...secondarySnapshotUrls].some(
+    [form.sourceSnapshotUrl, ...form.secondarySnapshotUrls].some(
       (pasted) => pasted.trim() !== "" && !isSnapshotUrl(pasted)
     );
 
@@ -413,8 +370,8 @@ function SubmitForm() {
     // A pending / failed curated-tags or conflicts load is a recoverable state,
     // not a missing field: surface it in the banner (Retry lives above) instead
     // of the outlines.
-    if (taxonomy.blockedMessage !== null) {
-      geolocationMutation.setError(taxonomy.blockedMessage);
+    if (form.taxonomy.blockedMessage !== null) {
+      geolocationMutation.setError(form.taxonomy.blockedMessage);
       return;
     }
     if (snapshotUnusable) {
@@ -547,96 +504,20 @@ function SubmitForm() {
         className={showBulk || showXPost ? "hidden" : "mt-4 space-y-6"}
         noValidate
       >
-        {/* Title leads, mirroring the detail page where it's the heading. */}
-        <TitleField
-          value={title}
-          onChange={setTitle}
-          invalid={invalidKeys.has("title")}
-        />
-
-        {/* Source media is its own block; the subject coordinate gets the
-            Location block below. */}
-        <SourceMediaField
-          existing={request ? request.media : []}
-          locked={lockedFromRequest}
-          // The requester's media, covered when they flagged the request: a
-          // fulfiller opening the form is a reader too.
-          isGraphic={request?.is_graphic ?? false}
-          invalid={invalidKeys.has("source_media")}
-          staged={lockedFromRequest ? [] : files}
-          onAddFiles={lockedFromRequest ? undefined : (f) => setFiles([...files, ...f])}
-          onRemoveStaged={
-            lockedFromRequest
-              ? undefined
-              : (i) => setFiles(files.filter((_, idx) => idx !== i))
-          }
-        />
-
-        <LocationPicker
-          lat={lat}
-          setLat={setLat}
-          lng={lng}
-          setLng={setLng}
-          captureLat={captureLat}
-          setCaptureLat={setCaptureLat}
-          captureLng={captureLng}
-          setCaptureLng={setCaptureLng}
-          invalid={invalidKeys.has("coordinates")}
-        />
-
-        <DetailsFields
-          sourceUrl={sourceUrl}
-          setSourceUrl={setSourceUrl}
-          sourceSnapshotUrl={sourceSnapshotUrl}
-          setSourceSnapshotUrl={setSourceSnapshotUrl}
-          archivedSource={request?.archived_source ?? null}
-          secondarySourceUrls={secondarySourceUrls}
-          setSecondarySourceUrls={setSecondarySourceUrls}
-          secondarySnapshotUrls={secondarySnapshotUrls}
-          setSecondarySnapshotUrls={setSecondarySnapshotUrls}
-          archivedCopies={request ? archivedCopies(request) : undefined}
-          eventDate={eventDate}
-          setEventDate={setEventDate}
-          eventTime={eventTime}
-          setEventTime={setEventTime}
-          sourcePostedAt={sourcePostedAt}
-          setSourcePostedAt={setSourcePostedAt}
-          isGraphic={isGraphic}
-          setIsGraphic={setIsGraphic}
-          // The loaded request's value, not the live one: the flag ratchets on
-          // the backend, so a request that arrived flagged cannot be unflagged
-          // by the fulfilment either.
-          graphicLocked={request?.is_graphic ?? false}
+        <EventFormFields
+          form={form}
+          // The request being fulfilled, which supplies the source media and
+          // the source URL the geolocate keeps. Null on a fresh create.
+          row={request}
+          mediaLocked={lockedFromRequest}
           sourceUrlLocked={lockedFromRequest}
-          sourcePostedAtInvalid={invalidKeys.has("source_posted_at")}
-          sourceUrlInvalid={invalidKeys.has("source_url")}
-        />
-
-        <TaxonomyFields
-          taxonomy={taxonomy}
-          selectedTagIds={selectedTagIds}
-          setSelectedTagIds={setSelectedTagIds}
-          selectedConflictIds={selectedConflictIds}
-          setSelectedConflictIds={setSelectedConflictIds}
-          conflictInvalid={invalidKeys.has("conflict_tag")}
-          captureSourceInvalid={invalidKeys.has("capture_source_tag")}
-        />
-
-        {/* One proof editor, images allowed: a geolocation needs an image
-            (named in the readiness list); a request may attach images (work in
-            progress) or stay imageless. */}
-        <ProofEditorPanel
-          proof={proof}
-          onChange={setProof}
-          onProofFilesChange={setProofFiles}
-          invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
         />
 
         <DuplicateProbe
-          lat={lat}
-          lng={lng}
-          sourceUrl={sourceUrl}
-          eventDate={eventDate}
+          lat={form.lat}
+          lng={form.lng}
+          sourceUrl={form.sourceUrl}
+          eventDate={form.eventDate}
           skip={lockedFromRequest}
         />
 

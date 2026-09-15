@@ -12,6 +12,13 @@ feed the same per-mention pipeline (:func:`process_single_mention`):
   (``X_WEBHOOK_ENABLED``), a mention first seen here raises a "webhook gap"
   Sentry message so a silently dead webhook pages.
 
+A mention counts as a tag only when the author typed it. X prefixes a reply
+with the parent's author and the parent's mentions minus the replier, so
+answering a colleague's tagging post mentions the bot without typing it:
+:func:`_tag_is_inherited` reads that off the text and, where only the parent
+can settle it, off one syndication read of the parent, and an inherited tag
+is ledgered ``inherited`` without acquiring, answering or billing anything.
+
 The bot runs the same engine as the pasted import and the archive backfill;
 nothing about the grammar lives here. Acquisition is
 :func:`tweet_ingest.acquire_thread`, shared with the paste: the tagged post plus
@@ -23,9 +30,15 @@ comes back. ``tweet_ingest.resolve_threads`` then reads that thread
 and ``detection.persist_detections`` writes what it read, owned by the account
 ``detection.linked_owner`` maps the tagged author's handle to, read once per
 mention (the bot never mints users: an unknown handle is ledgered
-``no_account`` and produces nothing). The mention then lands in the
-``bot_mentions`` ledger. What is left in this module is orchestration: the X
-API, the reply, the ledger, the budget and the webhook drain.
+``no_account`` and produces nothing). One branch answers off the same
+resolution: a thread carrying no coordinate but carrying footage and a source
+link opens a ``requested`` row through
+``detection.open_request`` instead of earning the ``coords_missing`` refusal;
+a coordinate-less thread that branch cannot serve at all is refused
+``request_not_possible``, which is the same refusal read with the detail only
+this entry asked for. The mention then lands in the ``bot_mentions`` ledger.
+What is left in this module is orchestration: the X API, the reply, the ledger,
+the budget and the webhook drain.
 
 Both paths share that ledger, so a mention is processed (and billed) at most
 once whichever path sees it first; the poll's ``since_id`` derives from it,
@@ -36,7 +49,8 @@ Response model: the reply is the only gesture (a like at worker pickup,
 seconds before the reply, would signal nothing the reply does not, and it
 was the most expensive call of the mention). Replies open with the ✅/❌
 verdict. A detection the tag created, or the newer parse overwrote, earns the
-in-thread success reply (event ref + warnings); a linked author whose tag
+in-thread success reply (event ref + warnings), and so does a request the tag
+opened (:func:`compose_request_reply`); a linked author whose tag
 produced nothing gets a failure reply carrying the diagnosis, unless the
 tagged tweet is itself a reply to the bot (the loop guard: a courtesy answer
 to the bot's own reply auto-mentions the bot and must not earn another
@@ -68,16 +82,20 @@ from app.config import settings
 from app.models.bot_mention import BotMention, BotMentionOutcome
 from app.models.bot_webhook_event import BotWebhookEvent
 from app.models.user import User
-from app.services.detection import Outcome, linked_owner, persist_detections
+from app.services.detection import Outcome, linked_owner, open_request, persist_detections
 from app.services.tweet_ingest import (
+    COORDS_MISSING,
     POST_UNREADABLE,
     REFUSAL_MESSAGES,
     WARNING_MESSAGES,
     AcquiredThread,
+    TweetImportError,
     TweetNotAccessible,
     acquire_thread,
     fetch_cdn_media,
+    record_by_id,
     resolve_threads,
+    tags_bot,
 )
 from app.services.x_api import Mention, XApiError, fetch_mentions, post_reply
 
@@ -210,11 +228,18 @@ class BotRunOutcome:
     mentions_seen: int = 0
     already_handled: int = 0
     events_created: int = 0
+    # Mentions answered by the request branch: a coordinate-less mirror post
+    # that opened a ``requested`` row. Counted apart from ``events_created``,
+    # which is detections.
+    requests_opened: int = 0
     # Mentions whose whole answer was overwriting an open detection: no row created,
     # at least one updated. Counted apart from ``events_created`` so a pass over
     # re-tagged posts does not read as an idle one.
     events_updated: int = 0
     replies_posted: int = 0
+    # Mentions whose tag the author never typed: X's reply prefix carried it.
+    # Nothing was acquired and nothing answered.
+    inherited: int = 0
     no_detection: int = 0
     no_account: int = 0
     skipped: int = 0
@@ -247,10 +272,97 @@ def acquire_tagged_thread(
     return acquire_thread(tweet_id, handle=author_handle.lower(), client=client)
 
 
+def _parent_carries_tag(parent_id: str, handle: str, *, client: httpx.Client | None) -> bool:
+    """Whether the post ``parent_id`` mentions the bot, or cannot be read.
+
+    The tag rule's one I/O step, and it costs one syndication read, the free
+    path, on the same budget the acquisition spends from. It runs only for a
+    reply whose sole ``@ViditBot`` sits in the run of mentions X wrote
+    (:func:`_tag_is_inherited`), so a tag the analyst typed spends nothing.
+
+    ``record_by_id`` is the acquisition's own reader and raises what
+    ``fetch_syndication`` raises; a parent that will not read (deleted,
+    protected, withheld) answers ``True``, because silence beats a spurious ❌
+    on someone else's thread.
+
+    ``handle`` is the fallback ``record_by_id`` takes for an author the body
+    does not name. Only the parent's text is read here, so it never lands
+    anywhere.
+    """
+    try:
+        parent = record_by_id(parent_id, handle=handle, client=client)
+    except TweetImportError:
+        return True
+    return tags_bot(parent.text, settings.x_bot_handle, inherits_prefix=False)
+
+
+async def _tag_is_inherited(mention: Mention, *, client: httpx.Client | None) -> bool:
+    """Whether X wrote this mention's ``@ViditBot`` rather than its author.
+
+    X prefixes a reply with the parent's author and the parent's mentions minus
+    the replier, so an analyst answering a colleague's tagging post mentions the
+    bot without typing a character. Three questions, each spending only what the
+    one before could not settle:
+
+    * a post that is not a reply carries no inherited prefix, so the tag is
+      typed;
+    * a reply whose tag sits past the prefix is typed (:func:`tags_bot`), which
+      is every analyst who writes their sentence and tags after it;
+    * otherwise the parent decides, and a parent that mentions the bot means the
+      prefix is where this mention's tag came from. A reply to the bot's own
+      post is that case without the read, since its parent mentions nobody the
+      reply did not inherit.
+
+    An inherited tag is not a tag: the caller acquires nothing, replies nothing
+    and ledgers ``inherited``. A parent that mentions no bot leaves the tag
+    typed, which is what keeps the bare ``@ViditBot`` under the analyst's own
+    coordinate post, and the climb it triggers, working.
+    """
+    if mention.in_reply_to_status_id is None:
+        return False
+    if tags_bot(mention.text, settings.x_bot_handle, inherits_prefix=True):
+        return False
+    if mention.in_reply_to_user_id == settings.x_bot_user_id:
+        return True
+    # Blocking network I/O, offloaded like the acquisition's.
+    return await asyncio.to_thread(
+        _parent_carries_tag,
+        mention.in_reply_to_status_id,
+        mention.author_handle,
+        client=client,
+    )
+
+
 # The ref shown in the success reply: the UUID's first block, enough to
 # eyeball the detection in the Detections queue; the full 36 chars would eat a
 # third of the reply for no extra identification value there.
 _REPLY_REF_CHARS = 8
+
+
+def _reply(
+    header: str, warnings: Iterable[str], *, footer: str = "Review from your profile"
+) -> str:
+    """The ✅ reply's shape: the header, the ⚠ lines, the footer.
+
+    The body both success composers share, so the two verdicts cannot drift on
+    the glyph or the warning order. One ⚠ line per warning the pass raised,
+    worded by ``WARNING_MESSAGES`` and read in its order: the reply owns the
+    glyph and the length discipline, never the sentence, since the same
+    sentence reaches the archive's outcome email and the import panel. Which
+    warnings a row carries is the engine's and the write path's answer
+    (``detection.persist_detections``, ``detection.open_request``), not the
+    reply's.
+
+    ``footer`` is the one line the two composers do not share: a detection
+    points the analyst at review, a request points them at the edit they
+    reach from the profile's *Open requests* block, so :func:`compose_reply`
+    and :func:`compose_request_reply` each pass their own.
+    """
+    raised = set(warnings)
+    lines = [header]
+    lines.extend(f"⚠ {message}" for code, message in WARNING_MESSAGES.items() if code in raised)
+    lines.append(footer)
+    return _within_reply_cap("\n".join(lines))
 
 
 def compose_reply(
@@ -269,20 +381,35 @@ def compose_reply(
     The ref also makes each reply unique, so X's duplicate-content 403 cannot eat
     it.
 
-    One ⚠ line per warning the pass raised, worded by ``WARNING_MESSAGES`` and
-    read in its order. The reply owns the glyph and the length discipline, never
-    the sentence: the same sentence reaches the archive's outcome email and the
-    import panel, so the three surfaces cannot describe one code differently.
-    Which warnings a detection carries is the engine's and the write path's answer
-    (``detection.persist_detections``), not the reply's.
+    The body is :func:`_reply`, shared with :func:`compose_request_reply`; what
+    this composer owns is the header.
     """
     plural = "s" if detections > 1 else ""
     verb = "updated" if updated else "saved"
-    lines = [f"✅ {detections} detection{plural} {verb} · ref {created_id[:_REPLY_REF_CHARS]}"]
-    raised = set(warnings)
-    lines.extend(f"⚠ {message}" for code, message in WARNING_MESSAGES.items() if code in raised)
-    lines.append("Review from your profile")
-    return _within_reply_cap("\n".join(lines))
+    return _reply(
+        f"✅ {detections} detection{plural} {verb} · ref {created_id[:_REPLY_REF_CHARS]}", warnings
+    )
+
+
+def compose_request_reply(event_id: str, *, warnings: Iterable[str]) -> str:
+    """The in-thread reply for a mention that opened a request.
+
+    The ✅ twin of :func:`compose_reply`, for the thread that carried footage
+    and a source but no coordinate: the same :func:`_reply` body, and a header
+    naming a request rather than a detection, so the analyst is told what
+    actually landed and does not go looking for a coordinate the bot never read.
+    The footer names the edit rather than review, since a request has no
+    review queue to open: the profile's *Open requests* block leads to *Edit
+    this request*.
+
+    Same contract as every other reply: linkless, and unique per mention
+    through the event ref.
+    """
+    return _reply(
+        f"✅ Geolocation request opened · ref {event_id[:_REPLY_REF_CHARS]}",
+        warnings,
+        footer="Edit it from your profile",
+    )
 
 
 # Where an analyst goes when the bot has nothing to diagnose. A handle mention
@@ -398,23 +525,74 @@ async def _process_mention(
         # rather than raise into the pass's ``failed`` + Sentry capture, where
         # the analyst would get no answer and an operator a false outage.
         return "no_detection", 0, None, POST_UNREADABLE
+    # The bot is the one entry that reads the engine's second exit, so it is the
+    # one caller that asks for it.
+    resolution = resolve_threads([acquired.records], with_requests=True)
     if owner is None:
         # The engine runs here too, writing nothing: a mention from an unknown
         # handle whose post carries no coordinate ledgers ``no_detection``, so
         # ``no_account`` isolates the mentions where a link would actually have
-        # produced a detection.
-        resolution = resolve_threads([acquired.records])
-        if resolution.detections:
+        # produced a detection. A request draft counts the same way: linking the
+        # handle is what that tag was one step away from.
+        if resolution.detections or resolution.requests:
             return "no_account", 0, None, None
         return "no_detection", 0, None, resolution.reason
     assembled = await persist_detections(
         db,
         owner=owner,
-        resolution=resolve_threads([acquired.records]),
+        resolution=resolution,
         via="bot",
         fetch_media=fetch_cdn_media,
     )
+    if assembled.reason == COORDS_MISSING and resolution.requests:
+        # The request branch: no coordinate, but footage and a source the bot
+        # can name, so the tag opens a request instead of earning the refusal.
+        # A draft that writes nothing (no candidate footage fetched, the write
+        # raised) falls through to the failure reply below, which is the answer
+        # this mention has always had.
+        opened = await open_request(
+            db,
+            owner=owner,
+            draft=resolution.requests[0],
+            fetch_media=fetch_cdn_media,
+        )
+        if opened is not None and opened.created is not None:
+            request_reply_id: str | None = None
+            if reply_allowed:
+                # The request's reply is billed and budgeted exactly like a
+                # detection's, off the same ledger-seeded hourly and per-author
+                # caps: a branch that spent from a second allowance would put
+                # the account over the cap the ledger reads back.
+                request_reply_id = _post_reply_failsoft(
+                    mention,
+                    compose_request_reply(str(opened.created), warnings=opened.warnings),
+                    client=x_write_client,
+                )
+            else:
+                logger.warning(
+                    "Reply budget reached; request opened without reply for mention %s",
+                    mention.tweet_id,
+                )
+            return "requested", 0, request_reply_id, None
+        if opened is not None and opened.existing is not None:
+            # The analyst already holds a row for that post or that source, so
+            # the tag moved nothing. Silent, like every other dedup verdict.
+            return "skipped", 0, None, None
+        if opened is not None and opened.refusal is not None:
+            # The intake refused the footage (over the video size cap, or bytes
+            # nothing could read). Naming that is the whole point: "no
+            # coordinate in the post" would send the analyst looking for the
+            # wrong fix.
+            return "no_detection", 0, None, opened.refusal
     if assembled.reason is not None:
+        if assembled.reason == COORDS_MISSING and resolution.request_reason is not None:
+            # The request branch read this coordinate-less thread and had
+            # nothing to open: it points at a source and carries no footage.
+            # Saying so is the difference between "add the coordinate" and
+            # "attach the clip", and only this entry asked for a request, so
+            # only this entry names it. Every other coordinate-less thread keeps
+            # ``coords_missing``.
+            return "no_detection", 0, None, resolution.request_reason
         return "no_detection", 0, None, assembled.reason
     if not assembled.created and not assembled.updated:
         # ``skipped`` is the dedup verdict; a persist that raised on every
@@ -463,7 +641,8 @@ def _success_reply(assembled: Outcome) -> str:
 # reads as the reply's unexpected case. A tag that answers neither either wrote
 # a row (``created`` / ``updated``, both the ✅ reply) or deduplicated onto a row
 # it moved nothing on (``skipped``, which is not a failure to report), and an
-# unlinked author stays fully silent whatever the tweet yielded.
+# unlinked author stays fully silent whatever the tweet yielded. ``requested``
+# posts its own ✅ reply inside the pipeline, so it is not answered again here.
 _ANSWERED_VERDICTS = ("no_detection", "failed")
 
 
@@ -500,6 +679,17 @@ async def process_single_mention(
             outcome.already_handled += 1
             return "already_handled"
         return "self"
+    # A mention the author never typed (:func:`_tag_is_inherited`): X put the
+    # bot in the prefix of a reply to someone else's tagging post. Ledgered
+    # before the acquisition, so it costs the parent read and nothing else, and
+    # answered with nothing: the thread under it is a colleague's, and a ❌
+    # there refuses a tag nobody made.
+    if await _tag_is_inherited(mention, client=syndication_client):
+        if not _record(db, mention, outcome="inherited"):
+            outcome.already_handled += 1
+            return "already_handled"
+        outcome.inherited += 1
+        return "inherited"
     # The one handle-to-account read of the mention: the account every detection is
     # attributed to, and the failure-reply gate, since an unlinked author stays
     # fully silent whatever the tweet yields.
@@ -552,6 +742,8 @@ async def process_single_mention(
         outcome.replies_posted += 1
     if verdict == "updated":
         outcome.events_updated += 1
+    elif verdict == "requested":
+        outcome.requests_opened += 1
     elif verdict == "no_detection":
         outcome.no_detection += 1
     elif verdict == "no_account":
@@ -677,6 +869,10 @@ def _mention_from_payload(payload: dict) -> Mention | None:
     author_handle = payload.get("author_handle")
     text = payload.get("text")
     reply_to = payload.get("in_reply_to_user_id")
+    # Absent from a row the webhook queued before the field existed, which
+    # reads as "not a reply": the tag rule then counts every mention as typed,
+    # the answer that path gave before.
+    reply_to_status = payload.get("in_reply_to_status_id")
     if (
         not isinstance(tweet_id, str)
         or not isinstance(author_id, str)
@@ -689,6 +885,7 @@ def _mention_from_payload(payload: dict) -> Mention | None:
         author_handle=author_handle,
         text=text if isinstance(text, str) else "",
         in_reply_to_user_id=reply_to if isinstance(reply_to, str) else None,
+        in_reply_to_status_id=reply_to_status if isinstance(reply_to_status, str) else None,
     )
 
 

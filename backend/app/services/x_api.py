@@ -62,6 +62,12 @@ class Mention:
     # loop guard reads it: a tag on the bot's own reply must not earn another
     # reply.
     in_reply_to_user_id: str | None = None
+    # The post the tagged tweet replies to, when it is a reply. The tag rule
+    # reads it (``bot._tag_is_inherited``): a reply carries X's own run of
+    # inherited mentions, so the parent is what says whether the author typed
+    # the tag or X did. ``None`` means the tweet is not a reply, and every
+    # mention in it is typed.
+    in_reply_to_status_id: str | None = None
 
 
 def _json_request(
@@ -124,6 +130,27 @@ def _get(
     )
 
 
+def _replied_to_id(tweet: dict[str, object]) -> str | None:
+    """The id of the post ``tweet`` replies to, or ``None`` when it replies to
+    none.
+
+    The v2 timeline carries the edge in ``referenced_tweets``, one entry per
+    relation, and only the ``replied_to`` entry is the parent (``quoted`` and
+    ``retweeted`` sit in the same list). The field costs nothing extra: it rides
+    the ``tweet.fields`` of the one billed mentions read.
+    """
+    referenced = tweet.get("referenced_tweets")
+    if not isinstance(referenced, list):
+        return None
+    for reference in referenced:
+        if not isinstance(reference, dict) or reference.get("type") != "replied_to":
+            continue
+        parent_id = reference.get("id")
+        if isinstance(parent_id, str) and parent_id:
+            return parent_id
+    return None
+
+
 def fetch_mentions(
     *,
     user_id: str,
@@ -148,7 +175,7 @@ def fetch_mentions(
             "max_results": str(_MENTIONS_PAGE_SIZE),
             "expansions": "author_id",
             "user.fields": "username",
-            "tweet.fields": "in_reply_to_user_id",
+            "tweet.fields": "in_reply_to_user_id,referenced_tweets",
         }
         if since_id is not None:
             params["since_id"] = since_id
@@ -201,6 +228,7 @@ def fetch_mentions(
                         author_handle=handle,
                         text=text if isinstance(text, str) else "",
                         in_reply_to_user_id=reply_to if isinstance(reply_to, str) else None,
+                        in_reply_to_status_id=_replied_to_id(tweet),
                     )
                 )
         meta = body.get("meta")
