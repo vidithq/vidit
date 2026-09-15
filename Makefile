@@ -128,16 +128,23 @@ promo-v05b:
 	@ls -lh video/out/promo-v05b-master.mp4 video/out/promo-v05b-readme.mp4
 	@echo "Done. Master 1080p (S3) -> video/out/promo-v05b-master.mp4 | README 720p -> video/out/promo-v05b-readme.mp4"
 
-# The collections promo: one unbroken logged-out take of a collection being
-# read, between the brand intro and the closing card. Requires `make dev`
+# The collections promo: one unbroken take of a collection being read and then
+# written to, between the brand intro and the closing card. Requires `make dev`
 # running in another shell and an instance holding the analyst's shelf
-# (`make import-prod` or a local set of collections); it reads the instance and
-# writes nothing to it.
+# (`make import-prod` or a local set of collections).
 #
-# The take checks what it needs before it captures a frame: the collection it
-# opens, the length of its sequence, a shelf longer than the profile's grid so
-# the `Show more` link exists, and a query that actually reaches a collection.
-# Re-point any of those at the top of `video/record-collections.js`.
+# The take signs in as the collection's owner (PROMO_LOGIN_EMAIL /
+# PROMO_LOGIN_PASSWORD, defaulting to the local dev fixture) because the edit
+# page is a beat, and it WRITES: the edit beat puts one event on the collection
+# and saves. Undo that after the render, the way `video/README.md` spells out,
+# so the next run finds the collection as this one did.
+#
+# The take checks what it needs before it captures a frame: the session owns
+# the collection it opens, the sequence is long enough for the steps, the
+# picker's first result can still be added, the shelf is longer than the
+# profile's grid so the `Show more` link exists, and the closing query reaches
+# a collection. Re-point any of those at the top of
+# `video/record-collections.js`.
 #
 # The take is paced in real time and played uncut, so its length is the promo's
 # recorded length. Re-pace it in `video/record-collections.js`, not in the

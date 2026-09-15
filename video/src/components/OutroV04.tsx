@@ -11,9 +11,14 @@ import { MONTSERRAT } from "../fonts";
 // v0.4 closing card: the wordmark (orange capital V, near-white rest, no
 // underline), the address, and the open-source line. Nothing else; the beats
 // already showed the product.
-export const OutroV04: React.FC<{ durationInFrames: number }> = ({
-  durationInFrames,
-}) => {
+//
+// `flat` drops the orange bloom behind the V, the same switch `<Intro>` takes,
+// for a composition standing on a solid ground rather than on `<Background>`.
+// The pill keeps its own flat tint, which is a fill rather than a radial.
+export const OutroV04: React.FC<{
+  durationInFrames: number;
+  flat?: boolean;
+}> = ({ durationInFrames, flat = false }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -60,8 +65,9 @@ export const OutroV04: React.FC<{ durationInFrames: number }> = ({
         <span
           style={{
             color: "#f97316",
-            textShadow:
-              "0 0 60px rgba(249, 115, 22, 0.55), 0 20px 60px rgba(0, 0, 0, 0.4)",
+            textShadow: flat
+              ? "none"
+              : "0 0 60px rgba(249, 115, 22, 0.55), 0 20px 60px rgba(0, 0, 0, 0.4)",
           }}
         >
           V

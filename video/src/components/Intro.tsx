@@ -18,10 +18,16 @@ import { MONTSERRAT } from "../fonts";
 // wordmark's own spring rather than the tagline's later fade, so the release
 // is legible in the very first frame, which is the poster a tweet shows
 // before anyone presses play. Omit it and the intro is the plain wordmark.
-export const Intro: React.FC<{ durationInFrames: number; release?: string }> = ({
-  durationInFrames,
-  release,
-}) => {
+//
+// `flat` drops the orange bloom behind the V, for a composition that stands on
+// a solid ground rather than on `<Background>`: the bloom is the only radial
+// this component paints, and on a flat ground it is the one thing that breaks
+// it. The letterform, its colour and the spring are untouched.
+export const Intro: React.FC<{
+  durationInFrames: number;
+  release?: string;
+  flat?: boolean;
+}> = ({ durationInFrames, release, flat = false }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -66,8 +72,9 @@ export const Intro: React.FC<{ durationInFrames: number; release?: string }> = (
         <span
           style={{
             color: "#f97316",
-            textShadow:
-              "0 0 60px rgba(249, 115, 22, 0.55), 0 20px 60px rgba(0, 0, 0, 0.4)",
+            textShadow: flat
+              ? "none"
+              : "0 0 60px rgba(249, 115, 22, 0.55), 0 20px 60px rgba(0, 0, 0, 0.4)",
           }}
         >
           V

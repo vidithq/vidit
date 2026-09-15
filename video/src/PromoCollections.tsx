@@ -5,7 +5,6 @@ import {
   interpolate,
   useCurrentFrame,
 } from "remotion";
-import { Background } from "./components/Background";
 import { Caption } from "./components/Caption";
 import { Intro } from "./components/Intro";
 import { OutroV04 } from "./components/OutroV04";
@@ -14,18 +13,27 @@ import { RECORDED } from "./clips-manifest";
 import { RELEASE } from "./build-version";
 
 // The collections promo: the brand intro, then ONE unbroken take of a
-// collection being read, then the closing card.
+// collection being read and then added to, then the closing card.
 //
 // The middle is a single continuous window of collections.mp4. There is no cut
 // anywhere in it: the page travels by scrolling, the map travels by flying,
-// and all four page changes are in-page router pushes the take performs on
-// camera. The only two transitions in the whole video are the crossfades into
-// and out of the recorded part, where the world genuinely changes.
+// and every page change is an in-page router push the take performs on camera.
+// The only two transitions in the whole video are the crossfades into and out
+// of the recorded part, where the world genuinely changes.
 //
 // That is why this file carries no beat or window machinery, the shape
 // `PromoV05` settled on: it places three scenes and hangs captions off the
 // take's own marks, so a re-record needs `node gen-clips-manifest.js` and
 // nothing else. Nothing is hand-timed against wall-clock seconds.
+//
+// This promo stands on a FLAT ground: `#0a0a0a` and nothing else, where the
+// other promos use the shared `<Background>` and its two radial blooms. The
+// take is a bright product page filling most of the frame, and a bloom behind
+// it reads as a smear around the window rather than as depth. `<Intro>` and
+// `<OutroV04>` paint no ground of their own, only centred type on a
+// transparent fill, and both take `flat` here, which drops the orange bloom
+// behind the wordmark's V: that bloom is the one radial either of them paints,
+// and on this ground it is the one thing that would break it.
 
 const COMP_FPS = 60;
 // Long enough to read as a dissolve rather than a cut.
@@ -33,26 +41,27 @@ const CROSSFADE = 18;
 
 const CLIP = "collections";
 
-// Stage layout, sized so the PRODUCT fills the frame rather than floating in
-// dark margins. Two numbers decide how big the page reads on a phone:
+// Stage layout, and the capture size it dictates.
 //
-//   on-screen column width = BODY_HEIGHT x (page column width / capture height)
+// The browser body is what is left of a 1080-tall frame after the chrome
+// header, the top margin and the caption band: 830 px, and 1392 wide at the
+// take's aspect. The take is RECORDED at exactly those CSS px (see
+// `VIEWPORT` in record-collections.js), so the render draws the picture at
+// scale 1 instead of magnifying a smaller window into it, which is what read
+// soft. At DPR 2 the encode holds 2784x1660 device px behind those 1392x830,
+// so the only resampling left is a 2:1 downscale.
 //
-// The page's content column caps at 848 CSS px whatever the window width, so
-// widening the capture only adds gutters; a SHORT capture is what enlarges the
-// product. This take records 1040x620 rather than the portfolio promo's
-// 1040x560, because the collection player is a fixed 32rem block that a 560px
-// window clamps (see record-collections.js), so the body is a little squarer
-// here and the window covers 73% of the frame width.
+// The pair is a fixed point: BODY_WIDTH below returns 1392 for a 1392x830
+// capture, so the geometry and the viewport agree without either being tuned
+// to the other. Move the caption band or the chrome header and re-derive both.
 //
 // The caption band is wider than the portfolio promo's for the same reason its
 // type is a step smaller: the longest line here runs to two lines at 38px, and
 // the band is what keeps the second line off the browser chrome above it.
 //
 // The body carries the take's aspect ratio exactly, so `objectFit: cover` has
-// nothing to crop. Change the capture viewport in record-collections.js and
-// these move with it.
-const CAPTURE = { width: 1040, height: 620 };
+// nothing to crop.
+const CAPTURE = { width: 1392, height: 830 };
 const CHROME_HEADER = 60; // must match BrowserChrome.CHROME_HEADER_HEIGHT
 const CHROME_TOP = 14;
 const CAPTION_BAND = 176;
@@ -79,7 +88,7 @@ const mark = (key: string, fallback: number) => clip?.marks?.[key] ?? fallback;
 const TAKE_FROM = mark("shelf", 0);
 const TAKE_TO = Math.min(
   clip?.durationSec ?? 0,
-  mark("queryResult", 52) + 3.4 + 0.5 // the closing hold, then a beat of air
+  mark("queryResult", 42) + 2.2 + 0.5 // the closing hold, then a beat of air
 );
 const TAKE_FRAMES = Math.round((TAKE_TO - TAKE_FROM) * COMP_FPS);
 
@@ -106,41 +115,48 @@ const CUES: CaptionCue[] = [
     title: "Every geolocation of one operation, in the order it happened",
   },
   {
-    at: mark("step", 18.5),
+    at: mark("step", 15),
     eyebrow: "The player",
     title: "Step through them on the map",
   },
   {
-    // One line over the whole list beat: the scroll onto the rows, the click
-    // on a later one, and the travel back up to the player standing on it.
-    at: mark("events", 26.5),
-    eyebrow: "The list",
-    title: "Pick any event from the list",
+    // One line over the whole write beat, from the route change into the edit
+    // page to the save's own return: the two cards, the query typed into the
+    // picker, the row added, the save, and the collection coming back a
+    // geolocation longer. The return is what proves the line, so it sits under
+    // it rather than under a caption of its own.
+    at: mark("editUrl", 22),
+    eyebrow: "The edit page",
+    title: "Add events with a search",
   },
   {
-    // `searchUrl`, not `showMore`: the take stamps `showMore` before the
-    // cursor even starts for the link, which would put the line up seconds
-    // before the page it describes existed.
-    at: mark("searchUrl", 44),
+    // `profileUrl`, not `showMore` or `searchUrl`: the claim is about an
+    // analyst's shelf, and the profile is where the shelf is first on screen.
+    // It carries through the `Show more` click into the search page, which is
+    // the same shelf whole.
+    at: mark("profileUrl", 36),
     eyebrow: "The whole shelf",
     title: "Every collection an analyst publishes",
   },
   {
-    at: mark("query", 48),
+    at: mark("query", 42),
     eyebrow: "Search",
     title: "Search reaches collections too",
   },
 ];
 
 // The address bar follows the take's real navigation, so the faked chrome
-// never claims a page the recording is not on. `collectionUrl`, `profileUrl`
-// and `searchUrl` are each stamped the instant that route actually changed.
+// never claims a page the recording is not on. Every mark below is stamped the
+// instant that route actually changed, `savedUrl` included: the save returns
+// to the collection by a router push, which is a page change like any other.
 const URL_CUES: { at: number; url: string }[] = [
   { at: mark("shelf", 0), url: "vidit.app/profile/MPGeoint" },
-  { at: mark("collectionUrl", 10.5), url: "vidit.app/collections/…" },
-  { at: mark("profileUrl", 40), url: "vidit.app/profile/MPGeoint" },
+  { at: mark("collectionUrl", 9), url: "vidit.app/collections/…" },
+  { at: mark("editUrl", 22), url: "vidit.app/collections/…/edit" },
+  { at: mark("savedUrl", 32), url: "vidit.app/collections/…" },
+  { at: mark("profileUrl", 36), url: "vidit.app/profile/MPGeoint" },
   {
-    at: mark("searchUrl", 44),
+    at: mark("searchUrl", 39),
     url: "vidit.app/search?type=collection&author=MPGeoint",
   },
 ];
@@ -196,11 +212,9 @@ const TakeStage: React.FC = () => {
 
 export const PromoCollections: React.FC = () => {
   return (
-    <AbsoluteFill>
-      <Background />
-
+    <AbsoluteFill style={{ backgroundColor: "#0a0a0a" }}>
       <Sequence from={-INTRO_LEAD} durationInFrames={INTRO_FRAMES}>
-        <Intro durationInFrames={INTRO_FRAMES} release={RELEASE} />
+        <Intro durationInFrames={INTRO_FRAMES} release={RELEASE} flat />
       </Sequence>
 
       <Sequence from={TAKE_START} durationInFrames={TAKE_FRAMES}>
@@ -234,7 +248,7 @@ export const PromoCollections: React.FC = () => {
       })}
 
       <Sequence from={OUTRO_START} durationInFrames={OUTRO_FRAMES}>
-        <OutroV04 durationInFrames={OUTRO_FRAMES} />
+        <OutroV04 durationInFrames={OUTRO_FRAMES} flat />
       </Sequence>
     </AbsoluteFill>
   );
