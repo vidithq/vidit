@@ -1,5 +1,6 @@
-"""Single-event ops by id: detail, the lifecycle verbs (geolocate, close), and
-the published-row correction path (save_version + its version history).
+"""Single-event ops by id: detail, the lifecycle verbs (geolocate, close), the
+open-request correction path (update_request), and the published-row correction
+path (save_version + its version history).
 
 No delete: an owner takes a row back with ``close``, which keeps the record
 readable, and destruction is the admin router's ``DELETE /admin/events/{id}``.
@@ -196,6 +197,9 @@ def get_event(
 # ``detected`` event to ``geolocated``; close is the terminal withdraw /
 # reject / retract, available in every live state. A detection is owner-only; a
 # ``requested`` event is answerable by anyone (the fulfiller becomes the owner).
+# Before the geolocate an open request is corrected through ``update_request``,
+# owner-only, which overwrites it: a request is a question, so there is no
+# vouched version for the edit to supersede.
 # Past the geolocate a row is corrected through ``save_version``, owner-only,
 # which files the superseded version rather than overwriting it. Removing a row
 # is not among them: destruction is the admin router's
@@ -319,6 +323,111 @@ async def geolocate_event(
     except SnapshotRejected as exc:
         raise_archive_error(exc)
     return _serialize_event(db, geolocated)
+
+
+@router.post("/{geolocation_id}/request", response_model=EventRead)
+@limiter.limit("30/minute")
+async def update_event_request(
+    request: Request,
+    geolocation_id: uuid.UUID,
+    # Multipart, mirroring the create form at ``POST /events/requests``: the same
+    # fields, the same ceilings, and the whole state posted at once. The one
+    # difference is the source media, which arrives as the plural swap pair the
+    # two published writes take, since the row already carries a file.
+    title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
+    source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
+    source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
+    secondary_source_urls: list[SecondarySourceUrl] = Form([]),
+    secondary_snapshot_urls: list[SecondarySourceUrl] = Form([]),
+    proof: str | None = Form(None),
+    # The approximate guess a request may carry, both halves or neither.
+    lat: float | None = Form(None),
+    lng: float | None = Form(None),
+    capture_source_lat: float | None = Form(None),
+    capture_source_lng: float | None = Form(None),
+    event_date: str | None = Form(None),
+    event_time: str | None = Form(None),
+    # Optional, unlike on the human create form: the bot opens a request whose
+    # source date it could not read, so an owner corrects that row without
+    # inventing an instant. Empty or omitted keeps what the row holds, NULL
+    # included; only a value replaces it.
+    source_posted_at: str | None = Form(None),
+    tag_ids: str | None = Form(None),
+    conflict_ids: str | None = Form(None),
+    is_graphic: bool = Form(False),
+    # Ids of existing source media to drop (JSON array); the replacement rides
+    # in ``files``, under the one-source cap every write shares.
+    remove_media_ids: str | None = Form(None),
+    files: list[UploadFile] | None = File(None),
+    proof_files: list[UploadFile] | None = File(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Correct an open request, overwriting it in place (owner-only).
+
+    The owner's edit of a request they opened, or the bot opened for them. No
+    version is filed: a version supersedes a vouched claim, and a request is a
+    question rather than a claim, so the row is overwritten, keeps its id, its
+    ``requested_at``, its requester and its provenance columns, and moves
+    ``updated_at``. Allowed only while ``requested`` (409 otherwise): a fulfilled
+    row is corrected through ``save_version``, and a withdrawn one is terminal.
+
+    Every field the create form writes is editable on the same rules, the
+    coordinate guess and the camera point included, and the curated floor stays
+    unenforced until the geolocate. The source media moves on the
+    ``remove_media_ids`` + ``files`` pair, under the same one-source cap, and the
+    row must still carry footage afterwards. Soft-deleted rows read as 404.
+    """
+    files = files or []
+    proof_files = proof_files or []
+    if not title.strip():
+        raise HTTPException(status_code=400, detail="title is required")
+    if not source_url.strip():
+        raise HTTPException(status_code=400, detail="source_url is required")
+
+    proof_data = parse_optional_json_object(proof, field="proof")
+    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids", as_uuid=True)
+    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
+    parsed_remove_ids = parse_json_id_list(remove_media_ids, field="remove_media_ids")
+    parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
+    parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
+    parsed_source_posted_at = parse_optional_iso_datetime(
+        source_posted_at, field="source_posted_at"
+    )
+
+    # Not owner-gated at the router: the service re-checks ownership and status
+    # under the row lock, where the decision is race-free.
+    geo = resolve_live_event(db, geolocation_id)
+    try:
+        edited = await events_service.update_request(
+            db,
+            geo=geo,
+            current_user=current_user,
+            title=title,
+            source_url=source_url,
+            source_snapshot_url=source_snapshot_url,
+            secondary_source_urls=secondary_source_urls,
+            secondary_snapshot_urls=secondary_snapshot_urls,
+            proof_data=proof_data,
+            lat=lat,
+            lng=lng,
+            capture_source_lat=capture_source_lat,
+            capture_source_lng=capture_source_lng,
+            event_date=parsed_event_date,
+            event_time=parsed_event_time,
+            source_posted_at=parsed_source_posted_at,
+            tag_ids=parsed_tag_ids,
+            conflict_ids=parsed_conflict_ids,
+            is_graphic=is_graphic,
+            remove_media_ids=parsed_remove_ids,
+            files=files,
+            proof_files=proof_files,
+        )
+    except EvidenceIntakeError as exc:
+        _raise_event_error(exc)
+    except SnapshotRejected as exc:
+        raise_archive_error(exc)
+    return _serialize_event(db, edited)
 
 
 @router.post("/{geolocation_id}/versions", response_model=EventRead)

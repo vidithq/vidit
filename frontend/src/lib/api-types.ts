@@ -1317,6 +1317,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/{geolocation_id}/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update Event Request
+         * @description Correct an open request, overwriting it in place (owner-only).
+         *
+         *     The owner's edit of a request they opened, or the bot opened for them. No
+         *     version is filed: a version supersedes a vouched claim, and a request is a
+         *     question rather than a claim, so the row is overwritten, keeps its id, its
+         *     ``requested_at``, its requester and its provenance columns, and moves
+         *     ``updated_at``. Allowed only while ``requested`` (409 otherwise): a fulfilled
+         *     row is corrected through ``save_version``, and a withdrawn one is terminal.
+         *
+         *     Every field the create form writes is editable on the same rules, the
+         *     coordinate guess and the camera point included, and the curated floor stays
+         *     unenforced until the geolocate. The source media moves on the
+         *     ``remove_media_ids`` + ``files`` pair, under the same one-source cap, and the
+         *     row must still carry footage afterwards. Soft-deleted rows read as 404.
+         */
+        post: operations["update_event_request_api_v1_events__geolocation_id__request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events/{geolocation_id}/versions": {
         parameters: {
             query?: never;
@@ -1817,8 +1850,12 @@ export interface components {
          * AdminDetectionStatsRead
          * @description Quality signal on the machine-extraction pipeline (admin-only).
          *
-         *     A machine detection is a row imported from X, ``detected_from_url`` set
-         *     (the archive backfill / the bot); a human submit always carries NULL there.
+         *     A machine detection is a row imported from X and never a request:
+         *     ``detected_from_url`` set (the archive backfill / the bot) and
+         *     ``requested_at`` NULL. A human submit always carries NULL in the first
+         *     column. A request the bot opened carries both, so the second column is what
+         *     keeps it out of the cohort for its whole life: the stamp is never cleared,
+         *     including after a fulfiller geolocates the row.
          *
          *     Reject-rate: of every machine detection, the fraction dismissed before it
          *     was published, whichever door they left through. A machine detection counts
@@ -2513,6 +2550,56 @@ export interface components {
         Body_set_my_avatar_api_v1_users_me_avatar_put: {
             /** File */
             file: string;
+        };
+        /** Body_update_event_request_api_v1_events__geolocation_id__request_post */
+        Body_update_event_request_api_v1_events__geolocation_id__request_post: {
+            /** Capture Source Lat */
+            capture_source_lat?: number | null;
+            /** Capture Source Lng */
+            capture_source_lng?: number | null;
+            /** Conflict Ids */
+            conflict_ids?: string | null;
+            /** Event Date */
+            event_date?: string | null;
+            /** Event Time */
+            event_time?: string | null;
+            /** Files */
+            files?: string[] | null;
+            /**
+             * Is Graphic
+             * @default false
+             */
+            is_graphic: boolean;
+            /** Lat */
+            lat?: number | null;
+            /** Lng */
+            lng?: number | null;
+            /** Proof */
+            proof?: string | null;
+            /** Proof Files */
+            proof_files?: string[] | null;
+            /** Remove Media Ids */
+            remove_media_ids?: string | null;
+            /**
+             * Secondary Snapshot Urls
+             * @default []
+             */
+            secondary_snapshot_urls: string[];
+            /**
+             * Secondary Source Urls
+             * @default []
+             */
+            secondary_source_urls: string[];
+            /** Source Posted At */
+            source_posted_at?: string | null;
+            /** Source Snapshot Url */
+            source_snapshot_url?: string | null;
+            /** Source Url */
+            source_url: string;
+            /** Tag Ids */
+            tag_ids?: string | null;
+            /** Title */
+            title: string;
         };
         /**
          * ChangePasswordRequest
@@ -5418,6 +5505,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContentReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_event_request_api_v1_events__geolocation_id__request_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_update_event_request_api_v1_events__geolocation_id__request_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRead"];
                 };
             };
             /** @description Validation Error */

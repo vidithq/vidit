@@ -13,8 +13,8 @@ Everything is fail-soft: an HTTP error, an unavailable embed, or unexpected HTML
 yields a footage-less :class:`ChaseResult` naming the failure, never a raised
 exception. A sensitive post (date, no media) is a valid result, not a failure.
 
-SSRF guard: :func:`_telegram_post_url` is the only gate to the fetch, and it
-admits nothing but a public ``t.me`` post URL (a known channel host plus a
+SSRF guard: :func:`urls.telegram_post_url` is the only gate to the fetch, and
+it admits nothing but a public ``t.me`` post URL (a known channel host plus a
 numeric post id). Redirects are not followed, and every extracted media URL is
 re-checked against :func:`is_trusted_media_url` before it is trusted.
 """
@@ -24,23 +24,15 @@ from __future__ import annotations
 import html
 import logging
 import re
-from urllib.parse import urlparse
 
 import httpx
 
 from ..errors import TweetImportError, TweetUpstreamBusy, TweetUpstreamUnreachable
 from ..records import ChasedPost, ChaseResult, ParsedMedia
 from ..retry import is_transient, parse_retry_after, retrying
-from ..urls import TELEGRAM_HOST_RE, is_trusted_media_url
+from ..urls import is_trusted_media_url, telegram_post_url
 
 logger = logging.getLogger(__name__)
-
-# A public t.me post path: ``/<channel>/<id>``, channel a bare username, id
-# numeric. New shape (no existing regex covers the post path; the *host* match
-# reuses ``TELEGRAM_HOST_RE``, the one home for "this link is a t.me post",
-# shared with the source rule). Excludes the private ``/c/<n>/<m>`` and ``/joinchat/...`` forms
-# (extra path segments / non-numeric id), which have no public embed anyway.
-_TELEGRAM_POST_PATH_RE = re.compile(r"^/([A-Za-z0-9_]{1,64})/(\d{1,19})$")
 
 # The embed variant the widget renders server-side; ``mode=tme`` is the bare
 # single-post view.
@@ -74,32 +66,6 @@ _MEDIA_WITHHELD_RE = re.compile(
 )
 
 
-def _telegram_post_url(url: str) -> str | None:
-    """The canonical ``https://t.me/<channel>/<id>`` post URL, or ``None``.
-
-    The SSRF gate: returns a URL only for a public Telegram post (a ``t.me``
-    host per :data:`TELEGRAM_HOST_RE`, a bare channel, a numeric id). A private
-    ``t.me/c/...`` link, a ``joinchat`` invite, a channel-only link, embedded
-    credentials, a non-standard port, or any non-Telegram host all yield
-    ``None`` and are never fetched.
-    """
-    try:
-        parsed = urlparse(url)
-    except ValueError:
-        return None
-    if parsed.scheme not in ("http", "https"):
-        return None
-    if parsed.username or parsed.password or parsed.port:
-        return None
-    if TELEGRAM_HOST_RE.match((parsed.hostname or "").lower()) is None:
-        return None
-    match = _TELEGRAM_POST_PATH_RE.match(parsed.path)
-    if match is None:
-        return None
-    channel, post_id = match.group(1), match.group(2)
-    return f"https://t.me/{channel}/{post_id}"
-
-
 def _fetch_embed_html(post_url: str, *, client: httpx.Client | None) -> str | None:
     """The embed HTML for a canonical post URL, ``None`` when there is none to
     have.
@@ -115,7 +81,7 @@ def _fetch_embed_html(post_url: str, *, client: httpx.Client | None) -> str | No
 def _read_embed(post_url: str, *, client: httpx.Client | None) -> str | None:
     """One GET of the embed: the HTML, ``None``, or a transient raise.
 
-    Redirects are not followed: :func:`_telegram_post_url` vets only the first
+    Redirects are not followed: :func:`urls.telegram_post_url` vets only the first
     hop, so a 3xx to another host would slip the guard. A redirect therefore
     reads as "unavailable" and degrades to link + no date. ``client`` is for
     tests (a ``MockTransport``); production passes ``None``.
@@ -191,7 +157,7 @@ def chase(target: str, *, client: httpx.Client | None = None) -> ChaseResult:
 
 
 def _chase(target: str, *, client: httpx.Client | None) -> ChaseResult:
-    post_url = _telegram_post_url(target)
+    post_url = telegram_post_url(target)
     if post_url is None:
         return ChaseResult(outcome="no_target")
     embed_html = _fetch_embed_html(post_url, client=client)

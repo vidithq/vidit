@@ -60,6 +60,10 @@ def _quoted_record(body: dict[str, Any]) -> QuotedTweet | None:
         text=raw_text if isinstance(raw_text, str) else "",
         created_at=raw_created if isinstance(raw_created, str) else "",
         media=list(extract_media(qt, origin="quote")),
+        # The syndication body nests the quoted post in the same shape as the
+        # post itself, ``entities`` included, so the wrappers in its text expand
+        # the same way. Empty when the payload carries no entities.
+        external_sources=[SourceLink(url=u, shortlink=t) for u, t in extract_source_links(qt)],
     )
 
 

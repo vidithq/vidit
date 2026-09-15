@@ -1,0 +1,41 @@
+{
+  "description": "A mirror post: the analyst re-uploads a Telegram channel's clip, links the t.me post and writes no coordinate. Nothing is detected on any entry (coords_missing), and the engine's second exit carries a request draft: the source is the chased t.me post, its date comes from the embed, and the footage is the video the embed served. embed.html is what the chase reads.",
+  "coords": [],
+  "source_url": "https://t.me/wilddivision82/351",
+  "secondary_source_urls": [],
+  "source_posted_at": "2026-03-11T19:42:15+00:00",
+  "event_date": "2026-03-12",
+  "title": "Wild Division work in the 82nd Brigade sector",
+  "source_media": [
+    [
+      "video",
+      "quote"
+    ]
+  ],
+  "proof_media": [
+    [
+      "video",
+      "op"
+    ]
+  ],
+  "warnings": [],
+  "request": {
+    "source_url": "https://t.me/wilddivision82/351",
+    "title": "Wild Division work in the 82nd Brigade sector",
+    "footage": [
+      "video",
+      "quote"
+    ]
+  },
+  "paths": {
+    "bot": {
+      "reason": "coords_missing"
+    },
+    "paste": {
+      "reason": "coords_missing"
+    },
+    "archive": {
+      "reason": "coords_missing"
+    }
+  }
+}

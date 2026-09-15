@@ -125,17 +125,19 @@ const MEDIA_TYPES: ReadonlyArray<[string, string]> = [
   ["video", "Video"],
 ];
 
-/** The lifecycle statuses this panel offers (Event.status values). Only the
- *  two the served views can actually contain: the map and the search event
- *  groups show geolocated + detected rows; requested lives in the requests
- *  view and closed rows carry their own surfaces, so offering either here
- *  would be a chip that can only empty the result. Hand-kept mirror of the
- *  backend status vocabulary (`event_filters.STATUSES`, see AGENTS.md), the
- *  subset the filtered read views serve. Exported so the search page can
- *  gate crafted-URL values to the same vocabulary. */
+/** The lifecycle statuses this panel offers (Event.status values), in the order
+ *  the backend vocabulary declares them. The three live ones: a search reaches
+ *  requested rows (the profile's open-requests block links into them), and the
+ *  map and the search event groups show geolocated + detected. `closed` is left
+ *  out, since a retracted row carries its own surfaces and the chip could only
+ *  empty the result. Hand-kept mirror of the backend status vocabulary
+ *  (`event_filters.STATUSES`, see AGENTS.md), every status but that one.
+ *  Exported so the search page can gate crafted-URL values to the same
+ *  vocabulary. */
 export const STATUS_FILTER_OPTIONS: ReadonlyArray<[string, string]> = [
-  ["geolocated", "Geolocated"],
+  ["requested", "Requested"],
   ["detected", "Detected"],
+  ["geolocated", "Geolocated"],
 ];
 
 // Value → chip label, so the pill row and the section summary reuse the

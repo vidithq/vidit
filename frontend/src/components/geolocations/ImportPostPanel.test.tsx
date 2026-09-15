@@ -62,7 +62,7 @@ describe("ImportPostPanel", () => {
         created: ["d1", "d2"],
         warnings: [
           { code: "several_coordinates", message: "Several coordinates, one detection each" },
-          { code: "source_missing", message: "No source found. Add one at review" },
+          { code: "source_missing", message: "No source link in the post. Add one at review" },
         ],
       })
     );
@@ -72,7 +72,7 @@ describe("ImportPostPanel", () => {
 
     expect(await screen.findByText("2 detections created")).toBeInTheDocument();
     expect(screen.getByText("Several coordinates, one detection each")).toBeInTheDocument();
-    expect(screen.getByText("No source found. Add one at review")).toBeInTheDocument();
+    expect(screen.getByText("No source link in the post. Add one at review")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Review the detection" })).toHaveAttribute(
       "href",
       "/events/d1/edit?queue=1"
@@ -122,7 +122,7 @@ describe("ImportPostPanel", () => {
       outcome({
         updated: ["d4"],
         skipped: ["d9"],
-        warnings: [{ code: "source_missing", message: "No source found. Add one at review" }],
+        warnings: [{ code: "source_missing", message: "No source link in the post. Add one at review" }],
       })
     );
     render(<ImportPostPanel />);

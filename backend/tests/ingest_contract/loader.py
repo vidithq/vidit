@@ -9,8 +9,9 @@ A typology ships ``body.json`` (the post an entry is pointed at, in syndication
 shape, or raw archive entries under ``thread`` for the archive-only shapes),
 ``expected.json``, and any further body the acquisition or a chase reads:
 ``parent_<id>.json`` for the post a reply hangs under, ``chased_<id>.json`` for
-a linked status. :func:`syndication_client` serves all of them by id and 404s
-everything else, so every path runs offline.
+a linked status, ``embed.html`` for a linked Telegram post.
+:func:`syndication_client` serves all of them and 404s everything else, so every
+path runs offline.
 """
 
 from __future__ import annotations
@@ -26,15 +27,14 @@ import httpx
 from app.services.tweet_ingest import Resolution, acquire_thread, read_tweets, stitch
 from app.services.tweet_ingest.records import TweetRecord
 from app.services.tweet_ingest.syndication import _cache_clear
-from tests._fixtures import write_archive_js
+from app.services.tweet_ingest.urls import TELEGRAM_HOST_RE
+from tests._fixtures import TINY_MP4, write_archive_js
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
-# A minimal, non-empty stand-in for an mp4's bytes. The ingest path stores
-# videos without decoding them (``prepare_media`` passes non-image types
-# through, ``validate_bytes`` only size-checks video/mp4), so any short byte
-# string round-trips as a video Media row.
-TINY_MP4 = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isomFAKE"
+# The one entry that reads the engine's second exit, so the one path an
+# ``expected["request"]`` block is asserted for.
+_REQUEST_PATH = "bot"
 
 # Twitter's archive ``created_at`` format, for turning an ISO fixture timestamp
 # into the raw export shape the archive reader parses.
@@ -52,6 +52,18 @@ def load_body(typology: str) -> dict[str, Any]:
 
 def load_expected(typology: str) -> dict[str, Any]:
     return json.loads((FIXTURES_DIR / typology / "expected.json").read_text(encoding="utf-8"))
+
+
+def load_embed(typology: str) -> str | None:
+    """The Telegram embed the typology ships, or ``None`` when it ships none.
+
+    The one reader for ``embed.html``: :func:`syndication_client` serves it to a
+    chase, and ``tests/test_bot.py`` reads it to build the mirror bodies its
+    request-branch tests run on, so the bot's Telegram payload and the
+    catalogue's cannot drift.
+    """
+    embed = FIXTURES_DIR / typology / "embed.html"
+    return embed.read_text(encoding="utf-8") if embed.is_file() else None
 
 
 def typologies_for_path(path: str) -> list[str]:
@@ -96,6 +108,14 @@ def assert_resolution_matches(typology: str, path: str, resolution: Resolution) 
     every detection carrying the title, source, mirrors, warnings and media split
     the expectation names. A ``paths.<path>.reason`` override pins the refusal
     that entry reports.
+
+    An ``expected["request"]`` block pins the engine's second exit, the draft a
+    coordinate-less thread still yields (its source, its title, its footage). A
+    typology without one must yield none, so a shape that starts drafting a
+    request has to say so in the catalogue rather than appearing only in a
+    bot-side test. The block is the bot's alone, since the bot is the one entry
+    that asks for the exit (``resolve_threads(..., with_requests=True)``): every
+    other entry resolves none whatever the catalogue says.
     """
     block = load_expected(typology).get("paths", {}).get(path, {})
     expected = expected_for_path(typology, path)
@@ -103,6 +123,15 @@ def assert_resolution_matches(typology: str, path: str, resolution: Resolution) 
     assert len(resolution.detections) == len(expected["coords"]), typology
     if "reason" in block:
         assert resolution.reason == block["reason"], typology
+    request = expected.get("request") if path == _REQUEST_PATH else None
+    if request is None:
+        assert resolution.requests == [], typology
+    else:
+        [draft] = resolution.requests
+        assert draft.source_url == request["source_url"], typology
+        assert draft.title == request["title"], typology
+        footage = draft.footage_candidates[0]
+        assert [footage.kind, footage.origin] == list(request["footage"]), typology
     for detection in resolution.detections:
         assert detection.title == expected["title"], typology
         assert detection.source_url == expected["source_url"], typology
@@ -147,17 +176,25 @@ def load_bodies(typology: str) -> dict[str, dict[str, Any]]:
 
 
 def syndication_client(typology: str) -> httpx.Client:
-    """A syndication transport serving the typology's bodies, 404 elsewhere.
+    """A transport serving the typology's bodies and embed, 404 elsewhere.
 
-    A 404 is X's answer for a post no unauthenticated reader can see, which is
-    how a chase outside the fixture degrades: fail-soft, no network. The
+    Two upstreams behind one client, because one client is what an entry passes
+    down to the chase: an ``x.com`` syndication read answers from the typology's
+    bodies, and a ``t.me`` read answers with its ``embed.html`` when it ships
+    one. A 404 is X's answer for a post no unauthenticated reader can see, which
+    is how a chase outside the fixture degrades: fail-soft, no network. The
     process-wide fetch cache is cleared first so a body cached by another
     typology cannot answer here.
     """
     bodies = load_bodies(typology)
+    embed = load_embed(typology)
     _cache_clear()
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if TELEGRAM_HOST_RE.match(request.url.host.lower()) is not None:
+            if embed is None:
+                return httpx.Response(404)
+            return httpx.Response(200, text=embed)
         body = bodies.get(request.url.params.get("id", ""))
         return httpx.Response(200, json=body) if body is not None else httpx.Response(404)
 
