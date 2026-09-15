@@ -1,6 +1,6 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod promo promo-v05 promo-v05b gen-api-types check-dup vulture check-video-routes hygiene
+.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod promo promo-v05 promo-v05b promo-collections gen-api-types check-dup vulture check-video-routes hygiene
 
 help:
 	@echo "Available commands:"
@@ -26,6 +26,7 @@ help:
 	@echo "  make promo         - Regenerate the promo MP4 (see video/README.md)"
 	@echo "  make promo-v05     - Regenerate the v0.5 portfolio promo MP4 (see video/README.md)"
 	@echo "  make promo-v05b    - Regenerate the v0.5 import/review promo MP4 (see video/README.md)"
+	@echo "  make promo-collections - Regenerate the collections promo MP4 (see video/README.md)"
 
 init: install env db-up migrate
 	@echo "Initialization complete. Run 'make dev' to start."
@@ -126,6 +127,28 @@ promo-v05b:
 	ffmpeg -y -i video/out/promo-v05b.mp4 -vf scale=1280:-2,fps=30 -c:v libx264 -crf 26 -preset slow -pix_fmt yuv420p -movflags +faststart video/out/promo-v05b-readme.mp4
 	@ls -lh video/out/promo-v05b-master.mp4 video/out/promo-v05b-readme.mp4
 	@echo "Done. Master 1080p (S3) -> video/out/promo-v05b-master.mp4 | README 720p -> video/out/promo-v05b-readme.mp4"
+
+# The collections promo: one unbroken logged-out take of a collection being
+# read, between the brand intro and the closing card. Requires `make dev`
+# running in another shell and an instance holding the analyst's shelf
+# (`make import-prod` or a local set of collections); it reads the instance and
+# writes nothing to it.
+#
+# The take checks what it needs before it captures a frame: the collection it
+# opens, the length of its sequence, a shelf longer than the profile's grid so
+# the `Show more` link exists, and a query that actually reaches a collection.
+# Re-point any of those at the top of `video/record-collections.js`.
+#
+# The take is paced in real time and played uncut, so its length is the promo's
+# recorded length. Re-pace it in `video/record-collections.js`, not in the
+# composition. Staging outputs match `promo-v05`.
+promo-collections:
+	cd video && node record-collections.js
+	cd video && npm run render:collections
+	ffmpeg -y -i video/out/promo-collections.mp4 -c copy -movflags +faststart video/out/promo-collections-master.mp4
+	ffmpeg -y -i video/out/promo-collections.mp4 -vf scale=1280:-2,fps=30 -c:v libx264 -crf 26 -preset slow -pix_fmt yuv420p -movflags +faststart video/out/promo-collections-readme.mp4
+	@ls -lh video/out/promo-collections-master.mp4 video/out/promo-collections-readme.mp4
+	@echo "Done. Master 1080p (S3) -> video/out/promo-collections-master.mp4 | README 720p -> video/out/promo-collections-readme.mp4"
 
 seed: mock-admin seed-detections
 	@echo "Done. admin@vidit.app exists and the synthetic archive's detections are in."

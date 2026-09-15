@@ -522,6 +522,92 @@ never writes to the database, and produces one file: the trimmed zip. Trimming
 is what the import panel itself recommends, and it keeps a 2 GB export inside
 a single take.
 
+## Collections promo (`PromoCollections`)
+
+One collection read end to end: the brand intro, ONE unbroken take, the closing
+card. Recorded **logged out**, like promo A, because a collection reads the same
+without an account.
+
+```bash
+make promo-collections   # record + render + both outputs
+```
+
+Or step by step:
+
+```bash
+cd video
+npm run record:collections   # -> public/clips/collections.mp4 + its marks
+npm run render:collections   # -> out/promo-collections.mp4 (1920x1080, 60 fps)
+```
+
+`make promo-collections` adds the two staged outputs the other promos take:
+`out/promo-collections-master.mp4` (the same 1080p stream remuxed with
+`+faststart`, for S3) and `out/promo-collections-readme.mp4` (720p / 30 fps, for
+a GitHub attachment URL).
+
+### One take, no cuts
+
+The recorded part is a single continuous window of `collections.mp4`. The four
+page changes are in-page router pushes the take performs on camera: the
+collection card on the profile, the owner's handle in the byline, the shelf's
+`Show more` link, and nothing else. The only two transitions in the video are
+the crossfades into and out of the recorded part.
+
+The take is paced in real time, holds included, and its length IS the promo's
+recorded length, so re-pace it in `record-collections.js` rather than in the
+composition. The same two rules promo A runs on apply: a silent warm-up pass
+visits every route before the first frame, and nothing inside the recorded pass
+navigates with `page.goto`.
+
+| Beat | What is on camera | Caption |
+|---|---|---|
+| Intro | The wordmark, the release, and the tagline | |
+| 1 | The profile's Collections section, scrolled onto and held: the analyst's named sets as a grid of mosaic cards, then one card under the cursor with its title, count and date span. | Collections |
+| 2 | The collection's own page as it opens: the title, the owner's byline, the `Collection` pill, and the Description card, with the player's head under it at step 1. | Every geolocation of one operation, in the order it happened |
+| 3 | The player, framed whole: the sequence on the map, the current item in the map page's own panel beside it, and three presses of the next control, each flying the map, dimming the step behind it and counting `N of 12`. | Step through them on the map |
+| 4 | The Events list under the player, a row far down it opened, and the travel back up to the player standing on that step. | Pick any event from the list |
+| 5 | Back on the profile through the byline, then the whole shelf in search under the Author filter the `Show more` link carries. | Every collection an analyst publishes |
+| 6 | One query typed into the field, narrowing the shelf without leaving the Collections scope. | Search reaches collections too |
+| Outro | The wordmark and vidit.app (`OutroV04`, shared with the other promos) | |
+
+### Why the capture window is 1040x620
+
+The geometry is promo A's with one number changed, and the reasoning above
+under "Why the capture window is short and wide" carries over: 1040 wide keeps
+the desktop layout with the content column at its 848 CSS px cap, and a SHORT
+capture is what magnifies the page in the comp.
+
+620 rather than 560 because the collection player decides it. The player is a
+fixed 32rem block from `sm` up, held under `calc(100dvh - 4.5rem)`: at 560 that
+cap bites and the map and the panel film 24px shorter than a reader sees them,
+with nowhere for the Description card above. 620 is the first height at which
+the block is unclamped and the card still shares a frame with the player's
+head, which makes it a landmark to re-measure rather than a constant.
+
+`CAPTURE` in `PromoCollections.tsx` derives the browser body from those
+numbers, so change the viewport in `record-collections.js` and change `CAPTURE`
+with it. The caption band is wider than promo A's, and the type a step smaller,
+because the longest line here needs the room.
+
+### What the take needs from the instance
+
+`verifyTarget` checks all of it before a frame is captured and refuses to
+record otherwise:
+
+- `TARGET_COLLECTION` belongs to `HANDLE` and carries a description, since the
+  Description card is a beat.
+- Its sequence is longer than `ROW_STEP` and than `STEPS`, and every item in it
+  carries coordinates, since the map is half of the stepping beat.
+- The analyst has more than four collections, because the profile grid holds
+  four and only grows the `Show more` link past that. Without the link the take
+  has no way into search.
+- `QUERY` reaches at least one collection under the scope the last beat arrives
+  in, so the closing caption does not run over an empty group.
+
+Retarget it by changing `HANDLE`, `TARGET_COLLECTION` and `QUERY` at the top of
+`record-collections.js`; `PROMO_COLLECTION` and `PROMO_QUERY` override the last
+two for a shoot.
+
 ## Shared capture harness
 
 `capture-lib.js` holds everything the takes have in common: the DOM cursor
