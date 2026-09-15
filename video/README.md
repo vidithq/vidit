@@ -598,11 +598,17 @@ record otherwise:
   Description card is a beat.
 - Its sequence is longer than `ROW_STEP` and than `STEPS`, and every item in it
   carries coordinates, since the map is half of the stepping beat.
+- Every item in it carries source media, since the panel beside the map opens
+  on the Source media block and an item without one films `No media available`
+  on whichever step lands on it.
 - The analyst has more than four collections, because the profile grid holds
   four and only grows the `Show more` link past that. Without the link the take
   has no way into search.
 - `QUERY` reaches at least one collection under the scope the last beat arrives
-  in, so the closing caption does not run over an empty group.
+  in, so the closing caption does not run over an empty group. Search reads a
+  collection's title and description and not the places its events sit in, so
+  pick words the analyst wrote on the set rather than a city every item on the
+  map carries.
 
 Retarget it by changing `HANDLE`, `TARGET_COLLECTION` and `QUERY` at the top of
 `record-collections.js`; `PROMO_COLLECTION` and `PROMO_QUERY` override the last

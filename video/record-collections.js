@@ -97,8 +97,11 @@ const STEPS = 3;
 // The query the closing beat types. It has to be a word that actually reaches
 // a collection under the scope the take arrives in (this analyst's shelf), so
 // `verifyTarget` runs it against the live search before a frame is captured
-// rather than letting the last beat film an empty group.
-const QUERY = process.env.PROMO_QUERY || "Higuerote";
+// rather than letting the last beat film an empty group. Search reads a
+// collection's title and description, never the places its events sit in, so a
+// city name that every item on the map carries still matches nothing: the
+// query has to be words the analyst wrote on the set itself.
+const QUERY = process.env.PROMO_QUERY || "Absolute Resolve";
 
 const recordClip = createRecorder({
   clipsDir: CLIPS_DIR,
@@ -150,6 +153,13 @@ async function verifyTarget() {
   const unplaced = items.filter((it) => !it.event_coords).length;
   if (unplaced) problems.push(`${unplaced} of ${items.length} items carry no coordinates`);
 
+  // The other half of the stepping beat is the panel, whose head is the
+  // Source media block. An item with no media renders `No media available`
+  // there, so a sequence holding one films an empty plate on whichever step
+  // lands on it.
+  const unsourced = items.filter((it) => !it.media).length;
+  if (unsourced) problems.push(`${unsourced} of ${items.length} items carry no source media`);
+
   // The shelf beat: the profile only grows a `Show more` link once the shelf
   // runs past the four cards the grid holds, and that link is what the take
   // clicks to reach search.
@@ -176,7 +186,10 @@ async function verifyTarget() {
       `collection ${TARGET_COLLECTION} cannot carry the take:\n  - ${problems.join("\n  - ")}`
     );
   }
-  return { collection, items };
+  // The narrowed count the closing beat waits for. The shelf it types into
+  // already holds cards, so "some cards are on screen" is true before the
+  // query commits; the take waits for THIS many instead.
+  return { collection, items, queryHits: hits.total.collections };
 }
 
 // ─── the take ────────────────────────────────────────────────────────────
@@ -223,7 +236,7 @@ async function settleShelf(page) {
     .catch(() => {});
 }
 
-async function clipCollections() {
+async function clipCollections({ queryHits }) {
   await recordClip("collections", { cookies: null }, async (page, rec) => {
     const collectionsHeading = page.getByRole("heading", { name: "Collections" });
     const coverage = page.getByRole("heading", { name: "Coverage" });
@@ -377,13 +390,16 @@ async function clipCollections() {
     await page.keyboard.type(QUERY, { delay: 110 });
     await page.keyboard.press("Enter");
     // The field commits on a debounce rather than on the key, so the wait is
-    // for the result rather than for the press.
+    // for the result rather than for the press. It waits for the exact number
+    // of cards the preflight counted: the URL carries `q` before the list is
+    // refetched, so a wait on the address alone can release while the whole
+    // unnarrowed shelf is still on screen, under a caption saying it narrowed.
     await page.waitForFunction(
-      (q) => {
+      ({ q, hits }) => {
         const cards = document.querySelectorAll('a[href^="/collections/"]');
-        return cards.length > 0 && cards.length < 6 && new URL(location.href).searchParams.get("q") === q;
+        return cards.length === hits && new URL(location.href).searchParams.get("q") === q;
       },
-      QUERY,
+      { q: QUERY, hits: queryHits },
       { timeout: 20000 }
     );
     rec.mark("queryResult");
@@ -398,8 +414,8 @@ async function clipCollections() {
       `no public profile for ${HANDLE} at ${API}. Is the instance running and imported?`
     );
   }
-  await verifyTarget();
-  await clipCollections();
+  const target = await verifyTarget();
+  await clipCollections(target);
   console.log("\n✓ collections take recorded");
   console.log(fs.readFileSync(META_PATH, "utf8"));
 })().catch((err) => {
