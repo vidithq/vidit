@@ -42,6 +42,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   },
   description_text: "The breach and the flooding downstream of it.",
   cover: [],
+  tags: [],
   event_count: 5,
   first_date: "2026-06-06",
   last_date: "2026-06-09",

@@ -105,6 +105,7 @@ const COLLECTIONS: CollectionPage = {
       },
       description_text: "Three days of strikes on the eastern approach.",
       cover: [],
+      tags: [],
       event_count: 2,
       first_date: "2026-06-01",
       last_date: "2026-06-02",

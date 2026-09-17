@@ -33,6 +33,10 @@ A collection is a named set of one analyst's own events. What these lock in:
   order, a graphic item skipped, an image preferred over a clip on an item
   carrying both, and ``media_type`` naming the element that can render each
   tile.
+* The derived tag union: the tags of the events a collection may show, each
+  named once, ordered by category then name, dropping with an item that leaves
+  the collectable set, and identical on the collection read, the search hit and
+  the profile list.
 * A GDPR hard delete of the owner drops the collections and their
   memberships.
 """
@@ -60,6 +64,7 @@ from app.models.event import (
     Event,
 )
 from app.models.media import Media
+from app.models.tag import Tag, event_tags
 from app.models.user import User
 from app.schemas.collection import DESCRIPTION_MAX_LENGTH, MAX_CREATE_EVENTS
 from app.services import collections as collections_service
@@ -1410,6 +1415,141 @@ def test_mosaic_drops_a_withheld_or_closed_item(db, cleanup, owner):
     db.commit()
 
     assert _tile_urls(collection) == ["https://media.example.com/shown.jpg"]
+
+
+# ── The derived tag union ─────────────────────────────────────────────────
+
+
+@pytest.fixture
+def make_tag(db):
+    """A factory for tags, swept with their event associations afterwards.
+
+    Its own fixture rather than a branch of ``cleanup``: ``tags`` is a shared
+    referential keyed on a unique name, so a row a test leaves behind collides
+    with the next run. The sweep clears ``event_tags`` first, because it runs
+    before ``cleanup`` deletes the events those rows hang off.
+    """
+    created: list[uuid.UUID] = []
+
+    def _make(name: str, category: str = "free") -> Tag:
+        tag = Tag(name=f"{name}-{uuid.uuid4().hex[:8]}", category=category)
+        db.add(tag)
+        db.commit()
+        db.refresh(tag)
+        created.append(tag.id)
+        return tag
+
+    yield _make
+
+    if created:
+        db.execute(event_tags.delete().where(event_tags.c.tag_id.in_(created)))
+        db.execute(Tag.__table__.delete().where(Tag.id.in_(created)))
+        db.commit()
+
+
+def _tag_names(payload: dict) -> list[str]:
+    return [tag["name"] for tag in payload["tags"]]
+
+
+def test_tags_are_the_union_of_the_items_tags(db, cleanup, owner, make_tag):
+    """Two items sharing one tag and carrying one more each yield three tags:
+    the shared one is named once, and the list is ordered by category then
+    name so two surfaces print it the same way."""
+    shared = make_tag("shared")
+    only_first = make_tag("alpha")
+    only_second = make_tag("beta")
+    curated = make_tag("drone", category="capture_source")
+
+    collection = _make_collection(db, cleanup, owner=owner)
+    first = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    second = _make_event(db, cleanup, owner=owner, event_date=date(2026, 4, 1))
+    first.tags = [shared, only_first, curated]
+    second.tags = [shared, only_second]
+    _add(db, collection, first)
+    _add(db, collection, second)
+    db.commit()
+
+    body = client.get(f"/api/v1/collections/{collection.id}").json()
+    # ``capture_source`` before ``free``, then by name inside each category.
+    assert _tag_names(body) == [curated.name] + sorted(
+        [shared.name, only_first.name, only_second.name]
+    )
+    assert [tag["category"] for tag in body["tags"]] == [
+        "capture_source",
+        "free",
+        "free",
+        "free",
+    ]
+
+
+def test_an_item_leaving_the_collectable_set_takes_its_tags_with_it(db, cleanup, owner, make_tag):
+    """The union is computed over the same predicate the count is, so closing
+    or withholding an item drops its tags with no write to the membership."""
+    kept = make_tag("kept")
+    closed_only = make_tag("closedonly")
+    hidden_only = make_tag("hiddenonly")
+
+    collection = _make_collection(db, cleanup, owner=owner)
+    standing = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    leaving = _make_event(db, cleanup, owner=owner, event_date=date(2026, 4, 1))
+    withheld = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    standing.tags = [kept]
+    leaving.tags = [closed_only]
+    withheld.tags = [hidden_only]
+    for event in (standing, leaving, withheld):
+        _add(db, collection, event)
+    db.commit()
+
+    assert set(_tag_names(client.get(f"/api/v1/collections/{collection.id}").json())) == {
+        kept.name,
+        closed_only.name,
+        hidden_only.name,
+    }
+
+    leaving.status = STATUS_CLOSED
+    leaving.closed_at = datetime.now(UTC)
+    leaving.before_closed_status = STATUS_GEOLOCATED
+    leaving.geolocated_at = None
+    withheld.hidden_at = datetime.now(UTC)
+    db.commit()
+
+    body = client.get(f"/api/v1/collections/{collection.id}").json()
+    assert _tag_names(body) == [kept.name]
+    assert body["event_count"] == 1
+
+
+def test_a_collection_holding_nothing_tagged_has_no_tags(db, cleanup, owner):
+    """An empty collection and one whose items carry no tag both read ``[]``,
+    so a client renders no row rather than a missing field."""
+    empty = _make_collection(db, cleanup, owner=owner, title="Empty")
+    untagged = _make_collection(db, cleanup, owner=owner, title="Untagged")
+    _add(db, untagged, _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1)))
+
+    assert client.get(f"/api/v1/collections/{empty.id}").json()["tags"] == []
+    assert client.get(f"/api/v1/collections/{untagged.id}").json()["tags"] == []
+
+
+def test_every_read_surface_carries_the_same_tags(db, cleanup, owner, make_tag):
+    """One read shape: the collection's own page, the search hit and the
+    profile list are assembled by the same builder, so the tags cannot differ
+    between the card a reader clicks and the page it opens."""
+    curated = make_tag("satellite", category="capture_source")
+    free = make_tag("corridor")
+
+    collection = _make_collection(db, cleanup, owner=owner, title="Shelved")
+    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    event.tags = [curated, free]
+    _add(db, collection, event)
+    db.commit()
+
+    expected = [curated.name, free.name]
+    assert _tag_names(client.get(f"/api/v1/collections/{collection.id}").json()) == expected
+
+    hits = client.get(f"/api/v1/search?type=collection&author={owner.username}").json()
+    assert [_tag_names(hit) for hit in hits["collections"]] == [expected]
+
+    listed = client.get(f"/api/v1/users/{owner.username}/collections").json()
+    assert [_tag_names(item) for item in listed["items"]] == [expected]
 
 
 # ── GDPR hard delete ──────────────────────────────────────────────────────

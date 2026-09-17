@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.models.event import TITLE_MAX_LENGTH
 from app.models.media import MediaRole, MediaType
+from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
 from app.services.sanitize import sanitize_tiptap_doc, tiptap_doc_text
 
@@ -168,6 +169,13 @@ class CollectionRead(BaseModel):
     video item is an ``.mp4``, and a client handed the url alone renders it in
     an ``<img>`` and shows an empty band. The role says whether the picture has
     display derivatives, which a proof image has not.
+
+    ``tags`` is derived the same way and never stored: the union of the tags
+    of the events the collection may show, ordered by category then name
+    (``services/collections.tags_for``). A collection carries no tag of its
+    own, so tagging an item is what says what the collection is about, and an
+    item that leaves the collectable set takes its tags out of the union with
+    no write. The list is empty for a collection holding nothing tagged.
     """
 
     id: uuid.UUID
@@ -176,6 +184,7 @@ class CollectionRead(BaseModel):
     description: dict[str, Any]
     description_text: str
     cover: list[CollectionCoverTile]
+    tags: list[TagRead]
     event_count: int
     first_date: date | None
     last_date: date | None

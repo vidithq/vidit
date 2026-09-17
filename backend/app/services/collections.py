@@ -5,8 +5,8 @@ public profile. Two rules hold everywhere in this module:
 
 * **What a collection may show is one predicate.**
   :func:`services.event_filters.collectable_events` decides it, and the item
-  page, the count, the date range, the card mosaic and the add verb's
-  eligibility check all read it. A row that closes, is taken down or is
+  page, the count, the date range, the card mosaic, the tag union and the add
+  verb's eligibility check all read it. A row that closes, is taken down or is
   soft-deleted therefore leaves every one of them at once, with no write to
   ``collection_events``.
 * **An event joins its owner's collection only.** The invariant spans two
@@ -37,12 +37,14 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.models.collection import Collection, CollectionEvent
 from app.models.event import Event
 from app.models.media import Media
+from app.models.tag import Tag, event_tags
 from app.models.user import User
 from app.schemas.collection import (
     CollectionCoverTile,
     CollectionMembershipRead,
     CollectionRead,
 )
+from app.schemas.tag import TagRead
 from app.services.event_filters import collectable_events
 from app.services.pagination import keyset_after
 from app.services.permissions import ensure_owner
@@ -345,18 +347,60 @@ def cover_tiles_for(
     return tiles
 
 
+def tags_for(db: Session, collection_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, list[TagRead]]:
+    """The tags each collection inherits from its items, in one query.
+
+    A collection carries no tag of its own. What it says it is about is the
+    union of the tags of the events it may show
+    (:func:`services.event_filters.collectable_events`), read here and never
+    stored, the same terms the count and the date range are computed on: an
+    event that closes, is taken down or is soft-deleted leaves the union with
+    no write to ``collection_events``, and tagging one of its events changes
+    what the collection says without touching the collection.
+
+    ``DISTINCT`` over (collection, tag) is what makes it a union rather than a
+    tally: two items carrying the same tag contribute it once. The order is
+    category then name, so a page of cards and the collection's own header
+    print the same list in the same sequence.
+
+    One statement for a whole page of collections, the shape
+    :func:`cover_tiles_for` takes: the membership join carries the predicate,
+    the association and the tag table follow it, and a collection holding
+    nothing tagged is absent from the mapping, which callers read as the empty
+    list.
+    """
+    if not collection_ids:
+        return {}
+    rows = (
+        db.query(CollectionEvent.collection_id, Tag)
+        .select_from(CollectionEvent)
+        .join(Event, Event.id == CollectionEvent.event_id)
+        .join(event_tags, event_tags.c.event_id == Event.id)
+        .join(Tag, Tag.id == event_tags.c.tag_id)
+        .filter(CollectionEvent.collection_id.in_(collection_ids), collectable_events())
+        .distinct()
+        .order_by(CollectionEvent.collection_id, Tag.category, Tag.name)
+        .all()
+    )
+    tags: dict[uuid.UUID, list[TagRead]] = {}
+    for collection_id, tag in rows:
+        tags.setdefault(collection_id, []).append(TagRead.model_validate(tag, from_attributes=True))
+    return tags
+
+
 def build_collection_reads(db: Session, collections: Sequence[Collection]) -> list[CollectionRead]:
     """Assemble the read payload for a page of collections.
 
     The single assembler, so a collection is the same shape on its own page,
-    on a profile and in a create response. Both readings are batched over the
-    whole page: the stats come from one grouped query, the mosaics from one
-    ranked query, so the assembler costs the same few statements for four
-    cards as for one.
+    on a profile and in a create response. Every derived reading is batched
+    over the whole page: the stats come from one grouped query, the mosaics
+    from one ranked query, the tag unions from one distinct query, so the
+    assembler costs the same few statements for four cards as for one.
     """
     collection_ids = [collection.id for collection in collections]
     stats = stats_for(db, collection_ids)
     tiles = cover_tiles_for(db, collection_ids)
+    tags = tags_for(db, collection_ids)
     reads: list[CollectionRead] = []
     for collection in collections:
         row_stats = stats.get(collection.id, _EMPTY_STATS)
@@ -368,6 +412,7 @@ def build_collection_reads(db: Session, collections: Sequence[Collection]) -> li
                 description=collection.description,
                 description_text=collection.description_text,
                 cover=tiles.get(collection.id, []),
+                tags=tags.get(collection.id, []),
                 event_count=row_stats.event_count,
                 first_date=row_stats.first_date,
                 last_date=row_stats.last_date,

@@ -2758,6 +2758,13 @@ export interface components {
          *     video item is an ``.mp4``, and a client handed the url alone renders it in
          *     an ``<img>`` and shows an empty band. The role says whether the picture has
          *     display derivatives, which a proof image has not.
+         *
+         *     ``tags`` is derived the same way and never stored: the union of the tags
+         *     of the events the collection may show, ordered by category then name
+         *     (``services/collections.tags_for``). A collection carries no tag of its
+         *     own, so tagging an item is what says what the collection is about, and an
+         *     item that leaves the collectable set takes its tags out of the union with
+         *     no write. The list is empty for a collection holding nothing tagged.
          */
         CollectionRead: {
             /** Cover */
@@ -2785,6 +2792,8 @@ export interface components {
             /** Last Date */
             last_date: string | null;
             owner: components["schemas"]["AuthorRef"];
+            /** Tags */
+            tags: components["schemas"]["TagRead"][];
             /** Title */
             title: string;
         };

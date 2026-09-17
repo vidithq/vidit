@@ -124,6 +124,7 @@ const created: Collection = {
   },
   description_text: "Strikes on the corridor through March.",
   cover: [],
+  tags: [],
   event_count: 0,
   first_date: null,
   last_date: null,

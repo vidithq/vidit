@@ -53,7 +53,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | **Collections** | | | |
 | POST | `/collections` | 🔒 | Open a collection (title, description, and the events it holds) |
 | POST | `/collections/{id}/report` | 🌐 | Report a collection for moderation (anonymous allowed) |
-| GET | `/collections/{id}` | 🌐 | One collection: owner, title, description, item count, date range |
+| GET | `/collections/{id}` | 🌐 | One collection: owner, title, description, tags, item count, date range |
 | PATCH | `/collections/{id}` | 🔒 | Write your collection's title and description |
 | DELETE | `/collections/{id}` | 🔒 | Drop your collection; the events it held stay |
 | GET | `/collections/{id}/events` | 🌐 | Its items, oldest event first (cursor-paged) |
@@ -1250,7 +1250,7 @@ Full-text discovery surface across the four result groups. Backed by three Postg
 
 Any active filter empties the users group: the filters are event predicates, and an unfiltered analyst list next to a filtered event view would read as if the filter applied. The collections group takes the same rule with one exception, `author`: a collection carries an owner, so the filter narrows the group to that analyst's collections instead of emptying it. With an empty `q` and at least one active filter, the API enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight (the profile's "Show more" entry points). Typing then narrows within it. The collections group browses on `author` alone: that is the one filter it reads, so `author` with an empty `q` lists the analyst's collections newest first, and any other active filter empties the group as it does under a typed query. An empty `q` with no filter at all returns empty groups.
 
-**The collections group** matches a query against the collection's title and the plain-text projection of its description as one document, ranked the same way, and each hit is the full [`CollectionRead`](#get-collectionsid) the profile card and the collection page both render (mosaic, `event_count`, date range, owner). It carries no `*_highlight` field: the card prints the collection's own text. A collection appears only where a reader could already see it on a profile, so a withheld collection, one whose owner is soft-deleted, and one holding nothing showable are all absent. The same visibility and non-empty rules hold in browse mode, and `total` is the pre-`LIMIT` count on both paths.
+**The collections group** matches a query against the collection's title and the plain-text projection of its description as one document, ranked the same way, and each hit is the full [`CollectionRead`](#get-collectionsid) the profile card and the collection page both render (mosaic, `tags`, `event_count`, date range, owner). It carries no `*_highlight` field: the card prints the collection's own text. A collection appears only where a reader could already see it on a profile, so a withheld collection, one whose owner is soft-deleted, and one holding nothing showable are all absent. The same visibility and non-empty rules hold in browse mode, and `total` is the pre-`LIMIT` count on both paths.
 
 **Ranking:** `ts_rank` descending then `created_at` descending as a stable tie-breaker.
 
@@ -1295,6 +1295,7 @@ Any active filter empties the users group: the filters are event predicates, and
       "description": { "type": "doc", "content": [ … ] },
       "description_text": "Every strike placed inside the city over March and April.",
       "cover": [{ "url": "…", "media_type": "image", "role": "source" }],
+      "tags": [{ "id": "uuid", "name": "satellite", "category": "capture_source" }],
       "event_count": 12,
       "first_date": "2026-03-02",
       "last_date": "2026-04-28",
@@ -1430,7 +1431,7 @@ The 500-character cap is measured on the document's plain-text projection, not o
 
 A write answers **422** on the description when the body is not a `type: "doc"` object, when the sanitized document's projection is empty (a document of blank paragraphs is a missing description, the way a title of spaces is a missing title), or when that projection runs past 500 characters.
 
-What a collection may hold is one predicate, `services/event_filters.collectable_events`: a visible event (neither soft-deleted nor withheld) in one of the two worked statuses, `geolocated` or `detected`. A `requested` row is an ask rather than an answer, and a `closed` row is one the owner rejected or retracted, so neither is on a curated shelf. The same predicate governs the item list, the item count, the date range, the card mosaic, and the check `PUT /collections/{id}/events/{event_id}` runs, so an event that later closes or is taken down leaves all five at once with no write to the membership table.
+What a collection may hold is one predicate, `services/event_filters.collectable_events`: a visible event (neither soft-deleted nor withheld) in one of the two worked statuses, `geolocated` or `detected`. A `requested` row is an ask rather than an answer, and a `closed` row is one the owner rejected or retracted, so neither is on a curated shelf. The same predicate governs the item list, the item count, the date range, the card mosaic, the tag union, and the check `PUT /collections/{id}/events/{event_id}` runs, so an event that later closes or is taken down leaves all six at once with no write to the membership table.
 
 ### `POST /collections` 🔒
 
@@ -1521,7 +1522,7 @@ The row lands in the same [`GET /admin/reports`](#get-adminreports) queue an eve
 
 ### `GET /collections/{id}` 🌐
 
-One collection's header: owner, title, description, item count, and the range its items span.
+One collection's header: owner, title, description, tags, item count, and the range its items span.
 
 **Response 200:**
 ```json
@@ -1545,6 +1546,10 @@ One collection's header: owner, title, description, item count, and the range it
     { "url": "https://…/uploads/geo/…jpg", "media_type": "image", "role": "source" },
     { "url": "https://…/uploads/geo/…mp4", "media_type": "video", "role": "source" }
   ],
+  "tags": [
+    { "id": "uuid", "name": "satellite", "category": "capture_source" },
+    { "id": "uuid", "name": "power grid", "category": "free" }
+  ],
   "event_count": 12,
   "first_date": "2026-03-01",
   "last_date": "2026-07-09",
@@ -1559,6 +1564,8 @@ One collection's header: owner, title, description, item count, and the range it
 `cover` is the mosaic the profile card wears, zero to four tiles computed per read and never stored: walk the items the collection may show in chronological order, skip one flagged graphic, take each remaining item's card media by the same rule as [`GET /events`](#get-events) (preferring an image over a clip where the item carries both), and stop at four. A graphic item is skipped rather than ending the walk, so a card never shows death or injury to a reader who did not open the item. The list is empty when no item qualifies. There is no cover upload: a collection stores no picture of its own.
 
 `cover[].media_type` is the media-kind domain `image` or `video`, so a client picks the element that can render each tile, and `cover[].role` is the media-role domain `source` or `proof`, which says whether the picture has display derivatives. Most source media are clips, and an `<img>` pointed at one paints an empty band. Each `url` is a Media row's own `storage_url`. A `source` image takes the `_hero` and `_thumb` derivatives every other source image takes; a `proof` image is stored without them, so read its `url` as is. Requesting a derivative of a proof url answers 403.
+
+`tags` is the union of the tags of the events the collection may show, computed per read and never stored, ordered by `category` then `name`. A collection carries no tag of its own: tagging an item is what says what the collection is about, and an item that leaves the collectable set takes its tags out of the union with no write to the membership table. Each entry is the `TagRead` shape [`GET /tags`](#get-tags) serves. Two items carrying the same tag name it once, and the list is empty for a collection holding nothing tagged. Every collection read surface carries it: this endpoint, [`GET /users/{username}/collections`](#get-usersusernamecollections), the collections group of [`GET /search`](#get-search), and the create and update responses.
 
 A withheld collection (`hidden_at`, see [`PATCH /admin/collections/{id}/moderation`](#patch-admincollectionsidmoderation)) answers 404 for everyone but an admin, its owner included, the same branch [`GET /events/{id}`](#get-eventsid) takes. So does a collection whose owner is soft-deleted.
 
@@ -1896,6 +1903,7 @@ Offset-paged, like the published-geolocations feed beside it.
         { "url": "https://…/uploads/geo/…jpg", "media_type": "image", "role": "source" },
         { "url": "https://…/uploads/geo/…mp4", "media_type": "video", "role": "source" }
       ],
+      "tags": [{ "id": "uuid", "name": "satellite", "category": "capture_source" }],
       "event_count": 12,
       "first_date": "2026-03-01",
       "last_date": "2026-07-09",

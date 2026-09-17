@@ -6,7 +6,10 @@ import Link from "next/link";
 import { Pencil, Trash2 } from "lucide-react";
 
 import { CollectionItems } from "@/components/collections/CollectionItems";
-import { CollectionMetaLine } from "@/components/collections/CollectionCard";
+import {
+  CollectionMetaLine,
+  CollectionTags,
+} from "@/components/collections/CollectionCard";
 import { CollectionReader } from "@/components/collections/CollectionReader";
 import { useReportContent } from "@/components/report/useReportContent";
 import { AuthorByline } from "@/components/ui/AuthorByline";
@@ -36,8 +39,9 @@ import { renderProof } from "@/lib/proof";
  *
  * The header is the collection itself, the grammar the event page uses for an
  * event: the title, the owner's byline under it with a `Collection` pill saying
- * what kind of page this is, and the meta line the profile card prints beside
- * the mosaic. The mosaic itself is the profile card's picture and nothing else:
+ * what kind of page this is, the meta line the profile card prints beside the
+ * mosaic, and under it the tags the collection's items carry, in the card's own
+ * pills. The mosaic itself is the profile card's picture and nothing else:
  * the page opens on the name of the collection rather than on a band the width
  * of the page.
  *
@@ -165,6 +169,10 @@ function CollectionPageBody() {
             </Pill>
           </span>
           <CollectionMetaLine collection={collection} className="text-xs" />
+          {/* What the collection is about, read off the tags of the events it
+              holds. The card's row, under the meta line where the card puts
+              it, so the page and the card that opens it say the same thing. */}
+          <CollectionTags collection={collection} />
         </div>
       }
       actions={

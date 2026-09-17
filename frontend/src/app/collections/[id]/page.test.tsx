@@ -97,6 +97,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   },
   description_text: "Three days of strikes on the eastern approach.",
   cover: [],
+  tags: [],
   event_count: 5,
   first_date: "2026-03-14",
   last_date: "2026-03-16",
@@ -231,6 +232,24 @@ describe("CollectionPage", () => {
 
     expect(screen.getByText("5 events")).toBeInTheDocument();
     expect(screen.getByText("14 Mar 2026 to 16 Mar 2026")).toBeInTheDocument();
+  });
+
+  it("shows the tags the collection's items carry, under the meta line", async () => {
+    // Derived server-side from the items, so the header states what the
+    // collection is about without the owner writing a single tag.
+    mockReads(
+      collection({
+        tags: [
+          { id: "t1", name: "satellite", category: "capture_source" },
+          { id: "t2", name: "rail", category: "free" },
+        ],
+      }),
+    );
+
+    await renderPage();
+
+    expect(screen.getByText("satellite")).toBeInTheDocument();
+    expect(screen.getByText("rail")).toBeInTheDocument();
   });
 
   it("says one event in the singular", async () => {
