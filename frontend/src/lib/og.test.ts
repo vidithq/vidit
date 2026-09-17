@@ -4,6 +4,7 @@ import {
   isFetchableAvatarUrl,
   isPrivateAddress,
   ogCount,
+  ogMosaicBoxes,
   ogTruncate,
   projectEquirectangular,
 } from "./og";
@@ -66,6 +67,54 @@ describe("ogTruncate", () => {
 describe("ogCount", () => {
   it("separates thousands", () => {
     expect(ogCount(1234567)).toBe("1,234,567");
+  });
+});
+
+describe("ogMosaicBoxes", () => {
+  // The panel the collection card draws: 16:9, with `<CollectionCover>`'s gap.
+  const frame = { width: 480, height: 270, gap: 2 };
+
+  it("gives a lone tile the whole panel", () => {
+    expect(ogMosaicBoxes(1, frame)).toEqual([{ left: 0, top: 0, width: 480, height: 270 }]);
+  });
+
+  it("splits two tiles down the middle, full height", () => {
+    expect(ogMosaicBoxes(2, frame)).toEqual([
+      { left: 0, top: 0, width: 239, height: 270 },
+      { left: 241, top: 0, width: 239, height: 270 },
+    ]);
+  });
+
+  it("puts the earliest of three tall on the left, the next two stacked beside it", () => {
+    const [first, second, third] = ogMosaicBoxes(3, frame);
+    expect(first).toEqual({ left: 0, top: 0, width: 239, height: 270 });
+    expect(second).toEqual({ left: 241, top: 0, width: 239, height: 134 });
+    expect(third).toEqual({ left: 241, top: 136, width: 239, height: 134 });
+  });
+
+  it("fills a 2x2 with four, in reading order", () => {
+    expect(ogMosaicBoxes(4, frame).map((box) => [box.left, box.top])).toEqual([
+      [0, 0],
+      [241, 0],
+      [0, 136],
+      [241, 136],
+    ]);
+  });
+
+  it("draws nothing for a collection with no mosaic", () => {
+    expect(ogMosaicBoxes(0, frame)).toEqual([]);
+  });
+
+  it("keeps a cover longer than the arrangement inside the panel", () => {
+    // The backend caps the cover at four tiles; a fifth would otherwise have no
+    // box to sit in, so the count is clamped rather than trusted.
+    expect(ogMosaicBoxes(9, frame)).toEqual(ogMosaicBoxes(4, frame));
+  });
+
+  it("leaves exactly the gap between neighbouring tiles", () => {
+    const [topLeft, topRight, bottomLeft] = ogMosaicBoxes(4, frame);
+    expect(topRight.left - (topLeft.left + topLeft.width)).toBe(frame.gap);
+    expect(bottomLeft.top - (topLeft.top + topLeft.height)).toBe(frame.gap);
   });
 });
 

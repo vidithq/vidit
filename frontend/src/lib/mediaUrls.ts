@@ -1,8 +1,10 @@
+import type { Media } from "@/types";
+
 /**
  * Resolve display-derivative URLs from a Media row's original `storage_url`.
  *
  * The backend pipeline (`backend/app/services/storage.py`) writes three
- * sibling objects per uploaded image:
+ * sibling objects for a source image:
  *
  *   uploads/<geo>/abc.jpg         ← original (post EXIF-strip)
  *   uploads/<geo>/abc_hero.jpg    ← max-dim 1280 px, JPEG q80
@@ -11,13 +13,24 @@
  * The naming convention is the single source of truth shared between
  * `derivative_key` (backend) and `mediaUrls` here: rename one, rename both.
  *
- * Deriving in the frontend rather than carrying explicit URLs is a beta-stage
- * shortcut: every image Media row gets its derivatives at upload. Once that no
- * longer holds, a follow-up adds `hero_url` / `thumbnail_url` columns and the
- * frontend reads them, with the same helper signature.
+ * Which rows carry those siblings is the second half of that contract, and it
+ * is the `role`, not the `media_type`, that says so. `storage.upload_file` and
+ * the detection path write derivatives for the `source` image they store under
+ * `uploads/` and `detected/`. `storage.upload_proof_image` passes
+ * `produce_derivatives=False`, so a `proof` image under `proof/` has an
+ * original and nothing else: it renders inline in a Tiptap body from the raw
+ * `storage_url`, and two unfetched JPEGs per upload would sit under Object Lock
+ * retention for a year. A `proof` url rewritten to `_thumb` therefore addresses
+ * an object that was never written, which the CDN answers 403 and every card
+ * showing that tile paints as a broken picture.
  *
- * Video Media rows have no derivatives; callers skip this helper for them
- * via `media.media_type` (see `displayUrlsFor`).
+ * Video Media rows have no derivatives either; callers skip this helper for
+ * them via `media.media_type` (see `displayUrlsFor`).
+ *
+ * Deriving in the frontend rather than carrying explicit URLs is a beta-stage
+ * shortcut. Once the rule needs more than the role to state it, a follow-up
+ * adds `hero_url` / `thumbnail_url` columns and the frontend reads them, with
+ * the same helper signature.
  */
 export interface MediaUrlBundle {
   original: string;
@@ -80,14 +93,15 @@ export function posterFrameUrl(src: string): string {
 
 /**
  * Pick the URL for a Media row at the desired render size, accounting for
- * `media_type`. Videos fall back to the original (no first-frame extraction
- * yet). Use in `<img>` / `<video>` `src` instead of raw `storage_url`.
+ * `media_type` and `role`. Videos fall back to the original (no first-frame
+ * extraction yet), and so does a `proof` image, which the pipeline stores
+ * without derivatives. Use in `<img>` / `<video>` `src` instead of raw
+ * `storage_url`.
  */
-export function displayUrlsFor(media: {
-  storage_url: string;
-  media_type: "image" | "video";
-}): MediaUrlBundle {
-  if (media.media_type !== "image") {
+export function displayUrlsFor(
+  media: Pick<Media, "storage_url" | "media_type" | "role">,
+): MediaUrlBundle {
+  if (media.media_type !== "image" || media.role === "proof") {
     return {
       original: media.storage_url,
       hero: media.storage_url,

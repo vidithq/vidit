@@ -12,6 +12,40 @@ vi.mock("next/navigation", () => ({
 const useAuth = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => useAuth() }));
 
+/** The one-paragraph document the editor emits for a line of unmarked text. */
+function textDoc(text: string): Record<string, unknown> {
+  return {
+    type: "doc",
+    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+  };
+}
+
+/** That document read back as text, for the stub's seeded value. */
+function docText(doc: Record<string, unknown> | null | undefined): string {
+  const paragraph = (doc?.content as { content?: { text?: string }[] }[])?.[0];
+  return paragraph?.content?.[0]?.text ?? "";
+}
+// The description is written in the Tiptap proof editor, which boots
+// ProseMirror and reads its content once at construction. What these lock in
+// is what the page does with the document, not how it is typed, so the editor
+// is a textarea that prints the document it was seeded with and emits the
+// one-paragraph document the real editor emits for unmarked text.
+vi.mock("@/components/editor/ProofEditor", () => ({
+  default: ({
+    initialContent,
+    onChange,
+  }: {
+    initialContent?: Record<string, unknown> | null;
+    onChange: (doc: Record<string, unknown>) => void;
+  }) => (
+    <textarea
+      aria-label="Description"
+      defaultValue={docText(initialContent)}
+      onChange={(e) => onChange(textDoc(e.target.value))}
+    />
+  ),
+}));
+
 const useApiResource = vi.fn();
 vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => useApiResource(path),
@@ -24,8 +58,11 @@ const removeEventFromCollection = vi.fn();
 const searchPickableEvents = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
-  updateCollection: (id: string, title: string, description: string) =>
-    updateCollection(id, title, description),
+  updateCollection: (
+    id: string,
+    title: string,
+    description: Record<string, unknown>,
+  ) => updateCollection(id, title, description),
   fetchCollectionSequence: (id: string) => fetchCollectionSequence(id),
   addEventToCollection: (c: string, e: string) => addEventToCollection(c, e),
   removeEventFromCollection: (c: string, e: string) =>
@@ -81,8 +118,15 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   id: "c1",
   owner: { id: "u1", username: "ana", avatar_url: null },
   title: "Kupiansk rail corridor",
-  description: "Three days of strikes on the eastern approach.",
+  description: {
+    type: "doc",
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: "Three days of strikes on the eastern approach." }] },
+    ],
+  },
+  description_text: "Three days of strikes on the eastern approach.",
   cover: [],
+  tags: [],
   event_count: 5,
   first_date: "2026-03-14",
   last_date: "2026-03-16",
@@ -150,9 +194,12 @@ describe("EditCollectionPage", () => {
     expect(screen.getByLabelText("Title")).toHaveValue(
       "Kupiansk rail corridor",
     );
-    expect(screen.getByLabelText("Description")).toHaveValue(
-      "Three days of strikes on the eastern approach.",
-    );
+    // The editor opens seeded with the collection's own document. `find`,
+    // because the form loads it through `next/dynamic`, so the field lands a
+    // tick after the first paint.
+    expect(
+      await screen.findByRole("textbox", { name: "Description" }),
+    ).toHaveValue("Three days of strikes on the eastern approach.");
   });
 
   it("carries no subtitle naming the collection, the Title field says it", async () => {
@@ -193,7 +240,7 @@ describe("EditCollectionPage", () => {
       expect(updateCollection).toHaveBeenCalledWith(
         "c1",
         "Kupiansk rail corridor, March",
-        "Three days of strikes on the eastern approach.",
+        textDoc("Three days of strikes on the eastern approach."),
       ),
     );
     expect(push).toHaveBeenCalledWith("/collections/c1");

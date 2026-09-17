@@ -259,6 +259,38 @@ def sanitize_tiptap_doc(
     return sanitized
 
 
+def sanitize_tiptap_doc_or_raise(
+    doc: Any,
+    *,
+    error: type[Exception],
+    allow_images: bool = True,
+    allow_placeholders: bool = False,
+) -> dict[str, Any]:
+    """Sanitise a document, raising ``error`` where the sanitiser raises ``ValueError``.
+
+    The one home for the step every service takes around
+    :func:`sanitize_tiptap_doc`: a router maps a typed service error to a
+    status by its ``code`` (``routers/_errors.raise_typed_error``), so a
+    ValueError has to become one before it leaves the service. Two callers
+    take it, and both answer 400: ``services/events._sanitize_proof`` with
+    :class:`services.events.InvalidProofError` for an event's proof body, and
+    ``services/collections._checked_description`` with
+    :class:`services.collections.InvalidDescriptionError` for a collection's
+    description.
+
+    The error class is a parameter rather than a name this module imports:
+    each service owns its own error vocabulary, and the sanitiser stays
+    something both can call without either importing the other. The message
+    travels unchanged, so the rule the document broke is what the caller reads.
+    """
+    try:
+        return sanitize_tiptap_doc(
+            doc, allow_images=allow_images, allow_placeholders=allow_placeholders
+        )
+    except ValueError as exc:
+        raise error(str(exc)) from exc
+
+
 def tiptap_doc_from_text(text: str) -> dict[str, Any]:
     """Build a minimal Tiptap proof document from plain text.
 
@@ -278,6 +310,63 @@ def tiptap_doc_from_text(text: str) -> dict[str, Any]:
             for line in paragraphs
         ],
     }
+
+
+def tiptap_doc_text(doc: Any) -> str:
+    """The plain-text projection of a Tiptap document.
+
+    The one home for reading a rich-text body as text. Four surfaces need the
+    same string and must not spell it three ways: the full-text search index
+    (``collections.description_text``, which the GIN index and
+    ``services/search._collection_tsvector`` both read), the two-line clamp a
+    card prints, the share card's description, and the length cap
+    ``services/collections`` measures a description against.
+
+    The rule: concatenate the text of every text node, and start a new line at
+    every block boundary. A paragraph, a heading, a list item and a code block
+    each end their line; a ``hardBreak`` ends one inside its paragraph. Blank
+    lines drop out, every line is stripped, and the lines join
+    with a single ``\\n``, so the result carries no leading, trailing or
+    doubled whitespace. A node with no text of its own (an image, a horizontal
+    rule) contributes nothing.
+
+    ``lib/proof.tsx::tiptapDocText`` mirrors it on the front end; see
+    ``AGENTS.md`` for why the pair has to move together.
+    """
+    lines: list[str] = []
+    current: list[str] = []
+
+    def flush() -> None:
+        line = "".join(current).strip()
+        current.clear()
+        if line:
+            lines.append(line)
+
+    def walk(node: Any) -> None:
+        if not isinstance(node, dict):
+            return
+        node_type = node.get("type")
+        if node_type == "text":
+            text = node.get("text")
+            if isinstance(text, str):
+                current.append(text)
+            return
+        if node_type == "hardBreak":
+            flush()
+            return
+        content = node.get("content")
+        if isinstance(content, list):
+            for child in content:
+                walk(child)
+        # Every block but the root ends its line here. A container whose
+        # children already ended theirs (a list, a blockquote) flushes an empty
+        # buffer, which adds nothing.
+        if node_type != "doc":
+            flush()
+
+    walk(doc)
+    flush()
+    return "\n".join(lines)
 
 
 def _sanitize_node(

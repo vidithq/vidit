@@ -163,6 +163,13 @@ export const REQUESTED_EVENT: EventListItem = {
 /** Id of the collection the collection-page spec opens. */
 export const COLLECTION_ID = "77777777-7777-4777-8777-777777777771";
 
+/** What that collection says it holds. Long enough to run past one line at
+ *  both phone widths, which is what the narrow-column checks measure. The
+ *  fixture carries it as the document the owner wrote and as the plain-text
+ *  projection the card clamps, the pair every read serves. */
+const COLLECTION_DESCRIPTION =
+  "Every strike on the rail corridor between 3 and 5 January 2025, with the damage each one left on the line.";
+
 /**
  * The collection that spec reads, owned by the signed-in user so the owner's
  * controls render and get measured: the header's Edit and Drop controls, the
@@ -182,9 +189,18 @@ export const COLLECTION: Collection = {
     avatar_url: null,
   },
   title: "Kupiansk rail corridor: three days of strikes on the eastern approach",
-  description:
-    "Every strike on the rail corridor between 3 and 5 January 2025, with the damage each one left on the line.",
-  cover: [{ url: MEDIA_URL, media_type: "image" }],
+  description: {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: COLLECTION_DESCRIPTION }],
+      },
+    ],
+  },
+  description_text: COLLECTION_DESCRIPTION,
+  cover: [{ url: MEDIA_URL, media_type: "image", role: "source" }],
+  tags: [],
   event_count: 2,
   first_date: "2025-01-03",
   last_date: "2025-01-04",

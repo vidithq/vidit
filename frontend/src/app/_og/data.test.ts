@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ogAvatarDataUri, ogFetch } from "./data";
+import { ogImageDataUri, ogFetch } from "./data";
 
 const fetchMock = vi.fn();
 
@@ -103,32 +103,32 @@ describe("ogFetch", () => {
   });
 });
 
-describe("ogAvatarDataUri", () => {
+describe("ogImageDataUri", () => {
   it("inlines a decodable image as a data URI", async () => {
     resolveWith(response({ contentType: "image/png", chunks: [new Uint8Array([1, 2, 3])] }));
-    expect(await ogAvatarDataUri("https://cdn.example.com/a.png")).toBe(
+    expect(await ogImageDataUri("https://cdn.example.com/a.png")).toBe(
       "data:image/png;base64,AQID",
     );
   });
 
   it("never opens a connection to a host the URL guard rejects", async () => {
-    expect(await ogAvatarDataUri("https://localhost./x.png")).toBeNull();
-    expect(await ogAvatarDataUri("http://cdn.example.com/a.png")).toBeNull();
-    expect(await ogAvatarDataUri(null)).toBeNull();
+    expect(await ogImageDataUri("https://localhost./x.png")).toBeNull();
+    expect(await ogImageDataUri("http://cdn.example.com/a.png")).toBeNull();
+    expect(await ogImageDataUri(null)).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("connects through the address-guarded dispatcher", async () => {
     resolveWith(response({ contentType: "image/png", chunks: [new Uint8Array([1])] }));
-    await ogAvatarDataUri("https://cdn.example.com/a.png");
+    await ogImageDataUri("https://cdn.example.com/a.png");
     const init = fetchMock.mock.calls[0][1] as { dispatcher?: unknown; redirect?: string };
     expect(init.dispatcher).toBeDefined();
     expect(init.redirect).toBe("error");
   });
 
-  it("falls back to the monogram on a type Satori cannot decode", async () => {
+  it("hands the caller its fallback on a type Satori cannot decode", async () => {
     resolveWith(response({ contentType: "image/webp", chunks: [new Uint8Array([1, 2, 3])] }));
-    expect(await ogAvatarDataUri("https://cdn.example.com/a.webp")).toBeNull();
+    expect(await ogImageDataUri("https://cdn.example.com/a.webp")).toBeNull();
   });
 
   it("refuses a declared length over the ceiling before reading the body", async () => {
@@ -139,7 +139,7 @@ describe("ogAvatarDataUri", () => {
         chunks: [new Uint8Array([1, 2, 3])],
       }),
     );
-    expect(await ogAvatarDataUri("https://cdn.example.com/big.png")).toBeNull();
+    expect(await ogImageDataUri("https://cdn.example.com/big.png")).toBeNull();
     expect(res.cancelled).toBe(false);
   });
 
@@ -156,29 +156,29 @@ describe("ogAvatarDataUri", () => {
         ],
       }),
     );
-    expect(await ogAvatarDataUri("https://cdn.example.com/big.png")).toBeNull();
+    expect(await ogImageDataUri("https://cdn.example.com/big.png")).toBeNull();
     expect(res.cancelled).toBe(true);
   });
 
-  it("falls back to the monogram on an empty body", async () => {
+  it("hands the caller its fallback on an empty body", async () => {
     resolveWith(response({ contentType: "image/png", chunks: [] }));
-    expect(await ogAvatarDataUri("https://cdn.example.com/empty.png")).toBeNull();
+    expect(await ogImageDataUri("https://cdn.example.com/empty.png")).toBeNull();
   });
 
-  it("falls back to the monogram when the host answers a redirect", async () => {
+  it("hands the caller its fallback when the host answers a redirect", async () => {
     // `redirect: "error"` makes the platform reject rather than follow a bounce
     // onto another host.
     fetchMock.mockRejectedValue(new TypeError("unexpected redirect"));
-    expect(await ogAvatarDataUri("https://cdn.example.com/a.png")).toBeNull();
+    expect(await ogImageDataUri("https://cdn.example.com/a.png")).toBeNull();
   });
 
-  it("falls back to the monogram when the host runs out the budget", async () => {
+  it("hands the caller its fallback when the host runs out the budget", async () => {
     fetchMock.mockRejectedValue(new DOMException("The operation was aborted", "TimeoutError"));
-    expect(await ogAvatarDataUri("https://cdn.example.com/slow.png")).toBeNull();
+    expect(await ogImageDataUri("https://cdn.example.com/slow.png")).toBeNull();
   });
 
-  it("falls back to the monogram on a non-2xx", async () => {
+  it("hands the caller its fallback on a non-2xx", async () => {
     resolveWith(response({ status: 403, contentType: "image/png" }));
-    expect(await ogAvatarDataUri("https://cdn.example.com/a.png")).toBeNull();
+    expect(await ogImageDataUri("https://cdn.example.com/a.png")).toBeNull();
   });
 });

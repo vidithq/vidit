@@ -62,7 +62,7 @@ from app.services.evidence_intake import (
 from app.services.permissions import ensure_owner
 from app.services.sanitize import (
     extract_image_srcs,
-    sanitize_tiptap_doc,
+    sanitize_tiptap_doc_or_raise,
 )
 from app.services.storage import sweep_keys
 
@@ -290,14 +290,19 @@ def _optional_point(lat: float | None, lng: float | None, *, field: str):
     return from_shape(Point(lng, lat), srid=4326)
 
 
-def _sanitize_proof(proof_data: dict | None, **kwargs: bool) -> dict | None:
-    """Run the Tiptap sanitiser, mapping its ``ValueError`` to the typed 400."""
+def _sanitize_proof(proof_data: dict | None, *, allow_placeholders: bool = False) -> dict | None:
+    """Sanitise a proof body, ``None`` passing through untouched.
+
+    The absent-proof branch, and nothing else: the mapping from the
+    sanitiser's ``ValueError`` to a typed 400 is
+    :func:`services.sanitize.sanitize_tiptap_doc_or_raise`, which a
+    collection's description takes with its own error class.
+    """
     if proof_data is None:
         return None
-    try:
-        return sanitize_tiptap_doc(proof_data, **kwargs)
-    except ValueError as exc:
-        raise InvalidProofError(str(exc)) from exc
+    return sanitize_tiptap_doc_or_raise(
+        proof_data, error=InvalidProofError, allow_placeholders=allow_placeholders
+    )
 
 
 def _require_submission_floor(tags: list[Tag], conflicts: list[Conflict]) -> None:

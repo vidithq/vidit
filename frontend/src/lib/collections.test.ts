@@ -39,8 +39,20 @@ const COLLECTION: Collection = {
   id: "c1",
   owner: { id: "u1", username: "ana", avatar_url: null },
   title: "Kupiansk rail corridor",
-  description: "Three days of strikes on the eastern approach.",
+  description: {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "Three days of strikes on the eastern approach." },
+        ],
+      },
+    ],
+  },
+  description_text: "Three days of strikes on the eastern approach.",
   cover: [],
+  tags: [],
   event_count: 5,
   first_date: "2026-03-14",
   last_date: "2026-03-16",
@@ -94,8 +106,18 @@ describe("collection paths", () => {
 });
 
 describe("collection writes", () => {
+  /** A description as the write bodies carry it: one paragraph of plain text,
+   *  which is what an analyst who marks nothing up sends. */
+  const doc = (text: string) => ({
+    type: "doc",
+    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+  });
+
   it("opens a collection under a title and a description", async () => {
-    await createCollection("Kupiansk rail corridor", "Three days of strikes.");
+    await createCollection(
+      "Kupiansk rail corridor",
+      doc("Three days of strikes."),
+    );
 
     const [path, options] = lastCall();
     expect(path).toBe("/collections");
@@ -104,13 +126,13 @@ describe("collection writes", () => {
     // fields alone.
     expect(JSON.parse(options.body as string)).toEqual({
       title: "Kupiansk rail corridor",
-      description: "Three days of strikes.",
+      description: doc("Three days of strikes."),
       event_ids: [],
     });
   });
 
   it("opens a collection holding what the picker ticked", async () => {
-    await createCollection("March strikes", "Strikes through March.", [
+    await createCollection("March strikes", doc("Strikes through March."), [
       "e1",
       "e2",
     ]);
@@ -121,7 +143,7 @@ describe("collection writes", () => {
     expect(path).toBe("/collections");
     expect(JSON.parse(options.body as string)).toEqual({
       title: "March strikes",
-      description: "Strikes through March.",
+      description: doc("Strikes through March."),
       event_ids: ["e1", "e2"],
     });
   });
@@ -130,7 +152,7 @@ describe("collection writes", () => {
     await updateCollection(
       "c1",
       "Operation reconstruction",
-      "Every strike of the operation.",
+      doc("Every strike of the operation."),
     );
 
     const [path, options] = lastCall();
@@ -138,7 +160,7 @@ describe("collection writes", () => {
     expect(options.method).toBe("PATCH");
     expect(JSON.parse(options.body as string)).toEqual({
       title: "Operation reconstruction",
-      description: "Every strike of the operation.",
+      description: doc("Every strike of the operation."),
     });
   });
 

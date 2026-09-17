@@ -53,6 +53,72 @@ export function ogCount(value: number): string {
   return value.toLocaleString("en-US");
 }
 
+/** One tile's box inside a mosaic panel, in panel pixels from its top-left. */
+export interface OgMosaicBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** How a mosaic panel is divided: its outer box and the neutral showing between
+ *  tiles. */
+export interface OgMosaicFrame {
+  width: number;
+  height: number;
+  gap: number;
+}
+
+/** The most tiles a mosaic draws, mirroring `services/collections.COVER_TILES`.
+ *  A longer list is cut here so a backend that widens the cover cannot spill
+ *  tiles out of the panel. */
+const MOSAIC_MAX_TILES = 4;
+
+/**
+ * Where each tile of a collection's mosaic sits inside the share card's panel.
+ *
+ * The arrangement is `<CollectionCover>`'s, restated as boxes because Satori
+ * lays out flex and not grid: one tile fills the panel, two split it down the
+ * middle, three put the earliest item tall on the left with the next two
+ * stacked beside it, and four fill a 2x2. The unfurl and the profile card
+ * therefore read as the same picture rather than as two pictures of one
+ * collection.
+ *
+ * The boxes are absolute, so the caller positions each tile rather than
+ * relying on wrapping, and `gap` is the neutral the panel shows between them.
+ */
+export function ogMosaicBoxes(count: number, frame: OgMosaicFrame): OgMosaicBox[] {
+  const tiles = Math.min(Math.max(Math.trunc(count), 0), MOSAIC_MAX_TILES);
+  const { width, height, gap } = frame;
+  if (tiles === 0) return [];
+  if (tiles === 1) return [{ left: 0, top: 0, width, height }];
+
+  const colWidth = (width - gap) / 2;
+  const rowHeight = (height - gap) / 2;
+  const right = colWidth + gap;
+  const bottom = rowHeight + gap;
+
+  if (tiles === 2) {
+    return [
+      { left: 0, top: 0, width: colWidth, height },
+      { left: right, top: 0, width: colWidth, height },
+    ];
+  }
+  if (tiles === 3) {
+    return [
+      { left: 0, top: 0, width: colWidth, height },
+      { left: right, top: 0, width: colWidth, height: rowHeight },
+      { left: right, top: bottom, width: colWidth, height: rowHeight },
+    ];
+  }
+  return [
+    { left: 0, top: 0, width: colWidth, height: rowHeight },
+    { left: right, top: 0, width: colWidth, height: rowHeight },
+    { left: 0, top: bottom, width: colWidth, height: rowHeight },
+    { left: right, top: bottom, width: colWidth, height: rowHeight },
+  ];
+}
+
 // Hostnames that resolve inside a private network rather than on the public
 // internet. Bare names (no dot) cover `localhost` and intranet short names.
 const PRIVATE_HOST_SUFFIXES = [".local", ".internal", ".localhost", ".home.arpa"];

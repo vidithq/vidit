@@ -18,9 +18,10 @@ import type {
  * readings every collection surface prints (the meta line and the item pins).
  *
  * A collection is one analyst's own curated set of `geolocated` and `detected`
- * events, shown on their public profile. The title and a short description are
- * its free-text fields and the items order themselves by when their events
- * happened, so there is nothing else here to write.
+ * events, shown on their public profile. The title and a description written
+ * in the proof editor are its two written fields, and the items order
+ * themselves by when their events happened, so there is nothing else here to
+ * write.
  */
 
 /** How long a collection title may be. Mirrors `models/event.TITLE_MAX_LENGTH`,
@@ -29,20 +30,32 @@ import type {
  *  just typed out. */
 export const COLLECTION_TITLE_MAX_LEN = 255;
 
-/** How long a collection description may be. Mirrors
- *  `schemas/collection.DESCRIPTION_MAX_LENGTH`, which the create and the update
- *  both apply: the field stops at the cap instead of letting the server 422 a
- *  paragraph someone just typed out. The profile bio's figure for the same
- *  class of text, kept as its own constant because the two are separate
- *  concepts. */
+/** How long a collection description may be, counted on the plain-text
+ *  projection of its document (`lib/proof.tsx::tiptapDocText`). Mirrors
+ *  `schemas/collection.DESCRIPTION_MAX_LENGTH`, which `services/collections`
+ *  applies to the same projection on the create and the update: the field stops
+ *  at the cap instead of letting the server refuse a paragraph someone just
+ *  typed out with a 400 `invalid_description`, and counting the
+ *  text rather than the markup is what keeps bolding a word from costing an
+ *  analyst characters. The profile bio's figure for the same class of body,
+ *  kept as its own constant because the two are separate concepts. */
 export const COLLECTION_DESCRIPTION_MAX_LEN = 500;
 
 /** One collection's header, as every read surface renders it. */
 export type Collection = components["schemas"]["CollectionRead"];
 
+/** What a collection says it holds: a Tiptap document, the same shape an
+ *  event's proof body is, minus images. A read carries it beside
+ *  `description_text`, its plain-text projection, so a surface renders the
+ *  document through `renderProof` and reads the projection where it has no
+ *  room for rich text. */
+export type CollectionDescription = Collection["description"];
+
 /** One tile of the mosaic a collection's profile card wears: the url of one
- *  item's media and the kind of file it is. The kind picks the element that can
- *  render it, since most source media are clips. */
+ *  item's media, the kind of file it is, and its role. The kind picks the
+ *  element that can render it, since most source media are clips; the role says
+ *  whether the picture has display derivatives, since a proof image has none
+ *  (`lib/mediaUrls.ts`). */
 export type CollectionCoverTile =
   components["schemas"]["CollectionCoverTile"];
 
@@ -301,7 +314,7 @@ export async function searchPickableEvents(
  */
 export function createCollection(
   title: string,
-  description: string,
+  description: CollectionDescription,
   eventIds: string[] = [],
 ): Promise<Collection> {
   return apiFetch<Collection>("/collections", {
@@ -316,7 +329,7 @@ export function createCollection(
 export function updateCollection(
   id: string,
   title: string,
-  description: string,
+  description: CollectionDescription,
 ): Promise<Collection> {
   return apiFetch<Collection>(`/collections/${encodeURIComponent(id)}`, {
     method: "PATCH",

@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { proofHasImage, renderProof } from "./proof";
+import { proofHasImage, renderProof, tiptapDocText } from "./proof";
 
 const doc = (...content: Record<string, unknown>[]) => ({
   type: "doc",
@@ -301,5 +301,80 @@ describe("proofHasImage", () => {
         doc({ type: "blockquote", content: [image("https://x/y.jpg")] })
       )
     ).toBe(true);
+  });
+});
+
+describe("tiptapDocText", () => {
+  // The projection is the reading the description's counter measures and the
+  // backend caps, so these are the rules `sanitize.tiptap_doc_text` holds.
+
+  it("joins paragraphs with one newline", () => {
+    expect(tiptapDocText(doc(paragraph(text("First.")), paragraph(text("Second."))))).toBe(
+      "First.\nSecond."
+    );
+  });
+
+  it("concatenates the runs of one paragraph, marks and all", () => {
+    expect(
+      tiptapDocText(
+        doc(
+          paragraph(
+            text("Strikes on "),
+            text("Kupiansk", [{ type: "bold" }]),
+            text(" in March.")
+          )
+        )
+      )
+    ).toBe("Strikes on Kupiansk in March.");
+  });
+
+  it("gives each list item its own line", () => {
+    expect(
+      tiptapDocText(
+        doc({
+          type: "bulletList",
+          content: [
+            { type: "listItem", content: [paragraph(text("One"))] },
+            { type: "listItem", content: [paragraph(text("Two"))] },
+          ],
+        })
+      )
+    ).toBe("One\nTwo");
+  });
+
+  it("breaks a line at a heading, a blockquote and a hard break", () => {
+    expect(
+      tiptapDocText(
+        doc(
+          { type: "heading", attrs: { level: 3 }, content: [text("Kupiansk")] },
+          { type: "blockquote", content: [paragraph(text("Quoted."))] },
+          paragraph(text("Before"), { type: "hardBreak" }, text("After"))
+        )
+      )
+    ).toBe("Kupiansk\nQuoted.\nBefore\nAfter");
+  });
+
+  it("drops blank lines and strips the result", () => {
+    expect(
+      tiptapDocText(
+        doc(
+          { type: "paragraph" },
+          paragraph(text("  Spaced  ")),
+          paragraph(text("   ")),
+          { type: "horizontalRule" },
+          paragraph(text("End"))
+        )
+      )
+    ).toBe("Spaced\nEnd");
+  });
+
+  it("reads an empty document, and a missing one, as no text", () => {
+    expect(tiptapDocText(doc())).toBe("");
+    expect(tiptapDocText(null)).toBe("");
+  });
+
+  it("gives an image no text of its own", () => {
+    const image = { type: "image", attrs: { src: "https://x/y.jpg" } };
+    expect(tiptapDocText(doc(image, paragraph(text("Caption"))))).toBe("Caption");
   });
 });

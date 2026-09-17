@@ -50,15 +50,16 @@ export function MediaThumb({
   className,
   isGraphic = false,
 }: {
-  /** Anything carrying a stored url and its kind: an event's `Media` row, or
-   *  one tile of a collection's mosaic, which is one item's media read off the
-   *  collection read. The kind is what picks the element, so a clip plays as a
-   *  clip on every surface that shows this slot. */
-  media?: Pick<Media, "storage_url" | "media_type">;
+  /** Anything carrying a stored url, its kind and its role: an event's `Media`
+   *  row, or one tile of a collection's mosaic, which is one item's media read
+   *  off the collection read. The kind is what picks the element, so a clip
+   *  plays as a clip on every surface that shows this slot; the role is what
+   *  `displayUrlsFor` reads to know whether the picture has derivatives. */
+  media?: Pick<Media, "storage_url" | "media_type" | "role">;
   /** Which image derivative the slot reads: the 400 px `thumbnail` a card row
    *  shows, or the 1280 px `hero` a slot spanning its column needs (a
-   *  collection's mosaic where one tile fills it). Videos have no derivatives
-   *  and ignore it. */
+   *  collection's mosaic where one tile fills it). Videos and proof images have
+   *  no derivatives and ignore it. */
   size?: "thumbnail" | "hero";
   className?: string;
   /** The event's `is_graphic` flag. */

@@ -10,6 +10,8 @@ vi.mock("@tiptap/react", () => ({
   EditorContent: () => null,
 }));
 
+import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
+
 import ProofEditor, { isProofLinkUri, resolveProofDoc } from "./ProofEditor";
 
 describe("ProofEditor", () => {
@@ -20,6 +22,29 @@ describe("ProofEditor", () => {
     const control = screen.getByText("+ Image");
     expect(control).toBeInTheDocument();
     expect(control.querySelector('input[type="file"]')).not.toBeNull();
+  });
+
+  it("drops the image control, and nothing else, under allowImages={false}", () => {
+    // A collection's description is written here and stored with
+    // `allow_images=False`, so offering the control would stage a file the
+    // server drops on arrival. The marks and the list controls stay: one
+    // editor serves both surfaces.
+    render(<ProofEditor onChange={() => {}} allowImages={false} />);
+    expect(screen.queryByText("+ Image")).not.toBeInTheDocument();
+    for (const label of ["B", "I", "H3", "List"]) {
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+    }
+  });
+
+  it("wears the shared invalid outline when the caller flags it", () => {
+    const { container, rerender } = render(<ProofEditor onChange={() => {}} />);
+    const box = container.firstElementChild as HTMLElement;
+    expect(box.className).not.toContain(FORM_INVALID_FIELD);
+
+    rerender(<ProofEditor onChange={() => {}} invalid />);
+    expect(
+      (container.firstElementChild as HTMLElement).className,
+    ).toContain(FORM_INVALID_FIELD);
   });
 });
 

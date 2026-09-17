@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import settings
+from app.services.sanitize import tiptap_doc_from_text, tiptap_doc_text
 from app.services.tweet_ingest.records import TweetRecord
 
 
@@ -105,6 +106,22 @@ def tweet_record(**kw: Any) -> TweetRecord:
     }
     base.update(kw)
     return TweetRecord(**base)
+
+
+def collection_description(text: str = "What this shelf holds.") -> dict[str, Any]:
+    """The two description columns a ``collections`` row carries, from plain text.
+
+    A collection's description is a Tiptap document with a stored plain-text
+    projection beside it, and a test that builds a row through the ORM has to
+    write both. One builder so every such fixture writes a consistent pair:
+    the document ``sanitize.tiptap_doc_from_text`` builds (one paragraph per
+    non-blank line) and the projection ``sanitize.tiptap_doc_text`` reads back
+    off it, which is what the service writes.
+
+    Spread it into the constructor: ``Collection(..., **collection_description("…"))``.
+    """
+    doc = tiptap_doc_from_text(text)
+    return {"description": doc, "description_text": tiptap_doc_text(doc)}
 
 
 def tiny_jpeg(filename: str = "tiny.jpg") -> tuple[str, bytes, str]:

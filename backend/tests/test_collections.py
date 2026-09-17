@@ -4,8 +4,14 @@ A collection is a named set of one analyst's own events. What these lock in:
 
 * ``POST`` / ``PATCH`` / ``DELETE /collections``: an owner opens a collection
   under a title and a required description, writes both together, and drops
-  one, which leaves every event it held alone. A blank or over-long title or
-  description is a 422 on either write, whitespace included.
+  one, which leaves every event it held alone. A blank or over-long title is a
+  422 on either write, whitespace included.
+* The description is a Tiptap document under the proof allowlist minus images:
+  bold, italic and lists round-trip, an image node is dropped, and the blank
+  and the 500-character refusals are both measured on the plain-text
+  projection the read carries as ``description_text``. A document the rules
+  refuse is a 400 carrying ``invalid_description``, the status and the shape
+  an event's unsanitisable proof body answers, on either write.
 * ``POST /collections`` with ``event_ids``: the collection opens holding what
   the create page's picker ticked, duplicate ids collapse to one membership, a
   body past the cap is a 422, and a foreign (403), ineligible (409) or unknown
@@ -29,6 +35,10 @@ A collection is a named set of one analyst's own events. What these lock in:
   order, a graphic item skipped, an image preferred over a clip on an item
   carrying both, and ``media_type`` naming the element that can render each
   tile.
+* The derived tag union: the tags of the events a collection may show, each
+  named once, ordered by category then name, dropping with an item that leaves
+  the collectable set, and identical on the collection read, the search hit and
+  the profile list.
 * A GDPR hard delete of the owner drops the collections and their
   memberships.
 """
@@ -56,13 +66,27 @@ from app.models.event import (
     Event,
 )
 from app.models.media import Media
+from app.models.tag import Tag, event_tags
 from app.models.user import User
 from app.schemas.collection import DESCRIPTION_MAX_LENGTH, MAX_CREATE_EVENTS
 from app.services import collections as collections_service
 from app.services.auth import hash_password
+from app.services.sanitize import tiptap_doc_from_text
+from tests._fixtures import collection_description
 from tests.conftest import login_as
 
 client = TestClient(app)
+
+
+def _doc(text: str) -> dict:
+    """A description as a write body carries it: the Tiptap document for ``text``.
+
+    Most of these tests are about a refusal or a round trip rather than about
+    rich text, so they say the words and let this wrap them in the one
+    paragraph-per-line shape ``sanitize.tiptap_doc_from_text`` builds. The
+    tests that are about the markup write the tree out by hand.
+    """
+    return tiptap_doc_from_text(text)
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
@@ -214,7 +238,7 @@ def _make_collection(
     description: str = "What this shelf holds.",
 ) -> Collection:
     _, collection_ids, _ = cleanup
-    collection = Collection(owner_id=owner.id, title=title, description=description)
+    collection = Collection(owner_id=owner.id, title=title, **collection_description(description))
     db.add(collection)
     db.commit()
     db.refresh(collection)
@@ -252,7 +276,7 @@ def test_create_collection_returns_an_empty_shelf(db, cleanup, owner):
         "/api/v1/collections",
         json={
             "title": "Zaporizhzhia plant",
-            "description": "Strikes and their aftermath at the plant, 2025 to 2026.",
+            "description": _doc("Strikes and their aftermath at the plant, 2025 to 2026."),
         },
         headers=login_as(client, owner),
     )
@@ -260,7 +284,7 @@ def test_create_collection_returns_an_empty_shelf(db, cleanup, owner):
     body = response.json()
     collection_ids.append(uuid.UUID(body["id"]))
     assert body["title"] == "Zaporizhzhia plant"
-    assert body["description"] == "Strikes and their aftermath at the plant, 2025 to 2026."
+    assert body["description_text"] == "Strikes and their aftermath at the plant, 2025 to 2026."
     assert body["owner"]["username"] == owner.username
     assert body["event_count"] == 0
     assert body["first_date"] is None
@@ -269,7 +293,7 @@ def test_create_collection_returns_an_empty_shelf(db, cleanup, owner):
 
 
 def test_create_collection_requires_auth():
-    body = {"title": "Anon", "description": "Nobody's shelf."}
+    body = {"title": "Anon", "description": _doc("Nobody's shelf.")}
     assert client.post("/api/v1/collections", json=body).status_code == 401
 
 
@@ -278,42 +302,172 @@ def test_create_collection_rejects_a_blank_title(owner, title):
     """A title of nothing, spaces included, is a missing title."""
     response = client.post(
         "/api/v1/collections",
-        json={"title": title, "description": "A described shelf with no name."},
+        json={"title": title, "description": _doc("A described shelf with no name.")},
         headers=login_as(client, owner),
     )
     assert response.status_code == 422
 
 
-@pytest.mark.parametrize("description", ["", "   "])
+@pytest.mark.parametrize(
+    "description",
+    [
+        {"type": "doc", "content": []},
+        {"type": "doc", "content": [{"type": "paragraph"}]},
+        {
+            "type": "doc",
+            "content": [{"type": "paragraph", "content": [{"type": "text", "text": "   "}]}],
+        },
+        # A document whose only node carries no text at all: the projection is
+        # empty, so it is a missing description like the three above.
+        {"type": "doc", "content": [{"type": "horizontalRule"}]},
+    ],
+)
 def test_create_collection_rejects_a_blank_description(owner, description):
-    """A description of nothing, spaces included, is a missing description."""
+    """A description whose text reads empty, spaces included, is missing."""
     response = client.post(
         "/api/v1/collections",
         json={"title": "Nameless shelf", "description": description},
         headers=login_as(client, owner),
     )
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "invalid_description"
 
 
 def test_create_collection_rejects_a_description_past_the_cap(owner):
+    """The cap is measured on the projection, so this is one character over."""
     response = client.post(
         "/api/v1/collections",
-        json={"title": "Long-winded", "description": "x" * (DESCRIPTION_MAX_LENGTH + 1)},
+        json={
+            "title": "Long-winded",
+            "description": _doc("x" * (DESCRIPTION_MAX_LENGTH + 1)),
+        },
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["code"] == "invalid_description"
+    assert str(DESCRIPTION_MAX_LENGTH) in detail["message"]
+
+
+def test_create_collection_rejects_an_object_that_is_not_a_document(owner):
+    """A JSON object the sanitiser will not read as a document is refused by
+    the service, which is what turns its refusal into the typed 400."""
+    response = client.post(
+        "/api/v1/collections",
+        json={"title": "Loose node", "description": {"type": "paragraph"}},
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "invalid_description"
+
+
+def test_create_collection_rejects_a_body_that_is_not_an_object(owner):
+    """The old plain-text body is not a document at all: the field takes an
+    object, so this one never reaches the service."""
+    response = client.post(
+        "/api/v1/collections",
+        json={"title": "Plain text", "description": "Strikes on the rail corridor."},
         headers=login_as(client, owner),
     )
     assert response.status_code == 422
 
 
 def test_create_collection_strips_the_description(db, cleanup, owner):
+    """The projection carries no padding, whatever whitespace the runs hold."""
     _, collection_ids, _ = cleanup
     response = client.post(
         "/api/v1/collections",
-        json={"title": "Trimmed", "description": "  Strikes on the rail corridor.  "},
+        json={
+            "title": "Trimmed",
+            "description": _doc("  Strikes on the rail corridor.  "),
+        },
         headers=login_as(client, owner),
     )
     assert response.status_code == 201
     collection_ids.append(uuid.UUID(response.json()["id"]))
-    assert response.json()["description"] == "Strikes on the rail corridor."
+    assert response.json()["description_text"] == "Strikes on the rail corridor."
+
+
+def test_create_collection_keeps_bold_italic_and_a_bullet_list(db, cleanup, owner):
+    """A description is the proof body's allowlist: the marks and the list
+    survive the write, and the projection reads the words they carry."""
+    _, collection_ids, _ = cleanup
+    description = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [
+                    {"type": "text", "text": "Strikes on ", "marks": [{"type": "italic"}]},
+                    {"type": "text", "text": "Kupiansk", "marks": [{"type": "bold"}]},
+                ],
+            },
+            {
+                "type": "bulletList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "Rail corridor"}],
+                            }
+                        ],
+                    },
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "Depot"}],
+                            }
+                        ],
+                    },
+                ],
+            },
+        ],
+    }
+    response = client.post(
+        "/api/v1/collections",
+        json={"title": "Formatted", "description": description},
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 201
+    body = response.json()
+    collection_ids.append(uuid.UUID(body["id"]))
+    assert body["description"] == description
+    assert body["description_text"] == "Strikes on Kupiansk\nRail corridor\nDepot"
+
+
+def test_create_collection_drops_an_image_from_the_description(db, cleanup, owner):
+    """Images are not part of a description: there is no upload path behind
+    one, so the node is dropped and the rest of the document stands."""
+    _, collection_ids, _ = cleanup
+    response = client.post(
+        "/api/v1/collections",
+        json={
+            "title": "No pictures",
+            "description": {
+                "type": "doc",
+                "content": [
+                    {"type": "image", "attrs": {"src": "/media/proof.jpg"}},
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": "Words only."}],
+                    },
+                ],
+            },
+        },
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 201
+    body = response.json()
+    collection_ids.append(uuid.UUID(body["id"]))
+    assert body["description"] == {
+        "type": "doc",
+        "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Words only."}]}],
+    }
+    assert body["description_text"] == "Words only."
 
 
 def _collections_of(db, owner: User) -> int:
@@ -334,7 +488,7 @@ def test_create_collection_opens_it_on_the_picked_events(db, cleanup, owner):
         "/api/v1/collections",
         json={
             "title": "Kupiansk rail corridor",
-            "description": "Three days of strikes on the corridor.",
+            "description": _doc("Three days of strikes on the corridor."),
             "event_ids": [str(first.id), str(second.id)],
         },
         headers=login_as(client, owner),
@@ -366,7 +520,7 @@ def test_create_collection_refuses_a_foreign_event_and_lands_nothing(db, cleanup
         "/api/v1/collections",
         json={
             "title": "Somebody else's work",
-            "description": "A shelf built out of another analyst's rows.",
+            "description": _doc("A shelf built out of another analyst's rows."),
             "event_ids": [str(theirs.id)],
         },
         headers=login_as(client, owner),
@@ -384,7 +538,7 @@ def test_create_collection_refuses_an_ineligible_event_and_lands_nothing(db, cle
         "/api/v1/collections",
         json={
             "title": "Mixed pick",
-            "description": "One row that stands and one that is only an ask.",
+            "description": _doc("One row that stands and one that is only an ask."),
             "event_ids": [str(good.id), str(asked.id)],
         },
         headers=login_as(client, owner),
@@ -403,7 +557,7 @@ def test_create_collection_refuses_an_unknown_event(db, owner):
         "/api/v1/collections",
         json={
             "title": "Phantom",
-            "description": "A shelf pointing at an id no event carries.",
+            "description": _doc("A shelf pointing at an id no event carries."),
             "event_ids": [str(uuid.uuid4())],
         },
         headers=login_as(client, owner),
@@ -419,7 +573,7 @@ def test_create_collection_caps_the_event_ids(db, owner):
         "/api/v1/collections",
         json={
             "title": "Runaway",
-            "description": "More ids than one create may carry.",
+            "description": _doc("More ids than one create may carry."),
             "event_ids": [str(uuid.uuid4()) for _ in range(MAX_CREATE_EVENTS + 1)],
         },
         headers=login_as(client, owner),
@@ -437,7 +591,7 @@ def test_create_collection_collapses_duplicate_event_ids(db, cleanup, owner):
         "/api/v1/collections",
         json={
             "title": "Doubled",
-            "description": "The same row, sent twice.",
+            "description": _doc("The same row, sent twice."),
             "event_ids": [str(event.id), str(event.id)],
         },
         headers=login_as(client, owner),
@@ -463,17 +617,19 @@ def test_update_collection_writes_both_fields_and_is_owner_only(db, cleanup, own
         f"/api/v1/collections/{collection.id}",
         json={
             "title": "Operation reconstruction",
-            "description": "Every strike of the operation, in the order they landed.",
+            "description": _doc("Every strike of the operation, in the order they landed."),
         },
         headers=login_as(client, owner),
     )
     assert mine.status_code == 200
     assert mine.json()["title"] == "Operation reconstruction"
-    assert mine.json()["description"] == "Every strike of the operation, in the order they landed."
+    assert mine.json()["description_text"] == (
+        "Every strike of the operation, in the order they landed."
+    )
 
     theirs = client.patch(
         f"/api/v1/collections/{collection.id}",
-        json={"title": "Hijacked", "description": "Somebody else's words."},
+        json={"title": "Hijacked", "description": _doc("Somebody else's words.")},
         headers=login_as(client, stranger),
     )
     assert theirs.status_code == 403
@@ -481,7 +637,7 @@ def test_update_collection_writes_both_fields_and_is_owner_only(db, cleanup, own
     db.expire_all()
     reloaded = _reload_collection(db, collection.id)
     assert reloaded.title == "Operation reconstruction"
-    assert reloaded.description == "Every strike of the operation, in the order they landed."
+    assert reloaded.description_text == ("Every strike of the operation, in the order they landed.")
 
 
 def test_update_collection_rejects_a_blank_description(db, cleanup, owner):
@@ -490,13 +646,14 @@ def test_update_collection_rejects_a_blank_description(db, cleanup, owner):
 
     response = client.patch(
         f"/api/v1/collections/{collection.id}",
-        json={"title": "Still named", "description": "  "},
+        json={"title": "Still named", "description": _doc("  ")},
         headers=login_as(client, owner),
     )
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "invalid_description"
 
     db.expire_all()
-    assert _reload_collection(db, collection.id).description == "What this shelf holds."
+    assert _reload_collection(db, collection.id).description_text == "What this shelf holds."
 
 
 def test_update_collection_rejects_a_blank_title(db, cleanup, owner):
@@ -506,7 +663,7 @@ def test_update_collection_rejects_a_blank_title(db, cleanup, owner):
 
     response = client.patch(
         f"/api/v1/collections/{collection.id}",
-        json={"title": "   ", "description": "Still described."},
+        json={"title": "   ", "description": _doc("Still described.")},
         headers=login_as(client, owner),
     )
     assert response.status_code == 422
@@ -744,7 +901,7 @@ def test_read_counts_and_date_range_only_showable_items(db, cleanup, owner):
     body = client.get(f"/api/v1/collections/{collection.id}").json()
     # The header a reader lands on: what the collection says it holds, then
     # what it actually holds.
-    assert body["description"] == "What this shelf holds."
+    assert body["description_text"] == "What this shelf holds."
     assert body["event_count"] == 3
     assert body["first_date"] == "2026-03-01"
     assert body["last_date"] == "2026-07-09"
@@ -1165,7 +1322,7 @@ def test_mosaic_of_one_item_is_one_tile(db, cleanup, owner):
     db.commit()
 
     assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"] == [
-        {"url": "https://media.example.com/only.jpg", "media_type": "image"}
+        {"url": "https://media.example.com/only.jpg", "media_type": "image", "role": "source"}
     ]
 
 
@@ -1219,9 +1376,40 @@ def test_a_tile_prefers_an_image_over_a_clip_on_the_same_item(db, cleanup, owner
     db.commit()
 
     assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"] == [
-        {"url": "https://media.example.com/proof.jpg", "media_type": "image"},
-        {"url": "https://media.example.com/clip.mp4", "media_type": "video"},
+        {"url": "https://media.example.com/proof.jpg", "media_type": "image", "role": "proof"},
+        {"url": "https://media.example.com/clip.mp4", "media_type": "video", "role": "source"},
     ]
+
+
+def test_a_tile_off_a_proof_image_says_so(db, cleanup, owner):
+    """An item whose footage is a clip tiles on its proof image, and the tile
+    names the role. Proof images upload without display derivatives
+    (``services/storage.upload_proof_image``), so the role is the only thing
+    telling a client to read the original rather than a ``_thumb`` that was
+    never written, which the object store answers with a 403."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    _add_media(db, event, "footage.mp4", media_type="video")
+    _add_media(db, event, "inline.jpg", role="proof")
+    _add(db, collection, event)
+    db.commit()
+
+    (tile,) = client.get(f"/api/v1/collections/{collection.id}").json()["cover"]
+    assert tile["role"] == "proof"
+    assert tile["url"] == "https://media.example.com/inline.jpg"
+
+
+def test_a_tile_off_source_footage_says_source(db, cleanup, owner):
+    """The counterpart: an item tiling on its own picture carries ``source``,
+    the role whose upload path writes the ``_hero`` / ``_thumb`` siblings."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    _add_media(db, event, "shot.jpg")
+    _add(db, collection, event)
+    db.commit()
+
+    (tile,) = client.get(f"/api/v1/collections/{collection.id}").json()["cover"]
+    assert tile["role"] == "source"
 
 
 def test_mosaic_drops_a_withheld_or_closed_item(db, cleanup, owner):
@@ -1247,6 +1435,141 @@ def test_mosaic_drops_a_withheld_or_closed_item(db, cleanup, owner):
     db.commit()
 
     assert _tile_urls(collection) == ["https://media.example.com/shown.jpg"]
+
+
+# ── The derived tag union ─────────────────────────────────────────────────
+
+
+@pytest.fixture
+def make_tag(db):
+    """A factory for tags, swept with their event associations afterwards.
+
+    Its own fixture rather than a branch of ``cleanup``: ``tags`` is a shared
+    referential keyed on a unique name, so a row a test leaves behind collides
+    with the next run. The sweep clears ``event_tags`` first, because it runs
+    before ``cleanup`` deletes the events those rows hang off.
+    """
+    created: list[uuid.UUID] = []
+
+    def _make(name: str, category: str = "free") -> Tag:
+        tag = Tag(name=f"{name}-{uuid.uuid4().hex[:8]}", category=category)
+        db.add(tag)
+        db.commit()
+        db.refresh(tag)
+        created.append(tag.id)
+        return tag
+
+    yield _make
+
+    if created:
+        db.execute(event_tags.delete().where(event_tags.c.tag_id.in_(created)))
+        db.execute(Tag.__table__.delete().where(Tag.id.in_(created)))
+        db.commit()
+
+
+def _tag_names(payload: dict) -> list[str]:
+    return [tag["name"] for tag in payload["tags"]]
+
+
+def test_tags_are_the_union_of_the_items_tags(db, cleanup, owner, make_tag):
+    """Two items sharing one tag and carrying one more each yield three tags:
+    the shared one is named once, and the list is ordered by category then
+    name so two surfaces print it the same way."""
+    shared = make_tag("shared")
+    only_first = make_tag("alpha")
+    only_second = make_tag("beta")
+    curated = make_tag("drone", category="capture_source")
+
+    collection = _make_collection(db, cleanup, owner=owner)
+    first = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    second = _make_event(db, cleanup, owner=owner, event_date=date(2026, 4, 1))
+    first.tags = [shared, only_first, curated]
+    second.tags = [shared, only_second]
+    _add(db, collection, first)
+    _add(db, collection, second)
+    db.commit()
+
+    body = client.get(f"/api/v1/collections/{collection.id}").json()
+    # ``capture_source`` before ``free``, then by name inside each category.
+    assert _tag_names(body) == [curated.name] + sorted(
+        [shared.name, only_first.name, only_second.name]
+    )
+    assert [tag["category"] for tag in body["tags"]] == [
+        "capture_source",
+        "free",
+        "free",
+        "free",
+    ]
+
+
+def test_an_item_leaving_the_collectable_set_takes_its_tags_with_it(db, cleanup, owner, make_tag):
+    """The union is computed over the same predicate the count is, so closing
+    or withholding an item drops its tags with no write to the membership."""
+    kept = make_tag("kept")
+    closed_only = make_tag("closedonly")
+    hidden_only = make_tag("hiddenonly")
+
+    collection = _make_collection(db, cleanup, owner=owner)
+    standing = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    leaving = _make_event(db, cleanup, owner=owner, event_date=date(2026, 4, 1))
+    withheld = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
+    standing.tags = [kept]
+    leaving.tags = [closed_only]
+    withheld.tags = [hidden_only]
+    for event in (standing, leaving, withheld):
+        _add(db, collection, event)
+    db.commit()
+
+    assert set(_tag_names(client.get(f"/api/v1/collections/{collection.id}").json())) == {
+        kept.name,
+        closed_only.name,
+        hidden_only.name,
+    }
+
+    leaving.status = STATUS_CLOSED
+    leaving.closed_at = datetime.now(UTC)
+    leaving.before_closed_status = STATUS_GEOLOCATED
+    leaving.geolocated_at = None
+    withheld.hidden_at = datetime.now(UTC)
+    db.commit()
+
+    body = client.get(f"/api/v1/collections/{collection.id}").json()
+    assert _tag_names(body) == [kept.name]
+    assert body["event_count"] == 1
+
+
+def test_a_collection_holding_nothing_tagged_has_no_tags(db, cleanup, owner):
+    """An empty collection and one whose items carry no tag both read ``[]``,
+    so a client renders no row rather than a missing field."""
+    empty = _make_collection(db, cleanup, owner=owner, title="Empty")
+    untagged = _make_collection(db, cleanup, owner=owner, title="Untagged")
+    _add(db, untagged, _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1)))
+
+    assert client.get(f"/api/v1/collections/{empty.id}").json()["tags"] == []
+    assert client.get(f"/api/v1/collections/{untagged.id}").json()["tags"] == []
+
+
+def test_every_read_surface_carries_the_same_tags(db, cleanup, owner, make_tag):
+    """One read shape: the collection's own page, the search hit and the
+    profile list are assembled by the same builder, so the tags cannot differ
+    between the card a reader clicks and the page it opens."""
+    curated = make_tag("satellite", category="capture_source")
+    free = make_tag("corridor")
+
+    collection = _make_collection(db, cleanup, owner=owner, title="Shelved")
+    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    event.tags = [curated, free]
+    _add(db, collection, event)
+    db.commit()
+
+    expected = [curated.name, free.name]
+    assert _tag_names(client.get(f"/api/v1/collections/{collection.id}").json()) == expected
+
+    hits = client.get(f"/api/v1/search?type=collection&author={owner.username}").json()
+    assert [_tag_names(hit) for hit in hits["collections"]] == [expected]
+
+    listed = client.get(f"/api/v1/users/{owner.username}/collections").json()
+    assert [_tag_names(item) for item in listed["items"]] == [expected]
 
 
 # ── GDPR hard delete ──────────────────────────────────────────────────────

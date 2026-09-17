@@ -14,6 +14,40 @@ vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => useAuth() }));
 
 // The read behind `?event=`: the page renders the event's own row on the
 // picker's first block, so it reads the event rather than only its id.
+/** The one-paragraph document the editor emits for a line of unmarked text. */
+function textDoc(text: string): Record<string, unknown> {
+  return {
+    type: "doc",
+    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+  };
+}
+
+/** That document read back as text, for the stub's seeded value. */
+function docText(doc: Record<string, unknown> | null | undefined): string {
+  const paragraph = (doc?.content as { content?: { text?: string }[] }[])?.[0];
+  return paragraph?.content?.[0]?.text ?? "";
+}
+// The description is written in the Tiptap proof editor, which boots
+// ProseMirror and reads its content once at construction. What these lock in
+// is what the page does with the document, not how it is typed, so the editor
+// is a textarea that prints the document it was seeded with and emits the
+// one-paragraph document the real editor emits for unmarked text.
+vi.mock("@/components/editor/ProofEditor", () => ({
+  default: ({
+    initialContent,
+    onChange,
+  }: {
+    initialContent?: Record<string, unknown> | null;
+    onChange: (doc: Record<string, unknown>) => void;
+  }) => (
+    <textarea
+      aria-label="Description"
+      defaultValue={docText(initialContent)}
+      onChange={(e) => onChange(textDoc(e.target.value))}
+    />
+  ),
+}));
+
 const useApiResource = vi.fn();
 vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => useApiResource(path),
@@ -23,8 +57,11 @@ const createCollection = vi.fn();
 const searchPickableEvents = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
-  createCollection: (title: string, description: string, ids: string[]) =>
-    createCollection(title, description, ids),
+  createCollection: (
+    title: string,
+    description: Record<string, unknown>,
+    ids: string[],
+  ) => createCollection(title, description, ids),
   searchPickableEvents: (username: string, q: string) =>
     searchPickableEvents(username, q),
 }));
@@ -79,21 +116,31 @@ const created: Collection = {
   id: "c9",
   owner: { id: "u1", username: "ana", avatar_url: null },
   title: "March strikes",
-  description: "Strikes on the corridor through March.",
+  description: {
+    type: "doc",
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: "Strikes on the corridor through March." }] },
+    ],
+  },
+  description_text: "Strikes on the corridor through March.",
   cover: [],
+  tags: [],
   event_count: 0,
   first_date: null,
   last_date: null,
   created_at: "2026-03-21T09:00:00Z",
 };
 
-/** Fill both required fields, which is what unlocks the submit. */
-function fillForm() {
+/** Fill both required fields, which is what unlocks the submit.
+ *
+ *  Awaits the description first: the form loads its editor through
+ *  `next/dynamic`, so the field lands a tick after the first paint. */
+async function fillForm() {
   fireEvent.change(screen.getByLabelText("Title"), {
     target: { value: "March strikes" },
   });
-  fireEvent.change(screen.getByLabelText("Description"), {
-    target: { value: "  Strikes on the corridor through March.  " },
+  fireEvent.change(await screen.findByRole("textbox", { name: "Description" }), {
+    target: { value: "Strikes on the corridor through March." },
   });
 }
 
@@ -159,7 +206,7 @@ describe("NewCollectionPage", () => {
 
   it("opens the collection it created", async () => {
     render(<NewCollectionPage />);
-    fillForm();
+    await fillForm();
     fireEvent.click(screen.getByRole("button", { name: "Create collection" }));
 
     // Both fields travel, trimmed, so the server stores neither padding nor a
@@ -168,7 +215,7 @@ describe("NewCollectionPage", () => {
     await waitFor(() =>
       expect(createCollection).toHaveBeenCalledWith(
         "March strikes",
-        "Strikes on the corridor through March.",
+        textDoc("Strikes on the corridor through March."),
         [],
       ),
     );
@@ -190,7 +237,7 @@ describe("NewCollectionPage", () => {
         name: "Remove Strike on the rail junction from this collection",
       }),
     ).toBeInTheDocument();
-    fillForm();
+    await fillForm();
     fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
 
     // `?event=` puts the event on the picker's first block, so it rides the
@@ -199,18 +246,18 @@ describe("NewCollectionPage", () => {
     await waitFor(() =>
       expect(createCollection).toHaveBeenCalledWith(
         "March strikes",
-        "Strikes on the corridor through March.",
+        textDoc("Strikes on the corridor through March."),
         ["e1"],
       ),
     );
     await waitFor(() => expect(push).toHaveBeenCalledWith("/events/e1"));
   });
 
-  it("opens empty, and an added row is what the create carries", () => {
+  it("opens empty, and an added row is what the create carries", async () => {
     mockBrowse([EVENT]);
 
     render(<NewCollectionPage />);
-    fillForm();
+    await fillForm();
     expect(
       screen.getByText("0 events, ordered by event date, earliest first."),
     ).toBeInTheDocument();
@@ -228,7 +275,7 @@ describe("NewCollectionPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create collection" }));
     expect(createCollection).toHaveBeenCalledWith(
       "March strikes",
-      "Strikes on the corridor through March.",
+      textDoc("Strikes on the corridor through March."),
       ["e1"],
     );
   });
@@ -237,7 +284,7 @@ describe("NewCollectionPage", () => {
     createCollection.mockRejectedValue(new Error("Title already used."));
 
     render(<NewCollectionPage />);
-    fillForm();
+    await fillForm();
     fireEvent.click(screen.getByRole("button", { name: "Create collection" }));
 
     await waitFor(() =>
