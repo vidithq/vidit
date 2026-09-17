@@ -6,6 +6,8 @@ from app.services.sanitize import (
     _MAX_NODES,
     extract_image_srcs,
     sanitize_tiptap_doc,
+    tiptap_doc_from_text,
+    tiptap_doc_text,
 )
 
 
@@ -532,3 +534,117 @@ def test_excessive_node_count_rejected():
     }
     with pytest.raises(ValueError, match="max node count"):
         sanitize_tiptap_doc(doc)
+
+
+# ── tiptap_doc_text: the one plain-text projection ─────────────────────────
+
+
+def test_doc_text_joins_paragraphs_with_one_newline():
+    doc = {
+        "type": "doc",
+        "content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": "First line."}]},
+            {"type": "paragraph", "content": [{"type": "text", "text": "Second line."}]},
+        ],
+    }
+    assert tiptap_doc_text(doc) == "First line.\nSecond line."
+
+
+def test_doc_text_concatenates_the_runs_of_one_paragraph():
+    """Marks carry no text of their own, so a bolded word reads inline."""
+    doc = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [
+                    {"type": "text", "text": "Strikes on "},
+                    {"type": "text", "text": "Kupiansk", "marks": [{"type": "bold"}]},
+                    {"type": "text", "text": " in March."},
+                ],
+            }
+        ],
+    }
+    assert tiptap_doc_text(doc) == "Strikes on Kupiansk in March."
+
+
+def test_doc_text_gives_each_list_item_its_own_line():
+    doc = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "bulletList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {"type": "paragraph", "content": [{"type": "text", "text": "One"}]}
+                        ],
+                    },
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {"type": "paragraph", "content": [{"type": "text", "text": "Two"}]}
+                        ],
+                    },
+                ],
+            }
+        ],
+    }
+    assert tiptap_doc_text(doc) == "One\nTwo"
+
+
+def test_doc_text_breaks_a_line_at_a_heading_blockquote_and_hard_break():
+    """Every block ends its line, and a hard break ends one inside a paragraph."""
+    doc = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "heading",
+                "attrs": {"level": 3},
+                "content": [{"type": "text", "text": "Kupiansk"}],
+            },
+            {
+                "type": "blockquote",
+                "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": "Quoted."}]}
+                ],
+            },
+            {
+                "type": "paragraph",
+                "content": [
+                    {"type": "text", "text": "Before"},
+                    {"type": "hardBreak"},
+                    {"type": "text", "text": "After"},
+                ],
+            },
+        ],
+    }
+    assert tiptap_doc_text(doc) == "Kupiansk\nQuoted.\nBefore\nAfter"
+
+
+def test_doc_text_drops_blank_lines_and_strips_the_result():
+    """An empty paragraph and padded runs leave no whitespace in the reading."""
+    doc = {
+        "type": "doc",
+        "content": [
+            {"type": "paragraph"},
+            {"type": "paragraph", "content": [{"type": "text", "text": "  Spaced  "}]},
+            {"type": "paragraph", "content": [{"type": "text", "text": "   "}]},
+            {"type": "horizontalRule"},
+            {"type": "paragraph", "content": [{"type": "text", "text": "End"}]},
+        ],
+    }
+    assert tiptap_doc_text(doc) == "Spaced\nEnd"
+
+
+def test_doc_text_of_an_empty_doc_is_empty():
+    assert tiptap_doc_text({"type": "doc", "content": []}) == ""
+
+
+def test_doc_text_reverses_doc_from_text():
+    """The migration's shape round-trips: what ``tiptap_doc_from_text`` wraps,
+    ``tiptap_doc_text`` reads back, which is what lets a stored description and
+    its projection describe the same words."""
+    text = "Strikes on the corridor.\nThree days, one rail line."
+    assert tiptap_doc_text(tiptap_doc_from_text(text)) == text

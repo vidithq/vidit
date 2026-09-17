@@ -34,6 +34,7 @@ from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
 from app.services.search import HIGHLIGHT_START, HIGHLIGHT_STOP
+from tests._fixtures import collection_description
 from tests.conftest import login_as
 
 client = TestClient(app)
@@ -536,8 +537,8 @@ def seed_collection(db, caller):
         collection = Collection(
             owner_id=(owner or caller).id,
             title=title,
-            description=description,
             hidden_at=datetime.now(UTC) if hidden else None,
+            **collection_description(description),
         )
         db.add(collection)
         db.flush()
@@ -577,14 +578,37 @@ def test_search_matches_collection_by_title(caller, seed_collection):
     hit = body["collections"][0]
     assert hit["owner"]["username"] == caller.username
     assert hit["event_count"] == 1
-    assert hit["description"] == "What this one holds."
+    assert hit["description_text"] == "What this one holds."
 
 
 def test_search_matches_collection_by_description(caller, seed_collection):
-    """The document is the title and the description, so a word only the
-    description carries finds the collection."""
+    """The document is the title and the description's plain-text projection,
+    so a word only the description carries finds the collection."""
     token = _unique_token()
     collection_id = seed_collection("A plain name", f"Everything about {token}.")
+    response = client.get(f"/api/v1/search?q={token}&type=collection")
+    assert [hit["id"] for hit in response.json()["collections"]] == [str(collection_id)]
+
+
+def test_search_matches_a_word_the_description_only_bolds(db, caller, seed_collection):
+    """The index reads the projection, not the document, so a word carried by
+    a marked run is as findable as any other. Indexing the JSONB itself would
+    put the node names and the braces in the same document as the words."""
+    token = _unique_token()
+    collection_id = seed_collection("A plain name", "Placeholder.")
+    collection = db.query(Collection).filter(Collection.id == collection_id).one()
+    collection.description = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [{"type": "text", "text": token, "marks": [{"type": "bold"}]}],
+            }
+        ],
+    }
+    collection.description_text = token
+    db.commit()
+
     response = client.get(f"/api/v1/search?q={token}&type=collection")
     assert [hit["id"] for hit in response.json()["collections"]] == [str(collection_id)]
 

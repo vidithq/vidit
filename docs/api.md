@@ -1234,7 +1234,7 @@ There is no `/requests` router. A **request** is a `requested` event, a **geoloc
 
 ## Search
 
-Full-text discovery surface across the four result groups. Backed by three Postgres GIN indexes on `to_tsvector('simple', …)` expressions: one over `events.title` and one over `users.username || ' ' || users.bio` (migration `o1j3k5l7m9n1`), one over `collections.title || ' ' || collections.description` (migration `q5s7u9w1y3a5`). One FTS query path serves the single `events` table. The located (`geolocations`) and requested (`requests`) groups run the same `title` index with different `WHERE` clauses (`status IN ('geolocated', 'detected') AND event_coords IS NOT NULL` vs `status = 'requested'`). The `simple` dictionary keeps matching predictable. The response is grouped by entity type.
+Full-text discovery surface across the four result groups. Backed by three Postgres GIN indexes on `to_tsvector('simple', …)` expressions: one over `events.title` and one over `users.username || ' ' || users.bio` (migration `o1j3k5l7m9n1`), one over `collections.title || ' ' || collections.description_text` (migration `s7u9w1y3a5c7`). One FTS query path serves the single `events` table. The located (`geolocations`) and requested (`requests`) groups run the same `title` index with different `WHERE` clauses (`status IN ('geolocated', 'detected') AND event_coords IS NOT NULL` vs `status = 'requested'`). The `simple` dictionary keeps matching predictable. The response is grouped by entity type.
 
 **Out of scope:** searching `source_url`, JSONB-content search (`events.proof`), and per-group infinite scroll.
 
@@ -1250,7 +1250,7 @@ Full-text discovery surface across the four result groups. Backed by three Postg
 
 Any active filter empties the users group: the filters are event predicates, and an unfiltered analyst list next to a filtered event view would read as if the filter applied. The collections group takes the same rule with one exception, `author`: a collection carries an owner, so the filter narrows the group to that analyst's collections instead of emptying it. With an empty `q` and at least one active filter, the API enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight (the profile's "Show more" entry points). Typing then narrows within it. The collections group browses on `author` alone: that is the one filter it reads, so `author` with an empty `q` lists the analyst's collections newest first, and any other active filter empties the group as it does under a typed query. An empty `q` with no filter at all returns empty groups.
 
-**The collections group** matches a query against the collection's title and description as one document, ranked the same way, and each hit is the full [`CollectionRead`](#get-collectionsid) the profile card and the collection page both render (mosaic, `event_count`, date range, owner). It carries no `*_highlight` field: the card prints the collection's own text. A collection appears only where a reader could already see it on a profile, so a withheld collection, one whose owner is soft-deleted, and one holding nothing showable are all absent. The same visibility and non-empty rules hold in browse mode, and `total` is the pre-`LIMIT` count on both paths.
+**The collections group** matches a query against the collection's title and the plain-text projection of its description as one document, ranked the same way, and each hit is the full [`CollectionRead`](#get-collectionsid) the profile card and the collection page both render (mosaic, `event_count`, date range, owner). It carries no `*_highlight` field: the card prints the collection's own text. A collection appears only where a reader could already see it on a profile, so a withheld collection, one whose owner is soft-deleted, and one holding nothing showable are all absent. The same visibility and non-empty rules hold in browse mode, and `total` is the pre-`LIMIT` count on both paths.
 
 **Ranking:** `ts_rank` descending then `created_at` descending as a stable tie-breaker.
 
@@ -1292,7 +1292,8 @@ Any active filter empties the users group: the filters are event predicates, and
       "id": "uuid",
       "owner": { "id": "uuid", "username": "kharkiv_osint" },
       "title": "Kharkiv strikes, spring 2026",
-      "description": "Every strike placed inside the city over March and April.",
+      "description": { "type": "doc", "content": [ … ] },
+      "description_text": "Every strike placed inside the city over March and April.",
       "cover": [{ "url": "…", "media_type": "image" }],
       "event_count": 12,
       "first_date": "2026-03-02",
@@ -1421,7 +1422,13 @@ Ongoing-conflict names and dates derive from Wikipedia's "List of ongoing armed 
 
 ## Collections
 
-A collection is a named, curated set of one analyst's own events, shown on the owner's public profile. One owner, no collaborators. It carries two free-text fields, both required: a title capped at the event title's own 255 characters, and a short plain-text description of what it holds, capped at 500 characters, the profile bio's figure for the same class of text. The items order themselves by when their events happened, so a collection carries no manual order.
+A collection is a named, curated set of one analyst's own events, shown on the owner's public profile. One owner, no collaborators. It carries two written fields, both required: a title capped at the event title's own 255 characters, and a description of what it holds. The items order themselves by when their events happened, so a collection carries no manual order.
+
+**The description is a Tiptap document.** It takes the same JSON shape an event's [`proof`](#post-events) body takes and passes the same sanitizer, under the proof allowlist minus images: paragraphs, headings, blockquotes, bullet and ordered lists, code blocks, horizontal rules and hard breaks, with the `bold`, `italic`, `strike`, `code` and `link` marks. An `image` node is dropped rather than refused, because a description has no upload path behind it. A link `href` is `http(s)` only, as in a proof body.
+
+The 500-character cap is measured on the document's plain-text projection, not on the serialized JSON, so marking a word up costs the writer nothing. The projection concatenates the text of every text node and starts a new line at each block boundary and each hard break, dropping blank lines and stripping the result; `services/sanitize.tiptap_doc_text` is its one home. Every read serves the projection as `description_text` beside the document, for a surface with no room for rich text: a card's two-line clamp, a share card, a search snippet. Full-text search indexes the projection.
+
+A write answers **422** on the description when the body is not a `type: "doc"` object, when the sanitized document's projection is empty (a document of blank paragraphs is a missing description, the way a title of spaces is a missing title), or when that projection runs past 500 characters.
 
 What a collection may hold is one predicate, `services/event_filters.collectable_events`: a visible event (neither soft-deleted nor withheld) in one of the two worked statuses, `geolocated` or `detected`. A `requested` row is an ask rather than an answer, and a `closed` row is one the owner rejected or retracted, so neither is on a curated shelf. The same predicate governs the item list, the item count, the date range, the card mosaic, and the check `PUT /collections/{id}/events/{event_id}` runs, so an event that later closes or is taken down leaves all five at once with no write to the membership table.
 
@@ -1433,12 +1440,24 @@ Open a collection, holding the events you pick.
 ```json
 {
   "title": "Zaporizhzhia plant",
-  "description": "Strikes and their aftermath at the plant, 2025 to 2026.",
+  "description": {
+    "type": "doc",
+    "content": [
+      {
+        "type": "paragraph",
+        "content": [
+          { "type": "text", "text": "Strikes and their aftermath at the plant, " },
+          { "type": "text", "text": "2025 to 2026", "marks": [{ "type": "bold" }] },
+          { "type": "text", "text": "." }
+        ]
+      }
+    ]
+  },
   "event_ids": ["7c9e6679-7425-40de-944b-e07fc1f90ae7"]
 }
 ```
 
-`title` is required, 1 to 255 characters. `description` is required too, 1 to 500 characters. Both are stripped of surrounding whitespace, so a value of spaces is a 422 rather than a stored blank.
+`title` is required, 1 to 255 characters, and is stripped of surrounding whitespace, so a value of spaces is a 422 rather than a stored blank. `description` is required too, as the Tiptap document described [above](#collections): the sanitizer drops what the allowlist does not carry, and the 422 cases are a body that is not a document, an empty projection and a projection over 500 characters.
 
 `event_ids` is optional and defaults to empty, which opens a collection holding nothing. Repeated ids collapse to one membership, and a body carrying more than 500 ids is a 422.
 
@@ -1453,7 +1472,7 @@ Each id goes through the checks [`PUT /collections/{id}/events/{event_id}`](#put
 | 403 | One of `event_ids` belongs to someone else |
 | 404 | `{"code": "event_not_found", …}`: an id no event carries |
 | 409 | `{"code": "event_not_collectable", …}`: an event's state is not one a collection shows |
-| 422 | Title empty or over 255 characters, description empty or over 500 characters, or more than 500 `event_ids` |
+| 422 | Title empty or over 255 characters; description not a document, empty, or over 500 characters of text; or more than 500 `event_ids` |
 
 ---
 
@@ -1510,7 +1529,18 @@ One collection's header: owner, title, description, item count, and the range it
   "id": "uuid",
   "owner": { "id": "uuid", "username": "analyst", "avatar_url": "https://…/avatars/…jpg" },
   "title": "Zaporizhzhia plant",
-  "description": "Strikes and their aftermath at the plant, 2025 to 2026.",
+  "description": {
+    "type": "doc",
+    "content": [
+      {
+        "type": "paragraph",
+        "content": [
+          { "type": "text", "text": "Strikes and their aftermath at the plant, 2025 to 2026." }
+        ]
+      }
+    ]
+  },
+  "description_text": "Strikes and their aftermath at the plant, 2025 to 2026.",
   "cover": [
     { "url": "https://…/uploads/geo/…jpg", "media_type": "image" },
     { "url": "https://…/uploads/geo/…mp4", "media_type": "video" }
@@ -1522,7 +1552,7 @@ One collection's header: owner, title, description, item count, and the range it
 }
 ```
 
-`title` and `description` are what the owner writes about the collection, both required and both plain text: the name of the shelf, and one short paragraph saying what is on it.
+`title` and `description` are what the owner writes about the collection, both required: the name of the shelf as plain text, and the [Tiptap document](#collections) saying what is on it. `description_text` is that document's plain-text projection, served on every read so a surface with no room for rich text reads it instead of flattening the tree itself.
 
 `event_count`, `first_date` and `last_date` are computed per read over the events the collection may show, never stored. `first_date` and `last_date` are the smallest and largest `event_date` among those events, so both are null for an empty collection and for one whose items all lack a date.
 
@@ -1547,11 +1577,21 @@ Write your collection's title and description. Owner only.
 ```json
 {
   "title": "Operation reconstruction",
-  "description": "Every strike of the operation, in the order they landed."
+  "description": {
+    "type": "doc",
+    "content": [
+      {
+        "type": "paragraph",
+        "content": [
+          { "type": "text", "text": "Every strike of the operation, in the order they landed." }
+        ]
+      }
+    ]
+  }
 }
 ```
 
-Both fields ride every edit, under the caps and the whitespace stripping [`POST /collections`](#post-collections) applies, so one request states what the collection is and a renamed collection cannot be left describing the old one.
+Both fields ride every edit, under the caps, the sanitizer and the whitespace stripping [`POST /collections`](#post-collections) applies, so one request states what the collection is and a renamed collection cannot be left describing the old one.
 
 **Response 200:** the updated `CollectionRead`.
 
@@ -1561,7 +1601,7 @@ Both fields ride every edit, under the caps and the whitespace stripping [`POST 
 | 401 | Not authenticated |
 | 403 | Not your collection |
 | 404 | `collection_not_found` |
-| 422 | Title empty or over 255 characters, or description empty or over 500 characters |
+| 422 | Title empty or over 255 characters, or description not a document, empty, or over 500 characters of text |
 
 ---
 

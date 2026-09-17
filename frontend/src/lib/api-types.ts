@@ -2651,7 +2651,9 @@ export interface components {
          */
         CollectionCreate: {
             /** Description */
-            description: string;
+            description: {
+                [key: string]: unknown;
+            };
             /** Event Ids */
             event_ids?: string[];
             /** Title */
@@ -2715,9 +2717,14 @@ export interface components {
          * CollectionRead
          * @description One collection as every read surface renders it.
          *
-         *     ``title`` and ``description`` are the two free-text fields the owner
-         *     writes, both required: the name of the collection and one short paragraph
-         *     saying what it holds.
+         *     ``title`` and ``description`` are the two fields the owner writes, both
+         *     required: the name of the collection, and the Tiptap document saying what
+         *     it holds. ``description_text`` is that document's plain-text projection
+         *     (``services/sanitize.tiptap_doc_text``), the reading a surface with no room
+         *     for rich text takes: the card's two-line clamp, a share card, a snippet.
+         *     Both travel on every read, so a client renders the document where it can
+         *     and reads the projection where it cannot, without flattening the tree
+         *     itself.
          *
          *     ``event_count``, ``first_date`` and ``last_date`` are computed at read
          *     time over the events the collection may show
@@ -2748,7 +2755,11 @@ export interface components {
              */
             created_at: string;
             /** Description */
-            description: string;
+            description: {
+                [key: string]: unknown;
+            };
+            /** Description Text */
+            description_text: string;
             /** Event Count */
             event_count: number;
             /** First Date */
@@ -2773,7 +2784,9 @@ export interface components {
          */
         CollectionUpdate: {
             /** Description */
-            description: string;
+            description: {
+                [key: string]: unknown;
+            };
             /** Title */
             title: string;
         };

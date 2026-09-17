@@ -6,6 +6,10 @@ A collection is a named set of one analyst's own events. What these lock in:
   under a title and a required description, writes both together, and drops
   one, which leaves every event it held alone. A blank or over-long title or
   description is a 422 on either write, whitespace included.
+* The description is a Tiptap document under the proof allowlist minus images:
+  bold, italic and lists round-trip, an image node is dropped, and the blank
+  and the 500-character refusals are both measured on the plain-text
+  projection the read carries as ``description_text``.
 * ``POST /collections`` with ``event_ids``: the collection opens holding what
   the create page's picker ticked, duplicate ids collapse to one membership, a
   body past the cap is a 422, and a foreign (403), ineligible (409) or unknown
@@ -60,9 +64,22 @@ from app.models.user import User
 from app.schemas.collection import DESCRIPTION_MAX_LENGTH, MAX_CREATE_EVENTS
 from app.services import collections as collections_service
 from app.services.auth import hash_password
+from app.services.sanitize import tiptap_doc_from_text
+from tests._fixtures import collection_description
 from tests.conftest import login_as
 
 client = TestClient(app)
+
+
+def _doc(text: str) -> dict:
+    """A description as a write body carries it: the Tiptap document for ``text``.
+
+    Most of these tests are about a refusal or a round trip rather than about
+    rich text, so they say the words and let this wrap them in the one
+    paragraph-per-line shape ``sanitize.tiptap_doc_from_text`` builds. The
+    tests that are about the markup write the tree out by hand.
+    """
+    return tiptap_doc_from_text(text)
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
@@ -214,7 +231,7 @@ def _make_collection(
     description: str = "What this shelf holds.",
 ) -> Collection:
     _, collection_ids, _ = cleanup
-    collection = Collection(owner_id=owner.id, title=title, description=description)
+    collection = Collection(owner_id=owner.id, title=title, **collection_description(description))
     db.add(collection)
     db.commit()
     db.refresh(collection)
@@ -252,7 +269,7 @@ def test_create_collection_returns_an_empty_shelf(db, cleanup, owner):
         "/api/v1/collections",
         json={
             "title": "Zaporizhzhia plant",
-            "description": "Strikes and their aftermath at the plant, 2025 to 2026.",
+            "description": _doc("Strikes and their aftermath at the plant, 2025 to 2026."),
         },
         headers=login_as(client, owner),
     )
@@ -260,7 +277,7 @@ def test_create_collection_returns_an_empty_shelf(db, cleanup, owner):
     body = response.json()
     collection_ids.append(uuid.UUID(body["id"]))
     assert body["title"] == "Zaporizhzhia plant"
-    assert body["description"] == "Strikes and their aftermath at the plant, 2025 to 2026."
+    assert body["description_text"] == "Strikes and their aftermath at the plant, 2025 to 2026."
     assert body["owner"]["username"] == owner.username
     assert body["event_count"] == 0
     assert body["first_date"] is None
@@ -269,7 +286,7 @@ def test_create_collection_returns_an_empty_shelf(db, cleanup, owner):
 
 
 def test_create_collection_requires_auth():
-    body = {"title": "Anon", "description": "Nobody's shelf."}
+    body = {"title": "Anon", "description": _doc("Nobody's shelf.")}
     assert client.post("/api/v1/collections", json=body).status_code == 401
 
 
@@ -278,15 +295,28 @@ def test_create_collection_rejects_a_blank_title(owner, title):
     """A title of nothing, spaces included, is a missing title."""
     response = client.post(
         "/api/v1/collections",
-        json={"title": title, "description": "A described shelf with no name."},
+        json={"title": title, "description": _doc("A described shelf with no name.")},
         headers=login_as(client, owner),
     )
     assert response.status_code == 422
 
 
-@pytest.mark.parametrize("description", ["", "   "])
+@pytest.mark.parametrize(
+    "description",
+    [
+        {"type": "doc", "content": []},
+        {"type": "doc", "content": [{"type": "paragraph"}]},
+        {
+            "type": "doc",
+            "content": [{"type": "paragraph", "content": [{"type": "text", "text": "   "}]}],
+        },
+        # A document whose only node carries no text at all: the projection is
+        # empty, so it is a missing description like the three above.
+        {"type": "doc", "content": [{"type": "horizontalRule"}]},
+    ],
+)
 def test_create_collection_rejects_a_blank_description(owner, description):
-    """A description of nothing, spaces included, is a missing description."""
+    """A description whose text reads empty, spaces included, is missing."""
     response = client.post(
         "/api/v1/collections",
         json={"title": "Nameless shelf", "description": description},
@@ -296,24 +326,124 @@ def test_create_collection_rejects_a_blank_description(owner, description):
 
 
 def test_create_collection_rejects_a_description_past_the_cap(owner):
+    """The cap is measured on the projection, so this is one character over."""
     response = client.post(
         "/api/v1/collections",
-        json={"title": "Long-winded", "description": "x" * (DESCRIPTION_MAX_LENGTH + 1)},
+        json={
+            "title": "Long-winded",
+            "description": _doc("x" * (DESCRIPTION_MAX_LENGTH + 1)),
+        },
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 422
+
+
+def test_create_collection_rejects_a_body_that_is_not_a_document(owner):
+    """The old plain-text body is refused on the field, not stored as text."""
+    response = client.post(
+        "/api/v1/collections",
+        json={"title": "Plain text", "description": "Strikes on the rail corridor."},
         headers=login_as(client, owner),
     )
     assert response.status_code == 422
 
 
 def test_create_collection_strips_the_description(db, cleanup, owner):
+    """The projection carries no padding, whatever whitespace the runs hold."""
     _, collection_ids, _ = cleanup
     response = client.post(
         "/api/v1/collections",
-        json={"title": "Trimmed", "description": "  Strikes on the rail corridor.  "},
+        json={
+            "title": "Trimmed",
+            "description": _doc("  Strikes on the rail corridor.  "),
+        },
         headers=login_as(client, owner),
     )
     assert response.status_code == 201
     collection_ids.append(uuid.UUID(response.json()["id"]))
-    assert response.json()["description"] == "Strikes on the rail corridor."
+    assert response.json()["description_text"] == "Strikes on the rail corridor."
+
+
+def test_create_collection_keeps_bold_italic_and_a_bullet_list(db, cleanup, owner):
+    """A description is the proof body's allowlist: the marks and the list
+    survive the write, and the projection reads the words they carry."""
+    _, collection_ids, _ = cleanup
+    description = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [
+                    {"type": "text", "text": "Strikes on ", "marks": [{"type": "italic"}]},
+                    {"type": "text", "text": "Kupiansk", "marks": [{"type": "bold"}]},
+                ],
+            },
+            {
+                "type": "bulletList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "Rail corridor"}],
+                            }
+                        ],
+                    },
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "Depot"}],
+                            }
+                        ],
+                    },
+                ],
+            },
+        ],
+    }
+    response = client.post(
+        "/api/v1/collections",
+        json={"title": "Formatted", "description": description},
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 201
+    body = response.json()
+    collection_ids.append(uuid.UUID(body["id"]))
+    assert body["description"] == description
+    assert body["description_text"] == "Strikes on Kupiansk\nRail corridor\nDepot"
+
+
+def test_create_collection_drops_an_image_from_the_description(db, cleanup, owner):
+    """Images are not part of a description: there is no upload path behind
+    one, so the node is dropped and the rest of the document stands."""
+    _, collection_ids, _ = cleanup
+    response = client.post(
+        "/api/v1/collections",
+        json={
+            "title": "No pictures",
+            "description": {
+                "type": "doc",
+                "content": [
+                    {"type": "image", "attrs": {"src": "/media/proof.jpg"}},
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": "Words only."}],
+                    },
+                ],
+            },
+        },
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 201
+    body = response.json()
+    collection_ids.append(uuid.UUID(body["id"]))
+    assert body["description"] == {
+        "type": "doc",
+        "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Words only."}]}],
+    }
+    assert body["description_text"] == "Words only."
 
 
 def _collections_of(db, owner: User) -> int:
@@ -334,7 +464,7 @@ def test_create_collection_opens_it_on_the_picked_events(db, cleanup, owner):
         "/api/v1/collections",
         json={
             "title": "Kupiansk rail corridor",
-            "description": "Three days of strikes on the corridor.",
+            "description": _doc("Three days of strikes on the corridor."),
             "event_ids": [str(first.id), str(second.id)],
         },
         headers=login_as(client, owner),
@@ -366,7 +496,7 @@ def test_create_collection_refuses_a_foreign_event_and_lands_nothing(db, cleanup
         "/api/v1/collections",
         json={
             "title": "Somebody else's work",
-            "description": "A shelf built out of another analyst's rows.",
+            "description": _doc("A shelf built out of another analyst's rows."),
             "event_ids": [str(theirs.id)],
         },
         headers=login_as(client, owner),
@@ -384,7 +514,7 @@ def test_create_collection_refuses_an_ineligible_event_and_lands_nothing(db, cle
         "/api/v1/collections",
         json={
             "title": "Mixed pick",
-            "description": "One row that stands and one that is only an ask.",
+            "description": _doc("One row that stands and one that is only an ask."),
             "event_ids": [str(good.id), str(asked.id)],
         },
         headers=login_as(client, owner),
@@ -403,7 +533,7 @@ def test_create_collection_refuses_an_unknown_event(db, owner):
         "/api/v1/collections",
         json={
             "title": "Phantom",
-            "description": "A shelf pointing at an id no event carries.",
+            "description": _doc("A shelf pointing at an id no event carries."),
             "event_ids": [str(uuid.uuid4())],
         },
         headers=login_as(client, owner),
@@ -419,7 +549,7 @@ def test_create_collection_caps_the_event_ids(db, owner):
         "/api/v1/collections",
         json={
             "title": "Runaway",
-            "description": "More ids than one create may carry.",
+            "description": _doc("More ids than one create may carry."),
             "event_ids": [str(uuid.uuid4()) for _ in range(MAX_CREATE_EVENTS + 1)],
         },
         headers=login_as(client, owner),
@@ -437,7 +567,7 @@ def test_create_collection_collapses_duplicate_event_ids(db, cleanup, owner):
         "/api/v1/collections",
         json={
             "title": "Doubled",
-            "description": "The same row, sent twice.",
+            "description": _doc("The same row, sent twice."),
             "event_ids": [str(event.id), str(event.id)],
         },
         headers=login_as(client, owner),
@@ -463,17 +593,19 @@ def test_update_collection_writes_both_fields_and_is_owner_only(db, cleanup, own
         f"/api/v1/collections/{collection.id}",
         json={
             "title": "Operation reconstruction",
-            "description": "Every strike of the operation, in the order they landed.",
+            "description": _doc("Every strike of the operation, in the order they landed."),
         },
         headers=login_as(client, owner),
     )
     assert mine.status_code == 200
     assert mine.json()["title"] == "Operation reconstruction"
-    assert mine.json()["description"] == "Every strike of the operation, in the order they landed."
+    assert mine.json()["description_text"] == (
+        "Every strike of the operation, in the order they landed."
+    )
 
     theirs = client.patch(
         f"/api/v1/collections/{collection.id}",
-        json={"title": "Hijacked", "description": "Somebody else's words."},
+        json={"title": "Hijacked", "description": _doc("Somebody else's words.")},
         headers=login_as(client, stranger),
     )
     assert theirs.status_code == 403
@@ -481,7 +613,7 @@ def test_update_collection_writes_both_fields_and_is_owner_only(db, cleanup, own
     db.expire_all()
     reloaded = _reload_collection(db, collection.id)
     assert reloaded.title == "Operation reconstruction"
-    assert reloaded.description == "Every strike of the operation, in the order they landed."
+    assert reloaded.description_text == ("Every strike of the operation, in the order they landed.")
 
 
 def test_update_collection_rejects_a_blank_description(db, cleanup, owner):
@@ -490,13 +622,13 @@ def test_update_collection_rejects_a_blank_description(db, cleanup, owner):
 
     response = client.patch(
         f"/api/v1/collections/{collection.id}",
-        json={"title": "Still named", "description": "  "},
+        json={"title": "Still named", "description": _doc("  ")},
         headers=login_as(client, owner),
     )
     assert response.status_code == 422
 
     db.expire_all()
-    assert _reload_collection(db, collection.id).description == "What this shelf holds."
+    assert _reload_collection(db, collection.id).description_text == "What this shelf holds."
 
 
 def test_update_collection_rejects_a_blank_title(db, cleanup, owner):
@@ -506,7 +638,7 @@ def test_update_collection_rejects_a_blank_title(db, cleanup, owner):
 
     response = client.patch(
         f"/api/v1/collections/{collection.id}",
-        json={"title": "   ", "description": "Still described."},
+        json={"title": "   ", "description": _doc("Still described.")},
         headers=login_as(client, owner),
     )
     assert response.status_code == 422
@@ -744,7 +876,7 @@ def test_read_counts_and_date_range_only_showable_items(db, cleanup, owner):
     body = client.get(f"/api/v1/collections/{collection.id}").json()
     # The header a reader lands on: what the collection says it holds, then
     # what it actually holds.
-    assert body["description"] == "What this shelf holds."
+    assert body["description_text"] == "What this shelf holds."
     assert body["event_count"] == 3
     assert body["first_date"] == "2026-03-01"
     assert body["last_date"] == "2026-07-09"

@@ -34,7 +34,13 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   id: "c1",
   owner: OWNER,
   title: "Nova Kakhovka dam",
-  description: "The breach and the flooding downstream of it.",
+  description: {
+    type: "doc",
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: "The breach and the flooding downstream of it." }] },
+    ],
+  },
+  description_text: "The breach and the flooding downstream of it.",
   cover: [],
   event_count: 5,
   first_date: "2026-06-06",

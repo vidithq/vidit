@@ -13,6 +13,7 @@ import {
   createCollection,
   NEW_COLLECTION_EVENT_PARAM,
   pickableFromDetail,
+  type CollectionDescription,
 } from "@/lib/collections";
 import type { EventDetail } from "@/types";
 
@@ -71,7 +72,7 @@ function NewCollectionPageBody() {
     // One request: the picked events ride the create, so a refusal on any of
     // them says so on this page rather than landing the reader on a
     // collection holding part of what they picked.
-    (title: string, description: string, eventIds: string[]) =>
+    (title: string, description: CollectionDescription, eventIds: string[]) =>
       createCollection(title, description, eventIds),
     {
       fallback: "Failed to create the collection",

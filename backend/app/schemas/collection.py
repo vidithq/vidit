@@ -1,16 +1,20 @@
 import uuid
 from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.event import TITLE_MAX_LENGTH
 from app.models.media import MediaType
 from app.schemas.user import AuthorRef
+from app.services.sanitize import sanitize_tiptap_doc, tiptap_doc_text
 
-# How long a collection's description may be. The profile bio's figure for the
-# same class of text, a short plain-text blurb, kept as its own constant
-# because the two are separate concepts: one says who an analyst is, the other
-# says what one collection holds.
+# How long a collection's description may be, measured on its plain-text
+# projection (``services/sanitize.tiptap_doc_text``) rather than on the
+# document: the cap is how much a reader wrote, and the markup around it is not
+# something an analyst counts. The profile bio's figure for the same class of
+# body, kept as its own constant because the two are separate concepts: one
+# says who an analyst is, the other says what one collection holds.
 DESCRIPTION_MAX_LENGTH = 500
 
 # How many events one create may put on a collection. The create page's picker
@@ -25,31 +29,57 @@ class CollectionWrite(BaseModel):
 
     Both write bodies take the same pair, so opening a collection and editing
     one cannot drift apart on a cap or on what counts as blank. Both fields
-    are required: a collection carries a name and says what it holds, in the
-    same class of plain text as the profile bio.
+    are required: a collection carries a name, and it says what it holds in a
+    Tiptap document, the same class of body an event's ``proof`` is.
     """
 
     title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH)
-    description: str = Field(min_length=1, max_length=DESCRIPTION_MAX_LENGTH)
+    description: dict[str, Any]
 
-    @field_validator("title", "description")
+    @field_validator("title")
     @classmethod
     def _required_text(cls, v: str) -> str:
         """Strip surrounding whitespace, and refuse what is left empty.
 
         The bio's normalisation (``schemas/user._normalise_optional``) without
-        its empty-to-None branch, which belongs to an optional field: a value
-        of spaces is a missing value, and both fields are required, so it is a
+        its empty-to-None branch, which belongs to an optional field: a title
+        of spaces is a missing title, and the field is required, so it is a
         422 rather than a stored blank.
-
-        One validator over the pair rather than one per field, so a title of
-        spaces and a description of spaces are refused on the same terms, on
-        the create and on the update alike.
         """
         cleaned = v.strip()
         if not cleaned:
             raise ValueError("must not be empty")
         return cleaned
+
+    @field_validator("description")
+    @classmethod
+    def _sanitized_doc(cls, v: dict[str, Any]) -> dict[str, Any]:
+        """Sanitise the document, then judge it on the text it carries.
+
+        Three refusals, all 422 on the field, so the create and the update
+        answer the same way. The document has to pass
+        ``services/sanitize.sanitize_tiptap_doc`` with ``allow_images=False``:
+        a description is prose about a shelf, there is no upload path behind
+        it, and an image node is dropped rather than stored. What survives is
+        flattened with ``services/sanitize.tiptap_doc_text``, and that
+        projection is what the two remaining rules read: it must not be empty,
+        on the same terms a title of spaces is refused, and it must not run
+        past :data:`DESCRIPTION_MAX_LENGTH`.
+
+        Measuring the cap on the projection rather than on the serialised
+        document is what keeps bolding a word from costing an analyst
+        characters they have already typed.
+        """
+        try:
+            doc = sanitize_tiptap_doc(v, allow_images=False)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+        text = tiptap_doc_text(doc)
+        if not text:
+            raise ValueError("must not be empty")
+        if len(text) > DESCRIPTION_MAX_LENGTH:
+            raise ValueError(f"must be at most {DESCRIPTION_MAX_LENGTH} characters")
+        return doc
 
 
 class CollectionCreate(CollectionWrite):
@@ -101,9 +131,14 @@ class CollectionCoverTile(BaseModel):
 class CollectionRead(BaseModel):
     """One collection as every read surface renders it.
 
-    ``title`` and ``description`` are the two free-text fields the owner
-    writes, both required: the name of the collection and one short paragraph
-    saying what it holds.
+    ``title`` and ``description`` are the two fields the owner writes, both
+    required: the name of the collection, and the Tiptap document saying what
+    it holds. ``description_text`` is that document's plain-text projection
+    (``services/sanitize.tiptap_doc_text``), the reading a surface with no room
+    for rich text takes: the card's two-line clamp, a share card, a snippet.
+    Both travel on every read, so a client renders the document where it can
+    and reads the projection where it cannot, without flattening the tree
+    itself.
 
     ``event_count``, ``first_date`` and ``last_date`` are computed at read
     time over the events the collection may show
@@ -129,7 +164,8 @@ class CollectionRead(BaseModel):
     id: uuid.UUID
     owner: AuthorRef
     title: str
-    description: str
+    description: dict[str, Any]
+    description_text: str
     cover: list[CollectionCoverTile]
     event_count: int
     first_date: date | None

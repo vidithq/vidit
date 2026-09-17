@@ -46,6 +46,7 @@ from app.schemas.collection import (
 from app.services.event_filters import collectable_events
 from app.services.pagination import keyset_after
 from app.services.permissions import ensure_owner
+from app.services.sanitize import tiptap_doc_text
 from app.services.thumbnails import pick_thumbnail, thumbnail_media_criteria
 
 
@@ -355,6 +356,7 @@ def build_collection_reads(db: Session, collections: Sequence[Collection]) -> li
                 owner=collection.owner,
                 title=collection.title,
                 description=collection.description,
+                description_text=collection.description_text,
                 cover=tiles.get(collection.id, []),
                 event_count=row_stats.event_count,
                 first_date=row_stats.first_date,
@@ -434,10 +436,17 @@ def create_collection(
     *,
     owner: User,
     title: str,
-    description: str,
+    description: dict[str, Any],
     event_ids: Sequence[uuid.UUID] = (),
 ) -> Collection:
     """Open a collection for ``owner``, named, described, and holding ``event_ids``.
+
+    ``description`` is the sanitised Tiptap document the write schema handed
+    over (``schemas/collection.CollectionWrite``, images already dropped), and
+    its projection is written beside it from :func:`services.sanitize.
+    tiptap_doc_text`, the one flattener. The pair is written together here and
+    in :func:`update_collection_details`, which is what keeps the search index
+    and every text-only surface describing the document that is stored.
 
     The ids are what the create page's picker ticked, empty for a collection
     opened on its two fields alone. They join in the same transaction as the
@@ -447,7 +456,12 @@ def create_collection(
     caps them (``schemas/collection.CollectionCreate``), and the collection is
     new, so there is no membership to check first.
     """
-    collection = Collection(owner_id=owner.id, title=title, description=description)
+    collection = Collection(
+        owner_id=owner.id,
+        title=title,
+        description=description,
+        description_text=tiptap_doc_text(description),
+    )
     db.add(collection)
     try:
         db.flush()
@@ -467,17 +481,21 @@ def create_collection(
 
 
 def update_collection_details(
-    db: Session, *, collection: Collection, user: User, title: str, description: str
+    db: Session, *, collection: Collection, user: User, title: str, description: dict[str, Any]
 ) -> Collection:
     """Write ``collection``'s title and description. 403 for anyone but the owner.
 
     One verb for the pair rather than one per field: they are what the
     collection says about itself, the edit panel carries both, and saving them
     together is what keeps a renamed collection from describing the old one.
+
+    ``description`` arrives sanitised from the write schema, and its projection
+    is rewritten from it here, the same pairing :func:`create_collection` makes.
     """
     ensure_owner(collection, user)
     collection.title = title
     collection.description = description
+    collection.description_text = tiptap_doc_text(description)
     db.commit()
     db.refresh(collection)
     return collection

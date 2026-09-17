@@ -6,6 +6,8 @@ import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 
 import { TAP_STEP } from "@/components/ui/Button";
+import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
+import { cn } from "@/lib/cn";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
 import { PROOF_PLACEHOLDER_PREFIX, safeProofFilename } from "@/lib/proofImages";
 
@@ -45,6 +47,17 @@ interface ProofEditorProps {
   // reads it once at construction — pair with a ``key`` on the parent to
   // re-seed after mount.
   initialContent?: Record<string, unknown> | null;
+  /** Whether the body may carry images. False drops the "+ Image" control and
+   *  the divider before it, for a surface with no upload path behind one: a
+   *  collection's description is written here and stored with
+   *  `sanitize_tiptap_doc(allow_images=False)`, so an image node would be
+   *  dropped at the server anyway. The rest of the toolbar is untouched, so
+   *  one editor serves both surfaces. */
+  allowImages?: boolean;
+  /** Red invalid outline on the editor's own box, the same FORM_INVALID_FIELD
+   *  every field and section card wears, for a caller whose submit refuses
+   *  what the body currently holds. */
+  invalid?: boolean;
 }
 
 // `previewUrl` is the `blob:` URL of a picked "+ Image" file; `emit`'s src
@@ -113,6 +126,11 @@ export function resolveProofDoc(
  * `proof_files[]` on create / geolocate, where the server matches each file to
  * its placeholder by filename and rewrites the src to the stored URL (see
  * `docs/data-model.md` → media → "Upload timing").
+ *
+ * `allowImages={false}` takes that control off the toolbar and leaves the rest
+ * of it alone, for a body stored under the same allowlist minus images: a
+ * collection's description. One editor rather than two, so the marks, the
+ * lists and the link rules stay the same wherever an analyst writes.
  */
 // One shape for every toolbar control, plus the two state paints. The row
 // repeats the same box five times, so it is written once here, and it carries
@@ -126,6 +144,8 @@ export default function ProofEditor({
   onChange,
   onProofFilesChange,
   initialContent,
+  allowImages = true,
+  invalid = false,
 }: ProofEditorProps) {
   // Files staged locally, keyed by blob URL. A ref (not state) so the Tiptap
   // `onUpdate` closure always sees the live map without re-creating the editor.
@@ -196,7 +216,16 @@ export default function ProofEditor({
   if (!editor) return null;
 
   return (
-    <div className="border border-neutral-700 rounded-sm bg-neutral-800">
+    // The field box every other input wears: the same border and fill, the
+    // accent focus border `<Input>`'s default variant takes (through
+    // `focus-within`, since what takes focus here is the ProseMirror surface
+    // inside), and `FORM_INVALID_FIELD` when the caller flags it.
+    <div
+      className={cn(
+        "border border-neutral-700 rounded-sm bg-neutral-800 focus-within:border-orange-500",
+        invalid && FORM_INVALID_FIELD,
+      )}
+    >
       <div className="flex items-center gap-1 px-2 py-1 border-b border-neutral-700 flex-wrap">
         <button
           type="button"
@@ -234,26 +263,30 @@ export default function ProofEditor({
         >
           List
         </button>
-        <div className="w-px h-4 bg-neutral-700 mx-1" />
-        {/* Holds the picked file locally (blob preview + retained File);
-            the upload happens at publish via proof_files[]. */}
-        <label
-          className={`${TOOL} ${TOOL_OFF} cursor-pointer`}
-          title="Add a proof image (uploaded when you publish)"
-        >
-          + Image
-          <input
-            type="file"
-            accept={ACCEPTED_IMAGE_MIME}
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              // Reset so re-picking the same file still fires onChange.
-              e.target.value = "";
-              if (file) pickImage(file);
-            }}
-          />
-        </label>
+        {allowImages && (
+          <>
+            <div className="w-px h-4 bg-neutral-700 mx-1" />
+            {/* Holds the picked file locally (blob preview + retained File);
+                the upload happens at publish via proof_files[]. */}
+            <label
+              className={`${TOOL} ${TOOL_OFF} cursor-pointer`}
+              title="Add a proof image (uploaded when you publish)"
+            >
+              + Image
+              <input
+                type="file"
+                accept={ACCEPTED_IMAGE_MIME}
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  // Reset so re-picking the same file still fires onChange.
+                  e.target.value = "";
+                  if (file) pickImage(file);
+                }}
+              />
+            </label>
+          </>
+        )}
       </div>
 
       <EditorContent editor={editor} />

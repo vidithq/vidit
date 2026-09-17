@@ -1,19 +1,31 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useId, useState } from "react";
 
 import { EventPicker } from "@/components/collections/EventPicker";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CharCounter } from "@/components/ui/CharCounter";
-import { Input, Textarea } from "@/components/ui/Input";
+import { Input } from "@/components/ui/Input";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 import {
   COLLECTION_DESCRIPTION_MAX_LEN,
   COLLECTION_TITLE_MAX_LEN,
+  type CollectionDescription,
   type PickableEvent,
 } from "@/lib/collections";
+import { tiptapDocText } from "@/lib/proof";
+
+// The same dynamic load the submit form's proof panel takes: Tiptap boots
+// ProseMirror, which needs the DOM, so it stays off the server render.
+const ProofEditor = dynamic(() => import("@/components/editor/ProofEditor"), {
+  ssr: false,
+});
+
+/** A description with nothing in it, which is what a create opens on. */
+const EMPTY_DESCRIPTION: CollectionDescription = { type: "doc", content: [] };
 
 /**
  * The one form behind every collection write: what the collection is called,
@@ -35,11 +47,19 @@ import {
  * component owns the state and the submit either way, so the create and edit
  * pages hand it their values and render nothing of the form themselves.
  *
- * The two free-text fields are required, so the submit refuses a blank or
+ * The two written fields are required, so the submit refuses a blank or
  * over-long value on either rather than letting the server answer 422 on text
  * the analyst has already typed. Each carries the shared `remaining / cap`
  * counter (`<CharCounter>`), which turns red exactly when the submit starts
  * refusing.
+ *
+ * **The description is written in the proof editor**, the same `<ProofEditor>`
+ * an event's proof body uses, with `allowImages={false}`: a description carries
+ * bold, italic, lists and links, and no images, because there is no upload path
+ * behind one and the server drops the node. What the form holds and hands back
+ * is the Tiptap document, not a string. Its counter measures the document's
+ * plain-text projection (`tiptapDocText`), the same reading the server caps, so
+ * marking a word up costs the analyst nothing.
  *
  * **The picker renders its own two cards** (`<EventPicker>`), because the set
  * is part of what the analyst is writing: naming a collection and choosing
@@ -51,7 +71,7 @@ import {
  */
 export function CollectionDetailsForm({
   initialTitle = "",
-  initialDescription = "",
+  initialDescription = EMPTY_DESCRIPTION,
   initialEvents = [],
   username,
   hint,
@@ -63,8 +83,9 @@ export function CollectionDetailsForm({
 }: {
   /** Seed for an edit; empty for a create. */
   initialTitle?: string;
-  /** Seed for an edit; empty for a create. */
-  initialDescription?: string;
+  /** The collection's own document on an edit; an empty one for a create. The
+   *  editor reads it once, at construction. */
+  initialDescription?: CollectionDescription;
   /** What the collection holds when the form opens: its current items on an
    *  edit, the one event a `?event=` create carries, none otherwise. */
   initialEvents?: PickableEvent[];
@@ -76,7 +97,11 @@ export function CollectionDetailsForm({
   hint?: string;
   /** The verb: *Create collection*, *Save details*, *Create and add*. */
   submitLabel: string;
-  onSubmit: (title: string, description: string, eventIds: string[]) => void;
+  onSubmit: (
+    title: string,
+    description: CollectionDescription,
+    eventIds: string[],
+  ) => void;
   onCancel: () => void;
   /** The caller's write is in flight: both controls refuse the click. */
   busy?: boolean;
@@ -101,11 +126,16 @@ export function CollectionDetailsForm({
   const removeEvent = (eventId: string) =>
     setEvents((current) => current.filter((held) => held.id !== eventId));
 
+  // The cap and the blank test both read the document's plain-text projection,
+  // the reading `schemas/collection` measures server-side, so the counter, the
+  // disabled submit and the 422 all agree on the same number.
+  const descriptionText = tiptapDocText(description);
   const titleOver = title.length > COLLECTION_TITLE_MAX_LEN;
-  const descriptionOver = description.length > COLLECTION_DESCRIPTION_MAX_LEN;
+  const descriptionOver =
+    descriptionText.length > COLLECTION_DESCRIPTION_MAX_LEN;
   const ready =
     title.trim().length > 0 &&
-    description.trim().length > 0 &&
+    descriptionText.length > 0 &&
     !titleOver &&
     !descriptionOver;
 
@@ -117,7 +147,7 @@ export function CollectionDetailsForm({
         if (!ready || busy) return;
         onSubmit(
           title.trim(),
-          description.trim(),
+          description,
           events.map((event) => event.id),
         );
       }}
@@ -143,22 +173,25 @@ export function CollectionDetailsForm({
 
         <div className="space-y-1.5">
           <span className="flex items-center justify-between gap-2">
-            <label htmlFor={descriptionId} className={FORM_LABEL}>
+            {/* The editor's typing surface is a ProseMirror div rather than a
+                form control, so the label names it through `htmlFor` /
+                `aria-labelledby` on the wrapper instead of wrapping it. */}
+            <span id={descriptionId} className={FORM_LABEL}>
               Description
-            </label>
+            </span>
             <CharCounter
-              length={description.length}
+              length={descriptionText.length}
               max={COLLECTION_DESCRIPTION_MAX_LEN}
             />
           </span>
-          <Textarea
-            id={descriptionId}
-            value={description}
-            invalid={descriptionOver}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="What this collection holds: the place, the period, the kind of work."
-            className="min-h-[72px] resize-y"
-          />
+          <div role="group" aria-labelledby={descriptionId}>
+            <ProofEditor
+              initialContent={initialDescription}
+              onChange={setDescription}
+              allowImages={false}
+              invalid={descriptionOver}
+            />
+          </div>
           {hint && (
             <span className="block text-xs text-neutral-500">{hint}</span>
           )}

@@ -96,19 +96,22 @@ def _geo_tsvector():
 
 
 def _collection_tsvector():
-    """``to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(description, ''))``.
+    """``to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(description_text, ''))``.
 
-    The collection's two free-text fields as one document, so a query matches
-    the name of a collection or what it says it holds. Built from ORM ``func``
-    calls for the reason :func:`_geo_tsvector` is, and expression-tree-equal to
-    the ``ix_collections_search_fts`` expression in migration ``q5s7u9w1y3a5``:
-    Postgres concatenates left to right, so the parenthesising here is the
-    parsing there.
+    The collection's title and the plain-text projection of its description as
+    one document, so a query matches the name of a collection or what it says
+    it holds. The projection rather than the description itself: the
+    description is a Tiptap document in ``JSONB``, and a ``to_tsvector`` over
+    it would index node names and punctuation instead of the words an analyst
+    wrote. Built from ORM ``func`` calls for the reason :func:`_geo_tsvector`
+    is, and expression-tree-equal to the ``ix_collections_search_fts``
+    expression in migration ``s7u9w1y3a5c7``: Postgres concatenates left to
+    right, so the parenthesising here is the parsing there.
     """
     document = (
         func.coalesce(Collection.title, literal_column("''"))
         .op("||")(literal_column("' '"))
-        .op("||")(func.coalesce(Collection.description, literal_column("''")))
+        .op("||")(func.coalesce(Collection.description_text, literal_column("''")))
     )
     return func.to_tsvector(_TS_CONFIG, document)
 
@@ -305,7 +308,8 @@ def search_collections(
 ) -> tuple[list[CollectionRead], int]:
     """Top-N collections matching ``query`` + the pre-LIMIT total.
 
-    The FTS runs over the title and the description as one document
+    The FTS runs over the title and the description's plain-text projection as
+    one document
     (:func:`_collection_tsvector`), ranked by ``ts_rank`` with ``created_at``
     descending as the tie-break, the ranking the event and user groups take.
 

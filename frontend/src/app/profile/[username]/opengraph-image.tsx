@@ -10,7 +10,7 @@ import {
   ogFailedReadResponse,
   ogImageResponse,
 } from "../../_og/card";
-import { ogAvatarDataUri, ogFetch } from "../../_og/data";
+import { ogImageDataUri, ogFetch } from "../../_og/data";
 
 // `og:image` for `/profile/{username}`: the analyst's portfolio as a share
 // card. Reads the same two public payloads the page itself renders from, in
@@ -120,7 +120,7 @@ export default async function ProfileOpenGraphImage({
   // The avatar is the one leg that cannot be parallelised: its URL arrives with
   // the profile. It is budgeted tighter than the payload reads for that reason,
   // and a miss costs the monogram, not the card.
-  const avatar = await ogAvatarDataUri(profile.avatar_url);
+  const avatar = await ogImageDataUri(profile.avatar_url);
 
   // The card leads with the analyst's published geolocations, under the page's
   // own label for that number: `Geolocated`, the status vocabulary the

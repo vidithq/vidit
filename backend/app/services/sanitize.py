@@ -280,6 +280,63 @@ def tiptap_doc_from_text(text: str) -> dict[str, Any]:
     }
 
 
+def tiptap_doc_text(doc: Any) -> str:
+    """The plain-text projection of a Tiptap document.
+
+    The one home for reading a rich-text body as text. Four surfaces need the
+    same string and must not spell it three ways: the full-text search index
+    (``collections.description_text``, which the GIN index and
+    ``services/search._collection_tsvector`` both read), the two-line clamp a
+    card prints, the share card's description, and the length cap the write
+    schemas measure.
+
+    The rule: concatenate the text of every text node, and start a new line at
+    every block boundary. A paragraph, a heading, a list item and a code block
+    each end their line; a ``hardBreak`` ends one inside its paragraph. Blank
+    lines drop out, every line is stripped, and the lines join
+    with a single ``\\n``, so the result carries no leading, trailing or
+    doubled whitespace. A node with no text of its own (an image, a horizontal
+    rule) contributes nothing.
+
+    ``lib/proof.tsx::tiptapDocText`` mirrors it on the front end; see
+    ``AGENTS.md`` for why the pair has to move together.
+    """
+    lines: list[str] = []
+    current: list[str] = []
+
+    def flush() -> None:
+        line = "".join(current).strip()
+        current.clear()
+        if line:
+            lines.append(line)
+
+    def walk(node: Any) -> None:
+        if not isinstance(node, dict):
+            return
+        node_type = node.get("type")
+        if node_type == "text":
+            text = node.get("text")
+            if isinstance(text, str):
+                current.append(text)
+            return
+        if node_type == "hardBreak":
+            flush()
+            return
+        content = node.get("content")
+        if isinstance(content, list):
+            for child in content:
+                walk(child)
+        # Every block but the root ends its line here. A container whose
+        # children already ended theirs (a list, a blockquote) flushes an empty
+        # buffer, which adds nothing.
+        if node_type != "doc":
+            flush()
+
+    walk(doc)
+    flush()
+    return "\n".join(lines)
+
+
 def _sanitize_node(
     node: Any, *, depth: int, counter: list[int], allow_images: bool, allow_placeholders: bool
 ) -> dict[str, Any] | None:

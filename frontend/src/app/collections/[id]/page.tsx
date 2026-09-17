@@ -29,6 +29,7 @@ import {
   readerStep,
   type Collection,
 } from "@/lib/collections";
+import { renderProof } from "@/lib/proof";
 
 /**
  * One collection: what it is, where its items are, and what they are.
@@ -42,9 +43,11 @@ import {
  *
  * Then three sections, each a `Card` under its own eyebrow. **Description** is
  * what the owner says the collection holds, at reading size and whole, where
- * the card clamps it to two lines; it is a section rather than a header line
- * because a description runs to 500 characters and the header is the identity
- * of the page, not its content. **Coverage** is the player: the items on the
+ * the card clamps its plain-text projection to two lines; it is a section
+ * rather than a header line because a description runs to 500 characters of
+ * text and the header is the identity of the page, not its content. The owner
+ * wrote it in the proof editor, so it renders through `renderProof`, the
+ * reader an event's proof body takes. **Coverage** is the player: the items on the
  * map with the current one lit, and that item's event in the map page's own
  * panel beside it. **Events** is the chronological list, where the row the
  * player stands on is lit and a click on a row moves the player to it.
@@ -219,12 +222,13 @@ function CollectionPageBody() {
 
       <Card as="section">
         <SectionEyebrow title="Description" margin="none" />
-        {/* `whitespace-pre-line` keeps the paragraph breaks the owner typed;
-            the text is plain, so nothing else of what they wrote is
-            rendered. */}
-        <p className="whitespace-pre-line text-sm text-neutral-300">
-          {collection.description}
-        </p>
+        {/* The owner wrote it in the proof editor, so it is read back through
+            the proof renderer: the same marks, lists and links an event's
+            proof body renders. A description carries no images, so nothing
+            here needs the graphic gate `renderProof` takes for an event. */}
+        <div className="text-sm text-neutral-300">
+          {renderProof(collection.description)}
+        </div>
       </Card>
 
       {/* A collection with nothing on it has nothing to step through, and the

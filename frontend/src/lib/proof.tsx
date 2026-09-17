@@ -242,6 +242,53 @@ export function renderProof(
   return null;
 }
 
+/**
+ * The plain-text projection of a Tiptap document.
+ *
+ * Mirrors backend `sanitize.tiptap_doc_text`, the one home of the projection
+ * server-side (it fills `collections.description_text`, which the search index
+ * reads, and it is what the write schemas measure the 500-character cap on).
+ * The rule is the same on both sides: concatenate the text of every text node,
+ * start a new line at every block boundary and at a `hardBreak`, drop blank
+ * lines, strip each line, join with a single `\n`. A node carrying no text of
+ * its own (an image, a horizontal rule) contributes nothing.
+ *
+ * The collection description's counter measures this string, so the two
+ * flatteners have to agree: a front end that counts differently either lets
+ * the analyst submit a body the server answers 422 on, or refuses one the
+ * server would have taken.
+ */
+export function tiptapDocText(doc: Record<string, unknown> | null): string {
+  if (!doc) return "";
+  const lines: string[] = [];
+  let current = "";
+
+  const flush = (): void => {
+    const line = current.trim();
+    current = "";
+    if (line) lines.push(line);
+  };
+
+  const walk = (node: TiptapNode): void => {
+    if (node.type === "text") {
+      if (typeof node.text === "string") current += node.text;
+      return;
+    }
+    if (node.type === "hardBreak") {
+      flush();
+      return;
+    }
+    node.content?.forEach(walk);
+    // Every block but the root ends its line here. A container whose children
+    // already ended theirs (a list, a blockquote) flushes nothing.
+    if (node.type !== "doc") flush();
+  };
+
+  walk(doc as TiptapNode);
+  flush();
+  return lines.join("\n");
+}
+
 /** Every image `src` the proof document carries, in document order.
  *
  *  Mirrors `sanitize.extract_image_srcs`, the collection the server reaches its

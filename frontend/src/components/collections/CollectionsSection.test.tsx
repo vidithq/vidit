@@ -14,7 +14,13 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   id: "c1",
   owner: { id: "u1", username: "ana", avatar_url: null },
   title: "Kupiansk rail corridor",
-  description: "Three days of strikes on the eastern approach.",
+  description: {
+    type: "doc",
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: "Three days of strikes on the eastern approach." }] },
+    ],
+  },
+  description_text: "Three days of strikes on the eastern approach.",
   cover: [],
   event_count: 5,
   first_date: "2026-03-14",

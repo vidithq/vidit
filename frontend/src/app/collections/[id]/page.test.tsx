@@ -84,7 +84,18 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   id: "c1",
   owner: OWNER,
   title: "Kupiansk rail corridor",
-  description: "Three days of strikes on the eastern approach.",
+  description: {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "Three days of strikes on the eastern approach." },
+        ],
+      },
+    ],
+  },
+  description_text: "Three days of strikes on the eastern approach.",
   cover: [],
   event_count: 5,
   first_date: "2026-03-14",
@@ -171,21 +182,48 @@ describe("CollectionPage", () => {
     expect(screen.getByText("Collection")).toBeInTheDocument();
   });
 
-  it("prints the description whole, in its own Description card", async () => {
+  it("prints the description whole, through the proof renderer", async () => {
     mockReads(
       collection({
-        description: "Three days of strikes.\nThe eastern approach.",
+        description: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                { type: "text", text: "Three days of " },
+                { type: "text", text: "strikes", marks: [{ type: "bold" }] },
+                { type: "text", text: "." },
+              ],
+            },
+            {
+              type: "bulletList",
+              content: [
+                {
+                  type: "listItem",
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "The eastern approach." }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       }),
     );
 
     await renderPage();
 
     expect(screen.getByText("Description")).toBeInTheDocument();
-    // One node, so the paragraph breaks the owner typed are kept rather than
-    // collapsed into a run of text.
+    // The owner wrote it in the proof editor, so the marks and the list it
+    // carries are painted rather than flattened into a run of text.
+    expect(screen.getByText("strikes").tagName).toBe("STRONG");
     expect(
-      screen.getByText("Three days of strikes. The eastern approach."),
-    ).toBeInTheDocument();
+      screen.getByText("The eastern approach.").closest("li"),
+    ).not.toBeNull();
   });
 
   it("counts the items and names the span they cover", async () => {

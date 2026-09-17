@@ -10,9 +10,9 @@ import {
 } from "@/lib/collections";
 
 /**
- * One collection on the profile's grid: the mosaic, the title, the description
- * clamped to two lines, and the meta line the collection's own page prints
- * under its heading.
+ * One collection on the profile's grid: the mosaic, the title, the
+ * description's plain-text projection clamped to two lines, and the meta line
+ * the collection's own page prints under its heading.
  *
  * The catalogue click model, the one every row on the site uses: the whole card
  * is a stretched link to the collection, and nothing inside it competes for the
@@ -55,9 +55,11 @@ export function CollectionCard({
         </h3>
         {/* What the collection says it holds, clamped to two lines: a card is
             one row of a grid, and the collection's own page carries the
-            description whole. */}
+            description whole, marks and lists included. The card reads the
+            plain-text projection the server stores beside the document, since
+            two lines of a grid row have no room for rich text. */}
         <p className="line-clamp-2 text-xs text-neutral-400">
-          {collection.description}
+          {collection.description_text}
         </p>
         <CollectionMetaLine collection={collection} owner={showOwner} />
       </div>

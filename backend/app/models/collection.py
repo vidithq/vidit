@@ -2,6 +2,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -16,12 +17,12 @@ class Collection(Base):
     ``services/collections.add_event``, not in a SQL constraint, because it
     spans two tables). Two free-text fields carry what the collection is: the
     title, capped at the event title's own ``TITLE_MAX_LENGTH`` so one cap
-    governs both, and a required short ``description`` saying what the
-    collection holds, the same class of text as the profile bio and capped by
-    ``schemas/collection.DESCRIPTION_MAX_LENGTH``. The items order themselves
-    by when the events happened, so a collection is still a set of facts
-    rather than a narrative: there is no manual position, no denormalized
-    count and no version history.
+    governs both, and a required ``description`` saying what the collection
+    holds, written as a Tiptap document the way an event's ``proof`` is and
+    capped by ``schemas/collection.DESCRIPTION_MAX_LENGTH`` on its text. The
+    items order themselves by when the events happened, so a collection is
+    still a set of facts rather than a narrative: there is no manual position,
+    no denormalized count and no version history.
 
     ``owner_id`` carries ``ON DELETE CASCADE``, unlike ``Event.owner_id``: a
     collection is one analyst's own shelf and nothing outlives their account,
@@ -36,10 +37,23 @@ class Collection(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH), nullable=False)
-    # What the collection holds, in one short paragraph. ``Text`` with no width
-    # and the cap in the API layer, the shape ``User.bio`` takes, so moving the
-    # cap costs no migration.
-    description: Mapped[str] = mapped_column(Text, nullable=False)
+    # What the collection holds, as a Tiptap document. NOT NULL: every
+    # collection says what it holds. The empty-doc default catches ORM
+    # constructions that omit it; the write paths pass a sanitised doc. The
+    # shape ``Event.proof`` takes, minus images, which the write schemas drop.
+    # Inlined here (a fresh dict per row) rather than importing a constant from
+    # services, which the models layer must not depend on.
+    description = mapped_column(
+        JSONB, nullable=False, default=lambda: {"type": "doc", "content": []}
+    )
+    # The plain-text projection of ``description``, written beside it on every
+    # write (``services/collections``) from the one flattener,
+    # ``services/sanitize.tiptap_doc_text``. Stored rather than derived because
+    # the collections search index is a GIN over it and a ``to_tsvector`` over
+    # the document would index node names and punctuation. ``Text`` with no
+    # width: the 500-character cap is the API layer's, on the projection, so
+    # moving it costs no migration.
+    description_text: Mapped[str] = mapped_column(Text, nullable=False)
     # Takedown: NULL = visible, timestamp = withheld from every read but an
     # admin's, the same axis ``Event.hidden_at`` carries and reversible the
     # same way.

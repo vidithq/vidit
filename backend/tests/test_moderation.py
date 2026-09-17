@@ -26,6 +26,7 @@ from app.models.content_report import ContentReport
 from app.models.event import Event
 from app.models.user import User
 from app.services.auth import hash_password
+from tests._fixtures import collection_description
 from tests.conftest import login_as
 
 client = TestClient(app)
@@ -111,7 +112,7 @@ def collection(db, regular_user):
     row = Collection(
         owner_id=regular_user.id,
         title=f"Shelf {uuid.uuid4().hex[:8]}",
-        description="What this shelf holds.",
+        **collection_description(),
     )
     db.add(row)
     db.commit()
