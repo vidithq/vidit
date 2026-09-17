@@ -32,9 +32,10 @@ export const COLLECTION_TITLE_MAX_LEN = 255;
 
 /** How long a collection description may be, counted on the plain-text
  *  projection of its document (`lib/proof.tsx::tiptapDocText`). Mirrors
- *  `schemas/collection.DESCRIPTION_MAX_LENGTH`, which the create and the update
- *  both apply to the same projection: the field stops at the cap instead of
- *  letting the server 422 a paragraph someone just typed out, and counting the
+ *  `schemas/collection.DESCRIPTION_MAX_LENGTH`, which `services/collections`
+ *  applies to the same projection on the create and the update: the field stops
+ *  at the cap instead of letting the server refuse a paragraph someone just
+ *  typed out with a 400 `invalid_description`, and counting the
  *  text rather than the markup is what keeps bolding a word from costing an
  *  analyst characters. The profile bio's figure for the same class of body,
  *  kept as its own constant because the two are separate concepts. */

@@ -713,6 +713,8 @@ export interface paths {
          * @description Write your collection's title and description. Owner only; 403 for anyone else.
          *
          *     Both fields travel together, so one request states what the collection is.
+         *     A description the rules refuse is a 400 (``invalid_description``), the
+         *     status the create answers.
          */
         patch: operations["update_collection_api_v1_collections__collection_id__patch"];
         trace?: never;

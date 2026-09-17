@@ -8,7 +8,6 @@ from app.models.event import TITLE_MAX_LENGTH
 from app.models.media import MediaRole, MediaType
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
-from app.services.sanitize import sanitize_tiptap_doc, tiptap_doc_text
 
 # How long a collection's description may be, measured on its plain-text
 # projection (``services/sanitize.tiptap_doc_text``) rather than on the
@@ -16,6 +15,7 @@ from app.services.sanitize import sanitize_tiptap_doc, tiptap_doc_text
 # something an analyst counts. The profile bio's figure for the same class of
 # body, kept as its own constant because the two are separate concepts: one
 # says who an analyst is, the other says what one collection holds.
+# ``services/collections`` is what measures a document against it.
 DESCRIPTION_MAX_LENGTH = 500
 
 # How many events one create may put on a collection. The create page's picker
@@ -32,6 +32,12 @@ class CollectionWrite(BaseModel):
     one cannot drift apart on a cap or on what counts as blank. Both fields
     are required: a collection carries a name, and it says what it holds in a
     Tiptap document, the same class of body an event's ``proof`` is.
+
+    ``description`` is taken raw, as a JSON object. What the document may
+    carry, and what counts as blank or over-long, are rules
+    ``services/collections`` holds, beside the write that stores the document
+    and its projection together: the same layering the event proof takes,
+    where the schema carries the body and ``services/events`` sanitises it.
     """
 
     title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH)
@@ -51,36 +57,6 @@ class CollectionWrite(BaseModel):
         if not cleaned:
             raise ValueError("must not be empty")
         return cleaned
-
-    @field_validator("description")
-    @classmethod
-    def _sanitized_doc(cls, v: dict[str, Any]) -> dict[str, Any]:
-        """Sanitise the document, then judge it on the text it carries.
-
-        Three refusals, all 422 on the field, so the create and the update
-        answer the same way. The document has to pass
-        ``services/sanitize.sanitize_tiptap_doc`` with ``allow_images=False``:
-        a description is prose about a shelf, there is no upload path behind
-        it, and an image node is dropped rather than stored. What survives is
-        flattened with ``services/sanitize.tiptap_doc_text``, and that
-        projection is what the two remaining rules read: it must not be empty,
-        on the same terms a title of spaces is refused, and it must not run
-        past :data:`DESCRIPTION_MAX_LENGTH`.
-
-        Measuring the cap on the projection rather than on the serialised
-        document is what keeps bolding a word from costing an analyst
-        characters they have already typed.
-        """
-        try:
-            doc = sanitize_tiptap_doc(v, allow_images=False)
-        except ValueError as exc:
-            raise ValueError(str(exc)) from exc
-        text = tiptap_doc_text(doc)
-        if not text:
-            raise ValueError("must not be empty")
-        if len(text) > DESCRIPTION_MAX_LENGTH:
-            raise ValueError(f"must be at most {DESCRIPTION_MAX_LENGTH} characters")
-        return doc
 
 
 class CollectionCreate(CollectionWrite):

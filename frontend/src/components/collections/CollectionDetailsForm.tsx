@@ -48,8 +48,8 @@ const EMPTY_DESCRIPTION: CollectionDescription = { type: "doc", content: [] };
  * pages hand it their values and render nothing of the form themselves.
  *
  * The two written fields are required, so the submit refuses a blank or
- * over-long value on either rather than letting the server answer 422 on text
- * the analyst has already typed. Each carries the shared `remaining / cap`
+ * over-long value on either rather than letting the server refuse text the
+ * analyst has already typed. Each carries the shared `remaining / cap`
  * counter (`<CharCounter>`), which turns red exactly when the submit starts
  * refusing.
  *
@@ -127,8 +127,8 @@ export function CollectionDetailsForm({
     setEvents((current) => current.filter((held) => held.id !== eventId));
 
   // The cap and the blank test both read the document's plain-text projection,
-  // the reading `schemas/collection` measures server-side, so the counter, the
-  // disabled submit and the 422 all agree on the same number.
+  // the reading `services/collections` measures server-side, so the counter,
+  // the disabled submit and the server's refusal all agree on the same number.
   const descriptionText = tiptapDocText(description);
   const titleOver = title.length > COLLECTION_TITLE_MAX_LEN;
   const descriptionOver =

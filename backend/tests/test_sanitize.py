@@ -6,6 +6,7 @@ from app.services.sanitize import (
     _MAX_NODES,
     extract_image_srcs,
     sanitize_tiptap_doc,
+    sanitize_tiptap_doc_or_raise,
     tiptap_doc_from_text,
     tiptap_doc_text,
 )
@@ -648,3 +649,31 @@ def test_doc_text_reverses_doc_from_text():
     its projection describe the same words."""
     text = "Strikes on the corridor.\nThree days, one rail line."
     assert tiptap_doc_text(tiptap_doc_from_text(text)) == text
+
+
+class _Refused(Exception):
+    """The typed error a caller of the shared helper hands it."""
+
+
+def test_sanitize_or_raise_returns_the_sanitized_doc():
+    """The passing case is the sanitiser's own, options included: the helper
+    adds the error mapping and nothing else."""
+    doc = {
+        "type": "doc",
+        "content": [
+            {"type": "image", "attrs": {"src": "/media/proof.jpg"}},
+            {"type": "paragraph", "content": [{"type": "text", "text": "Words only."}]},
+        ],
+    }
+    assert sanitize_tiptap_doc_or_raise(doc, error=_Refused, allow_images=False) == {
+        "type": "doc",
+        "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Words only."}]}],
+    }
+
+
+def test_sanitize_or_raise_raises_the_callers_error_with_the_message():
+    """A body the sanitiser refuses leaves as the caller's class, carrying the
+    sanitiser's own wording, which is what says which rule the document broke."""
+    with pytest.raises(_Refused) as exc:
+        sanitize_tiptap_doc_or_raise({"type": "paragraph"}, error=_Refused)
+    assert "type='doc'" in str(exc.value)

@@ -1429,7 +1429,7 @@ A collection is a named, curated set of one analyst's own events, shown on the o
 
 The 500-character cap is measured on the document's plain-text projection, not on the serialized JSON, so marking a word up costs the writer nothing. The projection concatenates the text of every text node and starts a new line at each block boundary and each hard break, dropping blank lines and stripping the result; `services/sanitize.tiptap_doc_text` is its one home. Every read serves the projection as `description_text` beside the document, for a surface with no room for rich text: a card's two-line clamp, a share card, a search snippet. Full-text search indexes the projection.
 
-A write answers **422** on the description when the body is not a `type: "doc"` object, when the sanitized document's projection is empty (a document of blank paragraphs is a missing description, the way a title of spaces is a missing title), or when that projection runs past 500 characters.
+A write answers **400** with `{"code": "invalid_description", …}` when the body is a JSON object the sanitizer does not read as a `type: "doc"` document, when the sanitized document's projection is empty (a document of blank paragraphs is a missing description, the way a title of spaces is a missing title), or when that projection runs past 500 characters. The message names the rule that failed. `services/collections` holds the three, beside the write that stores the document and its projection together, and the status is the one an event's unsanitizable [`proof`](#post-events) body answers (`invalid_proof`). A `description` that is not a JSON object at all, a string for instance, is a 422 on the field.
 
 What a collection may hold is one predicate, `services/event_filters.collectable_events`: a visible event (neither soft-deleted nor withheld) in one of the two worked statuses, `geolocated` or `detected`. A `requested` row is an ask rather than an answer, and a `closed` row is one the owner rejected or retracted, so neither is on a curated shelf. The same predicate governs the item list, the item count, the date range, the card mosaic, the tag union, and the check `PUT /collections/{id}/events/{event_id}` runs, so an event that later closes or is taken down leaves all six at once with no write to the membership table.
 
@@ -1458,7 +1458,7 @@ Open a collection, holding the events you pick.
 }
 ```
 
-`title` is required, 1 to 255 characters, and is stripped of surrounding whitespace, so a value of spaces is a 422 rather than a stored blank. `description` is required too, as the Tiptap document described [above](#collections): the sanitizer drops what the allowlist does not carry, and the 422 cases are a body that is not a document, an empty projection and a projection over 500 characters.
+`title` is required, 1 to 255 characters, and is stripped of surrounding whitespace, so a value of spaces is a 422 rather than a stored blank. `description` is required too, as the Tiptap document described [above](#collections): the sanitizer drops what the allowlist does not carry, and an object that is not a document, an empty projection and a projection over 500 characters are each a 400 with `invalid_description`.
 
 `event_ids` is optional and defaults to empty, which opens a collection holding nothing. Repeated ids collapse to one membership, and a body carrying more than 500 ids is a 422.
 
@@ -1469,11 +1469,12 @@ Each id goes through the checks [`PUT /collections/{id}/events/{event_id}`](#put
 **Errors:**
 | Code | Case |
 |------|------|
+| 400 | `{"code": "invalid_description", …}`: the description is not a document, or its text is empty or over 500 characters |
 | 401 | Not authenticated |
 | 403 | One of `event_ids` belongs to someone else |
 | 404 | `{"code": "event_not_found", …}`: an id no event carries |
 | 409 | `{"code": "event_not_collectable", …}`: an event's state is not one a collection shows |
-| 422 | Title empty or over 255 characters; description not a document, empty, or over 500 characters of text; or more than 500 `event_ids` |
+| 422 | Title empty or over 255 characters; `description` not a JSON object; or more than 500 `event_ids` |
 
 ---
 
@@ -1605,10 +1606,11 @@ Both fields ride every edit, under the caps, the sanitizer and the whitespace st
 **Errors:**
 | Code | Case |
 |------|------|
+| 400 | `{"code": "invalid_description", …}`: the description is not a document, or its text is empty or over 500 characters |
 | 401 | Not authenticated |
 | 403 | Not your collection |
 | 404 | `collection_not_found` |
-| 422 | Title empty or over 255 characters, or description not a document, empty, or over 500 characters of text |
+| 422 | Title empty or over 255 characters, or `description` not a JSON object |
 
 ---
 

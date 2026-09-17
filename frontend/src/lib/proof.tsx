@@ -247,7 +247,8 @@ export function renderProof(
  *
  * Mirrors backend `sanitize.tiptap_doc_text`, the one home of the projection
  * server-side (it fills `collections.description_text`, which the search index
- * reads, and it is what the write schemas measure the 500-character cap on).
+ * reads, and it is what `services/collections` measures the 500-character
+ * cap on).
  * The rule is the same on both sides: concatenate the text of every text node,
  * start a new line at every block boundary and at a `hardBreak`, drop blank
  * lines, strip each line, join with a single `\n`. A node carrying no text of

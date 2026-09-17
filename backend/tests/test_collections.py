@@ -4,12 +4,14 @@ A collection is a named set of one analyst's own events. What these lock in:
 
 * ``POST`` / ``PATCH`` / ``DELETE /collections``: an owner opens a collection
   under a title and a required description, writes both together, and drops
-  one, which leaves every event it held alone. A blank or over-long title or
-  description is a 422 on either write, whitespace included.
+  one, which leaves every event it held alone. A blank or over-long title is a
+  422 on either write, whitespace included.
 * The description is a Tiptap document under the proof allowlist minus images:
   bold, italic and lists round-trip, an image node is dropped, and the blank
   and the 500-character refusals are both measured on the plain-text
-  projection the read carries as ``description_text``.
+  projection the read carries as ``description_text``. A document the rules
+  refuse is a 400 carrying ``invalid_description``, the status and the shape
+  an event's unsanitisable proof body answers, on either write.
 * ``POST /collections`` with ``event_ids``: the collection opens holding what
   the create page's picker ticked, duplicate ids collapse to one membership, a
   body past the cap is a 422, and a foreign (403), ineligible (409) or unknown
@@ -327,7 +329,8 @@ def test_create_collection_rejects_a_blank_description(owner, description):
         json={"title": "Nameless shelf", "description": description},
         headers=login_as(client, owner),
     )
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "invalid_description"
 
 
 def test_create_collection_rejects_a_description_past_the_cap(owner):
@@ -340,11 +343,27 @@ def test_create_collection_rejects_a_description_past_the_cap(owner):
         },
         headers=login_as(client, owner),
     )
-    assert response.status_code == 422
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["code"] == "invalid_description"
+    assert str(DESCRIPTION_MAX_LENGTH) in detail["message"]
 
 
-def test_create_collection_rejects_a_body_that_is_not_a_document(owner):
-    """The old plain-text body is refused on the field, not stored as text."""
+def test_create_collection_rejects_an_object_that_is_not_a_document(owner):
+    """A JSON object the sanitiser will not read as a document is refused by
+    the service, which is what turns its refusal into the typed 400."""
+    response = client.post(
+        "/api/v1/collections",
+        json={"title": "Loose node", "description": {"type": "paragraph"}},
+        headers=login_as(client, owner),
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "invalid_description"
+
+
+def test_create_collection_rejects_a_body_that_is_not_an_object(owner):
+    """The old plain-text body is not a document at all: the field takes an
+    object, so this one never reaches the service."""
     response = client.post(
         "/api/v1/collections",
         json={"title": "Plain text", "description": "Strikes on the rail corridor."},
@@ -630,7 +649,8 @@ def test_update_collection_rejects_a_blank_description(db, cleanup, owner):
         json={"title": "Still named", "description": _doc("  ")},
         headers=login_as(client, owner),
     )
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "invalid_description"
 
     db.expire_all()
     assert _reload_collection(db, collection.id).description_text == "What this shelf holds."

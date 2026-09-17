@@ -40,6 +40,7 @@ from app.models.media import Media
 from app.models.tag import Tag, event_tags
 from app.models.user import User
 from app.schemas.collection import (
+    DESCRIPTION_MAX_LENGTH,
     CollectionCoverTile,
     CollectionMembershipRead,
     CollectionRead,
@@ -48,7 +49,7 @@ from app.schemas.tag import TagRead
 from app.services.event_filters import collectable_events
 from app.services.pagination import keyset_after
 from app.services.permissions import ensure_owner
-from app.services.sanitize import tiptap_doc_text
+from app.services.sanitize import sanitize_tiptap_doc_or_raise, tiptap_doc_text
 from app.services.thumbnails import pick_thumbnail, thumbnail_media_criteria
 
 
@@ -82,10 +83,24 @@ class EventNotCollectableError(CollectionError):
     code = "event_not_collectable"
 
 
+class InvalidDescriptionError(CollectionError):
+    """The description is not a document this collection may carry.
+
+    One class for the three rules :func:`_checked_description` holds, each
+    naming itself in the message. Maps to 400, the status an event's
+    unsanitisable proof body answers
+    (:class:`services.events.InvalidProofError`), so the two rich-text bodies
+    the site writes are refused the same way.
+    """
+
+    code = "invalid_description"
+
+
 COLLECTION_ERROR_STATUS: dict[str, int] = {
     "collection_not_found": 404,
     "event_not_found": 404,
     "event_not_collectable": 409,
+    "invalid_description": 400,
 }
 
 
@@ -486,6 +501,53 @@ def ensure_collectable(db: Session, *, event_ids: Sequence[uuid.UUID], user: Use
             raise EventNotCollectableError("This event is not one a collection can hold")
 
 
+class _CheckedDescription(NamedTuple):
+    """A description that passed the rules: the document, and its projection.
+
+    The pair travels together because the pair is written together: the
+    document goes to ``description`` and its plain text to
+    ``description_text``, and flattening the document a second time at the
+    write is how the two could come to disagree.
+    """
+
+    doc: dict[str, Any]
+    text: str
+
+
+def _checked_description(description: dict[str, Any]) -> _CheckedDescription:
+    """Sanitise a description and judge it on the text it carries.
+
+    The one home for what a collection's description may be, read by the
+    create and by the update alike, so opening a collection and editing one
+    cannot drift apart. Three refusals, all
+    :class:`InvalidDescriptionError`, each message naming the rule it broke:
+
+    * The body has to be a Tiptap document the sanitiser accepts, run with
+      ``allow_images=False``. A description is prose about a shelf, there is
+      no upload path behind it, and an image node is dropped rather than
+      stored.
+    * The projection (:func:`services.sanitize.tiptap_doc_text`) must not be
+      empty, the terms a title of spaces is refused on: a document of blank
+      paragraphs is a missing description.
+    * That projection must not run past
+      :data:`schemas.collection.DESCRIPTION_MAX_LENGTH`. Measuring the cap on
+      the projection rather than on the serialised document is what keeps
+      bolding a word from costing an analyst characters they have already
+      typed.
+    """
+    doc = sanitize_tiptap_doc_or_raise(
+        description, error=InvalidDescriptionError, allow_images=False
+    )
+    text = tiptap_doc_text(doc)
+    if not text:
+        raise InvalidDescriptionError("A description must not be empty")
+    if len(text) > DESCRIPTION_MAX_LENGTH:
+        raise InvalidDescriptionError(
+            f"A description must be at most {DESCRIPTION_MAX_LENGTH} characters"
+        )
+    return _CheckedDescription(doc=doc, text=text)
+
+
 def create_collection(
     db: Session,
     *,
@@ -496,12 +558,12 @@ def create_collection(
 ) -> Collection:
     """Open a collection for ``owner``, named, described, and holding ``event_ids``.
 
-    ``description`` is the sanitised Tiptap document the write schema handed
-    over (``schemas/collection.CollectionWrite``, images already dropped), and
-    its projection is written beside it from :func:`services.sanitize.
-    tiptap_doc_text`, the one flattener. The pair is written together here and
-    in :func:`update_collection_details`, which is what keeps the search index
-    and every text-only surface describing the document that is stored.
+    ``description`` is the raw Tiptap document the write body carried. It goes
+    through :func:`_checked_description`, which sanitises it and refuses a
+    blank or over-long projection, and the document and that projection are
+    written together. The pair is written together here and in
+    :func:`update_collection_details`, which is what keeps the search index and
+    every text-only surface describing the document that is stored.
 
     The ids are what the create page's picker ticked, empty for a collection
     opened on its two fields alone. They join in the same transaction as the
@@ -511,11 +573,12 @@ def create_collection(
     caps them (``schemas/collection.CollectionCreate``), and the collection is
     new, so there is no membership to check first.
     """
+    checked = _checked_description(description)
     collection = Collection(
         owner_id=owner.id,
         title=title,
-        description=description,
-        description_text=tiptap_doc_text(description),
+        description=checked.doc,
+        description_text=checked.text,
     )
     db.add(collection)
     try:
@@ -544,13 +607,16 @@ def update_collection_details(
     collection says about itself, the edit panel carries both, and saving them
     together is what keeps a renamed collection from describing the old one.
 
-    ``description`` arrives sanitised from the write schema, and its projection
-    is rewritten from it here, the same pairing :func:`create_collection` makes.
+    ``description`` goes through :func:`_checked_description` and is written
+    with its projection, the same pairing :func:`create_collection` makes, so
+    an edit takes the refusals the create takes. Ownership is settled first: a
+    stranger's edit is a 403 whatever document it carries.
     """
     ensure_owner(collection, user)
+    checked = _checked_description(description)
     collection.title = title
-    collection.description = description
-    collection.description_text = tiptap_doc_text(description)
+    collection.description = checked.doc
+    collection.description_text = checked.text
     db.commit()
     db.refresh(collection)
     return collection

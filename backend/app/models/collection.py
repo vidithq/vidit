@@ -40,7 +40,7 @@ class Collection(Base):
     # What the collection holds, as a Tiptap document. NOT NULL: every
     # collection says what it holds. The empty-doc default catches ORM
     # constructions that omit it; the write paths pass a sanitised doc. The
-    # shape ``Event.proof`` takes, minus images, which the write schemas drop.
+    # shape ``Event.proof`` takes, minus images, which the write service drops.
     # Inlined here (a fresh dict per row) rather than importing a constant from
     # services, which the models layer must not depend on.
     description = mapped_column(
