@@ -250,7 +250,9 @@ describe("CollectionPage", () => {
     useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
     mockReads(
       collection({
-        cover: [{ url: "https://media.example/item.jpg", media_type: "image" }],
+        cover: [
+          { url: "https://media.example/item.jpg", media_type: "image", role: "source" },
+        ],
       }),
     );
 

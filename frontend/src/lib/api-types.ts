@@ -2622,6 +2622,13 @@ export interface components {
          *     is the media-kind domain ``models/media.MediaType`` defines, so a client
          *     picks the element that can render the file: most source media in the corpus
          *     are clips, and an ``<img>`` pointed at one paints an empty band.
+         *
+         *     ``role`` is the media-role domain ``models/media.MediaRole`` defines, and it
+         *     is what tells a client whether the picture has display derivatives. Only a
+         *     ``source`` image is uploaded with them (``services/storage.upload_file``);
+         *     ``services/storage.upload_proof_image`` passes ``produce_derivatives=False``,
+         *     so a ``proof`` image has no ``_hero`` / ``_thumb`` sibling and a client that
+         *     rewrites its url to one asks for an object that was never written.
          */
         CollectionCoverTile: {
             /**
@@ -2629,6 +2636,11 @@ export interface components {
              * @enum {string}
              */
             media_type: "image" | "video";
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "source" | "proof";
             /** Url */
             url: string;
         };
@@ -2741,10 +2753,11 @@ export interface components {
          *     The list is empty when nothing on the collection carries media a card may
          *     show, and the collection's own page shows no cover at all.
          *
-         *     Each tile's url and kind travel together rather than as a bare url,
+         *     Each tile's url, kind and role travel together rather than as a bare url,
          *     because most source media in the corpus are clips: a tile taken off a
          *     video item is an ``.mp4``, and a client handed the url alone renders it in
-         *     an ``<img>`` and shows an empty band.
+         *     an ``<img>`` and shows an empty band. The role says whether the picture has
+         *     display derivatives, which a proof image has not.
          */
         CollectionRead: {
             /** Cover */

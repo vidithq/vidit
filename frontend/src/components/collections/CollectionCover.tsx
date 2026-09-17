@@ -40,7 +40,14 @@ export function CollectionCover({ cover }: { cover: CollectionCoverTile[] }) {
       {cover.map((tile, index) => (
         <MediaThumb
           key={`${tile.url}-${index}`}
-          media={{ storage_url: tile.url, media_type: tile.media_type }}
+          media={{
+            storage_url: tile.url,
+            media_type: tile.media_type,
+            // A tile taken off an item's proof image carries `proof`, and the
+            // slot reads the original for it: the proof upload writes no
+            // `_hero` / `_thumb` sibling to ask for.
+            role: tile.role,
+          }}
           // A lone tile spans the whole card column and reads the wide
           // derivative; a tile sharing the slot is at most half of it, which is
           // what the card row's own 400 px derivative is sized for.

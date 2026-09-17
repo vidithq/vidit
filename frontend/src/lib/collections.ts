@@ -51,8 +51,10 @@ export type Collection = components["schemas"]["CollectionRead"];
 export type CollectionDescription = Collection["description"];
 
 /** One tile of the mosaic a collection's profile card wears: the url of one
- *  item's media and the kind of file it is. The kind picks the element that can
- *  render it, since most source media are clips. */
+ *  item's media, the kind of file it is, and its role. The kind picks the
+ *  element that can render it, since most source media are clips; the role says
+ *  whether the picture has display derivatives, since a proof image has none
+ *  (`lib/mediaUrls.ts`). */
 export type CollectionCoverTile =
   components["schemas"]["CollectionCoverTile"];
 

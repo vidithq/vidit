@@ -285,6 +285,12 @@ def cover_tiles_for(
     collection with nothing showable gets an empty list, which is the card's
     placeholder.
 
+    A tile carries the picked row's ``role`` beside its url and kind, because
+    the preference above hands back proof images and those carry no display
+    derivative (``services/storage.upload_proof_image``). The role is what lets
+    a client read the original for them instead of a ``_thumb`` the pipeline
+    never wrote.
+
     Two statements for a whole page of collections, however many rows it holds.
     The first ranks each collection's eligible items by the chronological key
     with a window function and keeps the first four, so the ranking happens once
@@ -330,7 +336,11 @@ def cover_tiles_for(
         if media is None:
             continue
         tiles.setdefault(collection_id, []).append(
-            CollectionCoverTile(url=media.storage_url, media_type=media.media_type)
+            CollectionCoverTile(
+                url=media.storage_url,
+                media_type=media.media_type,
+                role=media.role,
+            )
         )
     return tiles
 

@@ -54,12 +54,18 @@ type MosaicTile =
  * A picture is inlined through the guarded fetch (`ogImageDataUri`), at the
  * derivative the tile's own size wants: the wide `_hero` for a tile that fills
  * the panel, the 400px `_thumb` for one sharing it, which is the pick
- * `<CollectionCover>` makes for the same two cases. A clip carries no
- * derivative and no poster, so nothing is fetched for it.
+ * `<CollectionCover>` makes for the same two cases. The tile's `role` is what
+ * decides whether there is a derivative to want at all, so a tile off a proof
+ * image is fetched at its original. A clip carries no derivative and no poster,
+ * so nothing is fetched for it.
  */
 async function readTile(tile: CollectionCoverTile, lone: boolean): Promise<MosaicTile> {
   if (tile.media_type !== "image") return { kind: "video" };
-  const urls = displayUrlsFor({ storage_url: tile.url, media_type: tile.media_type });
+  const urls = displayUrlsFor({
+    storage_url: tile.url,
+    media_type: tile.media_type,
+    role: tile.role,
+  });
   const src = await ogImageDataUri(lone ? urls.hero : urls.thumbnail);
   return src ? { kind: "image", src } : { kind: "blank" };
 }

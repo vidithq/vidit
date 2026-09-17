@@ -1294,7 +1294,7 @@ Any active filter empties the users group: the filters are event predicates, and
       "title": "Kharkiv strikes, spring 2026",
       "description": { "type": "doc", "content": [ … ] },
       "description_text": "Every strike placed inside the city over March and April.",
-      "cover": [{ "url": "…", "media_type": "image" }],
+      "cover": [{ "url": "…", "media_type": "image", "role": "source" }],
       "event_count": 12,
       "first_date": "2026-03-02",
       "last_date": "2026-04-28",
@@ -1542,8 +1542,8 @@ One collection's header: owner, title, description, item count, and the range it
   },
   "description_text": "Strikes and their aftermath at the plant, 2025 to 2026.",
   "cover": [
-    { "url": "https://…/uploads/geo/…jpg", "media_type": "image" },
-    { "url": "https://…/uploads/geo/…mp4", "media_type": "video" }
+    { "url": "https://…/uploads/geo/…jpg", "media_type": "image", "role": "source" },
+    { "url": "https://…/uploads/geo/…mp4", "media_type": "video", "role": "source" }
   ],
   "event_count": 12,
   "first_date": "2026-03-01",
@@ -1558,7 +1558,7 @@ One collection's header: owner, title, description, item count, and the range it
 
 `cover` is the mosaic the profile card wears, zero to four tiles computed per read and never stored: walk the items the collection may show in chronological order, skip one flagged graphic, take each remaining item's card media by the same rule as [`GET /events`](#get-events) (preferring an image over a clip where the item carries both), and stop at four. A graphic item is skipped rather than ending the walk, so a card never shows death or injury to a reader who did not open the item. The list is empty when no item qualifies. There is no cover upload: a collection stores no picture of its own.
 
-`cover[].media_type` is the media-kind domain `image` or `video`, so a client picks the element that can render each tile. Most source media are clips, and an `<img>` pointed at one paints an empty band. Each `url` is a Media row's own `storage_url` and takes the derivatives every other Media url takes.
+`cover[].media_type` is the media-kind domain `image` or `video`, so a client picks the element that can render each tile, and `cover[].role` is the media-role domain `source` or `proof`, which says whether the picture has display derivatives. Most source media are clips, and an `<img>` pointed at one paints an empty band. Each `url` is a Media row's own `storage_url`. A `source` image takes the `_hero` and `_thumb` derivatives every other source image takes; a `proof` image is stored without them, so read its `url` as is. Requesting a derivative of a proof url answers 403.
 
 A withheld collection (`hidden_at`, see [`PATCH /admin/collections/{id}/moderation`](#patch-admincollectionsidmoderation)) answers 404 for everyone but an admin, its owner included, the same branch [`GET /events/{id}`](#get-eventsid) takes. So does a collection whose owner is soft-deleted.
 
@@ -1893,8 +1893,8 @@ Offset-paged, like the published-geolocations feed beside it.
       "title": "Zaporizhzhia plant",
       "description": "Strikes and their aftermath at the plant, 2025 to 2026.",
       "cover": [
-        { "url": "https://…/uploads/geo/…jpg", "media_type": "image" },
-        { "url": "https://…/uploads/geo/…mp4", "media_type": "video" }
+        { "url": "https://…/uploads/geo/…jpg", "media_type": "image", "role": "source" },
+        { "url": "https://…/uploads/geo/…mp4", "media_type": "video", "role": "source" }
       ],
       "event_count": 12,
       "first_date": "2026-03-01",

@@ -8,14 +8,17 @@ import type { CollectionCoverTile } from "@/lib/collections";
  * What the mosaic has to get right is the files it was handed and how many.
  *
  * The tiles are the media of the collection's own items, so each carries the
- * kind of file it is. Most source media in the corpus are clips, and an `<img>`
- * pointed at one paints an empty band, which is the defect the kind locks out.
- * The arrangement is the count, so each count is pinned on what a reader can
- * see: how many cells the mosaic draws and how many pictures land in them.
+ * kind of file it is and its role. Most source media in the corpus are clips,
+ * and an `<img>` pointed at one paints an empty band, which is the defect the
+ * kind locks out; the role is what keeps a tile off a proof image from asking
+ * for a derivative that was never written. The arrangement is the count, so
+ * each count is pinned on what a reader can see: how many cells the mosaic
+ * draws and how many pictures land in them.
  */
 const IMAGE: CollectionCoverTile = {
   url: "https://media.example/uploads/geo/abc.jpg",
   media_type: "image",
+  role: "source",
 };
 
 function tiles(count: number): CollectionCoverTile[] {
@@ -67,7 +70,7 @@ describe("CollectionCover", () => {
     render(
       <CollectionCover
         cover={[
-          { url: "https://media.example/clip.mp4", media_type: "video" },
+          { url: "https://media.example/clip.mp4", media_type: "video", role: "source" },
           IMAGE,
         ]}
       />,
@@ -77,5 +80,27 @@ describe("CollectionCover", () => {
     expect(video).toHaveAttribute("src", "https://media.example/clip.mp4#t=0.1");
     expect(video).toHaveAttribute("preload", "metadata");
     expect(document.querySelectorAll("img")).toHaveLength(1);
+  });
+
+  it("reads the original for a tile taken off a proof image", () => {
+    // The item's own footage is a clip, so the tile falls to its proof image.
+    // Proof uploads write no `_hero` / `_thumb` sibling, and the rewrite the
+    // other tiles take would point this one at a 403.
+    render(
+      <CollectionCover
+        cover={[
+          {
+            url: "https://media.example/proof/u1/inline.jpg",
+            media_type: "image",
+            role: "proof",
+          },
+        ]}
+      />,
+    );
+
+    expect(document.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://media.example/proof/u1/inline.jpg",
+    );
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { displayUrlsFor, posterFrameUrl } from "./mediaUrls";
 
 const image = (storage_url: string) =>
-  ({ storage_url, media_type: "image" }) as const;
+  ({ storage_url, media_type: "image", role: "source" }) as const;
 
 describe("displayUrlsFor", () => {
   it("derives _hero/_thumb siblings for an image", () => {
@@ -17,7 +17,23 @@ describe("displayUrlsFor", () => {
 
   it("always returns the original for videos", () => {
     const url = "https://cdn.example.com/uploads/g1/clip.mp4";
-    expect(displayUrlsFor({ storage_url: url, media_type: "video" })).toEqual({
+    expect(
+      displayUrlsFor({ storage_url: url, media_type: "video", role: "source" })
+    ).toEqual({
+      original: url,
+      hero: url,
+      thumbnail: url,
+    });
+  });
+
+  it("always returns the original for a proof image", () => {
+    // `upload_proof_image` passes `produce_derivatives=False`, so this object
+    // has no `_hero` / `_thumb` sibling. Asking for one is a 403 from the CDN
+    // and a broken picture wherever the row is shown.
+    const url = "https://cdn.example.com/proof/u1/abc.jpg";
+    expect(
+      displayUrlsFor({ storage_url: url, media_type: "image", role: "proof" })
+    ).toEqual({
       original: url,
       hero: url,
       thumbnail: url,

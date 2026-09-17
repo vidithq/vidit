@@ -199,7 +199,7 @@ export const COLLECTION: Collection = {
     ],
   },
   description_text: COLLECTION_DESCRIPTION,
-  cover: [{ url: MEDIA_URL, media_type: "image" }],
+  cover: [{ url: MEDIA_URL, media_type: "image", role: "source" }],
   event_count: 2,
   first_date: "2025-01-03",
   last_date: "2025-01-04",

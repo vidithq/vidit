@@ -1297,7 +1297,7 @@ def test_mosaic_of_one_item_is_one_tile(db, cleanup, owner):
     db.commit()
 
     assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"] == [
-        {"url": "https://media.example.com/only.jpg", "media_type": "image"}
+        {"url": "https://media.example.com/only.jpg", "media_type": "image", "role": "source"}
     ]
 
 
@@ -1351,9 +1351,40 @@ def test_a_tile_prefers_an_image_over_a_clip_on_the_same_item(db, cleanup, owner
     db.commit()
 
     assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"] == [
-        {"url": "https://media.example.com/proof.jpg", "media_type": "image"},
-        {"url": "https://media.example.com/clip.mp4", "media_type": "video"},
+        {"url": "https://media.example.com/proof.jpg", "media_type": "image", "role": "proof"},
+        {"url": "https://media.example.com/clip.mp4", "media_type": "video", "role": "source"},
     ]
+
+
+def test_a_tile_off_a_proof_image_says_so(db, cleanup, owner):
+    """An item whose footage is a clip tiles on its proof image, and the tile
+    names the role. Proof images upload without display derivatives
+    (``services/storage.upload_proof_image``), so the role is the only thing
+    telling a client to read the original rather than a ``_thumb`` that was
+    never written, which the object store answers with a 403."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    _add_media(db, event, "footage.mp4", media_type="video")
+    _add_media(db, event, "inline.jpg", role="proof")
+    _add(db, collection, event)
+    db.commit()
+
+    (tile,) = client.get(f"/api/v1/collections/{collection.id}").json()["cover"]
+    assert tile["role"] == "proof"
+    assert tile["url"] == "https://media.example.com/inline.jpg"
+
+
+def test_a_tile_off_source_footage_says_source(db, cleanup, owner):
+    """The counterpart: an item tiling on its own picture carries ``source``,
+    the role whose upload path writes the ``_hero`` / ``_thumb`` siblings."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
+    _add_media(db, event, "shot.jpg")
+    _add(db, collection, event)
+    db.commit()
+
+    (tile,) = client.get(f"/api/v1/collections/{collection.id}").json()["cover"]
+    assert tile["role"] == "source"
 
 
 def test_mosaic_drops_a_withheld_or_closed_item(db, cleanup, owner):
