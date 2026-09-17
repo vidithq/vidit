@@ -8,6 +8,10 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+_Nothing yet._
+
+## v0.6.5, 2026-09-17
+
 ### Added
 
 - **A shared collection link unfurls as its own card** ([`frontend/src/app/collections/[id]/layout.tsx`](frontend/src/app/collections/[id]/layout.tsx), [`frontend/src/app/collections/[id]/opengraph-image.tsx`](frontend/src/app/collections/[id]/opengraph-image.tsx), [`frontend/src/app/collections/[id]/twitter-image.tsx`](frontend/src/app/collections/[id]/twitter-image.tsx), [`frontend/src/app/_og/data.ts`](frontend/src/app/_og/data.ts), [`frontend/src/lib/og.ts`](frontend/src/lib/og.ts), [`docs/design.md`](docs/design.md#share-cards)). `/collections/{id}` joins the event and profile pages: the segment layout generates the title, the description and the `og:` / `twitter:` tags off one anonymous read of `GET /collections/{id}`, and the generated 1200x630 image draws the collection's mosaic beside its title, the count and span its meta line prints, and the owner's handle. The mosaic is `<CollectionCover>`'s arrangement restated as absolute boxes (`ogMosaicBoxes`), so the unfurl and the profile card divide the slot the same way. A tile's picture is read at the derivative its size wants and inlined through the guarded fetch the avatar already used, now one helper for every picture a card draws (`ogImageDataUri`); a clip has no poster derivative, so its tile draws a play triangle, and a refused fetch draws the same tile blank. A missing collection answers the branded *No collection here* card and a failed read the neutral site-default one, the three read outcomes every card keeps apart.
