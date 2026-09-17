@@ -8,7 +8,9 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-_Nothing yet._
+### Fixed
+
+- **A profile share card draws the avatar again** ([`frontend/src/app/_og/data.ts`](frontend/src/app/_og/data.ts), [`docs/design.md`](docs/design.md#share-cards)). The avatar leg handed an `undici` `Agent` (the connection guard that classifies a resolved address before the socket opens) to the global `fetch`. On the deployment runtime that global is a different, older undici bundled with the runtime, and a dispatcher built by one undici throws when another's `fetch` is given it, so every profile card fell back to the handle monogram for an avatar that passes every guard. The leg now reads through the `undici` package's own `fetch`, the one that built the `Agent`, so the guard holds on every runtime; it drops the data cache the platform `fetch` carried, which the payload reads keep and which the avatar never needed. The guard's `lookup` orders its answer IPv4 first and hands back an IPv4 address when the runtime asks for a single one, since a runtime without IPv6 egress cannot reach the AAAA record a dual-stacked host may list first. Every rejection on the leg was a bare `catch`, so a card that degraded said nothing anywhere; each one now writes a `console.warn` naming the reason and the avatar's host and path, with the query string dropped. The guards themselves are unchanged: the name check, the resolved-address check, no redirect, the 2 s budget, the 2 MB cap read per chunk, and the PNG / JPEG / GIF allowlist.
 
 ## v0.6.4, 2026-09-15
 

@@ -1,6 +1,6 @@
 import { lookup as dnsLookup, type LookupAddress } from "node:dns";
 
-import { Agent } from "undici";
+import { Agent, fetch as undiciFetch, type Response as UndiciResponse } from "undici";
 
 import { API_URL } from "@/lib/api";
 import { isFetchableAvatarUrl, isPrivateAddress } from "@/lib/og";
@@ -84,6 +84,14 @@ export async function ogFetch<T>(path: string): Promise<OgRead<T>> {
  * A mixed answer is rejected whole rather than filtered down to its public
  * entries: a host that answers with any private address has no business
  * serving an avatar.
+ *
+ * The answer is always asked for whole (`all: true`) so the guard judges every
+ * address a name carries, and it is handed back IPv4 first. A serverless
+ * runtime without IPv6 egress cannot reach a `2a04:…` address, so an answer
+ * that leads with one costs the card its avatar on a host that also publishes
+ * an A record. Ordering covers both shapes of the connector's ask: the whole
+ * list keeps every address with the reachable one first, and a single-address
+ * ask is answered with an IPv4 entry whenever the name has one.
  */
 const avatarDispatcher = new Agent({
   connect: {
@@ -98,28 +106,35 @@ const avatarDispatcher = new Agent({
           callback(new Error(`avatar host ${hostname} does not resolve to a public address`), "", 0);
           return;
         }
+        const ordered = [
+          ...resolved.filter((entry) => entry.family === 4),
+          ...resolved.filter((entry) => entry.family !== 4),
+        ];
         if (options.all) {
-          callback(null, resolved);
+          callback(null, ordered);
           return;
         }
-        callback(null, resolved[0].address, resolved[0].family);
+        callback(null, ordered[0].address, ordered[0].family);
       });
     },
   },
 });
 
-/** `fetch` init plus the two fields the platform adds to it. */
-type AvatarRequestInit = RequestInit & { dispatcher: Agent };
+/**
+ * What a capped body read answers with. `over` and `empty` are kept apart so
+ * the warning below names the one that happened.
+ */
+type CappedRead = { status: "ok"; body: Buffer } | { status: "over" } | { status: "empty" };
 
 /**
- * Read a response body under a running byte budget, or `null` past the ceiling.
+ * Read a response body under a running byte budget.
  *
  * Buffering first and measuring after would let a host spend the renderer's
  * memory on a body the guard was always going to reject, so the budget is
  * checked per chunk and the stream is dropped the moment it is passed.
  */
-async function readCapped(body: ReadableStream<Uint8Array> | null, max: number) {
-  if (!body) return null;
+async function readCapped(body: UndiciResponse["body"], max: number): Promise<CappedRead> {
+  if (!body) return { status: "empty" };
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -129,7 +144,7 @@ async function readCapped(body: ReadableStream<Uint8Array> | null, max: number) 
       if (done) break;
       if (!value) continue;
       total += value.byteLength;
-      if (total > max) return null;
+      if (total > max) return { status: "over" };
       chunks.push(value);
     }
   } finally {
@@ -137,7 +152,36 @@ async function readCapped(body: ReadableStream<Uint8Array> | null, max: number) 
     // the socket instead of leaving the rest of the body arriving.
     await reader.cancel().catch(() => {});
   }
-  return total === 0 ? null : Buffer.concat(chunks);
+  return total === 0 ? { status: "empty" } : { status: "ok", body: Buffer.concat(chunks) };
+}
+
+/**
+ * `host` and path of an avatar URL, for a log line.
+ *
+ * A query string can carry a signature or a token, so the warning names the
+ * host and the path and drops everything after them.
+ */
+function avatarTarget(value: string | null | undefined): string {
+  if (!value) return "(no url)";
+  try {
+    const url = new URL(value);
+    return `${url.host}${url.pathname}`;
+  } catch {
+    return "(unparsable url)";
+  }
+}
+
+/**
+ * Record why a card fell back to the monogram, and answer `null`.
+ *
+ * Every rejection on this leg used to be silent, which left a card showing the
+ * monogram for an avatar that passes every guard with nothing in the function
+ * log to read. The warning is the one place that says which guard, or which
+ * error, ended the read.
+ */
+function skipAvatar(url: string | null | undefined, reason: string): null {
+  console.warn(`og avatar skipped: ${reason} (${avatarTarget(url)})`);
+  return null;
 }
 
 /**
@@ -149,29 +193,43 @@ async function readCapped(body: ReadableStream<Uint8Array> | null, max: number) 
  * `isPrivateAddress` on what it resolves to (the URL is a free-form profile
  * field, see `lib/og.ts`), no redirect following (a public host must not be
  * able to bounce the renderer onto a private one), a timeout, a size ceiling
- * enforced as the body arrives, and a decodable content type. Every rejection
- * is silent: a share card degrades, it does not fail.
+ * enforced as the body arrives, and a decodable content type. A rejection
+ * costs the monogram and a warning: a share card degrades, it does not fail.
+ *
+ * The read goes through the `undici` package's own `fetch` rather than the
+ * global one. `dispatcher` is honoured by the undici that owns the `Agent`
+ * holding the guard, and the global `fetch` on a serverless runtime is a
+ * different, older undici bundled with the runtime: handing it this `Agent`
+ * throws, which took the avatar off every card while the guard looked applied.
+ * Reading through the same undici that built the `Agent` makes the guard hold
+ * on every runtime. This leg carries no data cache (undici's `fetch` has
+ * none); the payload reads in `ogFetch` keep theirs, and they are the
+ * rate-limit concern.
  */
 export async function ogAvatarDataUri(url: string | null | undefined): Promise<string | null> {
-  if (!isFetchableAvatarUrl(url)) return null;
+  if (!isFetchableAvatarUrl(url)) return skipAvatar(url, "rejected by the URL guard");
   try {
-    const res = await fetch(url as string, {
+    const res = await undiciFetch(url as string, {
       signal: AbortSignal.timeout(AVATAR_TIMEOUT_MS),
       redirect: "error",
-      next: { revalidate: REVALIDATE_SECONDS },
       dispatcher: avatarDispatcher,
-    } as AvatarRequestInit);
-    if (!res.ok) return null;
+    });
+    if (!res.ok) return skipAvatar(url, `status ${res.status}`);
     const contentType = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
-    if (!AVATAR_TYPES.includes(contentType)) return null;
+    if (!AVATAR_TYPES.includes(contentType)) {
+      return skipAvatar(url, `content type ${contentType || "(none)"} is not decodable`);
+    }
     // A declared length over the ceiling is refused before a byte of body is
     // read; an absent or lying header falls through to the running budget.
     const declared = Number(res.headers.get("content-length"));
-    if (Number.isFinite(declared) && declared > AVATAR_MAX_BYTES) return null;
-    const body = await readCapped(res.body, AVATAR_MAX_BYTES);
-    if (!body) return null;
-    return `data:${contentType};base64,${body.toString("base64")}`;
-  } catch {
-    return null;
+    if (Number.isFinite(declared) && declared > AVATAR_MAX_BYTES) {
+      return skipAvatar(url, `declared length ${declared} over the ${AVATAR_MAX_BYTES} byte cap`);
+    }
+    const read = await readCapped(res.body, AVATAR_MAX_BYTES);
+    if (read.status === "over") return skipAvatar(url, `body over the ${AVATAR_MAX_BYTES} byte cap`);
+    if (read.status === "empty") return skipAvatar(url, "empty body");
+    return `data:${contentType};base64,${read.body.toString("base64")}`;
+  } catch (err) {
+    return skipAvatar(url, err instanceof Error ? err.message : String(err));
   }
 }
