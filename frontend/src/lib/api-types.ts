@@ -713,6 +713,8 @@ export interface paths {
          * @description Write your collection's title and description. Owner only; 403 for anyone else.
          *
          *     Both fields travel together, so one request states what the collection is.
+         *     A description the rules refuse is a 400 (``invalid_description``), the
+         *     status the create answers.
          */
         patch: operations["update_collection_api_v1_collections__collection_id__patch"];
         trace?: never;
@@ -2622,6 +2624,13 @@ export interface components {
          *     is the media-kind domain ``models/media.MediaType`` defines, so a client
          *     picks the element that can render the file: most source media in the corpus
          *     are clips, and an ``<img>`` pointed at one paints an empty band.
+         *
+         *     ``role`` is the media-role domain ``models/media.MediaRole`` defines, and it
+         *     is what tells a client whether the picture has display derivatives. Only a
+         *     ``source`` image is uploaded with them (``services/storage.upload_file``);
+         *     ``services/storage.upload_proof_image`` passes ``produce_derivatives=False``,
+         *     so a ``proof`` image has no ``_hero`` / ``_thumb`` sibling and a client that
+         *     rewrites its url to one asks for an object that was never written.
          */
         CollectionCoverTile: {
             /**
@@ -2629,6 +2638,11 @@ export interface components {
              * @enum {string}
              */
             media_type: "image" | "video";
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "source" | "proof";
             /** Url */
             url: string;
         };
@@ -2651,7 +2665,9 @@ export interface components {
          */
         CollectionCreate: {
             /** Description */
-            description: string;
+            description: {
+                [key: string]: unknown;
+            };
             /** Event Ids */
             event_ids?: string[];
             /** Title */
@@ -2715,9 +2731,14 @@ export interface components {
          * CollectionRead
          * @description One collection as every read surface renders it.
          *
-         *     ``title`` and ``description`` are the two free-text fields the owner
-         *     writes, both required: the name of the collection and one short paragraph
-         *     saying what it holds.
+         *     ``title`` and ``description`` are the two fields the owner writes, both
+         *     required: the name of the collection, and the Tiptap document saying what
+         *     it holds. ``description_text`` is that document's plain-text projection
+         *     (``services/sanitize.tiptap_doc_text``), the reading a surface with no room
+         *     for rich text takes: the card's two-line clamp, a share card, a snippet.
+         *     Both travel on every read, so a client renders the document where it can
+         *     and reads the projection where it cannot, without flattening the tree
+         *     itself.
          *
          *     ``event_count``, ``first_date`` and ``last_date`` are computed at read
          *     time over the events the collection may show
@@ -2734,10 +2755,18 @@ export interface components {
          *     The list is empty when nothing on the collection carries media a card may
          *     show, and the collection's own page shows no cover at all.
          *
-         *     Each tile's url and kind travel together rather than as a bare url,
+         *     Each tile's url, kind and role travel together rather than as a bare url,
          *     because most source media in the corpus are clips: a tile taken off a
          *     video item is an ``.mp4``, and a client handed the url alone renders it in
-         *     an ``<img>`` and shows an empty band.
+         *     an ``<img>`` and shows an empty band. The role says whether the picture has
+         *     display derivatives, which a proof image has not.
+         *
+         *     ``tags`` is derived the same way and never stored: the union of the tags
+         *     of the events the collection may show, ordered by category then name
+         *     (``services/collections.tags_for``). A collection carries no tag of its
+         *     own, so tagging an item is what says what the collection is about, and an
+         *     item that leaves the collectable set takes its tags out of the union with
+         *     no write. The list is empty for a collection holding nothing tagged.
          */
         CollectionRead: {
             /** Cover */
@@ -2748,7 +2777,11 @@ export interface components {
              */
             created_at: string;
             /** Description */
-            description: string;
+            description: {
+                [key: string]: unknown;
+            };
+            /** Description Text */
+            description_text: string;
             /** Event Count */
             event_count: number;
             /** First Date */
@@ -2761,6 +2794,8 @@ export interface components {
             /** Last Date */
             last_date: string | null;
             owner: components["schemas"]["AuthorRef"];
+            /** Tags */
+            tags: components["schemas"]["TagRead"][];
             /** Title */
             title: string;
         };
@@ -2773,7 +2808,9 @@ export interface components {
          */
         CollectionUpdate: {
             /** Description */
-            description: string;
+            description: {
+                [key: string]: unknown;
+            };
             /** Title */
             title: string;
         };
@@ -3598,10 +3635,11 @@ export interface components {
          * @description Aggregated shape-of-work payload for ``GET /users/{username}/stats``.
          *
          *     One population throughout: the analyst's live events (``deleted_at IS
-         *     NULL``, ``hidden_at IS NULL``) in the three worked statuses, ``geolocated``
-         *     + ``detected`` + ``closed``. That set is ``total_events``, and every other
-         *     field here describes it, detections included. An open ``requested`` call for
-         *     help is not documented work and takes part in no aggregate.
+         *     NULL``, ``hidden_at IS NULL``) in ``geolocated`` or ``detected``. That set
+         *     is ``total_events``, and every other field here describes it, detections
+         *     included. A ``requested`` row is an open call for help and a ``closed`` row
+         *     is a duplicate, a rejected detection, a retraction or a withdrawn ask, so
+         *     neither takes part in any aggregate.
          *
          *     ``source_hosts`` breaks the same set down by the host of ``source_url``,
          *     folded to lower case with a leading ``www.`` removed: the top hosts by
@@ -3619,8 +3657,6 @@ export interface components {
             activity: components["schemas"]["ActivityBucket"][];
             /** Capture Sources */
             capture_sources: components["schemas"]["TagCount"][];
-            /** Closed Count */
-            closed_count: number;
             /** Detected Count */
             detected_count: number;
             /** Geolocated Count */

@@ -82,7 +82,6 @@ start_year  # models/conflict.py + schemas/conflict.py ConflictRead (wire field)
 end_year  # models/conflict.py + schemas/conflict.py ConflictRead (wire field)
 geolocated_count  # schemas/user.py UserStatsRead (wire field)
 detected_count  # schemas/user.py UserStatsRead
-closed_count  # schemas/user.py UserStatsRead
 total_events  # schemas/user.py UserStatsRead
 top_conflicts  # schemas/user.py UserStatsRead
 capture_sources  # schemas/user.py UserStatsRead

@@ -164,7 +164,7 @@ test.describe("collection create page", () => {
  * The owner's edit page for that collection.
  *
  * It is the same form over a collection that exists: the title field, the
- * description textarea, the picker holding what the collection holds, and the
+ * description editor, the picker holding what the collection holds, and the
  * Save / Cancel row below all three cards, which is the shape that breaks on a
  * phone when a field is laid out narrower than the column or renders under
  * the 16px mobile Safari zooms on. Dropping the collection is not on this

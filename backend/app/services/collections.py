@@ -5,8 +5,8 @@ public profile. Two rules hold everywhere in this module:
 
 * **What a collection may show is one predicate.**
   :func:`services.event_filters.collectable_events` decides it, and the item
-  page, the count, the date range, the card mosaic and the add verb's
-  eligibility check all read it. A row that closes, is taken down or is
+  page, the count, the date range, the card mosaic, the tag union and the add
+  verb's eligibility check all read it. A row that closes, is taken down or is
   soft-deleted therefore leaves every one of them at once, with no write to
   ``collection_events``.
 * **An event joins its owner's collection only.** The invariant spans two
@@ -37,15 +37,19 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.models.collection import Collection, CollectionEvent
 from app.models.event import Event
 from app.models.media import Media
+from app.models.tag import Tag, event_tags
 from app.models.user import User
 from app.schemas.collection import (
+    DESCRIPTION_MAX_LENGTH,
     CollectionCoverTile,
     CollectionMembershipRead,
     CollectionRead,
 )
+from app.schemas.tag import TagRead
 from app.services.event_filters import collectable_events
 from app.services.pagination import keyset_after
 from app.services.permissions import ensure_owner
+from app.services.sanitize import sanitize_tiptap_doc_or_raise, tiptap_doc_text
 from app.services.thumbnails import pick_thumbnail, thumbnail_media_criteria
 
 
@@ -79,10 +83,24 @@ class EventNotCollectableError(CollectionError):
     code = "event_not_collectable"
 
 
+class InvalidDescriptionError(CollectionError):
+    """The description is not a document this collection may carry.
+
+    One class for the three rules :func:`_checked_description` holds, each
+    naming itself in the message. Maps to 400, the status an event's
+    unsanitisable proof body answers
+    (:class:`services.events.InvalidProofError`), so the two rich-text bodies
+    the site writes are refused the same way.
+    """
+
+    code = "invalid_description"
+
+
 COLLECTION_ERROR_STATUS: dict[str, int] = {
     "collection_not_found": 404,
     "event_not_found": 404,
     "event_not_collectable": 409,
+    "invalid_description": 400,
 }
 
 
@@ -284,6 +302,12 @@ def cover_tiles_for(
     collection with nothing showable gets an empty list, which is the card's
     placeholder.
 
+    A tile carries the picked row's ``role`` beside its url and kind, because
+    the preference above hands back proof images and those carry no display
+    derivative (``services/storage.upload_proof_image``). The role is what lets
+    a client read the original for them instead of a ``_thumb`` the pipeline
+    never wrote.
+
     Two statements for a whole page of collections, however many rows it holds.
     The first ranks each collection's eligible items by the chronological key
     with a window function and keeps the first four, so the ranking happens once
@@ -329,23 +353,69 @@ def cover_tiles_for(
         if media is None:
             continue
         tiles.setdefault(collection_id, []).append(
-            CollectionCoverTile(url=media.storage_url, media_type=media.media_type)
+            CollectionCoverTile(
+                url=media.storage_url,
+                media_type=media.media_type,
+                role=media.role,
+            )
         )
     return tiles
+
+
+def tags_for(db: Session, collection_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, list[TagRead]]:
+    """The tags each collection inherits from its items, in one query.
+
+    A collection carries no tag of its own. What it says it is about is the
+    union of the tags of the events it may show
+    (:func:`services.event_filters.collectable_events`), read here and never
+    stored, the same terms the count and the date range are computed on: an
+    event that closes, is taken down or is soft-deleted leaves the union with
+    no write to ``collection_events``, and tagging one of its events changes
+    what the collection says without touching the collection.
+
+    ``DISTINCT`` over (collection, tag) is what makes it a union rather than a
+    tally: two items carrying the same tag contribute it once. The order is
+    category then name, so a page of cards and the collection's own header
+    print the same list in the same sequence.
+
+    One statement for a whole page of collections, the shape
+    :func:`cover_tiles_for` takes: the membership join carries the predicate,
+    the association and the tag table follow it, and a collection holding
+    nothing tagged is absent from the mapping, which callers read as the empty
+    list.
+    """
+    if not collection_ids:
+        return {}
+    rows = (
+        db.query(CollectionEvent.collection_id, Tag)
+        .select_from(CollectionEvent)
+        .join(Event, Event.id == CollectionEvent.event_id)
+        .join(event_tags, event_tags.c.event_id == Event.id)
+        .join(Tag, Tag.id == event_tags.c.tag_id)
+        .filter(CollectionEvent.collection_id.in_(collection_ids), collectable_events())
+        .distinct()
+        .order_by(CollectionEvent.collection_id, Tag.category, Tag.name)
+        .all()
+    )
+    tags: dict[uuid.UUID, list[TagRead]] = {}
+    for collection_id, tag in rows:
+        tags.setdefault(collection_id, []).append(TagRead.model_validate(tag, from_attributes=True))
+    return tags
 
 
 def build_collection_reads(db: Session, collections: Sequence[Collection]) -> list[CollectionRead]:
     """Assemble the read payload for a page of collections.
 
     The single assembler, so a collection is the same shape on its own page,
-    on a profile and in a create response. Both readings are batched over the
-    whole page: the stats come from one grouped query, the mosaics from one
-    ranked query, so the assembler costs the same few statements for four
-    cards as for one.
+    on a profile and in a create response. Every derived reading is batched
+    over the whole page: the stats come from one grouped query, the mosaics
+    from one ranked query, the tag unions from one distinct query, so the
+    assembler costs the same few statements for four cards as for one.
     """
     collection_ids = [collection.id for collection in collections]
     stats = stats_for(db, collection_ids)
     tiles = cover_tiles_for(db, collection_ids)
+    tags = tags_for(db, collection_ids)
     reads: list[CollectionRead] = []
     for collection in collections:
         row_stats = stats.get(collection.id, _EMPTY_STATS)
@@ -355,7 +425,9 @@ def build_collection_reads(db: Session, collections: Sequence[Collection]) -> li
                 owner=collection.owner,
                 title=collection.title,
                 description=collection.description,
+                description_text=collection.description_text,
                 cover=tiles.get(collection.id, []),
+                tags=tags.get(collection.id, []),
                 event_count=row_stats.event_count,
                 first_date=row_stats.first_date,
                 last_date=row_stats.last_date,
@@ -429,15 +501,69 @@ def ensure_collectable(db: Session, *, event_ids: Sequence[uuid.UUID], user: Use
             raise EventNotCollectableError("This event is not one a collection can hold")
 
 
+class _CheckedDescription(NamedTuple):
+    """A description that passed the rules: the document, and its projection.
+
+    The pair travels together because the pair is written together: the
+    document goes to ``description`` and its plain text to
+    ``description_text``, and flattening the document a second time at the
+    write is how the two could come to disagree.
+    """
+
+    doc: dict[str, Any]
+    text: str
+
+
+def _checked_description(description: dict[str, Any]) -> _CheckedDescription:
+    """Sanitise a description and judge it on the text it carries.
+
+    The one home for what a collection's description may be, read by the
+    create and by the update alike, so opening a collection and editing one
+    cannot drift apart. Three refusals, all
+    :class:`InvalidDescriptionError`, each message naming the rule it broke:
+
+    * The body has to be a Tiptap document the sanitiser accepts, run with
+      ``allow_images=False``. A description is prose about a shelf, there is
+      no upload path behind it, and an image node is dropped rather than
+      stored.
+    * The projection (:func:`services.sanitize.tiptap_doc_text`) must not be
+      empty, the terms a title of spaces is refused on: a document of blank
+      paragraphs is a missing description.
+    * That projection must not run past
+      :data:`schemas.collection.DESCRIPTION_MAX_LENGTH`. Measuring the cap on
+      the projection rather than on the serialised document is what keeps
+      bolding a word from costing an analyst characters they have already
+      typed.
+    """
+    doc = sanitize_tiptap_doc_or_raise(
+        description, error=InvalidDescriptionError, allow_images=False
+    )
+    text = tiptap_doc_text(doc)
+    if not text:
+        raise InvalidDescriptionError("A description must not be empty")
+    if len(text) > DESCRIPTION_MAX_LENGTH:
+        raise InvalidDescriptionError(
+            f"A description must be at most {DESCRIPTION_MAX_LENGTH} characters"
+        )
+    return _CheckedDescription(doc=doc, text=text)
+
+
 def create_collection(
     db: Session,
     *,
     owner: User,
     title: str,
-    description: str,
+    description: dict[str, Any],
     event_ids: Sequence[uuid.UUID] = (),
 ) -> Collection:
     """Open a collection for ``owner``, named, described, and holding ``event_ids``.
+
+    ``description`` is the raw Tiptap document the write body carried. It goes
+    through :func:`_checked_description`, which sanitises it and refuses a
+    blank or over-long projection, and the document and that projection are
+    written together. The pair is written together here and in
+    :func:`update_collection_details`, which is what keeps the search index and
+    every text-only surface describing the document that is stored.
 
     The ids are what the create page's picker ticked, empty for a collection
     opened on its two fields alone. They join in the same transaction as the
@@ -447,7 +573,13 @@ def create_collection(
     caps them (``schemas/collection.CollectionCreate``), and the collection is
     new, so there is no membership to check first.
     """
-    collection = Collection(owner_id=owner.id, title=title, description=description)
+    checked = _checked_description(description)
+    collection = Collection(
+        owner_id=owner.id,
+        title=title,
+        description=checked.doc,
+        description_text=checked.text,
+    )
     db.add(collection)
     try:
         db.flush()
@@ -467,17 +599,24 @@ def create_collection(
 
 
 def update_collection_details(
-    db: Session, *, collection: Collection, user: User, title: str, description: str
+    db: Session, *, collection: Collection, user: User, title: str, description: dict[str, Any]
 ) -> Collection:
     """Write ``collection``'s title and description. 403 for anyone but the owner.
 
     One verb for the pair rather than one per field: they are what the
     collection says about itself, the edit panel carries both, and saving them
     together is what keeps a renamed collection from describing the old one.
+
+    ``description`` goes through :func:`_checked_description` and is written
+    with its projection, the same pairing :func:`create_collection` makes, so
+    an edit takes the refusals the create takes. Ownership is settled first: a
+    stranger's edit is a 403 whatever document it carries.
     """
     ensure_owner(collection, user)
+    checked = _checked_description(description)
     collection.title = title
-    collection.description = description
+    collection.description = checked.doc
+    collection.description_text = checked.text
     db.commit()
     db.refresh(collection)
     return collection

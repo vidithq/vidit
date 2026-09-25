@@ -255,7 +255,8 @@ erDiagram
         UUID id PK
         UUID owner_id FK "the one owner"
         VARCHAR title
-        TEXT description "what the collection holds"
+        JSONB description "what the collection holds, a Tiptap doc"
+        TEXT description_text "its plain-text projection"
         TIMESTAMPTZ hidden_at "nullable, admin takedown"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
@@ -645,20 +646,24 @@ Indexes:
 
 ### `collections`
 
-A named, curated set of one analyst's own events, shown on the owner's public profile: a spatial dossier or an operation reconstruction. Personal, with exactly one owner and no collaborators. Two free-text fields say what it is, the title and a required short description, and the items order themselves by when their events happened, so the table carries no manual position, no denormalized count and no version history.
+A named, curated set of one analyst's own events, shown on the owner's public profile: a spatial dossier or an operation reconstruction. Personal, with exactly one owner and no collaborators. Two written fields say what it is, the title and a required description, and the items order themselves by when their events happened, so the table carries no manual position, no denormalized count and no version history.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `owner_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The one owner. Cascades, unlike `events.owner_id`: a collection is one analyst's own shelf and nothing on it outlives their account, so a GDPR hard delete passes straight through and leaves no stored object behind, a collection holding no file of its own. |
 | `title` | `VARCHAR(255)` | NOT NULL. The same width as `events.title`, from the shared `TITLE_MAX_LENGTH` in [`models/event.py`](../backend/app/models/event.py), so one cap governs an event title and a collection title alike. The API floor is 1 character. |
-| `description` | `TEXT` | NOT NULL. A short plain-text paragraph saying what the collection holds, written by the owner on the create and on every edit. The API layer caps it at 500 characters, the figure [`users.bio`](#users) takes for the same class of text; there is no database constraint, so changing the cap does not require a migration. The API floor is 1 character after whitespace is stripped. |
+| `description` | `JSONB` | NOT NULL. What the collection holds, written by the owner on the create and on every edit as a Tiptap (ProseMirror) document, the same shape and the same sanitizer [`events.proof`](#events) takes, minus images. |
+| `description_text` | `TEXT` | NOT NULL. The plain-text projection of `description`, written beside it on every write from `services/sanitize.tiptap_doc_text`. Stored rather than derived per read because the collections search index is a GIN over it: a `to_tsvector` over the `JSONB` would index node names and punctuation instead of the words the owner wrote. It is also what a surface with no room for rich text prints, and what the API caps at 500 characters, the figure [`users.bio`](#users) takes for the same class of body; there is no database constraint, so changing the cap does not require a migration. The API floor is 1 character after whitespace is stripped. |
 | `hidden_at` | `TIMESTAMPTZ` | nullable. Takedown: NULL = visible, timestamp = withheld from every read but an admin's, the owner's included. The same reversible axis [`events.hidden_at`](#events) carries. Set by `DELETE /admin/collections/{id}`, or by resolving a [content report](#content_reports) filed against the collection as `hidden`, which writes the same stamp. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, SQLAlchemy `onupdate` stamp |
 
 **Indexes:**
 - `ix_collections_owner_created_at` on `(owner_id, created_at)`. Backs the profile section's only read, this analyst's collections newest first.
+- `ix_collections_search_fts`, a GIN over `to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(description_text, ''))`. Backs the collections group of [`GET /search`](api.md#get-search). The expression has to stay identical to the one `services/search._collection_tsvector` builds, config name included, or the planner drops the index and scans the table.
+
+**The description is a document, and its projection is a column.** The pair is written together in `services/collections`, on the create and on every edit, which is also where the document is sanitized and judged, so nothing can store a document whose stored projection describes different words. See [`api.md`](api.md#collections) for the node and mark allowlist, and for what a refused description answers.
 
 **What a collection shows is one predicate, not a column.** `services/event_filters.collectable_events` is a visible event (`deleted_at IS NULL AND hidden_at IS NULL`) in one of the two worked statuses, `geolocated` or `detected`. The item list, the item count, the date range, the card mosaic and the eligibility check the add verb runs all read it, so an event that later closes or is taken down leaves all five at once with no write to `collection_events`. A `requested` row is an ask rather than an answer; a `closed` row is one the owner rejected or retracted, and a curated shelf must not go on presenting it as work that stands.
 

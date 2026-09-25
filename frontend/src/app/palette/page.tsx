@@ -282,10 +282,10 @@ const MOCK_CARD_GEO = {
 // items. The app's own OG image stands in for the stored media, extensionless
 // so `displayUrlsFor` finds no sibling and every size resolves to it.
 const MOCK_COVER_TILES = [
-  { url: "/opengraph-image", media_type: "image" as const },
-  { url: "/opengraph-image", media_type: "image" as const },
-  { url: "/opengraph-image", media_type: "image" as const },
-  { url: "/opengraph-image", media_type: "image" as const },
+  { url: "/opengraph-image", media_type: "image" as const, role: "source" as const },
+  { url: "/opengraph-image", media_type: "image" as const, role: "source" as const },
+  { url: "/opengraph-image", media_type: "image" as const, role: "source" as const },
+  { url: "/opengraph-image", media_type: "image" as const, role: "source" as const },
 ];
 
 const MOCK_CURATED: Tag[] = [

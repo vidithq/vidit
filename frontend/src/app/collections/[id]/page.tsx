@@ -6,9 +6,13 @@ import Link from "next/link";
 import { Pencil, Trash2 } from "lucide-react";
 
 import { CollectionItems } from "@/components/collections/CollectionItems";
-import { CollectionMetaLine } from "@/components/collections/CollectionCard";
+import {
+  CollectionMetaLine,
+  CollectionTags,
+} from "@/components/collections/CollectionCard";
 import { CollectionReader } from "@/components/collections/CollectionReader";
 import { useReportContent } from "@/components/report/useReportContent";
+import ShareOnX from "@/components/share/ShareOnX";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -23,28 +27,34 @@ import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import {
   collectionEditHref,
+  collectionHref,
   CollectionIcon,
+  collectionMetaSegments,
   collectionStepHref,
   deleteCollection,
   readerStep,
   type Collection,
 } from "@/lib/collections";
+import { renderProof } from "@/lib/proof";
 
 /**
  * One collection: what it is, where its items are, and what they are.
  *
  * The header is the collection itself, the grammar the event page uses for an
  * event: the title, the owner's byline under it with a `Collection` pill saying
- * what kind of page this is, and the meta line the profile card prints beside
- * the mosaic. The mosaic itself is the profile card's picture and nothing else:
+ * what kind of page this is, the meta line the profile card prints beside the
+ * mosaic, and under it the tags the collection's items carry, in the card's own
+ * pills. The mosaic itself is the profile card's picture and nothing else:
  * the page opens on the name of the collection rather than on a band the width
  * of the page.
  *
  * Then three sections, each a `Card` under its own eyebrow. **Description** is
  * what the owner says the collection holds, at reading size and whole, where
- * the card clamps it to two lines; it is a section rather than a header line
- * because a description runs to 500 characters and the header is the identity
- * of the page, not its content. **Coverage** is the player: the items on the
+ * the card clamps its plain-text projection to two lines; it is a section
+ * rather than a header line because a description runs to 500 characters of
+ * text and the header is the identity of the page, not its content. The owner
+ * wrote it in the proof editor, so it renders through `renderProof`, the
+ * reader an event's proof body takes. **Coverage** is the player: the items on the
  * map with the current one lit, and that item's event in the map page's own
  * panel beside it. **Events** is the chronological list, where the row the
  * player stands on is lit and a click on a row moves the player to it.
@@ -52,8 +62,13 @@ import {
  * All three read one set, the sequence this page walks once, so the pins, the
  * panel and the rows can never describe different collections.
  *
- * The page is public, and so is the header cluster's first control: **Report**,
- * the red flag every detail surface carries, open to a reader with no account
+ * The page is public, and so is the header cluster's first control: **Share on
+ * X** (`<ShareOnX>`, the control the event page's utilities tier also renders),
+ * prefilled with the title, the owner's byline and the meta line's own count
+ * and span, then the collection's URL, so the unfurl shows the share card.
+ * A collection carries no `detected` state, so there is no confirm to arm: the
+ * plain click every other reading surface's share takes. Then **Report**, the
+ * red flag every detail surface carries, open to a reader with no account
  * because the person who notices a shelf misrepresenting what it holds is
  * rarely the person holding an account here. It opens the same panel an event
  * page opens (`useReportContent`), directly under the header.
@@ -162,6 +177,10 @@ function CollectionPageBody() {
             </Pill>
           </span>
           <CollectionMetaLine collection={collection} className="text-xs" />
+          {/* What the collection is about, read off the tags of the events it
+              holds. The card's row, under the meta line where the card puts
+              it, so the page and the card that opens it say the same thing. */}
+          <CollectionTags collection={collection} />
         </div>
       }
       actions={
@@ -169,6 +188,13 @@ function CollectionPageBody() {
         // breaks into stacked right-aligned lines on a phone instead of
         // pushing the header sideways.
         <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <ShareOnX
+            path={collectionHref(collection.id)}
+            lines={[
+              collection.title,
+              `by ${collection.owner.username} · ${collectionMetaSegments(collection).join(" · ")}`,
+            ]}
+          />
           {report.trigger}
           {isOwner && (
             <>
@@ -219,12 +245,13 @@ function CollectionPageBody() {
 
       <Card as="section">
         <SectionEyebrow title="Description" margin="none" />
-        {/* `whitespace-pre-line` keeps the paragraph breaks the owner typed;
-            the text is plain, so nothing else of what they wrote is
-            rendered. */}
-        <p className="whitespace-pre-line text-sm text-neutral-300">
-          {collection.description}
-        </p>
+        {/* The owner wrote it in the proof editor, so it is read back through
+            the proof renderer: the same marks, lists and links an event's
+            proof body renders. A description carries no images, so nothing
+            here needs the graphic gate `renderProof` takes for an event. */}
+        <div className="text-sm text-neutral-300">
+          {renderProof(collection.description)}
+        </div>
       </Card>
 
       {/* A collection with nothing on it has nothing to step through, and the

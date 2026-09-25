@@ -16,6 +16,7 @@ import {
   removeEventFromCollection,
   updateCollection,
   type Collection,
+  type CollectionDescription,
 } from "@/lib/collections";
 
 /**
@@ -65,7 +66,11 @@ export default function EditCollectionPage() {
     // calls run in order and the first refusal stops the walk and is what the
     // banner says, so the analyst is told which act failed rather than being
     // handed a save that half happened without a word.
-    async (title: string, description: string, eventIds: string[]) => {
+    async (
+      title: string,
+      description: CollectionDescription,
+      eventIds: string[],
+    ) => {
       await updateCollection(id, title, description);
       const before = new Set((items ?? []).map((item) => item.id));
       const after = new Set(eventIds);

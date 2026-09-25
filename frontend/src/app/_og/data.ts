@@ -8,15 +8,16 @@ import { isFetchableAvatarUrl, isPrivateAddress } from "@/lib/og";
 // Server-side reads behind the generated share cards and their
 // `generateMetadata`. Separate from `lib/api.ts`'s `apiFetch`, which is the
 // browser client: it sends the session cookie and the CSRF header, and it
-// throws on a non-2xx. A card reads anonymously (the two pages it covers are
+// throws on a non-2xx. A card reads anonymously (every page it covers is
 // public, so a card must never show more than a signed-out visitor sees) and
 // answers a miss with a fallback image rather than an exception.
 
 /** Upstream read budget. A crawler gives the whole card a few seconds. */
 const API_TIMEOUT_MS = 4000;
 
-/** Avatars come from third-party hosts, so they get a tighter budget. */
-const AVATAR_TIMEOUT_MS = 2000;
+/** Pictures come from the media host rather than from the API, so they get a
+ *  tighter budget: several of them may ride one card. */
+const IMAGE_TIMEOUT_MS = 2000;
 
 /**
  * How long a card's upstream payload stays cached. Counts and titles move
@@ -29,14 +30,14 @@ const AVATAR_TIMEOUT_MS = 2000;
  */
 const REVALIDATE_SECONDS = 900;
 
-/** Ceiling on an avatar body, above which the monogram is used instead. */
-const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+/** Ceiling on one picture's body, above which the caller's fallback is used. */
+const IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 
 /**
- * Satori decodes these; a `image/webp` or `image/avif` avatar renders as the
- * monogram rather than risking a decode failure that would fail the whole card.
+ * Satori decodes these; an `image/webp` or `image/avif` body falls back rather
+ * than risking a decode failure that would fail the whole card.
  */
-const AVATAR_TYPES = ["image/png", "image/jpeg", "image/gif"];
+const DECODABLE_TYPES = ["image/png", "image/jpeg", "image/gif"];
 
 /**
  * One upstream read. `missing` is the permanent answer (the row is not there),
@@ -66,7 +67,7 @@ export async function ogFetch<T>(path: string): Promise<OgRead<T>> {
 }
 
 /**
- * Connection guard for the avatar leg: reject a host whose name resolves to an
+ * Connection guard for the picture legs: reject a host whose name resolves to an
  * address outside the public unicast space, before the socket opens.
  *
  * `isFetchableAvatarUrl` filters the name, which is only half of it. A name is
@@ -76,8 +77,9 @@ export async function ogFetch<T>(path: string): Promise<OgRead<T>> {
  * pre-resolve step means the address the guard judged is the address the
  * socket uses.
  *
- * `avatar_url` is server-minted today and only ever names the media host, so
- * this fetch has no owner-controlled destination to reach. The guard stays as
+ * Every URL that reaches this leg is server-minted and only ever names the
+ * media host (`users.avatar_url`, a collection cover tile's `url`), so the
+ * fetch has no owner-controlled destination to reach. The guard stays as
  * defense in depth: it is the card renderer's own floor on where it will open
  * a socket, and it holds whatever a future column or a bad value does.
  *
@@ -85,7 +87,7 @@ export async function ogFetch<T>(path: string): Promise<OgRead<T>> {
  * entries: a host that answers with any private address has no business
  * serving an avatar.
  */
-const avatarDispatcher = new Agent({
+const imageDispatcher = new Agent({
   connect: {
     lookup(hostname, options, callback) {
       dnsLookup(hostname, { ...options, all: true as const }, (err, addresses) => {
@@ -95,7 +97,11 @@ const avatarDispatcher = new Agent({
         }
         const resolved = addresses as LookupAddress[];
         if (resolved.length === 0 || resolved.some((entry) => isPrivateAddress(entry.address))) {
-          callback(new Error(`avatar host ${hostname} does not resolve to a public address`), "", 0);
+          callback(
+            new Error(`image host ${hostname} does not resolve to a public address`),
+            "",
+            0,
+          );
           return;
         }
         if (options.all) {
@@ -109,7 +115,7 @@ const avatarDispatcher = new Agent({
 });
 
 /** `fetch` init plus the two fields the platform adds to it. */
-type AvatarRequestInit = RequestInit & { dispatcher: Agent };
+type ImageRequestInit = RequestInit & { dispatcher: Agent };
 
 /**
  * Read a response body under a running byte budget, or `null` past the ceiling.
@@ -141,34 +147,36 @@ async function readCapped(body: ReadableStream<Uint8Array> | null, max: number) 
 }
 
 /**
- * Fetch an analyst's avatar and inline it as a data URI, or `null` to fall back
- * to the monogram.
+ * Fetch one picture off the media host and inline it as a data URI, or `null`
+ * for the caller to draw its own fallback: the profile card's handle monogram,
+ * a collection mosaic's blank tile.
  *
- * Inlined rather than handed to Satori as a remote `<img src>` so the fetch
- * carries this module's guards: `isFetchableAvatarUrl` on the host and
- * `isPrivateAddress` on what it resolves to (the URL is a free-form profile
- * field, see `lib/og.ts`), no redirect following (a public host must not be
- * able to bounce the renderer onto a private one), a timeout, a size ceiling
- * enforced as the body arrives, and a decodable content type. Every rejection
- * is silent: a share card degrades, it does not fail.
+ * One helper for every picture a card draws, so the guards below are stated
+ * once and a new card cannot open a socket on looser terms than the one before
+ * it. Inlined rather than handed to Satori as a remote `<img src>` so the fetch
+ * carries them at all: `isFetchableAvatarUrl` on the host and `isPrivateAddress`
+ * on what it resolves to (see `lib/og.ts`), no redirect following (a public host
+ * must not be able to bounce the renderer onto a private one), a timeout, a size
+ * ceiling enforced as the body arrives, and a decodable content type. Every
+ * rejection is silent: a share card degrades, it does not fail.
  */
-export async function ogAvatarDataUri(url: string | null | undefined): Promise<string | null> {
+export async function ogImageDataUri(url: string | null | undefined): Promise<string | null> {
   if (!isFetchableAvatarUrl(url)) return null;
   try {
     const res = await fetch(url as string, {
-      signal: AbortSignal.timeout(AVATAR_TIMEOUT_MS),
+      signal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
       redirect: "error",
       next: { revalidate: REVALIDATE_SECONDS },
-      dispatcher: avatarDispatcher,
-    } as AvatarRequestInit);
+      dispatcher: imageDispatcher,
+    } as ImageRequestInit);
     if (!res.ok) return null;
     const contentType = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
-    if (!AVATAR_TYPES.includes(contentType)) return null;
+    if (!DECODABLE_TYPES.includes(contentType)) return null;
     // A declared length over the ceiling is refused before a byte of body is
     // read; an absent or lying header falls through to the running budget.
     const declared = Number(res.headers.get("content-length"));
-    if (Number.isFinite(declared) && declared > AVATAR_MAX_BYTES) return null;
-    const body = await readCapped(res.body, AVATAR_MAX_BYTES);
+    if (Number.isFinite(declared) && declared > IMAGE_MAX_BYTES) return null;
+    const body = await readCapped(res.body, IMAGE_MAX_BYTES);
     if (!body) return null;
     return `data:${contentType};base64,${body.toString("base64")}`;
   } catch {

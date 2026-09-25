@@ -12,9 +12,9 @@ The profile insights aggregation. Contracts to lock in:
   bucket per month, zero-filled, cut to the ``MAX_ACTIVITY_YEARS`` most recent
   calendar years, with both ends clamped to today so a mistyped future year
   cannot push the real events out of the window.
-* Every aggregate describes one population: visible events in the three
-  worked statuses. Soft-deleted rows, ``requested`` calls and the withdrawn
-  asks they close into take no part.
+* Every aggregate describes one population: visible ``geolocated`` and
+  ``detected`` events. Soft-deleted rows, ``requested`` calls and every
+  ``closed`` row take no part.
 * Unknown and soft-deleted usernames 404 the same way as the profile.
 
 Fixtures are local on purpose: the events package fixtures live in its own
@@ -158,8 +158,7 @@ def _make_geo(
     and which the activity row has to survive. ``source_url=None`` needs a
     ``detected`` or ``closed`` status: ``ck_events_source_url_status`` requires
     the column on the other two. ``before_closed_status`` only applies to a
-    ``closed`` row and says which of the two closures it is, a rejected
-    detection or a withdrawn ask.
+    ``closed`` row and says which status it was closed from.
     """
     now = datetime.now(UTC)
     geo = Event(
@@ -203,7 +202,6 @@ def test_stats_empty_profile_all_zeros(live_user):
     body = response.json()
     assert body["geolocated_count"] == 0
     assert body["detected_count"] == 0
-    assert body["closed_count"] == 0
     assert body["total_events"] == 0
     assert body["media_count"] == 0
     assert body["top_conflicts"] == []
@@ -228,22 +226,20 @@ def test_stats_mixed_profile(db, live_user, conflict, capture_source_tag, free_t
     )
     _make_geo(db, author=live_user, conflicts=[conflict], with_media=True, event_date=today)
     _make_geo(db, author=live_user, status=STATUS_DETECTED, event_date=today)
-    _make_geo(db, author=live_user, status=STATUS_CLOSED, event_date=today)
 
     response = client.get(f"/api/v1/users/{live_user.username}/stats")
     assert response.status_code == 200
     body = response.json()
     assert body["geolocated_count"] == 2
     assert body["detected_count"] == 1
-    assert body["closed_count"] == 1
-    assert body["total_events"] == 4
+    assert body["total_events"] == 3
     assert body["media_count"] == 2
     assert body["top_conflicts"] == [{"name": conflict.name, "count": 2}]
     # The free-category tag must not leak into the capture-source breakdown.
     assert body["capture_sources"] == [{"name": capture_source_tag.name, "count": 1}]
-    assert body["source_hosts"] == [{"name": "example.com", "count": 4}]
-    # Every row shares one date, so the span is one bucket carrying all four.
-    assert body["activity"] == [{"period": _month_str(today), "count": 4}]
+    assert body["source_hosts"] == [{"name": "example.com", "count": 3}]
+    # Every row shares one date, so the span is one bucket carrying all three.
+    assert body["activity"] == [{"period": _month_str(today), "count": 3}]
 
 
 def test_stats_activity_spans_the_analysts_own_dates(db, live_user):
@@ -394,51 +390,71 @@ def test_stats_excludes_requested_calls_for_help(db, live_user, conflict, captur
     assert body["activity"] == [{"period": "2025-04", "count": 1}]
 
 
-def test_stats_excludes_a_withdrawn_request(db, live_user, conflict, capture_source_tag):
-    """Withdrawing a call for help moves no figure on the card.
-
-    A ``closed`` row off ``requested`` is the same ask in its retired form,
-    not work the analyst documented, so it stays out of the population the
-    open ``requested`` row is already out of. The other closure, off
-    ``detected``, is a judgement the analyst made and does count.
-    """
+@pytest.mark.parametrize(
+    ("before_closed_status", "source_url"),
+    [
+        # A bot detection closed as a duplicate or rejected, with no source:
+        # counted, it showed as "No source" on the profile.
+        (STATUS_DETECTED, None),
+        # A retracted geolocation.
+        (STATUS_GEOLOCATED, "https://retracted.example/post"),
+        # A withdrawn call for help.
+        (STATUS_REQUESTED, "https://withdrawn.example/post"),
+    ],
+)
+def test_stats_excludes_closed_rows(
+    db, live_user, conflict, capture_source_tag, before_closed_status, source_url
+):
+    """A ``closed`` row is a duplicate, a rejected detection, a retraction or
+    a withdrawn ask, whichever status it was closed from: it moves no figure
+    on the card."""
     _make_geo(db, author=live_user, event_date=date(2025, 4, 2))
     _make_geo(
         db,
         author=live_user,
         status=STATUS_CLOSED,
-        before_closed_status=STATUS_REQUESTED,
+        before_closed_status=before_closed_status,
         conflicts=[conflict],
         tags=[capture_source_tag],
         with_media=True,
         event_date=date(2025, 9, 9),
-        source_url="https://withdrawn.example/post",
+        source_url=source_url,
     )
 
     body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
+    assert body["geolocated_count"] == 1
+    assert body["detected_count"] == 0
     assert body["total_events"] == 1
-    assert body["closed_count"] == 0
     assert body["media_count"] == 0
     assert body["top_conflicts"] == []
     assert body["capture_sources"] == []
     assert body["source_hosts"] == [{"name": "example.com", "count": 1}]
+    assert body["other_hosts_count"] == 0
+    assert body["no_source_count"] == 0
     assert body["activity"] == [{"period": "2025-04", "count": 1}]
 
 
-def test_stats_counts_a_rejected_detection(db, live_user):
-    """The other half of the ``closed`` split: a thrown-out machine detection is
-    documented work and keeps its place in the tally."""
+def test_stats_counts_an_open_detection(db, live_user, conflict, capture_source_tag):
+    """A ``detected`` row the analyst has not closed stays in every aggregate,
+    a source-less one included."""
     _make_geo(
         db,
         author=live_user,
-        status=STATUS_CLOSED,
-        before_closed_status=STATUS_DETECTED,
+        status=STATUS_DETECTED,
+        conflicts=[conflict],
+        tags=[capture_source_tag],
+        with_media=True,
         event_date=date(2025, 4, 2),
+        source_url=None,
     )
 
     body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
+    assert body["detected_count"] == 1
     assert body["total_events"] == 1
-    assert body["closed_count"] == 1
+    assert body["media_count"] == 1
+    assert body["top_conflicts"] == [{"name": conflict.name, "count": 1}]
+    assert body["capture_sources"] == [{"name": capture_source_tag.name, "count": 1}]
+    assert body["no_source_count"] == 1
     assert body["activity"] == [{"period": "2025-04", "count": 1}]
 
 

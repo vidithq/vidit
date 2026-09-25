@@ -7,11 +7,9 @@ event dates.
 
 One population for every field, so the card the payload feeds can state it
 once: the analyst's visible events (``deleted_at IS NULL AND hidden_at IS
-NULL``) in the three worked statuses, :data:`COUNTED_STATUSES`. That is the set
-``total_events`` counts. A ``requested`` row is an open call for help rather
-than work the analyst documented, so it is out of every aggregate here, and so
-is a ``closed`` row that was withdrawn from ``requested``, which is the same
-ask in its retired form. No two figures on the card describe different sets.
+NULL``) in :data:`COUNTED_STATUSES`, ``geolocated`` and ``detected``. That is
+the set ``total_events`` counts. No two figures on the card describe different
+sets.
 """
 
 import uuid
@@ -22,22 +20,19 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.conflict import Conflict, event_conflicts
-from app.models.event import (
-    STATUS_CLOSED,
-    STATUS_DETECTED,
-    STATUS_GEOLOCATED,
-    STATUS_REQUESTED,
-    Event,
-)
+from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
 from app.models.media import Media
 from app.models.tag import Tag, event_tags
 from app.schemas.user import ActivityBucket, TagCount, UserStatsRead
 from app.services.event_filters import visible_events
 from app.services.sanitize import normalised_host
 
-# The statuses that are documented work. The three the payload splits into its
-# own counts, and the three ``total_events`` sums.
-COUNTED_STATUSES = (STATUS_GEOLOCATED, STATUS_DETECTED, STATUS_CLOSED)
+# The statuses that are work the profile vouches for: the two the payload
+# splits into its own counts, and the two ``total_events`` sums. A
+# ``requested`` row is an open call for help, and a ``closed`` row is a
+# duplicate, a rejected detection, a retraction or a withdrawn ask, so neither
+# is documented work and counting one would inflate every figure on the card.
+COUNTED_STATUSES = (STATUS_GEOLOCATED, STATUS_DETECTED)
 
 # The activity grid draws one row per calendar year, twelve month cells wide.
 # 10 rows is the ceiling: at 375 px, the narrowest width the profile renders
@@ -82,18 +77,6 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
     live = (
         Event.owner_id == user_id,
         Event.status.in_(COUNTED_STATUSES),
-        # ``closed`` covers three different rows. Off ``detected`` it is a
-        # machine detection the analyst threw out, a judgement they made, so it is
-        # documented work; off ``geolocated`` it is published work they
-        # retracted, documented for the same reason (the retraction is part of
-        # the record, and the tallies below print it under ``closed`` rather
-        # than under the geolocations it left). Off ``requested`` it is a call
-        # for help they withdrew, and a ``requested`` row takes part in no
-        # aggregate here, so its retired form must not either.
-        # ``is_distinct_from`` rather than
-        # ``!=``: ``before_closed_status`` is NULL on every non-closed row, and
-        # ``!=`` would evaluate NULL there and drop all of them.
-        Event.before_closed_status.is_distinct_from(STATUS_REQUESTED),
         *visible_events(),
     )
 
@@ -103,7 +86,6 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
     by_status: dict[str, int] = {status_value: count for status_value, count in status_rows}
     geolocated = by_status.get(STATUS_GEOLOCATED, 0)
     detected = by_status.get(STATUS_DETECTED, 0)
-    closed = by_status.get(STATUS_CLOSED, 0)
 
     media_count = (
         db.query(func.count(Media.id))
@@ -181,8 +163,7 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
     return UserStatsRead(
         geolocated_count=geolocated,
         detected_count=detected,
-        closed_count=closed,
-        total_events=geolocated + detected + closed,
+        total_events=geolocated + detected,
         media_count=media_count,
         top_conflicts=[TagCount(name=name, count=count) for name, count in conflict_rows],
         capture_sources=[TagCount(name=name, count=count) for name, count in capture_rows],

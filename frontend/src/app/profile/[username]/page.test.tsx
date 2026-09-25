@@ -75,7 +75,6 @@ const STATS: UserStats = {
   total_events: 3,
   geolocated_count: 2,
   detected_count: 1,
-  closed_count: 0,
   media_count: 5,
   top_conflicts: [{ name: "Sahel", count: 3 }],
   capture_sources: [{ name: "Drone", count: 2 }],
@@ -97,8 +96,15 @@ const COLLECTIONS: CollectionPage = {
       id: "c1",
       owner: { id: "u1", username: "ana", avatar_url: null },
       title: "Kupiansk rail corridor",
-      description: "Three days of strikes on the eastern approach.",
+      description: {
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Three days of strikes on the eastern approach." }] },
+        ],
+      },
+      description_text: "Three days of strikes on the eastern approach.",
       cover: [],
+      tags: [],
       event_count: 2,
       first_date: "2026-06-01",
       last_date: "2026-06-02",
@@ -274,7 +280,7 @@ describe("public profile order", () => {
     // splits the set by a field an event may not carry.
     expect(
       screen.getByText(
-        "The tiles below read one set of 3 events: this analyst's geolocations, machine detections and closed rows. Two count it, two name what leads it."
+        "The tiles below read one set of 3 events: this analyst's geolocations and machine detections. Two count it, two name what leads it."
       )
     ).toBeInTheDocument();
     expect(screen.getByText("Source origin")).toBeInTheDocument();

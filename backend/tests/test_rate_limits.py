@@ -44,6 +44,7 @@ from app.ratelimit import (
 )
 from app.services.auth import create_access_token, hash_password
 from app.services.auth_cookies import SESSION_COOKIE
+from app.services.sanitize import tiptap_doc_from_text
 from tests.conftest import login_as
 from tests.events._helpers import WORLD_BBOX
 
@@ -443,6 +444,10 @@ def test_read_quota_key_rejects_a_forged_token(user):
 
 _MISSING_ID = uuid.UUID(int=0)
 
+# A collection's description, as its write bodies carry it: a Tiptap document.
+# These probes only have to get past the body validation to reach the limiter.
+_PROBE_DESCRIPTION = tiptap_doc_from_text("A probe shelf.")
+
 # Multipart submit forms. The date is deliberately unparseable: every submit
 # handler parses it first and 422s before touching storage. `files` forces a
 # multipart body, which the File(...) parameters require.
@@ -627,14 +632,14 @@ _DOCUMENTED_LIMITS = [
         "/api/v1/collections",
         30,
         "user",
-        {"json": {"title": "rate limit probe", "description": "A probe shelf."}},
+        {"json": {"title": "rate limit probe", "description": _PROBE_DESCRIPTION}},
     ),
     _Case(
         "patch",
         f"/api/v1/collections/{_MISSING_ID}",
         30,
         "user",
-        {"json": {"title": "probe", "description": "A probe shelf."}},
+        {"json": {"title": "probe", "description": _PROBE_DESCRIPTION}},
     ),
     _Case("delete", f"/api/v1/collections/{_MISSING_ID}", 30),
     _Case("put", f"/api/v1/collections/{_MISSING_ID}/events/{_MISSING_ID}", 60),

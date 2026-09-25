@@ -1,16 +1,21 @@
 import uuid
 from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.event import TITLE_MAX_LENGTH
-from app.models.media import MediaType
+from app.models.media import MediaRole, MediaType
+from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
 
-# How long a collection's description may be. The profile bio's figure for the
-# same class of text, a short plain-text blurb, kept as its own constant
-# because the two are separate concepts: one says who an analyst is, the other
-# says what one collection holds.
+# How long a collection's description may be, measured on its plain-text
+# projection (``services/sanitize.tiptap_doc_text``) rather than on the
+# document: the cap is how much a reader wrote, and the markup around it is not
+# something an analyst counts. The profile bio's figure for the same class of
+# body, kept as its own constant because the two are separate concepts: one
+# says who an analyst is, the other says what one collection holds.
+# ``services/collections`` is what measures a document against it.
 DESCRIPTION_MAX_LENGTH = 500
 
 # How many events one create may put on a collection. The create page's picker
@@ -25,26 +30,28 @@ class CollectionWrite(BaseModel):
 
     Both write bodies take the same pair, so opening a collection and editing
     one cannot drift apart on a cap or on what counts as blank. Both fields
-    are required: a collection carries a name and says what it holds, in the
-    same class of plain text as the profile bio.
+    are required: a collection carries a name, and it says what it holds in a
+    Tiptap document, the same class of body an event's ``proof`` is.
+
+    ``description`` is taken raw, as a JSON object. What the document may
+    carry, and what counts as blank or over-long, are rules
+    ``services/collections`` holds, beside the write that stores the document
+    and its projection together: the same layering the event proof takes,
+    where the schema carries the body and ``services/events`` sanitises it.
     """
 
     title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH)
-    description: str = Field(min_length=1, max_length=DESCRIPTION_MAX_LENGTH)
+    description: dict[str, Any]
 
-    @field_validator("title", "description")
+    @field_validator("title")
     @classmethod
     def _required_text(cls, v: str) -> str:
         """Strip surrounding whitespace, and refuse what is left empty.
 
         The bio's normalisation (``schemas/user._normalise_optional``) without
-        its empty-to-None branch, which belongs to an optional field: a value
-        of spaces is a missing value, and both fields are required, so it is a
+        its empty-to-None branch, which belongs to an optional field: a title
+        of spaces is a missing title, and the field is required, so it is a
         422 rather than a stored blank.
-
-        One validator over the pair rather than one per field, so a title of
-        spaces and a description of spaces are refused on the same terms, on
-        the create and on the update alike.
         """
         cleaned = v.strip()
         if not cleaned:
@@ -92,18 +99,31 @@ class CollectionCoverTile(BaseModel):
     is the media-kind domain ``models/media.MediaType`` defines, so a client
     picks the element that can render the file: most source media in the corpus
     are clips, and an ``<img>`` pointed at one paints an empty band.
+
+    ``role`` is the media-role domain ``models/media.MediaRole`` defines, and it
+    is what tells a client whether the picture has display derivatives. Only a
+    ``source`` image is uploaded with them (``services/storage.upload_file``);
+    ``services/storage.upload_proof_image`` passes ``produce_derivatives=False``,
+    so a ``proof`` image has no ``_hero`` / ``_thumb`` sibling and a client that
+    rewrites its url to one asks for an object that was never written.
     """
 
     url: str
     media_type: MediaType
+    role: MediaRole
 
 
 class CollectionRead(BaseModel):
     """One collection as every read surface renders it.
 
-    ``title`` and ``description`` are the two free-text fields the owner
-    writes, both required: the name of the collection and one short paragraph
-    saying what it holds.
+    ``title`` and ``description`` are the two fields the owner writes, both
+    required: the name of the collection, and the Tiptap document saying what
+    it holds. ``description_text`` is that document's plain-text projection
+    (``services/sanitize.tiptap_doc_text``), the reading a surface with no room
+    for rich text takes: the card's two-line clamp, a share card, a snippet.
+    Both travel on every read, so a client renders the document where it can
+    and reads the projection where it cannot, without flattening the tree
+    itself.
 
     ``event_count``, ``first_date`` and ``last_date`` are computed at read
     time over the events the collection may show
@@ -120,17 +140,27 @@ class CollectionRead(BaseModel):
     The list is empty when nothing on the collection carries media a card may
     show, and the collection's own page shows no cover at all.
 
-    Each tile's url and kind travel together rather than as a bare url,
+    Each tile's url, kind and role travel together rather than as a bare url,
     because most source media in the corpus are clips: a tile taken off a
     video item is an ``.mp4``, and a client handed the url alone renders it in
-    an ``<img>`` and shows an empty band.
+    an ``<img>`` and shows an empty band. The role says whether the picture has
+    display derivatives, which a proof image has not.
+
+    ``tags`` is derived the same way and never stored: the union of the tags
+    of the events the collection may show, ordered by category then name
+    (``services/collections.tags_for``). A collection carries no tag of its
+    own, so tagging an item is what says what the collection is about, and an
+    item that leaves the collectable set takes its tags out of the union with
+    no write. The list is empty for a collection holding nothing tagged.
     """
 
     id: uuid.UUID
     owner: AuthorRef
     title: str
-    description: str
+    description: dict[str, Any]
+    description_text: str
     cover: list[CollectionCoverTile]
+    tags: list[TagRead]
     event_count: int
     first_date: date | None
     last_date: date | None

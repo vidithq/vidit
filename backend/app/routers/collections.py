@@ -154,15 +154,20 @@ def update_collection(
     """Write your collection's title and description. Owner only; 403 for anyone else.
 
     Both fields travel together, so one request states what the collection is.
+    A description the rules refuse is a 400 (``invalid_description``), the
+    status the create answers.
     """
     collection = _resolve(db, collection_id, current_user)
-    updated = collections_service.update_collection_details(
-        db,
-        collection=collection,
-        user=current_user,
-        title=body.title,
-        description=body.description,
-    )
+    try:
+        updated = collections_service.update_collection_details(
+            db,
+            collection=collection,
+            user=current_user,
+            title=body.title,
+            description=body.description,
+        )
+    except collections_service.CollectionError as exc:
+        _raise_collection_error(exc)
     return collections_service.build_collection_read(db, updated)
 
 
