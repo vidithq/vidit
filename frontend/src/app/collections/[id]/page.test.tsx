@@ -374,6 +374,45 @@ describe("CollectionPage", () => {
     expect(screen.queryByTestId("map")).not.toBeInTheDocument();
   });
 
+  it("shares the collection on X for a visitor, prefilled with the title, the byline line and its url", async () => {
+    const openMock = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Share on X" }));
+
+    expect(openMock).toHaveBeenCalledTimes(1);
+    const [href, target, features] = openMock.mock.calls[0];
+    const url = new URL(href as string);
+    expect(url.origin).toBe("https://twitter.com");
+    expect(url.pathname).toBe("/intent/tweet");
+    expect(url.searchParams.get("text")).toBe(
+      "Kupiansk rail corridor\nby ana · 5 events · 14 Mar 2026 to 16 Mar 2026",
+    );
+    expect(url.searchParams.get("url")).toBe(
+      `${window.location.origin}/collections/c1`,
+    );
+    expect(target).toBe("_blank");
+    expect(features).toBe("noopener,noreferrer");
+
+    openMock.mockRestore();
+  });
+
+  it("shares the collection on X for the owner too", async () => {
+    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
+    const openMock = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    await renderPage();
+
+    expect(
+      screen.getByRole("button", { name: "Share on X" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Share on X" }));
+    expect(openMock).toHaveBeenCalledTimes(1);
+
+    openMock.mockRestore();
+  });
+
   it("hands a visitor the report flag and no owner control", async () => {
     await renderPage();
 

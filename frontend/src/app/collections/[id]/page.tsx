@@ -12,6 +12,7 @@ import {
 } from "@/components/collections/CollectionCard";
 import { CollectionReader } from "@/components/collections/CollectionReader";
 import { useReportContent } from "@/components/report/useReportContent";
+import ShareOnX from "@/components/share/ShareOnX";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -26,7 +27,9 @@ import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import {
   collectionEditHref,
+  collectionHref,
   CollectionIcon,
+  collectionMetaSegments,
   collectionStepHref,
   deleteCollection,
   readerStep,
@@ -59,8 +62,13 @@ import { renderProof } from "@/lib/proof";
  * All three read one set, the sequence this page walks once, so the pins, the
  * panel and the rows can never describe different collections.
  *
- * The page is public, and so is the header cluster's first control: **Report**,
- * the red flag every detail surface carries, open to a reader with no account
+ * The page is public, and so is the header cluster's first control: **Share on
+ * X** (`<ShareOnX>`, the control the event page's utilities tier also renders),
+ * prefilled with the title, the owner's byline and the meta line's own count
+ * and span, then the collection's URL, so the unfurl shows the share card.
+ * A collection carries no `detected` state, so there is no confirm to arm: the
+ * plain click every other reading surface's share takes. Then **Report**, the
+ * red flag every detail surface carries, open to a reader with no account
  * because the person who notices a shelf misrepresenting what it holds is
  * rarely the person holding an account here. It opens the same panel an event
  * page opens (`useReportContent`), directly under the header.
@@ -180,6 +188,13 @@ function CollectionPageBody() {
         // breaks into stacked right-aligned lines on a phone instead of
         // pushing the header sideways.
         <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <ShareOnX
+            path={collectionHref(collection.id)}
+            lines={[
+              collection.title,
+              `by ${collection.owner.username} · ${collectionMetaSegments(collection).join(" · ")}`,
+            ]}
+          />
           {report.trigger}
           {isOwner && (
             <>

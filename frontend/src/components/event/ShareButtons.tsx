@@ -2,10 +2,9 @@
 
 import { formatDate } from "@/lib/format";
 import type { EventStatus } from "@/types";
-import { Button } from "@/components/ui/Button";
-import { XGlyph } from "@/components/ui/BrandGlyphs";
 import { ARMED_RING } from "@/components/ui/styles";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
+import ShareOnX, { openShareIntent } from "@/components/share/ShareOnX";
 
 interface ShareButtonsProps {
   id: string;
@@ -22,7 +21,9 @@ interface ShareButtonsProps {
 
 /**
  * Passing an event on: the X intent, prefilled with the title, the credit line
- * and the coordinates, plus the event's own URL.
+ * and the coordinates, plus the event's own URL. The intent and the button
+ * itself are `<ShareOnX>`; this wrapper keeps the one thing an event share adds
+ * over a plain one, the `detected` two-click confirm.
  *
  * One way out, not two. A reader who wants the address has it in the browser's
  * own address bar, so a copy button beside the share sat there to duplicate a
@@ -38,36 +39,25 @@ export default function ShareButtons({
   lng,
   status,
 }: ShareButtonsProps) {
-  // A getter, not a value: it reads `window` and only ever runs from a click
-  // handler, so there is no render-time path to guard.
-  const url = () => `${window.location.origin}/events/${id}`;
-
-  const tweetText = () =>
-    [
-      title,
-      `by ${author}${eventDate ? ` · ${formatDate(eventDate)}` : ""}`,
-      ...(lat != null && lng != null
-        ? [`${lat.toFixed(6)}, ${lng.toFixed(6)}`]
-        : []),
-    ].join("\n");
-
-  const openIntent = () => {
-    // twitter.com/intent/tweet still serves the composer post-rebrand and is
-    // the documented domain, so it won't be redirected away.
-    const intent = new URL("https://twitter.com/intent/tweet");
-    intent.searchParams.set("text", tweetText());
-    intent.searchParams.set("url", url());
-    window.open(intent.toString(), "_blank", "noopener,noreferrer");
-  };
+  const path = `/events/${id}`;
+  const lines = [
+    title,
+    `by ${author}${eventDate ? ` · ${formatDate(eventDate)}` : ""}`,
+    ...(lat != null && lng != null
+      ? [`${lat.toFixed(6)}, ${lng.toFixed(6)}`]
+      : []),
+  ];
 
   // A `detected` link points at an editable detection, so sharing it asks for a
   // confirming re-click first (mirrors the review queue's two-click delete); a
   // submitted link acts on the first click, which never reaches `trigger` and so
   // never arms.
-  const { armed, trigger } = useConfirmAction(openIntent, {
-    timeoutMs: ARM_MS,
-  });
-  const onShareX = status === "detected" ? trigger : openIntent;
+  const { armed, trigger } = useConfirmAction(
+    () => openShareIntent(path, lines),
+    { timeoutMs: ARM_MS },
+  );
+  const onShareX =
+    status === "detected" ? trigger : () => openShareIntent(path, lines);
 
   return (
     <div className="flex items-center gap-1.5">
@@ -80,16 +70,13 @@ export default function ShareButtons({
           Detected and may still change. Click again to share.
         </span>
       )}
-      <Button
-        icon
-        variant="ghost"
+      <ShareOnX
+        path={path}
+        lines={lines}
         onClick={onShareX}
         className={armed ? ARMED_RING : ""}
-        aria-label="Share on X"
         title={armed ? "Click again to share this detection" : "Share on X"}
-      >
-        <XGlyph size={14} />
-      </Button>
+      />
     </div>
   );
 }
