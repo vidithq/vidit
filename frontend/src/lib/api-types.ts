@@ -3635,10 +3635,11 @@ export interface components {
          * @description Aggregated shape-of-work payload for ``GET /users/{username}/stats``.
          *
          *     One population throughout: the analyst's live events (``deleted_at IS
-         *     NULL``, ``hidden_at IS NULL``) in the three worked statuses, ``geolocated``
-         *     + ``detected`` + ``closed``. That set is ``total_events``, and every other
-         *     field here describes it, detections included. An open ``requested`` call for
-         *     help is not documented work and takes part in no aggregate.
+         *     NULL``, ``hidden_at IS NULL``) in ``geolocated`` or ``detected``. That set
+         *     is ``total_events``, and every other field here describes it, detections
+         *     included. A ``requested`` row is an open call for help and a ``closed`` row
+         *     is a duplicate, a rejected detection, a retraction or a withdrawn ask, so
+         *     neither takes part in any aggregate.
          *
          *     ``source_hosts`` breaks the same set down by the host of ``source_url``,
          *     folded to lower case with a leading ``www.`` removed: the top hosts by
@@ -3656,8 +3657,6 @@ export interface components {
             activity: components["schemas"]["ActivityBucket"][];
             /** Capture Sources */
             capture_sources: components["schemas"]["TagCount"][];
-            /** Closed Count */
-            closed_count: number;
             /** Detected Count */
             detected_count: number;
             /** Geolocated Count */

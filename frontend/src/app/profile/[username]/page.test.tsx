@@ -75,7 +75,6 @@ const STATS: UserStats = {
   total_events: 3,
   geolocated_count: 2,
   detected_count: 1,
-  closed_count: 0,
   media_count: 5,
   top_conflicts: [{ name: "Sahel", count: 3 }],
   capture_sources: [{ name: "Drone", count: 2 }],
@@ -281,7 +280,7 @@ describe("public profile order", () => {
     // splits the set by a field an event may not carry.
     expect(
       screen.getByText(
-        "The tiles below read one set of 3 events: this analyst's geolocations, machine detections and closed rows. Two count it, two name what leads it."
+        "The tiles below read one set of 3 events: this analyst's geolocations and machine detections. Two count it, two name what leads it."
       )
     ).toBeInTheDocument();
     expect(screen.getByText("Source origin")).toBeInTheDocument();

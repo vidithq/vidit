@@ -43,8 +43,8 @@ function ChartNote({ children }: { children: ReactNode }) {
  * wants to check a figure lands on the events it was summed off. A tile with
  * no value to name (`None`) carries no link, because there is nothing to open.
  *
- * One population feeds every block: the analyst's live events in the three
- * worked statuses, detections included. A chart drawn on published work alone
+ * One population feeds every block: the analyst's live `geolocated` and
+ * `detected` events, detections included. A chart drawn on published work alone
  * beside tiles counting detections would print two answers to one question with
  * nothing on the page to explain the gap, so the backend serves one set. Each
  * note says what its own block makes of that set, because the blocks do not
@@ -97,8 +97,8 @@ export function ProfileInsights({ username }: { username: string }) {
         <ChartNote>
           The tiles below read one set of {stats.total_events}{" "}
           {stats.total_events === 1 ? "event" : "events"}: this analyst&apos;s
-          geolocations, machine detections and closed rows. Two count it, two
-          name what leads it.
+          geolocations and machine detections. Two count it, two name what
+          leads it.
         </ChartNote>
       </div>
 

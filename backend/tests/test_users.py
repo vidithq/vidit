@@ -342,8 +342,7 @@ def test_profile_count_and_stats_report_different_numbers(db, live_user):
     assert profile["geolocations_count"] == 1
     assert stats["geolocated_count"] == 1
     assert stats["detected_count"] == 1
-    assert stats["closed_count"] == 1
-    assert stats["total_events"] == 3
+    assert stats["total_events"] == 2
 
 
 def test_feed_orders_published_rows_newest_event_date_first(db, live_user):

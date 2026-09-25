@@ -11,15 +11,14 @@ function statsFixture(overrides: Partial<UserStats> = {}): UserStats {
   return {
     geolocated_count: 12,
     detected_count: 3,
-    closed_count: 1,
-    total_events: 16,
+    total_events: 15,
     media_count: 20,
     top_conflicts: [{ name: "Russo-Ukrainian War", count: 9 }],
     capture_sources: [{ name: "drone", count: 5 }],
     source_hosts: [{ name: "t.me", count: 10 }],
     other_hosts_count: 0,
-    no_source_count: 6,
-    activity: [{ period: "2026-01", count: 16 }],
+    no_source_count: 5,
+    activity: [{ period: "2026-01", count: 15 }],
     ...overrides,
   };
 }
@@ -90,7 +89,6 @@ describe("ProfileInsights", () => {
         total_events: 0,
         geolocated_count: 0,
         detected_count: 0,
-        closed_count: 0,
         top_conflicts: [],
         capture_sources: [],
       })

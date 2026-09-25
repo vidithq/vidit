@@ -1732,26 +1732,25 @@ Public profile of an analyst.
 
 ### `GET /users/{username}/stats`
 
-Aggregated shape of an analyst's work. Pure aggregation over existing columns; drives the profile's insights section (see [`design.md`](design.md#public-profile)), which tiles `geolocated_count`, `detected_count` and the head of `top_conflicts` and `capture_sources`, then draws `source_hosts` and `activity`. `closed_count` reads in the tiles' population line, and `media_count` is read by the profile share card.
+Aggregated shape of an analyst's work. Pure aggregation over existing columns; drives the profile's insights section (see [`design.md`](design.md#public-profile)), which tiles `geolocated_count`, `detected_count` and the head of `top_conflicts` and `capture_sources`, then draws `source_hosts` and `activity`. `total_events` reads in the tiles' population line, and `media_count` is read by the profile share card.
 
 **Response 200:**
 ```json
 {
   "geolocated_count": 2,
   "detected_count": 1,
-  "closed_count": 1,
-  "total_events": 4,
+  "total_events": 3,
   "media_count": 2,
   "top_conflicts": [{ "name": "Russo-Ukrainian War", "count": 2 }],
   "capture_sources": [{ "name": "dashcam", "count": 1 }],
-  "source_hosts": [{ "name": "x.com", "count": 2 }, { "name": "t.me", "count": 1 }],
+  "source_hosts": [{ "name": "x.com", "count": 1 }, { "name": "t.me", "count": 1 }],
   "other_hosts_count": 0,
   "no_source_count": 1,
   "activity": [{ "period": "2025-11", "count": 0 }, { "period": "2025-12", "count": 3 }]
 }
 ```
 
-Every field describes one population: the analyst's visible events (`deleted_at IS NULL`, `hidden_at IS NULL`) in the three worked statuses, `geolocated` + `detected` + `closed`. That set is `total_events`, and it includes detections. A `requested` row is an open call for help rather than documented work, so it takes part in no aggregate here, and neither does its withdrawn form (`closed` off `requested`). A rejected detection and a retracted geolocation both count under `closed_count`: each is a judgement the analyst made and part of the record they built.
+Every field describes one population: the analyst's visible events (`deleted_at IS NULL`, `hidden_at IS NULL`) in `geolocated` or `detected`. That set is `total_events`, and it includes detections. A `requested` row is an open call for help rather than documented work, so it takes part in no aggregate here. A `closed` row takes part in none either, whichever status it left: it is a duplicate or rejected detection, a retracted geolocation or a withdrawn ask, not work the profile vouches for.
 
 `top_conflicts` and `capture_sources` are capped at 5, ordered by count desc then name, so the first entry is the leader a client can name without reading the rest. Both are empty for an analyst whose events carry no conflict or no `capture_source` tag.
 
