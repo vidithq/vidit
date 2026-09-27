@@ -153,6 +153,7 @@ Strategic context: [`roadmap.md`](roadmap.md) → *v1.0*. The public switch: ope
 | P2 | UX | RBAC on tag creation (admin-only) | Once tags become curated taxonomy. |
 | P2 | UX | Structured close reasons (picker) | `close_reason` ships as free text with the event-model refactor; swap the free field for a curated reason picker (withdrawn / rejected / duplicate / out-of-scope) once real usage shows the common reasons, keeping an optional free-text note. |
 | P2 | Seed | Real footage import flow (data-sharing agreement or CC-licensed sources) | Admin-page button reading a KMZ + posting. No standalone CLI. |
+| P2 | Ops | Carry a correlation id into the import worker and bot jobs | Every log line and Sentry event of an API request carries its request id ([`RequestIdMiddleware`](../backend/app/middleware/request_id.py)), but the work a request queues runs in another process without it: the worker runs an archive import from its `archive_import_jobs` row and a webhook mention from its `bot_webhook_events` row, so their lines show `-` and cannot be tied to the upload or the delivery that queued them. Store the enqueuing request's id on the row and set it as `observability.request_id` while the worker handles that row; give each hourly bot pass an id of its own, since no request queues it. |
 
 ---
 

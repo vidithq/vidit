@@ -7,8 +7,8 @@ more risk than reward.
 Configuration
 -------------
 
-* ``EMAIL_PROVIDER=console`` (dev default) prints the email to stdout and
-  returns — iterate on flows without burning Resend quota or chasing DKIM.
+* ``EMAIL_PROVIDER=console`` (dev default) logs the email at INFO and
+  returns: iterate on flows without burning Resend quota or chasing DKIM.
 * ``EMAIL_PROVIDER=resend`` POSTs to api.resend.com. Requires
   ``RESEND_API_KEY`` and ``EMAIL_FROM``.
 
@@ -61,18 +61,13 @@ def _from_address() -> str:
 
 
 def _send_console(email: Email) -> None:
-    body = (
-        f"\n--- DEV EMAIL ({settings.email_provider}) ---\n"
-        f"From: {_from_address()}\n"
-        f"To:   {email.to}\n"
-        f"Subj: {email.subject}\n\n"
-        f"{email.text}\n"
-        f"--- end ---\n"
+    logger.info(
+        "email not sent (EMAIL_PROVIDER=console)\nFrom: %s\nTo:   %s\nSubj: %s\n\n%s",
+        _from_address(),
+        email.to,
+        email.subject,
+        email.text,
     )
-    # print, not logger.info: uvicorn leaves the root logger unconfigured, so
-    # application INFO records are dropped and the promised stdout echo never
-    # appears. A plain print is the contract this provider documents.
-    print(body, flush=True)
 
 
 def _send_resend(email: Email) -> None:

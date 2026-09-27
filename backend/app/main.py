@@ -8,10 +8,12 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
+from starlette.types import ASGIApp
 
 from app.config import settings
 from app.middleware.csrf import CSRFMiddleware
-from app.observability import init_sentry
+from app.middleware.request_id import RequestIdMiddleware
+from app.observability import configure_logging, init_sentry
 from app.ratelimit import AUTHENTICATED_READ_SCOPE, limiter
 from app.routers import (
     admin,
@@ -32,9 +34,18 @@ from app.services.storage import (
 )
 from app.services.tweet_ingest import archive_zip
 
+configure_logging()
 init_sentry()
 
-app = FastAPI(
+
+class _ViditAPI(FastAPI):
+    def build_middleware_stack(self) -> ASGIApp:
+        # Around Starlette's ServerErrorMiddleware, which ``add_middleware``
+        # cannot wrap, so the 500 it writes carries the request id too.
+        return RequestIdMiddleware(super().build_middleware_stack())
+
+
+app = _ViditAPI(
     title="Vidit API",
     description="OSINT/GEOINT geolocation platform",
     version="0.1.0",
@@ -186,15 +197,16 @@ async def enforce_request_body_size(request: Request, call_next):
 
 
 # Order matters: middlewares added later run earlier on the incoming request.
-# Effective chain (outer → inner): HSTS → CORS → CSRF → BodySizeLimit → GZip → app.
+# Effective chain (outer → inner): RequestId (``_ViditAPI``) → Starlette's error
+# layer → HSTS → CORS → CSRF → BodySizeLimit → GZip → app.
 # CORS sits outside BodySizeLimit so the 413 short-circuit gets an
 # ``Access-Control-Allow-Origin`` header on the way out — otherwise a
 # cross-origin POST tripping the body cap surfaces as a CORS error in DevTools
 # instead of a clean 413 (PR #100). CSRF stays outside BodySize: it reads only
 # the double-submit cookie + header (not the body), so a forged-CSRF +
-# oversized body gets the 403 the cheap path would give anyway. HSTS is
-# outermost so it stamps every response, including CORS-preflight 200s and CSRF
-# rejections that never reach the app.
+# oversized body gets the 403 the cheap path would give anyway. HSTS is the
+# outermost registered one so it stamps every response, including CORS-preflight
+# 200s and CSRF rejections that never reach the app.
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(
     CORSMiddleware,

@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
     sentry_environment: str = "development"
     sentry_traces_sample_rate: float = 0.0
+    # Level of the ``app.*`` loggers (see ``observability.configure_logging``).
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
     # Trusted proxy hops in front of the backend. Each appends its observed
     # connecting IP to ``X-Forwarded-For``, so the rate-limit key
