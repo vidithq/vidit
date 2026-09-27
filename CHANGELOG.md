@@ -8,7 +8,9 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-_Nothing yet._
+### Fixed
+
+- **The map detail panel shows only the selected event** ([#357](https://github.com/vidithq/vidit/pull/357), [`frontend/src/app/map/page.tsx`](frontend/src/app/map/page.tsx)). A failed load shows the error instead of the previous event, and a late response for an earlier pin is discarded.
 
 ## v0.6.5, 2026-09-17
 
