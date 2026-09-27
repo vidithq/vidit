@@ -8,7 +8,9 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-_Nothing yet._
+### Fixed
+
+- **Image uploads decode under bounded memory** ([#360](https://github.com/vidithq/vidit/pull/360), [`backend/app/services/evidence_processing.py`](backend/app/services/evidence_processing.py), [`backend/app/services/storage.py`](backend/app/services/storage.py)). An upload is decoded only by its declared type's decoder and without full-size copies, at most two decodes run at once, and profile pictures are capped at 25 megapixels.
 
 ## v0.6.5, 2026-09-17
 
