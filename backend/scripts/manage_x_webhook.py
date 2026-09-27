@@ -28,7 +28,7 @@ from app.config import settings
 # Private x_api imports are deliberate: the API base and the OAuth 1.0a
 # signing have one home, and this in-repo operator script is a trusted
 # consumer, not a reason to widen x_api's public surface.
-from app.services.x_api import _API_BASE, _oauth1_header
+from app.services.x_api import _API_BASE, OAuth1Credentials, _oauth1_header
 
 _TIMEOUT_S = 30.0
 
@@ -60,10 +60,12 @@ def _user_context_request(method: str, url: str) -> httpx.Response:
     header = _oauth1_header(
         method,
         url,
-        consumer_key=settings.x_api_consumer_key,
-        consumer_secret=settings.x_api_consumer_secret,
-        token=settings.x_bot_access_token,
-        token_secret=settings.x_bot_access_token_secret,
+        OAuth1Credentials(
+            consumer_key=settings.x_api_consumer_key,
+            consumer_secret=settings.x_api_consumer_secret,
+            access_token=settings.x_bot_access_token,
+            access_token_secret=settings.x_bot_access_token_secret,
+        ),
     )
     return httpx.request(method, url, headers={"Authorization": header}, timeout=_TIMEOUT_S)
 

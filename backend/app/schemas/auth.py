@@ -1,17 +1,37 @@
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
+from pydantic_core import PydanticCustomError
 
 from app.schemas import NormalizedEmail
 
 PASSWORD_MIN_LENGTH = 8
-PASSWORD_MAX_LENGTH = 200
+# bcrypt reads at most 72 bytes of input and the ``bcrypt`` package raises on
+# more, so the ceiling is counted in UTF-8 bytes, not characters.
+PASSWORD_MAX_BYTES = 72
+
+
+def _within_bcrypt_limit(password: str) -> str:
+    if len(password.encode("utf-8")) > PASSWORD_MAX_BYTES:
+        raise PydanticCustomError(
+            "password_too_long",
+            "Password must be at most {max_bytes} bytes. Accented letters, emoji, "
+            "and non-Latin characters count as 2 bytes or more.",
+            {"max_bytes": PASSWORD_MAX_BYTES},
+        )
+    return password
+
+
+# A password a new credential is hashed from: register, reset, and change.
+NewPassword = Annotated[
+    str, Field(min_length=PASSWORD_MIN_LENGTH), AfterValidator(_within_bcrypt_limit)
+]
 
 
 class RegisterRequest(BaseModel):
     username: str = Field(min_length=1, max_length=50)
     email: NormalizedEmail
-    password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
+    password: NewPassword
     invite_code: str = Field(min_length=1, max_length=64)
 
 

@@ -2,7 +2,6 @@ import math
 import time
 from pathlib import Path
 
-import sentry_sdk
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -12,6 +11,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.middleware.csrf import CSRFMiddleware
+from app.observability import init_sentry
 from app.ratelimit import AUTHENTICATED_READ_SCOPE, limiter
 from app.routers import (
     admin,
@@ -32,14 +32,7 @@ from app.services.storage import (
 )
 from app.services.tweet_ingest import archive_zip
 
-# Error tracking. Boots only when SENTRY_DSN is set; safe to leave unset.
-if settings.sentry_dsn:
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn,
-        environment=settings.sentry_environment,
-        traces_sample_rate=settings.sentry_traces_sample_rate,
-        send_default_pii=False,
-    )
+init_sentry()
 
 app = FastAPI(
     title="Vidit API",

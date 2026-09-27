@@ -1,5 +1,6 @@
 import uuid
 
+import bcrypt
 import pytest
 from fastapi.testclient import TestClient
 
@@ -96,6 +97,58 @@ def test_me_without_credentials_returns_401():
     client = _client()
     response = client.get("/api/v1/auth/me")
     assert response.status_code == 401
+
+
+def test_login_answers_an_over_long_password_like_a_wrong_one(user_with_password):
+    user, _ = user_with_password
+    client = _client()
+    wrong = client.post("/api/v1/auth/login", json={"email": user.email, "password": "wrong-pw"})
+    # 40 characters, 80 bytes: past bcrypt's 72-byte input limit.
+    for email in (user.email, f"nobody-{uuid.uuid4().hex}@example.com"):
+        response = client.post("/api/v1/auth/login", json={"email": email, "password": "é" * 40})
+        assert response.status_code == wrong.status_code == 401
+        assert response.json() == wrong.json()
+        assert SESSION_COOKIE not in response.cookies
+
+
+def test_login_pays_one_bcrypt_check_for_an_over_long_password(monkeypatch, user_with_password):
+    # One check per attempt, known account or not, keeps response time from
+    # telling the two apart.
+    user, _ = user_with_password
+    checks: list[bytes] = []
+    real_checkpw = bcrypt.checkpw
+
+    def counting_checkpw(password: bytes, hashed: bytes) -> bool:
+        checks.append(hashed)
+        return real_checkpw(password, hashed)
+
+    monkeypatch.setattr(bcrypt, "checkpw", counting_checkpw)
+    client = _client()
+    for email in (user.email, f"nobody-{uuid.uuid4().hex}@example.com"):
+        checks.clear()
+        response = client.post("/api/v1/auth/login", json={"email": email, "password": "é" * 40})
+        assert response.status_code == 401
+        assert len(checks) == 1
+
+
+def test_login_does_not_truncate_a_password_to_72_bytes(db):
+    password = "a" * 72
+    user = User(
+        username=f"cookie-{uuid.uuid4().hex[:8]}",
+        email=f"{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password(password),
+    )
+    db.add(user)
+    db.commit()
+    try:
+        client = _client()
+        extended = {"email": user.email, "password": password + "b"}
+        assert client.post("/api/v1/auth/login", json=extended).status_code == 401
+        exact = {"email": user.email, "password": password}
+        assert client.post("/api/v1/auth/login", json=exact).status_code == 200
+    finally:
+        db.delete(user)
+        db.commit()
 
 
 def test_logout_clears_cookies(user_with_password):

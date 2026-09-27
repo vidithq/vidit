@@ -97,7 +97,13 @@ from app.services.tweet_ingest import (
     resolve_threads,
     tags_bot,
 )
-from app.services.x_api import Mention, XApiError, fetch_mentions, post_reply
+from app.services.x_api import (
+    Mention,
+    OAuth1Credentials,
+    XApiError,
+    fetch_mentions,
+    post_reply,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -482,10 +488,12 @@ def _post_reply_failsoft(mention: Mention, text: str, *, client: httpx.Client | 
         return post_reply(
             text=text,
             in_reply_to_tweet_id=mention.tweet_id,
-            consumer_key=settings.x_api_consumer_key,
-            consumer_secret=settings.x_api_consumer_secret,
-            access_token=settings.x_bot_access_token,
-            access_token_secret=settings.x_bot_access_token_secret,
+            credentials=OAuth1Credentials(
+                consumer_key=settings.x_api_consumer_key,
+                consumer_secret=settings.x_api_consumer_secret,
+                access_token=settings.x_bot_access_token,
+                access_token_secret=settings.x_bot_access_token_secret,
+            ),
             client=client,
         )
     except XApiError as exc:

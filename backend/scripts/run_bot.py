@@ -21,8 +21,8 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 import sentry_sdk
 
-from app.config import settings
 from app.database import SessionLocal
+from app.observability import init_sentry
 from app.services.bot import BotNotConfigured, run_bot_once
 from app.services.x_api import XApiError
 
@@ -31,12 +31,7 @@ def main() -> None:
     # Same opt-in Sentry boot as the app: a failing pull (revoked token,
     # pricing change, API drift) is silent and durable, so it must page
     # rather than sit in the cron service's logs.
-    if settings.sentry_dsn:
-        sentry_sdk.init(
-            dsn=settings.sentry_dsn,
-            environment=settings.sentry_environment,
-            send_default_pii=False,
-        )
+    init_sentry()
 
     db = SessionLocal()
     try:

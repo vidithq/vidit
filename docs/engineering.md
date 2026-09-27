@@ -172,6 +172,7 @@ vidit/
 │   │   ├── config.py               # Settings (pydantic-settings)
 │   │   ├── database.py             # SQLAlchemy engine + session
 │   │   ├── cache.py                # In-process TTL + LRU cache
+│   │   ├── observability.py        # Sentry boot shared by the API and the scripts
 │   │   ├── dependencies.py         # get_db, get_current_user
 │   │   ├── middleware/             # HSTS, request-context, CSRF, gate
 │   │   ├── models/                 # SQLAlchemy, one table per file
@@ -372,7 +373,7 @@ A few rules live in one backend home so the two sides can't drift:
 
 - **Upload MIME allowlist**: `services/storage.ALLOWED_IMAGE_TYPES` / `ALLOWED_VIDEO_TYPES` (the EXIF-strip set is *derived* from the image allowlist). Frontend mirror: `lib/mediaTypes.ts`.
 - **Coordinate bounds**: `services/events.validate_coordinates` (the create + submit paths share it). Frontend mirror: `lib/coordinates.ts`.
-- **Password length**: `schemas/auth.PASSWORD_MIN_LENGTH` / `PASSWORD_MAX_LENGTH`. Frontend mirror: `lib/auth.PASSWORD_MIN_LENGTH`.
+- **Password length**: `schemas/auth.PASSWORD_MIN_LENGTH` (characters) and `PASSWORD_MAX_BYTES` (UTF-8 bytes, the input limit of bcrypt). Frontend mirror: `lib/auth.PASSWORD_MIN_LENGTH` only. For the byte limit, the forms show the message from the API's 422.
 
 The frontend mirrors are hand-kept: change a backend value, change its mirror.
 
@@ -653,7 +654,7 @@ vercel --prod --yes                               # promote to production
 
 | Piece | State | How to turn on |
 |---|---|---|
-| Backend Sentry | SDK wired in [`backend/app/main.py`](../backend/app/main.py); `sentry_sdk.init(...)` runs only when `SENTRY_DSN` is non-empty. | Create a project at sentry.io (Python / FastAPI), copy the DSN, then on Railway `backend` service: `railway variables --set "SENTRY_DSN=https://..." --set "SENTRY_ENVIRONMENT=production"`. Verify: hit a 5xx path or `sentry_sdk.capture_message('hello')` from `railway ssh` and confirm it lands. |
+| Backend Sentry | `init_sentry` in [`backend/app/observability.py`](../backend/app/observability.py) boots the SDK for the API ([`main.py`](../backend/app/main.py)) and the three [scheduler services](#scheduler-services), and only when `SENTRY_DSN` is non-empty. Events carry no frame local variables and no request bodies, and `send_default_pii` stays off, so a password or an API credential held in a variable or sent in a request body never reaches an event. | Create a project at sentry.io (Python / FastAPI), copy the DSN, then on Railway `backend` service: `railway variables --set "SENTRY_DSN=https://..." --set "SENTRY_ENVIRONMENT=production"`. Verify: hit a 5xx path or `sentry_sdk.capture_message('hello')` from `railway ssh` and confirm it lands. |
 | Frontend Sentry | SDK wired in [`frontend/instrumentation-client.ts`](../frontend/instrumentation-client.ts) + [`sentry.server.config.ts`](../frontend/sentry.server.config.ts) + [`sentry.edge.config.ts`](../frontend/sentry.edge.config.ts); booted by [`frontend/instrumentation.ts`](../frontend/instrumentation.ts) which also re-exports `onRequestError = Sentry.captureRequestError` so errors thrown inside nested React Server Components reach Sentry. `Sentry.init(...)` runs only when `NEXT_PUBLIC_SENTRY_DSN` (client) or `SENTRY_DSN` (server / edge) is non-empty. `app/error.tsx` + `app/global-error.tsx` forward caught exceptions via `Sentry.captureException` (React error boundaries are not auto-captured). `next.config.mjs` is wrapped with `withSentryConfig` (with `tunnelRoute: "/monitoring"`, see the ad-blocker note below). | On Vercel set `NEXT_PUBLIC_SENTRY_DSN` (Production) + `SENTRY_DSN` (server runtime) + `NEXT_PUBLIC_SENTRY_ENVIRONMENT=production` + `SENTRY_ENVIRONMENT=production`. For build-time source-map upload also add repo variables `SENTRY_ORG` + `SENTRY_PROJECT` + repo secret `SENTRY_AUTH_TOKEN` ([wired through `deploy.yml`](../.github/workflows/deploy.yml)) and set the same on Vercel. Trigger a `deploy` workflow run. Verification: see [Frontend Sentry verification](#frontend-sentry-verification) below. |
 | Vercel Web Analytics + Speed Insights | `<Analytics />` + `<SpeedInsights />` (the `/next` entrypoints of `@vercel/analytics` / `@vercel/speed-insights`) render in [`frontend/src/app/layout.tsx`](../frontend/src/app/layout.tsx). Cookieless aggregate page-view counts and Core Web Vitals; no cross-site tracking, so no consent banner is required. Both components no-op outside a Vercel deployment. | Vercel dashboard → project → **Analytics** tab → Enable, and **Speed Insights** tab → Enable. The components send nothing until both toggles are on. |
 | Uptime monitor | External. Pings `/health` from outside Railway region to catch outages. | Pick a free tier (UptimeRobot, BetterStack, Hyperping). Add `https://api.vidit.app/health` as an HTTP monitor, 1-5 min cadence, alert routes to owner email + the Vidit Discord webhook. Health endpoint is unauthenticated and returns `{"status":"ok"}`. |

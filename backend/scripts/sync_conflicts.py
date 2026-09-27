@@ -15,8 +15,8 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 import sentry_sdk
 
-from app.config import settings
 from app.database import SessionLocal
+from app.observability import init_sentry
 from app.services.conflict_sync import ConflictSyncError, sync_conflicts
 
 
@@ -24,12 +24,7 @@ def main() -> None:
     # Same opt-in Sentry boot as the app: the interesting failure mode (the
     # page structure changed and every run aborts) is silent and durable, so
     # it must page rather than sit in the cron service's logs.
-    if settings.sentry_dsn:
-        sentry_sdk.init(
-            dsn=settings.sentry_dsn,
-            environment=settings.sentry_environment,
-            send_default_pii=False,
-        )
+    init_sentry()
 
     db = SessionLocal()
     try:
