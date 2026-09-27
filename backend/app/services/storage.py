@@ -3,6 +3,7 @@ import hashlib
 import logging
 import shutil
 import unicodedata
+from collections.abc import Collection
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple, Protocol
 from uuid import UUID, uuid4
@@ -509,17 +510,22 @@ class PreparedMedia(NamedTuple):
 
 
 def prepare_media(
-    data: bytes, content_type: str, *, produce_derivatives: bool = True
+    data: bytes,
+    content_type: str,
+    *,
+    produce_derivatives: bool = True,
+    source_types: Collection[str] | None = None,
 ) -> PreparedMedia:
     """Strip metadata + (optionally) build hero/thumb JPEGs. Sync, CPU-bound —
     callers run it in a thread. Non-image types pass through unstripped.
 
     ``content_type`` is the type the result is stored under, and for an image it
-    is also the encoding it comes back in: Pillow reads whatever the bytes
-    actually are, and ``strip_metadata`` re-encodes to the declared type. That
-    is how the ingest path normalises a machine-fetched photo, which declares
-    the one imported-photo type rather than reading a payload field
-    (``tweet_ingest.records.PHOTO_CONTENT_TYPE``).
+    is also the encoding it comes back in. The image bytes must be in that
+    format unless ``source_types`` lists the formats they may be in, and
+    ``strip_metadata`` re-encodes them to the declared type. That is how the
+    ingest path normalises a machine-fetched photo: it passes every accepted
+    image type and declares the one imported-photo type rather than reading a
+    payload field (``tweet_ingest.records.PHOTO_CONTENT_TYPE``).
     """
     # Local import keeps the storage module free of an eager Pillow load
     # (libjpeg / libpng C extensions at process start).
@@ -536,7 +542,7 @@ def prepare_media(
         # and ``validate_bytes`` caps it at ``max_video_size``. (No video reaches
         # this path today; the archive adapter ingests photos only.)
         return PreparedMedia(data, None, None, content_type)
-    cleaned = strip_metadata(data, content_type)
+    cleaned = strip_metadata(data, content_type, source_types=source_types)
     if not produce_derivatives:
         return PreparedMedia(cleaned, None, None, content_type)
     hero = make_jpeg_derivative(cleaned, content_type, HERO_MAX_DIM)
@@ -718,17 +724,20 @@ def render_avatar_jpeg(data: bytes, content_type: str) -> bytes:
     caller here wants.
 
     Sync and CPU-bound; the async caller runs it in a thread. Raises
-    ``EvidenceProcessingError`` for an image that cannot be decoded.
+    ``EvidenceProcessingError`` for an image that cannot be decoded as
+    ``content_type`` or is over ``MAX_AVATAR_DECODED_PIXELS``.
     """
     # Local import keeps the storage module free of an eager Pillow load, the
     # same reason ``prepare_media`` defers it.
     from app.services.evidence_processing import (
+        MAX_AVATAR_DECODED_PIXELS,
         THUMBNAIL_MAX_DIM,
         make_jpeg_derivative,
         strip_metadata,
     )
 
-    return make_jpeg_derivative(strip_metadata(data, content_type), content_type, THUMBNAIL_MAX_DIM)
+    cleaned = strip_metadata(data, content_type, max_pixels=MAX_AVATAR_DECODED_PIXELS)
+    return make_jpeg_derivative(cleaned, content_type, THUMBNAIL_MAX_DIM)
 
 
 async def upload_avatar_image(file: UploadFile, user_id: UUID) -> UploadResult:

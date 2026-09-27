@@ -12,9 +12,10 @@ from __future__ import annotations
 import io
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
-from app.services.evidence_processing import DERIVATIVE_CONTENT_TYPE
+from app.services.evidence_processing import DERIVATIVE_CONTENT_TYPE, EvidenceProcessingError
 from app.services.storage import ALLOWED_IMAGE_TYPES, prepare_media
 from app.services.tweet_ingest.archive import read_tweets
 from app.services.tweet_ingest.records import (
@@ -38,17 +39,18 @@ def test_the_stored_type_follows_the_kind_and_nothing_else() -> None:
     assert ParsedMedia(kind="video", remote_url="x").content_type == VIDEO_CONTENT_TYPE
 
 
-def _png_bytes() -> bytes:
+def _encoded(fmt: str) -> bytes:
     buf = io.BytesIO()
-    Image.new("RGBA", (4, 4), color=(10, 20, 30, 255)).save(buf, format="PNG")
+    Image.new("RGBA", (4, 4), color=(10, 20, 30, 255)).save(buf, format=fmt)
     return buf.getvalue()
 
 
 def test_png_bytes_land_as_the_one_photo_format() -> None:
-    """The re-encode itself: the write path declares the imported-photo type and
-    ``prepare_media`` returns bytes in it, whatever the post served. The cap
-    applies before this, to the fetched bytes (``validate_bytes``)."""
-    prepared = prepare_media(_png_bytes(), PHOTO_CONTENT_TYPE)
+    """The re-encode itself: the write path declares the imported-photo type,
+    accepts any accepted image format, and ``prepare_media`` returns bytes in
+    the declared type, whatever the post served. The cap applies before this,
+    to the fetched bytes (``validate_bytes``)."""
+    prepared = prepare_media(_encoded("PNG"), PHOTO_CONTENT_TYPE, source_types=ALLOWED_IMAGE_TYPES)
 
     assert prepared.content_type == PHOTO_CONTENT_TYPE
     with Image.open(io.BytesIO(prepared.cleaned)) as stored:
@@ -57,6 +59,13 @@ def test_png_bytes_land_as_the_one_photo_format() -> None:
         assert derivative is not None
         with Image.open(io.BytesIO(derivative)) as image:
             assert image.format == "JPEG"
+
+
+def test_a_photo_in_a_format_uploads_refuse_is_not_stored() -> None:
+    """The re-encode reads only the formats an upload accepts: a TIFF photo is
+    refused, and the write path skips it like any undecodable media."""
+    with pytest.raises(EvidenceProcessingError):
+        prepare_media(_encoded("TIFF"), PHOTO_CONTENT_TYPE, source_types=ALLOWED_IMAGE_TYPES)
 
 
 def test_a_png_reads_the_same_off_the_export_and_off_syndication(tmp_path: Path) -> None:

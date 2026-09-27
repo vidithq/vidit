@@ -31,11 +31,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime
+from io import BytesIO
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from geoalchemy2.shape import from_shape
+from PIL import Image
 from shapely.geometry import Point
 
 from app.database import SessionLocal
@@ -50,6 +52,7 @@ from app.models.event import (
 from app.models.user import User
 from app.services import storage as storage_module
 from app.services.auth import hash_password
+from app.services.evidence_processing import MAX_AVATAR_DECODED_PIXELS, MAX_DECODED_PIXELS
 from app.services.storage import LOCAL_STORAGE_URL_PREFIX
 from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
@@ -684,6 +687,23 @@ def test_put_avatar_rejects_undecodable_image(local_storage, live_user):
     response = _put_avatar(live_user, content=b"\xff\xd8\xff\xd9", content_type="image/jpeg")
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "invalid_avatar"
+
+
+def test_put_avatar_rejects_an_image_over_the_avatar_pixel_cap(local_storage, live_user, db):
+    """A profile picture has its own, lower pixel ceiling: an image an evidence
+    upload would take is refused as an avatar, and nothing is stored."""
+    width, height = MAX_AVATAR_DECODED_PIXELS // 5000 + 1, 5000
+    assert width * height <= MAX_DECODED_PIXELS
+    buf = BytesIO()
+    Image.new("L", (width, height)).save(buf, format="PNG")
+
+    response = _put_avatar(live_user, content=buf.getvalue(), content_type="image/png")
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "invalid_avatar"
+    assert not (local_storage / "avatars").exists()
+    db.expire_all()
+    assert db.query(User).filter(User.id == live_user.id).one().avatar_url is None
 
 
 def test_avatar_endpoints_require_auth():
