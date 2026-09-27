@@ -367,7 +367,9 @@ The API runs as one uvicorn process with one event loop (the `CMD` in [`backend/
 
 [`tests/test_request_concurrency.py`](../backend/tests/test_request_concurrency.py) fails on an `async def` handler that depends on `get_db`, the webhook receiver excepted.
 
-Every connection from the engine in [`database.py`](../backend/app/database.py) sets the Postgres `lock_timeout` to `LOCK_TIMEOUT_MS`, 5 seconds. A statement that waits longer for a lock fails, and `get_db` answers the request with a `409` carrying the typed envelope `{"code": "lock_timeout", …}`. The import worker, the bot cron, and the conflict-sync cron open their sessions from the same engine, so the bound applies to them too. Migrations open their own engine in [`alembic/env.py`](../backend/alembic/env.py) and run without it.
+The API process caps every lock wait at `LOCK_TIMEOUT_MS`, 5 seconds. [`main.py`](../backend/app/main.py) calls `bound_lock_waits` from [`database.py`](../backend/app/database.py) at import, and from then on every connection the engine opens sets the Postgres `lock_timeout` in its startup options. A statement that waits longer for a lock fails, and `get_db` answers the request with a `409` carrying the typed envelope `{"code": "lock_timeout", …}`. The cap protects the API's threadpool: a request queued on a lock holds a worker thread for as long as it waits.
+
+The cap applies to the API process only. The import worker, the bot cron, and the conflict-sync cron open their sessions from the same engine but never import `main.py`, so their statements wait for the lock: each service runs on its own compute with no shared threadpool, and waiting costs it nothing. Migrations open their own engine in [`alembic/env.py`](../backend/alembic/env.py) and wait too.
 
 ### Schema naming
 

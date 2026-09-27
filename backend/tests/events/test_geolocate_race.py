@@ -321,25 +321,37 @@ def test_a_lock_wait_past_the_timeout_answers_409(
 ):
     """A geolocate queued behind a lock nobody releases gives up and answers 409.
 
-    The test's own session holds the row lock for the whole request, so the
+    The test's own session holds the row lock while the request runs, so the
     wait ends only when Postgres cancels it at ``LOCK_TIMEOUT_MS``, and
     ``get_db`` answers that with the typed ``lock_timeout`` envelope rather than
-    a 500. Nothing is written.
+    a 500. Nothing is written. Without the cap the request would wait for good,
+    so it runs in a thread the test stops waiting for after ``_WAIT_S``.
     """
     request_id = _make_requested_with_media(db, author=author).id
-    db.query(Event).filter(Event.id == request_id).with_for_update().one()
-    try:
-        started = time.monotonic()
-        response = client.post(
-            f"/api/v1/events/{request_id}/geolocate",
-            headers=login_as(client, second_user),
-            data=_fulfilment_form(conflict, capture_source_tag, title="Never lands"),
-            files=[proof_file_part()],
-        )
-        waited = time.monotonic() - started
-    finally:
-        db.rollback()
+    headers = login_as(client, second_user)
+    form = _fulfilment_form(conflict, capture_source_tag, title="Never lands")
+    responses = []
 
+    def geolocate() -> None:
+        responses.append(
+            client.post(
+                f"/api/v1/events/{request_id}/geolocate",
+                headers=headers,
+                data=form,
+                files=[proof_file_part()],
+            )
+        )
+
+    db.query(Event).filter(Event.id == request_id).with_for_update().one()
+    sender = threading.Thread(target=geolocate)
+    started = time.monotonic()
+    sender.start()
+    sender.join(_WAIT_S)
+    waited = time.monotonic() - started
+    db.rollback()
+    sender.join(_WAIT_S)
+
+    (response,) = responses
     assert response.status_code == 409, response.text
     assert response.json()["detail"]["code"] == "lock_timeout"
     assert waited >= LOCK_TIMEOUT_MS / 1000

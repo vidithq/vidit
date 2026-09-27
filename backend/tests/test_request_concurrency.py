@@ -1,19 +1,25 @@
-"""The request-concurrency rule, checked over every mounted route.
+"""The request-concurrency rules (``engineering.md``, Request concurrency).
 
-The API serves every request from one event loop (``engineering.md``, Request
-concurrency), so a handler that touches the database is a plain ``def``, which
-FastAPI runs in its threadpool. ``events/test_geolocate_race.py`` shows what
-one ``async`` handler on that loop costs; this sweep keeps others from joining
-it.
+The API serves every request from one event loop, so a handler that touches the
+database is a plain ``def``, which FastAPI runs in its threadpool. The sweep
+below keeps an ``async`` one off that loop; ``events/test_geolocate_race.py``
+shows what one costs. A lock wait then holds a threadpool worker, so the API
+process caps it at ``LOCK_TIMEOUT_MS``, while the scheduler services, which
+share the engine but never import ``app.main``, keep waiting.
 """
 
 from __future__ import annotations
 
 import inspect
+import subprocess
+import sys
+from pathlib import Path
 
 from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute
+from sqlalchemy import text
 
+from app.database import engine
 from app.dependencies import get_db
 from app.main import app
 
@@ -36,3 +42,28 @@ def test_no_async_handler_touches_the_database():
         and route.path not in _ASYNC_BY_DESIGN
     ]
     assert offenders == []
+
+
+def test_the_api_engine_caps_lock_waits():
+    with engine.connect() as conn:
+        assert conn.execute(text("SHOW lock_timeout")).scalar_one() == "5s"
+
+
+def test_an_engine_outside_the_api_waits_on_locks():
+    """A process that imports the engine without ``app.main``, as the scheduler
+    services do, opens connections with no lock timeout."""
+    probe = (
+        "from sqlalchemy import text\n"
+        "from app.database import engine\n"
+        "with engine.connect() as conn:\n"
+        "    print(conn.execute(text('SHOW lock_timeout')).scalar_one())\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "0"
