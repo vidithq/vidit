@@ -107,7 +107,7 @@ The backend uses S3 and CloudFront from day one instead of Supabase, for AWS fam
 
 Every image is decoded and re-encoded before it is stored: [`evidence_processing.py`](../backend/app/services/evidence_processing.py) strips its metadata, applies its EXIF orientation, and cuts its display derivatives. The decode is bounded in four ways:
 
-- The declared `Content-Type` selects the only decoder allowed to read the file.
+- Only the JPEG, PNG and WebP decoders may read the file, whatever its declared `Content-Type`. The image is then re-encoded in the declared type.
 - The pixel limit is checked against the file header before any pixel is decoded. The limits are in [`api.md`](api.md#file-limits).
 - The strip works on the decoded image in place, not on copies of it.
 - A process decodes at most `MAX_CONCURRENT_DECODES` images at once. An upload that arrives while every slot is busy waits for one, so a burst of uploads adds latency, not memory.

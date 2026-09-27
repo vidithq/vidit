@@ -277,26 +277,6 @@ async def test_assemble_persists_detected_row(db, owner):
     assert media[0].sha256 and len(media[0].sha256) == 64
 
 
-async def test_a_photo_served_as_png_is_stored_as_the_one_photo_format(db, owner):
-    # The fetch declares the one imported-photo type whatever format the post
-    # served, and the write path re-encodes to it rather than skipping a PNG.
-    from PIL import Image
-
-    async def _png_fetcher(parsed: ParsedMedia) -> tuple[bytes, str]:
-        buf = io.BytesIO()
-        Image.new("RGB", (4, 4), color="red").save(buf, format="PNG")
-        return buf.getvalue(), parsed.content_type
-
-    outcome = await _persist(
-        db, owner=owner, detections=[_detection(media=[_img()])], fetch_media=_png_fetcher
-    )
-    [media] = db.query(Media).filter(Media.event_id == outcome.created[0]).all()
-    key = get_storage().key_from_url(media.storage_url)
-    assert key is not None
-    with Image.open(io.BytesIO(stored_bytes(key))) as stored:
-        assert stored.format == "JPEG"
-
-
 async def test_assemble_prefills_secondary_source_links(db, owner):
     # The mirrors the resolution found land as ordered child rows, so the owner
     # reviews them at submit instead of re-finding the links by hand.

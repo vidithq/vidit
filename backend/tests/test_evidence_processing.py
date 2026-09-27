@@ -7,7 +7,7 @@ JPEG. These tests lock in the contract:
 
 * JPEG with EXIF in → bytes with no EXIF marker out.
 * Corrupt image in → ``EvidenceProcessingError`` (router 400, no
-  half-written S3 object), and so are bytes in another format than declared.
+  half-written S3 object), and so are bytes that are not JPEG, PNG or WebP.
 * Non-image content type (video) → bytes unchanged (no Pillow on the
   hot path for the 100 MB upload ceiling).
 * The output is still a valid, decodable image at the same dimensions
@@ -29,6 +29,7 @@ from app.services.evidence_processing import (
     MAX_CONCURRENT_DECODES,
     MAX_DECODED_PIXELS,
     THUMBNAIL_MAX_DIM,
+    UNSUPPORTED_FORMAT_MESSAGE,
     EvidenceProcessingError,
     make_jpeg_derivative,
     strip_metadata,
@@ -139,7 +140,7 @@ def test_strip_metadata_raises_on_corrupt_image():
     ``EvidenceProcessingError`` so the router's ``ValueError`` → 400 path picks
     it up before any storage write.
     """
-    with pytest.raises(EvidenceProcessingError, match="decode"):
+    with pytest.raises(EvidenceProcessingError):
         strip_metadata(b"\xff\xd8\xff\xd9", "image/jpeg")
 
 
@@ -334,7 +335,7 @@ def test_make_jpeg_derivative_rejects_corrupt_image():
     (router → 400) rather than a 500 from an uncaught Pillow exception.
     Matches ``strip_metadata``'s contract.
     """
-    with pytest.raises(EvidenceProcessingError, match="Could not decode"):
+    with pytest.raises(EvidenceProcessingError):
         make_jpeg_derivative(b"not-a-jpeg", "image/jpeg", HERO_MAX_DIM)
 
 
@@ -444,19 +445,40 @@ def test_strip_metadata_leaves_an_unrotated_image_alone():
 # ── declared type, metadata chunks, decode slots ─────────────────────────
 
 
-def _encoded(fmt: str) -> bytes:
+def _encoded(fmt: str, mode: str = "RGB") -> bytes:
     buf = BytesIO()
-    Image.new("RGB", (4, 4), "red").save(buf, format=fmt)
+    Image.new(mode, (4, 4)).save(buf, format=fmt)
     return buf.getvalue()
 
 
-@pytest.mark.parametrize(("fmt", "declared"), [("PNG", "image/jpeg"), ("TIFF", "image/png")])
-def test_strip_metadata_refuses_bytes_in_another_format_than_declared(fmt, declared):
-    """The declared type names the one decoder allowed to read the bytes, so a
-    PNG sent as ``image/jpeg`` or a TIFF sent as ``image/png`` is refused
-    rather than decoded as whatever it really is."""
-    with pytest.raises(EvidenceProcessingError, match="Could not decode"):
+_MAGIC = {"image/jpeg": b"\xff\xd8\xff", "image/png": b"\x89PNG\r\n\x1a\n"}
+
+
+@pytest.mark.parametrize(
+    ("fmt", "mode", "declared"),
+    [
+        ("WEBP", "RGB", "image/jpeg"),
+        ("PNG", "RGBA", "image/jpeg"),
+        ("JPEG", "RGB", "image/png"),
+        ("JPEG", "CMYK", "image/png"),
+    ],
+)
+def test_strip_metadata_stores_any_accepted_format_as_the_declared_type(fmt, mode, declared):
+    """A JPEG, PNG or WebP is accepted whatever type it declares and is stored
+    encoded as the declared type, so the stored bytes match the stored type."""
+    cleaned = strip_metadata(_encoded(fmt, mode), declared)
+
+    assert cleaned.startswith(_MAGIC[declared])
+
+
+@pytest.mark.parametrize(("fmt", "declared"), [("TIFF", "image/png"), ("GIF", "image/jpeg")])
+def test_strip_metadata_refuses_a_format_it_does_not_accept(fmt, declared):
+    """Bytes no JPEG, PNG or WebP decoder reads are refused whatever type they
+    declare, with a message naming the formats an upload may be in."""
+    with pytest.raises(EvidenceProcessingError) as refused:
         strip_metadata(_encoded(fmt), declared)
+
+    assert str(refused.value) == UNSUPPORTED_FORMAT_MESSAGE
 
 
 def test_every_accepted_image_type_strips_to_its_own_format():

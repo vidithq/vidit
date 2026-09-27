@@ -10,9 +10,13 @@ proof helpers in `_helpers.py`.
 from __future__ import annotations
 
 import json
+from io import BytesIO
+
+from PIL import Image
 
 from app.models.event import Event
 from app.models.media import Media
+from app.services.evidence_processing import UNSUPPORTED_FORMAT_MESSAGE
 from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
 from tests.events._helpers import (
@@ -568,3 +572,28 @@ def test_create_cleans_up_s3_when_proof_file_is_corrupt(
             leaked.extend(base.rglob("*.jpg"))
     assert leaked == [], f"S3 orphans after rolled-back create: {leaked}"
     assert db.query(Event).filter(Event.owner_id == author.id).count() == 0
+
+
+def test_create_names_the_accepted_formats_when_refusing_an_image(
+    author, conflict, capture_source_tag
+):
+    """A file no JPEG, PNG or WebP decoder reads is refused whatever type it
+    declares, with a message naming the formats an upload may be in."""
+    tiff = BytesIO()
+    Image.new("RGB", (4, 4)).save(tiff, format="TIFF")
+
+    response = client.post(
+        "/api/v1/events",
+        headers=login_as(client, author),
+        data=_form(
+            tag_ids=json.dumps([str(capture_source_tag.id)]),
+            conflict_ids=json.dumps([str(conflict.id)]),
+        ),
+        files=[("file", ("scan.png", tiff.getvalue(), "image/png")), proof_file_part()],
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == {
+        "code": "evidence_processing_failed",
+        "message": UNSUPPORTED_FORMAT_MESSAGE,
+    }

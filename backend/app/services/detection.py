@@ -60,7 +60,6 @@ from app.services.evidence_intake import EvidenceIntakeError, collect_media_keys
 from app.services.sanitize import tiptap_doc_from_text
 from app.services.source_archive import reconcile_source_archive
 from app.services.storage import (
-    ALLOWED_IMAGE_TYPES,
     PreparedMedia,
     content_sha256,
     detected_media_key,
@@ -332,11 +331,7 @@ async def _prepared_media(
         data, content_type = fetched
         try:
             validate_bytes(data, content_type)
-            # A photo is stored as the declared type whichever accepted image
-            # format the post served it in.
-            prepared = await asyncio.to_thread(
-                prepare_media, data, content_type, source_types=ALLOWED_IMAGE_TYPES
-            )
+            prepared = await asyncio.to_thread(prepare_media, data, content_type)
         except ValueError:
             # ValueError is the unusable-media surface: validate_bytes (bad
             # type / size) + EvidenceProcessingError (undecodable image) both
