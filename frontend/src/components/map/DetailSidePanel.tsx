@@ -7,6 +7,7 @@ import { ArrowRight } from "lucide-react";
 import type { EventDetail } from "@/types";
 import { cn } from "@/lib/cn";
 import { TEXT_LINK } from "@/components/ui/styles";
+import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
@@ -35,6 +36,8 @@ interface DetailSidePanelProps {
   /** Null while the selected geolocation is still loading. */
   detail: EventDetail | null;
   loading: boolean;
+  /** Why the event failed to load. Shown in place of the event. */
+  error?: string | null;
   /** Closes the panel. Absent on a surface the panel does not float over (the
    *  collection page's player, which is a block of the page), where there is
    *  nothing to close it back to. */
@@ -74,6 +77,7 @@ interface DetailSidePanelProps {
 export function DetailSidePanel({
   detail,
   loading,
+  error,
   onClose,
   header,
   placement = "overlay",
@@ -134,7 +138,14 @@ export function DetailSidePanel({
         <div className="sticky top-0 z-20 bg-neutral-900">{header}</div>
       )}
 
-      {loading || !detail ? (
+      {error ? (
+        // `pr-12` keeps the banner clear of the absolute close button.
+        <div className="p-4 pr-12">
+          <div className={FORM_ERROR_BANNER} role="alert">
+            {error}
+          </div>
+        </div>
+      ) : loading || !detail ? (
         // `min-h-32` under the `h-full`: an inline panel stacked under the map
         // on a phone is sized by its content, so a `h-full` box holding one
         // line would collapse to that line and the chrome above it would jump
