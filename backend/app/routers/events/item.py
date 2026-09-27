@@ -6,6 +6,7 @@ No delete: an owner takes a row back with ``close``, which keeps the record
 readable, and destruction is the admin router's ``DELETE /admin/events/{id}``.
 """
 
+import asyncio
 import uuid
 
 from fastapi import (
@@ -205,11 +206,16 @@ def get_event(
 # is not among them: destruction is the admin router's
 # ``DELETE /admin/events/{id}``, so an owner's own way out of a published claim
 # is the retraction, which keeps the record. See ``api.md``.
+#
+# The three multipart writes are plain ``def`` and drive their async service
+# through ``asyncio.run``, so their queries and the row lock they hold across
+# the upload stay off the server's event loop (``engineering.md``, Request
+# concurrency).
 
 
 @router.post("/{geolocation_id}/geolocate", response_model=EventRead)
 @limiter.limit("30/minute")
-async def geolocate_event(
+def geolocate_event(
     request: Request,
     geolocation_id: uuid.UUID,
     # Multipart, mirroring create: the form posts the whole state and the service
@@ -294,29 +300,31 @@ async def geolocate_event(
     # (owner-only for ``detected``, open for ``requested``) under a row lock.
     geo = resolve_live_event(db, geolocation_id)
     try:
-        geolocated = await events_service.geolocate(
-            db,
-            geo=geo,
-            current_user=current_user,
-            title=title,
-            lat=lat,
-            lng=lng,
-            capture_source_lat=capture_source_lat,
-            capture_source_lng=capture_source_lng,
-            source_url=source_url,
-            source_snapshot_url=source_snapshot_url,
-            secondary_source_urls=secondary_source_urls,
-            secondary_snapshot_urls=secondary_snapshot_urls,
-            event_date=parsed_event_date,
-            event_time=parsed_event_time,
-            source_posted_at=parsed_source_posted_at,
-            proof_data=proof_data,
-            tag_ids=parsed_tag_ids,
-            conflict_ids=parsed_conflict_ids,
-            is_graphic=is_graphic,
-            remove_media_ids=parsed_remove_ids,
-            files=files,
-            proof_files=proof_files,
+        geolocated = asyncio.run(
+            events_service.geolocate(
+                db,
+                geo=geo,
+                current_user=current_user,
+                title=title,
+                lat=lat,
+                lng=lng,
+                capture_source_lat=capture_source_lat,
+                capture_source_lng=capture_source_lng,
+                source_url=source_url,
+                source_snapshot_url=source_snapshot_url,
+                secondary_source_urls=secondary_source_urls,
+                secondary_snapshot_urls=secondary_snapshot_urls,
+                event_date=parsed_event_date,
+                event_time=parsed_event_time,
+                source_posted_at=parsed_source_posted_at,
+                proof_data=proof_data,
+                tag_ids=parsed_tag_ids,
+                conflict_ids=parsed_conflict_ids,
+                is_graphic=is_graphic,
+                remove_media_ids=parsed_remove_ids,
+                files=files,
+                proof_files=proof_files,
+            )
         )
     except EvidenceIntakeError as exc:
         _raise_event_error(exc)
@@ -327,7 +335,7 @@ async def geolocate_event(
 
 @router.post("/{geolocation_id}/request", response_model=EventRead)
 @limiter.limit("30/minute")
-async def update_event_request(
+def update_event_request(
     request: Request,
     geolocation_id: uuid.UUID,
     # Multipart, mirroring the create form at ``POST /events/requests``: the same
@@ -399,29 +407,31 @@ async def update_event_request(
     # under the row lock, where the decision is race-free.
     geo = resolve_live_event(db, geolocation_id)
     try:
-        edited = await events_service.update_request(
-            db,
-            geo=geo,
-            current_user=current_user,
-            title=title,
-            source_url=source_url,
-            source_snapshot_url=source_snapshot_url,
-            secondary_source_urls=secondary_source_urls,
-            secondary_snapshot_urls=secondary_snapshot_urls,
-            proof_data=proof_data,
-            lat=lat,
-            lng=lng,
-            capture_source_lat=capture_source_lat,
-            capture_source_lng=capture_source_lng,
-            event_date=parsed_event_date,
-            event_time=parsed_event_time,
-            source_posted_at=parsed_source_posted_at,
-            tag_ids=parsed_tag_ids,
-            conflict_ids=parsed_conflict_ids,
-            is_graphic=is_graphic,
-            remove_media_ids=parsed_remove_ids,
-            files=files,
-            proof_files=proof_files,
+        edited = asyncio.run(
+            events_service.update_request(
+                db,
+                geo=geo,
+                current_user=current_user,
+                title=title,
+                source_url=source_url,
+                source_snapshot_url=source_snapshot_url,
+                secondary_source_urls=secondary_source_urls,
+                secondary_snapshot_urls=secondary_snapshot_urls,
+                proof_data=proof_data,
+                lat=lat,
+                lng=lng,
+                capture_source_lat=capture_source_lat,
+                capture_source_lng=capture_source_lng,
+                event_date=parsed_event_date,
+                event_time=parsed_event_time,
+                source_posted_at=parsed_source_posted_at,
+                tag_ids=parsed_tag_ids,
+                conflict_ids=parsed_conflict_ids,
+                is_graphic=is_graphic,
+                remove_media_ids=parsed_remove_ids,
+                files=files,
+                proof_files=proof_files,
+            )
         )
     except EvidenceIntakeError as exc:
         _raise_event_error(exc)
@@ -432,7 +442,7 @@ async def update_event_request(
 
 @router.post("/{geolocation_id}/versions", response_model=EventRead)
 @limiter.limit("30/minute")
-async def save_event_version(
+def save_event_version(
     request: Request,
     geolocation_id: uuid.UUID,
     # Multipart, mirroring geolocate: the form posts the whole editable state
@@ -526,31 +536,33 @@ async def save_event_version(
     # under the row lock, where the decision is race-free.
     geo = resolve_live_event(db, geolocation_id)
     try:
-        edited = await events_service.save_version(
-            db,
-            geo=geo,
-            current_user=current_user,
-            title=title,
-            lat=lat,
-            lng=lng,
-            capture_source_lat=capture_source_lat,
-            capture_source_lng=capture_source_lng,
-            source_url=source_url,
-            source_snapshot_url=source_snapshot_url,
-            detected_from_snapshot_url=detected_from_snapshot_url,
-            secondary_source_urls=secondary_source_urls,
-            secondary_snapshot_urls=secondary_snapshot_urls,
-            event_date=parsed_event_date,
-            event_time=parsed_event_time,
-            source_posted_at=parsed_source_posted_at,
-            proof_data=proof_data,
-            tag_ids=parsed_tag_ids,
-            conflict_ids=parsed_conflict_ids,
-            is_graphic=is_graphic,
-            remove_media_ids=parsed_remove_ids,
-            files=files or [],
-            proof_files=proof_files,
-            note=note,
+        edited = asyncio.run(
+            events_service.save_version(
+                db,
+                geo=geo,
+                current_user=current_user,
+                title=title,
+                lat=lat,
+                lng=lng,
+                capture_source_lat=capture_source_lat,
+                capture_source_lng=capture_source_lng,
+                source_url=source_url,
+                source_snapshot_url=source_snapshot_url,
+                detected_from_snapshot_url=detected_from_snapshot_url,
+                secondary_source_urls=secondary_source_urls,
+                secondary_snapshot_urls=secondary_snapshot_urls,
+                event_date=parsed_event_date,
+                event_time=parsed_event_time,
+                source_posted_at=parsed_source_posted_at,
+                proof_data=proof_data,
+                tag_ids=parsed_tag_ids,
+                conflict_ids=parsed_conflict_ids,
+                is_graphic=is_graphic,
+                remove_media_ids=parsed_remove_ids,
+                files=files or [],
+                proof_files=proof_files,
+                note=note,
+            )
         )
     except EvidenceIntakeError as exc:
         _raise_event_error(exc)

@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -70,10 +72,12 @@ def update_my_profile(
 
 
 # Declared ahead of the ``/{username}`` routes below so ``/me/avatar`` is not
-# read as a username with a trailing segment.
+# read as a username with a trailing segment. Plain ``def`` driving the async
+# service through ``asyncio.run``, so its commit stays off the server's event
+# loop (``engineering.md``, Request concurrency).
 @router.put("/me/avatar", response_model=UserRead)
 @limiter.limit("20/minute")
-async def set_my_avatar(
+def set_my_avatar(
     request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -87,7 +91,7 @@ async def set_my_avatar(
     and deletes the picture it replaced.
     """
     try:
-        return await users_service.set_avatar(db, user=current_user, file=file)
+        return asyncio.run(users_service.set_avatar(db, user=current_user, file=file))
     except users_service.AvatarError as exc:
         raise_typed_error(exc, users_service.AVATAR_ERROR_STATUS)
 
