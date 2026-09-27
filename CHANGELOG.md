@@ -8,7 +8,9 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-_Nothing yet._
+### Fixed
+
+- **An upload no longer stalls the whole API** ([#359](https://github.com/vidithq/vidit/pull/359), [`backend/app/routers/events/item.py`](backend/app/routers/events/item.py), [`backend/app/database.py`](backend/app/database.py)). Upload handlers run in the threadpool instead of on the event loop, and a lock wait over 5 s answers 409 `lock_timeout`.
 
 ## v0.6.5, 2026-09-17
 
