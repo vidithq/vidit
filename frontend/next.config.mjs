@@ -2,6 +2,8 @@ import { execSync } from "node:child_process";
 
 import { withSentryConfig } from "@sentry/nextjs";
 
+import { copyMaplibreWorker } from "./scripts/copy-maplibre-worker.mjs";
+
 /**
  * Build-time version string baked into NEXT_PUBLIC_BUILD_VERSION so the
  * "Beta · v..." badge can show the actually deployed ref.
@@ -31,6 +33,11 @@ function resolveBuildVersion() {
 }
 
 const buildVersion = resolveBuildVersion();
+
+// Runs on every `next dev`, `next build` and `next start`, whatever script
+// invoked it, so the map worker under `public/` always matches the installed
+// maplibre-gl.
+copyMaplibreWorker();
 
 /**
  * True when the backend this build talks to is local, i.e. when the

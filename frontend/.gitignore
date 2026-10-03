@@ -6,3 +6,6 @@
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# The maplibre-gl worker, copied from node_modules by next.config.mjs.
+/public/maplibre-gl/

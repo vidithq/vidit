@@ -16,6 +16,7 @@ import MapGL, {
   useMap,
 } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
+import "./maplibreWorker";
 import type { EventDetail, MapPoint } from "@/types";
 import { usePalette } from "@/hooks/usePalette";
 import { useTheme } from "@/hooks/useTheme";

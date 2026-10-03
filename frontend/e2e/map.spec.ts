@@ -64,4 +64,34 @@ test.describe("map", () => {
       ).toBeGreaterThanOrEqual(36);
     }
   });
+
+  // maplibre-gl builds its worker URL at runtime, out of the bundler's sight,
+  // so a version bump can leave the worker a 404 that the browser reads as a
+  // module script with a text/html type: no tile and no pin renders, and the
+  // layout checks above still pass over the blank canvas.
+  test("loads the map worker", async ({ page }) => {
+    const moduleErrors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error" && /module script/i.test(message.text())) {
+        moduleErrors.push(message.text());
+      }
+    });
+    const workerResponse = page.waitForResponse((response) =>
+      response.url().includes("maplibre-gl-worker"),
+    );
+    const workerStarted = page.waitForEvent("worker", {
+      predicate: (worker) => worker.url().includes("maplibre-gl-worker"),
+    });
+
+    await mockApi(page);
+    await page.goto("/map");
+
+    const response = await workerResponse;
+    expect(response.status(), "the map worker did not load").toBe(200);
+    expect(response.headers()["content-type"]).toMatch(/javascript/);
+    await workerStarted;
+    expect(moduleErrors, "the map worker failed as a module script").toEqual(
+      [],
+    );
+  });
 });
