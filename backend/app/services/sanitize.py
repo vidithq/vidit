@@ -272,7 +272,7 @@ def sanitize_tiptap_doc_or_raise(
     :func:`sanitize_tiptap_doc`: a router maps a typed service error to a
     status by its ``code`` (``routers/_errors.raise_typed_error``), so a
     ValueError has to become one before it leaves the service. Two callers
-    take it, and both answer 400: ``services/events._sanitize_proof`` with
+    take it, and both answer 400: ``services/events/rules._sanitize_proof`` with
     :class:`services.events.InvalidProofError` for an event's proof body, and
     ``services/collections._checked_description`` with
     :class:`services.collections.InvalidDescriptionError` for a collection's

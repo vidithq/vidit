@@ -273,7 +273,7 @@ Every other frontend copy of a backend rule is hand-kept and listed below. Chang
 | `lib/viewport.ts` | `event_filters.parse_bbox` field order and bounds | map bbox is refused or filters the wrong area |
 | `lib/pagination.ts` | `pagination.next_link` `Link` header shape | paging stops after page one |
 | `lib/events.ts::MAX_SECONDARY_SOURCE_LINKS` | `models/event.MAX_SECONDARY_SOURCE_LINKS` | form allows a link the API refuses |
-| `lib/events.ts::batchCompletionBlockers` | `events._publish_detection`, `events.detection_ready_predicate` | queue labels a row ready that the server refuses |
+| `lib/events.ts::batchCompletionBlockers` | `events/batch._publish_detection`, `events.detection_ready_predicate` | queue labels a row ready that the server refuses |
 | `lib/events.ts::EventView` | `event_filters.VIEWS` (the router takes `str`, so codegen cannot carry it) | `view` parameter refused |
 | `lib/events.ts::snapshotToEventView`, `changedFields`, `hasVersionChanges` | `versions.build_snapshot` fields, `versions.COMPARED_FIELDS` (the snapshot is untyped JSON, so neither codegen nor `tsc` catches a renamed key) | version pages silently blank a field |
 | `lib/events.ts::REPORT_DETAILS_MAX_LEN`, `VERSION_NOTE_MAX_LEN` | `schemas/report.DETAILS_MAX_LENGTH`, `schemas/event.VERSION_NOTE_MAX_LENGTH` | server refuses typed text |
