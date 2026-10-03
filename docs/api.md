@@ -175,6 +175,12 @@ Anonymous callers are exempt from the quota and keep the per-IP limits alone. So
 
 ## Auth
 
+### Password rules
+
+A password you set through `POST /auth/register`, `POST /auth/reset-password`, or `POST /auth/change-password` must be at least 8 characters long. It must also fit in 72 bytes of UTF-8, the input limit of bcrypt. An ASCII character takes 1 byte. Every other character takes 2 to 4 bytes: `ß` and `£` take 2, `€` takes 3, and most emoji take 4. A password outside these bounds gets a 422, and the first `detail` entry's `msg` states the rule. A 422 body never echoes the submitted value.
+
+A password you sign in with, or send as `current_password`, is never refused for being too long. One longer than 72 bytes matches no account, so it gets the same response as a wrong password. An empty `current_password` gets a 422.
+
 ### `POST /auth/register`
 
 Stage a registration. Anonymous. **This call creates no `users` row.** The submission lives in `pending_registrations` until the user proves they own the email address by clicking the link in the confirmation message. The pending row references the invite code but does not consume it, so an abandoned signup does not burn the invite.
@@ -205,6 +211,7 @@ The response sets no session cookie. A background task sends the confirmation em
 | 400 | Invite code invalid, expired, revoked, or exhausted |
 | 409 | Email or username already registered (live or soft-deleted user) |
 | 409 | Email or username already has a live pending confirmation (distinct message) |
+| 422 | `password` outside the [password rules](#password-rules) |
 | 429 | Rate-limited (10/hour/IP) |
 
 ---
@@ -325,6 +332,7 @@ Anonymous. Consumes a reset token and sets a new password. Tokens are single-use
 |--------|---------|
 | 204 | Password updated; client should redirect to /login |
 | 400 | Token unknown, expired, already consumed, or wrong purpose, same opaque error to avoid leaking which |
+| 422 | `new_password` outside the [password rules](#password-rules); the token stays unconsumed |
 
 Rate-limited to 10/hour per IP.
 
@@ -347,7 +355,7 @@ Rotates your password from the settings page. Requires you to reassert your curr
 | 204 | Password updated; session cookie stays valid |
 | 400 | Current password incorrect |
 | 401 | Not authenticated |
-| 422 | `new_password` shorter than 8 characters |
+| 422 | `new_password` outside the [password rules](#password-rules) |
 
 Rate-limited to 10/hour per session.
 

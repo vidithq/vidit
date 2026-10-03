@@ -13,14 +13,22 @@ from app.config import settings
 from app.models.invite_code import InviteCode
 from app.models.user import User
 from app.schemas.admin import InviteCodeStatus
+from app.schemas.auth import PASSWORD_MAX_BYTES
 
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
-def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+def verify_password(password: str, hashed: str) -> bool:
+    # ``surrogatepass`` keeps a lone surrogate from raising: such input matches
+    # no stored hash, so it ends as a mismatch.
+    encoded = password.encode("utf-8", "surrogatepass")
+    # bcrypt raises past PASSWORD_MAX_BYTES and no password is set longer, so
+    # such input is a mismatch. It still pays the one bcrypt check, so it costs
+    # what a wrong password costs.
+    matches = bcrypt.checkpw(encoded[:PASSWORD_MAX_BYTES], hashed.encode("utf-8"))
+    return matches and len(encoded) <= PASSWORD_MAX_BYTES
 
 
 def hash_token(token: str) -> str:

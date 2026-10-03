@@ -251,6 +251,27 @@ def test_reset_password_happy_path(client, user_factory, email_recorder, db):
     assert login.status_code == 200
 
 
+def test_reset_password_refuses_a_password_over_72_bytes(client, user_factory, email_recorder):
+    user, _ = user_factory()
+    client.post("/api/v1/auth/forgot-password", json={"email": user.email})
+    token = _extract_token(email_recorder[0].text)
+
+    # 40 characters, 80 bytes.
+    refused = client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": token, "new_password": "é" * 40},
+    )
+    assert refused.status_code == 422
+    assert refused.json()["detail"][0]["loc"] == ["body", "new_password"]
+
+    # The refusal happens before the token is read, so the link still works.
+    accepted = client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": token, "new_password": "brandnewpassword2"},
+    )
+    assert accepted.status_code == 204
+
+
 def test_reset_password_rejects_replay(client, user_factory, email_recorder):
     user, _ = user_factory()
     client.post("/api/v1/auth/forgot-password", json={"email": user.email})

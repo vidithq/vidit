@@ -24,6 +24,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 import httpx
 
 from app.config import settings
+from app.services.bot import bot_credentials
 
 # Private x_api imports are deliberate: the API base and the OAuth 1.0a
 # signing have one home, and this in-repo operator script is a trusted
@@ -57,14 +58,7 @@ def _user_context_request(method: str, url: str) -> httpx.Response:
         ("X_BOT_ACCESS_TOKEN", settings.x_bot_access_token),
         ("X_BOT_ACCESS_TOKEN_SECRET", settings.x_bot_access_token_secret),
     )
-    header = _oauth1_header(
-        method,
-        url,
-        consumer_key=settings.x_api_consumer_key,
-        consumer_secret=settings.x_api_consumer_secret,
-        token=settings.x_bot_access_token,
-        token_secret=settings.x_bot_access_token_secret,
-    )
+    header = _oauth1_header(method, url, bot_credentials())
     return httpx.request(method, url, headers={"Authorization": header}, timeout=_TIMEOUT_S)
 
 

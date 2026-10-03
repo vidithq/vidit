@@ -25,7 +25,7 @@ import hmac
 import logging
 import secrets
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import quote
 
 import httpx
@@ -250,6 +250,20 @@ def fetch_mentions(
 # ── OAuth 1.0a (HMAC-SHA1) — the reply write's user context ───────────────
 
 
+@dataclass(frozen=True)
+class OAuth1Credentials:
+    """The bot account's OAuth 1.0a user context: four static credentials.
+
+    ``repr`` prints none of them, so a log line that formats the object
+    exposes no credential.
+    """
+
+    consumer_key: str = field(repr=False)
+    consumer_secret: str = field(repr=False)
+    access_token: str = field(repr=False)
+    access_token_secret: str = field(repr=False)
+
+
 def _percent_encode(value: str) -> str:
     # RFC 5849 §3.6: percent-encode everything but the RFC 3986 unreserved set.
     return quote(value, safe="-._~")
@@ -279,29 +293,21 @@ def oauth1_signature(
     return base64.b64encode(digest).decode("ascii")
 
 
-def _oauth1_header(
-    method: str,
-    url: str,
-    *,
-    consumer_key: str,
-    consumer_secret: str,
-    token: str,
-    token_secret: str,
-) -> str:
+def _oauth1_header(method: str, url: str, credentials: OAuth1Credentials) -> str:
     oauth_params = {
-        "oauth_consumer_key": consumer_key,
+        "oauth_consumer_key": credentials.consumer_key,
         "oauth_nonce": secrets.token_hex(16),
         "oauth_signature_method": "HMAC-SHA1",
         "oauth_timestamp": str(int(time.time())),
-        "oauth_token": token,
+        "oauth_token": credentials.access_token,
         "oauth_version": "1.0",
     }
     oauth_params["oauth_signature"] = oauth1_signature(
         method,
         url,
         oauth_params,
-        consumer_secret=consumer_secret,
-        token_secret=token_secret,
+        consumer_secret=credentials.consumer_secret,
+        token_secret=credentials.access_token_secret,
     )
     header_params = ", ".join(
         f'{_percent_encode(k)}="{_percent_encode(v)}"' for k, v in sorted(oauth_params.items())
@@ -313,10 +319,7 @@ def _post_user_context(
     url: str,
     payload: dict[str, object],
     *,
-    consumer_key: str,
-    consumer_secret: str,
-    access_token: str,
-    access_token_secret: str,
+    credentials: OAuth1Credentials,
     client: httpx.Client | None,
 ) -> dict[str, object]:
     """POST ``payload`` as JSON under OAuth 1.0a user context; return the
@@ -326,14 +329,7 @@ def _post_user_context(
         "POST",
         url,
         headers={
-            "Authorization": _oauth1_header(
-                "POST",
-                url,
-                consumer_key=consumer_key,
-                consumer_secret=consumer_secret,
-                token=access_token,
-                token_secret=access_token_secret,
-            ),
+            "Authorization": _oauth1_header("POST", url, credentials),
             "User-Agent": _USER_AGENT,
         },
         json_body=payload,
@@ -346,10 +342,7 @@ def post_reply(
     *,
     text: str,
     in_reply_to_tweet_id: str,
-    consumer_key: str,
-    consumer_secret: str,
-    access_token: str,
-    access_token_secret: str,
+    credentials: OAuth1Credentials,
     client: httpx.Client | None = None,
 ) -> str:
     """Post ``text`` as a reply to ``in_reply_to_tweet_id``; return the new
@@ -361,10 +354,7 @@ def post_reply(
     body = _post_user_context(
         f"{_API_BASE}/tweets",
         {"text": text, "reply": {"in_reply_to_tweet_id": in_reply_to_tweet_id}},
-        consumer_key=consumer_key,
-        consumer_secret=consumer_secret,
-        access_token=access_token,
-        access_token_secret=access_token_secret,
+        credentials=credentials,
         client=client,
     )
     data = body.get("data")

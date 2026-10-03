@@ -8,12 +8,14 @@ The OAuth 1.0a signature is pinned against the worked example in X's
 from __future__ import annotations
 
 import json
+from urllib.parse import unquote
 
 import httpx
 import pytest
 
 from app.services.x_api import (
     Mention,
+    OAuth1Credentials,
     XApiError,
     fetch_mentions,
     oauth1_signature,
@@ -115,16 +117,20 @@ def test_oauth1_signature_matches_x_docs_worked_example():
     assert signature == "hCtSmYh+iHYCEqBWrE7C7hYmtUk="
 
 
+def test_credentials_repr_shows_no_secret():
+    values = ("consumer-key-1", "consumer-secret-2", "access-token-3", "token-secret-4")
+    credentials = OAuth1Credentials(*values)
+    for rendered in (repr(credentials), str(credentials)):
+        assert not any(value in rendered for value in values)
+
+
 # ── post_reply ─────────────────────────────────────────────────────────────
 
 
-def _reply_kwargs() -> dict[str, str]:
-    return {
-        "consumer_key": "ck",
-        "consumer_secret": "cs",
-        "access_token": "at",
-        "access_token_secret": "ats",
-    }
+def _credentials() -> OAuth1Credentials:
+    return OAuth1Credentials(
+        consumer_key="ck", consumer_secret="cs", access_token="at", access_token_secret="ats"
+    )
 
 
 def test_post_reply_sends_oauth_header_and_returns_id():
@@ -132,6 +138,7 @@ def test_post_reply_sends_oauth_header_and_returns_id():
 
     def handler(req: httpx.Request) -> httpx.Response:
         captured["auth"] = req.headers["Authorization"]
+        captured["url"] = str(req.url)
         captured["payload"] = json.loads(req.content)
         return httpx.Response(201, json={"data": {"id": "888"}})
 
@@ -139,14 +146,23 @@ def test_post_reply_sends_oauth_header_and_returns_id():
         reply_id = post_reply(
             text="Vidit: saved",
             in_reply_to_tweet_id="123",
+            credentials=_credentials(),
             client=client,
-            **_reply_kwargs(),
         )
     assert reply_id == "888"
     auth = captured["auth"]
     assert isinstance(auth, str) and auth.startswith("OAuth ")
-    assert 'oauth_consumer_key="ck"' in auth
-    assert "oauth_signature=" in auth
+    params = {
+        key: unquote(value.strip('"'))
+        for key, value in (part.split("=", 1) for part in auth.removeprefix("OAuth ").split(", "))
+    }
+    assert params["oauth_consumer_key"] == "ck"
+    assert params["oauth_token"] == "at"
+    signature = params.pop("oauth_signature")
+    # Signed with both the consumer secret and the token secret.
+    assert signature == oauth1_signature(
+        "POST", str(captured["url"]), params, consumer_secret="cs", token_secret="ats"
+    )
     assert captured["payload"] == {
         "text": "Vidit: saved",
         "reply": {"in_reply_to_tweet_id": "123"},
@@ -158,4 +174,4 @@ def test_post_reply_surfaces_api_error():
         _client(lambda _req: httpx.Response(403, text="nope")) as client,
         pytest.raises(XApiError),
     ):
-        post_reply(text="x", in_reply_to_tweet_id="1", client=client, **_reply_kwargs())
+        post_reply(text="x", in_reply_to_tweet_id="1", credentials=_credentials(), client=client)

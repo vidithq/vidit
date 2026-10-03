@@ -167,6 +167,23 @@ def test_register_rejects_unknown_invite(client, email_recorder, db):
     )
 
 
+def test_register_caps_the_password_at_72_bytes(client, invite_code, email_recorder, db):
+    # 36 "é" encode to 72 bytes; one more letter makes 73 bytes in 37 characters.
+    at_cap = {**_unique_payload(invite_code), "password": "é" * 36}
+    over_cap = {**_unique_payload(invite_code), "password": "é" * 36 + "a"}
+
+    assert client.post("/api/v1/auth/register", json=at_cap).status_code == 202
+    response = client.post("/api/v1/auth/register", json=over_cap)
+    assert response.status_code == 422
+    (error,) = response.json()["detail"]
+    assert error["loc"] == ["body", "password"]
+    assert "72 bytes" in error["msg"]
+    assert (
+        db.query(PendingRegistration).filter(PendingRegistration.email == over_cap["email"]).first()
+        is None
+    )
+
+
 def test_register_rejects_when_email_is_pending(client, invite_code, email_recorder, db):
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202

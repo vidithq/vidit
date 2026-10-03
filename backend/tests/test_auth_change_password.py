@@ -136,6 +136,39 @@ def test_change_password_rejects_short_new_password(client, user_factory):
     assert response.status_code == 422
 
 
+def test_change_password_refuses_a_new_password_over_72_bytes(client, user_factory):
+    user, current = user_factory()
+    # 40 characters, 80 bytes.
+    response = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": current, "new_password": "é" * 40},
+        headers=login_as(client, user),
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["body", "new_password"]
+
+    client.cookies.clear()
+    ok = client.post(
+        "/api/v1/auth/login",
+        json={"email": user.email, "password": current},
+    )
+    assert ok.status_code == 200
+
+
+@pytest.mark.parametrize("current", ["é" * 40, "a" * 201], ids=["80-bytes", "201-chars"])
+def test_change_password_treats_an_over_long_current_password_as_incorrect(
+    client, user_factory, current
+):
+    user, _ = user_factory()
+    response = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": current, "new_password": "brandnewpassword2"},
+        headers=login_as(client, user),
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Current password is incorrect"
+
+
 def test_change_password_requires_authentication(client):
     response = client.post(
         "/api/v1/auth/change-password",
