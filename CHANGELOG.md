@@ -10,6 +10,8 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **An upload no longer stalls the whole API** ([#359](https://github.com/vidithq/vidit/pull/359), [`backend/app/routers/events/item.py`](backend/app/routers/events/item.py), [`backend/app/database.py`](backend/app/database.py)). Upload handlers run in the threadpool instead of on the event loop, and a lock wait over 5 s answers 409 `lock_timeout`.
+
 - **Image uploads decode under bounded memory** ([#360](https://github.com/vidithq/vidit/pull/360), [`backend/app/services/evidence_processing.py`](backend/app/services/evidence_processing.py), [`backend/app/services/storage.py`](backend/app/services/storage.py)). An upload is decoded only by the JPEG, PNG or WebP decoder and in place, a mode conversion freeing its source before the encode, at most two decodes run at once, and profile pictures are capped at 25 megapixels.
 
 ## v0.6.5, 2026-09-17

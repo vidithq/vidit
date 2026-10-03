@@ -13,7 +13,6 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
 from app.dependencies import get_current_user, get_db
 from app.models.archive_import_job import ArchiveImportJob
@@ -69,7 +68,7 @@ def presign_import_archive(
     status_code=status.HTTP_202_ACCEPTED,
 )
 @limiter.limit("10/hour")
-async def import_archive(
+def import_archive(
     request: Request,
     body: ArchiveImportEnqueue,
     current_user: User = Depends(get_current_user),
@@ -86,13 +85,8 @@ async def import_archive(
     the counts.
     """
     try:
-        # Both steps block (a storage HEAD, then a DB commit): a thread keeps
-        # the single-process event loop serving siblings meanwhile.
-        await run_in_threadpool(
-            archive_jobs.verify_staged_upload, body.upload_key, owner_id=current_user.id
-        )
-        job = await run_in_threadpool(
-            archive_jobs.enqueue,
+        archive_jobs.verify_staged_upload(body.upload_key, owner_id=current_user.id)
+        job = archive_jobs.enqueue(
             db,
             owner=current_user,
             upload_key=body.upload_key,
