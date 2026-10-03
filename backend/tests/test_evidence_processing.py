@@ -7,7 +7,7 @@ JPEG. These tests lock in the contract:
 
 * JPEG with EXIF in → bytes with no EXIF marker out.
 * Corrupt image in → ``EvidenceProcessingError`` (router 400, no
-  half-written S3 object).
+  half-written S3 object), and so are bytes that are not JPEG, PNG or WebP.
 * Non-image content type (video) → bytes unchanged (no Pillow on the
   hot path for the 100 MB upload ceiling).
 * The output is still a valid, decodable image at the same dimensions
@@ -16,19 +16,26 @@ JPEG. These tests lock in the contract:
 
 from __future__ import annotations
 
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageFile, PngImagePlugin
 
 from app.services.evidence_processing import (
+    _ACCEPTED_FORMATS,
     HERO_MAX_DIM,
+    MAX_CONCURRENT_DECODES,
     MAX_DECODED_PIXELS,
     THUMBNAIL_MAX_DIM,
+    UNREADABLE_IMAGE_MESSAGE,
     EvidenceProcessingError,
     make_jpeg_derivative,
     strip_metadata,
 )
+from app.services.storage import ALLOWED_IMAGE_TYPES
 
 
 def _jpeg_with_exif() -> bytes:
@@ -82,12 +89,10 @@ def test_strip_metadata_removes_exif_from_jpeg():
     assert out.size == (4, 4)
 
 
-def test_strip_metadata_removes_icc_profile_and_xmp():
-    """Module docstring claims ICC profile + XMP are stripped — lock
-    that contract in. ``frombytes`` re-build drops ``img.info`` which
-    is where Pillow surfaces both, so this is a regression guard
-    against someone "optimising" the strip back to a copy-with-info
-    approach.
+def test_strip_metadata_removes_icc_profile_xmp_and_comment():
+    """Module docstring claims ICC profile + XMP are stripped; lock that
+    contract in, with the JPEG comment the encoder copies out of
+    ``img.info`` unless the strip empties it.
     """
     # Build a JPEG carrying an ICC profile + an XMP-shaped block. The
     # exact ICC body is bytes (we just need *something* in the slot);
@@ -102,12 +107,14 @@ def test_strip_metadata_removes_icc_profile_and_xmp():
         b'<x:xmpmeta xmlns:x="adobe:ns:meta/"></x:xmpmeta>'
         b'<?xpacket end="r"?>'
     )
-    img.save(buf, format="JPEG", quality=85, icc_profile=icc, xmp=xmp)
+    img.save(buf, format="JPEG", quality=85, icc_profile=icc, xmp=xmp, comment=b"home address")
     raw = buf.getvalue()
     assert Image.open(BytesIO(raw)).info.get("icc_profile"), "ICC profile not in fixture"
+    assert b"home address" in raw, "comment not in fixture"
 
     cleaned = strip_metadata(raw, "image/jpeg")
 
+    assert b"home address" not in cleaned, "JPEG comment survived strip"
     out = Image.open(BytesIO(cleaned))
     out.load()
     assert "icc_profile" not in out.info, "ICC profile survived strip"
@@ -134,8 +141,21 @@ def test_strip_metadata_raises_on_corrupt_image():
     ``EvidenceProcessingError`` so the router's ``ValueError`` → 400 path picks
     it up before any storage write.
     """
-    with pytest.raises(EvidenceProcessingError, match="decode"):
+    with pytest.raises(EvidenceProcessingError) as refused:
         strip_metadata(b"\xff\xd8\xff\xd9", "image/jpeg")
+
+    assert str(refused.value) == UNREADABLE_IMAGE_MESSAGE
+
+
+def test_strip_metadata_raises_on_truncated_image():
+    """A valid JPEG cut in half opens, then fails to decode; it gets the same
+    message as an unreadable file."""
+    whole = _solid_jpeg(64, 64)
+
+    with pytest.raises(EvidenceProcessingError) as refused:
+        strip_metadata(whole[: len(whole) // 2], "image/jpeg")
+
+    assert str(refused.value) == UNREADABLE_IMAGE_MESSAGE
 
 
 def test_strip_metadata_rejects_decompression_bomb(monkeypatch):
@@ -329,8 +349,10 @@ def test_make_jpeg_derivative_rejects_corrupt_image():
     (router → 400) rather than a 500 from an uncaught Pillow exception.
     Matches ``strip_metadata``'s contract.
     """
-    with pytest.raises(EvidenceProcessingError, match="Could not decode"):
+    with pytest.raises(EvidenceProcessingError) as refused:
         make_jpeg_derivative(b"not-a-jpeg", "image/jpeg", HERO_MAX_DIM)
+
+    assert str(refused.value) == UNREADABLE_IMAGE_MESSAGE
 
 
 def test_make_jpeg_derivative_rejects_decompression_bomb(monkeypatch):
@@ -414,11 +436,11 @@ def _jpeg_with_orientation(orientation: int, size: tuple[int, int]) -> bytes:
 def test_strip_metadata_applies_exif_orientation_before_dropping_it():
     """A rotated photo comes out upright, not sideways.
 
-    The strip rebuilds the image from raw pixel bytes, which drops the whole
-    metadata block, Orientation included. Dropping the tag without first
-    applying it silently rotates the picture: the raster still says landscape
-    and nothing is left to tell a viewer otherwise. Every derivative cut from
-    the stripped copy inherits that, so this is the one place it can be fixed.
+    The strip drops the whole metadata block, Orientation included. Dropping
+    the tag without first applying it silently rotates the picture: the raster
+    still says landscape and nothing is left to tell a viewer otherwise. Every
+    derivative cut from the stripped copy inherits that, so this is the one
+    place it can be fixed.
     """
     stripped = strip_metadata(_jpeg_with_orientation(6, (200, 100)), "image/jpeg")
 
@@ -434,3 +456,137 @@ def test_strip_metadata_leaves_an_unrotated_image_alone():
     stripped = strip_metadata(_jpeg_with_orientation(1, (200, 100)), "image/jpeg")
 
     assert Image.open(BytesIO(stripped)).size == (200, 100)
+
+
+# ── declared type, metadata chunks, decode slots ─────────────────────────
+
+
+def _encoded(fmt: str, mode: str = "RGB") -> bytes:
+    buf = BytesIO()
+    Image.new(mode, (4, 4)).save(buf, format=fmt)
+    return buf.getvalue()
+
+
+_MAGIC = {
+    "image/jpeg": b"\xff\xd8\xff",
+    "image/png": b"\x89PNG\r\n\x1a\n",
+    "image/webp": b"RIFF",
+}
+
+
+@pytest.mark.parametrize(
+    ("fmt", "mode", "declared"),
+    [
+        ("WEBP", "RGB", "image/jpeg"),
+        ("PNG", "RGBA", "image/jpeg"),
+        ("JPEG", "RGB", "image/png"),
+        ("JPEG", "CMYK", "image/png"),
+        ("JPEG", "CMYK", "image/webp"),
+    ],
+)
+def test_strip_metadata_stores_any_accepted_format_as_the_declared_type(fmt, mode, declared):
+    """A JPEG, PNG or WebP is accepted whatever type it declares and is stored
+    encoded as the declared type, so the stored bytes match the stored type."""
+    cleaned = strip_metadata(_encoded(fmt, mode), declared)
+
+    assert cleaned.startswith(_MAGIC[declared])
+
+
+@pytest.mark.parametrize(("fmt", "declared"), [("TIFF", "image/png"), ("GIF", "image/jpeg")])
+def test_strip_metadata_refuses_a_format_it_does_not_accept(fmt, declared):
+    """Bytes no JPEG, PNG or WebP decoder reads are refused whatever type they
+    declare, with a message naming the formats an upload may be in."""
+    with pytest.raises(EvidenceProcessingError) as refused:
+        strip_metadata(_encoded(fmt), declared)
+
+    assert str(refused.value) == UNREADABLE_IMAGE_MESSAGE
+
+
+def test_every_accepted_image_type_strips_to_its_own_format():
+    """The decoders tried are exactly those of the upload allowlist, and each
+    accepted type strips to its own format."""
+    Image.init()
+    pillow_format = {mime: fmt for fmt, mime in Image.MIME.items()}
+    assert set(_ACCEPTED_FORMATS) == {pillow_format[t] for t in ALLOWED_IMAGE_TYPES}
+    for content_type in ALLOWED_IMAGE_TYPES:
+        fmt = pillow_format[content_type]
+        cleaned = strip_metadata(_encoded(fmt), content_type)
+        assert Image.open(BytesIO(cleaned)).format == fmt
+
+
+_SENTINEL = "SENTINEL-48.8566N-2.3522E"
+
+
+def _with_every_metadata_chunk(fmt: str) -> bytes:
+    img = Image.new("RGB", (8, 8), "blue")
+    exif = img.getexif()
+    exif[0x010F] = _SENTINEL  # Make
+    params = {"exif": exif, "icc_profile": _SENTINEL.encode() * 4}
+    if fmt == "PNG":
+        text = PngImagePlugin.PngInfo()
+        text.add_text("Comment", _SENTINEL)
+        text.add_text("Author", _SENTINEL, zip=True)
+        text.add_itxt("Description", _SENTINEL)
+        params["pnginfo"] = text
+    else:
+        params["xmp"] = f"<x:xmpmeta>{_SENTINEL}</x:xmpmeta>".encode()
+    buf = BytesIO()
+    img.save(buf, format=fmt, **params)
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("fmt", "content_type", "chunks"),
+    [
+        ("PNG", "image/png", (b"tEXt", b"zTXt", b"iTXt", b"eXIf", b"iCCP")),
+        ("WEBP", "image/webp", (b"EXIF", b"XMP ", b"ICCP")),
+    ],
+)
+def test_strip_metadata_removes_every_metadata_chunk(fmt, content_type, chunks):
+    """PNG text, EXIF and ICC chunks, and WebP EXIF, XMP and ICC chunks, are
+    all gone from the stripped file."""
+    raw = _with_every_metadata_chunk(fmt)
+    assert all(chunk in raw for chunk in chunks), "fixture must carry every chunk"
+
+    cleaned = strip_metadata(raw, content_type)
+
+    assert [chunk for chunk in chunks if chunk in cleaned] == []
+    assert _SENTINEL.encode() not in cleaned
+    with Image.open(BytesIO(cleaned)) as out:
+        assert dict(out.getexif()) == {}
+        assert {"exif", "icc_profile", "xmp"}.isdisjoint(out.info)
+
+
+def test_at_most_max_concurrent_decodes_run_at_once(monkeypatch):
+    """However many uploads arrive together, only ``MAX_CONCURRENT_DECODES``
+    images are open at the same time, from ``Image.open`` to the end of its
+    ``with`` block, so their rasters bound the memory image processing takes;
+    the other uploads wait for a slot."""
+    held: set[int] = set()
+    most = 0
+    lock = threading.Lock()
+    real_open = Image.open
+    real_exit = ImageFile.ImageFile.__exit__
+
+    def slow_open(*args, **kwargs):
+        nonlocal most
+        img = real_open(*args, **kwargs)
+        with lock:
+            held.add(id(img))
+            most = max(most, len(held))
+        time.sleep(0.02)
+        return img
+
+    def tracked_exit(self, *args):
+        with lock:
+            held.discard(id(self))
+        return real_exit(self, *args)
+
+    monkeypatch.setattr(Image, "open", slow_open)
+    monkeypatch.setattr(ImageFile.ImageFile, "__exit__", tracked_exit)
+    uploads = MAX_CONCURRENT_DECODES + 3
+    png = _encoded("PNG")
+    with ThreadPoolExecutor(max_workers=uploads) as pool:
+        list(pool.map(lambda _: strip_metadata(png, "image/png"), range(uploads)))
+
+    assert most == MAX_CONCURRENT_DECODES

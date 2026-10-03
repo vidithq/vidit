@@ -1,0 +1,36 @@
+import type { EventDetail } from "@/types";
+
+/** A geolocated event with every optional field empty, for tests that render
+ *  the detail panel. */
+export const eventDetail = (id: string, title: string): EventDetail => ({
+  id,
+  title,
+  event_coords: { lat: 49.71, lng: 37.616 },
+  capture_source_coords: null,
+  archived_source: null,
+  archived_detected_from: null,
+  event_date: "2026-03-14",
+  event_time: null,
+  source_posted_at: null,
+  status: "geolocated",
+  version_no: 1,
+  is_graphic: false,
+  close_reason: null,
+  before_closed_status: null,
+  detected_from_url: null,
+  detected_via: null,
+  owner: { id: "u1", username: "ana" },
+  tags: [],
+  conflicts: [],
+  source_url: "https://t.me/channel/12345",
+  secondary_source_urls: [],
+  archived_secondary_sources: [],
+  proof: null,
+  created_at: "2026-03-15T10:00:00Z",
+  geolocated_at: "2026-03-15T10:00:00Z",
+  closed_at: null,
+  media: [],
+  thumbnail: null,
+  requested_by: null,
+  geolocators: [],
+});

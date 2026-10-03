@@ -5,8 +5,10 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
 import type { EventDetail } from "@/types";
+import type { ApiResource } from "@/hooks/useApiResource";
 import { cn } from "@/lib/cn";
 import { TEXT_LINK } from "@/components/ui/styles";
+import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
 import { EventDetailBody } from "@/components/event/EventDetailBody";
@@ -32,9 +34,10 @@ const PLACEMENT: Record<DetailSidePanelPlacement, string> = {
 };
 
 interface DetailSidePanelProps {
-  /** Null while the selected geolocation is still loading. */
-  detail: EventDetail | null;
-  loading: boolean;
+  /** The selected event's read, as `useApiResource` returns it: one prop, so
+   *  no caller can pass the event and drop the error. `data` is null while
+   *  loading or after a failed load. */
+  resource: ApiResource<EventDetail>;
   /** Closes the panel. Absent on a surface the panel does not float over (the
    *  collection page's player, which is a block of the page), where there is
    *  nothing to close it back to. */
@@ -72,8 +75,7 @@ interface DetailSidePanelProps {
  * while the next event lands.
  */
 export function DetailSidePanel({
-  detail,
-  loading,
+  resource,
   onClose,
   header,
   placement = "overlay",
@@ -84,6 +86,7 @@ export function DetailSidePanel({
   // grammar decides that, not this component, and it hands back the slots a
   // future tier would land in. Called before the loading branch, as every hook
   // must be; `detail` is null until the row lands.
+  const { data: detail, error, loading, refetch } = resource;
   const { actions, panels } = useEventActions({ event: detail, surface: "panel" });
 
   const overlaid = placement === "overlay";
@@ -134,7 +137,18 @@ export function DetailSidePanel({
         <div className="sticky top-0 z-20 bg-neutral-900">{header}</div>
       )}
 
-      {loading || !detail ? (
+      {error !== null ? (
+        // `min-h-32` as the loading box, so the chrome holds still; `pr-12`
+        // only when there is a close button to keep the banner clear of.
+        <div className={cn("p-4 space-y-3 min-h-32", onClose && "pr-12")}>
+          <div className={FORM_ERROR_BANNER} role="alert">
+            {error || "Couldn't load this event."}
+          </div>
+          <Button variant="secondary" onClick={refetch}>
+            Retry
+          </Button>
+        </div>
+      ) : loading ? (
         // `min-h-32` under the `h-full`: an inline panel stacked under the map
         // on a phone is sized by its content, so a `h-full` box holding one
         // line would collapse to that line and the chrome above it would jump
@@ -142,7 +156,7 @@ export function DetailSidePanel({
         <div className="flex items-center justify-center h-full min-h-32">
           <span className="text-neutral-500 text-sm">Loading...</span>
         </div>
-      ) : (
+      ) : detail ? (
         <div className="p-4 space-y-4">
           <div className="space-y-2">
             {/* `pr-6` on the heading alone: it is the line the absolute close
@@ -184,7 +198,7 @@ export function DetailSidePanel({
 
           <EventDetailBody geo={detail} variant="panel" />
         </div>
-      )}
+      ) : null}
 
     </div>
   );

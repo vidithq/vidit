@@ -10,9 +10,13 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **The map detail panel shows only the selected event** ([#357](https://github.com/vidithq/vidit/pull/357), [`frontend/src/app/map/page.tsx`](frontend/src/app/map/page.tsx), [`frontend/src/components/map/DetailSidePanel.tsx`](frontend/src/components/map/DetailSidePanel.tsx), [`docs/design.md`](docs/design.md#layout)). A failed load shows the error with a Retry control instead of the previous event, on the map and in the collection page's step player, and a late response for an earlier pin is discarded. The panel takes the whole read as one prop, so a caller cannot drop the error. Reopening a pin after closing it reads the event again.
+
 - **A password over 72 bytes no longer causes a server error** ([#358](https://github.com/vidithq/vidit/pull/358), [`backend/app/schemas/auth.py`](backend/app/schemas/auth.py), [`backend/app/observability.py`](backend/app/observability.py)). A new password over 72 UTF-8 bytes gets a 422, an over-long login gets the wrong-password response, and Sentry events leave out frame locals and request bodies.
 
 - **An upload no longer stalls the whole API** ([#359](https://github.com/vidithq/vidit/pull/359), [`backend/app/routers/events/item.py`](backend/app/routers/events/item.py), [`backend/app/database.py`](backend/app/database.py)). Upload handlers run in the threadpool instead of on the event loop, and a lock wait over 5 s answers 409 `lock_timeout`.
+
+- **Image uploads decode under bounded memory** ([#360](https://github.com/vidithq/vidit/pull/360), [`backend/app/services/evidence_processing.py`](backend/app/services/evidence_processing.py), [`backend/app/services/storage.py`](backend/app/services/storage.py)). An upload is decoded only by the JPEG, PNG or WebP decoder and in place, a mode conversion freeing its source before the encode, at most two decodes run at once, and profile pictures are capped at 25 megapixels.
 
 - **Backend logs print app records, one line each with its request id** ([#361](https://github.com/vidithq/vidit/pull/361), [`backend/app/observability.py`](backend/app/observability.py), [`backend/app/middleware/request_id.py`](backend/app/middleware/request_id.py)). Warnings and errors print on stderr, the rest on stdout. Every response carries `X-Request-ID`, and `LOG_LEVEL` sets the app's log level.
 

@@ -105,6 +105,13 @@ PostGIS handles coordinates, bounding boxes, and geographic queries (radius, int
 
 The backend uses S3 and CloudFront from day one instead of Supabase, for AWS familiarity, evidence-preservation primitives (Object Lock, versioning, replication), and no migration cost later. The backend talks to storage through a small `Storage` protocol (`S3Storage` for production, `LocalStorage` for development and CI). See [`CHANGELOG.md`](../CHANGELOG.md) for the history of this decision.
 
+Every image is decoded and re-encoded before it is stored: [`evidence_processing.py`](../backend/app/services/evidence_processing.py) strips its metadata, applies its EXIF orientation, and cuts its display derivatives. The decode is bounded in four ways:
+
+- Only the JPEG, PNG and WebP decoders may read the file, whatever its declared `Content-Type`. The image is then re-encoded in the declared type.
+- The pixel limit is checked against the file header before any pixel is decoded. The limits are in [`api.md`](api.md#file-limits).
+- The strip works on the decoded image in place. A mode conversion copies it once and frees the source before the encode.
+- A process decodes at most `MAX_CONCURRENT_DECODES` images at once. An upload that arrives while every slot is busy waits for one, so a burst of uploads adds latency, not memory.
+
 ### Frontend
 
 | Component | Choice |
@@ -211,7 +218,7 @@ vidit/
 │   │       ├── auth_tokens.py      # Single-use password-reset tokens
 │   │       ├── email.py            # Resend / console-echo email transport
 │   │       ├── evidence_intake.py  # Shared media intake: file cap, upload loop, commit/sweep + typed errors
-│   │       ├── evidence_processing.py  # EXIF strip + sha256 hash on upload
+│   │       ├── evidence_processing.py  # Metadata strip + display derivatives, bounded decode
 │   │       ├── events.py           # create / create_request / geolocate / close + typed EventError hierarchy
 │   │       ├── maintenance.py      # Admin sweeps: auth tokens, pending regs, completion digests
 │   │       ├── registration.py     # Pre-creation flow: pending row, claim, confirm
