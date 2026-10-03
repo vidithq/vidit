@@ -1090,7 +1090,7 @@ def test_edit_request_sweeps_the_replaced_media(db, author, monkeypatch):
 
     swept: list[list[str]] = []
     monkeypatch.setattr(
-        "app.services.events.sweep_keys",
+        "app.services.events.request.sweep_keys",
         lambda keys, context: swept.append(list(keys)),
     )
 
