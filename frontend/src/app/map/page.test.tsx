@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MapStateProvider } from "@/contexts/MapStateContext";
 import { ApiError } from "@/lib/api";
-import type { EventDetail } from "@/types";
+import { eventDetail } from "@/test/eventDetail";
 
 // MapLibre touches `window` at module scope, so the canvas never loads under
 // jsdom. The stub offers one button per pin, which is how a test selects one.
@@ -54,39 +54,6 @@ function readOf(id: string): Read {
 
 const TITLE_A = "Strike on the rail junction";
 const TITLE_B = "Damaged locomotive shed";
-
-const eventDetail = (id: string, title: string): EventDetail => ({
-  id,
-  title,
-  event_coords: { lat: 49.71, lng: 37.616 },
-  capture_source_coords: null,
-  archived_source: null,
-  archived_detected_from: null,
-  event_date: "2026-03-14",
-  event_time: null,
-  source_posted_at: null,
-  status: "geolocated",
-  version_no: 1,
-  is_graphic: false,
-  close_reason: null,
-  before_closed_status: null,
-  detected_from_url: null,
-  detected_via: null,
-  owner: { id: "u1", username: "ana" },
-  tags: [],
-  conflicts: [],
-  source_url: "https://t.me/channel/12345",
-  secondary_source_urls: [],
-  archived_secondary_sources: [],
-  proof: null,
-  created_at: "2026-03-15T10:00:00Z",
-  geolocated_at: "2026-03-15T10:00:00Z",
-  closed_at: null,
-  media: [],
-  thumbnail: null,
-  requested_by: null,
-  geolocators: [],
-});
 
 const pin = (id: string) => screen.getByRole("button", { name: `pin ${id}` });
 const heading = (title: string) => screen.queryByRole("heading", { name: title });
@@ -145,6 +112,39 @@ describe("map detail panel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Close detail panel" }));
     expect(readOf("b").signal?.aborted).toBe(true);
+  });
+
+  it("retries a failed read and shows the event once it lands", async () => {
+    renderMap();
+    fireEvent.click(pin("a"));
+    await act(async () => readOf("a").reject(new ApiError("Server error", 500)));
+    expect(screen.getByRole("alert")).toHaveTextContent("Server error");
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("Loading...")).toBeInTheDocument();
+
+    await act(async () => readOf("a").resolve(eventDetail("a", TITLE_A)));
+    expect(heading(TITLE_A)).toBeInTheDocument();
+  });
+
+  it("shows a generic message for an error that carries none", async () => {
+    renderMap();
+    fireEvent.click(pin("a"));
+    await act(async () => readOf("a").reject(new ApiError("", 500)));
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't load this event.");
+  });
+
+  it("reopens a pin that failed on a fresh read, not on the old error", async () => {
+    renderMap();
+    fireEvent.click(pin("a"));
+    await act(async () => readOf("a").reject(new ApiError("Event not found", 404)));
+    fireEvent.click(screen.getByRole("button", { name: "Close detail panel" }));
+
+    fireEvent.click(pin("a"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("Loading...")).toBeInTheDocument();
+    expect(reads.filter((r) => r.path === "/events/a")).toHaveLength(2);
   });
 
   it("reads the selected event again when the map mounts after a navigation", async () => {

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { eventDetail } from "@/test/eventDetail";
 import type { EventListItem, MapPoint } from "@/types";
 
 // MapLibre touches `window` at module scope, so the reader's map never loads
@@ -37,25 +38,9 @@ vi.mock("next/dynamic", () => ({
     },
 }));
 
-// The panel is the map page's own, already covered there: the reader is
-// measured on what it hands the panel, not on how the panel renders an event.
-vi.mock("@/components/map/DetailSidePanel", () => ({
-  DetailSidePanel: ({
-    detail,
-    header,
-    footer,
-  }: {
-    detail: { title: string } | null;
-    header?: React.ReactNode;
-    footer?: React.ReactNode;
-  }) => (
-    <div data-testid="panel">
-      {header}
-      <h2>{detail?.title ?? "Loading..."}</h2>
-      {footer}
-    </div>
-  ),
-}));
+// The panel is the real one, so a read the reader drops shows up as a panel
+// that never leaves loading. Nobody is signed in.
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: null }) }));
 
 const useApiResource = vi.fn();
 vi.mock("@/hooks/useApiResource", () => ({
@@ -86,14 +71,27 @@ const ITEMS = [item("e1", 49.1), item("e2", 49.2), item("e3", null), item("e4", 
 
 function renderReader(step = 2) {
   const onStep = vi.fn();
-  render(<CollectionReader items={ITEMS} step={step} onStep={onStep} />);
-  return { onStep };
+  const { rerender } = render(
+    <CollectionReader items={ITEMS} step={step} onStep={onStep} />,
+  );
+  return {
+    onStep,
+    rerender: () =>
+      rerender(<CollectionReader items={ITEMS} step={step} onStep={onStep} />),
+  };
 }
+
+const failedRead = (error: string) => ({
+  data: null,
+  loading: false,
+  error,
+  refetch: vi.fn(),
+});
 
 beforeEach(() => {
   useApiResource.mockReset();
   useApiResource.mockReturnValue({
-    data: { id: "e2", title: "Strike e2" },
+    data: eventDetail("e2", "Strike e2"),
     loading: false,
     error: null,
     refetch: vi.fn(),
@@ -101,6 +99,34 @@ beforeEach(() => {
 });
 
 describe("CollectionReader", () => {
+  it("shows the error when the step's event fails to load", () => {
+    useApiResource.mockReturnValue(failedRead("Event not found"));
+    renderReader(2);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Event not found");
+    expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+    expect(screen.getByText("2 of 4")).toBeInTheDocument();
+  });
+
+  it("re-reads the event on Retry and shows it once it lands", () => {
+    const read = failedRead("Server error");
+    useApiResource.mockReturnValue(read);
+    const { rerender } = renderReader(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(read.refetch).toHaveBeenCalledTimes(1);
+
+    useApiResource.mockReturnValue({
+      data: eventDetail("e2", "Strike e2"),
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    rerender();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Strike e2" })).toBeInTheDocument();
+  });
+
   it("reads the event of the current step and says where that is", () => {
     renderReader(2);
 

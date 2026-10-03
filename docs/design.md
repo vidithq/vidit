@@ -150,7 +150,7 @@ Constants: the pill tones live on `<Pill>` as `PILL_TONE`; these colour-only pai
 - **Sidebar rail:** left nav (logo, working surfaces, identity block), a fixed column from `sm` up, which every page clears through `PageFrame`'s `sm:pl-14`. Below `sm` it is a drawer behind a floating menu chip and takes no inset at all; see [Phone chrome](#phone-chrome).
 - **Map:** full-screen background on `/map`.
 - **Left panel:** filters, opaque, floating over the map.
-- **Right panel:** event detail, appears on click, dismissible. When the selected event fails to load, the panel shows the error message, never a previously selected event.
+- **Right panel:** event detail, appears on click, dismissible. When the selected event fails to load, the panel shows the error message and a Retry control, never a previously selected event.
 
 **Panels:** `neutral-900` opaque (no glass / blur), `border-neutral-700`, `rounded-lg`, `p-4`, floating above the map. Width ~240px (filters), ~380px (detail). Both take a different shape below `sm`; see [Phone chrome](#phone-chrome).
 

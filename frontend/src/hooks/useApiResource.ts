@@ -9,6 +9,16 @@ interface FetchResult<T> {
   path: string | null;
 }
 
+/** What `useApiResource` returns: one read, in exactly one of its states. */
+export interface ApiResource<T> {
+  data: T | null;
+  error: string | null;
+  loading: boolean;
+  refetch: () => void;
+}
+
+const EMPTY = { data: null, error: null, path: null };
+
 /**
  * Declarative GET for page data: fetches `path` on mount and on change,
  * aborts the in-flight request on unmount / path change, and skips while
@@ -20,24 +30,24 @@ interface FetchResult<T> {
  * (retry buttons); after a success the stale data stays rendered while the
  * request is in flight (post-mutation refresh). A failed refetch replaces
  * that stale data with the error — the previous body is not kept.
+ *
+ * A path that goes to `null` drops the last result, so coming back to the
+ * same path starts loading again instead of showing the old answer.
  */
-export function useApiResource<T>(path: string | null): {
-  data: T | null;
-  error: string | null;
-  loading: boolean;
-  refetch: () => void;
-} {
-  const [result, setResult] = useState<FetchResult<T>>({
-    data: null,
-    error: null,
-    path: null,
-  });
+export function useApiResource<T>(path: string | null): ApiResource<T> {
+  const [result, setResult] = useState<FetchResult<T>>(EMPTY);
   const [generation, setGeneration] = useState(0);
 
+  // Adjusted during render, not in an effect: React's pattern for state
+  // that follows a prop.
+  const [lastPath, setLastPath] = useState(path);
+  if (path !== lastPath) {
+    setLastPath(path);
+    if (path === null) setResult(EMPTY);
+  }
+
   const refetch = useCallback(() => {
-    setResult((prev) =>
-      prev.error === null ? prev : { data: null, error: null, path: null }
-    );
+    setResult((prev) => (prev.error === null ? prev : EMPTY));
     setGeneration((g) => g + 1);
   }, []);
 

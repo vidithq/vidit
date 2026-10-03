@@ -50,11 +50,9 @@ export default function HomePage() {
   const { data: conflictsData } = useApiResource<Conflict[]>("/conflicts?used=true");
   const conflicts = conflictsData ?? [];
   // Keyed on the selection in context, so returning to the map re-reads it.
-  const {
-    data: detail,
-    error: detailError,
-    loading: detailLoading,
-  } = useApiResource<EventDetail>(selectedId ? `/events/${selectedId}` : null);
+  const detail = useApiResource<EventDetail>(
+    selectedId ? `/events/${selectedId}` : null,
+  );
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchPoints = useCallback(() => {
@@ -203,9 +201,7 @@ export default function HomePage() {
           // remount is what guarantees every piece of per-event state inside it
           // (the report form, the action row's optimistic flags) starts clean.
           key={selectedId}
-          detail={detail}
-          loading={detailLoading}
-          error={detailError}
+          resource={detail}
           onClose={() => setSelectedId(null)}
         />
       )}
