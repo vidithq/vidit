@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 
-import { withSentryConfig } from "@sentry/nextjs";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 /**
  * Build-time version string baked into NEXT_PUBLIC_BUILD_VERSION so the

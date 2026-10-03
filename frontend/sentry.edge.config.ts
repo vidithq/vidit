@@ -5,6 +5,8 @@
 // edge bundle is tree-shaken accordingly.
 import * as Sentry from "@sentry/nextjs";
 
+import { SENTRY_DATA_COLLECTION } from "./sentry.data-collection";
+
 const dsn = process.env.SENTRY_DSN ?? process.env.NEXT_PUBLIC_SENTRY_DSN;
 
 if (dsn) {
@@ -12,6 +14,6 @@ if (dsn) {
     dsn,
     environment: process.env.SENTRY_ENVIRONMENT ?? "development",
     tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? 0),
-    sendDefaultPii: false,
+    dataCollection: SENTRY_DATA_COLLECTION,
   });
 }
