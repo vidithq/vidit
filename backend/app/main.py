@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
+from app.database import bound_lock_waits
 from app.middleware.csrf import CSRFMiddleware
 from app.observability import init_sentry
 from app.ratelimit import AUTHENTICATED_READ_SCOPE, limiter
@@ -260,6 +261,10 @@ app.include_router(social.router, prefix="/api/v1", tags=["social"])
 app.include_router(tags.router, prefix="/api/v1/tags", tags=["tags"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 app.include_router(webhooks.router, prefix="/api/v1/webhooks", tags=["webhooks"])
+
+# The API alone caps its lock waits; the scheduler services share the engine
+# and wait (``engineering.md``, Request concurrency).
+bound_lock_waits()
 
 
 if settings.storage_backend == "local":

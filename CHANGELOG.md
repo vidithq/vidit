@@ -12,6 +12,8 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **A password over 72 bytes no longer causes a server error** ([#358](https://github.com/vidithq/vidit/pull/358), [`backend/app/schemas/auth.py`](backend/app/schemas/auth.py), [`backend/app/observability.py`](backend/app/observability.py)). A new password over 72 UTF-8 bytes gets a 422, an over-long login gets the wrong-password response, and Sentry events leave out frame locals and request bodies.
 
+- **An upload no longer stalls the whole API** ([#359](https://github.com/vidithq/vidit/pull/359), [`backend/app/routers/events/item.py`](backend/app/routers/events/item.py), [`backend/app/database.py`](backend/app/database.py)). Upload handlers run in the threadpool instead of on the event loop, and a lock wait over 5 s answers 409 `lock_timeout`.
+
 ## v0.6.5, 2026-09-17
 
 ### Added
