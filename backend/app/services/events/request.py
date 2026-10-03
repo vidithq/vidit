@@ -45,9 +45,10 @@ class ImportProvenance:
     """Where a machine-written row came from: the post, its thread, the entry.
 
     The five provenance columns an import stamps, carried as one argument so a
-    write verb takes them together or not at all. It lives here rather than
-    beside the import code because ``services/detection`` imports this module,
-    and the reverse would be a cycle.
+    write verb takes them together or not at all. It lives in
+    ``services/events/request`` rather than in ``services/detection``, the
+    import code, because ``services/detection`` imports the ``services/events``
+    package, and the reverse would be a cycle.
     """
 
     tweet_id: int | None

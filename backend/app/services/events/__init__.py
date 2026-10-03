@@ -17,8 +17,10 @@ strings, translated to HTTP via the same `{code, message}` envelope as
 `routers/events/_common.py` (`_EVENT_ERROR_STATUS`), kept in sync
 when adding a code.
 
-One module per write verb, over four shared modules. Dependencies run one way,
-``errors`` to the shared modules to the verbs, and no verb imports another:
+One module per write verb, over five shared modules. Dependencies run one way:
+a verb module imports shared modules, a shared module imports at most
+``errors``, ``errors`` imports no sibling module, and no verb module imports
+another.
 
 * ``errors``: the typed failures and their codes, a leaf module.
 * ``coordinates``: the bounds check and the optional point a form pair builds.
@@ -37,14 +39,11 @@ One module per write verb, over four shared modules. Dependencies run one way,
 * ``closure``: :func:`close`.
 
 Callers import from this package, which re-exports the public surface below.
-``_publish_detection`` is re-exported too, since route docstrings and the
-frontend mirrors cite it at the package path.
 """
 
 from __future__ import annotations
 
 from .batch import ROW_INTERNAL_ERROR_CODE, DetectionCompletion, complete_detections
-from .batch import _publish_detection as _publish_detection
 from .closure import close
 from .coordinates import validate_coordinates
 from .create import create_with_evidence
