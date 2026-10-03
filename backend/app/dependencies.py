@@ -3,6 +3,8 @@ from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
 
 from fastapi import Cookie, Depends, HTTPException, status
+from psycopg2.errors import LockNotAvailable
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
@@ -23,6 +25,19 @@ def get_db() -> Generator[Session]:
     db = SessionLocal()
     try:
         yield db
+    except OperationalError as exc:
+        # A statement outwaited ``database.LOCK_TIMEOUT_MS`` behind another
+        # transaction's lock: a conflict the caller can retry, not a server fault.
+        if not isinstance(exc.orig, LockNotAvailable):
+            raise
+        logger.warning("Lock wait timed out: %s", exc.orig.diag.context)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "lock_timeout",
+                "message": "Another request is changing this record. Try again in a moment.",
+            },
+        ) from exc
     finally:
         db.close()
 

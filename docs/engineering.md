@@ -357,6 +357,20 @@ flowchart LR
 | **schemas/** | Pydantic validation | Input and output separated (`Create`, `Read`, `Update`, `List`) |
 | **dependencies.py** | FastAPI injection | `get_db`, `get_current_user` |
 
+### Request concurrency
+
+The API runs as one uvicorn process with one event loop (the `CMD` in [`backend/Dockerfile`](../backend/Dockerfile)). A blocking call on that loop stalls every in-flight request, `/health` included. Route handlers follow three rules:
+
+- Declare a handler that touches the database as a plain `def`. FastAPI runs it in its threadpool, so a slow query or a lock wait blocks one worker thread and the loop keeps serving.
+- Call an `async` service from such a handler through `asyncio.run`, which gives the coroutine an event loop of its own inside the worker thread. The evidence writes in [`routers/events/write.py`](../backend/app/routers/events/write.py) and [`routers/events/item.py`](../backend/app/routers/events/item.py), the avatar upload, and the tweet import work this way. The row lock an evidence write holds across its upload pauses only that private loop.
+- Keep `async def` for a handler that awaits the request itself, and run each of its database calls through `run_in_threadpool`, as the X webhook receiver ([`routers/webhooks.py`](../backend/app/routers/webhooks.py)) does: it reads the raw body for its signature check.
+
+[`tests/test_request_concurrency.py`](../backend/tests/test_request_concurrency.py) fails on an `async def` handler that depends on `get_db`, the webhook receiver excepted.
+
+The API process caps every lock wait at `LOCK_TIMEOUT_MS`, 5 seconds. [`main.py`](../backend/app/main.py) calls `bound_lock_waits` from [`database.py`](../backend/app/database.py) at import, and from then on every connection the engine opens sets the Postgres `lock_timeout` in its startup options. A statement that waits longer for a lock fails, and `get_db` answers the request with a `409` carrying the typed envelope `{"code": "lock_timeout", …}`. The cap protects the API's threadpool: a request queued on a lock holds a worker thread for as long as it waits.
+
+The cap applies to the API process only. The import worker, the bot cron, and the conflict-sync cron open their sessions from the same engine but never import `main.py`, so their statements wait for the lock: each service runs on its own compute with no shared threadpool, and waiting costs it nothing. Migrations open their own engine in [`alembic/env.py`](../backend/alembic/env.py) and wait too.
+
 ### Schema naming
 
 ```
