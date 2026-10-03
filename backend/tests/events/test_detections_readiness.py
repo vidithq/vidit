@@ -1,9 +1,10 @@
 """The readiness rule has one home, and this suite is what holds it there.
 
 ``services.events.detection_ready_predicate`` is a SQL projection of the floor
-``services.events._publish_detection`` enforces row by row. Two expressions of one
-rule can drift silently, so every shape in ``_readiness_cases`` is put through
-both and the verdicts must match exactly, per row, not just in aggregate.
+``services/events/batch._publish_detection`` enforces row by row. Two
+expressions of one rule can drift silently, so every shape in
+``_readiness_cases`` is put through both and the verdicts must match exactly,
+per row, not just in aggregate.
 
 The third implementation, ``batchCompletionBlockers`` in
 ``frontend/src/lib/events.ts``, is held to the same table by
@@ -13,7 +14,8 @@ The third implementation, ``batchCompletionBlockers`` in
 from __future__ import annotations
 
 from app.models.event import STATUS_DETECTED, Event
-from app.services.events import _publish_detection, detection_ready_predicate
+from app.services.events import detection_ready_predicate
+from app.services.events.batch import _publish_detection
 from app.services.evidence_intake import EvidenceIntakeError
 from tests.events._helpers import _make_geo
 from tests.events._readiness_cases import READINESS_CASES, READY_CASE_NAMES

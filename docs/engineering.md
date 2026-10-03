@@ -221,7 +221,19 @@ vidit/
 │   │       ├── email.py            # Resend / console-echo email transport
 │   │       ├── evidence_intake.py  # Shared media intake: file cap, upload loop, commit/sweep + typed errors
 │   │       ├── evidence_processing.py  # Metadata strip + display derivatives, bounded decode
-│   │       ├── events.py           # create / create_request / geolocate / close + typed EventError hierarchy
+│   │       ├── events/             # Event lifecycle writes; callers import from the package root
+│   │       │   ├── __init__.py     # Public surface, re-exported
+│   │       │   ├── errors.py       # Typed EventError hierarchy, a leaf module
+│   │       │   ├── coordinates.py  # validate_coordinates + the optional form point
+│   │       │   ├── source_links.py # Secondary links: normalize, pair with archived copies, write rows
+│   │       │   ├── rules.py        # Evidence floor, source-media swap, tag / conflict resolvers, geolocation credit
+│   │       │   ├── readiness.py    # detection_ready_predicate, the batch floor in SQL
+│   │       │   ├── create.py       # create_with_evidence
+│   │       │   ├── request.py      # create_request, update_request, import provenance
+│   │       │   ├── geolocation.py  # geolocate
+│   │       │   ├── revision.py     # save_version
+│   │       │   ├── batch.py        # complete_detections
+│   │       │   └── closure.py      # close
 │   │       ├── maintenance.py      # Admin sweeps: auth tokens, pending regs, completion digests
 │   │       ├── registration.py     # Pre-creation flow: pending row, claim, confirm
 │   │       ├── sanitize.py         # Server-side Tiptap (ProseMirror) sanitiser
