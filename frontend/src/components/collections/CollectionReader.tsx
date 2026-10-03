@@ -75,7 +75,7 @@ export function CollectionReader({
   // The panel's event, read the way every other page reads one row. The hook
   // aborts the request in flight when the reader steps again, so a slow event
   // can never land on top of the one the reader moved to.
-  const { data: detail, loading } = useApiResource<EventDetail>(
+  const detail = useApiResource<EventDetail>(
     currentId ? `/events/${currentId}` : null,
   );
 
@@ -175,8 +175,7 @@ export function CollectionReader({
           // also puts a long event back at its top when the reader steps.
           key={currentId ?? "empty"}
           placement="inline"
-          detail={detail}
-          loading={loading}
+          resource={detail}
           header={<ReaderHeader step={step} total={total} onStep={onStep} />}
         />
       </div>
