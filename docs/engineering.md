@@ -290,7 +290,8 @@ vidit/
 │   └── ingestion.md            # the post-to-event detection engine and its three entries
 │
 ├── planning/                       # project planning (not user docs)
-│   ├── next.md                 # scheduled work + unscheduled candidates
+│   ├── backlog.md              # every tracker row in full + unscheduled candidates
+│   ├── next.md                 # current and next version, one line per row
 │   └── roadmap.md              # vision + openness commitment
 │
 ├── video/                          # "Promo as code" pipeline (Playwright takes + Remotion comps), see video/README.md

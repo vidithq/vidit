@@ -143,6 +143,7 @@ The technical reference is also hosted at **[docs.vidit.app](https://docs.vidit.
 
 - [Roadmap](planning/roadmap.md)
 - [What's next](planning/next.md)
+- [Backlog](planning/backlog.md)
 - [Engineering](docs/engineering.md)
 - [Data model](docs/data-model.md)
 - [REST API](docs/api.md)

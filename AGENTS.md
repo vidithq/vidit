@@ -8,6 +8,7 @@ Setup, PR flow, and conventions live in [`README.md`](README.md) and [`CONTRIBUT
 |---|---|---|
 | Strategy / vision / version milestones | `planning/roadmap.md` | `docs/`, source code |
 | Work tracker / priorities | `planning/next.md` | `docs/`, source code |
+| Unscheduled and later-version work, full row detail | `planning/backlog.md` | `docs/`, source code |
 | Reference (API, schema, ops, design) | `docs/*.md` | `planning/` |
 | Release history | `CHANGELOG.md` | `docs/`, `planning/` |
 | Contribution flow + doc-sync rule | `CONTRIBUTING.md` | scattered |
@@ -20,7 +21,7 @@ CI enforces a floor: every PR to `main` must touch *both* `docs/` and `planning/
 
 1. **One fact, one home.** If it lives elsewhere, link; don't restate.
 2. **No tracker content in reference docs or code.** No `(current)`, `Status:`, version milestones (`v0.4`, `v0.5`…), or their names (e.g. *Open beta*) in `docs/*.md` or source files. Roadmap tracking lives in `planning/`, `CHANGELOG.md`, and contributor-facing meta (README, AGENTS, CONTRIBUTING, issue templates). The reader-facing roadmap on the public landing is the one sanctioned projection.
-3. **No hedge prose in reference docs.** "We should consider…", "may want to…", "it's important to…": make it a decision or a task in next.md.
+3. **No hedge prose in reference docs.** "We should consider…", "may want to…", "it's important to…": make it a decision or a task in backlog.md.
 4. **No "for context" / "for clarity" intros.** State the thing.
 5. **Adjectives → consequences or delete.** "Critical" → "fails the deploy if missing". "Important" → delete. "Complex" → describe or drop.
 6. **If a sentence can be deleted with no information loss, delete it.**

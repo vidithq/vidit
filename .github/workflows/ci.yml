@@ -322,7 +322,8 @@ jobs:
   # - `docs/` is the reference surface (api / data-model / engineering /
   #   design / backups). If a change is doc-worthy at all, *something*
   #   under here usually moves.
-  # - `planning/` is the in-flight tracker (`next.md` + `roadmap.md`).
+  # - `planning/` is the in-flight tracker (`next.md` + `backlog.md` +
+  #   `roadmap.md`).
   #   A shipped change should remove or amend a tracker row; a non-
   #   shipped change (refactor, bugfix never on the tracker) is rare
   #   enough that touching `planning/next.md` with a brief note in the
@@ -387,7 +388,7 @@ jobs:
           fi
 
           if ! touched '^planning/'; then
-            echo "::error::No file under planning/ was touched. Every PR should update the tracker — remove or amend a row in planning/next.md for shipped work, or leave a brief note in the relevant version for changes that weren't tracked. If the PR genuinely has no planning impact, justify it in the description and apply the 'no-docs-needed' label."
+            echo "::error::No file under planning/ was touched. Every PR should update the tracker: remove or amend a row in planning/next.md and planning/backlog.md for shipped work, or leave a brief note in the relevant version for changes that weren't tracked. If the PR genuinely has no planning impact, justify it in the description and apply the 'no-docs-needed' label."
             FAIL=1
           fi
 

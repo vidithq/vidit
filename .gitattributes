@@ -10,7 +10,7 @@
 #   though the right answer is always "keep both entries". Union merge
 #   does exactly that.
 #
-# - `planning/next.md` — the M1/M2/M3 work-tracker tables pack rows
+# - `planning/next.md` and `planning/backlog.md`: the work-tracker tables pack rows
 #   tightly with no blank lines, so two PRs each deleting a different
 #   row land inside the same 3-line context window and conflict. Union
 #   merge keeps both rows; the row each PR meant to delete just lingers
@@ -25,3 +25,4 @@
 # rewrites need a manual pass at PR-author time, which is fine.
 CHANGELOG.md     merge=union
 planning/next.md merge=union
+planning/backlog.md merge=union

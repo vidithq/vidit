@@ -22,7 +22,7 @@ CI hard-fails the PR if `docs/` AND `planning/` aren't both touched (the `docs-p
 - [ ] Tech-choice swap (not a routine version bump) → updated [`docs/engineering.md`](../docs/engineering.md)
 - [ ] Auth model, deployment URLs, env vars, or primary dev workflow change → updated [`AGENTS.md`](../AGENTS.md) **and** [`README.md`](../README.md)
 - [ ] Palette recipe / shared style constant in [`styles.ts`](../frontend/src/components/ui/styles.ts) → updated [`docs/design.md`](../docs/design.md) (*Orange palette recipe*)
-- [ ] Shipped item removed from [`planning/next.md`](../planning/next.md) (or briefly noted in the relevant macro)
+- [ ] Shipped item removed from [`planning/next.md`](../planning/next.md) and [`planning/backlog.md`](../planning/backlog.md) (or briefly noted in the relevant macro)
 
 ## Test plan
 

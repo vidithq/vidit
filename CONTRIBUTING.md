@@ -9,7 +9,7 @@ Contributions that exist only to enable a competing hosted SaaS on top of this c
 ## Before you start
 
 - **Read [`roadmap.md`](planning/roadmap.md)** for the *why*, the milestone ladder, and what's deferred to *future considerations*.
-- **Read [`next.md`](planning/next.md)** to see what's on the table this version. Open work only; shipped items move to [`CHANGELOG.md`](CHANGELOG.md).
+- **Read [`next.md`](planning/next.md)** to see what's on the table this version and the next one. Each row's full detail, later versions and unscheduled work live in [`backlog.md`](planning/backlog.md). Open work only; shipped items move to [`CHANGELOG.md`](CHANGELOG.md).
 - **Read [`AGENTS.md`](AGENTS.md)** for project conventions.
 
 For substantial work, file an issue first.
@@ -85,8 +85,9 @@ An amend + force-push to fix a missing sign-off often re-triggers only the DCO c
 
 ## Doc-sync rule
 
-- **Item shipped?** Delete it from [`next.md`](planning/next.md). Add a one-line entry to [`CHANGELOG.md`](CHANGELOG.md) under `## Unreleased` with the PR number.
-- **Item descoped?** Move it to *Unscheduled candidates* in `next.md`. Rejected → delete.
+- **Item shipped?** Delete it from [`next.md`](planning/next.md) and from [`backlog.md`](planning/backlog.md). Add a one-line entry to [`CHANGELOG.md`](CHANGELOG.md) under `## Unreleased` with the PR number.
+- **Item descoped?** Delete its line from `next.md` and move its row to *Unscheduled candidates* in `backlog.md`. Rejected → delete.
+- **Writing a row?** The full row lives in `backlog.md`, under its version. A `next.md` row holds the current or the next version only, and its last cell is one sentence stating the outcome, followed by a link to the full row in `backlog.md`. When a version becomes the current or the next one, add its rows to `next.md` in that form.
 
 Touched a published surface → sync the matching doc:
 
