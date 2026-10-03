@@ -5,6 +5,7 @@ Proof images ride INSIDE the create multipart (``proof_files`` matched to
 proof-image upload endpoint and no unattached staging row to reap.
 """
 
+import asyncio
 from typing import cast
 
 from fastapi import (
@@ -60,9 +61,12 @@ def _capture_coords(geo) -> tuple[float | None, float | None]:
     return point.y, point.x
 
 
+# Both creates are plain ``def`` and drive their async service through
+# ``asyncio.run``, so their queries stay off the server's event loop
+# (``engineering.md``, Request concurrency).
 @router.post("", response_model=EventRead, status_code=status.HTTP_201_CREATED)
 @limiter.limit("30/minute")
-async def create_event(
+def create_event(
     request: Request,
     # ``max_length`` ceilings (shared with the geolocate form via the model
     # module) so over-length input is rejected at the boundary, not at flush
@@ -139,27 +143,29 @@ async def create_event(
     parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
 
     try:
-        geo = await events_service.create_with_evidence(
-            db,
-            current_user=current_user,
-            title=title,
-            lat=lat,
-            lng=lng,
-            capture_source_lat=capture_source_lat,
-            capture_source_lng=capture_source_lng,
-            source_url=source_url,
-            source_snapshot_url=source_snapshot_url,
-            secondary_source_urls=secondary_source_urls,
-            secondary_snapshot_urls=secondary_snapshot_urls,
-            event_date=parsed_event_date,
-            event_time=parsed_event_time,
-            source_posted_at=parsed_source_posted_at,
-            proof_data=proof_data,
-            tag_ids=parsed_tag_ids,
-            conflict_ids=parsed_conflict_ids,
-            is_graphic=is_graphic,
-            file=file,
-            proof_files=proof_files,
+        geo = asyncio.run(
+            events_service.create_with_evidence(
+                db,
+                current_user=current_user,
+                title=title,
+                lat=lat,
+                lng=lng,
+                capture_source_lat=capture_source_lat,
+                capture_source_lng=capture_source_lng,
+                source_url=source_url,
+                source_snapshot_url=source_snapshot_url,
+                secondary_source_urls=secondary_source_urls,
+                secondary_snapshot_urls=secondary_snapshot_urls,
+                event_date=parsed_event_date,
+                event_time=parsed_event_time,
+                source_posted_at=parsed_source_posted_at,
+                proof_data=proof_data,
+                tag_ids=parsed_tag_ids,
+                conflict_ids=parsed_conflict_ids,
+                is_graphic=is_graphic,
+                file=file,
+                proof_files=proof_files,
+            )
         )
     except EvidenceIntakeError as exc:
         _raise_event_error(exc)
@@ -174,7 +180,7 @@ async def create_event(
 
 @router.post("/requests", response_model=EventRead, status_code=status.HTTP_201_CREATED)
 @limiter.limit("30/minute")
-async def create_event_request(
+def create_event_request(
     request: Request,
     # ``max_length`` ceilings mirror the direct-create form: title is the DB
     # column width (String(255)), source_url a chosen API bound, so
@@ -237,27 +243,29 @@ async def create_event_request(
     parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
 
     try:
-        geo = await events_service.create_request(
-            db,
-            current_user=current_user,
-            title=title,
-            source_url=source_url,
-            secondary_source_urls=secondary_source_urls,
-            proof_data=proof_data,
-            lat=lat,
-            lng=lng,
-            capture_source_lat=capture_source_lat,
-            capture_source_lng=capture_source_lng,
-            event_date=parsed_event_date,
-            event_time=parsed_event_time,
-            source_posted_at=parsed_source_posted_at,
-            tag_ids=parsed_tag_ids,
-            conflict_ids=parsed_conflict_ids,
-            is_graphic=is_graphic,
-            file=file,
-            proof_files=proof_files,
-            source_snapshot_url=source_snapshot_url,
-            secondary_snapshot_urls=secondary_snapshot_urls,
+        geo = asyncio.run(
+            events_service.create_request(
+                db,
+                current_user=current_user,
+                title=title,
+                source_url=source_url,
+                secondary_source_urls=secondary_source_urls,
+                proof_data=proof_data,
+                lat=lat,
+                lng=lng,
+                capture_source_lat=capture_source_lat,
+                capture_source_lng=capture_source_lng,
+                event_date=parsed_event_date,
+                event_time=parsed_event_time,
+                source_posted_at=parsed_source_posted_at,
+                tag_ids=parsed_tag_ids,
+                conflict_ids=parsed_conflict_ids,
+                is_graphic=is_graphic,
+                file=file,
+                proof_files=proof_files,
+                source_snapshot_url=source_snapshot_url,
+                secondary_snapshot_urls=secondary_snapshot_urls,
+            )
         )
     except EvidenceIntakeError as exc:
         _raise_event_error(exc)

@@ -254,8 +254,8 @@ def fetch_mentions(
 class OAuth1Credentials:
     """The bot account's OAuth 1.0a user context: four static credentials.
 
-    ``repr`` prints none of them, so the object can sit in a log line or a
-    traceback without exposing a credential.
+    ``repr`` prints none of them, so a log line that formats the object
+    exposes no credential.
     """
 
     consumer_key: str = field(repr=False)

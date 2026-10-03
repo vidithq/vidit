@@ -3,6 +3,8 @@ import time
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -11,6 +13,7 @@ from slowapi.errors import RateLimitExceeded
 from starlette.types import ASGIApp
 
 from app.config import settings
+from app.database import bound_lock_waits
 from app.middleware.csrf import CSRFMiddleware
 from app.middleware.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
 from app.observability import configure_logging, init_sentry
@@ -96,6 +99,17 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
         content={"detail": {"code": code, "message": message}},
         headers={"Retry-After": str(retry_after)} if retry_after is not None else None,
     )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(_request: Request, exc: RequestValidationError):
+    """FastAPI's 422 body without each error's ``input``.
+
+    The default echoes the rejected value back, which for a password field is
+    the password itself.
+    """
+    errors = [{k: v for k, v in error.items() if k != "input"} for error in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
 
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -262,6 +276,10 @@ app.include_router(social.router, prefix="/api/v1", tags=["social"])
 app.include_router(tags.router, prefix="/api/v1/tags", tags=["tags"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 app.include_router(webhooks.router, prefix="/api/v1/webhooks", tags=["webhooks"])
+
+# The API alone caps its lock waits; the scheduler services share the engine
+# and wait (``engineering.md``, Request concurrency).
+bound_lock_waits()
 
 
 if settings.storage_backend == "local":
