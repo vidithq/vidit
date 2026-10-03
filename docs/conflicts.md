@@ -63,7 +63,7 @@ Each paragraph below takes one node of the diagram, and the two runners are name
 **The two scripts:**
 
 - `uv run python scripts/seed_conflicts.py [--dry-run]` runs **once at setup**. It performs a Wikidata SPARQL pull of historical conflicts since 1914, about 700 to 850 rows, using a P31 type allowlist: wars, civil wars, armed conflicts, rebellions, insurgencies, and the relevant margins. It excludes battles, operations, and coup attempts. Rows with missing QIDs insert as `source='seed'`, `ongoing=false`. It never modifies existing rows, since the sync owns them. It is idempotent and safe to re-run.
-- `uv run python scripts/sync_conflicts.py` runs **daily through a Railway cron service**: one pass of the Wikipedia sync described above. You can also run it by hand.
+- `uv run python scripts/sync_conflicts.py` runs one pass of the Wikipedia sync described above, daily through the scheduler below or by hand.
 
 **Scheduler config.** The sync runs as the Railway cron service `backend-conflicts`, on the schedule `0 6 * * *`, with the start command `uv run python scripts/sync_conflicts.py`. It mirrors the [`backend-backup`](backups.md) pattern, and its build, config-as-code path and shared environment are the ones every scheduler service takes (see [`engineering.md`](engineering.md#scheduler-services)). The process makes one pass and exits. A non-zero exit shows on the service's deployment view, and when `SENTRY_DSN` is set, a strict-parse abort is captured to Sentry. A missed run is harmless: the sync is idempotent, and the 14-day grace period absorbs multi-day gaps.
 

@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-**Please do not open a public GitHub issue.**
+**Do not open a public GitHub issue.**
 
 Report vulnerabilities privately through GitHub's **[*Report a vulnerability*](https://github.com/vidithq/vidit/security/advisories/new)** form (the *Security* tab on the repository).
 
@@ -42,8 +42,8 @@ Out of scope:
 
 ## Safe-harbor
 
-Good-faith research following this policy will not be pursued legally. Please:
-- Stop and report the moment you confirm a vulnerability — do not exfiltrate data, modify other accounts, or pivot further.
+Good-faith research following this policy will not be pursued legally. When you research:
+- Stop and report the moment you confirm a vulnerability. Do not exfiltrate data, modify other accounts, or pivot further.
 - Do not access, modify, delete, or test against data or content that isn't yours.
 
 If you accidentally access user data: stop, report, and do not retain copies.

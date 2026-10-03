@@ -1,6 +1,54 @@
 # Backups
 
-The production Postgres database on Railway gets a daily backup to S3 from a dedicated cron service. The service runs a custom-format `pg_dump` and writes to a private, versioned, lifecycle-bounded bucket. Its credentials are write-only. Restoring a backup uses a separate admin profile. Media is not part of this dump. Cross-region replication protects media separately. See [Media replication](#media-replication).
+A daily cron dumps the production database to a write-only backup bucket, and cross-region replication protects media separately.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`a recovery path`"]:::spec
+    l2["`a scheduled or managed writer`"]:::shared
+    l3["`the production data`"]:::core
+    l4[("`a protective copy`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  db[("`**postgres-db**
+  production database`")]:::core
+  media[("`**media bucket**
+  eu-west-3, versioned, Object-Locked`")]:::core
+  cron["`**backend-backup**
+  daily 00:00 UTC: pg_dump, pg_restore --list`"]:::shared
+  bak[("`**backup bucket**
+  write-only IAM, 365-day expiry`")]:::store
+  repl["`**S3 replication**
+  seven content prefixes, no delete markers`"]:::shared
+  replica[("`**replica bucket**
+  eu-west-1, Object Lock, DenyDestroyExceptRoot`")]:::store
+
+  r2a["`**2a code rollback**
+  redeploy the previous ref`"]:::spec
+  r2b["`**2b schema downgrade**
+  alembic downgrade -1`"]:::spec
+  r2c["`**2c full restore**
+  pg_restore from a dump`"]:::spec
+  rsync["`**media restore**
+  s3 sync or per-version get`"]:::spec
+
+  db --> cron --> bak
+  media --> repl --> replica
+  bak --> r2c --> db
+  r2b --> db
+  r2a -. "no database change" .-> db
+  replica --> rsync --> media
+```
+
+[Automated backups](#automated-backups) covers the cron and the backup bucket. [Manual snapshot and rollback](#manual-snapshot-and-rollback) covers paths 2a, 2b and 2c. [Media replication](#media-replication) covers the replica bucket and the media restore.
 
 ---
 
@@ -48,7 +96,7 @@ The target database must have the same extensions installed as production. The d
 
 ## How you find out the cron failed
 
-A 403 response on `PutObject` exits non-zero. Railway logs it on the `backend-backup` deployment view and does not retry (`restartPolicyType: NEVER`). A failed run shows as failed immediately, and the next scheduled run acts as the retry. A missed daily dump triggers no alert today: Sentry catches only runtime exceptions. Discovery is manual:
+A 403 response on `PutObject` exits non-zero. Railway logs it on the `backend-backup` deployment view and does not retry (`restartPolicyType: NEVER`). A failed run shows as failed immediately, and the next scheduled run acts as the retry. Sentry catches only runtime exceptions, so a missed daily dump raises no alert. Discovery is manual:
 
 1. **Daily after 00:00 UTC, check the bucket:**
    ```bash
@@ -57,7 +105,7 @@ A 403 response on `PutObject` exits non-zero. Railway logs it on the `backend-ba
    A fresh `.dump` file under today's `YYYY/MM/DD/` prefix means the cron ran. If the latest dump is from a prior day, check the `backend-backup` deployment logs in Railway.
 2. **At the quarterly restore drill**, list the bucket again. Gaps in the daily cadence reveal failure modes that the script's exit code misses, for example a successful upload of a corrupt dump.
 
-`backup.sh` pings `HEALTHCHECK_PING_URL` after a successful run when that variable is set (see the env var table above). Once a healthchecks.io check, or an equivalent, exists and is wired to it, the check alerts on a missed ping. This covers a failed run, a cron that never fires, and a dump that hangs mid-`pg_dump`: none of these trigger the manual bucket check between visits. No check is provisioned yet. The daily check above stays the active discovery path until one is.
+`backup.sh` pings `HEALTHCHECK_PING_URL` after a successful run when that variable is set. A healthchecks.io check, or an equivalent, wired to that URL alerts on a missed ping: a failed run, a cron that never fires, or a dump that hangs mid-`pg_dump`. With no check wired, the daily bucket check above is the discovery path.
 
 ---
 
@@ -132,7 +180,7 @@ Media is not in the dump. Imported rows keep the production media URLs they were
 
 Follow this procedure for a deploy that ships a migration. Migrations run as a Railway pre-deploy step (`uv run alembic upgrade head`). A failed migration retries three times, then leaves the service failed with the schema half-applied. **Get a fresh backup before any deploy that includes a migration.**
 
-Two constraints shape this procedure (see [`engineering.md`](engineering.md), *Deployment* and *Particularities*). Production database **public networking is off**. The backend container ships only `libpq5`, **not** the `pg_dump` / `pg_restore` client binaries. Those binaries live in the `backend-backup` cron image, `postgres:16`.
+Two constraints shape this procedure (see [`engineering.md`](engineering.md#deployment)). Production database **public networking is off**. The backend container ships only `libpq5`, **not** the `pg_dump` / `pg_restore` client binaries. Those binaries live in the `backend-backup` cron image, `postgres:16`.
 
 **1. Snapshot before deploying.** Do not wait for the next scheduled run. Do not count the dump a deploy itself triggers as the pre-migration snapshot: the matrix jobs run in parallel, so nothing orders it before the migration. Trigger the `backend-backup` service on demand first:
 
@@ -152,23 +200,28 @@ Confirm a fresh object appears under today's `YYYY/MM/DD/` prefix before you dep
   Check the target first with `uv run alembic history -r-2:current`. Stepping back from the baseline migration (see [`engineering.md`](engineering.md#migration-house-style)) drops every table, so this path applies only while the deploy added a revision on top of it. Otherwise go to 2c.
 - **2c. Full restore** (data corruption, or downgrade is not safe). The [restore drill](#restore-drill) above is the validated `pg_restore` procedure. For a live restore, run `pg_restore` from a one-off `postgres:16` container on the Railway network, or temporarily open public database networking. `pg_restore --clean --if-exists` **wipes anything added since the snapshot**. For partial recovery, restore into a scratch database and copy out specific tables.
 
-A dedicated restore job is not yet scheduled.
+No scheduled job runs a restore; every restore is manual.
 
 ---
 
 ## Media replication
 
-Media protection relies on replication, not backup. The `pg_dump` cron above never touches `<media-bucket>`. This is deliberate. Keep it that way. Adding media to the dump script would duplicate the protection the replication below already provides, at the cost of a dump too large to run daily.
+Media protection relies on replication, not backup. The `pg_dump` cron never touches `<media-bucket>`: adding media would duplicate what replication provides, with a dump too large to run daily.
 
-`<media-bucket>` (region `eu-west-3`) replicates cross-region to `<replica-bucket>` (region `eu-west-1`) through S3 Replication Configuration, using IAM role `<replication-role>`. `s3.amazonaws.com` trusts this role. Its permissions are limited to reading the replication config and object versions on the source, plus `ReplicateObject` and `ReplicateTags` on the destination. Seven rules cover the content prefixes: `uploads/`, `bounty_uploads/`, `proof/`, `demo-pool/`, `landing/`, `detected/` (machine-detection media, written through `services/storage.py::detected_media_key`), and `avatars/` (profile pictures, written through `services/storage.py::upload_avatar_image`). `avatars/` is personal data, and it is replicated for the same reason `proof/` is: nothing regenerates it, so the copy on `<media-bucket>` is the only one. `archive-imports/` is deliberately excluded: it holds staged personal X exports on a 7-day TTL, and replicating that prefix into a locked bucket would retain personal data for a year past the point the source copy expires. A feature that introduces a new content prefix must also add a replication rule for it. This is the same checklist item the runtime IAM user's own policy carries (see the Media row in [`engineering.md`](engineering.md#deployment)). A missed rule fails silently: writes succeed, nothing replicates, and the gap surfaces only at restore time. Delete marker replication is off, so a delete on the source never hides the replica copy. A destructive mistake on `<media-bucket>` leaves the replica intact for a normal restore, not just for the lock period.
+`<media-bucket>` (region `eu-west-3`) replicates cross-region to `<replica-bucket>` (region `eu-west-1`) through S3 Replication Configuration, using IAM role `<replication-role>`. `s3.amazonaws.com` trusts this role. Its permissions are limited to reading the replication config and object versions on the source, plus `ReplicateObject` and `ReplicateTags` on the destination. Seven rules cover the content prefixes: `uploads/`, `bounty_uploads/`, `proof/`, `demo-pool/`, `landing/`, `detected/` (machine-detection media, written through `services/storage.py::detected_media_key`), and `avatars/` (profile pictures, written through `services/storage.py::upload_avatar_image`). `avatars/` is personal data, and it is replicated for the same reason `proof/` is: nothing regenerates it, so the copy on `<media-bucket>` is the only one. `archive-imports/` is excluded: it holds staged personal X exports on a 7-day TTL, and replicating it into a locked bucket would retain personal data for a year past the point the source copy expires. A feature that introduces a new content prefix must also add a replication rule for it. This is the same checklist item the runtime IAM user's own policy carries (see the Media row in [`engineering.md`](engineering.md#deployment)). A missed rule fails silently: writes succeed, nothing replicates, and the gap surfaces only at restore time. Delete marker replication is off, so a delete on the source never hides the replica copy. A destructive mistake on `<media-bucket>` leaves the replica intact for a normal restore, not just for the lock period.
 
-`<replica-bucket>` has Object Lock enabled with a default GOVERNANCE retention of 365 days. All public access is blocked, SSE-S3 encrypts data at rest, and a lifecycle rule aborts incomplete multipart uploads after 7 days. A bucket policy (`DenyDestroyExceptRoot`) denies `s3:DeleteObject`, `s3:DeleteObjectVersion`, `s3:BypassGovernanceRetention`, `s3:PutBucketPolicy`, `s3:DeleteBucketPolicy`, and `s3:DeleteBucket` to every principal except the account root. A non-root principal cannot delete an existing version, bypass the lock, or change the bucket policy. The policy does not cover `s3:PutObject` or `s3:PutLifecycleConfiguration`. A non-root principal, including a stolen or misused `<s3-admin>` key, can still write new object versions to `<replica-bucket>` and can still schedule a lifecycle change. Deletion of an already-locked version stays impossible until its own retention date, regardless of what a new lifecycle rule schedules. Closing both gaps (deny `s3:PutObject` to everyone but the replication role, deny lifecycle and Object Lock configuration changes to everyone but root) is tracked in [`planning/next.md`](../planning/next.md).
+`<replica-bucket>` has Object Lock enabled with a default GOVERNANCE retention of 365 days. All public access is blocked, SSE-S3 encrypts data at rest, and a lifecycle rule aborts incomplete multipart uploads after 7 days. A bucket policy (`DenyDestroyExceptRoot`) denies `s3:DeleteObject`, `s3:DeleteObjectVersion`, `s3:BypassGovernanceRetention`, `s3:PutBucketPolicy`, `s3:DeleteBucketPolicy`, and `s3:DeleteBucket` to every principal except the account root. A non-root principal cannot delete an existing version, bypass the lock, or change the bucket policy. The policy does not cover `s3:PutObject` or `s3:PutLifecycleConfiguration`. A non-root principal, including a stolen or misused `<s3-admin>` key, can still write new object versions to `<replica-bucket>` and can still schedule a lifecycle change. Deletion of an already-locked version stays impossible until its own retention date, regardless of what a new lifecycle rule schedules.
 
 An object that arrives through replication carries the source object's own retention: mode and retain-until date, computed at original upload. An object written directly to `<replica-bucket>` (the initial seed) gets the bucket default instead: GOVERNANCE for 365 days.
 
-`<media-bucket>` itself has a bucket-wide lifecycle rule that aborts incomplete multipart uploads after 7 days, alongside the existing `archive-imports/` rule (7-day expiry on current and noncurrent versions, 7-day multipart abort).
+**Threat model.** The deny policy holds against an operator mistake, such as a wrong `--recursive` flag, and against an automated tool holding `<s3-admin>` credentials: what already exists on `<replica-bucket>` survives. A regional outage or data loss in `eu-west-3` leaves `<replica-bucket>` in `eu-west-1` unaffected.
 
-**Threat model.** A stolen or misused `<s3-admin>` key cannot delete an existing version on `<replica-bucket>`, bypass its lock, or change its bucket policy. The deny policy blocks those actions for every principal but the account root, regardless of what permissions the key's own IAM policy grants. The same holds against a human operator mistake, such as a wrong `--recursive` flag, or an agent mistake, such as an automated tool with `<s3-admin>` credentials issuing a destructive call: what already exists on `<replica-bucket>` survives. The same key can still read from `<replica-bucket>`. Until the policy hardening above lands, it can still write new versions and schedule a lifecycle change, but a locked version cannot be deleted before its retention date regardless. A regional outage or data-loss event in `eu-west-3` leaves `<replica-bucket>` in `eu-west-1` unaffected, because it is a separate region with its own infrastructure.
+### Media lifecycle
+
+`<media-bucket>` carries two lifecycle rules:
+
+- A bucket-wide rule aborts incomplete multipart uploads after 7 days.
+- The `archive-imports/` rule expires current objects after 7 days, expires noncurrent versions after 7 days (`NoncurrentVersionExpiration`), and aborts incomplete multipart uploads after 7 days. The noncurrent half is required: with versioning on, the import worker's delete writes only a delete marker, so without it every raw personal X export would persist as a noncurrent version. The bucket-wide Object Lock default (GOVERNANCE, 365 days) still sets the earliest date a version can disappear.
 
 **Verifying replication is live.** Write a small canary object under a replicated prefix on `<media-bucket>`. Wait a few minutes, then compare `ReplicationStatus` through `head-object`: `COMPLETED` on the source object, `REPLICA` on the object at the same key in `<replica-bucket>`.
 
@@ -185,4 +238,4 @@ Two cases need selective handling instead of the blanket sync:
 
 Reading from `<replica-bucket>` needs no special handling. It is a normal S3 bucket, except that no non-root principal can delete an existing version from it or strip its lock.
 
-`<replica-bucket>`'s lifecycle carries only the 7-day abort-incomplete-multipart rule. Noncurrent versions are never expired there. This is deliberate: they are the recovery copies the overwrite case above restores from.
+`<replica-bucket>`'s lifecycle carries only the 7-day abort-incomplete-multipart rule. Noncurrent versions never expire there, because they are the recovery copies the overwrite case restores from.

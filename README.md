@@ -59,96 +59,23 @@ The detection engine is documented in [docs/ingestion.md](docs/ingestion.md), th
 
 ## Why open source
 
-**100% open source under [AGPL-3.0](LICENSE), nothing proprietary.** Anyone can self-host the platform; modifications deployed as a network service must publish their source under the same license. Today nothing on the maintainer's hosted instance (`vidit.app`) is paid. The analyst-facing platform is, and will stay, free; if the hosted instance ever charges for anything, it will be surfaces aimed at consumers of the community's work (alert webhooks, larger exports), never at the analysts producing it. Details in [`planning/roadmap.md`](planning/roadmap.md) → *Openness & transparency*.
+Vidit is open source under [AGPL-3.0](LICENSE). Anyone can self-host the platform; modifications deployed as a network service must publish their source under the same license. See [`planning/roadmap.md`](planning/roadmap.md) → *Openness & transparency*.
 
 ---
 
 ## Demo
 
-<!--
-Embed source: the README variant of the v0.4 promo (1280×720, ~6 MB,
-`npx remotion render ... --scale 2/3` in video/, see video/README.md),
-uploaded as a GitHub user-attachment so the player renders
-inline on github.com. To swap in a re-render: drag the new
-`video/out/promo-readme.mp4` into any GitHub draft comment textarea,
-copy the `https://github.com/user-attachments/assets/<uuid>` URL it
-generates, and replace the URL on the bare line below; leaving the
-URL alone on its own line is what triggers GitHub's auto-player.
-The hero on [vidit.app](https://vidit.app) plays the matching 1440p
-master (35 MB) from CloudFront.
--->
+<!-- To replace this video, see video/README.md, section "Swap the README embed". -->
 
 https://github.com/user-attachments/assets/f314673c-d357-4468-af6d-2299c831c5fc
 
 ---
 
-## Tech stack at a glance
+## Stack and documentation
 
-| Layer | Choice |
-|-------|--------|
-| Backend | FastAPI (Python 3.12) + SQLAlchemy 2 + GeoAlchemy2 + Alembic |
-| Database | PostgreSQL + PostGIS 3 (16 in prod, 18 locally) |
-| Auth | Cookie session + double-submit CSRF (JWT payload, PyJWT) + bcrypt + invite codes |
-| Storage | AWS S3 + CloudFront (media) |
-| Frontend | Next.js 16 (App Router) + TypeScript + Tailwind |
-| Map | MapLibre GL JS + CARTO Dark Matter tiles, client-side clustering |
-| Editor | Tiptap (rich proof) |
-| Hosting | Railway (API + DB) + Vercel (frontend) |
-| Package mgmt | uv (backend) + npm (frontend) |
+A FastAPI + PostgreSQL/PostGIS backend and a Next.js frontend. [docs/engineering.md](docs/engineering.md) covers the tech stack, the repository layout and the CI jobs.
 
-Details and rationale: [docs/engineering.md](docs/engineering.md).
-
----
-
-## Repository layout
-
-```
-vidit/
-├── backend/          FastAPI service (uv)
-│   ├── app/          routers → services → models, Pydantic schemas
-│   ├── alembic/      migrations
-│   ├── scripts/      one-off ops scripts (mock admin, detection seeder, prod import)
-│   └── tests/
-├── frontend/         Next.js 16 app (npm)
-│   └── src/
-│       ├── app/         App Router pages
-│       ├── components/
-│       ├── contexts/    React context providers (auth, map state)
-│       ├── hooks/
-│       ├── lib/
-│       ├── types/
-│       └── proxy.ts     default-deny auth + host canonicalisation
-├── video/            promo-as-code pipeline (Playwright capture + Remotion render, `make promo`)
-├── docs/             api, backups, data-model, design, engineering (technical reference)
-├── planning/         roadmap + next (project planning, not user docs)
-├── docker/           daily backup cron image
-├── AGENTS.md            project context for AI tools (CLAUDE.md is a one-line `@AGENTS.md` pointer for Claude Code)
-├── CHANGELOG.md         release history
-├── CODE_OF_CONDUCT.md   Contributor Covenant 2.1
-├── CONTRIBUTING.md      PR flow + commits + doc-sync rule
-├── LICENSE              AGPL-3.0
-├── SECURITY.md          vulnerability reporting
-├── docker-compose.yml   PostgreSQL + PostGIS for local dev
-├── Makefile             init / dev / seed / test entry points
-└── .github/workflows/   backend + frontend CI + manual deploy
-```
-
-More detail: [docs/engineering.md](docs/engineering.md).
-
----
-
-## Documentation
-
-The technical reference is also hosted at **[docs.vidit.app](https://docs.vidit.app)** (MkDocs Material build of [`docs/`](docs/)).
-
-- [Roadmap](planning/roadmap.md)
-- [What's next](planning/next.md)
-- [Engineering](docs/engineering.md)
-- [Data model](docs/data-model.md)
-- [REST API](docs/api.md)
-- [Design system](docs/design.md)
-- [Backups & restore](docs/backups.md)
-- [CHANGELOG](CHANGELOG.md)
+The technical reference lives in [`docs/`](docs/) (start at [docs/index.md](docs/index.md)) and is hosted at **[docs.vidit.app](https://docs.vidit.app)**. Planning lives in [planning/roadmap.md](planning/roadmap.md) and [planning/next.md](planning/next.md); release history in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -180,7 +107,7 @@ make test        # backend pytest
 `make seed` (or `make mock-admin`) creates `admin@vidit.app` / `admin` directly. To exercise the real invite + registration flow:
 
 1. Set `ADMIN_EMAILS=<your-email>` in `backend/.env` so your account auto-promotes to admin on first login.
-2. Get an invite code: once an admin exists, the `/admin` panel mints them; for the very first one run `make mock-admin` to get one.
+2. Get an invite code: sign in as the mock admin (`make mock-admin`) and mint one from the `/admin` panel.
 3. Register at <http://localhost:3000/register> with the code.
 4. `EMAIL_PROVIDER=console` (the local default) prints the confirmation link to **backend stdout**.
 
@@ -192,35 +119,9 @@ make test        # backend pytest
 
 ---
 
-## Working on the project
+## Contributing
 
-### Backend
-
-```bash
-cd backend
-uv run pytest                              # run tests
-uv run ruff check .                        # lint
-uv run ruff format .                       # format
-uv run alembic revision --autogenerate -m "..."   # new migration
-```
-
-### Frontend
-
-```bash
-cd frontend
-npm run lint
-npm run build
-```
-
-### Conventions
-
-See [AGENTS.md](AGENTS.md) → *Conventions*.
-
----
-
-## License
-
-Licensed under the [GNU Affero General Public License v3.0](LICENSE). See [`CONTRIBUTING.md`](CONTRIBUTING.md), [`SECURITY.md`](SECURITY.md), and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+The pull request flow, the local CI commands and the conventions live in [CONTRIBUTING.md](CONTRIBUTING.md). See also [SECURITY.md](SECURITY.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Licensed under the [GNU Affero General Public License v3.0](LICENSE).
 
 ---
 

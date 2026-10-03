@@ -24,7 +24,7 @@ What you thought would happen.
 
 ## Actual behaviour
 
-What actually happened (error messages, screenshots, copied logs — please redact anything sensitive).
+What actually happened (error messages, screenshots, copied logs). Redact anything sensitive.
 
 ## Environment
 
@@ -35,4 +35,4 @@ What actually happened (error messages, screenshots, copied logs — please reda
 
 ## Anything else
 
-Workarounds you've found, related issues, hypotheses about the cause — all welcome but optional.
+Workarounds you've found, related issues, hypotheses about the cause. All optional.

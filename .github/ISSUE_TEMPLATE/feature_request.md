@@ -20,15 +20,7 @@ What else did you weigh, and why did you rule it out?
 
 ## Milestone fit
 
-Where does this fit on the roadmap?
-
-- [ ] v0.6: Phone-ready
-- [ ] v0.7: Collaboration & reviews
-- [ ] v1.0: Public v1
-- [ ] Refactor / hygiene (no version gating)
-- [ ] Unscheduled candidate
-
-See [`planning/next.md`](../../planning/next.md) for the milestone tables and the *Unscheduled candidates* section. Items in [`planning/roadmap.md`](../../planning/roadmap.md) → *Future considerations* carry a documented rationale and revisit trigger: check that your proposal isn't already covered there.
+Which roadmap milestone fits, if any? See [`planning/roadmap.md`](../../planning/roadmap.md) for the milestones and [`planning/next.md`](../../planning/next.md) for the open work, the *Refactors* and the *Unscheduled candidates*. Items in [`planning/roadmap.md`](../../planning/roadmap.md) → *Future considerations* carry a documented rationale and revisit trigger: check that your proposal is not already covered there.
 
 ## Anything else
 

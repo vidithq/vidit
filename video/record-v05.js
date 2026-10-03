@@ -8,8 +8,8 @@
 // there is no cut anywhere in the recorded part, so every transition you see
 // is motion the browser actually made. That constraint is what shapes this
 // file: the take is paced in real time, holds included, and its total length
-// IS the promo's recorded length. There is no windowing left to do in the
-// comp, so a hold that runs long here runs long on screen.
+// IS the promo's recorded length. The comp does no windowing, so a hold that
+// runs long here runs long on screen.
 //
 // The two page changes are in-page navigations, never reloads: a click on a
 // submission card and a click on the sidebar's Map link, both Next `<Link>`
@@ -32,6 +32,20 @@
 //   2. Only the analyst's public page. The analyst named in HANDLE gave
 //      consent for their profile to be filmed; the take visits their profile,
 //      one of their events, and the public map, and nothing else.
+//
+// Beats, in the order the page reads (each with its own hold and caption):
+//   1. the profile top, still and cursor-free, the coverage map in frame;
+//   2. the coverage map worked in place: the camera eases, the page holds;
+//   3. the Insights card, read in two positions (it is taller than the window);
+//   4. Recent submissions;
+//   5. one submission: the poster frame, the point map, the Details block, the
+//      cursor settling on the archived copy beside the Source row;
+//   6. the general map, pulling back so the analyst's points sit among
+//      everyone else's.
+// Beats 1 and 2 share one page position, which is what the capture geometry
+// below is chosen for. Judge a geometry change the way it is watched: export
+// a frame, scale it to 400 px wide, and check the counters and the coverage
+// split's labels.
 //
 // Usage: node record-v05.js        (the instance must already be running)
 
