@@ -31,11 +31,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime
+from io import BytesIO
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from geoalchemy2.shape import from_shape
+from PIL import Image
 from shapely.geometry import Point
 
 from app.database import SessionLocal
@@ -50,6 +52,11 @@ from app.models.event import (
 from app.models.user import User
 from app.services import storage as storage_module
 from app.services.auth import hash_password
+from app.services.evidence_processing import (
+    MAX_AVATAR_DECODED_PIXELS,
+    MAX_DECODED_PIXELS,
+    UNREADABLE_IMAGE_MESSAGE,
+)
 from app.services.storage import LOCAL_STORAGE_URL_PREFIX
 from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
@@ -684,6 +691,49 @@ def test_put_avatar_rejects_undecodable_image(local_storage, live_user):
     response = _put_avatar(live_user, content=b"\xff\xd8\xff\xd9", content_type="image/jpeg")
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "invalid_avatar"
+
+
+def test_put_avatar_accepts_a_webp_declared_as_jpeg(local_storage, live_user):
+    """The declared type does not pick the decoder: a WebP sent as
+    ``image/jpeg`` becomes an avatar like any accepted image."""
+    buf = BytesIO()
+    Image.new("RGB", (8, 8), "green").save(buf, format="WEBP")
+
+    response = _put_avatar(live_user, content=buf.getvalue(), content_type="image/jpeg")
+
+    assert response.status_code == 200
+    stored = _stored_path(local_storage, response.json()["avatar_url"])
+    assert stored.read_bytes().startswith(b"\xff\xd8\xff")
+
+
+def test_put_avatar_names_the_accepted_formats_when_refusing_one(local_storage, live_user):
+    buf = BytesIO()
+    Image.new("RGB", (8, 8)).save(buf, format="TIFF")
+
+    response = _put_avatar(live_user, content=buf.getvalue(), content_type="image/png")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == {
+        "code": "invalid_avatar",
+        "message": UNREADABLE_IMAGE_MESSAGE,
+    }
+
+
+def test_put_avatar_rejects_an_image_over_the_avatar_pixel_cap(local_storage, live_user, db):
+    """A profile picture has its own, lower pixel ceiling: an image an evidence
+    upload would take is refused as an avatar, and nothing is stored."""
+    width, height = MAX_AVATAR_DECODED_PIXELS // 5000 + 1, 5000
+    assert width * height <= MAX_DECODED_PIXELS
+    buf = BytesIO()
+    Image.new("L", (width, height)).save(buf, format="PNG")
+
+    response = _put_avatar(live_user, content=buf.getvalue(), content_type="image/png")
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "invalid_avatar"
+    assert not (local_storage / "avatars").exists()
+    db.expire_all()
+    assert db.query(User).filter(User.id == live_user.id).one().avatar_url is None
 
 
 def test_avatar_endpoints_require_auth():

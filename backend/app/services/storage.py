@@ -515,8 +515,8 @@ def prepare_media(
     callers run it in a thread. Non-image types pass through unstripped.
 
     ``content_type`` is the type the result is stored under, and for an image it
-    is also the encoding it comes back in: Pillow reads whatever the bytes
-    actually are, and ``strip_metadata`` re-encodes to the declared type. That
+    is also the encoding it comes back in: the bytes may be any accepted image
+    format, and ``strip_metadata`` re-encodes them to the declared type. That
     is how the ingest path normalises a machine-fetched photo, which declares
     the one imported-photo type rather than reading a payload field
     (``tweet_ingest.records.PHOTO_CONTENT_TYPE``).
@@ -718,17 +718,20 @@ def render_avatar_jpeg(data: bytes, content_type: str) -> bytes:
     caller here wants.
 
     Sync and CPU-bound; the async caller runs it in a thread. Raises
-    ``EvidenceProcessingError`` for an image that cannot be decoded.
+    ``EvidenceProcessingError`` for an image that is not a readable JPEG, PNG
+    or WebP, or is over ``MAX_AVATAR_DECODED_PIXELS``.
     """
     # Local import keeps the storage module free of an eager Pillow load, the
     # same reason ``prepare_media`` defers it.
     from app.services.evidence_processing import (
+        MAX_AVATAR_DECODED_PIXELS,
         THUMBNAIL_MAX_DIM,
         make_jpeg_derivative,
         strip_metadata,
     )
 
-    return make_jpeg_derivative(strip_metadata(data, content_type), content_type, THUMBNAIL_MAX_DIM)
+    cleaned = strip_metadata(data, content_type, max_pixels=MAX_AVATAR_DECODED_PIXELS)
+    return make_jpeg_derivative(cleaned, content_type, THUMBNAIL_MAX_DIM)
 
 
 async def upload_avatar_image(file: UploadFile, user_id: UUID) -> UploadResult:
