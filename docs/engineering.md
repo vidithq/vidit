@@ -109,7 +109,7 @@ Every image is decoded and re-encoded before it is stored: [`evidence_processing
 
 - Only the JPEG, PNG and WebP decoders may read the file, whatever its declared `Content-Type`. The image is then re-encoded in the declared type.
 - The pixel limit is checked against the file header before any pixel is decoded. The limits are in [`api.md`](api.md#file-limits).
-- The strip works on the decoded image in place, not on copies of it.
+- The strip works on the decoded image in place. A mode conversion copies it once and frees the source before the encode.
 - A process decodes at most `MAX_CONCURRENT_DECODES` images at once. An upload that arrives while every slot is busy waits for one, so a burst of uploads adds latency, not memory.
 
 ### Frontend

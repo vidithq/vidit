@@ -2492,7 +2492,7 @@ All errors follow this shape:
 
 The server decodes each image before it stores it. The content must be JPEG, PNG or WebP, whatever the declared `Content-Type`, and the server stores the image re-encoded in the declared type: a PNG sent as `image/jpeg` is stored as a JPEG. The server refuses an image when:
 
-- Its content is not JPEG, PNG or WebP. The error message names the accepted formats.
+- Its content is not a readable JPEG, PNG or WebP file, either another format or a damaged file. The error message names the accepted formats.
 - The width times the height in its header exceeds the pixel limit. The check runs before any pixel is decoded.
 - It is animated. Upload it as a video instead.
 

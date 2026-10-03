@@ -55,7 +55,7 @@ from app.services.auth import hash_password
 from app.services.evidence_processing import (
     MAX_AVATAR_DECODED_PIXELS,
     MAX_DECODED_PIXELS,
-    UNSUPPORTED_FORMAT_MESSAGE,
+    UNREADABLE_IMAGE_MESSAGE,
 )
 from app.services.storage import LOCAL_STORAGE_URL_PREFIX
 from tests._fixtures import TINY_JPEG
@@ -715,7 +715,7 @@ def test_put_avatar_names_the_accepted_formats_when_refusing_one(local_storage, 
     assert response.status_code == 422
     assert response.json()["detail"] == {
         "code": "invalid_avatar",
-        "message": UNSUPPORTED_FORMAT_MESSAGE,
+        "message": UNREADABLE_IMAGE_MESSAGE,
     }
 
 

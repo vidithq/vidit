@@ -16,7 +16,7 @@ from PIL import Image
 
 from app.models.event import Event
 from app.models.media import Media
-from app.services.evidence_processing import UNSUPPORTED_FORMAT_MESSAGE
+from app.services.evidence_processing import UNREADABLE_IMAGE_MESSAGE
 from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
 from tests.events._helpers import (
@@ -595,5 +595,5 @@ def test_create_names_the_accepted_formats_when_refusing_an_image(
     assert response.status_code == 400
     assert response.json()["detail"] == {
         "code": "evidence_processing_failed",
-        "message": UNSUPPORTED_FORMAT_MESSAGE,
+        "message": UNREADABLE_IMAGE_MESSAGE,
     }

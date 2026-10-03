@@ -25,11 +25,12 @@ import pytest
 from PIL import Image, ImageFile, PngImagePlugin
 
 from app.services.evidence_processing import (
+    _ACCEPTED_FORMATS,
     HERO_MAX_DIM,
     MAX_CONCURRENT_DECODES,
     MAX_DECODED_PIXELS,
     THUMBNAIL_MAX_DIM,
-    UNSUPPORTED_FORMAT_MESSAGE,
+    UNREADABLE_IMAGE_MESSAGE,
     EvidenceProcessingError,
     make_jpeg_derivative,
     strip_metadata,
@@ -140,8 +141,21 @@ def test_strip_metadata_raises_on_corrupt_image():
     ``EvidenceProcessingError`` so the router's ``ValueError`` → 400 path picks
     it up before any storage write.
     """
-    with pytest.raises(EvidenceProcessingError):
+    with pytest.raises(EvidenceProcessingError) as refused:
         strip_metadata(b"\xff\xd8\xff\xd9", "image/jpeg")
+
+    assert str(refused.value) == UNREADABLE_IMAGE_MESSAGE
+
+
+def test_strip_metadata_raises_on_truncated_image():
+    """A valid JPEG cut in half opens, then fails to decode; it gets the same
+    message as an unreadable file."""
+    whole = _solid_jpeg(64, 64)
+
+    with pytest.raises(EvidenceProcessingError) as refused:
+        strip_metadata(whole[: len(whole) // 2], "image/jpeg")
+
+    assert str(refused.value) == UNREADABLE_IMAGE_MESSAGE
 
 
 def test_strip_metadata_rejects_decompression_bomb(monkeypatch):
@@ -335,8 +349,10 @@ def test_make_jpeg_derivative_rejects_corrupt_image():
     (router → 400) rather than a 500 from an uncaught Pillow exception.
     Matches ``strip_metadata``'s contract.
     """
-    with pytest.raises(EvidenceProcessingError):
+    with pytest.raises(EvidenceProcessingError) as refused:
         make_jpeg_derivative(b"not-a-jpeg", "image/jpeg", HERO_MAX_DIM)
+
+    assert str(refused.value) == UNREADABLE_IMAGE_MESSAGE
 
 
 def test_make_jpeg_derivative_rejects_decompression_bomb(monkeypatch):
@@ -451,7 +467,11 @@ def _encoded(fmt: str, mode: str = "RGB") -> bytes:
     return buf.getvalue()
 
 
-_MAGIC = {"image/jpeg": b"\xff\xd8\xff", "image/png": b"\x89PNG\r\n\x1a\n"}
+_MAGIC = {
+    "image/jpeg": b"\xff\xd8\xff",
+    "image/png": b"\x89PNG\r\n\x1a\n",
+    "image/webp": b"RIFF",
+}
 
 
 @pytest.mark.parametrize(
@@ -461,6 +481,7 @@ _MAGIC = {"image/jpeg": b"\xff\xd8\xff", "image/png": b"\x89PNG\r\n\x1a\n"}
         ("PNG", "RGBA", "image/jpeg"),
         ("JPEG", "RGB", "image/png"),
         ("JPEG", "CMYK", "image/png"),
+        ("JPEG", "CMYK", "image/webp"),
     ],
 )
 def test_strip_metadata_stores_any_accepted_format_as_the_declared_type(fmt, mode, declared):
@@ -478,13 +499,15 @@ def test_strip_metadata_refuses_a_format_it_does_not_accept(fmt, declared):
     with pytest.raises(EvidenceProcessingError) as refused:
         strip_metadata(_encoded(fmt), declared)
 
-    assert str(refused.value) == UNSUPPORTED_FORMAT_MESSAGE
+    assert str(refused.value) == UNREADABLE_IMAGE_MESSAGE
 
 
 def test_every_accepted_image_type_strips_to_its_own_format():
-    """Each type the upload allowlist accepts has a decoder behind it."""
+    """The decoders tried are exactly those of the upload allowlist, and each
+    accepted type strips to its own format."""
     Image.init()
     pillow_format = {mime: fmt for fmt, mime in Image.MIME.items()}
+    assert set(_ACCEPTED_FORMATS) == {pillow_format[t] for t in ALLOWED_IMAGE_TYPES}
     for content_type in ALLOWED_IMAGE_TYPES:
         fmt = pillow_format[content_type]
         cleaned = strip_metadata(_encoded(fmt), content_type)
@@ -536,25 +559,31 @@ def test_strip_metadata_removes_every_metadata_chunk(fmt, content_type, chunks):
 
 def test_at_most_max_concurrent_decodes_run_at_once(monkeypatch):
     """However many uploads arrive together, only ``MAX_CONCURRENT_DECODES``
-    images are decoded at the same time, so their rasters bound the memory
-    image processing takes; the other uploads wait for a slot."""
-    decoding = most = 0
+    images are open at the same time, from ``Image.open`` to the end of its
+    ``with`` block, so their rasters bound the memory image processing takes;
+    the other uploads wait for a slot."""
+    held: set[int] = set()
+    most = 0
     lock = threading.Lock()
-    real_load = ImageFile.ImageFile.load
+    real_open = Image.open
+    real_exit = ImageFile.ImageFile.__exit__
 
-    def slow_load(self):
-        nonlocal decoding, most
+    def slow_open(*args, **kwargs):
+        nonlocal most
+        img = real_open(*args, **kwargs)
         with lock:
-            decoding += 1
-            most = max(most, decoding)
-        try:
-            time.sleep(0.02)
-            return real_load(self)
-        finally:
-            with lock:
-                decoding -= 1
+            held.add(id(img))
+            most = max(most, len(held))
+        time.sleep(0.02)
+        return img
 
-    monkeypatch.setattr(ImageFile.ImageFile, "load", slow_load)
+    def tracked_exit(self, *args):
+        with lock:
+            held.discard(id(self))
+        return real_exit(self, *args)
+
+    monkeypatch.setattr(Image, "open", slow_open)
+    monkeypatch.setattr(ImageFile.ImageFile, "__exit__", tracked_exit)
     uploads = MAX_CONCURRENT_DECODES + 3
     png = _encoded("PNG")
     with ThreadPoolExecutor(max_workers=uploads) as pool:

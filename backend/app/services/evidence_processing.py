@@ -45,9 +45,18 @@ _STRIPPABLE_IMAGE_TYPES = frozenset(ALLOWED_IMAGE_TYPES)
 # The Pillow decoders of the accepted image types, the only ones ``Image.open``
 # tries whatever type an upload declares: bytes in any other format fail to
 # open instead of reaching another of the decoders Pillow ships. The declared
-# type still decides the encoding the image is stored in.
-_ACCEPTED_FORMATS = ("JPEG", "PNG", "WEBP")
-UNSUPPORTED_FORMAT_MESSAGE = "Unsupported image format: upload a JPEG, PNG or WebP image"
+# type still decides the encoding the image is stored in. ``Image.MIME`` maps
+# each registered format to its MIME type once ``Image.init`` has run.
+Image.init()
+_ACCEPTED_FORMATS = tuple(
+    sorted(fmt for fmt, mime in Image.MIME.items() if mime in ALLOWED_IMAGE_TYPES)
+)
+# One message for bytes in another format and for a damaged or truncated file
+# of an accepted one: Pillow does not reliably tell the two apart.
+UNREADABLE_IMAGE_MESSAGE = (
+    "Could not read this image: upload a valid "
+    f"{', '.join(_ACCEPTED_FORMATS[:-1])} or {_ACCEPTED_FORMATS[-1]} file"
+)
 
 # Hard cap on decoded image dimensions. A decompression bomb is a small file
 # (e.g. 2 MB JPEG) that decodes to a huge raster (12000 × 12000 ≈ 580 MB RGB
@@ -96,6 +105,14 @@ class EvidenceProcessingError(ValueError):
     """
 
 
+def _convert(image: Image.Image, mode: str) -> Image.Image:
+    """Return ``image`` converted to ``mode`` and close the source, so its
+    raster is freed before the encode instead of when the ``with`` exits."""
+    converted = image.convert(mode)
+    image.close()
+    return converted
+
+
 @contextmanager
 def _guarded_open(data: bytes, max_pixels: int) -> Iterator[Image.Image]:
     """Open image bytes behind the pre-decode guards and yield a usable image.
@@ -141,20 +158,18 @@ def _guarded_open(data: bytes, max_pixels: int) -> Iterator[Image.Image]:
         img.load()
 
         if img.mode in {"P", "PA"}:
-            converted = img.convert("RGBA" if img.has_transparency_data else "RGB")
-            img.close()  # frees the palette raster before the caller's work
-            yield converted
+            yield _convert(img, "RGBA" if img.has_transparency_data else "RGB")
         else:
             yield img
 
 
 @contextmanager
-def _decode_errors(context: str, *, undecodable: str) -> Iterator[None]:
+def _decode_errors(context: str) -> Iterator[None]:
     """Map Pillow's failure modes onto :class:`EvidenceProcessingError`.
 
-    ``context`` prefixes the log line with the transform and its inputs;
-    ``undecodable`` is the message a corrupt or truncated file gets, and bytes
-    no accepted decoder recognises get ``UNSUPPORTED_FORMAT_MESSAGE``. The
+    ``context`` prefixes the log line with the transform and its inputs. Bytes
+    no accepted decoder recognises, and a damaged or truncated file, all get
+    ``UNREADABLE_IMAGE_MESSAGE``; the log line tells them apart. The
     guards inside :func:`_guarded_open` already raise a shaped error, so that
     arm re-raises untouched: re-wrapping would log "cannot decode" for what
     was a bomb or animation rejection. Everything else logs for the Sentry
@@ -170,11 +185,11 @@ def _decode_errors(context: str, *, undecodable: str) -> Iterator[None]:
         logger.warning("%s: Pillow DecompressionBombError: %s", context, exc)
         raise EvidenceProcessingError("Image rejected as a decompression bomb") from exc
     except UnidentifiedImageError as exc:
-        logger.warning("%s: unsupported image format: %s", context, exc)
-        raise EvidenceProcessingError(UNSUPPORTED_FORMAT_MESSAGE) from exc
+        logger.warning("%s: unidentified image: %s", context, exc)
+        raise EvidenceProcessingError(UNREADABLE_IMAGE_MESSAGE) from exc
     except OSError as exc:
         logger.warning("%s: cannot decode image: %s", context, exc)
-        raise EvidenceProcessingError(undecodable) from exc
+        raise EvidenceProcessingError(UNREADABLE_IMAGE_MESSAGE) from exc
 
 
 def strip_metadata(data: bytes, content_type: str, *, max_pixels: int | None = None) -> bytes:
@@ -187,9 +202,9 @@ def strip_metadata(data: bytes, content_type: str, *, max_pixels: int | None = N
     * **JPEG**: ``quality=95, subsampling=0`` (4:4:4 chroma so place-name
       signage stays sharp), ``optimize=True``, ``progressive=False`` for
       predictable size on small thumbnails.
-    * **PNG**: zlib level 6; lossless, so the strip is pixel-free.
-      ``optimize=True`` (level 9) ran 3 to 4 times slower for no smaller
-      file, all of it while holding a decode slot.
+    * **PNG**: ``optimize=True`` (zlib level 9); lossless, so the strip is
+      pixel-free. It costs encode time inside the decode slot and keeps the
+      original, held under Object Lock, smallest.
     * **WebP**: ``quality=95, method=6`` (best compression/quality).
 
     An EXIF Orientation tag is applied to the pixels first, so the stripped
@@ -217,11 +232,8 @@ def strip_metadata(data: bytes, content_type: str, *, max_pixels: int | None = N
         return data
 
     with (
-        _decode_errors(
-            f"strip_metadata (content_type={content_type}, {len(data)} bytes)",
-            undecodable="Could not decode the image for metadata stripping",
-        ),
-        _guarded_open(data, max_pixels or MAX_DECODED_PIXELS) as image,
+        _decode_errors(f"strip_metadata (content_type={content_type}, {len(data)} bytes)"),
+        _guarded_open(data, MAX_DECODED_PIXELS if max_pixels is None else max_pixels) as image,
     ):
         # Bake the EXIF Orientation tag into the raster before the metadata
         # goes: without it a photo shot in portrait is stored sideways, and so
@@ -237,7 +249,7 @@ def strip_metadata(data: bytes, content_type: str, *, max_pixels: int | None = N
             # JPEG holds RGB or L only: alpha from a PNG or WebP source, and
             # the other modes a decoder yields, are converted to RGB.
             if image.mode not in {"RGB", "L"}:
-                image = image.convert("RGB")
+                image = _convert(image, "RGB")
             image.save(
                 output,
                 format="JPEG",
@@ -248,8 +260,8 @@ def strip_metadata(data: bytes, content_type: str, *, max_pixels: int | None = N
             )
         elif content_type == "image/png":
             if image.mode == "CMYK":  # a CMYK JPEG source; PNG has no CMYK
-                image = image.convert("RGB")
-            image.save(output, format="PNG", compress_level=6)
+                image = _convert(image, "RGB")
+            image.save(output, format="PNG", optimize=True)
         else:  # image/webp; the encoder converts any other mode itself
             image.save(output, format="WEBP", quality=95, method=6)
         return output.getvalue()
@@ -314,8 +326,7 @@ def make_jpeg_derivative(data: bytes, content_type: str, max_dim: int) -> bytes:
     with (
         _decode_errors(
             f"make_jpeg_derivative (content_type={content_type}, "
-            f"max_dim={max_dim}, {len(data)} bytes)",
-            undecodable="Could not decode the image for derivative resize",
+            f"max_dim={max_dim}, {len(data)} bytes)"
         ),
         _guarded_open(data, MAX_DECODED_PIXELS) as source,
     ):
@@ -341,7 +352,7 @@ def make_jpeg_derivative(data: bytes, content_type: str, max_dim: int) -> bytes:
         # (Pillow does NOT composite onto a background; pixels under
         # transparency render at whatever the RGB triple was).
         if source.mode not in {"RGB", "L"}:
-            source = source.convert("RGB")
+            source = _convert(source, "RGB")
 
         output = BytesIO()
         source.save(
