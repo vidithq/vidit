@@ -10,6 +10,8 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **The map detail panel shows only the selected event** ([#357](https://github.com/vidithq/vidit/pull/357), [`frontend/src/app/map/page.tsx`](frontend/src/app/map/page.tsx), [`frontend/src/components/map/DetailSidePanel.tsx`](frontend/src/components/map/DetailSidePanel.tsx), [`docs/design.md`](docs/design.md#layout)). A failed load shows the error with a Retry control instead of the previous event, on the map and in the collection page's step player, and a late response for an earlier pin is discarded. The panel takes the whole read as one prop, so a caller cannot drop the error. Reopening a pin after closing it reads the event again.
+
 - **An upload no longer stalls the whole API** ([#359](https://github.com/vidithq/vidit/pull/359), [`backend/app/routers/events/item.py`](backend/app/routers/events/item.py), [`backend/app/database.py`](backend/app/database.py)). Upload handlers run in the threadpool instead of on the event loop, and a lock wait over 5 s answers 409 `lock_timeout`.
 
 ## v0.6.5, 2026-09-17

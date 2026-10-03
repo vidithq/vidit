@@ -22,7 +22,7 @@ const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
 export default function HomePage() {
   // State that must survive navigation lives in MapStateContext; local
-  // useState below is for cheaply re-fetched data (points, tags, detail).
+  // state below is for cheaply re-fetched data (points, tags, detail).
   // The page reads only filter values (for the points URL); the setters
   // live with FilterPanel, which shares the same context.
   const {
@@ -49,13 +49,11 @@ export default function HomePage() {
   // can actually show, not the whole ~800-row referential.
   const { data: conflictsData } = useApiResource<Conflict[]>("/conflicts?used=true");
   const conflicts = conflictsData ?? [];
-  const [detail, setDetail] = useState<EventDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
+  // Keyed on the selection in context, so returning to the map re-reads it.
+  const detail = useApiResource<EventDetail>(
+    selectedId ? `/events/${selectedId}` : null,
+  );
   const abortRef = useRef<AbortController | null>(null);
-  // Which selectedId we've already fetched, so the re-hydration effect
-  // doesn't loop on persistent errors (404, network drop): a swallowed
-  // catch would otherwise keep re-triggering it as deps change.
-  const hydratedIdRef = useRef<string | null>(null);
 
   const fetchPoints = useCallback(() => {
     if (!bbox) return;
@@ -148,44 +146,6 @@ export default function HomePage() {
     []
   );
 
-  const handlePointClick = useCallback(
-    (id: string) => {
-      setSelectedId(id);
-      setDetailLoading(true);
-      hydratedIdRef.current = id;
-      apiFetch<EventDetail>(`/events/${id}`)
-        .then(setDetail)
-        .catch(() => {})
-        .finally(() => setDetailLoading(false));
-    },
-    [setSelectedId]
-  );
-
-  // Re-hydrate the detail panel after a navigation round-trip: context
-  // has selectedId but local detail is empty. Guarded by hydratedIdRef so
-  // a persistently failing id doesn't loop.
-  useEffect(() => {
-    if (
-      selectedId &&
-      !detail &&
-      !detailLoading &&
-      hydratedIdRef.current !== selectedId
-    ) {
-      hydratedIdRef.current = selectedId;
-      setDetailLoading(true);
-      apiFetch<EventDetail>(`/events/${selectedId}`)
-        .then(setDetail)
-        .catch(() => {})
-        .finally(() => setDetailLoading(false));
-    }
-  }, [selectedId, detail, detailLoading]);
-
-  const closeDetail = () => {
-    setSelectedId(null);
-    setDetail(null);
-    hydratedIdRef.current = null;
-  };
-
   // Apply the status chips and both timeline windows client-side: each point
   // carries its detected flag (`POINT_DETECTED_FLAG`) and its event and added
   // dates, so chip clicks, scrubbing and playback filter the in-memory set
@@ -219,7 +179,7 @@ export default function HomePage() {
       <Map
         points={visiblePoints}
         selectedId={selectedId}
-        onPointClick={handlePointClick}
+        onPointClick={setSelectedId}
         className="map-fullscreen"
         center={{ lat: viewState.latitude, lng: viewState.longitude }}
         zoom={viewState.zoom}
@@ -241,9 +201,8 @@ export default function HomePage() {
           // remount is what guarantees every piece of per-event state inside it
           // (the report form, the action row's optimistic flags) starts clean.
           key={selectedId}
-          detail={detail}
-          loading={detailLoading}
-          onClose={closeDetail}
+          resource={detail}
+          onClose={() => setSelectedId(null)}
         />
       )}
     </div>
