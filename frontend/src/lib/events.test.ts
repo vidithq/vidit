@@ -165,7 +165,7 @@ describe("batchCompletionBlockers", () => {
   });
 
   // The readiness rule has three expressions: this one, the server floor in
-  // `services/events._publish_detection`, and the SQL the queue's `readiness`
+  // `services/events/batch._publish_detection`, and the SQL the queue's `readiness`
   // filter pages on (`services/events.detection_ready_predicate`). The queue
   // labels rows from here and asks the server which rows to show, so a
   // disagreement shows up as a row badged Ready that the Ready filter hides.

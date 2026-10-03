@@ -8,6 +8,10 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Changed
+
+- **The events service is a package, one module per write verb** ([#371](https://github.com/vidithq/vidit/pull/371), [`backend/app/services/events/`](backend/app/services/events), [`docs/engineering.md`](docs/engineering.md)). `services/events/` holds `create`, `request`, `geolocation`, `revision`, `batch` and `closure`, one write verb each, over the shared `errors`, `coordinates`, `source_links`, `rules` and `readiness` modules. The package root re-exports the public API, so every caller imports from `app.services.events` as before. The code moved unchanged.
+
 ### Fixed
 
 - **The map detail panel shows only the selected event** ([#357](https://github.com/vidithq/vidit/pull/357), [`frontend/src/app/map/page.tsx`](frontend/src/app/map/page.tsx), [`frontend/src/components/map/DetailSidePanel.tsx`](frontend/src/components/map/DetailSidePanel.tsx), [`docs/design.md`](docs/design.md#layout)). A failed load shows the error with a Retry control instead of the previous event, on the map and in the collection page's step player, and a late response for an earlier pin is discarded. The panel takes the whole read as one prop, so a caller cannot drop the error. Reopening a pin after closing it reads the event again.

@@ -2,7 +2,7 @@
 // the strict field parse, the paste parser behind the latitude / longitude
 // inputs, the 6-decimal rendering, and the external map link.
 //
-// Bounds mirror the backend range check in services/events.py
+// Bounds mirror the backend range check in services/events/coordinates.py
 // (validate_coordinates), so the submit-form validation reads against a single
 // source instead of bare magic numbers.
 export const LAT_MIN = -90;
