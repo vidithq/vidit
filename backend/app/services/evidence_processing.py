@@ -14,15 +14,17 @@ are all gone — snipping the EXIF marker alone leaves GPS in IFD0, IPTC in
 APP13, etc. The cost is one JPEG recompression; ``quality=95, subsampling=0``
 keeps the loss visually negligible.
 
-Synchronous and CPU-bound — call via ``asyncio.to_thread`` from the upload
+Synchronous and CPU-bound: call via ``asyncio.to_thread`` from the upload
 helper so the uvicorn event loop stays free during the libjpeg / libwebp
 encode (WebP method=6 on a 4000×4000 image is multi-second on commodity
-hardware).
+hardware). Each decode then waits for one of ``MAX_CONCURRENT_DECODES``
+process-wide slots.
 """
 
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from io import BytesIO
@@ -40,6 +42,22 @@ logger = logging.getLogger(__name__)
 # type is ever not EXIF-strippable.
 _STRIPPABLE_IMAGE_TYPES = frozenset(ALLOWED_IMAGE_TYPES)
 
+# The Pillow decoders of the accepted image types, the only ones ``Image.open``
+# tries whatever type an upload declares: bytes in any other format fail to
+# open instead of reaching another of the decoders Pillow ships. The declared
+# type still decides the encoding the image is stored in. ``Image.MIME`` maps
+# each registered format to its MIME type once ``Image.init`` has run.
+Image.init()
+_ACCEPTED_FORMATS = tuple(
+    sorted(fmt for fmt, mime in Image.MIME.items() if mime in ALLOWED_IMAGE_TYPES)
+)
+# One message for bytes in another format and for a damaged or truncated file
+# of an accepted one: Pillow does not reliably tell the two apart.
+UNREADABLE_IMAGE_MESSAGE = (
+    "Could not read this image: upload a valid "
+    f"{', '.join(_ACCEPTED_FORMATS[:-1])} or {_ACCEPTED_FORMATS[-1]} file"
+)
+
 # Hard cap on decoded image dimensions. A decompression bomb is a small file
 # (e.g. 2 MB JPEG) that decodes to a huge raster (12000 × 12000 ≈ 580 MB RGB
 # / 770 MB RGBA), enough to OOM the single Railway worker from one request.
@@ -52,6 +70,11 @@ _STRIPPABLE_IMAGE_TYPES = frozenset(ALLOWED_IMAGE_TYPES)
 # astrophotography is rare enough that a clean 400 is acceptable. Raw RGBA
 # for 60 MP is ≈ 240 MB, which the worker holds without thrashing.
 MAX_DECODED_PIXELS = 60_000_000
+
+# The same ceiling for a profile picture, which is stored at
+# ``THUMBNAIL_MAX_DIM``. It admits the 24 MP a current phone camera writes by
+# default, since the file picker uploads the camera file unresized.
+MAX_AVATAR_DECODED_PIXELS = 25_000_000
 
 # Deliberately do NOT mutate ``Image.MAX_IMAGE_PIXELS``. Both earlier
 # attempts are wrong:
@@ -66,6 +89,13 @@ MAX_DECODED_PIXELS = 60_000_000
 # (operates on locals) and fires before any pixel-buffer allocation, so the
 # Pillow global cap is redundant.
 
+# Images the process decodes at once. A decode holds its raster (up to 4 bytes
+# per pixel) and its encoder's buffers until the encode returns, so this bounds
+# the memory image processing takes however many uploads arrive together. A
+# caller past the limit waits for a slot.
+MAX_CONCURRENT_DECODES = 2
+_decode_slots = threading.BoundedSemaphore(MAX_CONCURRENT_DECODES)
+
 
 class EvidenceProcessingError(ValueError):
     """Raised when an image upload can't be metadata-stripped.
@@ -75,25 +105,36 @@ class EvidenceProcessingError(ValueError):
     """
 
 
+def _convert(image: Image.Image, mode: str) -> Image.Image:
+    """Return ``image`` converted to ``mode`` and close the source, so its
+    raster is freed before the encode instead of when the ``with`` exits."""
+    converted = image.convert(mode)
+    image.close()
+    return converted
+
+
 @contextmanager
-def _guarded_open(data: bytes) -> Iterator[Image.Image]:
+def _guarded_open(data: bytes, max_pixels: int) -> Iterator[Image.Image]:
     """Open image bytes behind the pre-decode guards and yield a usable image.
 
     One home for the hardening both transforms need:
 
-    * ``Image.open`` is lazy (header parse, no pixel decode), so the
-      decompression-bomb ceiling and the animated-image refusal both fire
-      before ``load()`` would allocate 100s of MB. ``is_animated`` is only
-      set on animatable formats (GIF / APNG / animated WebP), hence the
-      ``getattr``; flattening a clip to one frame would lose an analyst's
+    * ``Image.open`` tries only the ``_ACCEPTED_FORMATS`` decoders and is
+      lazy (header parse, no pixel decode), so the format check, the
+      ``max_pixels`` ceiling and the animated-image refusal all fire before
+      ``load()`` would allocate 100s of MB. ``is_animated`` is only set on
+      multi-frame formats (APNG, animated WebP, multi-picture JPEG), hence
+      the ``getattr``; flattening a clip to one frame would lose an analyst's
       evidence, so it is a rejection rather than a silent drop.
-    * Palette modes (``P``, ``PA``) store pixels as indexes into
-      ``img.palette``, so ``tobytes()`` returns indexes rather than colour
-      and a rebuild without the palette renders black / garbage. Convert to
-      a full colour mode first, keeping alpha whenever the source carries
-      any: ``has_transparency_data`` rather than ``"transparency" in
-      img.info``, since the latter misses ``mode == "PA"`` (palette + alpha
-      plane) and would flatten alpha to opaque.
+    * Everything from ``Image.open`` to the end of the caller's work holds
+      one of the ``MAX_CONCURRENT_DECODES`` slots: the WebP decoder
+      allocates its frame buffers when the file is opened.
+    * Palette modes (``P``, ``PA``) are converted to a full colour mode, so
+      the encoders and the downscale work on colours rather than palette
+      indexes. Alpha is kept whenever the source carries any:
+      ``has_transparency_data`` rather than ``"transparency" in img.info``,
+      since the latter misses ``mode == "PA"`` (palette + alpha plane) and
+      would flatten alpha to opaque.
 
     A palette source yields the converted copy; every other mode yields the
     opened ``ImageFile`` itself, which the ``with`` block closes on exit
@@ -101,13 +142,12 @@ def _guarded_open(data: bytes) -> Iterator[Image.Image]:
     """
     # Fresh BytesIO so ``img.load()`` can fully detach from the buffer;
     # otherwise PIL holds a reference to the source bytes for lazy decode.
-    with Image.open(BytesIO(data)) as img:
+    with _decode_slots, Image.open(BytesIO(data), formats=_ACCEPTED_FORMATS) as img:
         width, height = img.size
         pixels = width * height
-        if pixels > MAX_DECODED_PIXELS:
+        if pixels > max_pixels:
             raise EvidenceProcessingError(
-                f"Image dimensions {width}x{height} ({pixels} px) "
-                f"exceed the {MAX_DECODED_PIXELS} pixel cap"
+                f"Image dimensions {width}x{height} ({pixels} px) exceed the {max_pixels} pixel cap"
             )
 
         if getattr(img, "is_animated", False):
@@ -118,22 +158,22 @@ def _guarded_open(data: bytes) -> Iterator[Image.Image]:
         img.load()
 
         if img.mode in {"P", "PA"}:
-            yield img.convert("RGBA" if img.has_transparency_data else "RGB")
+            yield _convert(img, "RGBA" if img.has_transparency_data else "RGB")
         else:
             yield img
 
 
 @contextmanager
-def _decode_errors(context: str, *, undecodable: str) -> Iterator[None]:
+def _decode_errors(context: str) -> Iterator[None]:
     """Map Pillow's failure modes onto :class:`EvidenceProcessingError`.
 
-    ``context`` prefixes the log line with the transform and its inputs;
-    ``undecodable`` is the message a corrupt / truncated / format-mismatched
-    file gets. The guards inside :func:`_guarded_open` already raise a shaped
-    error, so that arm re-raises untouched: re-wrapping would log "cannot
-    decode" for what was a bomb or animation rejection. Everything else logs
-    for the Sentry rate and raises a clean ``ValueError`` so the router emits
-    400, not 500.
+    ``context`` prefixes the log line with the transform and its inputs. Bytes
+    no accepted decoder recognises, and a damaged or truncated file, all get
+    ``UNREADABLE_IMAGE_MESSAGE``; the log line tells them apart. The
+    guards inside :func:`_guarded_open` already raise a shaped error, so that
+    arm re-raises untouched: re-wrapping would log "cannot decode" for what
+    was a bomb or animation rejection. Everything else logs for the Sentry
+    rate and raises a clean ``ValueError`` so the router emits 400, not 500.
     """
     try:
         yield
@@ -144,70 +184,73 @@ def _decode_errors(context: str, *, undecodable: str) -> Iterator[None]:
         # Backstop in case it fires before our explicit size check.
         logger.warning("%s: Pillow DecompressionBombError: %s", context, exc)
         raise EvidenceProcessingError("Image rejected as a decompression bomb") from exc
-    except (UnidentifiedImageError, OSError) as exc:
+    except UnidentifiedImageError as exc:
+        logger.warning("%s: unidentified image: %s", context, exc)
+        raise EvidenceProcessingError(UNREADABLE_IMAGE_MESSAGE) from exc
+    except OSError as exc:
         logger.warning("%s: cannot decode image: %s", context, exc)
-        raise EvidenceProcessingError(undecodable) from exc
+        raise EvidenceProcessingError(UNREADABLE_IMAGE_MESSAGE) from exc
 
 
-def strip_metadata(data: bytes, content_type: str) -> bytes:
+def strip_metadata(data: bytes, content_type: str, *, max_pixels: int | None = None) -> bytes:
     """Return ``data`` with all metadata stripped.
 
-    Non-image content (videos) passes through unchanged — the strip only
+    Non-image content (videos) passes through unchanged; the strip only
     applies to JPEG / PNG / WebP, which are decoded and re-encoded without
     metadata. Encoder params preserve visible quality:
 
-    * **JPEG** — ``quality=95, subsampling=0`` (4:4:4 chroma so place-name
+    * **JPEG**: ``quality=95, subsampling=0`` (4:4:4 chroma so place-name
       signage stays sharp), ``optimize=True``, ``progressive=False`` for
       predictable size on small thumbnails.
-    * **PNG** — ``optimize=True``; lossless, so the strip is pixel-free.
-    * **WebP** — ``quality=95, method=6`` (best compression/quality).
+    * **PNG**: ``optimize=True`` (zlib level 9); lossless, so the strip is
+      pixel-free. It costs encode time inside the decode slot and keeps the
+      original, held under Object Lock, smallest.
+    * **WebP**: ``quality=95, method=6`` (best compression/quality).
 
     An EXIF Orientation tag is applied to the pixels first, so the stripped
     copy renders the way the camera meant it to. Dropping the tag without
     applying it is what leaves a portrait photo sideways everywhere it is
     served.
 
+    ``data`` may be JPEG, PNG or WebP whatever ``content_type`` declares, and
+    the result is always encoded as ``content_type``, so the stored bytes
+    match the stored type. That is also how the ingest path stores any photo
+    as its one photo type. ``max_pixels`` replaces ``MAX_DECODED_PIXELS`` as
+    the pixel ceiling.
+
     Rejects (raises ``EvidenceProcessingError`` → router 400):
 
-    * **Corrupt / truncated** images (Pillow can't decode the header).
-    * **Decompression bombs** — dimensions above ``MAX_DECODED_PIXELS``,
-      before pixel-buffer allocation.
-    * **Animated** images (multi-frame GIF / APNG / animated WebP) —
-      ``frombytes`` would silently flatten to one frame and an analyst
-      submitting a clip-as-image would lose evidence; reject so they
-      re-upload as a video.
+    * **Unsupported formats**: bytes no JPEG, PNG or WebP decoder recognises.
+    * **Corrupt / truncated** images.
+    * **Decompression bombs**: dimensions above the pixel ceiling, before
+      pixel-buffer allocation.
+    * **Animated** images (APNG / animated WebP): the re-encode would keep
+      one frame and an analyst submitting a clip-as-image would lose
+      evidence; reject so they re-upload as a video.
     """
     if content_type not in _STRIPPABLE_IMAGE_TYPES:
         return data
 
     with (
-        _decode_errors(
-            f"strip_metadata (content_type={content_type}, {len(data)} bytes)",
-            undecodable=f"Could not decode {content_type} for metadata stripping",
-        ),
-        _guarded_open(data) as source,
+        _decode_errors(f"strip_metadata (content_type={content_type}, {len(data)} bytes)"),
+        _guarded_open(data, MAX_DECODED_PIXELS if max_pixels is None else max_pixels) as image,
     ):
-        # Bake the EXIF Orientation tag into the raster BEFORE the rebuild
-        # below drops it. ``frombytes`` copies pixels exactly as stored, so
-        # without this a phone photo shot in portrait keeps its landscape
-        # raster and loses the one tag that told a viewer to rotate it: the
-        # stripped copy renders sideways, and every derivative cut from it
-        # inherits the rotation. Returns the source unchanged when there is
-        # no orientation to apply.
-        source = ImageOps.exif_transpose(source) or source
-        # Rebuild from raw pixel bytes only, which drops the whole
-        # ``img.info`` dict (EXIF, IPTC, XMP, ICC, JFIF, comments,
-        # thumbnails). Mode + size preserved so PNG / WebP alpha survives.
-        cleaned = Image.frombytes(source.mode, source.size, source.tobytes())
+        # Bake the EXIF Orientation tag into the raster before the metadata
+        # goes: without it a photo shot in portrait is stored sideways, and so
+        # is every derivative cut from it.
+        ImageOps.exif_transpose(image, in_place=True)
+        # The encoders write metadata only from their keyword arguments and
+        # from ``info`` (the JPEG comment, the PNG ICC profile), so emptying
+        # ``info`` and passing none is what strips it.
+        image.info.clear()
 
         output = BytesIO()
         if content_type == "image/jpeg":
-            # JPEG can't hold transparency; convert RGBA→RGB if the
-            # source had alpha (real uploads are usually RGB anyway).
-            save_target = cleaned
-            if save_target.mode not in {"RGB", "L"}:
-                save_target = cleaned.convert("RGB")
-            save_target.save(
+            # JPEG holds RGB or L only: alpha from a PNG or WebP source, and
+            # the other modes a decoder yields, are converted to RGB.
+            if image.mode not in {"RGB", "L"}:
+                image = _convert(image, "RGB")
+            image.save(
                 output,
                 format="JPEG",
                 quality=95,
@@ -216,9 +259,11 @@ def strip_metadata(data: bytes, content_type: str) -> bytes:
                 progressive=False,
             )
         elif content_type == "image/png":
-            cleaned.save(output, format="PNG", optimize=True)
-        else:  # image/webp
-            cleaned.save(output, format="WEBP", quality=95, method=6)
+            if image.mode == "CMYK":  # a CMYK JPEG source; PNG has no CMYK
+                image = _convert(image, "RGB")
+            image.save(output, format="PNG", optimize=True)
+        else:  # image/webp; the encoder converts any other mode itself
+            image.save(output, format="WEBP", quality=95, method=6)
         return output.getvalue()
 
 
@@ -269,8 +314,9 @@ def make_jpeg_derivative(data: bytes, content_type: str, max_dim: int) -> bytes:
     to do, since ``strip_metadata`` already applied the tag.
 
     Same hardening as ``strip_metadata`` (kept here so the helper is safe
-    standalone): decompression-bomb check before ``img.load()``; animated
-    images rejected; palette modes converted before resize.
+    standalone): JPEG, PNG and WebP decoders only, and decompression-bomb
+    check before ``img.load()``; animated images rejected; palette modes
+    converted before resize; a decode slot held.
 
     No-op for non-image content types, matching ``strip_metadata``.
     """
@@ -280,10 +326,9 @@ def make_jpeg_derivative(data: bytes, content_type: str, max_dim: int) -> bytes:
     with (
         _decode_errors(
             f"make_jpeg_derivative (content_type={content_type}, "
-            f"max_dim={max_dim}, {len(data)} bytes)",
-            undecodable=f"Could not decode {content_type} for derivative resize",
+            f"max_dim={max_dim}, {len(data)} bytes)"
         ),
-        _guarded_open(data) as opened,
+        _guarded_open(data, MAX_DECODED_PIXELS) as source,
     ):
         # ``_guarded_open`` hands back palette-with-alpha as RGBA (not RGB),
         # which matters here even though the encode discards alpha:
@@ -296,7 +341,7 @@ def make_jpeg_derivative(data: bytes, content_type: str, max_dim: int) -> bytes:
         # Honour EXIF Orientation before resize, see the docstring's
         # exif_transpose paragraph. No-op when the source carries no
         # Orientation tag (e.g. post-strip bytes).
-        source = ImageOps.exif_transpose(opened)
+        ImageOps.exif_transpose(source, in_place=True)
 
         # ``thumbnail`` won't upscale a source already smaller on both edges,
         # but still JPEG-recompresses at the lower quality: intended, so
@@ -307,7 +352,7 @@ def make_jpeg_derivative(data: bytes, content_type: str, max_dim: int) -> bytes:
         # (Pillow does NOT composite onto a background; pixels under
         # transparency render at whatever the RGB triple was).
         if source.mode not in {"RGB", "L"}:
-            source = source.convert("RGB")
+            source = _convert(source, "RGB")
 
         output = BytesIO()
         source.save(
