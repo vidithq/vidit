@@ -18,6 +18,8 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Image uploads decode under bounded memory** ([#360](https://github.com/vidithq/vidit/pull/360), [`backend/app/services/evidence_processing.py`](backend/app/services/evidence_processing.py), [`backend/app/services/storage.py`](backend/app/services/storage.py)). An upload is decoded only by the JPEG, PNG or WebP decoder and in place, a mode conversion freeing its source before the encode, at most two decodes run at once, and profile pictures are capped at 25 megapixels.
 
+- **Backend logs print app records, one line each with its request id** ([#361](https://github.com/vidithq/vidit/pull/361), [`backend/app/observability.py`](backend/app/observability.py), [`backend/app/middleware/request_id.py`](backend/app/middleware/request_id.py)). Warnings and errors print on stderr, the rest on stdout. Every response carries `X-Request-ID`, and `LOG_LEVEL` sets the app's log level.
+
 ## v0.6.5, 2026-09-17
 
 ### Added

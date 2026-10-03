@@ -16,11 +16,12 @@ sys.path.append(str(Path(__file__).parent.parent))
 import sentry_sdk
 
 from app.database import SessionLocal
-from app.observability import init_sentry
+from app.observability import configure_logging, init_sentry
 from app.services.conflict_sync import ConflictSyncError, sync_conflicts
 
 
 def main() -> None:
+    configure_logging()
     # Same opt-in Sentry boot as the app: the interesting failure mode (the
     # page structure changed and every run aborts) is silent and durable, so
     # it must page rather than sit in the cron service's logs.

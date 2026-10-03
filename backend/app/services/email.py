@@ -69,9 +69,8 @@ def _send_console(email: Email) -> None:
         f"{email.text}\n"
         f"--- end ---\n"
     )
-    # print, not logger.info: uvicorn leaves the root logger unconfigured, so
-    # application INFO records are dropped and the promised stdout echo never
-    # appears. A plain print is the contract this provider documents.
+    # print, not logger.info: LOG_LEVEL cannot drop it, the reset link never
+    # becomes a Sentry breadcrumb, and it prints as one block.
     print(body, flush=True)
 
 

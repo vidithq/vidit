@@ -28,7 +28,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 import sentry_sdk
 
 from app.database import SessionLocal
-from app.observability import init_sentry
+from app.observability import configure_logging, init_sentry
 from app.services.archive_jobs import run_once
 from app.services.bot import drain_webhook_events
 
@@ -50,6 +50,7 @@ def _drain() -> int:
 
 
 def main() -> None:
+    configure_logging()
     # Same opt-in Sentry boot as the app and the bot cron: a failing import is
     # durable (the job row lands ``failed``) but must page, not sit in logs.
     init_sentry()
