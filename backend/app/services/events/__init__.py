@@ -16,22 +16,36 @@ strings, translated to HTTP via the same `{code, message}` envelope as
 `RegistrationError` / `AdminError`. Status mapping lives in
 `routers/events/_common.py` (`_EVENT_ERROR_STATUS`), kept in sync
 when adding a code.
+
+One module per write verb, over four shared modules. Dependencies run one way,
+``errors`` to the shared modules to the verbs, and no verb imports another:
+
+* ``errors``: the typed failures and their codes, a leaf module.
+* ``coordinates``: the bounds check and the optional point a form pair builds.
+* ``source_links``: the secondary links, normalized, paired with their archived
+  copies, and written as ordered rows.
+* ``rules``: the evidence floor, the proof sanitiser wrapper, the source-media
+  swap, the tag and conflict resolvers, and the geolocation credit.
+* ``readiness``: the batch publish floor as one SQL predicate, for the
+  detections queue.
+* ``create``: :func:`create_with_evidence`.
+* ``request``: :func:`create_request`, :func:`update_request`, and the import
+  provenance a machine-opened request carries.
+* ``geolocation``: :func:`geolocate`.
+* ``revision``: :func:`save_version`.
+* ``batch``: :func:`complete_detections` and its per-row promotion.
+* ``closure``: :func:`close`.
+
+Callers import from this package, which re-exports the public surface below.
+``_publish_detection`` is re-exported too, since route docstrings and the
+frontend mirrors cite it at the package path.
 """
 
 from __future__ import annotations
 
-import logging
-from datetime import UTC, datetime
-from typing import cast
-
-from sqlalchemy.orm import Session
-
-from app.cache import points_cache
-from app.models.event import STATUS_CLOSED, BeforeClosedStatus, Event
-from app.models.user import User
-from app.services.permissions import ensure_owner
-
 from .batch import ROW_INTERNAL_ERROR_CODE, DetectionCompletion, complete_detections
+from .batch import _publish_detection as _publish_detection
+from .closure import close
 from .coordinates import validate_coordinates
 from .create import create_with_evidence
 from .errors import (
@@ -91,51 +105,3 @@ __all__ = [
     "update_request",
     "validate_coordinates",
 ]
-
-logger = logging.getLogger(__name__)
-
-
-def close(db: Session, *, geo: Event, current_user: User, close_reason: str) -> Event:
-    """Close an event: withdraw, reject or retract it, in one verb.
-
-    Owner-only, and available in all three live states.
-    ``before_closed_status`` records which one the row left, so the badge, the
-    read views and detection re-import can tell them apart:
-
-    * off ``requested``, a withdrawn call for help.
-    * off ``detected``, a rejected machine detection. It stays in the located
-      catalog as an audit row and stays re-importable
-      (see ``detection._row_disposition``).
-    * off ``geolocated``, a public retraction of published work. The page stays
-      readable and keeps its id, coordinate, credits, archives and version
-      history, with the reason beside the closed badge; it leaves the published
-      set, the feeds and the map (``event_filters.published_events`` and
-      ``view_predicate``), and no machine touches it again.
-
-    The row stays publicly visible in every case: a record that says why it was
-    taken back is what a retraction is. Nothing here reopens a closed row, which
-    is why the reason is required; removing a row for good is the admin delete.
-
-    Raises :class:`EventStateError` (409) on a ``closed`` row, the terminal
-    state. Commits, invalidates the points cache, returns the refreshed row.
-    """
-    # Serialize on the row like ``geolocate`` and ``save_version``: a
-    # ``requested`` event is fulfillable by anyone, so a concurrent geolocate (a
-    # different actor) could otherwise be silently overwritten by this close
-    # reading a stale in-memory status, and a concurrent correction of a
-    # published row must file its version either wholly before or wholly after
-    # the retraction. ``populate_existing`` refreshes the identity-mapped row
-    # from the freshly locked SELECT before the owner and status re-checks.
-    geo = db.query(Event).filter(Event.id == geo.id).populate_existing().with_for_update().one()
-    ensure_owner(geo, current_user)
-    if geo.status == STATUS_CLOSED:
-        raise EventStateError("This event is already closed")
-    # Sound cast: the guard above pins status to the BeforeClosedStatus domain.
-    geo.before_closed_status = cast(BeforeClosedStatus, geo.status)
-    geo.status = STATUS_CLOSED
-    geo.closed_at = datetime.now(UTC)
-    geo.close_reason = close_reason
-    db.commit()
-    db.refresh(geo)
-    points_cache.invalidate()
-    return geo
