@@ -13,7 +13,8 @@ The third implementation, ``batchCompletionBlockers`` in
 from __future__ import annotations
 
 from app.models.event import STATUS_DETECTED, Event
-from app.services.events import _publish_detection, detection_ready_predicate
+from app.services.events import detection_ready_predicate
+from app.services.events.batch import _publish_detection
 from app.services.evidence_intake import EvidenceIntakeError
 from tests.events._helpers import _make_geo
 from tests.events._readiness_cases import READINESS_CASES, READY_CASE_NAMES
