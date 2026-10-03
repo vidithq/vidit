@@ -66,6 +66,10 @@ from app.services.sanitize import (
 )
 from app.services.storage import sweep_keys
 
+from .coordinates import (
+    _optional_point,
+    validate_coordinates,
+)
 from .errors import (
     CoordinatesRequiredError,
     EventError,
@@ -114,15 +118,6 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
-
-
-def validate_coordinates(lat: float, lng: float) -> None:
-    """Reject out-of-range coordinates: the single bounds check shared by the
-    human create + geolocate paths."""
-    if not -90 <= lat <= 90:
-        raise InvalidCoordinatesError("Latitude must be between -90 and 90")
-    if not -180 <= lng <= 180:
-        raise InvalidCoordinatesError("Longitude must be between -180 and 180")
 
 
 def _clean_secondary_source_urls(urls: list[str], source_url: str | None) -> list[str]:
@@ -210,20 +205,6 @@ def replace_source_links(db: Session, geo: Event, urls: list[str]) -> None:
     geo.source_links.clear()
     db.flush()
     geo.source_links = build_source_link_rows(urls)
-
-
-def _optional_point(lat: float | None, lng: float | None, *, field: str):
-    """Validate + build an optional PostGIS point from a half-typed form pair.
-
-    A lone half of the pair is a client bug, not a droppable value, so reject it
-    rather than silently storing nothing.
-    """
-    if lat is None and lng is None:
-        return None
-    if lat is None or lng is None:
-        raise InvalidCoordinatesError(f"{field} requires both a latitude and a longitude")
-    validate_coordinates(lat, lng)
-    return from_shape(Point(lng, lat), srid=4326)
 
 
 def _sanitize_proof(proof_data: dict | None, *, allow_placeholders: bool = False) -> dict | None:
