@@ -126,6 +126,9 @@ export const config = {
   // Run on every request except Next.js internals and well-known static
   // assets. Icon / apple-icon / manifest stay public — an auth redirect on
   // a favicon request makes the tab fall back to its default stub icon.
+  // `maplibre-gl/` is the map's web worker (see `next.config.mjs`); behind
+  // the wall a signed-out reader's worker request gets the login page and the
+  // map renders blank.
   // `opengraph-image` / `twitter-image` are Next.js metadata routes served
   // at `/opengraph-image?<hash>` (hash = cache busting); social crawlers
   // fetch them unauthenticated, so they must bypass the wall too — else the
@@ -139,6 +142,6 @@ export const config = {
   // so widen this matcher to the segment-nested form (e.g. `.*opengraph-image`)
   // if that ever happens.
   matcher: [
-    "/((?!_next|favicon.ico|icon|apple-icon|manifest.webmanifest|robots.txt|sitemap.xml|opengraph-image|twitter-image).*)",
+    "/((?!_next|favicon.ico|icon|apple-icon|manifest.webmanifest|maplibre-gl/|robots.txt|sitemap.xml|opengraph-image|twitter-image).*)",
   ],
 };
