@@ -2,8 +2,8 @@
 
 Each Sentry test boots the SDK through the helper with an in-memory transport in
 place of the network one, then resets the global client so later tests in the
-worker report nowhere. The logging tests run ``configure_logging`` in a fresh
-interpreter, since it rewires the process's root logger.
+worker report nowhere. The logging tests run in a fresh interpreter, since
+``configure_logging`` rewires the process's root logger.
 """
 
 from __future__ import annotations
@@ -113,60 +113,102 @@ def test_server_error_event_carries_the_request_id(sentry_events):
 # <timestamp> <level> <logger> [<request id>] <message>
 _LOG_LINE = re.compile(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3} (\S+) (\S+) \[([^]]+)\] (.*)")
 
+# Uvicorn applies its logging config before it imports the app; building its
+# ``Config`` does the same here.
+_UVICORN = "import logging, uvicorn.config\nuvicorn.config.Config('app.main:app'{options})\n"
+_CONFIGURE = "from app.observability import configure_logging, request_id\nconfigure_logging()\n"
 
-def _printed(statements: str, *, log_level: str) -> list[tuple[str, ...]]:
-    """What a fresh interpreter prints for ``statements``, one tuple per line.
 
-    Uvicorn applies its logging config before it imports the app, so the
-    interpreter does the same before ``configure_logging`` runs.
-    """
+def _raw(script: str, *, log_level: str = "INFO") -> tuple[str, str]:
+    """What a fresh interpreter prints for ``script``: (stdout, stderr)."""
     result = subprocess.run(
-        [
-            sys.executable,
-            "-W",
-            "ignore",
-            "-c",
-            "import logging, logging.config, uvicorn.config\n"
-            "logging.config.dictConfig(uvicorn.config.LOGGING_CONFIG)\n"
-            "from app.observability import configure_logging, request_id\n"
-            "configure_logging()\n" + statements,
-        ],
+        [sys.executable, "-W", "ignore", "-c", script],
         cwd=Path(__file__).resolve().parents[1],
         env={**os.environ, "LOG_LEVEL": log_level},
         capture_output=True,
         text=True,
     )
-    assert (result.returncode, result.stderr) == (0, "")
-    lines = [_LOG_LINE.fullmatch(line) for line in result.stdout.splitlines()]
-    assert all(lines), result.stdout
-    return [line.groups() for line in lines if line]
+    assert result.returncode == 0, result.stderr
+    return result.stdout, result.stderr
+
+
+def _run(script: str, *, log_level: str = "INFO") -> tuple[list[tuple[str, ...]], ...]:
+    """``_raw``, each stream parsed into one tuple per ``LOG_FORMAT`` line."""
+    streams = []
+    for output in _raw(script, log_level=log_level):
+        lines = [_LOG_LINE.fullmatch(line) for line in output.splitlines()]
+        assert all(lines), output
+        streams.append([line.groups() for line in lines if line])
+    return tuple(streams)
 
 
 def test_each_record_prints_once_on_one_line_with_its_request_id():
-    printed = _printed(
-        "logging.getLogger('app.services.email').info('outside a request')\n"
+    stdout, stderr = _run(
+        _UVICORN.format(options="")
+        + _CONFIGURE
+        + "logging.getLogger('app.services.email').info('outside a request')\n"
         "logging.getLogger('httpx').info('library chatter below WARNING')\n"
         "logging.getLogger('uvicorn.error').info('Application startup complete.')\n"
         "request_id.set('req-7')\n"
         "logging.getLogger('app.routers.auth').warning('inside a request')\n"
         "logging.getLogger('uvicorn.access').info("
-        "'%s - \"%s %s HTTP/%s\" %d', '127.0.0.1:5000', 'GET', '/health', '1.1', 200)\n",
-        log_level="INFO",
+        "'%s - \"%s %s HTTP/%s\" %d', '127.0.0.1:5000', 'GET', '/health', '1.1', 200)\n"
+        "logging.getLogger('uvicorn.error').error('Exception in ASGI application')\n"
     )
 
-    assert printed == [
+    assert stdout == [
         ("INFO", "app.services.email", "-", "outside a request"),
         ("INFO", "uvicorn.error", "-", "Application startup complete."),
-        ("WARNING", "app.routers.auth", "req-7", "inside a request"),
         ("INFO", "uvicorn.access", "req-7", '127.0.0.1:5000 - "GET /health HTTP/1.1" 200'),
+    ]
+    assert stderr == [
+        ("WARNING", "app.routers.auth", "req-7", "inside a request"),
+        ("ERROR", "uvicorn.error", "req-7", "Exception in ASGI application"),
     ]
 
 
-def test_log_level_sets_the_level_of_the_app_loggers():
-    printed = _printed(
-        "logging.getLogger('app.services.bot').info('below the level')\n"
+def test_log_level_sets_the_level_of_the_app_loggers_in_any_case():
+    stdout, stderr = _run(
+        _UVICORN.format(options="")
+        + _CONFIGURE
+        + "logging.getLogger('app.services.bot').info('below the level')\n"
         "logging.getLogger('app.services.bot').warning('at the level')\n",
-        log_level="WARNING",
+        log_level="warning",
     )
 
-    assert [message for *_, message in printed] == ["at the level"]
+    assert stdout == []
+    assert [message for *_, message in stderr] == ["at the level"]
+
+
+def test_the_api_prints_app_records_under_uvicorn():
+    stdout, stderr = _run(
+        _UVICORN.format(options="")
+        + "import app.main\n"
+        + "logging.getLogger('app.services.email').info('after the import')\n",
+        log_level="info",
+    )
+
+    assert ("INFO", "app.services.email", "-", "after the import") in stdout
+
+
+def test_no_access_log_keeps_the_access_log_off():
+    stdout, stderr = _run(
+        _UVICORN.format(options=", access_log=False")
+        + _CONFIGURE
+        + "logging.getLogger('uvicorn.access').info('GET /health 200')\n"
+        "logging.getLogger('app.services.bot').info('still printed')\n"
+    )
+
+    assert [message for *_, message in stdout] == ["still printed"]
+    assert stderr == []
+
+
+def test_a_root_logger_set_up_by_log_config_is_kept():
+    stdout, stderr = _raw(
+        "import logging, sys\n"
+        "logging.basicConfig(stream=sys.stdout, format='custom %(message)s')\n"
+        + _CONFIGURE
+        + "logging.getLogger('app.services.bot').warning('kept')\n"
+    )
+
+    assert (stdout, stderr) == ("custom kept\n", "")

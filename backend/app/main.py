@@ -12,7 +12,7 @@ from starlette.types import ASGIApp
 
 from app.config import settings
 from app.middleware.csrf import CSRFMiddleware
-from app.middleware.request_id import RequestIdMiddleware
+from app.middleware.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
 from app.observability import configure_logging, init_sentry
 from app.ratelimit import AUTHENTICATED_READ_SCOPE, limiter
 from app.routers import (
@@ -205,8 +205,9 @@ async def enforce_request_body_size(request: Request, call_next):
 # instead of a clean 413 (PR #100). CSRF stays outside BodySize: it reads only
 # the double-submit cookie + header (not the body), so a forged-CSRF +
 # oversized body gets the 403 the cheap path would give anyway. HSTS is the
-# outermost registered one so it stamps every response, including CORS-preflight
-# 200s and CSRF rejections that never reach the app.
+# outermost registered one so it stamps CORS-preflight 200s and CSRF rejections
+# that never reach the app. The 500 Starlette's error layer writes for an
+# unhandled exception sits outside it and carries no HSTS.
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -220,8 +221,9 @@ app.add_middleware(
     # header the limiter handler emits is invisible to exactly the callers
     # meant to back off on it. `Link` is the same problem on the read path: it
     # carries the next-page cursor of every capped list, so a browser client
-    # that cannot read it cannot page past the first 100 rows.
-    expose_headers=["Retry-After", "Link"],
+    # that cannot read it cannot page past the first 100 rows. A browser
+    # client reads `X-Request-ID` to quote it in a bug report.
+    expose_headers=["Retry-After", "Link", REQUEST_ID_HEADER],
 )
 
 
@@ -230,8 +232,9 @@ app.add_middleware(
 # is a future-coupling commitment we can't unwind for months, and preload
 # submission belongs to the public-launch checklist. Pin is per-origin: this
 # header on `api.vidit.app` protects API calls; Vercel sets its own on
-# `vidit.app`. Registered LAST so it sits outermost and stamps responses from
-# inner-middleware short-circuits (CORS preflight, CSRF rejection) too.
+# `vidit.app`. Registered LAST so it sits outermost of the registered ones and
+# stamps responses from inner-middleware short-circuits (CORS preflight, CSRF
+# rejection) too.
 @app.middleware("http")
 async def add_hsts_header(request: Request, call_next):
     response = await call_next(request)

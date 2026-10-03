@@ -200,7 +200,7 @@ test:
 # src/lib/api-types.ts IS committed. CI re-runs this and `git diff --exit-code`s
 # the result, so a backend schema change that wasn't regenerated fails the build.
 gen-api-types:
-	cd backend && uv run --no-sync python scripts/dump_openapi.py > ../frontend/openapi.json
+	cd backend && uv run --no-sync python scripts/dump_openapi.py ../frontend/openapi.json
 	cd frontend && npx openapi-typescript openapi.json -o src/lib/api-types.ts
 
 check-dup:

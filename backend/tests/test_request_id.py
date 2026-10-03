@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 @pytest.fixture
 def records():
-    """This module's records, stamped by the filter the stdout handler carries."""
+    """This module's records, stamped by the filter the log handlers carry."""
     collected: list[logging.LogRecord] = []
 
     class Collect(logging.Handler):
@@ -65,7 +65,9 @@ def test_a_safe_incoming_request_id_is_echoed(safe):
     assert response.headers[REQUEST_ID_HEADER] == safe
 
 
-@pytest.mark.parametrize("unsafe", ["a" * 65, "two words", "one\nline\nper\nrecord", ""])
+@pytest.mark.parametrize(
+    "unsafe", ["a" * 65, "two words", "one\nline\nper\nrecord", "", "-", "._-"]
+)
 def test_an_unsafe_incoming_request_id_is_replaced(unsafe):
     response = client.get("/health", headers={REQUEST_ID_HEADER: unsafe})
     assert response.headers[REQUEST_ID_HEADER] not in (unsafe, "")

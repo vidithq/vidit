@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     sentry_environment: str = "development"
     sentry_traces_sample_rate: float = 0.0
     # Level of the ``app.*`` loggers (see ``observability.configure_logging``).
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     # Trusted proxy hops in front of the backend. Each appends its observed
     # connecting IP to ``X-Forwarded-For``, so the rate-limit key
@@ -163,6 +163,11 @@ class Settings(BaseSettings):
         if host is not None and host.lower() in LOCAL_DB_HOSTS:
             return self.cors_origin_regex
         return ""
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _upper_log_level(cls, v: object) -> object:
+        return v.upper() if isinstance(v, str) else v
 
     @field_validator("database_url", mode="after")
     @classmethod
