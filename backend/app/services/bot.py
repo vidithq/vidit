@@ -478,6 +478,16 @@ def _record(
     return True
 
 
+def bot_credentials() -> OAuth1Credentials:
+    """The bot account's OAuth 1.0a user context, read from settings."""
+    return OAuth1Credentials(
+        consumer_key=settings.x_api_consumer_key,
+        consumer_secret=settings.x_api_consumer_secret,
+        access_token=settings.x_bot_access_token,
+        access_token_secret=settings.x_bot_access_token_secret,
+    )
+
+
 def _post_reply_failsoft(mention: Mention, text: str, *, client: httpx.Client | None) -> str | None:
     """Post the reply if write credentials are configured; ``None`` otherwise
     or on failure. The detection is already durable — a lost reply is a
@@ -488,12 +498,7 @@ def _post_reply_failsoft(mention: Mention, text: str, *, client: httpx.Client | 
         return post_reply(
             text=text,
             in_reply_to_tweet_id=mention.tweet_id,
-            credentials=OAuth1Credentials(
-                consumer_key=settings.x_api_consumer_key,
-                consumer_secret=settings.x_api_consumer_secret,
-                access_token=settings.x_bot_access_token,
-                access_token_secret=settings.x_bot_access_token_secret,
-            ),
+            credentials=bot_credentials(),
             client=client,
         )
     except XApiError as exc:

@@ -21,7 +21,9 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    encoded = password.encode("utf-8")
+    # ``surrogatepass`` keeps a lone surrogate from raising: such input matches
+    # no stored hash, so it ends as a mismatch.
+    encoded = password.encode("utf-8", "surrogatepass")
     # bcrypt raises past PASSWORD_MAX_BYTES and no password is set longer, so
     # such input is a mismatch. It still pays the one bcrypt check, so it costs
     # what a wrong password costs.

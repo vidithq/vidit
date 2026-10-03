@@ -177,9 +177,9 @@ Anonymous callers are exempt from the quota and keep the per-IP limits alone. So
 
 ### Password rules
 
-A password you set through `POST /auth/register`, `POST /auth/reset-password`, or `POST /auth/change-password` must be at least 8 characters long. It must also fit in 72 bytes of UTF-8, the input limit of bcrypt. Unaccented Latin letters, digits, and ASCII punctuation take 1 byte each. Accented letters, letters from other scripts, and emoji take 2 bytes or more each. A password outside these bounds gets a 422, and the first `detail` entry's `msg` states the rule.
+A password you set through `POST /auth/register`, `POST /auth/reset-password`, or `POST /auth/change-password` must be at least 8 characters long. It must also fit in 72 bytes of UTF-8, the input limit of bcrypt. An ASCII character takes 1 byte. Every other character takes 2 to 4 bytes: `ß` and `£` take 2, `€` takes 3, and most emoji take 4. A password outside these bounds gets a 422, and the first `detail` entry's `msg` states the rule. A 422 body never echoes the submitted value.
 
-A password you sign in with, or send as `current_password`, is never refused for its length. One longer than 72 bytes matches no account, so it gets the same response as a wrong password.
+A password you sign in with, or send as `current_password`, is never refused for being too long. One longer than 72 bytes matches no account, so it gets the same response as a wrong password. An empty `current_password` gets a 422.
 
 ### `POST /auth/register`
 

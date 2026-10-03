@@ -8,6 +8,7 @@ The OAuth 1.0a signature is pinned against the worked example in X's
 from __future__ import annotations
 
 import json
+from urllib.parse import unquote
 
 import httpx
 import pytest
@@ -137,6 +138,7 @@ def test_post_reply_sends_oauth_header_and_returns_id():
 
     def handler(req: httpx.Request) -> httpx.Response:
         captured["auth"] = req.headers["Authorization"]
+        captured["url"] = str(req.url)
         captured["payload"] = json.loads(req.content)
         return httpx.Response(201, json={"data": {"id": "888"}})
 
@@ -150,8 +152,17 @@ def test_post_reply_sends_oauth_header_and_returns_id():
     assert reply_id == "888"
     auth = captured["auth"]
     assert isinstance(auth, str) and auth.startswith("OAuth ")
-    assert 'oauth_consumer_key="ck"' in auth
-    assert "oauth_signature=" in auth
+    params = {
+        key: unquote(value.strip('"'))
+        for key, value in (part.split("=", 1) for part in auth.removeprefix("OAuth ").split(", "))
+    }
+    assert params["oauth_consumer_key"] == "ck"
+    assert params["oauth_token"] == "at"
+    signature = params.pop("oauth_signature")
+    # Signed with both the consumer secret and the token secret.
+    assert signature == oauth1_signature(
+        "POST", str(captured["url"]), params, consumer_secret="cs", token_secret="ats"
+    )
     assert captured["payload"] == {
         "text": "Vidit: saved",
         "reply": {"in_reply_to_tweet_id": "123"},

@@ -15,8 +15,11 @@ import sentry_sdk
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sentry_sdk.transport import Transport
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from app.config import settings
+from app.database import engine
 from app.observability import init_sentry
 
 
@@ -81,3 +84,11 @@ def test_server_error_event_carries_no_request_body(sentry_events):
     assert response.status_code == 500
     assert sentry_events
     assert secret not in json.dumps(sentry_events, default=str)
+
+
+def test_database_error_text_carries_no_bound_parameters():
+    secret = uuid.uuid4().hex
+    with engine.connect() as conn, pytest.raises(DBAPIError) as caught:
+        # A runtime error: the server's own message quotes no query text.
+        conn.execute(text("SELECT 1 / 0, CAST(:value AS text)"), {"value": secret})
+    assert secret not in str(caught.value)

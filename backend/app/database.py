@@ -9,6 +9,9 @@ engine = create_engine(
     max_overflow=30,
     pool_pre_ping=True,
     pool_recycle=3600,
+    # Error text leaves out bound parameters (password hashes, emails), so
+    # they never reach logs or Sentry.
+    hide_parameters=True,
 )
 SessionLocal = sessionmaker(bind=engine)
 
