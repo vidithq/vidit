@@ -10,7 +10,7 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **The events service is a package, one module per write verb** ([`backend/app/services/events/`](backend/app/services/events), [`docs/engineering.md`](docs/engineering.md)). `services/events/` holds `create`, `request`, `geolocation`, `revision`, `batch` and `closure`, one write verb each, over the shared `errors`, `coordinates`, `source_links`, `rules` and `readiness` modules. The package root re-exports the public API, so every caller imports from `app.services.events` as before. The code moved unchanged.
+- **The events service is a package, one module per write verb** ([#371](https://github.com/vidithq/vidit/pull/371), [`backend/app/services/events/`](backend/app/services/events), [`docs/engineering.md`](docs/engineering.md)). `services/events/` holds `create`, `request`, `geolocation`, `revision`, `batch` and `closure`, one write verb each, over the shared `errors`, `coordinates`, `source_links`, `rules` and `readiness` modules. The package root re-exports the public API, so every caller imports from `app.services.events` as before. The code moved unchanged.
 
 ### Fixed
 
