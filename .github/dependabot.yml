@@ -22,6 +22,12 @@
 # Schedule is Monday morning UTC across the board so the week's drift lands
 # in one PR storm rather than rolling through Tuesday-Friday standups.
 #
+# Every ecosystem sets a `cooldown`: a version update waits after a release
+# before Dependabot opens its PR (major 7 days, minor 3, patch 1), so a major
+# is taken only once it has been out a week. `github-actions` does not support
+# the semver keys, so it uses a flat 7 days. Cooldown applies to version
+# updates only, so security updates stay immediate.
+#
 # Reviewer / assignee fields are intentionally absent — the repo runs solo
 # right now (see `planning/roadmap.md` → *Behind Vidit*), and once
 # contributors join the assignment will flow through CODEOWNERS, not here.
@@ -39,6 +45,10 @@ updates:
     commit-message:
       prefix: "chore(deps)"
       include: "scope"
+    cooldown:
+      semver-major-days: 7
+      semver-minor-days: 3
+      semver-patch-days: 1
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
@@ -54,6 +64,10 @@ updates:
     commit-message:
       prefix: "chore(deps)"
       include: "scope"
+    cooldown:
+      semver-major-days: 7
+      semver-minor-days: 3
+      semver-patch-days: 1
     groups:
       sentry:
         patterns:
@@ -90,6 +104,8 @@ updates:
     commit-message:
       prefix: "chore(deps)"
       include: "scope"
+    cooldown:
+      default-days: 7
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
