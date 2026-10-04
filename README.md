@@ -115,7 +115,7 @@ make test        # backend pytest
 
 - **Database connection failed**: ensure `docker-compose up -d` is running and nothing else holds port 5432.
 - **Frontend can't reach the API**: check `NEXT_PUBLIC_API_URL` in `frontend/.env.local` is `http://localhost:8000/api/v1`.
-- **"Module not found"**: re-run `uv sync` (backend) / `npm install` (frontend), or `make install` for both.
+- **"Module not found"**: re-run `uv sync --all-extras` (backend) / `npm install` (frontend), or `make install` for both.
 
 ---
 

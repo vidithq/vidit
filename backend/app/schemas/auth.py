@@ -8,6 +8,7 @@ from app.schemas import NormalizedEmail
 # Mirrored by ``frontend/src/lib/auth.ts`` (``PASSWORD_MIN_LENGTH``).
 PASSWORD_MIN_LENGTH = 8
 # bcrypt reads at most 72 bytes, so the ceiling is in UTF-8 bytes, not characters.
+# Mirrored by ``frontend/src/lib/auth.ts`` (``PASSWORD_MAX_BYTES``).
 PASSWORD_MAX_BYTES = 72
 
 
@@ -22,12 +23,12 @@ def _within_bcrypt_limit(password: str) -> str:
     return password
 
 
-# A password a new credential is hashed from (register, reset, change). A
-# character count never exceeds the byte count, so ``max_length`` only stops
-# huge input early; the byte check is the rule.
+# A password a new credential is hashed from (register, reset, change). No
+# ``max_length``: it would answer an over-long ASCII password with Pydantic's
+# generic message before the byte check runs.
 NewPassword = Annotated[
     str,
-    Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_BYTES),
+    Field(min_length=PASSWORD_MIN_LENGTH),
     AfterValidator(_within_bcrypt_limit),
 ]
 
