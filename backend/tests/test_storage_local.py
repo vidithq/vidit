@@ -314,6 +314,42 @@ def test_local_storage_delete_many_keeps_nonempty_parent_dirs(tmp_path: Path):
     assert (tmp_path / "proof" / "u").exists()
 
 
+@pytest.mark.parametrize("key", ["../outside.jpg", "proof/../../outside.jpg", "/etc/passwd"])
+def test_local_storage_path_rejects_escaping_keys(tmp_path: Path, key: str):
+    backend = LocalStorage(tmp_path / "root")
+    with pytest.raises(ValueError, match="escapes the root"):
+        backend._path(key)
+
+
+@pytest.mark.parametrize("key", ["../outside.jpg", "/etc/passwd"])
+def test_local_storage_head_size_returns_none_for_escaping_keys(tmp_path: Path, key: str):
+    backend = LocalStorage(tmp_path / "root")
+    (tmp_path / "outside.jpg").write_bytes(b"secret")
+    assert backend.head_size(key) is None
+
+
+def test_local_storage_head_size_reads_valid_key(tmp_path: Path):
+    backend = LocalStorage(tmp_path)
+    (tmp_path / "proof" / "u").mkdir(parents=True)
+    (tmp_path / "proof" / "u" / "a.jpg").write_bytes(b"abc")
+    assert backend.head_size("proof/u/a.jpg") == 3
+    assert backend.head_size("proof/u/missing.jpg") is None
+
+
+def test_local_storage_delete_many_skips_escaping_keys(tmp_path: Path):
+    backend = LocalStorage(tmp_path / "root")
+    outside = tmp_path / "outside.jpg"
+    outside.write_bytes(b"keep")
+    (tmp_path / "root" / "proof").mkdir()
+    (tmp_path / "root" / "proof" / "a.jpg").write_bytes(b"a")
+
+    backend.delete_many(["../outside.jpg", str(outside), "proof/a.jpg"])
+
+    assert outside.read_bytes() == b"keep"
+    assert not (tmp_path / "root" / "proof").exists()
+    assert (tmp_path / "root").exists()
+
+
 # ── sweep_keys ────────────────────────────────────────────────────────────
 
 

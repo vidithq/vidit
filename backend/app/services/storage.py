@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+import os
 import shutil
 import unicodedata
 from pathlib import Path, PurePosixPath
@@ -172,13 +173,19 @@ class LocalStorage:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
 
-    def _path(self, key: str) -> Path:
-        # Containment check at the single chokepoint every read/write funnels
-        # through: keys are internally minted today, but an absolute or
-        # dot-dot key must never escape the storage root.
-        path = (self.root / key).resolve()
-        if not path.is_relative_to(self.root.resolve()):
+    def _resolve(self, key: str) -> Path:
+        # Containment check every key funnels through: keys are internally
+        # minted today, but an absolute or dot-dot key must never escape the
+        # storage root. The realpath + startswith form is the guard CodeQL
+        # recognises; it does not treat ``Path.is_relative_to`` as one.
+        root = os.path.realpath(self.root)
+        full = os.path.realpath(os.path.join(root, key))
+        if not full.startswith(root + os.sep):
             raise ValueError(f"Storage key escapes the root: {key!r}")
+        return Path(full)
+
+    def _path(self, key: str) -> Path:
+        path = self._resolve(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
@@ -206,13 +213,17 @@ class LocalStorage:
         return None
 
     def delete_many(self, keys: list[str]) -> None:
+        root = Path(os.path.realpath(self.root))
         for key in keys:
-            path = self.root / key
+            try:
+                path = self._resolve(key)
+            except ValueError:
+                continue
             path.unlink(missing_ok=True)
             # Best-effort: remove parent dirs we just emptied (e.g.
             # proof/<user>/ once its last image is gone). Stops at root.
             parent = path.parent
-            while parent != self.root and parent.is_dir():
+            while parent != root and parent.is_dir():
                 try:
                     parent.rmdir()
                 except OSError:
