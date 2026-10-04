@@ -1,0 +1,51 @@
+diff --git a/node_modules/next/dist/server/lib/router-utils/setup-dev-bundler.js b/node_modules/next/dist/server/lib/router-utils/setup-dev-bundler.js
+index d6bb381..be54018 100644
+--- a/node_modules/next/dist/server/lib/router-utils/setup-dev-bundler.js
++++ b/node_modules/next/dist/server/lib/router-utils/setup-dev-bundler.js
+@@ -244,6 +244,24 @@ async function startWatcher(opts) {
+     });
+     let resolved = false;
+     let prevSortedRoutes = [];
++    // Backport of vercel/next.js#97920 (Fix dev route discovery startup race),
++    // merged for 16.4. Snapshot the route directories before watching starts:
++    // Watchpack can report an aggregation while its initial scan is still in
++    // flight, and a pass that publishes that partial view can land after a
++    // complete one and leave routes missing until the next file change.
++    const initialPageFiles = (await Promise.all([
++        pagesDir,
++        appDir
++    ].filter(Boolean).map(async (directory)=>{
++        try {
++            return await (0, require("../../../lib/recursive-readdir").recursiveReadDir)(directory, {
++                relativePathnames: false
++            });
++        } catch (err) {
++            if (err.code !== 'ENOENT') throw err;
++            return [];
++        }
++    }))).flat().filter(validFileMatcher.isPageFile);
+     await new Promise(async (resolve, reject)=>{
+         if (pagesDir) {
+             // Watchpack doesn't emit an event for an empty directory
+@@ -300,6 +318,9 @@ async function startWatcher(opts) {
+         const routeTypesFilePath = _path.default.join(distDir, 'types', 'routes.d.ts');
+         const validatorFilePath = _path.default.join(distDir, 'types', 'validator.ts');
+         let initialWatchTime = performance.now() + performance.timeOrigin;
++        // Startup only waits this long for Watchpack to observe the files found by
++        // the snapshot above, so a file it never reports cannot stall the server.
++        const initialScanDeadline = initialWatchTime + 30000;
+         wp.on('aggregated', async ()=>{
+             var _serverFields_middleware, _serverFields_middleware1;
+             let writeEnvDefinitions = false;
+@@ -307,6 +328,11 @@ async function startWatcher(opts) {
+             let middlewareMatchers;
+             const routedPages = [];
+             const knownFiles = wp.getTimeInfoEntries();
++            // Ignore partial startup passes so route definitions are not published
++            // until every initial page file is observable (vercel/next.js#97920).
++            if (!resolved && performance.now() + performance.timeOrigin < initialScanDeadline && initialPageFiles.some((file)=>_fs.default.existsSync(file) && !knownFiles.has(file))) {
++                return;
++            }
+             const appPaths = {};
+             const pageNameSet = new Set();
+             const conflictingAppPagePaths = new Set();
