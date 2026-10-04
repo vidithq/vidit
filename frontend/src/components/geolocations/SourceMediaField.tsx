@@ -8,27 +8,20 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import type { Media } from "@/types";
 
 interface SourceMediaFieldProps {
-  /** Persisted media (edit / request-locked). [] for a fresh submit. */
   existing?: Media[];
   removedIds?: ReadonlySet<string>;
   onRemoveExisting?: (id: string) => void;
   staged: File[];
   onAddFiles?: (files: File[]) => void;
   onRemoveStaged?: (index: number) => void;
-  /** Read-only (a request fulfilment, which inherits the requester's media):
-   *  show existing media, no add / remove. */
+  /** Read-only (a request fulfilment inherits the requester's media). */
   locked?: boolean;
-  /** The event's `is_graphic` flag, forwarded to the persisted tiles. */
   isGraphic?: boolean;
-  /** Flag the section as a missing required field (red outline). */
   invalid?: boolean;
 }
 
-/**
- * The "Source media" section — its own dedicated block, shared by the submit and
- * edit forms so the source-media control reads identically everywhere. Wraps
- * `MediaManager` with the section heading.
- */
+/** The "Source media" section, shared by the submit and edit forms: `MediaManager`
+ *  under the section heading. */
 export function SourceMediaField({ invalid = false, ...media }: SourceMediaFieldProps) {
   return (
     <Card

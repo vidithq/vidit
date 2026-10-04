@@ -12,8 +12,7 @@ describe("ProofImage", () => {
     expect(screen.getByRole("dialog")).toHaveAttribute("aria-label", "Anchor points");
   });
 
-  // The same floating cluster the gallery tiles carry, so a proof frame is
-  // saveable without leaving the page.
+  // The gallery tiles' floating cluster, so a proof frame is saveable without leaving the page.
   it("floats a download and an expand, revealed on hover", () => {
     const { container } = render(
       <ProofImage src="https://cdn.example/anchor.png" alt="Anchor points" />,

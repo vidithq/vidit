@@ -16,15 +16,12 @@ const ProofEditor = dynamic(
 interface ProofEditorPanelProps {
   proof: Record<string, unknown> | null;
   onChange: (proof: Record<string, unknown> | null) => void;
-  /** The inline proof images the editor is holding locally; the form uploads
-   *  them as `proof_files[]` at publish. */
+  /** Local inline images, uploaded as `proof_files[]` at publish. */
   onProofFilesChange?: (files: File[]) => void;
-  /** Flag the section as a missing required field (red outline). */
   invalid?: boolean;
 }
 
-/** The "Proof" section: the dynamically-loaded Tiptap editor where the
- *  analyst annotates the source-media ↔ satellite cross-reference. */
+/** The "Proof" section: the dynamically loaded Tiptap editor. */
 export function ProofEditorPanel({
   proof,
   onChange,
@@ -36,9 +33,6 @@ export function ProofEditorPanel({
       as="section"
       className={invalid ? FORM_INVALID_FIELD : ""}
     >
-      {/* The guide sits in the heading's `trailing` slot: both the submit
-          form and the edit form render this panel, so the link reaches the
-          analyst at the point of need in each without duplicating markup. */}
       <SectionHeading
         title="Proof"
         concept="section_proof"
@@ -53,9 +47,8 @@ export function ProofEditorPanel({
         }
       />
 
-      {/* Tiptap reads ``initialContent`` once, at construction: seeding from
-          the current ``proof`` (not null) restores the draft when the panel
-          remounts on a submit-type toggle. */}
+      {/* Tiptap reads `initialContent` once: seeding from the current `proof`
+          restores the draft when the panel remounts on a submit-type toggle. */}
       <ProofEditor
         initialContent={proof}
         onChange={onChange}

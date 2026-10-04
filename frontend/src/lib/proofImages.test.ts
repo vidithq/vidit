@@ -21,8 +21,7 @@ describe("safeProofFilename", () => {
   });
 
   it("rejects control (Cc) and format (Cf) codepoints, and the empty case", () => {
-    // BEL (U+0007) is a control char (category Cc); built via fromCharCode so
-    // no literal control byte lands in this source file.
+    // BEL (U+0007) is category Cc; built via fromCharCode so no control byte lands in this file.
     expect(safeProofFilename(`bad${String.fromCharCode(7)}name.jpg`, none)).toBeNull();
     // RTL-override (U+202E) is category Cf, the filename-spoofing codepoint.
     const rtlOverride = String.fromCharCode(0x202e);

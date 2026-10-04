@@ -1,10 +1,7 @@
 """Own-account writes for the authenticated analyst.
 
-The profile picture lives here rather than in the router because setting one
-is three steps that have to happen in order: store the image, point the
-column at it, then delete the object the column used to point at. The sweep
-runs after the commit, the same commit-then-sweep ordering every other delete
-path follows (see :func:`app.services.storage.sweep_keys`).
+Setting an avatar is ordered: store the image, point the column at it, commit,
+then sweep the old object (see :func:`app.services.storage.sweep_keys`).
 """
 
 from __future__ import annotations
@@ -24,8 +21,7 @@ from app.services.storage import (
 class AvatarError(Exception):
     """The submitted file cannot become an avatar.
 
-    Carries a stable ``code`` so the router maps it to a status without
-    matching on prose, the same contract as
+    Carries a stable ``code`` for the router, like
     :class:`app.services.evidence_intake.EvidenceIntakeError`.
     """
 
@@ -46,8 +42,7 @@ def _sweep_replaced_avatar(url: str | None) -> None:
 async def set_avatar(db: Session, *, user: User, file: UploadFile) -> User:
     """Store ``file`` as ``user``'s profile picture and drop the previous one.
 
-    Raises :class:`AvatarError` when the file is not an image this codebase
-    accepts, is over the image size ceiling, or cannot be decoded.
+    Raises :class:`AvatarError` on an unaccepted, oversized, or undecodable file.
     """
     try:
         result = await upload_avatar_image(file, user.id)
@@ -59,9 +54,7 @@ async def set_avatar(db: Session, *, user: User, file: UploadFile) -> User:
     try:
         db.commit()
     except Exception:
-        # The object landed before the row did. Roll back, then sweep it so a
-        # failed write never leaves an addressable image with nothing pointing
-        # at it.
+        # The object landed before the row did: sweep it so no orphan stays.
         db.rollback()
         key = get_storage().key_from_url(result.url)
         if key is not None:

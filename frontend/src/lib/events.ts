@@ -16,10 +16,7 @@ import type {
   TweetImportOutcome,
 } from "@/types";
 
-/** A required field a create/edit form is still missing. `key` drives the
- *  in-form highlight; `label` is what `IncompleteFormNotice` lists. Shared by
- *  the geolocation + request validators so both feed the same
- *  notice + highlight plumbing. */
+/** A required field a create/edit form is still missing; `key` drives the in-form highlight. */
 export type MissingFieldKey =
   | "title"
   | "coordinates"
@@ -36,9 +33,7 @@ export interface MissingField {
   label: string;
 }
 
-/** The one human label per field key: the single source both the validators
- *  (their `MissingField.label`) and the submit readiness tick-list read from, so
- *  a rename can't desync the two. */
+/** One label per field key, read by the validators and the submit tick-list. */
 export const FIELD_LABELS: Record<MissingFieldKey, string> = {
   title: "Title",
   coordinates: "Coordinates",
@@ -51,39 +46,23 @@ export const FIELD_LABELS: Record<MissingFieldKey, string> = {
   capture_source_tag: "Capture source tag",
 };
 
-/** How many secondary source links an event carries at most. Mirrors
- *  `models/event.MAX_SECONDARY_SOURCE_LINKS`: the form stops the analyst at the
- *  cap instead of letting the server 400 (`too_many_source_links`) after the
- *  media has uploaded. */
+/** Mirrors `models/event.MAX_SECONDARY_SOURCE_LINKS`; change both. */
 export const MAX_SECONDARY_SOURCE_LINKS = 10;
 
-/** Page size for the owner Detections queue. Kept below the backend default
- *  (`per_page=20`, capped at 100) so the source-media previews on each row
- *  load faster. */
+/** Below the backend default (`per_page=20`, max 100) so row previews load faster. */
 const DETECTIONS_PER_PAGE = 10;
 
-/** How many detections one review session loads at once. The backend caps a list
- *  response at 100 rows whatever `per_page` asks for, so this is the whole
- *  queue for any realistic import; a longer queue is reviewed one batch at a
- *  time. Loaded once per session and stepped through locally, so a published
- *  row leaving the queue can't shift the position under the analyst. */
+/** Detections loaded per review session, stepped through locally so a published row
+ *  leaving the queue can't shift the position. The backend caps lists at 100 rows. */
 const DETECTIONS_REVIEW_QUEUE = 100;
 
-/** The queue filter `GET /events/detections` accepts: the whole queue, the
- *  detections that clear the publish floor, or the ones that don't. Hand-written
- *  rather than generated for the same reason as `EventView`: the router takes
- *  `readiness` as a plain `str` so it can hand-build its 422, and codegen
- *  carries no union for it. Mirrors `services/events.DETECTION_READINESS`. */
+/** Queue filter for `GET /events/detections`. Hand-written like `EventView` (the router
+ *  takes a plain `str`). Mirrors `services/events.DETECTION_READINESS`; change both. */
 export type DetectionReadiness = "all" | "ready" | "incomplete";
 
-/** Shape of `GET /events/detections`: full-detail items (media + tags) so
- *  the queue renders the evidence and names what each detection is missing without
- *  a per-row round-trip. Mirrors the backend `PaginatedEventDetails`.
- *
- *  `total` counts the set `readiness` selected, so the page arithmetic
- *  describes what is being walked. `ready_total` and `incomplete_total` count
- *  the whole queue whatever the filter is, so the queue can state both figures
- *  under any filter and on any page. */
+/** Shape of `GET /events/detections`. Mirrors backend `PaginatedEventDetails`.
+ *  `total` counts the set `readiness` selected; `ready_total` and `incomplete_total`
+ *  count the whole queue under any filter. */
 export interface PaginatedEventDetails {
   items: EventDetail[];
   total: number;
@@ -101,32 +80,25 @@ export function detectionsPath(
   return `/events/detections?page=${page}&per_page=${perPage}&readiness=${readiness}`;
 }
 
-/** The queue a review pass steps through: one batch, newest first. */
 export function detectionsReviewPath(): string {
   return detectionsPath(1, DETECTIONS_REVIEW_QUEUE);
 }
 
-/** Marks an edit URL as one step of a review pass over the detections queue.
- *  The edit page reads it to decide whether to place the detection in the queue;
- *  every hop of a pass carries it, so the walk survives a reload and the
- *  browser's Back. */
+/** Marks an edit URL as a step of a review pass; every hop carries it so the walk
+ *  survives a reload and Back. */
 export const QUEUE_PARAM = "queue";
 
-/** The owner's edit surface for one detection, optionally inside a review pass. */
 export function detectionEditPath(id: string, inQueue = false): string {
   return `/events/${id}/edit${inQueue ? `?${QUEUE_PARAM}=1` : ""}`;
 }
 
-/** The two read views over the one `events` table: `located` (the catalogue,
- *  the map + default list) or `requested` (the open-call queue, ex `/requests`).
- *  See `docs/data-model.md` → `events`. */
+/** Read views over the `events` table. Mirrors `event_filters.VIEWS`; see
+ *  `docs/data-model.md`. */
 export type EventView = "located" | "requested";
 
 export interface EventListParams {
   view?: EventView;
-  /** One status, or several: the endpoint takes `?status=` repeated and
-   *  any-matches within the set, which is how a surface asks for a subset of
-   *  a view (the collection picker's two collectable statuses). */
+  /** One status or several (repeated `?status=`, any-match). */
   status?: EventStatus | EventStatus[];
   tag?: string;
   author?: string;
@@ -135,15 +107,11 @@ export interface EventListParams {
   cursor?: string | null;
 }
 
-/** Build the `GET /events` query string for one lifecycle view. Defaults to
- *  `view=located`; the requested queue passes `view=requested`. The response
- *  is capped at 100 rows whatever `limit` asks for, so reading further means
- *  passing the `cursor` the previous page's `Link` header carried. */
+/** Build the `GET /events` query. The response caps at 100 rows; read further with the
+ *  previous page's `cursor`. */
 export function eventListPath(params: EventListParams = {}): string {
   const search = new URLSearchParams();
   if (params.view) search.set("view", params.view);
-  // `status` repeats, so a caller passing one and a caller passing a set build
-  // the same query.
   if (params.status) {
     for (const status of [params.status].flat()) {
       search.append("status", status);
@@ -157,10 +125,8 @@ export function eventListPath(params: EventListParams = {}): string {
   return `/events${qs ? `?${qs}` : ""}`;
 }
 
-/** The optional camera-position pair for a submit / geolocate call, ready to
- *  spread into the input. Both-or-neither: a lone half is dropped (so a
- *  half-typed pair doesn't 400), and a non-numeric pair clears it. Shared by the
- *  submit and edit forms so the both-or-neither rule can't drift. */
+/** Camera-position pair to spread into the input. Both-or-neither: a lone half is
+ *  dropped, a non-numeric pair clears it. */
 export function parseCaptureCoords(
   latStr: string,
   lngStr: string
@@ -171,10 +137,7 @@ export function parseCaptureCoords(
   return { capture_source_lat: lat, capture_source_lng: lng };
 }
 
-/** The optional subject-coordinate guess a request may carry, ready to spread
- *  into the input. Same both-or-neither rule and strict parse as the camera
- *  point (`parseCaptureCoords`), so the two coordinate pairs on the submit form
- *  can't drift onto different validity rules. */
+/** Optional subject-coordinate guess; same rules as `parseCaptureCoords`. */
 export function parseGuessCoords(
   latStr: string,
   lngStr: string
@@ -189,78 +152,49 @@ export function getEvent(id: string): Promise<EventDetail> {
   return apiFetch<EventDetail>(`/events/${id}`);
 }
 
-/**
- * The generalized fulfil / submit transition: `POST /events/{id}/geolocate`,
- * multipart, mirroring create. Moves a `requested` (request fulfilment) or
- * `detected` event to `geolocated`, which publishes it: the event becomes the
- * vouched record, and every later change to it, the evidence anchor included,
- * is a new version through `saveVersion`. On a `requested` event the backend transfers
- * ownership to the geolocator. The form posts the whole state; the server
- * writes it atomically. New media ride in `files`; existing media are dropped
- * via `remove_media_ids`. Only `detected_from_url` (the provenance anchor) and
- * `status` carry no field.
- */
+/** Form state for geolocate and create. New media ride in `files`; existing media drop
+ *  via `remove_media_ids`. */
 export interface EventEditInput {
   title: string;
   lat: number;
   lng: number;
-  /** Optional camera position (where the footage was shot from), distinct from
-   *  the subject `lat` / `lng`. Both halves or neither; a lone half is a 400. */
+  /** Camera position; both halves or neither (a lone half is a 400). */
   capture_source_lat?: number;
   capture_source_lng?: number;
   source_url: string;
-  /** Optional snapshot of `source_url`, archived by the analyst while filling
-   *  the form. Stored as the event's archived source by the same write, so a
-   *  snapshot that isn't one of `source_url` fails the whole submit. */
+  /** Archived copy of `source_url`; one that isn't a snapshot of it fails the submit. */
   source_snapshot_url?: string;
-  /** Optional mirrors of the same media, in the order the analyst listed them.
-   *  Blank entries are dropped at assembly; the server normalizes the rest. */
+  /** Mirrors of the same media, in order; blanks are dropped. */
   secondary_source_urls?: string[];
-  /** Optional snapshot of each mirror, index-aligned with the list above and
-   *  blank where that mirror was not archived. A mirror rots like the primary,
-   *  so every declared link carries its own archived-copy field; a snapshot
-   *  that isn't one of the mirror it sits beside fails the whole submit. */
+  /** Archived copy per mirror, index-aligned; a non-matching one fails the submit. */
   secondary_snapshot_urls?: string[];
-  /** Optional ISO `YYYY-MM-DD`; omitted when the footage doesn't establish
-   *  the date (reads as "Unknown"). */
+  /** ISO `YYYY-MM-DD`; omitted when unknown. */
   event_date?: string;
   /** Optional ISO `HH:MM`; empty / omitted clears it. */
   event_time?: string;
-  /** ISO datetime (`YYYY-MM-DDTHH:MM`, UTC). Required on the publish paths: a
-   *  post always has a time. Left empty on `saveVersion` the field is not
-   *  posted at all, and the published row keeps the instant it holds. */
+  /** ISO UTC `YYYY-MM-DDTHH:MM`. Required on publish; omitted on `saveVersion` when
+   *  empty so the row keeps its instant. */
   source_posted_at: string;
   proof?: Record<string, unknown> | null;
   /** Replaces the tag set wholesale. */
   tag_ids: string[];
-  /** Replaces the conflict set wholesale (the conflicts referential, separate
-   *  from tags). */
+  /** Replaces the conflict set wholesale. */
   conflict_ids: string[];
-  /** The author's declaration that the footage shows death, injury or human
-   *  remains. Blurs the media behind an age confirmation for readers. */
+  /** Footage shows death, injury or human remains; blurs media behind an age confirmation. */
   is_graphic?: boolean;
-  /** Ids of existing media to drop. */
   remove_media_ids: string[];
-  /** New source media to upload. */
   files: File[];
-  /** The proof body's inline images, held locally while typing and uploaded
-   *  here at publish. Matched to the proof doc's `placeholder://<filename>`
-   *  srcs by filename; the server rewrites each src to the stored URL. */
+  /** Inline proof images, uploaded at publish; matched to `placeholder://<filename>` srcs,
+   *  which the server rewrites. */
   proof_files: File[];
 }
 
-/** The multipart fields every write path encodes identically: metadata,
- *  the optional camera point (both-or-neither), and the tag set. Factored out
- *  of `appendEventFormFields` and `createEventRequest` so the two paths can't
- *  drift on this shared subset. The paths differ only on the subject point
- *  (`lat`/`lng` required on geolocate, optional on a request), the
- *  source-media key, and `proof_files`, which each caller appends itself. */
+/** Multipart fields shared by every write path (metadata, camera point, tags). */
 function appendSharedEventFields(
   fd: FormData,
   input: {
     title: string;
-    /** Optional on the version path alone, where an omitted field keeps the
-     *  source the published row holds. */
+    /** Optional on the version path alone (omitted keeps the stored source). */
     source_url?: string;
     source_snapshot_url?: string;
     secondary_source_urls?: string[];
@@ -276,23 +210,14 @@ function appendSharedEventFields(
   }
 ): void {
   fd.append("title", input.title);
-  // Always sent, never conditional: the geolocate path posts the whole state,
-  // so an omitted field would clear a flag the detection already carried.
+  // Always sent: geolocate posts the whole state, so omission would clear the flag.
   fd.append("is_graphic", String(input.is_graphic ?? false));
   if (input.source_url !== undefined) fd.append("source_url", input.source_url);
-  // The archived copy of that source, when the analyst made one on the form.
-  // Omitted rather than posted empty: the field is optional on all three paths.
   if (input.source_snapshot_url?.trim()) {
     fd.append("source_snapshot_url", input.source_snapshot_url.trim());
   }
-  // One append per link, plus the archived copy pasted beside it: the backend
-  // reads `secondary_source_urls` and `secondary_snapshot_urls` as repeated
-  // form fields, not JSON blobs (unlike the id lists below, whose items are
-  // opaque uuids), and pairs them by position. A row the analyst left blank is
-  // dropped here so an untouched field never posts an empty entry, and its
-  // snapshot goes with it, which is what keeps the two lists aligned across
-  // the drop. The copy entry is posted even when empty, so position i on the
-  // wire always names mirror i.
+  // Repeated form fields paired by position. Blank mirrors are dropped with their snapshot;
+  // the snapshot is posted even when empty so position i names mirror i.
   const mirrors = input.secondary_source_urls ?? [];
   const mirrorCopies = input.secondary_snapshot_urls ?? [];
   mirrors.forEach((url, index) => {
@@ -301,17 +226,14 @@ function appendSharedEventFields(
     fd.append("secondary_source_urls", trimmed);
     fd.append("secondary_snapshot_urls", (mirrorCopies[index] ?? "").trim());
   });
-  // Both-or-neither: only send the camera point when both halves are present,
-  // matching the backend `_optional_point` contract (a lone half is a 400).
+  // Both-or-neither, matching backend `_optional_point`.
   if (input.capture_source_lat !== undefined && input.capture_source_lng !== undefined) {
     fd.append("capture_source_lat", String(input.capture_source_lat));
     fd.append("capture_source_lng", String(input.capture_source_lng));
   }
   if (input.event_time) fd.append("event_time", input.event_time);
-  // Omitted rather than posted empty: on `save_version` an absent value keeps the
-  // instant the published row holds, so posting "" would ask the server to tell
-  // "blanked" from "untouched" on a field the form always renders. The publish
-  // paths require the field and reject a submit that leaves it out.
+  // Omitted when empty: on save_version an absent value keeps the stored instant.
+  // Publish paths reject its absence.
   if (input.source_posted_at) {
     fd.append("source_posted_at", input.source_posted_at);
   }
@@ -324,12 +246,8 @@ function appendSharedEventFields(
   }
 }
 
-/** Append the multipart fields every geolocation write posts. The source-media
- *  key differs by endpoint (create / request take a singular `file`, geolocate
- *  and the version path a plural `files` list for kept-plus-new), so the caller
- *  passes it. Builds on `appendSharedEventFields` and adds the always-present
- *  subject point, the optional `event_date`, the source media with the ids a
- *  swap drops, and the proof-body images. */
+/** Multipart fields every geolocation write posts. `sourceKey` is `file` for
+ *  create/request, `files` for geolocate and versions. */
 function appendEventFormFields(
   fd: FormData,
   input: Omit<EventEditInput, "remove_media_ids" | "source_url" | "files"> & {
@@ -348,14 +266,11 @@ function appendEventFormFields(
   for (const file of input.files ?? []) {
     fd.append(sourceKey, file);
   }
-  // The other half of a source swap, on the two paths that edit an existing
-  // row: the file above is the replacement, these are the rows it replaces.
-  // A create has nothing to drop and never carries the key.
+  // Rows the replacement file swaps out; a create never sends this.
   if (input.remove_media_ids?.length) {
     fd.append("remove_media_ids", JSON.stringify(input.remove_media_ids));
   }
-  // The proof body's inline images, matched to its `placeholder://` srcs by
-  // filename server-side. Nothing hits S3 until this submit.
+  // Matched to `placeholder://` srcs by filename server-side.
   for (const file of input.proof_files) {
     fd.append("proof_files", file);
   }
@@ -375,48 +290,24 @@ export function geolocateEvent(
   });
 }
 
-/** Create fields: the shared form minus geolocate's media-removal (a new
- *  event has no existing media to drop). */
 export type EventCreateInput = Omit<EventEditInput, "remove_media_ids">;
 
-/** How long a version's edit note may run. Mirrors
- *  `schemas/event.VERSION_NOTE_MAX_LENGTH`: the form stops at the cap instead of
- *  letting the server 422 a note someone just typed out. */
+/** Mirrors `schemas/event.VERSION_NOTE_MAX_LENGTH`; change both. */
 export const VERSION_NOTE_MAX_LEN = 280;
 
-/**
- * Correcting a published event: the geolocate form, whole. The evidence anchor
- * is editable here too, `source_url` on its own field and the source media on
- * the `remove_media_ids` + `files` pair, under the same one-source cap: the
- * import sometimes picks the wrong media out of a multi-media post, and a
- * better copy of the same footage turns up later. The version this write files
- * carries the anchor it supersedes, so the record still shows what the claim
- * rested on. `source_url` is optional here alone: omitted, the published row
- * keeps the source it holds.
- */
+/** A correction to a published event: the geolocate form, whole. `source_url` is
+ *  optional here alone (omitted keeps the stored source). */
 export type EventVersionInput = Omit<EventEditInput, "source_url"> & {
-  /** Optional: omitted or empty keeps the stored source URL, since a published
-   *  row always carries one. The server reads an empty form value as an absent
-   *  one, so posting the field blank is the same as leaving it out; a
-   *  whitespace-only value is a 400. */
+  /** Omitted or empty keeps the stored URL; whitespace-only is a 400. */
   source_url?: string;
-  /** The editor's own words about this edit, stored on the version it
-   *  supersedes. Optional, capped at `VERSION_NOTE_MAX_LEN`. */
+  /** Editor's note, stored on the superseded version. Capped at `VERSION_NOTE_MAX_LEN`. */
   note?: string;
-  /** Optional snapshot of `detected_from_url`, the post a machine detection
-   *  came from. Only this endpoint takes it: the provenance link is immutable
-   *  from the moment the detection exists, so the published row is where its
-   *  copy is recorded. Archiving it is not a change to it, which is why an
-   *  otherwise-locked field carries the paste. */
+  /** Snapshot of `detected_from_url`. Only this endpoint takes it, since that link is immutable. */
   detected_from_snapshot_url?: string;
 };
 
-/**
- * Save a correction to a published event: `POST /events/{id}/versions`
- * (multipart), owner-only and `geolocated`-only. The server files the
- * superseded state as a version and moves the row to the next `version_no`,
- * so the edit adds a version rather than overwriting the record.
- */
+/** `POST /events/{id}/versions`: owner-only, `geolocated`-only. Files the superseded
+ *  state as a version. */
 export function saveVersion(
   id: string,
   input: EventVersionInput
@@ -426,8 +317,6 @@ export function saveVersion(
   if (input.note?.trim()) {
     fd.append("note", input.note.trim());
   }
-  // The provenance link's copy, appended here rather than in the shared
-  // assembler: this is the one endpoint that declares the field.
   if (input.detected_from_snapshot_url?.trim()) {
     fd.append("detected_from_snapshot_url", input.detected_from_snapshot_url.trim());
   }
@@ -437,16 +326,9 @@ export function saveVersion(
   });
 }
 
-// ── Version history ───────────────────────────────────────────────────────
-//
-// The read side of a corrected record. `GET /events/{id}/versions` serves the
-// superseded versions newest first and `GET /events/{id}/versions/{n}` serves
-// one of them; the live row is the current version and is served by
-// `GET /events/{id}` alone. Everything below turns those three payloads into
-// what `/events/{id}/history` and `/events/{id}/vN` render.
+// Version history: reads behind /events/{id}/history and /vN.
 
-/** One page of an event's history. `cursor` is the value the previous page's
- *  `Link: rel="next"` carried, `null` for the first page. */
+/** Cursor is the previous page's `Link: rel="next"` value, `null` for the first. */
 export function eventVersionsPath(id: string, cursor: string | null): string {
   const params = new URLSearchParams();
   if (cursor) params.set("cursor", cursor);
@@ -454,31 +336,21 @@ export function eventVersionsPath(id: string, cursor: string | null): string {
   return `/events/${id}/versions${query ? `?${query}` : ""}`;
 }
 
-/** One filed version by its number, the direct read behind a `/vN` address. */
 export function eventVersionPath(id: string, versionNo: number): string {
   return `/events/${id}/versions/${versionNo}`;
 }
 
-/** Where one version of an event is read. The current version keeps the
- *  canonical `/events/{id}`, so this is only ever a past version's address. */
+/** Past versions only; the current one keeps `/events/{id}`. */
 export function eventVersionHref(id: string, versionNo: number): string {
   return `/events/${id}/v${versionNo}`;
 }
 
-/** Where an event's version list is read. */
 export function eventHistoryHref(id: string): string {
   return `/events/${id}/history`;
 }
 
-/**
- * Whether this row has been published, retraction included.
- *
- * A version only exists past publication (every other state is edited in
- * place), and retracting a published row keeps its history: the surfaces that
- * offer the history therefore ask this rather than `status === "geolocated"`,
- * which would drop the way into the record exactly when a reader most needs to
- * walk what the record used to claim.
- */
+/** Whether the row was ever published, retraction included. Asking this instead of
+ *  `status === "geolocated"` keeps history reachable after a retraction. */
 export function hasPublishedRecord(
   geo: Pick<EventDetail, "status" | "before_closed_status">
 ): boolean {
@@ -488,19 +360,14 @@ export function hasPublishedRecord(
   );
 }
 
-/** The version number a `/events/{id}/vN` path segment names, or `null` when
- *  the segment is not one. `v0` and any other shape are `null`, so the route
- *  answers 404 rather than asking the API about a number no event carries. */
+/** Version number of a `vN` segment, or `null` (`v0` and other shapes, so the route 404s). */
 export function parseVersionSegment(segment: string): number | null {
   if (!/^v[1-9][0-9]*$/.test(segment)) return null;
   return Number(segment.slice(1));
 }
 
-/** The one human label per versioned field, in the order a changed-field list
- *  prints them. They are the names the event page already prints over the same
- *  values, so a reader recognises what moved without a second vocabulary. Keyed
- *  by the fields `services/versions.build_snapshot` files, since a field a
- *  version cannot carry is a field no diff can name. */
+/** One label per versioned field, in changed-list order. Keyed by the fields
+ *  `services/versions.build_snapshot` files. */
 const VERSION_FIELD_LABELS = {
   title: "Title",
   source_url: "Source URL",
@@ -532,12 +399,9 @@ const asCoords = (value: unknown): EventDetail["event_coords"] => {
 
 const asList = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
 
-/** The archived copies an event view carries, keyed by the link each covers.
- *
- *  The read shape spreads them across three fields (the source, the provenance
- *  link, and one entry per mirror index-aligned with `secondary_source_urls`);
- *  this is the one walk that gathers them, so the version overlay, the
- *  changed-field list and the edit form read the same set. */
+/** Archived copies an event view carries, keyed by covered link. The read shape spreads
+ *  them over three fields; this one walk gathers them so the version overlay, the
+ *  changed-field list and the edit form agree. */
 export function archivedCopies(view: EventDetail): Map<string, ArchivedLink> {
   const copies = new Map<string, ArchivedLink>();
   const add = (url: string | null, copy: ArchivedLink | null | undefined) => {
@@ -551,13 +415,9 @@ export function archivedCopies(view: EventDetail): Map<string, ArchivedLink> {
   return copies;
 }
 
-/** The archived copies one filed version held, keyed by the link each covers.
- *
- *  `services/versions.build_snapshot` files them, so a version renders the
- *  copies as they stood rather than today's. A snapshot with no `archives` key
- *  states nothing about them (a version filed before they were versioned, or a
- *  redacted one), so the live row's copies stand in: claiming the record had
- *  none would print an archival that never happened as a change. */
+/** Archived copies one filed version held (`services/versions.build_snapshot`), keyed by
+ *  link. A snapshot without an `archives` key (pre-versioning or redacted) falls back to
+ *  the live row's copies, so no phantom change prints. */
 function snapshotArchivedCopies(
   snapshot: EventVersion["snapshot"],
   current: EventDetail
@@ -579,34 +439,15 @@ function snapshotArchivedCopies(
   return copies;
 }
 
-/**
- * One filed version as the shape every event surface already renders.
- *
- * The snapshot carries the fields an edit can move, the evidence anchor
- * included: `source_url` and `source_media` are what the record rested on at
- * that version, and the media fragment is the whole row shape, since the row
- * itself is gone once a later version replaced it (an event carries one source
- * media). The anchor is read off the snapshot alone, never off the live row:
- * every filed version names it, so standing the live row in would render the
- * media that replaced the anchor on the versions it replaced and hand the
- * changed-field list the same value on both sides of a swap. The row's identity
- * (id, owner, status, creation date) always comes from the current row, no edit
- * being able to move it. `version_no` is the version being read, so the page
- * prints which one it is.
- *
- * Two overlays are rebuilt rather than copied. The archived copies are the ones
- * this version held, and they are spread back over the three fields that carry
- * them by the link each covers rather than by position, so a mirror takes the
- * copy recorded for its own URL. A conflict is stored on the snapshot as its id
- * and name alone, so the referential row is used when the id still resolves and
- * the stored name stands in when it does not, which is what keeps a version
- * readable after a conflict is renamed or deleted.
- *
- * The snapshot arrives untyped (the backend declares it as a JSON object), so
- * every field is read defensively: a redacted version, whose snapshot is `{}`,
- * maps to the current row's immutables and empty content rather than throwing.
- * Callers render the redaction notice instead of this view.
- */
+/** One filed version as the event shape every surface renders.
+ *  The anchor (`source_url`, `source_media`) is read from the snapshot alone, never the live
+ *  row, so the changed-field list sees different values across a media swap. Identity (id,
+ *  owner, status, creation date) comes from the current row.
+ *  Archived copies are re-spread over the three fields by link, not position. A conflict
+ *  resolves to the live row when its id still exists, else the stored name, so a version
+ *  survives a rename or delete.
+ *  The snapshot is untyped JSON, so every field is read defensively; a redacted `{}`
+ *  snapshot maps to the current row's immutables and empty content. */
 export function snapshotToEventView(
   current: EventDetail,
   version: EventVersion
@@ -622,8 +463,7 @@ export function snapshotToEventView(
     version_no: version.version_no,
     source_url: sourceUrl,
     media,
-    // Derived from the same media, so a preview of this version shows the
-    // footage it rested on rather than the one that replaced it.
+    // Derived from the same media, so a preview shows the footage this version rested on.
     thumbnail: media[0] ?? null,
     archived_source: archivedByUrl.get(sourceUrl ?? "") ?? null,
     archived_detected_from: archivedByUrl.get(current.detected_from_url ?? "") ?? null,
@@ -633,11 +473,8 @@ export function snapshotToEventView(
     event_date: asNullableString(snapshot.event_date),
     event_time: asNullableString(snapshot.event_time),
     source_posted_at: asNullableString(snapshot.source_posted_at),
-    // Ratcheted against the live row, the way the backend ratchets the column:
-    // the media a version page renders is the live media, so a flag raised
-    // after this version was filed still covers what the page shows. Only the
-    // other direction is a version's own fact, a version filed while the flag
-    // was already up.
+    // Ratcheted against the live row like the backend column: the media shown is the live
+    // media, so a flag raised later still covers it.
     is_graphic: current.is_graphic || snapshot.is_graphic === true,
     secondary_source_urls: secondarySourceUrls,
     archived_secondary_sources: secondarySourceUrls.map(
@@ -660,10 +497,7 @@ export function snapshotToEventView(
   };
 }
 
-/** Two instants are the same moment whatever their spelling: the snapshot and
- *  the live row serialise the same column through two paths, so a comparison
- *  on the strings would report a change on `+00:00` against `Z`. An
- *  unparseable value falls back to the string it is. */
+/** Same moment whatever the spelling (`+00:00` vs `Z`); unparseable values compare as strings. */
 function sameInstant(a: string | null, b: string | null): boolean {
   if (a === null || b === null) return a === b;
   const [left, right] = [Date.parse(a), Date.parse(b)];
@@ -678,42 +512,22 @@ const sameCoords = (
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((value, index) => value === b[index]);
 
-/** Two clock times are the same time to the minute, which is the precision the
- *  field carries: the API serves `HH:MM:SS` and the form's `<input type="time">`
- *  holds `HH:MM`, so a raw string comparison would call an untouched field
- *  changed. */
+/** Same time to the minute: the API serves `HH:MM:SS`, the time input holds `HH:MM`. */
 const sameTime = (a: string | null, b: string | null): boolean =>
   (a?.slice(0, 5) ?? null) === (b?.slice(0, 5) ?? null);
 
-/** Two unordered relationships hold the same members. Tags and conflicts are
- *  sets the API serves in whatever order it read them, so a position-sensitive
- *  comparison would announce a changed field on an edit that touched neither. */
+/** Same members in any order (the API serves tags and conflicts unordered). */
 const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
   sameList([...a].sort(), [...b].sort());
 
-/** One version's archived copies as comparable pairs: which link, which
- *  snapshot. The provider is inferred from the snapshot's host, so the pair is
- *  the whole fact; the set is unordered, since the copies are keyed by link. */
+/** A version's archived copies as comparable (link, snapshot) pairs; the snapshot host implies the provider. */
 const archivedPairs = (view: EventDetail): string[] =>
   [...archivedCopies(view)].map(([original, copy]) => `${original} ${copy.url}`);
 
-/**
- * The versioned fields that differ between one version and the one before it,
- * as the labels a history row prints ("Title, Coordinates, Proof").
- *
- * Computed on the client from two adjacent versions, since the API serves what
- * each version held rather than what an edit did. Both arguments are the view
- * shape, so the current row and a mapped snapshot compare identically.
- *
- * Tags and conflicts compare by identity rather than by name: a referential row
- * renamed under a published event changes no version. They also compare as
- * sets, the relationship being unordered. The inline images are not their own
- * entry: they live inside the proof document, so a body whose images moved is a
- * body that moved, and naming both would print two labels for one edit. The
- * archived copies compare as the set of (link, snapshot) pairs the version
- * carries, which is what the reader sees beside each link, so recording a copy
- * is announced as *Archived copies* the way any other correction is announced.
- */
+/** Labels of the versioned fields that differ between a version and the one before it,
+ *  computed client side from two adjacent views. Tags and conflicts compare by id, as
+ *  sets. Inline images are not their own entry (they live in the proof). Archived copies
+ *  compare as (link, snapshot) pairs. */
 export function changedFields(version: EventDetail, previous: EventDetail): string[] {
   const ids = (rows: readonly { id: string }[]) => rows.map((row) => row.id);
   const changed: string[] = [];
@@ -722,8 +536,7 @@ export function changedFields(version: EventDetail, previous: EventDetail): stri
   };
   flag(VERSION_FIELD_LABELS.title, version.title !== previous.title);
   flag(VERSION_FIELD_LABELS.source_url, version.source_url !== previous.source_url);
-  // By identity: a swap is a new row, and the media a version rendered is named
-  // by the snapshot that filed it.
+  // By identity: a swap is a new row.
   flag(VERSION_FIELD_LABELS.source_media, !sameList(ids(version.media), ids(previous.media)));
   flag(
     VERSION_FIELD_LABELS.event_coords,
@@ -760,20 +573,13 @@ export function changedFields(version: EventDetail, previous: EventDetail): stri
   return changed;
 }
 
-/** The editable state the edit form holds, as the strings its inputs carry.
- *
- *  Spelled out per field rather than reusing `EventVersionInput`, because the
- *  check runs on what is typed rather than on what would be posted: the coordinate
- *  inputs are still strings, and the two snapshot pastes are what the analyst
- *  archived rather than what the row stores. */
+/** The edit form's state as the strings its inputs carry (typed values, not posted values). */
 export interface EventVersionFormState {
   title: string;
-  /** The source URL as the input holds it. Blank keeps the stored one, which is
-   *  what the endpoint does with an omitted field. */
+  /** Blank keeps the stored URL, like an omitted field. */
   sourceUrl: string;
-  /** Whether the form stages a source-media swap: a stored row marked for
-   *  removal, or a file queued for upload. Either moves the anchor, and neither
-   *  can be compared as a value, the upload having no URL until it lands. */
+  /** A staged source-media swap (row marked for removal or file queued); not comparable as a
+   *  value since an upload has no URL yet. */
   sourceMediaMoved: boolean;
   lat: string;
   lng: string;
@@ -797,25 +603,13 @@ const coordsOf = (lat: string, lng: string): EventDetail["event_coords"] => {
   return parsedLat === null || parsedLng === null ? null : { lat: parsedLat, lng: parsedLng };
 };
 
-/**
- * Whether saving this form would file a version that differs from the one on
- * screen.
- *
- * The form posts the whole editable state, so a save with nothing touched would
- * otherwise ask the server to mint a version whose changed-field list is empty.
- * The check runs on the client so that save costs no request, and the server
- * refuses the same edit with `nothing_changed`, which is the authority: the row
- * may have moved under a form that has been open a while.
- *
- * The comparison is `changedFields` itself, over a candidate assembled from the
- * form state, so the two cannot come to disagree about which fields a version
- * carries. Two legs are computed here instead. The archived copies: a paste is
- * a change only where it differs from the copy that link already holds, and
- * spreading the pastes back over the three fields `archivedCopies` reads would
- * have to invent a provider for each, which nothing compares. And the source
- * media: a staged swap is a change by construction, since a file queued for
- * upload has no id to compare against the row's.
- */
+/** Whether saving would file a version that differs from the one on screen. The server
+ *  refuses the same edit with `nothing_changed` and is the authority (the row may have
+ *  moved).
+ *  Delegates to `changedFields` over a candidate built from the form, except two legs:
+ *  archived copies (a paste counts only where it differs from the link's stored copy,
+ *  and re-spreading would have to invent providers) and source media (a queued upload
+ *  has no id to compare). */
 export function hasVersionChanges(
   geo: EventDetail,
   state: EventVersionFormState
@@ -842,30 +636,24 @@ export function hasVersionChanges(
   const candidate: EventDetail = {
     ...geo,
     title: state.title.trim(),
-    // Blank keeps the stored source, the way an omitted field does server side.
+    // Blank keeps the stored source, like the server.
     source_url: state.sourceUrl.trim() || geo.source_url,
     event_coords: coordsOf(state.lat, state.lng),
     capture_source_coords: coordsOf(state.captureLat, state.captureLng),
     event_date: state.eventDate || null,
     event_time: state.eventTime || null,
-    // Compared at the input's own precision, which is what the save posts. The
-    // datetime input stops at the minute, so a field still holding what the row
-    // seeded it with is untouched however many seconds the column carries, and
-    // the save omits it rather than truncating the stored instant. A blanked
-    // field keeps the row's value too, the way the endpoint reads an absent one.
-    // Only a value the analyst actually changed is a new instant, and the input
-    // is a UTC wall clock, which is what the `Z` names.
+    // Compared at the input's minute precision: an untouched field is unchanged however many
+    // seconds the column carries, and a blanked one keeps the row's value. The input is a UTC
+    // wall clock, hence the `Z`.
     source_posted_at:
       state.sourcePostedAt &&
       state.sourcePostedAt !== toDatetimeLocalUTC(geo.source_posted_at)
         ? `${state.sourcePostedAt}Z`
         : geo.source_posted_at,
-    // Ratcheted, as the server ratchets it: a cleared switch on a flagged row
-    // changes nothing.
+    // Ratcheted like the server: clearing the switch on a flagged row changes nothing.
     is_graphic: geo.is_graphic || state.isGraphic,
     secondary_source_urls: mirrors,
-    // Realigned with the mirrors above, since `archivedCopies` pairs the two
-    // lists by position.
+    // Realigned with `mirrors`; `archivedCopies` pairs by position.
     archived_secondary_sources: mirrors.map((url) => stored.get(url) ?? null),
     // Only the ids are compared, so the rest of each row is the loaded one.
     tags: state.tagIds.map((id) => ({ id })) as EventDetail["tags"],
@@ -875,72 +663,42 @@ export function hasVersionChanges(
   return changedFields(candidate, geo).length > 0;
 }
 
-/** What the edit form says when a save would file a version identical to the one
- *  on screen.
- *
- *  Word for word the sentence `services/events.save_version` raises with
- *  `nothing_changed`, so the client-side check (which spends no request) and the
- *  server's refusal read the same. Which is also why the form prefers the
- *  server's own message when it has one: the row may have moved under a form
- *  that has been open a while, and the server names the version it actually
- *  compared against. */
+/** Word for word the sentence `services/events.save_version` raises with
+ *  `nothing_changed`; the form prefers the server's message when it has one. */
 export const nothingChangedMessage = (versionNo: number): string =>
   `Nothing changed since version ${versionNo}.`;
 
-/** One version of an event, as the history list and the version page read it. */
 export interface EventVersionEntry {
   /** Which version this is. `1` is the record as it was published. */
   number: number;
   /** True for the live row, the one `/events/{id}` serves. */
   current: boolean;
-  /** The event as it stood at this version, or `null` when the version was
-   *  redacted and carries no content to render. */
+  /** The event at this version, or `null` when redacted. */
   view: EventDetail | null;
-  /** Who produced this version, and when. `null` when the row that carries
-   *  that byline and date could not be read, so neither is stated. */
+  /** Who produced this version and when; `null` when the carrying row could not be read. */
   editor: EventDetail["owner"] | null;
   createdAt: string | null;
   /** That editor's own words about the edit, `null` when they left none. */
   note: string | null;
-  /** Whether an admin blanked this version's content. */
   redacted: boolean;
-  /** The fields this version changed against the one before it, empty when the
-   *  edit moved none of them. `null` when the two versions cannot be compared
-   *  at all: version 1 had nothing before it, and a redacted version on either
-   *  side carries no content to compare. */
+  /** Fields changed against the previous version; `null` when not comparable (version 1, or
+   *  a redacted side). */
   changed: string[] | null;
 }
 
-/** The version rows one version is assembled from.
- *
- *  `own` holds this version's content, and is absent for the current version,
- *  which is the live row rather than a filed one. `producedBy` holds the edit
- *  that **produced** this version, which the API files on the version that edit
- *  superseded, so it is the row numbered one lower. `previous` is the view of
- *  that lower version, the base the changed-field list is computed against. */
+/** Rows one version is assembled from. `own` is its content (absent for the live row);
+ *  `producedBy` is the row numbered one lower, since the API files an edit's byline on the
+ *  version it superseded; `previous` is that lower version's view, the diff base. */
 export interface EventVersionEntryRows {
   own?: EventVersion | null;
   producedBy?: EventVersion | null;
   previous?: EventDetail | null;
 }
 
-/**
- * One version of an event, from the rows that describe it.
- *
- * A version is described by the edit that **produced** it, the way a page
- * history reads: who made that edit, when, their note about it, and the fields
- * it moved. The API files the two halves of that apart, because a version row
- * carries the content of the version it holds alongside the byline, date and
- * note of the edit that superseded it. Version `n` therefore takes its content
- * from row `n` and its authorship from row `n - 1`; version 1, which no edit
- * produced, takes the analyst who published the record and `geolocated_at`, the
- * date they published it. `created_at` is the submission or detection stamp,
- * which is when the record was opened rather than when version 1 came to be.
- *
- * A version above 1 whose producing row is missing states neither byline nor
- * date: the edit that made it is what the reader is being told about, and an
- * unread row is not a reason to credit the publication instead.
- */
+/** One version, described by the edit that produced it. Content comes from row `n`,
+ *  authorship from row `n - 1`; version 1 takes the publisher and `geolocated_at` (not
+ *  `created_at`, which is when the record was opened). A version above 1 with no producing
+ *  row states neither byline nor date rather than crediting the publication. */
 export function eventVersion(
   current: EventDetail,
   number: number,
@@ -968,31 +726,20 @@ export function eventVersion(
   };
 }
 
-/**
- * The event's versions, newest first, assembled from the current row and the
- * history rows loaded so far.
- *
- * `hasMore` is the walk's own answer about whether the history has further
- * pages. While it does, the oldest row loaded is authorship for the version
- * above it rather than a version of its own, so it is held back until the page
- * that completes it arrives: a row is either whole or absent, never a version
- * number with no editor beside it.
- */
+/** Versions newest first. While `hasMore`, the oldest loaded row is authorship for the
+ *  version above it, so it is held back until the completing page arrives: no version
+ *  number appears without an editor. */
 export function eventVersions(
   current: EventDetail,
   rows: EventVersion[],
   hasMore = false
 ): EventVersionEntry[] {
   const byNumber = new Map(rows.map((row) => [row.version_no, row]));
-  // `+ 1`: while the walk has pages, the lowest row loaded is authorship for
-  // the version above it and not yet a version of its own, since its own
-  // authorship sits on the row below, which the next page carries. So the walk
-  // stops one version above it. A finished walk reaches version 1, which no
-  // edit produced.
+  // `+ 1`: while paging, the lowest loaded row is only authorship for the version above, so
+  // stop one above it. A finished walk reaches version 1.
   const oldest = hasMore && rows.length > 0 ? Math.min(...byNumber.keys()) + 1 : 1;
 
-  // The version below is built as its own row too, so this is the diff base
-  // only: the content it reads is the same snapshot either way.
+  // Diff base only; the content is the same snapshot.
   const viewOf = (number: number): EventDetail | null =>
     eventVersion(current, number, { own: byNumber.get(number) }).view;
 
@@ -1011,12 +758,7 @@ export function eventVersions(
   return entries;
 }
 
-/**
- * Create a geolocation: `POST /events` (multipart), returning the new id for the
- * redirect. Shares the form assembly with `geolocateEvent`; the source media is
- * the one field that differs (create sends a singular `file`, geolocate a plural
- * `files` list), so the assembler takes the key.
- */
+/** `POST /events` (multipart); returns the new id. */
 export function createEvent(input: EventCreateInput): Promise<{ id: string }> {
   const fd = new FormData();
   appendEventFormFields(fd, input, "file");
@@ -1026,30 +768,22 @@ export function createEvent(input: EventCreateInput): Promise<{ id: string }> {
   });
 }
 
-/**
- * Open a request (a `requested` event): `POST
- * /events/requests` (multipart). An approximate coordinate guess is optional
- * (both `lat`/`lng` or neither); `event_date` is optional (often unknown at
- * request time); one source media file is required.
- */
+/** Open a request: `POST /events/requests` (multipart). The coordinate guess is
+ *  both-or-neither; one source media file is required. */
 export interface EventRequestInput {
   title: string;
   source_url: string;
-  /** Optional snapshot of `source_url`, same contract as a geolocation's: the
-   *  submit form posts either shape, so a paste made there is kept on both. */
+  /** Snapshot of `source_url`, same contract as a geolocation's. */
   source_snapshot_url?: string;
-  /** Optional mirrors, same contract as a geolocation's (see `EventEditInput`). */
+  /** Mirrors, same contract as a geolocation's. */
   secondary_source_urls?: string[];
-  /** Optional snapshot of each mirror, index-aligned with the list above, same
-   *  contract as a geolocation's. */
+  /** Snapshot per mirror, index-aligned. */
   secondary_snapshot_urls?: string[];
-  /** In-progress proof (Tiptap JSON), mirroring a geolocation's `proof`. */
   proof?: Record<string, unknown> | null;
   /** Optional approximate guess: both halves or neither. */
   lat?: number;
   lng?: number;
-  /** Optional camera position (where the footage was shot from), if known.
-   *  Both halves or neither. Distinct from the subject guess above. */
+  /** Optional camera position; both halves or neither. */
   capture_source_lat?: number;
   capture_source_lng?: number;
   /** Optional, ISO YYYY-MM-DD: when the event happened. */
@@ -1058,24 +792,16 @@ export interface EventRequestInput {
   event_time?: string;
   /** ISO datetime (`YYYY-MM-DDTHH:MM`, UTC): when the source posted. Required. */
   source_posted_at: string;
-  /** Same author declaration a geolocation carries (see `EventEditInput`). */
   is_graphic?: boolean;
   tag_ids?: string[];
   conflict_ids?: string[];
   files: File[];
-  /** The proof body's inline images, held locally while typing and uploaded
-   *  here at publish (matched to the doc's `placeholder://` srcs). Optional on a
-   *  request: it may be work started but not finished, or a blank call. */
+  /** Inline proof images, uploaded at publish. Optional on a request, which may be unfinished. */
   proof_files: File[];
 }
 
-/** Append the multipart fields the two request write paths post identically.
- *  A request's deltas from a geolocation live here: the subject point is
- *  optional (each half guarded, not both-or-neither), `event_date` is optional,
- *  and the proof body's images ride along with no image floor behind them. The
- *  source media is what the two paths differ on, so the caller passes its key:
- *  a create carries the singular `file`, an edit the plural `files` plus the
- *  `remove_media_ids` naming what that file replaces. */
+/** Multipart fields both request write paths post. Unlike a geolocation, the subject point
+ *  is optional per half and proof images have no image floor. */
 function appendRequestFormFields(
   fd: FormData,
   input: EventRequestInput & { remove_media_ids?: string[] },
@@ -1107,22 +833,13 @@ export function createEventRequest(input: EventRequestInput): Promise<EventDetai
   });
 }
 
-/**
- * Correct an open request: `POST /events/{id}/request` (multipart), owner-only
- * and `requested`-only. The create form's fields, whole, plus the source-media
- * swap an existing row needs. No version is filed: a version supersedes a
- * vouched claim, and a request is a question, so the row is overwritten and
- * keeps its id, its requester and its provenance. Past fulfilment the same
- * correction goes through `saveVersion`, which does file one.
- */
+/** Correct an open request: `POST /events/{id}/request`, owner-only, `requested`-only. No
+ *  version is filed (a request is a question, not a vouched claim): the row is overwritten. */
 export type EventRequestEditInput = EventRequestInput & {
-  /** Ids of existing source media to drop; the replacement rides in `files`,
-   *  under the one-source cap every write shares. */
+  /** Existing source media to drop; the replacement rides in `files`. */
   remove_media_ids: string[];
-  /** Optional here, unlike on the create form: the bot opens a request whose
-   *  source date it could not read, so an owner corrects that row without
-   *  inventing an instant. An empty value keeps what the row holds, the way
-   *  `saveVersion` reads the same field; only a value replaces it. */
+  /** Optional here: the bot opens requests whose source date it could not read. Empty keeps
+   *  the stored value. */
   source_posted_at: string;
 };
 
@@ -1138,11 +855,8 @@ export function updateEventRequest(
   });
 }
 
-/**
- * Import one of your own X posts: `POST /events/import-from-tweet` runs the
- * detection engine over it and answers with the detections it created, updated or
- * left alone, plus the warnings review has to answer.
- */
+/** `POST /events/import-from-tweet`: runs detection over one of your own X posts and
+ *  returns the detections created, updated or left alone, plus warnings. */
 export function importFromPost(url: string): Promise<TweetImportOutcome> {
   return apiFetch<TweetImportOutcome>("/events/import-from-tweet", {
     method: "POST",
@@ -1150,21 +864,15 @@ export function importFromPost(url: string): Promise<TweetImportOutcome> {
   });
 }
 
-/**
- * Step 1 of the archive import: `POST /events/import-archive/presign` mints
- * the staging key and the presigned direct-to-storage upload target (S3's
- * POST policy in prod, the dev upload endpoint locally, one shape).
- */
+/** Step 1: `POST /events/import-archive/presign` mints the staging key and a presigned upload target. */
 export function presignArchiveUpload(): Promise<ArchiveImportPresign> {
   return apiFetch<ArchiveImportPresign>("/events/import-archive/presign", {
     method: "POST",
   });
 }
 
-/** The upload leg failed in transit (network drop, an expired presign):
- *  nothing is staged or enqueued, so a retry of the same import is always
- *  safe. Distinct from an enqueue `ApiError`, and from the over-cap reject,
- *  which is terminal and carries `archive_too_large` instead. */
+/** The upload leg failed in transit; nothing is staged, so a retry is safe. Distinct from
+ *  `archive_too_large`, which is terminal. */
 export class ArchiveUploadError extends Error {
   constructor() {
     super("The upload didn't complete. Check your connection and try again.");
@@ -1172,18 +880,14 @@ export class ArchiveUploadError extends Error {
   }
 }
 
-/** The `detail` prefixes the dev upload endpoint answers 413 with
- *  (`backend/app/main.py`): the route's own streaming size guard, and the
- *  body-size middleware sitting ahead of it, whose message carries the byte
- *  cap after this prefix. */
+/** `detail` prefixes of the dev upload endpoint's 413s (`backend/app/main.py`): its size
+ *  guard and the body-size middleware. */
 const DEV_UPLOAD_TOO_LARGE_DETAILS = [
   "Upload exceeds the size guard",
   "Request body too large",
 ];
 
-/** Whether a 413 came from our own dev upload endpoint rather than from
- *  something in between. FastAPI answers `{"detail": "…"}`; anything that
- *  isn't that JSON shape with one of the known messages is an intermediary. */
+/** Whether a 413 came from the dev upload endpoint rather than an intermediary. */
 function isDevUploadTooLarge(body: string): boolean {
   let parsed: unknown;
   try {
@@ -1196,15 +900,9 @@ function isDevUploadTooLarge(body: string): boolean {
   return DEV_UPLOAD_TOO_LARGE_DETAILS.some((prefix) => detail.startsWith(prefix));
 }
 
-/** Classify a non-2xx from the storage POST. An over-cap body is terminal, so
- *  it must not surface as the retryable transit message: S3 rejects the POST
- *  policy's `content-length-range` with a 400 whose XML body carries
- *  `EntityTooLarge`, and the dev upload endpoint answers 413 on the same
- *  condition. The 413 is matched on that endpoint's own body, never on the
- *  status alone: a proxy between the analyst and storage can 413 a body that
- *  is under the cap (which the strip just proved), and calling that archive
- *  too large would steer them away from a retry that works. Everything else
- *  is transit. */
+/** Classify a non-2xx from the storage POST. An over-cap body is terminal (S3: 400
+ *  `EntityTooLarge`; dev endpoint: 413). The 413 is matched on that endpoint's body, since
+ *  a proxy can 413 an under-cap body and a retry would work. Everything else is transit. */
 function uploadFailure(status: number, body: string): Error {
   const tooLarge =
     body.includes("<Code>EntityTooLarge</Code>") ||
@@ -1212,14 +910,9 @@ function uploadFailure(status: number, body: string): Error {
   return tooLarge ? archiveTooLarge() : new ArchiveUploadError();
 }
 
-/**
- * Step 2: POST the stripped zip straight to storage (never through the API).
- * XHR rather than fetch for its upload progress events; `fields` go ahead of
- * the file part (S3 ignores fields after it), and no credentials ride along
- * (the presigned policy is the authorization). `onProgress` gets the raw
- * uploaded/total byte counts (the multipart envelope included), so the caller
- * can render real numbers, not just a fraction.
- */
+/** Step 2: POST the stripped zip straight to storage. XHR for progress events; `fields`
+ *  precede the file part (S3 ignores later ones); no credentials (the presigned policy
+ *  authorizes). `onProgress` gets raw byte counts. */
 export function uploadArchive(
   upload: ArchiveImportPresign["upload"],
   file: File,
@@ -1245,14 +938,9 @@ export function uploadArchive(
   });
 }
 
-/**
- * Step 3: `POST /events/import-archive` (JSON) verifies the staged object and
- * enqueues the backfill. Only the allowlisted entries (`tweets.js` +
- * `tweets_media/`) are ever extracted server-side. Returns the `queued` job
- * (202): the worker service runs the import (every row lands `detected` for
- * the caller to submit) and emails the outcome; poll the job for the counts.
- * `postEstimate` is the strip's cosmetic volume hint for the queued display.
- */
+/** Step 3: `POST /events/import-archive` verifies the staged object and enqueues the
+ *  backfill (202, `queued`). The worker lands rows as `detected` and emails the outcome.
+ *  `postEstimate` is the strip's cosmetic volume hint. */
 export function enqueueArchiveImport(
   uploadKey: string,
   postEstimate: number
@@ -1263,24 +951,16 @@ export function enqueueArchiveImport(
   });
 }
 
-/** One import job, owner-only: `GET /events/import-archive/{job_id}`. */
 export function getImportJob(jobId: string): Promise<ArchiveImportJob> {
   return apiFetch<ArchiveImportJob>(`/events/import-archive/${jobId}`);
 }
 
-/** The poll gave up (transient errors piled up, or the run outlived the
- *  window) while the job itself may still land: "we lost sight of it", never
- *  "it failed". The completion email stays the durable signal. */
+/** The poll gave up while the job may still land: lost sight, not failure. The completion
+ *  email is the durable signal. */
 export class ImportPollLost extends Error {}
 
-/**
- * Poll `jobId` until the worker lands it (`done` | `failed`); resolve with the
- * terminal job. Resolution can take minutes on a large archive: the completion
- * email is the durable signal, this keeps the upload page live while it's open.
- * A transient poll failure (network blip, a stray 429) is retried, not
- * surfaced as an import failure; only `maxErrors` consecutive misses or the
- * overall `timeoutMs` give up, with `ImportPollLost`.
- */
+/** Poll until the job is `done` or `failed`. Transient errors retry; `maxErrors`
+ *  consecutive misses or `timeoutMs` throw `ImportPollLost`. */
 export async function awaitImportJob(
   jobId: string,
   {
@@ -1292,8 +972,7 @@ export async function awaitImportJob(
     intervalMs?: number;
     maxErrors?: number;
     timeoutMs?: number;
-    /** Fires with every successfully polled snapshot (queued / running
-     *  progress included), so the page can render live progress. */
+    /** Fires on every successful poll, for live progress. */
     onUpdate?: (job: ArchiveImportJob) => void;
   } = {}
 ): Promise<ArchiveImportJob> {
@@ -1318,55 +997,32 @@ export async function awaitImportJob(
   }
 }
 
-/**
- * What stops one detection from publishing, as human labels. Empty means
- * the row carries the whole evidence floor and only needs the two human choices
- * (conflict, capture source) to publish: the "ready" state the queue badges.
- *
- * Mirrors the server floor in `services/events/batch._publish_detection`, and only that:
- * it judges evidence the machine either found or didn't, so the form-level
- * requirements a submit adds (a title, the source post time) are not part of
- * it. Computed on the queue payload the detections list already carries, so the
- * list can name what a row is missing before anything is posted; the server
- * stays the authority.
- *
- * The review flow judges its live, edited state against the fuller
- * `missingEventFields` (the geolocate floor it publishes through). The two
- * agree on which detections are publishable: a source-less detection carries neither
- * `source_url` nor `source_posted_at`, and the title a review always carries.
- *
- * Same rule, third expression: `services/events.detection_ready_predicate` is the
- * SQL the queue's `readiness` filter pages on. The queue labels each row from
- * here and asks the server which rows to show, so the two must agree. Both are
- * held to one table of detection shapes: `backend/tests/events/_readiness_cases.py`
- * on the server side, its mirror in `events.test.ts` here.
- */
+/** Human labels of what stops a detection from publishing; empty means "ready" (only the
+ *  conflict and capture-source choices remain).
+ *  Mirrors the server floor in `services/events/batch._publish_detection`, and only that:
+ *  form-level requirements (title, source post time) are excluded. The server stays the
+ *  authority. `services/events.detection_ready_predicate` is the SQL behind the queue's
+ *  `readiness` filter; both are held to `backend/tests/events/_readiness_cases.py` and its
+ *  mirror in `events.test.ts`. */
 export function batchCompletionBlockers(geo: {
   event_coords: unknown | null;
   source_url: string | null;
   proof: Record<string, unknown> | null;
   media: readonly Pick<Media, "role">[];
 }): string[] {
-  // Listed in the server's own check order, so the labels read in the order the
-  // API would have reported them had the row been posted.
+  // In the server's check order.
   const missing: string[] = [];
   if (!geo.source_url?.trim()) missing.push(FIELD_LABELS.source_url);
   if (!geo.event_coords) missing.push(FIELD_LABELS.coordinates);
-  // The floor is a `source` media row, not any media row. `EventRead` only
-  // serializes `source` rows today, so the predicate is stricter than the
-  // payload needs; it is written against the rule rather than the projection,
-  // and `Pick<Media, "role">` makes `tsc` hold it there.
+  // The floor is a `source` media row; `Pick<Media, "role">` keeps tsc holding it there.
   if (!geo.media.some((m) => m.role === "source")) missing.push(FIELD_LABELS.source_media);
-  // The proof-image leg: already satisfied when the import carried annotation
-  // media, and the one the queue most often has to flag.
+  // The leg the queue most often has to flag.
   if (!geo.proof || !proofHasImage(geo.proof)) missing.push(FIELD_LABELS.proof_image);
   return missing;
 }
 
-/** Close an event: withdraw a request, reject a detection, or retract a
- *  published geolocation (owner-only). `POST /events/{id}/close`. The reason
- *  stays publicly visible next to the closed badge, so it's required, and
- *  closing is terminal: the owner has no un-close. */
+/** `POST /events/{id}/close`: withdraw a request, reject a detection, or retract a
+ *  geolocation (owner-only). The reason is public, so required; closing is terminal. */
 export function closeEvent(id: string, closeReason: string): Promise<EventDetail> {
   return apiFetch<EventDetail>(`/events/${id}/close`, {
     method: "POST",
@@ -1374,29 +1030,18 @@ export function closeEvent(id: string, closeReason: string): Promise<EventDetail
   });
 }
 
-/** The five buckets a report picks from, and the body of the call. Aliased
- *  from the generated spec rather than restated, so a backend rename fails
- *  `tsc` instead of drifting. */
+/** Report buckets, aliased from the generated spec so a backend rename fails `tsc`. */
 export type ContentReportReason =
   components["schemas"]["ContentReportCreate"]["reason"];
 
-/** One report as the admin queue reads it: the bucket, the reporter's own
- *  words, and the verdict once one lands (`resolved_at === null` is the open
- *  test on the wire). */
+/** One report as the admin queue reads it (`resolved_at === null` means open). */
 export type ContentReport = components["schemas"]["ContentReportRead"];
 
-/** How long the reporter's own words may run. Mirrors
- *  `schemas/report.DETAILS_MAX_LENGTH`: the form stops at the cap instead of
- *  letting the server 422 a report someone just typed out. */
+/** Mirrors `schemas/report.DETAILS_MAX_LENGTH`; change both. */
 export const REPORT_DETAILS_MAX_LEN = 2000;
 
-/**
- * The human label per report bucket, in the reporter's own register: the
- * report form offers them and the admin queue reads them back, so one map
- * serves both and the two surfaces cannot name the same bucket differently.
- * Keyed by the generated union, so a new backend reason fails `tsc` here
- * instead of rendering as a raw enum value.
- */
+/** One label per report bucket, shared by the report form and the admin queue. Keyed by the
+ *  generated union so a new backend reason fails `tsc`. */
 export const REPORT_REASON_LABELS: Record<ContentReportReason, string> = {
   illegal_content: "Illegal content",
   graphic_not_flagged: "Graphic content, not flagged",
@@ -1405,13 +1050,8 @@ export const REPORT_REASON_LABELS: Record<ContentReportReason, string> = {
   other: "Something else",
 };
 
-/**
- * Report an event: `POST /events/{id}/report`. Open to anyone, signed in or
- * not: the people who most need to flag illegal or mislabelled footage are the
- * least likely to hold an account here. `apiFetch` omits the CSRF header when
- * no session cookie is present, so the same call works logged out; the backend
- * caps it per IP.
- */
+/** `POST /events/{id}/report`. Open to anyone: `apiFetch` omits the CSRF header with no
+ *  session cookie. The backend caps it per IP. */
 export function reportEvent(
   id: string,
   body: components["schemas"]["ContentReportCreate"]
@@ -1422,8 +1062,7 @@ export function reportEvent(
   });
 }
 
-/** The editable state a geolocation create/edit form validates before it lets
- *  the analyst submit or validate. Strings are the raw input values. */
+/** Raw input values a geolocation form validates before submit. */
 export interface EventFieldsState {
   title: string;
   lat: string;
@@ -1439,30 +1078,19 @@ export interface EventFieldsState {
 }
 
 export interface EventFieldsOptions {
-  /** Require >=1 source media. False when a request supplies the media.
-   *  Default true. */
+  /** Require >=1 source media (false when a request supplies it). Default true. */
   requireMedia?: boolean;
   /** Require the conflict + capture-source tag floor. Default true. */
   requireTags?: boolean;
-  /** Require the source post time. Default true, which is what publishing
-   *  asks for (`POST /events/{id}/geolocate` declares the field required).
-   *  False on a version: a detection whose source post time was never
-   *  resolved publishes through the batch completion with the column NULL, and
-   *  `POST /events/{id}/versions` takes the field as optional to match, so
-   *  flagging it here would block an edit the server accepts. */
+  /** Require the source post time. Default true; false on a version, since a detection
+   *  published with a NULL post time must stay editable (`POST /events/{id}/versions`
+   *  takes it as optional). */
   requireSourcePostedAt?: boolean;
 }
 
-/**
- * Every still-unmet required field for a geolocation, as `{key, label}` for
- * `IncompleteFormNotice` (the labels) and the in-form highlight (the keys): the
- * whole list at once, not the first miss. Drives the create submit form and the
- * detection submit form. Coordinate, media, and tag rules mirror the backend;
- * keep them in step with the server submit check. Proof must carry an image
- * (`proofHasImage`):
- * a geolocation's proof is a source ↔ satellite cross-reference, so text alone
- * can't be audited.
- */
+/** Every unmet required field for a geolocation, all at once: `label` for
+ *  `IncompleteFormNotice`, `key` for the highlight. Mirrors the backend submit check.
+ *  Proof must carry an image (`proofHasImage`): text alone can't be audited. */
 export function missingEventFields(
   s: EventFieldsState,
   {
@@ -1471,9 +1099,7 @@ export function missingEventFields(
     requireSourcePostedAt = true,
   }: EventFieldsOptions = {}
 ): MissingField[] {
-  // Same strict parse as the camera point (`cleanNumber`): a partially numeric
-  // coordinate (`"48.85abc"`) reads as missing rather than silently truncating
-  // to 48.85 at publish, so the readiness gate matches what actually posts.
+  // Strict parse like `cleanNumber`: `"48.85abc"` is missing, not truncated to 48.85.
   const lat = cleanNumber(s.lat);
   const lng = cleanNumber(s.lng);
   const coordsValid = lat !== null && lng !== null && inBounds(lat, lng);
@@ -1485,8 +1111,7 @@ export function missingEventFields(
   if (requireSourcePostedAt && !s.sourcePostedAt) {
     missing.push({ key: "source_posted_at", label: FIELD_LABELS.source_posted_at });
   }
-  // Proof must exist *and* contain an image. "Proof" (none at all) and "Proof
-  // image" (text-only) are distinct misses so the notice says which.
+  // "Proof" (none) and "Proof image" (text-only) are distinct misses.
   if (!s.proof) {
     missing.push({ key: "proof", label: FIELD_LABELS.proof });
   } else if (!proofHasImage(s.proof)) {
@@ -1504,19 +1129,9 @@ export function missingEventFields(
   return missing;
 }
 
-/**
- * Every still-unmet required field for a request, as human labels
- * for `IncompleteFormNotice`. A request is an unfinished geolocation, so its
- * floor is a subset of the geolocation one (no coordinates, dates, proof, or
- * tags), just enough to be actionable: a title, the source, and the footage.
- * Mirrors the server `POST /events/requests` requirements.
- *
- * `requireSourcePostedAt` defaults to true, which is what opening a request
- * asks for. False on the owner's edit: the bot opens a request whose source
- * date it could not read, and `POST /events/{id}/request` takes the field as
- * optional to match, so flagging it here would block an edit the server accepts
- * and push the owner into inventing an instant.
- */
+/** Every unmet required field for a request: a title, the source and the footage. Mirrors
+ *  `POST /events/requests`. `requireSourcePostedAt` is false on the owner's edit, since the
+ *  bot opens requests whose source date it could not read. */
 export function missingEventRequestFields(
   s: {
     title: string;

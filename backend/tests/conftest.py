@@ -6,14 +6,10 @@ would spill between tests and produce spurious 429s. The autouse fixture below
 disables the single shared limiter so tests stay deterministic; the rate-limit
 tests re-enable it explicitly.
 
-Parallel runs (``pytest -n auto``, pytest-xdist) get one database per worker:
-the controller process migrates a template database to alembic head once, and
-each worker clones it (``CREATE DATABASE .. TEMPLATE ..``) before the app is
-imported, so workers never share mutable state. A serial ``pytest`` run touches
-none of this and keeps today's behaviour (the DATABASE_URL database as-is).
-The rewrite below runs at import time on purpose: ``app.database`` binds its
-engine to ``settings.database_url`` at import, so the env var must be swapped
-before any ``app.*`` import.
+Parallel runs (pytest-xdist) get one database per worker: the controller
+migrates a template database to alembic head once, and each worker clones it.
+A serial run uses the DATABASE_URL database as-is. The rewrite below runs at
+import time because ``app.database`` binds its engine at import.
 """
 
 from __future__ import annotations
@@ -24,8 +20,7 @@ import sys
 from urllib.parse import urlsplit, urlunsplit
 
 _XDIST_WORKER = os.environ.get("PYTEST_XDIST_WORKER")
-# Resolved by the controller's pytest_configure and inherited by workers, so
-# every process agrees on the base URL even when it comes from a .env file.
+# Set by the controller and inherited by workers, so all agree on the base URL.
 _BASE_URL_ENV = "VIDIT_TEST_BASE_DB_URL"
 
 
@@ -65,8 +60,7 @@ from app.services.tweet_ingest import retry  # noqa: E402
 
 TEST_CSRF_TOKEN = "test-csrf-token"
 
-# Serializes worker clones: Postgres refuses concurrent CREATE DATABASE from
-# the same template. Arbitrary but stable app-wide constant.
+# Serializes worker clones: Postgres refuses concurrent CREATE DATABASE from one template.
 _CLONE_LOCK_KEY = 74_215_301
 
 
@@ -86,8 +80,7 @@ def _alembic_script_head() -> str:
 
 
 def _template_version(template_url: str) -> str | None:
-    """The template's alembic revision, or None when it doesn't exist / is
-    empty / predates the alembic baseline."""
+    """The template's alembic revision, or None when missing or pre-baseline."""
     try:
         with psycopg2.connect(template_url) as conn, conn.cursor() as cur:
             cur.execute("SELECT version_num FROM alembic_version")
@@ -98,11 +91,7 @@ def _template_version(template_url: str) -> str | None:
 
 
 def _refresh_template(base_url: str) -> None:
-    """Build (or reuse) the template database at alembic head.
-
-    Reuse is keyed on the alembic revision: an up-to-date template makes the
-    controller's setup a single SELECT; a stale one is dropped and rebuilt.
-    """
+    """Build the template database at alembic head, or reuse it when its revision is current."""
     template_url = _template_db_url(base_url)
     if _template_version(template_url) == _alembic_script_head():
         return
@@ -150,13 +139,10 @@ def _create_worker_db(base_url: str, worker: str) -> None:
 
 def pytest_configure(config: pytest.Config) -> None:
     if _XDIST_WORKER:
-        # Worker: clone the template the controller prepared. DATABASE_URL was
-        # already rewritten at import time above; the engine only connects at
-        # the first test, well after this hook.
+        # Worker: clone the controller's template (DATABASE_URL was rewritten at import).
         _create_worker_db(os.environ[_BASE_URL_ENV], _XDIST_WORKER)
     elif getattr(config.option, "numprocesses", None):
-        # xdist controller: resolve the base URL once (env var or .env via the
-        # app settings), publish it to the workers, refresh the template.
+        # xdist controller: publish the base URL to workers, refresh the template.
         from app.config import settings
 
         os.environ[_BASE_URL_ENV] = settings.database_url
@@ -164,15 +150,11 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def login_as(client: TestClient, user: User) -> dict[str, str]:
-    """Set the session + CSRF cookies on ``client`` for ``user``; return the
+    """Set the session and CSRF cookies on ``client`` for ``user``; return the
     ``X-CSRF-Token`` header dict to echo on mutating calls.
 
-    Equivalent to a successful ``POST /auth/login`` but skips the round-trip.
-    The minted JWT embeds the user's current ``token_version`` in the ``tv``
-    claim, so bumping the row's ``token_version`` after this call invalidates
-    the cookie at the next request — exactly the production semantics. The CSRF
-    token is a fixed test value; the cookie + returned header form a valid
-    double-submit pair for the middleware.
+    Skips the ``/auth/login`` round-trip. The JWT carries the current
+    ``token_version``, so bumping it afterwards invalidates the cookie.
     """
     token = create_access_token(user)
     client.cookies.set(SESSION_COOKIE, token)
@@ -182,13 +164,9 @@ def login_as(client: TestClient, user: User) -> dict[str, str]:
 
 @pytest.fixture(autouse=True)
 def retry_sleeps(monkeypatch):
-    """The ingest retry schedule, recorded instead of lived through.
+    """Record the ingest retry sleeps (``retry.BACKOFF_S``) instead of waiting.
 
-    Every fetch under ``tweet_ingest`` retries a throttled or unreachable
-    upstream with real seconds between the attempts
-    (``tweet_ingest.retry.BACKOFF_S``), and the suite drives those failures on a
-    mock transport. Autouse, so no test pays the wall clock; requested by name
-    to assert the schedule a fetch actually spent.
+    Autouse; request it by name to assert the schedule a fetch spent.
     """
     slept: list[float] = []
 
@@ -202,8 +180,6 @@ def retry_sleeps(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _disable_rate_limiter():
-    # One shared limiter now (app.ratelimit, exposed as app.state.limiter), so
-    # disabling it covers every router. See the module docstring.
     limiter = app.state.limiter
     previous = limiter.enabled
     limiter.enabled = False

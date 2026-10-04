@@ -5,8 +5,7 @@ import { FieldHelp } from "./FieldHelp";
 import { FIELD_HELP } from "@/lib/fieldHelp";
 
 afterEach(() => {
-  // The hide preference lives in localStorage; reset it so one test's toggle
-  // can't leak into the next.
+  // Reset the localStorage hide preference between tests.
   window.localStorage.clear();
 });
 
@@ -15,12 +14,10 @@ describe("FieldHelp", () => {
     render(<FieldHelp concept="source_url" />);
     const btn = screen.getByRole("button", { name: FIELD_HELP.source_url.label });
     expect(btn).toHaveAttribute("aria-expanded", "false");
-    // The tooltip is portaled and only rendered while open, hidden by default.
     expect(screen.queryByRole("tooltip")).toBeNull();
     fireEvent.focus(btn);
     const tooltip = await screen.findByRole("tooltip");
     expect(tooltip).toHaveTextContent(FIELD_HELP.source_url.text);
-    // The trigger is described by the tooltip so a screen reader announces it.
     expect(btn.getAttribute("aria-describedby")).toBe(tooltip.getAttribute("id"));
   });
 
@@ -38,7 +35,6 @@ describe("FieldHelp", () => {
     const btn = screen.getByRole("button", { name: FIELD_HELP.title.label });
     fireEvent.click(btn);
     expect(btn).toHaveAttribute("aria-expanded", "true");
-    // Leaving the wrapper (the `?` + its tooltip) closes it on desktop.
     fireEvent.mouseLeave(btn.parentElement as HTMLElement);
     expect(btn).toHaveAttribute("aria-expanded", "false");
   });

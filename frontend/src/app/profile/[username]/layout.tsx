@@ -26,19 +26,14 @@ export async function generateMetadata({
   const { username } = await params;
   const read = await ogFetch<PublicProfile>(`/users/${encodeURIComponent(username)}`);
 
-  // An upstream that failed rather than answered gets no tags at all: the page
-  // inherits the site-wide title, description and card, which is the only
-  // honest thing to say when we could not read the handle. Naming it "not
-  // found" here would freeze that answer into every crawler that saw it.
+  // A failed upstream gets no tags (site-wide defaults inherit): "not found" would freeze into crawlers.
   if (read.status === "failed") return {};
 
   const profile = read.status === "ok" ? read.data : null;
   const handle = ogTruncate(profile?.username ?? username, 40);
   const title = `@${handle} on Vidit`;
 
-  // `geolocations_count` is the analyst's published geolocations, the figure
-  // the card headlines under GEOLOCATED and the page names the same way in
-  // Insights, so an unfurl, the card and the page all read the same word.
+  // `geolocations_count` is the published-geolocation figure the card (GEOLOCATED) and Insights both name.
   const counts = profile
     ? `${ogCount(profile.geolocations_count)} geolocated, ${ogCount(profile.followers_count)} followers.`
     : "This handle has no profile on Vidit.";
@@ -59,8 +54,7 @@ export async function generateMetadata({
       siteName: "Vidit",
     },
     twitter: {
-      // The generated card is 1200×630, so it wants the large-image treatment
-      // rather than the square thumbnail `summary` gives.
+      // 1200×630 card needs the large-image treatment.
       card: "summary_large_image",
       title,
       description,

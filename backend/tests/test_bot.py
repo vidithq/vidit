@@ -1,13 +1,8 @@
 """Integration tests for the bot pipeline: a mention becomes a detection.
 
-Every X surface is mocked: syndication bodies through one ``MockTransport``
-(dispatched by tweet id), the paid mentions read and reply write through
-another. The DB and the assemble step are real, same as ``test_detection``.
-
-The bot reads the same engine as the pasted import and the archive backfill, so
-what is pinned here is the orchestration around it: the acquisition of the
-tagged post and its same-author parent, the ledger, the budget, and the reply.
-The grammar itself is pinned by ``tests/ingest_contract``.
+Every X surface is mocked through ``MockTransport`` (syndication by tweet id,
+the paid mentions read, the reply write); the DB and the assemble step are
+real. The grammar itself is pinned by ``tests/ingest_contract``.
 """
 
 from __future__ import annotations
@@ -54,14 +49,11 @@ from tests.ingest_contract.loader import load_body, load_chased, load_embed, loa
 
 BOT_USER_ID = "999000"
 HANDLE = f"hawk{uuid.uuid4().hex[:8]}"
-# A second linked analyst, for the shapes that need two owners.
 OTHER_HANDLE = f"kite{uuid.uuid4().hex[:8]}"
 
-# The mention ids sit above any snowflake X will mint this century (9.1e18 is
-# year 2079), because the poll's ``since_id`` is the ledger's max id over the
-# whole table: a real mention of the live bot left in a shared development
-# database would otherwise outrank the fixtures and starve the two cursor
-# tests below of their own rows.
+# Mention ids sit above any snowflake X will mint this century: the poll's
+# ``since_id`` is the ledger max over the whole table, so a real mention left
+# in a shared dev database would starve the cursor tests.
 FOREIGN_ID = "9100000000000000001"
 TAGGED_ID = "9100000000000000003"
 NO_COORD_ID = "9100000000000000004"
@@ -69,53 +61,37 @@ TWO_POST_PARENT_ID = "9100000000000000011"
 TWO_POST_TAGGED_ID = "9100000000000000012"
 TWO_POST_TAGGED_TWICE_ID = "9100000000000000013"
 FOREIGN_PARENT_TAG_ID = "9100000000000000014"
-# The tagged post X refuses to serve unauthenticated: ``_syndication_client``
-# answers the tombstone body for this id, so nothing is ever read from it. Its
-# ``BODIES`` entry exists only to feed the mentions payload's ``text``.
+# The tagged post X refuses to serve unauthenticated: the mock answers the tombstone.
 TOMBSTONE_ID = "9100000000000000017"
-# The inherited tag: a colleague's post that tags the bot, and the analyst's
-# reply under it, whose text X opens with the parent's author and the parent's
-# mentions. ``TYPED_UNDER_FOREIGN_ID`` is the same position with the tag typed
-# after the analyst's own words, which is a tag.
+# A colleague's post tagging the bot, the analyst's reply under it (X opens it
+# with the parent's mentions), and the same with the tag typed after the analyst's words.
 INHERITED_PARENT_ID = "9100000000000000021"
 INHERITED_REPLY_ID = "9100000000000000022"
 TYPED_UNDER_FOREIGN_ID = "9100000000000000023"
-# The bare tag under the analyst's own coordinate post, whose parent tags
-# nobody: the tag is typed, so the climb runs.
+# The bare tag under the analyst's own coordinate post (parent tags nobody): typed.
 BARE_TAG_ID = "9100000000000000024"
-# The analyst's own follow-up under their own tagging post: the tag came with
-# the prefix, and the parent was answered when it was tagged.
+# The analyst's follow-up under their own tagging post: the tag came with the prefix.
 OWN_FOLLOW_UP_ID = "9100000000000000025"
-# A reply whose parent syndication serves to nobody, so what the prefix carried
-# cannot be checked.
+# A reply whose parent syndication serves to nobody.
 ORPHAN_REPLY_ID = "9100000000000000026"
-# The post ``ORPHAN_REPLY_ID`` replies to: deliberately absent from ``BODIES``,
-# so the mock answers 404 for it.
+# Absent from ``BODIES``, so the mock answers 404.
 UNREADABLE_PARENT_ID = "9100000000000000027"
 SOURCE_ID = "9100000000000000042"
-# The request branch: a mirror post carries footage and names the original, but
-# no coordinate. ``MIRROR_TG_REPOST_ID`` is the same mirror posted twice (the
-# delete-and-repost habit), which is what a second request would land on, and
-# ``MIRROR_TG_OTHER_ID`` is a second analyst mirroring the same channel clip.
+# Request branch: a mirror post with footage and no coordinate. REPOST is the
+# same mirror posted twice, OTHER a second analyst mirroring the same clip.
 MIRROR_TG_ID = "9110000000000000001"
 MIRROR_TG_REPOST_ID = "9110000000000000002"
 MIRROR_X_ID = "9110000000000000003"
 MIRROR_X_SOURCE_ID = "9110000000000000004"
 MIRROR_TG_OTHER_ID = "9110000000000000005"
-# The same mirror, re-posted with the coordinate the analyst has since worked
-# out: a geolocation, which takes the detections' path beside the open request.
+# The same mirror re-posted with a coordinate (a geolocation).
 MIRROR_TG_GEO_ID = "9110000000000000006"
-# The same mirror naming a host the chase does not read, with and without the
-# analyst's own clip: that clip is the only footage such a post can offer, so it
-# is what tells a request from a refusal.
+# The mirror naming a host the chase does not read, with and without the analyst's own clip.
 MIRROR_YT_ID = "9110000000000000007"
 MIRROR_YT_NO_VIDEO_ID = "9110000000000000008"
 
-# Both mirror posts, and the Telegram embed, come from the contract catalogue,
-# the one place the shapes are written down: the bot's request tests run the
-# payloads the grammar is pinned on rather than second copies of them. Only the
-# identity the bot needs is overridden per body, the id, the date and the
-# tagging handle, plus the bot tag the mention carries.
+# Mirror posts and the Telegram embed come from the contract catalogue; only
+# id, date, handle and bot tag are overridden.
 _MIRROR_TYPOLOGY = "mirror_telegram_no_coord"
 _MIRROR_BODY = load_body(_MIRROR_TYPOLOGY)
 _TELEGRAM_POST = _MIRROR_BODY["entities"]["urls"][0]["expanded_url"]
@@ -130,12 +106,7 @@ _OTHER_HOST_SOURCE = _MIRROR_OTHER_BODY["entities"]["urls"][0]["expanded_url"]
 
 
 def _telegram_embed() -> str:
-    """The catalogue's Telegram embed, which the chase reads over the wire.
-
-    Raises rather than asserts: the fixture is what the whole request branch
-    runs on here, so a typology that stopped shipping one has to fail loudly at
-    the read instead of at an opaque ``None`` three layers down.
-    """
+    """The catalogue's Telegram embed. Raises so a typology without one fails loudly here."""
     embed = load_embed(_MIRROR_TYPOLOGY)
     if embed is None:
         raise RuntimeError(f"{_MIRROR_TYPOLOGY} ships no embed.html")
@@ -143,12 +114,7 @@ def _telegram_embed() -> str:
 
 
 def _mirror_body(tweet_id: str, created_at: str, handle: str = HANDLE) -> dict:
-    """The catalogue's mirror post, re-anchored on one mention.
-
-    The text, the media and the link stay the fixture's; the id, the timestamp
-    and the author are what tells one mention from another, and the bot tag is
-    what makes the post a mention at all.
-    """
+    """The catalogue's mirror post, re-anchored on one mention."""
     return {
         **_MIRROR_BODY,
         "id_str": tweet_id,
@@ -159,12 +125,7 @@ def _mirror_body(tweet_id: str, created_at: str, handle: str = HANDLE) -> dict:
 
 
 def _other_host_mirror(tweet_id: str, created_at: str, *, with_video: bool) -> dict:
-    """The catalogue's other-host mirror, re-anchored on one mention.
-
-    Dropping the clip is the whole difference between the two shapes it builds:
-    nothing chases a YouTube link, so the analyst's own upload is the only
-    footage such a post can offer.
-    """
+    """The catalogue's other-host mirror; ``with_video=False`` drops the only footage it offers."""
     body = {
         **_MIRROR_OTHER_BODY,
         "id_str": tweet_id,
@@ -187,9 +148,7 @@ _STRUCT_TEXT = (
 )
 _SOURCE_ENTITIES = {"urls": [{"url": "https://t.co/src", "expanded_url": _SOURCE_URL}]}
 
-# A foreign coordinate tweet the analyst tags the bot under, and the tagged
-# posts themselves. The foreign post is never read: the acquisition stops at
-# the same author.
+# The foreign post is never read: acquisition stops at the same author.
 BODIES = {
     FOREIGN_ID: {
         "id_str": FOREIGN_ID,
@@ -210,10 +169,8 @@ BODIES = {
         "user": {"screen_name": HANDLE},
         "text": "@viditbot nothing to see here",
     },
-    # The two-post field format: the coordinate on the analyst's post, the
-    # source link on their own reply where the bot is tagged. Media-less on
-    # purpose: the assemble step's CDN fetch opens a real socket, so the media
-    # split stays unit-tested (test_detect.py); this proves the wiring.
+    # Two-post format. Media-less: the assemble step's CDN fetch opens a real
+    # socket (the media split is unit-tested in test_detect.py).
     TWO_POST_PARENT_ID: {
         "id_str": TWO_POST_PARENT_ID,
         "created_at": "2026-03-11T19:00:00.000Z",
@@ -244,8 +201,7 @@ BODIES = {
         },
         "in_reply_to_status_id_str": TWO_POST_PARENT_ID,
     },
-    # The analyst tags the bot under someone ELSE's post: the acquisition must
-    # not join that parent, whatever it contains.
+    # Tagged under someone else's post: acquisition must not join that parent.
     FOREIGN_PARENT_TAG_ID: {
         "id_str": FOREIGN_PARENT_TAG_ID,
         "created_at": "2026-03-11T19:15:00.000Z",
@@ -253,8 +209,7 @@ BODIES = {
         "text": "@viditbot relay this",
         "in_reply_to_status_id_str": FOREIGN_ID,
     },
-    # A perfectly readable post whose own body X will not serve: the tombstone
-    # alone must stop it, so the text is deliberately valid.
+    # A readable post whose own body X will not serve: the tombstone alone must stop it.
     TOMBSTONE_ID: {
         "id_str": TOMBSTONE_ID,
         "created_at": "2026-03-11T21:00:00.000Z",
@@ -262,10 +217,8 @@ BODIES = {
         "text": _STRUCT_TEXT,
         "entities": _SOURCE_ENTITIES,
     },
-    # A colleague's tagging post, and the analyst's reply under it: X wrote the
-    # reply's first four mentions, the bot third, and the analyst typed only the
-    # sentence after them. The reply carries no coordinate of its own, so before
-    # the tag rule it earned a ❌ on someone else's thread.
+    # A colleague's tagging post and the analyst's reply: X wrote the first four
+    # mentions (bot third), the analyst only the sentence after, with no coordinate.
     INHERITED_PARENT_ID: {
         "id_str": INHERITED_PARENT_ID,
         "created_at": "2026-03-13T08:00:00.000Z",
@@ -282,8 +235,7 @@ BODIES = {
         ),
         "in_reply_to_status_id_str": INHERITED_PARENT_ID,
     },
-    # The same position, tagged on purpose: the analyst wrote their geolocation
-    # under a colleague's post and typed the tag after it.
+    # Same position, with the tag typed after the analyst's geolocation.
     TYPED_UNDER_FOREIGN_ID: {
         "id_str": TYPED_UNDER_FOREIGN_ID,
         "created_at": "2026-03-13T08:10:00.000Z",
@@ -297,8 +249,7 @@ BODIES = {
         "entities": _SOURCE_ENTITIES,
         "in_reply_to_status_id_str": INHERITED_PARENT_ID,
     },
-    # The bare tag under the analyst's own coordinate post: nothing but the tag,
-    # and a parent that mentions nobody, so it is theirs and it climbs.
+    # Bare tag under the analyst's own coordinate post: it climbs.
     BARE_TAG_ID: {
         "id_str": BARE_TAG_ID,
         "created_at": "2026-03-13T08:15:00.000Z",
@@ -306,7 +257,6 @@ BODIES = {
         "text": "@ViditBot",
         "in_reply_to_status_id_str": TWO_POST_PARENT_ID,
     },
-    # The analyst's own follow-up under the post they already tagged.
     OWN_FOLLOW_UP_ID: {
         "id_str": OWN_FOLLOW_UP_ID,
         "created_at": "2026-03-13T08:20:00.000Z",
@@ -314,7 +264,6 @@ BODIES = {
         "text": "@viditbot one more angle on it",
         "in_reply_to_status_id_str": TAGGED_ID,
     },
-    # A reply whose parent X serves to nobody.
     ORPHAN_REPLY_ID: {
         "id_str": ORPHAN_REPLY_ID,
         "created_at": "2026-03-13T08:25:00.000Z",
@@ -322,15 +271,12 @@ BODIES = {
         "text": "@other_analyst @viditbot agreed, that is the tower",
         "in_reply_to_status_id_str": UNREADABLE_PARENT_ID,
     },
-    # The linked status, chased for its post date (no media, so the assemble
-    # step fetches nothing).
     SOURCE_ID: {
         "id_str": SOURCE_ID,
         "created_at": "2026-03-10T09:00:00.000Z",
         "user": {"screen_name": "warfootage"},
         "text": "original footage",
     },
-    # The mirror posts: footage, the original's link, no coordinate.
     MIRROR_TG_ID: _mirror_body(MIRROR_TG_ID, "2026-03-12T08:30:00.000Z"),
     MIRROR_TG_REPOST_ID: _mirror_body(MIRROR_TG_REPOST_ID, "2026-03-12T08:45:00.000Z"),
     MIRROR_TG_OTHER_ID: _mirror_body(
@@ -340,9 +286,7 @@ BODIES = {
         **_mirror_body(MIRROR_TG_GEO_ID, "2026-03-14T11:00:00.000Z"),
         "text": f"@viditbot\n{_MIRROR_BODY['text']}\n48.123456, 37.654321",
     },
-    # The catalogue's other-host mirror: the analyst re-uploaded a YouTube clip
-    # and linked the video, which nothing chases, so their own upload is the
-    # footage. The second is the same post with that upload left off.
+    # Other-host mirror: with the analyst's upload, then without.
     MIRROR_YT_ID: _other_host_mirror(MIRROR_YT_ID, "2026-03-12T10:00:00.000Z", with_video=True),
     MIRROR_YT_NO_VIDEO_ID: _other_host_mirror(
         MIRROR_YT_NO_VIDEO_ID, "2026-03-12T10:30:00.000Z", with_video=False
@@ -361,27 +305,22 @@ BODIES = {
             ]
         },
     },
-    # The status the X mirror points at, chased for its date and its video.
     MIRROR_X_SOURCE_ID: {**_MIRROR_X_SOURCE_BODY, "id_str": MIRROR_X_SOURCE_ID},
 }
 
 
 def _syndication_client(fetched: list[str] | None = None) -> httpx.Client:
-    """``fetched`` records every post id syndication was asked for, in order,
-    which is what tells a mention that spent one parent read from one that
-    acquired a thread."""
+    """``fetched`` records every post id syndication was asked for, in order."""
 
     def handler(req: httpx.Request) -> httpx.Response:
         if TELEGRAM_HOST_RE.match(req.url.host.lower()) is not None:
-            # The Telegram chase reads a public embed rather than syndication;
-            # one client carries both upstreams, as it does in production.
+            # One client carries both upstreams, as in production.
             return httpx.Response(200, text=_telegram_embed())
         tweet_id = req.url.params.get("id", "")
         if fetched is not None:
             fetched.append(tweet_id)
         if tweet_id == TOMBSTONE_ID:
-            # X's 200-with-no-tweet for a post readable only behind a login
-            # (age-restricted, withheld): the shape conflict footage lands in.
+            # X's 200-with-no-tweet for a login-gated post (age-restricted, withheld).
             return httpx.Response(200, json={"__typename": "TweetTombstone", "tombstone": {}})
         body = BODIES.get(tweet_id)
         if body is None:
@@ -400,9 +339,7 @@ def _mentions_client(
 ) -> httpx.Client:
     """The paid mentions read, every mention authored by ``handle``.
 
-    ``parent_of`` maps a mention id to the post it replies to, served the way
-    the v2 timeline serves it, in ``referenced_tweets``. A mention absent from
-    it is not a reply, so every mention in its text is one the author typed.
+    ``parent_of`` maps a mention id to its ``referenced_tweets`` parent; absent means not a reply.
     """
 
     def handler(req: httpx.Request) -> httpx.Response:
@@ -432,8 +369,7 @@ def _mentions_client(
 
 
 def _write_client(posted: list[dict[str, object]], liked: list[dict[str, object]]) -> httpx.Client:
-    """``liked`` captures any call to the likes endpoint: the like ack was
-    removed from the response model, so tests assert it stays empty."""
+    """``liked`` captures calls to the likes endpoint; tests assert it stays empty."""
 
     def handler(req: httpx.Request) -> httpx.Response:
         if req.url.path.endswith("/likes"):
@@ -466,8 +402,7 @@ def _bot_settings(monkeypatch):
 
 
 def _linked_account(db, handle: str) -> User:
-    """A live Vidit account whose ``x_handle`` an admin linked to ``handle``,
-    the only thing the bot will attribute to (it never mints users)."""
+    """A live account whose ``x_handle`` is linked to ``handle`` (the bot never mints users)."""
     user = User(
         username=f"analyst{uuid.uuid4().hex[:8]}",
         email=f"analyst-{uuid.uuid4().hex}@example.com",
@@ -486,9 +421,7 @@ def linked_owner(db):
 
 @pytest.fixture
 def other_linked_owner(db):
-    """A second linked analyst, for what only two owners can show: the request
-    dedup is owner-scoped, so the same footage reaches Vidit twice only when two
-    accounts mirror it."""
+    """A second linked analyst: request dedup is owner-scoped."""
     return _linked_account(db, OTHER_HANDLE)
 
 
@@ -543,27 +476,21 @@ async def test_a_tagged_post_creates_a_detection(db, linked_owner):
 
     assert outcome.events_created == 1
     assert outcome.replies_posted == 1
-    # The like ack is gone: the reply is the only gesture.
     assert liked == []
 
     event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
     assert event.status == STATUS_DETECTED
     assert event.detected_from_url == f"https://x.com/{HANDLE}/status/{TAGGED_ID}"
-    # The title is the first line carrying text beyond coordinates and links,
-    # the bot tag having left the line it opened.
+    # The title is the first line with text beyond coordinates and links.
     assert event.title == "Strike on the vehicle depot"
     point = to_shape(event.event_coords)
     assert point.y == pytest.approx(48.123456)
     assert point.x == pytest.approx(37.654321)
-    # The sole candidate link is the source, chased through syndication for its
-    # post date.
     assert event.source_url == _SOURCE_URL
     assert event.source_posted_at is not None
     assert event.source_posted_at.date().isoformat() == "2026-03-10"
 
-    # The proof is the post as written: the coordinate line stays, the bot tag
-    # and the wrappers of attached media go, and nothing arrives from a chain
-    # the acquisition never read.
+    # The proof is the post as written, minus the bot tag and media wrappers.
     proof = json.dumps(event.proof)
     assert "Smoke plume matches the skyline" in proof
     assert "48.123456" in proof
@@ -582,18 +509,16 @@ async def test_a_tagged_post_creates_a_detection(db, linked_owner):
     assert isinstance(text, str)
     assert str(event.id)[:8] in text  # the shortened ref
     assert str(event.id) not in text  # never the full UUID (a third of the reply)
-    # The mocked source tweet carries no media, so the footage warning fires;
-    # its date resolved, so the date warning must not.
+    # No media, so the footage warning fires; the date resolved, so that one does not.
     assert "The source served no footage" in text
     assert "post date" not in text and "already on Vidit" not in text
-    # The linkless contract: no URL, no auto-linkable domain in the reply.
+    # No auto-linkable URL in the reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
 
 
 async def test_the_two_post_field_format_lands_one_detection(db, linked_owner):
-    # The coordinate on the analyst's post, the source link on their own reply
-    # where the bot is tagged. The TikTok link is outside the chase vocabulary,
-    # so it is stored link-only; provenance anchors on the parent.
+    # The TikTok link is outside the chase vocabulary: stored link-only, with
+    # provenance anchored on the parent.
     outcome, _, posted, _ = await _run(db, [TWO_POST_TAGGED_ID])
 
     assert outcome.events_created == 1
@@ -613,16 +538,12 @@ async def test_the_two_post_field_format_lands_one_detection(db, linked_owner):
     assert ledger.outcome == "created"
     (payload,) = posted  # the success reply answers the tagged reply
     assert payload["reply"] == {"in_reply_to_tweet_id": TWO_POST_TAGGED_ID}
-    # Link-only source: no post date came back, so the reply warns.
     assert "post date" in payload["text"]
 
 
 async def test_tagging_either_post_shares_the_parent_idempotency_key(db, linked_owner):
-    # detected_from_url anchors on the parent, so a second tag on the reply and
-    # a tag on the parent itself both collapse onto the first detection. Each of the
-    # two later tags reads a different slice of the thread, so it overwrites the
-    # detection rather than matching it unchanged: an answered tag, ledgered
-    # ``updated``, not the silent ``skipped``.
+    # detected_from_url anchors on the parent, so a second tag and a tag on the
+    # parent both collapse onto the first detection and overwrite it (``updated``, not ``skipped``).
     outcome, _, posted, _ = await _run(
         db, [TWO_POST_TAGGED_ID, TWO_POST_TAGGED_TWICE_ID, TWO_POST_PARENT_ID]
     )
@@ -639,8 +560,7 @@ async def test_tagging_either_post_shares_the_parent_idempotency_key(db, linked_
 
 
 async def test_a_tag_under_a_foreign_parent_reads_only_the_tag(db, linked_owner):
-    # The same-author guard: tagging the bot under someone else's post must not
-    # read that post, whatever it contains.
+    # Same-author guard: the foreign post is never read.
     outcome, _, posted, _ = await _run(db, [FOREIGN_PARENT_TAG_ID])
 
     assert outcome.no_detection == 1
@@ -650,12 +570,8 @@ async def test_a_tag_under_a_foreign_parent_reads_only_the_tag(db, linked_owner)
 
 
 async def test_tombstoned_tagged_post_earns_a_reply_not_a_page(db, linked_owner, monkeypatch):
-    """X age-gates exactly the footage this bot reads, so a tagged post it
-    won't serve unauthenticated recurs. Nothing was readable and nothing here
-    is broken: the mention ledgers ``no_detection``, the linked author gets a
-    reply naming the restriction instead of a wrong format diagnosis, and
-    Sentry hears nothing.
-    """
+    """A tombstoned tagged post ledgers ``no_detection``; the author gets a reply
+    naming the restriction and Sentry hears nothing."""
     import app.services.bot as bot_service
 
     captured: list[BaseException] = []
@@ -688,18 +604,15 @@ async def test_rerun_is_idempotent_and_advances_since_id(db, linked_owner):
     assert outcome.events_created == 0
     assert posted == []
     assert liked == []  # an already-handled mention earns no second gesture
-    # The second pull resumed from the ledger's max mention id, minus the
-    # lookback overlap that keeps webhook-dropped mentions reachable.
+    # Resumed from the ledger max minus the lookback overlap.
     expected = str(int(TAGGED_ID) - bot_service._SINCE_ID_OVERLAP)
     assert seen_params[0]["since_id"] == expected
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 1
 
 
 async def test_poll_overlap_recovers_mention_dropped_by_webhook(db, linked_owner):
-    # The webhook dropped TAGGED_ID but delivered the newer NO_COORD_ID, so the
-    # ledger max leapfrogged the dropped mention. The poll's since_id sits
-    # one overlap behind the max, so a since_id-honouring API still serves
-    # TAGGED_ID and the mention is recovered.
+    # The webhook dropped TAGGED_ID, so the ledger max leapfrogged it; since_id
+    # sits one overlap behind the max and recovers it.
     db.add(BotMention(mention_tweet_id=NO_COORD_ID, author_handle=HANDLE, outcome="no_detection"))
     db.commit()
 
@@ -737,8 +650,7 @@ async def test_poll_overlap_recovers_mention_dropped_by_webhook(db, linked_owner
 
 
 async def test_unlinked_handle_records_no_account_and_creates_nothing(db):
-    # No Vidit account carries HANDLE: the mention is ledgered and that is
-    # all. No user row minted, no detection, no reply, no like.
+    # No account carries HANDLE: ledgered only.
     outcome, _, posted, liked = await _run(db, [TAGGED_ID])
 
     assert outcome.no_account == 1
@@ -769,13 +681,8 @@ async def test_deactivated_linked_owner_records_no_account(db, linked_owner):
 async def test_a_persist_that_raised_on_every_detection_answers_the_analyst(
     db, linked_owner, monkeypatch
 ):
-    """The verdict a linked analyst used to get in silence.
-
-    A post the engine read fine, whose every detection raised mid-persist, ledgers
-    ``failed`` so an operator can retry it by deleting the row. The paste
-    returns that verdict and the archive counts it, so the bot answers too:
-    there is no code to name, which is exactly the reply's unexpected case, and
-    it points at the maintainers rather than reciting a format lesson."""
+    """A post whose every detection raised mid-persist ledgers ``failed``; the bot
+    answers with the generic reply pointing at the maintainers."""
     import app.services.detection as detection_mod
 
     async def _boom(*args, **kwargs):
@@ -796,8 +703,7 @@ async def test_a_persist_that_raised_on_every_detection_answers_the_analyst(
 
 
 async def test_non_conforming_mention_from_unlinked_author_records_silently(db):
-    # No linked account: no failure reply, no like; a stranger's formatless
-    # tag costs nothing.
+    # No linked account: no failure reply, no like.
     outcome, _, posted, liked = await _run(db, [NO_COORD_ID])
 
     assert outcome.no_detection == 1
@@ -822,7 +728,6 @@ async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, 
     assert isinstance(text, str)
     assert text.startswith("❌ Nothing saved\n⚠ No coordinate in the post\n")
     assert "(m00004)" in text  # the anti-duplicate mention tail
-    # Same linkless contract as the success reply.
     assert "http" not in text and ".app" not in text and ".com" not in text
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == NO_COORD_ID).one()
     assert ledger.outcome == "no_detection"
@@ -830,9 +735,7 @@ async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, 
 
 
 async def test_failure_reply_loop_guard_on_replies_to_the_bot(db, linked_owner):
-    # The tagged tweet is itself a reply to the bot (a courtesy answer to the
-    # bot's own reply auto-mentions it): the failure reply must not fire, or
-    # every thanks would earn an answer forever.
+    # The tagged tweet is a reply to the bot; a failure reply would loop on every thanks.
     outcome, _, posted, liked = await _run(db, [NO_COORD_ID], reply_to={NO_COORD_ID: BOT_USER_ID})
 
     assert outcome.no_detection == 1
@@ -842,16 +745,12 @@ async def test_failure_reply_loop_guard_on_replies_to_the_bot(db, linked_owner):
     assert ledger.reply_tweet_id is None
 
 
-# ── The tag rule: who typed the @ViditBot ─────────────────────────────────
-
-
 @pytest.mark.parametrize(
     ("text", "is_reply", "typed"),
     [
         # Not a reply: X wrote no prefix, so every mention is the author's.
         ("@other_analyst @viditbot look at this", False, True),
-        # The field shape: four mentions X carried over, the bot third, then
-        # the analyst's own sentence.
+        # The field shape: four carried mentions, the bot third, then the analyst's sentence.
         (
             "@other_analyst @geoconfirmed @viditbot @uacontrolmap "
             "The guy who opens the window is on the third floor",
@@ -860,19 +759,17 @@ async def test_failure_reply_loop_guard_on_replies_to_the_bot(db, linked_owner):
         ),
         # The run reads across newlines as well as spaces.
         ("@other_analyst\n@viditbot\nagreed", True, False),
-        # A reply whose whole text is the run, the bare tag included: the
-        # parent is what settles both.
+        # The whole text is the run: the parent settles it.
         ("@other_analyst @viditbot", True, False),
         ("@viditbot", True, False),
         # A mention in the middle of the text, and one at the end: the author
         # typed both.
         ("@other_analyst agreed @viditbot, that is the tower", True, True),
         ("@other_analyst that is the tower @viditbot", True, True),
-        # Case is X's to render, never the analyst's to get right.
+        # Case is X's to render.
         ("@other_analyst the depot @ViditBot", True, True),
         ("@ViditBot @other_analyst the depot", True, False),
-        # The dot-mention: the period is a character X never writes into a
-        # prefix, so it ends the run and the tag reads as typed.
+        # The dot-mention: X never writes a period into a prefix, so it ends the run.
         (".@ViditBot 48.123456, 37.654321", True, True),
         # Somebody else's handle, whatever its position.
         ("@other_analyst @uacontrolmap the depot", True, False),
@@ -884,18 +781,14 @@ def test_tags_bot_reads_who_typed_the_tag(text, is_reply, typed):
 
 
 def test_tags_bot_without_the_prefix_rule_answers_the_parent_question():
-    # What a parent post is asked: does it mention the bot at all, wherever the
-    # mention came from. Its own inherited prefix counts, since a tag reaching
-    # this reply through it came from there either way.
+    # Asks whether the parent mentions the bot anywhere, its own inherited prefix included.
     assert tags_bot("@other_analyst @viditbot relayed", "viditbot", inherits_prefix=False) is True
     assert tags_bot("48.123456, 37.654321 depot", "viditbot", inherits_prefix=False) is False
 
 
 async def test_a_reply_that_only_inherits_the_tag_is_not_a_mention(db, linked_owner):
-    # The real occurrence: the analyst answers a colleague whose post tagged the
-    # bot, X opens their reply with the parent's mentions, and their own thread
-    # carries no coordinate. Before the rule that earned them a ❌ on somebody
-    # else's thread for a tag they never typed.
+    # A colleague's post tagged the bot and X opened the analyst's reply with its
+    # mentions; no coordinate in the thread. That must not earn a ❌ for a tag they never typed.
     fetched: list[str] = []
     outcome, _, posted, liked = await _run(
         db,
@@ -909,8 +802,7 @@ async def test_a_reply_that_only_inherits_the_tag_is_not_a_mention(db, linked_ow
     assert outcome.events_created == 0
     assert posted == []
     assert liked == []
-    # One syndication read, the parent's: nothing of the analyst's own thread is
-    # acquired, so the rule costs one free read and no billed call.
+    # One syndication read (the parent's), no billed call.
     assert fetched == [INHERITED_PARENT_ID]
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 0
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == INHERITED_REPLY_ID).one()
@@ -919,9 +811,7 @@ async def test_a_reply_that_only_inherits_the_tag_is_not_a_mention(db, linked_ow
 
 
 async def test_a_tag_typed_under_someone_elses_post_is_processed(db, linked_owner):
-    # Same position, the tag typed after the analyst's own words: a tag, read
-    # exactly as it was before the rule. The foreign parent still joins nothing,
-    # so the coordinate is the one on the tagging post.
+    # Tag typed after the analyst's words: read as a tag; the foreign parent joins nothing.
     outcome, _, posted, _ = await _run(
         db,
         [TYPED_UNDER_FOREIGN_ID],
@@ -943,9 +833,8 @@ async def test_a_tag_typed_under_someone_elses_post_is_processed(db, linked_owne
 
 
 async def test_a_bare_tag_under_an_untagged_parent_still_climbs(db, linked_owner):
-    # The bare tag an analyst drops under their own geolocation: its whole text
-    # is the run, so the parent decides, and a parent that tags nobody leaves
-    # the tag typed. The climb then re-anchors on the coordinate post.
+    # A bare tag under the analyst's own geolocation: the parent tags nobody, so
+    # the tag is typed and the climb re-anchors on the coordinate post.
     outcome, _, posted, _ = await _run(
         db, [BARE_TAG_ID], parent_of={BARE_TAG_ID: TWO_POST_PARENT_ID}
     )
@@ -960,8 +849,7 @@ async def test_a_bare_tag_under_an_untagged_parent_still_climbs(db, linked_owner
 
 
 async def test_a_follow_up_under_the_analysts_own_tagged_post_inherits(db, linked_owner):
-    # The analyst's own thread: the post above already tagged the bot and was
-    # answered when it did, so the prefix on this follow-up is not a second tag.
+    # The post above already tagged the bot and was answered: this prefix is not a second tag.
     outcome, _, posted, _ = await _run(
         db, [OWN_FOLLOW_UP_ID], parent_of={OWN_FOLLOW_UP_ID: TAGGED_ID}
     )
@@ -974,9 +862,7 @@ async def test_a_follow_up_under_the_analysts_own_tagged_post_inherits(db, linke
 
 
 async def test_an_unreadable_parent_reads_as_an_inherited_tag(db, linked_owner):
-    # The parent is deleted or protected, so what the prefix carried cannot be
-    # checked: silence beats a ❌ on a thread the tag may never have been meant
-    # for.
+    # Parent deleted or protected: silence beats a ❌ for a tag that may not have been meant.
     fetched: list[str] = []
     outcome, _, posted, _ = await _run(
         db,
@@ -996,11 +882,7 @@ async def test_an_unreadable_parent_reads_as_an_inherited_tag(db, linked_owner):
 async def test_reply_budget_cap_skips_reply_but_detection_still_lands(
     db, linked_owner, monkeypatch, cap
 ):
-    # Either cap spent, in total or on this one author: detection is unbilled,
-    # so the detection still lands and only the gesture is skipped. The caps
-    # are settings (BOT_MAX_REPLIES_PER_HOUR /
-    # BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR), so an operator raises them for a
-    # traffic spike without a code change.
+    # Either cap spent: detection is unbilled, so it still lands and only the gesture is skipped.
     monkeypatch.setattr(settings, cap, 0)
     outcome, _, posted, liked = await _run(db, [TAGGED_ID])
 
@@ -1010,16 +892,9 @@ async def test_reply_budget_cap_skips_reply_but_detection_still_lands(
     assert outcome.events_created == 1
 
 
-# ── The request branch ────────────────────────────────────────────────────
-
-
 @pytest.fixture
 def _stub_cdn(monkeypatch):
-    """Serve any fetched media as a tiny mp4, so the branch runs offline.
-
-    The bot hands ``open_request`` the same ``fetch_cdn_media`` the detections
-    use, read off this module's namespace, so one patch covers both.
-    """
+    """Serve any fetched media as a tiny mp4 so the branch runs offline."""
 
     async def _fetch(parsed):
         return TINY_MP4, "video/mp4"
@@ -1043,14 +918,11 @@ def _request_row(db, owner: User) -> Event:
 async def test_a_coordinate_less_mirror_post_opens_a_request(
     db, linked_owner, _stub_cdn, mention_id, source_url
 ):
-    """The branch, on both technologies the chase reads.
+    """The branch on both chase technologies.
 
-    The analyst mirrored someone else's footage and wrote no coordinate, which
-    used to be a flat refusal. The row is a request the way a person's request
-    is one: owned by and credited to the analyst, stamped ``requested_at``,
-    carrying the original as its source and the footage as its one
-    ``role=source`` media, with no coordinate. What the machine adds is the
-    provenance, so a second tag recognises it.
+    The row is owned by the analyst, stamped ``requested_at``, carries the
+    original as source and the footage as its one ``role=source`` media, with
+    no coordinate. Provenance lets a second tag recognise it.
     """
     outcome, _, posted, liked = await _run(db, [mention_id])
 
@@ -1064,19 +936,16 @@ async def test_a_coordinate_less_mirror_post_opens_a_request(
     assert row.event_coords is None
     assert row.requested_at is not None
     assert row.owner_id == linked_owner.id == row.requested_by_id
-    # The chased original, never the mirroring post: the provenance link is
-    # where the tag was read, the source is what it points at.
+    # The chased original, not the mirroring post.
     assert row.source_url == source_url
     assert row.detected_from_url == f"https://x.com/{HANDLE}/status/{mention_id}"
     assert row.detected_via == "bot"
     assert row.detected_from_tweet_id == int(mention_id)
     assert row.detected_thread_tweet_ids == [int(mention_id)]
-    # The fifth provenance column, stamped by the same helper a detection's are
-    # (``events.stamp_provenance``): when the analyst posted the mirror, which is
-    # neither when the event happened nor when the source posted the clip.
+    # Fifth provenance column (``events.stamp_provenance``): when the analyst posted the mirror.
     assert row.detected_post_at is not None
     assert row.detected_post_at != row.source_posted_at
-    # The chase served a date, so the reply carries no date warning.
+    # The chase served a date: no date warning.
     assert row.source_posted_at is not None
 
     (media,) = db.query(Media).filter(Media.event_id == row.id).all()
@@ -1096,14 +965,11 @@ async def test_a_coordinate_less_mirror_post_opens_a_request(
     assert str(row.id)[:8] in text
     assert "post date" not in text
     assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
-    # The linkless contract holds on this reply too.
     assert "http" not in text and ".app" not in text and ".com" not in text and ".me" not in text
 
 
 async def test_the_same_mirror_posted_twice_opens_one_request(db, linked_owner, _stub_cdn):
-    """The delete-and-repost shape, and re-tagging generally: the second mention
-    matches the row the first opened (on its source, here) and the bot stays
-    silent, the verdict every other dedup earns."""
+    """A repost matches the row the first mention opened (on its source); the bot stays silent."""
     await _run(db, [MIRROR_TG_ID])
     outcome, _, posted, _ = await _run(db, [MIRROR_TG_REPOST_ID])
 
@@ -1119,14 +985,8 @@ async def test_the_same_mirror_posted_twice_opens_one_request(db, linked_owner, 
 async def test_a_second_owner_mirroring_the_same_clip_is_told_it_is_a_duplicate(
     db, linked_owner, other_linked_owner, _stub_cdn
 ):
-    """The duplicate check is the detections' own, run over the request's stored
-    footage.
-
-    Two analysts mirror the same channel clip, which is what mirroring does. The
-    request dedup is owner-scoped, so the second one is a row of its own, and
-    the comparison that flags a detection's media flags this one's: the reply
-    carries the ``duplicate_media`` sentence, from the table every surface reads.
-    """
+    """Two analysts mirroring one clip get a row each (dedup is owner-scoped), and
+    the reply carries ``duplicate_media``."""
     await _run(db, [MIRROR_TG_ID])
     outcome, _, posted, _ = await _run(db, [MIRROR_TG_OTHER_ID], handle=OTHER_HANDLE)
 
@@ -1142,9 +1002,7 @@ async def test_a_second_owner_mirroring_the_same_clip_is_told_it_is_a_duplicate(
 
 
 async def test_a_request_shaped_post_from_an_unlinked_author_stays_silent(db, _stub_cdn):
-    """The bot never mints users, and that rule is what the request branch is
-    measured against too: a tag that would have opened a request, from a handle
-    no account carries, is ledgered ``no_account`` and nothing else."""
+    """A request-shaped tag from an unlinked handle is ledgered ``no_account`` and nothing else."""
     outcome, _, posted, _ = await _run(db, [MIRROR_TG_ID])
 
     assert outcome.no_account == 1
@@ -1156,10 +1014,7 @@ async def test_a_request_shaped_post_from_an_unlinked_author_stays_silent(db, _s
 
 
 async def test_footage_that_will_not_fetch_falls_back_to_the_refusal(db, linked_owner, monkeypatch):
-    """A request carries its poster's evidence from the start, so a footage
-    fetch that comes back with nothing leaves the branch nothing to write. The
-    mention then earns the answer it has always had, the \u274c reply naming
-    ``coords_missing``, rather than silence."""
+    """A footage fetch that returns nothing falls back to the ❌ ``coords_missing`` reply, not silence."""
 
     async def _nothing(parsed):
         return None
@@ -1178,13 +1033,7 @@ async def test_footage_that_will_not_fetch_falls_back_to_the_refusal(db, linked_
 
 
 async def test_a_mirror_of_a_clip_on_another_host_opens_a_request(db, linked_owner, _stub_cdn):
-    """The same mirror post about a YouTube clip.
-
-    The host decides what gets fetched, never what gets requested: the link is
-    the source as the analyst wrote it, their own upload is the footage, and the
-    request opens. Nothing chased the video, so the source has no post date and
-    the reply says so.
-    """
+    """The analyst's upload is the footage; nothing chased the video, so the reply warns of the missing source date."""
     outcome, _, posted, _ = await _run(db, [MIRROR_YT_ID])
 
     assert outcome.requests_opened == 1
@@ -1210,13 +1059,8 @@ async def test_a_mirror_of_a_clip_on_another_host_opens_a_request(db, linked_own
 async def test_a_mirror_carrying_no_clip_of_its_own_is_told_to_attach_one(
     db, linked_owner, _stub_cdn
 ):
-    """The same post with the upload left off: a YouTube link is chased by
-    nothing, so the thread points at footage and carries none to store.
-
-    ``coords_missing`` is true of the post and says nothing about the branch
-    that had a look, so the analyst would go hunting for a coordinate they
-    deliberately did not write. The reply names what to attach instead.
-    """
+    """A YouTube mirror without the upload: ``coords_missing`` would send the
+    analyst hunting for a coordinate they did not write, so the reply names what to attach."""
     outcome, _, posted, _ = await _run(db, [MIRROR_YT_NO_VIDEO_ID])
 
     assert outcome.requests_opened == 0
@@ -1235,13 +1079,7 @@ async def test_a_mirror_carrying_no_clip_of_its_own_is_told_to_attach_one(
 
 
 async def test_footage_the_intake_refuses_is_named_back(db, linked_owner, _stub_cdn, monkeypatch):
-    """A clip over the video size cap is not a post with no coordinate.
-
-    The fetch succeeded and the evidence intake refused what it served, so the
-    reply names ``footage_unusable`` rather than sending the analyst looking for
-    a coordinate they never wrote. Nothing is left behind: the row
-    ``create_request`` had staged is rolled back before the ledger commits.
-    """
+    """A clip over the video size cap names ``footage_unusable``; the staged row is rolled back before the ledger commits."""
     monkeypatch.setattr(settings, "max_video_size", 8)
     outcome, _, posted, _ = await _run(db, [MIRROR_TG_ID])
 
@@ -1260,14 +1098,10 @@ async def test_footage_the_intake_refuses_is_named_back(db, linked_owner, _stub_
 async def test_a_coordinate_bearing_re_tag_lands_a_detection_beside_the_request(
     db, linked_owner, _stub_cdn
 ):
-    """The dedup contract, stated by the two tags that exercise both halves.
+    """A coordinate-less re-tag lands on the open request and moves nothing.
 
-    A coordinate-less re-tag lands on the open request and moves nothing. A
-    re-tag carrying the coordinate the analyst has since worked out is a
-    geolocation, so it takes the detections' path: the match skips the
-    coordinate-less request, a ``detected`` row lands beside it, and the request
-    stays open and its owner's to withdraw, since no machine writes into a
-    human-flow row.
+    A re-tag with a coordinate is a geolocation: it takes the detections' path
+    and lands a ``detected`` row beside the request, which stays its owner's.
     """
     await _run(db, [MIRROR_TG_ID])
     outcome, _, _, _ = await _run(db, [MIRROR_TG_GEO_ID])
@@ -1287,9 +1121,7 @@ async def test_a_coordinate_bearing_re_tag_lands_a_detection_beside_the_request(
 async def test_the_reply_budget_skips_the_reply_and_keeps_the_request(
     db, linked_owner, _stub_cdn, monkeypatch
 ):
-    """Opening a request is unbilled and the reply is not, so the same rule the
-    detections follow holds here: past the cap the row lands and only the
-    gesture is skipped."""
+    """Opening a request is unbilled: past the reply cap the row lands and only the gesture is skipped."""
     monkeypatch.setattr(settings, "bot_max_replies_per_hour", 0)
     outcome, _, posted, _ = await _run(db, [MIRROR_TG_ID])
 
@@ -1303,9 +1135,8 @@ async def test_the_reply_budget_skips_the_reply_and_keeps_the_request(
 
 
 async def test_self_mention_is_ledgered_so_cursor_advances(db):
-    # The bot's own posts surface in its mentions timeline. They must not be
-    # processed, but they MUST land in the ledger: since_id is the ledger max,
-    # so an unledgered self-mention would be re-fetched (re-billed) every run.
+    # The bot's own posts are ledgered, not processed: since_id is the ledger
+    # max, so an unledgered self-mention is re-fetched (re-billed) every run.
     def handler(_req: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -1329,8 +1160,7 @@ async def test_self_mention_is_ledgered_so_cursor_advances(db):
 
 
 async def test_poll_flags_webhook_gap_when_webhook_enabled(db, linked_owner, monkeypatch):
-    # While the webhook is live, the poll is a reconciliation net: a mention
-    # it processes fresh means the webhook missed it, and that must page.
+    # While the webhook is live, a mention the poll processes fresh means the webhook missed it: page.
     import app.services.bot as bot_service
 
     captured: list[tuple[str, str | None]] = []
@@ -1349,8 +1179,7 @@ async def test_poll_flags_webhook_gap_when_webhook_enabled(db, linked_owner, mon
 
 
 async def test_gap_detector_fires_on_failed_verdict_too(db, linked_owner, monkeypatch):
-    # Every fresh verdict is a gap, not only the created/no_detection family:
-    # a mention whose pipeline raised still arrived via reconciliation.
+    # Every fresh verdict is a gap, including a mention whose pipeline raised.
     import app.services.bot as bot_service
 
     captured: list[tuple[str, str | None]] = []
@@ -1373,9 +1202,7 @@ async def test_gap_detector_fires_on_failed_verdict_too(db, linked_owner, monkey
         )
 
     def syn_handler(_req: httpx.Request) -> httpx.Response:
-        # X 5xx, so the pipeline raises and the mention ledgers ``failed``. Not
-        # a 404 or a tombstone: those are the analyst's own ``no_detection``,
-        # which this test already covers elsewhere.
+        # X 5xx: the pipeline raises and the mention ledgers ``failed`` (a 404 or tombstone is ``no_detection``).
         return httpx.Response(500)
 
     posted: list[dict[str, object]] = []
@@ -1434,26 +1261,19 @@ def test_compose_reply_is_linkless_and_carries_the_warnings():
     assert "post date" in text
     assert "already on Vidit" in text
     assert "http" not in text and "vidit.app" not in text
-    # The composer's own footer, still intact: ``_within_reply_cap`` truncates
-    # an over-long reply, so the cap assertion below only means something
-    # paired with proof that nothing was clipped.
+    # Footer intact: ``_within_reply_cap`` truncates, so the cap check needs proof nothing was clipped.
     assert text.endswith("Review from your profile")
     assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
-    # No warning raised, no ⚠ line: the composer decides nothing itself.
     clean = compose_reply(event_id, detections=1, warnings=[])
     assert "⚠" not in clean
 
 
 def test_compose_reply_carries_one_line_per_warning_and_stays_in_the_cap():
-    """One ⚠ line per raised code, in the table's order, and the heaviest reply
-    the pipeline can compose still fits X's cap.
+    """One ⚠ line per raised code, in table order, and the heaviest reply fits X's cap.
 
-    Heaviest is four codes: ``persist_detections`` drops the footage and date
-    warnings on a detection that already carries the empty-source pair, the two
-    halves of that pair never co-occur, and the two footage codes are the two
-    answers to one question, so no pass raises the whole vocabulary. Both
-    footage codes are composed here, since the fetch-failed sentence is the
-    longer of the two and is what the cap has to hold.
+    Heaviest is four codes: the footage codes answer one question and the
+    empty-source pair never co-occur. Both footage codes are composed because
+    the fetch-failed sentence is the longer one.
     """
     event_id = str(uuid.uuid4())
     for footage in (SOURCE_FOOTAGE_MISSING, SOURCE_FETCH_FAILED):
@@ -1480,17 +1300,15 @@ def test_compose_reply_carries_one_line_per_warning_and_stays_in_the_cap():
 def test_compose_failure_reply_without_diagnosis_routes_to_the_maintainers():
     text = compose_failure_reply(mention_id="2081747867450957995")
     assert text.startswith("❌ Nothing saved\n")
-    # No diagnosis to point at: the one-line format summary, no recited shape.
     assert "@vidithq" in text
     assert "http" not in text and ".app" not in text and ".com" not in text
-    # Footer intact (nothing clipped by the cap backstop), then the cap.
+    # Footer intact, then the cap.
     assert text.endswith("Guide in bio (m57995)")
     assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
 
 
 def test_compose_failure_reply_carries_one_diagnosis_line_per_reason():
-    # Each reason yields the header, its one ⚠ diagnosis line, and the
-    # footer; every variant stays linkless, unique per mention, inside the cap.
+    # Header, one ⚠ diagnosis line and footer; linkless, unique per mention, inside the cap.
     for reason, diag in REFUSAL_MESSAGES.items():
         text = compose_failure_reply(reason, mention_id="123456789")
         first, warning, footer = text.splitlines()
@@ -1498,24 +1316,20 @@ def test_compose_failure_reply_carries_one_diagnosis_line_per_reason():
         assert warning == f"⚠ {diag}"
         assert footer == "Guide in bio (m56789)"
         assert "http" not in text and ".app" not in text and ".com" not in text
-        # The intact footer above is what keeps this cap check honest: a
-        # reply that outgrew the cap comes back truncated, not over-long.
+        # The intact footer keeps this honest: an over-cap reply comes back truncated.
         assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
     assert compose_failure_reply("no_such_reason", mention_id="1").startswith("❌ Nothing saved\n")
 
 
 def test_compose_failure_replies_differ_across_mentions():
-    # The mention tail is the anti-duplicate: same diagnosis, two mentions,
-    # two distinct texts (X 403s a tweet identical to a recent one).
+    # Same diagnosis, two distinct texts (X 403s a tweet identical to a recent one).
     a = compose_failure_reply("coords_missing", mention_id="1111100001")
     b = compose_failure_reply("coords_missing", mention_id="2222200002")
     assert a != b
 
 
 def test_compose_request_reply_carries_the_warning_and_stays_in_the_cap():
-    """The request reply is the ✅ reply's twin: the same ⚠ lines from the one
-    copy table, the same footer, the same cap, and no link. The date warning is
-    the one a request actually raises, when the chase served no date."""
+    """The request reply carries the same ⚠ lines, footer and cap as the ✅ reply, with no link."""
     text = compose_request_reply(
         "94183d44-1a2b-4c5d-8e9f-0a1b2c3d4e5f", warnings=[SOURCE_DATE_UNKNOWN]
     )

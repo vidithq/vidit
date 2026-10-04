@@ -3,23 +3,18 @@
 A collection is a named set of one analyst's own events, shown on the owner's
 public profile. Two rules hold everywhere in this module:
 
-* **What a collection may show is one predicate.**
-  :func:`services.event_filters.collectable_events` decides it, and the item
-  page, the count, the date range, the card mosaic, the tag union and the add
-  verb's eligibility check all read it. A row that closes, is taken down or is
-  soft-deleted therefore leaves every one of them at once, with no write to
+* **What a collection may show is one predicate**,
+  :func:`services.event_filters.collectable_events`. The item page, count,
+  date range, mosaic, tag union and add verb all read it, so an event that
+  closes, is taken down or is soft-deleted leaves all of them with no write to
   ``collection_events``.
-* **An event joins its owner's collection only.** The invariant spans two
-  tables, so no SQL constraint carries it: :func:`ensure_collectable` enforces
-  it with the same :func:`services.permissions.ensure_owner` every owner-only
-  verb uses, which means an attempt to shelve somebody else's event is a 403.
-  Both verbs that shelve one read it, :func:`add_event` for the route that
-  takes a single event and :func:`create_collection` for the create that opens
-  a collection on a picked set.
+* **An event joins its owner's collection only.** No SQL constraint spans the
+  two tables, so :func:`ensure_collectable` enforces it with
+  :func:`services.permissions.ensure_owner` (403 for someone else's event), for
+  both :func:`add_event` and :func:`create_collection`.
 
-A collection stores no file of its own: the picture its profile card wears is
-the mosaic :func:`cover_tiles_for` reads off the items at request time, so
-there is nothing to upload, nothing to replace and nothing to sweep.
+A collection stores no file: its card mosaic is read off the items at request
+time by :func:`cover_tiles_for`.
 """
 
 from __future__ import annotations
@@ -56,10 +51,8 @@ from app.services.thumbnails import pick_thumbnail, thumbnail_media_criteria
 class CollectionError(Exception):
     """A collection write or read the rules refuse.
 
-    Carries a stable ``code`` so the router maps it to a status without
-    matching on prose, the same contract as
-    :class:`app.services.evidence_intake.EvidenceIntakeError`. Declared and not
-    valued: every raise is one of the subclasses below, each naming its own.
+    Stable ``code`` per subclass, the same contract as
+    :class:`app.services.evidence_intake.EvidenceIntakeError`.
     """
 
     code: str
@@ -84,13 +77,9 @@ class EventNotCollectableError(CollectionError):
 
 
 class InvalidDescriptionError(CollectionError):
-    """The description is not a document this collection may carry.
+    """The description breaks one of the rules in :func:`_checked_description`.
 
-    One class for the three rules :func:`_checked_description` holds, each
-    naming itself in the message. Maps to 400, the status an event's
-    unsanitisable proof body answers
-    (:class:`services.events.InvalidProofError`), so the two rich-text bodies
-    the site writes are refused the same way.
+    Maps to 400, like :class:`services.events.InvalidProofError`.
     """
 
     code = "invalid_description"
@@ -104,40 +93,27 @@ COLLECTION_ERROR_STATUS: dict[str, int] = {
 }
 
 
-# Stand-ins for a missing event date and a missing hour, so the chronological
-# order is NULLS LAST and the keyset stays one row comparison (a comparison
-# against NULL is unknown, which would drop the page cut). Both are the top of
-# their domain, so an item missing its date sorts after every dated one and an
-# item missing its hour after every timed one on the same day. A real event
-# dated 9999-12-31 would tie with an undated one; the ``created_at, id`` tail
-# still orders the tie totally, so a page walk can neither repeat a row nor
-# skip one.
+# Stand-ins for a missing date and hour: they make the order NULLS LAST and
+# keep the keyset a single row comparison (comparing against NULL is unknown
+# and would drop the page cut). A real 9999-12-31 event ties with an undated
+# one; the ``created_at, id`` tail breaks the tie.
 NO_DATE = date(9999, 12, 31)
 NO_TIME = time(23, 59, 59, 999999)
 
-# How many rows the add-to-collection popover lists. An analyst's shelf is a
-# small set, and the popover shows it whole rather than paging; the cap is
-# what keeps the payload bounded if one ever grows past it. Past the cap the
-# analyst sees their 100 newest collections and the older ones are simply
-# absent from the popover, with nothing saying so.
+# Rows the add-to-collection popover lists, unpaged. Past the cap the older
+# collections are absent from it silently.
 MAX_POPOVER_COLLECTIONS = 100
 
-# SQLSTATE 23505, the unique violation. The only integrity error
-# :func:`add_event` treats as "already there"; psycopg2 carries the code on
-# the driver error SQLAlchemy wraps, as ``exc.orig.pgcode``.
+# SQLSTATE 23505 (unique violation), read as ``exc.orig.pgcode``.
 _UNIQUE_VIOLATION = "23505"
 
 
 def chronological_key() -> tuple[Any, ...]:
     """The sort key a collection's items read by, as SQL expressions.
 
-    ``event_date``, then ``event_time``, then ``created_at``, then ``id``,
-    ascending, the first two through their stand-ins above. One home for the
-    tuple because three callers have to agree on it exactly: the ``ORDER BY``,
-    the keyset predicate that cuts a page out of that order
-    (:func:`services.pagination.keyset_after`), and the cursor the page hands
-    back. ``created_at`` and ``id`` make the ordering total, so items sharing
-    a date and an hour still have one order.
+    ``event_date``, ``event_time`` (through their stand-ins), ``created_at``,
+    ``id``, ascending. The ``ORDER BY``, the keyset predicate
+    (:func:`services.pagination.keyset_after`) and the cursor must agree on it.
     """
     return (
         func.coalesce(Event.event_date, NO_DATE),
@@ -148,12 +124,7 @@ def chronological_key() -> tuple[Any, ...]:
 
 
 def cursor_values(event: Event) -> tuple[date, time, datetime, uuid.UUID]:
-    """The sort values of one item, for the cursor that names it.
-
-    The Python side of :func:`chronological_key`: the same stand-ins, so the
-    values a page ends on are the values the next page's predicate compares
-    against.
-    """
+    """The sort values of one item, for its cursor (Python side of :func:`chronological_key`)."""
     return (
         event.event_date or NO_DATE,
         event.event_time or NO_TIME,
@@ -165,9 +136,8 @@ def cursor_values(event: Event) -> tuple[date, time, datetime, uuid.UUID]:
 class CollectionStats(NamedTuple):
     """What a collection's items add up to at read time.
 
-    ``first_date`` and ``last_date`` are the smallest and largest
-    ``event_date`` among the items, both ``None`` when the collection holds no
-    item carrying one.
+    ``first_date`` / ``last_date`` are the min and max ``event_date``, ``None``
+    when no item has one.
     """
 
     event_count: int
@@ -181,17 +151,10 @@ _EMPTY_STATS = CollectionStats(event_count=0, first_date=None, last_date=None)
 def visible_collections() -> tuple[ColumnElement[bool], ColumnElement[bool]]:
     """The predicate pair naming a collection a reader may see.
 
-    The single home for what "readable collection" means: not withheld
-    (``hidden_at``), and owned by an account that is not soft-deleted. Every
-    surface that resolves, lists or searches a collection for a reader spreads
-    it into its filter (``*visible_collections()``), the shape
-    :func:`services.event_filters.visible_events` has for an event, so a third
-    axis added later lands here instead of at every call site.
-
-    The one deliberate non-caller is the admin door: an admin reads a withheld
-    collection in order to judge what was taken down
-    (:func:`resolve_collection` drops the pair for them, and
-    ``services/admin.hide_collection`` reaches the row by id).
+    Not withheld (``hidden_at``) and owned by a non-deleted account. Every
+    reader surface spreads it (``*visible_collections()``), like
+    :func:`services.event_filters.visible_events`. Admins skip it to judge a
+    takedown (:func:`resolve_collection`, ``services/admin.hide_collection``).
     """
     return Collection.hidden_at.is_(None), Collection.owner.has(User.deleted_at.is_(None))
 
@@ -199,12 +162,8 @@ def visible_collections() -> tuple[ColumnElement[bool], ColumnElement[bool]]:
 def has_showable_item() -> ColumnElement[bool]:
     """Correlated EXISTS: this collection holds at least one showable event.
 
-    An EXISTS rather than a count, because the list only asks whether a
-    collection is empty. Applied to the rows and to the ``total`` alike, so a
-    pager over a stranger's profile never counts a collection the list drops.
-    The search group reads it too (``services/search.search_collections``), so
-    an empty collection is missing from a result list on the same terms it is
-    missing from a profile.
+    Applied to rows and ``total`` alike so a pager never counts a dropped
+    collection. ``services/search.search_collections`` reads it too.
     """
     return (
         select(1)
@@ -219,9 +178,7 @@ def has_showable_item() -> ColumnElement[bool]:
 def stats_for(db: Session, collection_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, CollectionStats]:
     """Count and date range per collection, in one grouped query.
 
-    One statement for a whole page of collections rather than three per row.
-    A collection holding nothing showable has no group, so it is absent from
-    the mapping; callers read it with :data:`_EMPTY_STATS` as the default.
+    A collection with nothing showable is absent; default to :data:`_EMPTY_STATS`.
     """
     if not collection_ids:
         return {}
@@ -246,19 +203,15 @@ def stats_for(db: Session, collection_ids: Sequence[uuid.UUID]) -> dict[uuid.UUI
     }
 
 
-# How many tiles the profile card's mosaic holds. Four, the playlist-icon
-# shape: one item fills the slot, two split it, three and four fill it as a
-# grid, and a fifth would make each tile too small to read at a card's width.
+# Tiles in the profile card's mosaic; a fifth would be too small to read.
 COVER_TILES = 4
 
 
 def _has_thumbnail_media() -> ColumnElement[bool]:
     """Correlated EXISTS: this event carries media a card may show.
 
-    The same rows :func:`services.thumbnails.thumbnail_media_criteria` names,
-    asked as a predicate on the event. It is what keeps an item carrying no
-    showable media out of the ranking, so a collection whose earliest items
-    are text-only still fills its mosaic from the ones that follow.
+    Keeps text-only items out of the ranking so the mosaic still fills from
+    later ones (:func:`services.thumbnails.thumbnail_media_criteria`).
     """
     return (
         select(1)
@@ -272,14 +225,9 @@ def _has_thumbnail_media() -> ColumnElement[bool]:
 def _tile_media(rows: Sequence[Media]) -> Media | None:
     """The media one item contributes to a mosaic, images preferred.
 
-    The card-thumbnail pick (:func:`services.thumbnails.pick_thumbnail`) with
-    one difference that belongs to this surface alone: where that pick returns
-    the item's ``source`` row whatever its kind, a mosaic tile prefers an image
-    over a clip. A tile is a quarter of a card and never plays, so a still frame
-    says more there than a poster frame does, and an item holding a source clip
-    beside a proof image has a picture to offer. The preference lives here
-    rather than in ``pick_thumbnail``, which every other card surface reads and
-    which must go on naming the item's own footage.
+    :func:`services.thumbnails.pick_thumbnail`, except a tile prefers an image
+    over a source clip (a tile never plays). Kept here because every other card
+    surface must go on naming the item's own footage.
     """
     picked = pick_thumbnail(rows)
     if picked is None or picked.media_type == "image":
@@ -292,28 +240,17 @@ def cover_tiles_for(
 ) -> dict[uuid.UUID, list[CollectionCoverTile]]:
     """The mosaic each collection wears, up to :data:`COVER_TILES` tiles.
 
-    The rule, one home: walk the items the collection may show
-    (:func:`services.event_filters.collectable_events`) in the chronological
-    order its own page lists them in, skip an item flagged ``is_graphic``, take
-    one tile per remaining item from its card media (:func:`_tile_media`), and
-    stop at four. A graphic item is skipped rather than ending the walk, so a
-    collection whose earliest event carries hard footage still wears a mosaic
-    and no reader meets death or injury on a card they did not open. A
-    collection with nothing showable gets an empty list, which is the card's
-    placeholder.
+    Walks the collectable items (:func:`services.event_filters.collectable_events`)
+    in chronological order, skips ``is_graphic`` ones (so no reader meets
+    death or injury on a card they did not open, and the walk continues), and
+    takes one tile per item from :func:`_tile_media`. Nothing showable gives an
+    empty list (the card placeholder).
 
-    A tile carries the picked row's ``role`` beside its url and kind, because
-    the preference above hands back proof images and those carry no display
-    derivative (``services/storage.upload_proof_image``). The role is what lets
-    a client read the original for them instead of a ``_thumb`` the pipeline
-    never wrote.
+    A tile carries ``role`` because proof images have no display derivative
+    (``services/storage.upload_proof_image``), so a client reads the original.
 
-    Two statements for a whole page of collections, however many rows it holds.
-    The first ranks each collection's eligible items by the chronological key
-    with a window function and keeps the first four, so the ranking happens once
-    in the database rather than once per card; the second is the eager load of
-    those items' media. The alternative, one query per collection, costs a
-    round trip per card on a surface that pages four at a time.
+    Two statements per page: a window-function ranking that keeps the first
+    four per collection, then the eager media load.
     """
     if not collection_ids:
         return {}
@@ -365,24 +302,13 @@ def cover_tiles_for(
 def tags_for(db: Session, collection_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, list[TagRead]]:
     """The tags each collection inherits from its items, in one query.
 
-    A collection carries no tag of its own. What it says it is about is the
-    union of the tags of the events it may show
-    (:func:`services.event_filters.collectable_events`), read here and never
-    stored, the same terms the count and the date range are computed on: an
-    event that closes, is taken down or is soft-deleted leaves the union with
-    no write to ``collection_events``, and tagging one of its events changes
-    what the collection says without touching the collection.
+    A collection carries no tag of its own: it is the union of the tags of its
+    collectable events (:func:`services.event_filters.collectable_events`),
+    computed on read and never stored.
 
-    ``DISTINCT`` over (collection, tag) is what makes it a union rather than a
-    tally: two items carrying the same tag contribute it once. The order is
-    category then name, so a page of cards and the collection's own header
-    print the same list in the same sequence.
-
-    One statement for a whole page of collections, the shape
-    :func:`cover_tiles_for` takes: the membership join carries the predicate,
-    the association and the tag table follow it, and a collection holding
-    nothing tagged is absent from the mapping, which callers read as the empty
-    list.
+    ``DISTINCT`` over (collection, tag) makes it a union, ordered by category
+    then name so cards and the header print the same list. A collection with
+    nothing tagged is absent from the mapping.
     """
     if not collection_ids:
         return {}
@@ -406,11 +332,8 @@ def tags_for(db: Session, collection_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID
 def build_collection_reads(db: Session, collections: Sequence[Collection]) -> list[CollectionRead]:
     """Assemble the read payload for a page of collections.
 
-    The single assembler, so a collection is the same shape on its own page,
-    on a profile and in a create response. Every derived reading is batched
-    over the whole page: the stats come from one grouped query, the mosaics
-    from one ranked query, the tag unions from one distinct query, so the
-    assembler costs the same few statements for four cards as for one.
+    The single assembler, so the shape is the same everywhere. Stats, mosaics
+    and tags are each one batched query for the whole page.
     """
     collection_ids = [collection.id for collection in collections]
     stats = stats_for(db, collection_ids)
@@ -445,12 +368,9 @@ def build_collection_read(db: Session, collection: Collection) -> CollectionRead
 def resolve_collection(db: Session, *, collection_id: uuid.UUID, viewer: User | None) -> Collection:
     """Fetch a readable collection by id, or raise :class:`CollectionNotFoundError`.
 
-    Readable is :func:`visible_collections`: a withheld collection
-    (``hidden_at``) reads as not found for everyone but an admin, who still has
-    to read what was taken down in order to judge it, the same branch
-    ``GET /events/{id}`` takes. A collection whose owner is soft-deleted reads
-    the same way: the owner's own profile 404s, so their shelf cannot stay open
-    beside it.
+    Readable is :func:`visible_collections`: a withheld collection or one
+    owned by a soft-deleted user reads as not found, except to an admin (the
+    branch ``GET /events/{id}`` takes).
     """
     query = db.query(Collection).options(joinedload(Collection.owner))
     query = query.filter(Collection.id == collection_id)
@@ -465,20 +385,11 @@ def resolve_collection(db: Session, *, collection_id: uuid.UUID, viewer: User | 
 def ensure_collectable(db: Session, *, event_ids: Sequence[uuid.UUID], user: User) -> None:
     """Refuse any id that is not one of ``user``'s collectable events.
 
-    The event half of the membership refusals, in the order the route states
-    them and per id in the order the ids arrived: an id matching no event at
-    all is a 404, somebody else's event is a 403 (the ownership invariant that
-    keeps a collection one analyst's own work), and an event whose state is
-    not one a collection shows
-    (:func:`services.event_filters.collectable_events`) is a 409.
-
-    One home for the three, asked over a set: :func:`add_event` passes the one
-    id the route carries and :func:`create_collection` passes what the create
-    page's picker ticked, so a shelving and a create answer the same refusal
-    for the same row. One statement whatever the count, projecting the two
-    columns the refusals read and the predicate itself as a boolean, which is
-    what keeps a create at the cap from costing a round trip per id and keeps
-    it from hydrating events nothing here renders.
+    Per id, in arrival order: no such event is a 404, somebody else's event is
+    a 403, and a state a collection does not show
+    (:func:`services.event_filters.collectable_events`) is a 409. Shared by
+    :func:`add_event` and :func:`create_collection`. One statement whatever the
+    count, projecting only the columns the refusals read.
     """
     if not event_ids:
         return
@@ -494,20 +405,16 @@ def ensure_collectable(db: Session, *, event_ids: Sequence[uuid.UUID], user: Use
         row = rows.get(event_id)
         if row is None:
             raise EventNotFoundError("Event not found")
-        # The same 403 every owner-only verb raises, so a foreign id is
-        # refused here in the one shape the rest of the site refuses one.
         ensure_owner(row, user)
         if not row.collectable:
             raise EventNotCollectableError("This event is not one a collection can hold")
 
 
 class _CheckedDescription(NamedTuple):
-    """A description that passed the rules: the document, and its projection.
+    """A description that passed the rules: the document and its text projection.
 
-    The pair travels together because the pair is written together: the
-    document goes to ``description`` and its plain text to
-    ``description_text``, and flattening the document a second time at the
-    write is how the two could come to disagree.
+    Written together (``description`` and ``description_text``) so they cannot
+    disagree.
     """
 
     doc: dict[str, Any]
@@ -517,23 +424,15 @@ class _CheckedDescription(NamedTuple):
 def _checked_description(description: dict[str, Any]) -> _CheckedDescription:
     """Sanitise a description and judge it on the text it carries.
 
-    The one home for what a collection's description may be, read by the
-    create and by the update alike, so opening a collection and editing one
-    cannot drift apart. Three refusals, all
-    :class:`InvalidDescriptionError`, each message naming the rule it broke:
+    Shared by create and update. Three refusals, all
+    :class:`InvalidDescriptionError`:
 
-    * The body has to be a Tiptap document the sanitiser accepts, run with
-      ``allow_images=False``. A description is prose about a shelf, there is
-      no upload path behind it, and an image node is dropped rather than
-      stored.
-    * The projection (:func:`services.sanitize.tiptap_doc_text`) must not be
-      empty, the terms a title of spaces is refused on: a document of blank
-      paragraphs is a missing description.
-    * That projection must not run past
-      :data:`schemas.collection.DESCRIPTION_MAX_LENGTH`. Measuring the cap on
-      the projection rather than on the serialised document is what keeps
-      bolding a word from costing an analyst characters they have already
-      typed.
+    * Not a Tiptap document the sanitiser accepts with ``allow_images=False``
+      (no upload path behind a description).
+    * Empty projection (:func:`services.sanitize.tiptap_doc_text`): blank
+      paragraphs are a missing description.
+    * Projection over :data:`schemas.collection.DESCRIPTION_MAX_LENGTH`,
+      measured on text so bolding a word costs no characters.
     """
     doc = sanitize_tiptap_doc_or_raise(
         description, error=InvalidDescriptionError, allow_images=False
@@ -558,20 +457,14 @@ def create_collection(
 ) -> Collection:
     """Open a collection for ``owner``, named, described, and holding ``event_ids``.
 
-    ``description`` is the raw Tiptap document the write body carried. It goes
-    through :func:`_checked_description`, which sanitises it and refuses a
-    blank or over-long projection, and the document and that projection are
-    written together. The pair is written together here and in
-    :func:`update_collection_details`, which is what keeps the search index and
-    every text-only surface describing the document that is stored.
+    ``description`` is the raw Tiptap document, checked by
+    :func:`_checked_description` and stored with its projection (as in
+    :func:`update_collection_details`), which keeps search and text-only
+    surfaces in step with the stored document.
 
-    The ids are what the create page's picker ticked, empty for a collection
-    opened on its two fields alone. They join in the same transaction as the
-    collection itself, through :func:`ensure_collectable`, so a refusal on any
-    one of them takes the whole create with it and no half-filled collection
-    lands for the analyst to find and clean up. The caller de-duplicates and
-    caps them (``schemas/collection.CollectionCreate``), and the collection is
-    new, so there is no membership to check first.
+    ``event_ids`` join in the same transaction through
+    :func:`ensure_collectable`, so one refusal takes the whole create with it.
+    The caller de-duplicates and caps them (``schemas/collection.CollectionCreate``).
     """
     checked = _checked_description(description)
     collection = Collection(
@@ -590,8 +483,6 @@ def create_collection(
         )
         db.commit()
     except Exception:
-        # The refusals leave through here as well as the database errors, and
-        # both mean the same thing: nothing of this create stands.
         db.rollback()
         raise
     db.refresh(collection)
@@ -603,14 +494,10 @@ def update_collection_details(
 ) -> Collection:
     """Write ``collection``'s title and description. 403 for anyone but the owner.
 
-    One verb for the pair rather than one per field: they are what the
-    collection says about itself, the edit panel carries both, and saving them
-    together is what keeps a renamed collection from describing the old one.
-
-    ``description`` goes through :func:`_checked_description` and is written
-    with its projection, the same pairing :func:`create_collection` makes, so
-    an edit takes the refusals the create takes. Ownership is settled first: a
-    stranger's edit is a 403 whatever document it carries.
+    One verb for both fields so a rename never describes the old collection.
+    ``description`` takes the same checks and pairing as
+    :func:`create_collection`. Ownership is settled first: a stranger gets a
+    403 whatever the document.
     """
     ensure_owner(collection, user)
     checked = _checked_description(description)
@@ -625,9 +512,8 @@ def update_collection_details(
 def delete_collection(db: Session, *, collection: Collection, user: User) -> None:
     """Drop ``collection``, leaving every event it held untouched.
 
-    403 for anyone but the owner. The membership rows go with it through the
-    cascade; the events themselves are the analyst's published record and a
-    collection is only a view over them, so nothing else has to be reached.
+    403 for anyone but the owner. Membership rows go through the cascade; a
+    collection is only a view over the events.
     """
     ensure_owner(collection, user)
     db.delete(collection)
@@ -637,29 +523,16 @@ def delete_collection(db: Session, *, collection: Collection, user: User) -> Non
 def add_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user: User) -> None:
     """Put one event on ``collection``. Idempotent: adding it twice writes one row.
 
-    Three refusals, in order. The collection is the caller's or it is a 403.
-    Then the event's own three, which :func:`ensure_collectable` holds for
-    this route and for the create alike: the event is the caller's too, the
-    ownership invariant, or it is a 403 as well; and a collection may only
-    hold a visible, worked row
-    (:func:`services.event_filters.collectable_events`), so a request, a
-    closed row, a takedown or a soft-deleted row is a 409: the event exists
-    and the caller owns it, but its state is not one a curated shelf shows. An
-    id matching no event at all is a 404.
+    The collection must be the caller's (403), then :func:`ensure_collectable`
+    applies: unknown event 404, foreign event 403, non-collectable state 409.
 
-    The membership's composite primary key is the idempotency: the INSERT is
-    staged in a SAVEPOINT, so a row already there (or a race that lands one
-    first) rolls back its own statement on the unique violation and the verb
-    answers idempotently instead of poisoning the transaction. The shape is
-    ``services/social.follow_user``'s minus its pre-SELECT, which here would
-    only ask what the key answers one statement later.
+    The composite primary key is the idempotency: the INSERT runs in a
+    SAVEPOINT, so an existing or racing row rolls back only its own statement.
+    Like ``services/social.follow_user`` without the pre-SELECT.
 
-    Only the unique violation is swallowed (:data:`_UNIQUE_VIOLATION`). The
-    other integrity errors the same statement can raise mean something else
-    entirely: a foreign-key violation says the collection or the event went
-    away under the request, and answering that 204 would tell the analyst a
-    shelving landed when no row exists. It is re-raised, so it surfaces as a
-    500 rather than as a silent success.
+    Only :data:`_UNIQUE_VIOLATION` is swallowed. A foreign-key violation means
+    the collection or event vanished, and answering 204 would claim a shelving
+    that did not happen, so it is re-raised (500).
     """
     ensure_owner(collection, user)
     ensure_collectable(db, event_ids=[event_id], user=user)
@@ -677,10 +550,8 @@ def add_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user:
 def remove_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user: User) -> None:
     """Take one event off ``collection``. Idempotent: a membership it never held is a no-op.
 
-    403 for anyone but the owner. The event is untouched: removing it from a
-    shelf is not a judgement on the geolocation. Eligibility is not re-checked
-    either, so an owner can always clear a membership whose event has since
-    closed or been withheld.
+    403 for anyone but the owner. Eligibility is not re-checked, so an owner
+    can always clear a membership whose event has since closed or been withheld.
     """
     ensure_owner(collection, user)
     row = (
@@ -706,14 +577,12 @@ def list_items(
 ) -> list[tuple[Event, float | None, float | None]]:
     """One window of a collection's items, in the order the events happened.
 
-    Returns ``(event, lat, lng)`` rows, the shape every paged event surface
-    hands its card assembler, with both coordinates projected in the same
-    SELECT so the page costs no query per row. The loaders are the paged-query
-    rule: ``joinedload`` for the many-to-one owner, ``selectinload`` for the
-    sets, which a ``joinedload`` would row-multiply against the ``LIMIT``.
+    Returns ``(event, lat, lng)`` rows with coordinates in the same SELECT.
+    ``joinedload`` for the owner, ``selectinload`` for the sets (a
+    ``joinedload`` would row-multiply against the ``LIMIT``).
 
-    ``limit`` is the caller's window, so a router asking for one row past its
-    page is what decides whether a ``Link: rel="next"`` goes out.
+    ``limit`` is the caller's window: asking for one row past the page decides
+    the ``Link: rel="next"``.
     """
     key = chronological_key()
     query = (
@@ -747,16 +616,11 @@ def list_owned_collections(
 ) -> tuple[list[Collection], int]:
     """One page of an analyst's collections, newest first, with the total.
 
-    ``include_empty`` is the owner's own view: a collection with nothing
-    showable in it is scaffolding the owner is still filling, so a reader gets
-    the shelves that have something on them and the owner gets all of theirs.
-    The flag narrows the ``total`` as well as the rows, so the pager describes
-    the set it is walking.
+    ``include_empty`` is the owner's view (empty collections are scaffolding);
+    readers get only shelves with something on them. It narrows ``total`` too.
 
-    The rows are the readable ones (:func:`visible_collections`), so a withheld
-    collection is in neither view, the owner's included: a takedown freezes a
-    collection for its owner too, exactly as it does an event, and only an
-    admin reads one, by its id.
+    Rows are :func:`visible_collections`, so a withheld collection is hidden
+    from its owner as well; only an admin reads one, by id.
     """
     query = db.query(Collection).options(joinedload(Collection.owner))
     query = query.filter(Collection.owner_id == owner_id, *visible_collections())
@@ -777,13 +641,10 @@ def list_memberships(
 ) -> list[CollectionMembershipRead]:
     """Every collection ``owner`` holds, and whether ``event_id`` is on each.
 
-    The add-to-collection popover's payload, read in three statements however
-    many rows come back: the caller's collections newest first, the
-    memberships of this one event among them, and the item count per
-    collection out of the same grouped query a page of cards reads
-    (:func:`stats_for`), so the number the popover prints under a title is the
-    number that collection's own page prints. Empty collections are in it,
-    since putting the first event on one is what the popover is for.
+    The add-to-collection popover's payload, in three statements: collections
+    newest first, memberships of this event, and counts from :func:`stats_for`
+    (so the number matches the collection's own page). Empty collections are
+    included.
     """
     collections = (
         db.query(Collection)

@@ -43,10 +43,9 @@ describe("OG_LANDMASS_PATH", () => {
 });
 
 describe("OG_LANDMASS_VIEWBOX", () => {
-  // The outline sits under the marker with no reprojection, so the frame it is
-  // drawn in has to be the projection's unit square at 360x180. A change to
-  // either side that is not matched on the other slides the coastline off the
-  // crosshair.
+  // The outline sits under the marker with no reprojection, so its frame must be the
+  // projection's unit square at 360x180; a change on one side alone slides the coastline off
+  // the crosshair.
   it("is the projection's frame, scaled", () => {
     for (const [lat, lng] of [
       [0, 0],

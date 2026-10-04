@@ -12,21 +12,17 @@ class InviteCode(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    # The account that redeemed the code. Audit-only, and nulled when that
-    # account is erased (ON DELETE SET NULL), so it is not the redemption
-    # marker: ``used_at`` is, and it outlives the account.
+    # The redeeming account. Audit-only, nulled on that account's erasure; the
+    # redemption marker is ``used_at``, which outlives it.
     used_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    # Stamped at redemption. Every code is single-use, so a non-NULL value is
-    # what makes the code spent.
+    # Stamped at redemption; non-NULL means spent (single-use).
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # The X handle this invite binds (normalized: lowercase, no leading `@`).
-    # Set at mint time by the admin; redemption copies it onto the new
-    # account's `users.x_handle` so the bot can attribute that handle's
-    # mentions. Delivery of the code over X DM to that handle is the
-    # possession proof during the beta. Fail-soft on redemption: if the handle
-    # was taken meanwhile, the account is still created, without the link.
+    # The X handle this invite binds (lowercase, no `@`), set at mint. Redemption
+    # copies it to `users.x_handle` so the bot can attribute its mentions.
+    # Fail-soft: if the handle was taken meanwhile, the account is created
+    # without the link.
     x_handle: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

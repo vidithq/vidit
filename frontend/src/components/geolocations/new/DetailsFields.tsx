@@ -25,80 +25,57 @@ import { LockedUrl } from "./LockedUrl";
 
 interface DetailsFieldsProps {
   sourceUrl: string;
-  /** Omit when `sourceUrlLocked` — a read-only field never calls it. */
+  /** Omit when `sourceUrlLocked`. */
   setSourceUrl?: (v: string) => void;
-  /** The snapshot of the source URL the analyst archived while filling the
-   *  form, posted with it as `source_snapshot_url`. Optional to fill, but the
-   *  pair is always wired: archival belongs where the source is typed. */
+  /** Posted as `source_snapshot_url`. */
   sourceSnapshotUrl: string;
   setSourceSnapshotUrl: (v: string) => void;
-  /** The copy the event already carries (the edit form); null on a fresh
-   *  submit, where nothing has been archived yet. */
+  /** The copy the event already carries; null on a fresh submit. */
   archivedSource?: ArchivedLink | null;
-  /** Optional mirrors of the same media. Editable on every path, including a
-   *  fulfilment (the geolocate transition replaces the whole list), so unlike
-   *  the primary source it has no locked mode here. */
+  /** Optional mirrors. Editable on every path (the geolocate transition
+   *  replaces the list), so there is no locked mode. */
   secondarySourceUrls: string[];
   setSecondarySourceUrls: (v: string[]) => void;
-  /** One archived-copy paste per mirror, index-aligned with the list above and
-   *  posted as `secondary_snapshot_urls`. A mirror rots like the primary, so
-   *  every declared link carries the same optional field. */
+  /** One paste per mirror, index-aligned with the list above, posted as
+   *  `secondary_snapshot_urls`. */
   secondarySnapshotUrls: string[];
   setSecondarySnapshotUrls: (v: string[]) => void;
-  /** The copies the event already carries, keyed by the link each covers
-   *  (`archivedCopies`). Keyed rather than positional because the rows are
-   *  edited: a mirror shows the copy recorded for the URL it holds now. */
+  /** Keyed by link (`archivedCopies`), not position, because rows are edited. */
   archivedCopies?: ReadonlyMap<string, ArchivedLink>;
   eventDate: string;
   setEventDate: (v: string) => void;
-  /** Optional event time-of-day ("HH:MM", UTC). */
+  /** "HH:MM", UTC. */
   eventTime: string;
   setEventTime: (v: string) => void;
-  /** When the source posted the media: a datetime-local value
-   *  ("YYYY-MM-DDTHH:MM", UTC). */
+  /** datetime-local value ("YYYY-MM-DDTHH:MM", UTC). */
   sourcePostedAt: string;
   setSourcePostedAt: (v: string) => void;
-  /** Whether this surface's floor holds the instant. True everywhere a post
-   *  time is part of publishing; the request edit sets it false, since the bot
-   *  opens requests whose source date it could not read and that form saves
-   *  with the field empty. It marks the input `required`, so the a11y tree
-   *  announces a required field only where the form has one. */
+  /** False on the request edit (the bot opens requests whose source date it
+   *  could not read). Marks the input `required` for the a11y tree. */
   sourcePostedAtRequired?: boolean;
-  /** The author's graphic-content declaration. Never required: an unflagged
-   *  event is a complete form. */
   isGraphic: boolean;
   setIsGraphic: (v: boolean) => void;
-  /** The loaded event already carries the flag. The declaration ratchets on
-   *  the backend (the form raises it and never lowers it), so the switch reads
-   *  its state and refuses the toggle instead of offering a change the
-   *  geolocate write would discard. A fresh submit leaves this `false` (nothing
-   *  is set yet); fulfilling a flagged request sets it, like the edit form. */
+  /** The loaded event already carries the flag. It ratchets on the backend, so
+   *  the switch refuses the toggle instead of offering a change the geolocate
+   *  write would discard. */
   graphicLocked?: boolean;
-  /** Render the source URL read-only: it is inherited from the request on a
-   *  fulfilment, which shows a "from request" hint. Both owner edit shapes
-   *  leave it editable, so they omit it. */
+  /** Read-only, inherited from the request on a fulfilment ("from request"
+   *  hint). */
   sourceUrlLocked?: boolean;
-  /** A machine detection's provenance — the post it was imported from. Shown
-   *  read-only inside this block (it's the one immutable field) when provided;
-   *  the submit form omits it. */
+  /** A machine detection's provenance, the post it was imported from. Shown
+   *  read-only (the one immutable field). */
   detectedFromUrl?: string | null;
-  /** The snapshot of that provenance link, posted as
-   *  `detected_from_snapshot_url`. Only the published-row edit declares the
-   *  field, so the pair is passed only there; without the setter the locked
-   *  field renders bare, as it does on the detection submit form. */
+  /** Posted as `detected_from_snapshot_url`. Only the published-row edit passes
+   *  the pair; without the setter the locked field renders bare. */
   detectedFromSnapshotUrl?: string;
   setDetectedFromSnapshotUrl?: (v: string) => void;
-  /** The copy the provenance link already carries, if any. */
   archivedDetectedFrom?: ArchivedLink | null;
-  /** Flag the source-time / source-URL inputs as missing. */
   sourcePostedAtInvalid?: boolean;
   sourceUrlInvalid?: boolean;
 }
 
-/** The "Details" section — mirrors the detail page's Details block: when the
- *  event happened, when the source posted it, and the original source. Title
- *  leads the form; coordinates live in the Location section; media in Media.
- *  Shared by the submit form and the detection edit form. */
+/** The "Details" section, mirroring the detail page's Details block. Shared by
+ *  the submit form and the detection edit form. */
 export function DetailsFields({
   sourceUrl,
   setSourceUrl,
@@ -128,18 +105,14 @@ export function DetailsFields({
   sourcePostedAtInvalid = false,
   sourceUrlInvalid = false,
 }: DetailsFieldsProps) {
-  // A fulfilment can reach here before the request's source has loaded, so the
-  // link mode needs a value, not just the locked flag.
+  // A fulfilment can reach here before the request's source has loaded.
   const sourceUrlAsLink = sourceUrlLocked && sourceUrl !== "";
 
-  // The source's paste line opens on the mark, and starts open where a value is
-  // already staged: a seeded snapshot nothing displays is one nobody can
-  // correct. The mirrors' equivalent lives in `LinkListInput`, which is what
-  // keeps a row's open line aligned with its link across an add or a removal.
+  // Starts open where a value is already staged, so a seeded snapshot is not
+  // hidden. The mirrors' equivalent lives in `LinkListInput`.
   const [sourceArchiveOpen, setSourceArchiveOpen] = useState(
     sourceSnapshotUrl !== ""
   );
-  // The provenance link's own line, on the same rule as the source's above.
   const [provenanceArchiveOpen, setProvenanceArchiveOpen] = useState(
     detectedFromSnapshotUrl !== ""
   );
@@ -152,11 +125,9 @@ export function DetailsFields({
     />
   );
 
-  // One mirror's name, said the same way in the mark and in the line under it.
   const describeMirror = (index: number, url: string) =>
     mirrorDescription(safeHostname(url), index, secondarySourceUrls.length);
 
-  // One label, worn by whichever element ends up carrying it.
   const sourceUrlLabel = (
     <>
       Source URL <FieldHelp concept="source_url" />{" "}
@@ -169,8 +140,7 @@ export function DetailsFields({
       <SectionHeading title="Details" concept="section_details" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Optional on every path: the footage doesn't always establish when
-            the depicted event happened; an empty date reads as "Unknown". */}
+        {/* Optional: an empty date reads as "Unknown". */}
         <div className="space-y-1.5">
           <label htmlFor="event_date" className={FORM_LABEL}>
             Event date <FieldHelp concept="event_date" />
@@ -213,11 +183,8 @@ export function DetailsFields({
       </div>
 
       <div className="space-y-1.5">
-        {/* A locked field holding a URL shows that URL as a link, so it can be
-            opened without being retyped. A `label` needs a labelable control
-            and an anchor is not one, so the label becomes a `span` in that
-            mode, as the secondary-sources and graphic-content blocks do. An
-            empty locked field keeps the input: there is no link to render. */}
+        {/* A locked URL shows as a link. An anchor is not labelable, so the label
+            becomes a `span`. An empty locked field keeps the input. */}
         {sourceUrlAsLink ? (
           <span className={FORM_LABEL}>{sourceUrlLabel}</span>
         ) : (
@@ -244,11 +211,7 @@ export function DetailsFields({
             trailing={sourceArchiveMark}
           />
         )}
-        {/* Archival rides the field holding the link it archives, on the form
-            where that link is typed: a source is most archivable while the
-            analyst still has it open. The paste line opens under the field, so
-            the copy and the link it covers read as one thing. Optional, and
-            never part of a publish floor. */}
+        {/* Optional, never part of a publish floor. */}
         {sourceArchiveOpen && (
           <ArchiveSnapshotField
             link={sourceUrl}
@@ -259,13 +222,7 @@ export function DetailsFields({
         )}
       </div>
 
-      {/* The mirrors sit under the primary they mirror. Never required, so no
-          invalid state and no readiness entry: an empty list is a complete
-          form. A `span` label, not a `label`: the rows are a list, and each
-          input carries its own accessible name.
-
-          Each row carries the same archival brick as the Source URL above it,
-          because a mirror rots the same way. */}
+      {/* Never required. A `span` label: each row input has its own name. */}
       <div className="space-y-1.5">
         <span className={FORM_LABEL}>
           Secondary sources <FieldHelp concept="secondary_source_urls" />
@@ -299,10 +256,7 @@ export function DetailsFields({
         />
       </div>
 
-      {/* The graphic-content declaration. A `span` label plus the switch's own
-          accessible name, matching the secondary-sources block above: the
-          control is not a labelable field the browser can associate a
-          `<label>` with. */}
+      {/* A `span` label plus the switch's own name: not a labelable field. */}
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
           <span className={FORM_LABEL}>
@@ -323,11 +277,7 @@ export function DetailsFields({
         />
       </div>
 
-      {/* Always locked and always populated (the block renders on a value), so
-          it is always the link form. Locked names the link, not its archived
-          copy: the post rots like any other source, so where the write path
-          takes the paste the field carries the same mark and the same line as
-          the Source URL above. */}
+      {/* Always locked and populated, so always the link form. */}
       {detectedFromUrl && (
         <div className="space-y-1.5">
           <span className={FORM_LABEL}>

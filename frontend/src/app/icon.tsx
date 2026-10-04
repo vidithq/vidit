@@ -53,21 +53,17 @@ export default async function Icon({ id }: { id: string | Promise<string> }) {
           display: "flex",
           width: "100%",
           height: "100%",
-          // Transparent so the V reads on light/dark chrome, the iOS
-          // rounded-corner mask, and Android adaptive icons.
+          // Transparent so the V reads on light/dark chrome and platform masks.
           background: "transparent",
           alignItems: "center",
           justifyContent: "center",
           color: "#f97316",
           fontFamily: "Montserrat",
           fontWeight: 700,
-          // 90% of canvas height; Montserrat-700's side-bearing keeps
-          // breathing room around the glyph.
+          // 90% of canvas height; Montserrat-700's side-bearing keeps room around the glyph.
           fontSize: `${size * 0.9}px`,
           lineHeight: 1,
-          // A "V"'s optical centre sits above its geometric centre (it
-          // tapers to a point), so flex-centring reads top-heavy in tabs.
-          // Nudging down ~18% aligns it with adjacent tab text.
+          // A V's optical centre sits above its geometric one; nudge down ~18% to align with tab text.
           paddingTop: `${size * 0.18}px`,
         }}
       >

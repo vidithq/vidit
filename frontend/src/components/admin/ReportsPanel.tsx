@@ -24,38 +24,29 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 /**
- * The moderation queue: every content report, open ones first and newest first
- * within each group (the API owns that order). Resolved rows stay in the list
- * rather than dropping out of it, so the queue doubles as the record of what
- * was reported and what was decided.
+ * The moderation queue: every content report, open first and newest first within each group (the
+ * API owns the order). Resolved rows stay, so the queue doubles as the record of what was reported
+ * and decided.
  *
- * A report names an event or a collection, and one list answers for both. An
- * event row links out by id, the way every other admin surface reaches one; a
- * collection row prints the title and the owner it came back with, because a
- * collection is a name rather than a page an admin recognises from its id.
+ * A report names an event or a collection. An event row links out by id; a collection row prints
+ * the title and owner it came back with, since a collection is a name, not a recognisable id.
  *
- * Each open row carries the verdicts its target can take. `hidden` withholds
- * the target from every public read, event or collection, so it takes the
- * two-click confirm the delete panel uses. `Mark graphic` is an event verdict
- * only: the flag is a column on the event, and a collection carries no footage
- * of its own, so a collection row does not offer it and the API answers it
- * with 409 `report_verdict_not_applicable`. Both are recoverable, the event
- * through the moderation panel beside this one and the collection through the
- * admin takedown.
+ * Each open row carries the verdicts its target can take. `hidden` withholds the target from every
+ * public read, so it takes the two-click confirm the delete panel uses. `Mark graphic` is
+ * event-only (the flag is an event column): a collection row doesn't offer it and the API answers
+ * 409 `report_verdict_not_applicable`. Both are recoverable, the event through the moderation
+ * panel beside this one and the collection through the admin takedown.
  *
- * A report whose target was deleted since carries neither: the row survives
- * the deletion, so it says the target is gone instead of linking to it, and
- * offers Dismiss alone. Every other verdict would mutate a row that no longer
- * exists, and the API answers them with 409 `report_target_gone`.
+ * A report whose target was since deleted survives the deletion: the row says the target is gone
+ * instead of linking, and offers Dismiss alone (every other verdict gets 409
+ * `report_target_gone`).
  */
 
 const PER_PAGE = 20;
 
-// The bucket labels are the reporter-facing ones (`REPORT_REASON_LABELS`), so
-// the queue reads a report back in the words the reporter picked it by. The
-// verdicts are this surface's own vocabulary: keyed by the generated union, so
-// a new backend value fails `tsc` here instead of rendering as a raw enum
-// string.
+// Bucket labels are the reporter-facing ones (`REPORT_REASON_LABELS`). The verdicts are this
+// surface's vocabulary, keyed by the generated union so a new backend value fails `tsc` here
+// instead of rendering a raw enum string.
 const RESOLUTION_LABELS: Record<ContentReportResolution, string> = {
   marked_graphic: "Marked graphic",
   hidden: "Hidden",
@@ -79,9 +70,7 @@ function ReportRow({
 
   const open = report.resolved_at === null;
   const busy = resolveMutation.loading;
-  // Which kind of row this is. A report names one target, so at most one of
-  // the two is set; neither is set once that target was deleted, and then
-  // there is nothing left to mark or hide.
+  // Which kind of row this is. A report names one target, so at most one is set; neither once the target was deleted.
   const collection = report.collection;
   const isEvent = report.event_id !== null;
   const targetGone = !isEvent && collection === null;

@@ -1,23 +1,17 @@
 """Full-text search across events (located + requested), users and collections.
 
-Postgres FTS: ``plainto_tsquery`` parses user input (forgiving of spaces /
-punctuation, no operator surface to escape), the GIN indexes from migration
-``o1j3k5l7m9n1`` back the lookups, and ``ts_headline`` returns the matching
-fragment with sentinel delimiters the frontend renders as ``<mark>`` —
-XSS-safe by construction, no HTML across the wire. Soft-deleted rows are
+Postgres FTS: ``plainto_tsquery`` parses user input (no operator surface to
+escape), the GIN indexes from migration ``o1j3k5l7m9n1`` back the lookups, and
+``ts_headline`` returns fragments with sentinel delimiters the frontend renders
+as ``<mark>`` (no HTML across the wire, so XSS-safe). Soft-deleted rows are
 filtered at query time.
 
-Since the request + geolocation merge there is a single FTS query path over the
-one ``events`` table (:func:`_search_events`); the located and requested
-views differ only by a status/coords filter and the fields each surfaces, and
-both compose with the standard event filter set (``services/event_filters``),
-the same predicates `/events` and `/events/points` take. The TSVECTOR
+One FTS path serves both event views (:func:`_search_events`), composed with
+the standard event filters (``services/event_filters``). The TSVECTOR
 expressions must stay expression-tree-equal to the migration's
 ``CREATE INDEX`` expressions (config name as a SQL literal, never a bound
-parameter) or Postgres falls back to a sequential scan; the event one is the
-``_geo_tsvector`` builder, the collection one the ``_collection_tsvector``
-builder, the user one a module constant, so the queries and the migration
-can't drift.
+parameter) or Postgres falls back to a sequential scan: ``_geo_tsvector``,
+``_collection_tsvector``, and the ``_USER_TSVECTOR`` constant.
 """
 
 from __future__ import annotations
@@ -45,19 +39,14 @@ from app.services.collections import (
 from app.services.event_filters import EventFilters, owner_username_matches, visible_events
 from app.services.thumbnails import pick_thumbnail, thumbnail_media_criteria
 
-# Sentinel bytes ``ts_headline`` wraps around matched fragments. STX / ETX
-# (U+0002 / U+0003) not an ASCII string like ``[[HL]]``: an ASCII marker is
-# forgeable — a user typing ``"watch [[/HL]] this"`` into their bio would
-# corrupt highlight parity for searchers. STX / ETX never appear in
-# legitimate text, and a hostile client planting them via a raw-bytes PATCH
-# is stripped before ``ts_headline`` runs — see ``_strip_sentinels``.
+# ``ts_headline`` sentinels: STX / ETX, not an ASCII marker like ``[[HL]]``,
+# which a user could type into a bio to corrupt highlights. Planted STX / ETX
+# are stripped first (see ``_strip_sentinels``).
 HIGHLIGHT_START = "\x02"
 HIGHLIGHT_STOP = "\x03"
 
-# ``ts_headline`` options strings, sent as bound parameters so they stay
-# injection-proof if made dynamic later. ``HighlightAll=TRUE`` skips
-# fragment selection on short titles (splitting would truncate);
-# fragment-mode applies to the prose ``users.bio``.
+# ``HighlightAll=TRUE`` skips fragment selection on short titles (splitting
+# would truncate); fragment mode is for the prose ``users.bio``.
 _HEADLINE_OPTS_FULL = f"StartSel={HIGHLIGHT_START}, StopSel={HIGHLIGHT_STOP}, HighlightAll=TRUE"
 _HEADLINE_OPTS_FRAGMENT = (
     f"StartSel={HIGHLIGHT_START}, StopSel={HIGHLIGHT_STOP}, MaxFragments=2, MaxWords=20, MinWords=5"
@@ -65,48 +54,31 @@ _HEADLINE_OPTS_FRAGMENT = (
 
 
 def _strip_sentinels(col: str) -> str:
-    """SQL fragment: strip STX/ETX bytes from ``col`` before ts_headline.
-
-    Belt to the sentinel-choice suspenders: even if a hostile client plants
-    the sentinel bytes via a raw-bytes write, the document passed to
-    ``ts_headline`` has them stripped, so the response markup stays
-    well-balanced regardless of what's on disk. ``translate`` removes both
-    in one call with no regex cost.
-    """
+    """SQL fragment stripping STX/ETX from ``col`` so planted sentinels can't unbalance the markup."""
     return f"translate({col}, chr(2) || chr(3), '')"
 
 
-# TSVECTOR expressions. The events one is built from ORM ``func`` calls so it
-# composes with the shared filter predicates; the config name stays a SQL
-# literal (``literal_column``), never a bound parameter, because a
-# ``$1::regconfig`` expression would not match the migration's index
-# expression tree and the planner would fall back to a sequential scan. The
-# users one stays raw SQL (its query takes no event filters).
+# The config name stays a SQL literal, never a bound parameter: a
+# ``$1::regconfig`` would not match the index expression tree. The events and
+# collections vectors use ORM ``func`` calls to compose with the shared
+# filters; the users one is raw SQL (no event filters).
 #
-# ``source_url`` is excluded — see the migration docstring for why URL
-# substring matches don't survive the simple parser's tokenization.
+# ``source_url`` is excluded (see the migration docstring).
 _TS_CONFIG: ColumnClause[str] = literal_column("'simple'")
 _USER_TSVECTOR = "to_tsvector('simple', coalesce(username, '') || ' ' || coalesce(bio, ''))"
 
 
 def _geo_tsvector():
-    """``to_tsvector('simple', coalesce(title, ''))`` — must stay
-    expression-tree-equal to the migration's GIN index expression."""
+    """``to_tsvector('simple', coalesce(title, ''))``, equal to the migration's index expression."""
     return func.to_tsvector(_TS_CONFIG, func.coalesce(Event.title, literal_column("''")))
 
 
 def _collection_tsvector():
     """``to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(description_text, ''))``.
 
-    The collection's title and the plain-text projection of its description as
-    one document, so a query matches the name of a collection or what it says
-    it holds. The projection rather than the description itself: the
-    description is a Tiptap document in ``JSONB``, and a ``to_tsvector`` over
-    it would index node names and punctuation instead of the words an analyst
-    wrote. Built from ORM ``func`` calls for the reason :func:`_geo_tsvector`
-    is, and expression-tree-equal to the ``ix_collections_search_fts``
-    expression in migration ``s7u9w1y3a5c7``: Postgres concatenates left to
-    right, so the parenthesising here is the parsing there.
+    Uses the plain-text projection, not the Tiptap JSONB, which would index
+    node names. Expression-tree-equal to ``ix_collections_search_fts`` in
+    migration ``s7u9w1y3a5c7`` (the parenthesising is the parsing).
     """
     document = (
         func.coalesce(Collection.title, literal_column("''"))
@@ -126,22 +98,15 @@ def _search_events(
 ) -> tuple[list[uuid.UUID], dict[uuid.UUID, str], int]:
     """Run the FTS over ``events`` and return ``(ids, highlights, total)``.
 
-    The single FTS query path for both event views, composed with the shared
-    filter predicates (:class:`EventFilters`, the same set `/events` and
-    `/events/points` take) so the surfaces can't drift. ``ids`` are ranked
-    (``ts_rank`` desc, ``created_at`` desc tie-break), ``highlights`` maps
-    each id to its ``ts_headline`` title, and ``total`` is the pre-``LIMIT``
-    match count via ``COUNT(*) OVER ()`` so the UI renders "3 of 142", not
-    "3 of 3". Soft-deleted rows are excluded (inside ``filters.apply``). The
-    caller hydrates the rows it needs off the ranked id list.
+    ``ids`` are ranked (``ts_rank`` desc, ``created_at`` desc), ``highlights``
+    maps id to its ``ts_headline`` title, ``total`` is the pre-``LIMIT`` count
+    (``COUNT(*) OVER ()``). Soft-deleted rows are excluded in ``filters.apply``.
 
-    With active filters and an **empty** ``query`` the FTS predicate drops
-    entirely: browse mode, the filtered view newest first with the plain
-    title as its own "highlight" (nothing to mark). The profile's "Show
-    more" lands here, then typing narrows within it.
+    With active filters and an empty ``query`` the FTS predicate drops: browse
+    mode, newest first, plain title as the "highlight". The profile's "Show
+    more" lands here.
 
-    ``extra_criteria`` are per-group predicates layered on top of the view
-    (search is narrower than the list views: closed rows stay out).
+    ``extra_criteria`` narrow the view further (closed rows stay out of search).
     """
     q = query.strip()
     if q:
@@ -159,9 +124,7 @@ def _search_events(
     else:
         stmt = db.query(
             Event.id,
-            # The plain title stands in for the highlight, but still through
-            # the sentinel strip: a title with planted STX/ETX bytes must not
-            # render fake <mark>s just because this branch skips ts_headline.
+            # Still sentinel-stripped: planted STX/ETX must not render fake <mark>s.
             func.translate(
                 Event.title, literal_column("chr(2) || chr(3)"), literal_column("''")
             ).label("title_highlight"),
@@ -184,13 +147,10 @@ def search_geolocations(
 ) -> tuple[list[dict], int]:
     """Top-N located events matching ``query`` + the pre-LIMIT total.
 
-    The located view: live ``geolocated`` / ``detected`` rows with a subject
-    coordinate. A status predicate (not bare ``event_coords IS NOT NULL``)
-    because a ``requested`` row may now carry an approximate guess yet belongs
-    to the requested view; closed rows stay out of search (narrower than the
-    ``located`` list view, which keeps them as audit trail). Returns
-    ``(hits, total)``: ``hits`` are dicts ready for the router's Pydantic
-    schema; ``total`` is the pre-``LIMIT`` match count.
+    Live ``geolocated`` / ``detected`` rows with a subject coordinate. The
+    status predicate is needed because a ``requested`` row may carry an
+    approximate guess yet belongs to the requested view. Closed rows stay out.
+    ``hits`` are dicts for the router's Pydantic schema.
     """
     ids, highlight_by_id, total = _search_events(
         db,
@@ -204,9 +164,7 @@ def search_geolocations(
     if not ids:
         return [], 0
 
-    # Hydrate the full geo objects + relationships in one round-trip, keyed
-    # off the ranked id list. Re-sort in Python because ``IN (...)`` doesn't
-    # preserve order — the cost of the two-step "rank then hydrate" pattern.
+    # Hydrate in one round-trip; re-sort in Python because ``IN (...)`` loses rank order.
     geos = (
         db.query(
             Event,
@@ -226,7 +184,7 @@ def search_geolocations(
     out: list[dict] = []
     for hit_id in ids:
         row = geo_by_id.get(hit_id)
-        if row is None:  # soft-deleted between SELECTs — drop silently
+        if row is None:  # soft-deleted between SELECTs
             continue
         geo = row.Event
         thumb = pick_thumbnail(geo.media)
@@ -251,11 +209,9 @@ def search_geolocations(
 def search_requests(
     db: Session, *, query: str, limit: int, filters: EventFilters | None = None
 ) -> tuple[list[dict], int]:
-    """Top-N requested events (requests) matching ``query`` + the pre-LIMIT total.
+    """Top-N requested events matching ``query`` + the pre-LIMIT total.
 
-    The requested view: ``status = 'requested'`` (withdrawn requests stay out
-    of search, unlike the list view's audit trail). Same FTS path as the
-    located view via :func:`_search_events`.
+    ``status = 'requested'`` only (withdrawn requests stay out of search).
     """
     ids, highlight_by_id, total = _search_events(
         db,
@@ -308,35 +264,23 @@ def search_collections(
 ) -> tuple[list[CollectionRead], int]:
     """Top-N collections matching ``query`` + the pre-LIMIT total.
 
-    The FTS runs over the title and the description's plain-text projection as
-    one document
-    (:func:`_collection_tsvector`), ranked by ``ts_rank`` with ``created_at``
-    descending as the tie-break, the ranking the event and user groups take.
+    FTS over :func:`_collection_tsvector`, ranked by ``ts_rank`` then
+    ``created_at`` desc.
 
-    What a reader may find is what a reader may already see on a profile: the
-    readable-collection predicate the collection's own page reads
-    (``services/collections.visible_collections``), plus the profile list's own
-    emptiness predicate (``services/collections.has_showable_item``), so search
-    never hands over a card that opens on an empty shelf.
+    Only readable, non-empty collections match
+    (``services/collections.visible_collections`` and ``has_showable_item``),
+    so a hit never opens on an empty shelf.
 
-    ``author`` scopes the group to one owner, the same exact, case-insensitive
-    match the event groups take (``services/event_filters``). No highlights:
-    the hit is the profile card, which prints the collection's own title and
-    description rather than a matched fragment.
+    ``author`` scopes to one owner, with the same exact case-insensitive match
+    as the event groups. No highlights: the card prints the collection's own
+    text.
 
-    With an **empty** ``query`` and an ``author`` the FTS predicate drops
-    entirely: browse mode, that analyst's shelf newest first, the event
-    groups' behaviour under the same empty query. The profile's Collections
-    "Show more" lands here, and typing then narrows within it. An empty query
-    with no author still returns nothing, since "every collection there is" is
-    a listing rather than a search.
+    With an empty ``query`` and an ``author`` the FTS predicate drops (browse
+    mode, newest first; the profile's Collections "Show more" lands here). An
+    empty query with no author returns nothing: that is a listing, not a search.
 
-    The ranked query selects the collection itself, its owner eagerly loaded,
-    rather than ranking ids and re-fetching them: unlike the event groups, the
-    payload needs no per-hit highlight to key back onto, so one statement
-    returns the rows already in rank order and the assembler reads them as they
-    come. ``total`` is the pre-``LIMIT`` match count from ``COUNT(*) OVER ()``
-    on both paths, the figure the other groups report.
+    One statement selects the collection with its owner, already in rank
+    order: there are no per-hit highlights to key back onto, so no id re-fetch.
     """
     q = query.strip()
     if not q and not author:
@@ -365,11 +309,7 @@ def search_collections(
 def search_users(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
     """Top-N analyst handles matching ``query`` + the pre-LIMIT total.
 
-    ``username_highlight`` always present (username is always indexed);
-    ``bio_highlight`` only when bio carries text AND contributed to the
-    match, keeping an empty snippet block off the UI. Two ``:opts_*``
-    params because username gets full-highlight (it's short) and bio gets
-    fragment-mode (it's prose).
+    ``bio_highlight`` is set only when the bio contributed to the match.
     """
     sql = text(
         f"""
@@ -423,9 +363,7 @@ def search_users(db: Session, *, query: str, limit: int) -> tuple[list[dict], in
         if u is None:
             continue
         username_hl, bio_hl = highlights[hit_id]
-        # Surface ``bio_highlight`` only when bio actually contains a match
-        # marker — ts_headline returns the original text on a no-match
-        # field, which would clutter the card with a non-highlighting snippet.
+        # ts_headline returns the original text on a no-match field.
         bio_highlight: str | None = None
         if bio_hl is not None and HIGHLIGHT_START in bio_hl:
             bio_highlight = bio_hl
@@ -453,28 +391,17 @@ def search_all(
     """Run grouped FTS across the requested entity types.
 
     ``types`` is a subset of ``{"geolocation", "request", "collection",
-    "user"}`` (the router expands ``type=all`` before calling). An empty /
-    whitespace-only query short-circuits to empty, keeping index cost off
-    "typed but didn't submit" hits, unless a filter is active, which flips
-    the event groups into browse mode (the filtered view, newest first).
+    "user"}`` (the router expands ``type=all``). An empty query returns empty
+    unless a filter is active, which puts the event groups in browse mode.
 
-    ``filters`` (the standard event filter set) scopes the two event groups;
-    while any filter is active the users group empties: the filters are
-    event predicates, and an unfiltered analyst list next to a filtered
-    event view would read as if the filter applied. The collections group
-    takes the same rule with one exception, ``author``: a collection has an
-    owner, so "this analyst's collections" is a question it can answer, and
-    the filter narrows the group instead of emptying it. Every other filter
-    names a property of an event, which a collection does not carry, so it
-    empties the group (``EventFilters.active_beyond_author``). That one
-    exception carries browse mode with it: ``author`` alone and an empty
-    query lists the analyst's shelf newest first, the way the event groups
-    browse their filtered view. The response shape stays stable either way.
+    ``filters`` scopes the two event groups. While any filter is active the
+    users group empties, since the filters are event predicates. The
+    collections group follows the same rule except for ``author``, which
+    narrows it (and enables browse mode); any other filter names an event
+    property and empties it (``EventFilters.active_beyond_author``).
 
-    Returns ``{group: {"hits": [...], "total": int}}`` for every group:
-    ``hits`` capped at ``limit``, ``total`` the pre-LIMIT match count for
-    "3 of 142". Unrequested groups get empty hits / total=0 so the JSON
-    shape stays stable for the frontend.
+    Returns ``{group: {"hits": [...], "total": int}}`` for every group, with
+    empty hits and total 0 for unrequested ones so the shape stays stable.
     """
     filters = filters or EventFilters()
     result: dict[str, dict] = {
@@ -506,14 +433,11 @@ def search_all(
 def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
     """Usernames matching ``query`` for the author-filter typeahead.
 
-    Case-insensitive substring, prefix matches first then alphabetical, so
-    the picker surfaces real handles and the filter itself can stay an exact
-    match. Scoped to live users **owning at least one live event**: that is
-    all the filter can ever match, and it keeps this anonymous endpoint from
-    doubling as an account-enumeration oracle (an analyst is only listed
-    once their work is public anyway). ``query`` is gated by
-    ``AUTHOR_FILTER_PATTERN`` at the router; ``_`` is escaped because the
-    pattern legitimately allows it and LIKE treats it as a wildcard.
+    Case-insensitive substring, prefix matches first then alphabetical. Scoped
+    to live users owning at least one live event: all the filter can match,
+    and it keeps this anonymous endpoint from enumerating accounts. ``query``
+    is gated by ``AUTHOR_FILTER_PATTERN`` at the router; ``_`` is escaped
+    because it is allowed there but is a LIKE wildcard.
     """
     q = query.strip()
     if not q:
@@ -536,23 +460,13 @@ def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
     return [r.username for r in rows]
 
 
-# Allowed ``type`` parameter values. Re-exported by the router for the 422
-# message so the spec stays in one place. ``event`` is the reader-facing union
-# of the two event groups (the search page's unified "Events" chip: the filter
-# set only applies to events, so the picker doesn't force the geolocation vs
-# request split); the two singletons stay for callers that want one group.
-# ``collection`` is its own group and its own chip: a collection is not an
-# event, and the event filters do not describe one.
+# Allowed ``type`` values, re-exported by the router for its 422 message.
+# ``event`` is the union of the two event groups (the unified "Events" chip).
 ALLOWED_TYPES = {"all", "event", "geolocation", "request", "collection", "user"}
 
 
 def types_from_param(param: str) -> set[str]:
-    """Translate the ``type`` query parameter into the internal set.
-
-    ``"all"`` expands to the union, ``"event"`` to the two event groups;
-    anything else is a singleton. The router validates
-    ``param in ALLOWED_TYPES`` first, so this trusts its input.
-    """
+    """Expand the ``type`` parameter (already validated by the router) into the group set."""
     if param == "all":
         return {"geolocation", "request", "collection", "user"}
     if param == "event":

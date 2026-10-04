@@ -1,47 +1,7 @@
-"""End-to-end tests for the collections endpoints.
-
-A collection is a named set of one analyst's own events. What these lock in:
-
-* ``POST`` / ``PATCH`` / ``DELETE /collections``: an owner opens a collection
-  under a title and a required description, writes both together, and drops
-  one, which leaves every event it held alone. A blank or over-long title is a
-  422 on either write, whitespace included.
-* The description is a Tiptap document under the proof allowlist minus images:
-  bold, italic and lists round-trip, an image node is dropped, and the blank
-  and the 500-character refusals are both measured on the plain-text
-  projection the read carries as ``description_text``. A document the rules
-  refuse is a 400 carrying ``invalid_description``, the status and the shape
-  an event's unsanitisable proof body answers, on either write.
-* ``POST /collections`` with ``event_ids``: the collection opens holding what
-  the create page's picker ticked, duplicate ids collapse to one membership, a
-  body past the cap is a 422, and a foreign (403), ineligible (409) or unknown
-  (404) id fails the create whole, leaving no collection behind.
-* ``PUT`` / ``DELETE /collections/{id}/events/{event_id}``: both idempotent,
-  403 when the collection or the event belongs to someone else, 409 when the
-  event's status is not one a collection shows, 404 on an unknown event.
-* ``GET /collections/{id}/events``: chronological order with items missing a
-  date sorting last, and a ``Link: rel="next"`` cursor walk that neither
-  repeats nor skips a row.
-* Withheld collections (``hidden_at``) read as 404 for everyone but an admin.
-  ``PATCH /admin/collections/{id}/moderation`` moves the stamp either way and
-  ``DELETE /admin/collections/{id}`` is the takedown alias.
-* ``POST /collections/{id}/report``: the same gesture as reporting an event,
-  open to anonymous viewers, recording a signed-in reporter, and answering 404
-  for a collection nobody can read.
-* ``GET /users/{username}/collections``: a reader sees the collections that
-  hold something, the owner sees their empty ones too, and ``total`` agrees
-  with the rows either way.
-* The card mosaic: up to four tiles read off the items in chronological
-  order, a graphic item skipped, an image preferred over a clip on an item
-  carrying both, and ``media_type`` naming the element that can render each
-  tile.
-* The derived tag union: the tags of the events a collection may show, each
-  named once, ordered by category then name, dropping with an item that leaves
-  the collectable set, and identical on the collection read, the search hit and
-  the profile list.
-* A GDPR hard delete of the owner drops the collections and their
-  memberships.
-"""
+"""Collections endpoints: owner CRUD with title and Tiptap description (blank and 500-char
+refusals measured on the plain-text projection), ``event_ids`` on create (all-or-nothing),
+idempotent membership verbs, chronological paging, admin withholding and takedown, reports,
+user and event collection lists, the card mosaic, the derived tag union, and GDPR hard delete."""
 
 from __future__ import annotations
 
@@ -79,17 +39,8 @@ client = TestClient(app)
 
 
 def _doc(text: str) -> dict:
-    """A description as a write body carries it: the Tiptap document for ``text``.
-
-    Most of these tests are about a refusal or a round trip rather than about
-    rich text, so they say the words and let this wrap them in the one
-    paragraph-per-line shape ``sanitize.tiptap_doc_from_text`` builds. The
-    tests that are about the markup write the tree out by hand.
-    """
+    """A description write body: the Tiptap document for ``text``, one paragraph per line (``sanitize.tiptap_doc_from_text``)."""
     return tiptap_doc_from_text(text)
-
-
-# ── Fixtures ──────────────────────────────────────────────────────────────
 
 
 @pytest.fixture(autouse=True)
@@ -124,12 +75,7 @@ def _make_user(db, *, prefix: str = "coll", is_admin: bool = False) -> User:
 
 @pytest.fixture
 def cleanup(db):
-    """Drop every row a test created, children first.
-
-    ``collections`` and ``collection_events`` both cascade, so deleting the
-    users would be enough; the explicit sweep keeps a failing assertion from
-    leaving rows behind under a user another test still needs.
-    """
+    """Drop every row a test created, children first, so a failing assertion leaves no rows behind."""
     user_ids: list[uuid.UUID] = []
     collection_ids: list[uuid.UUID] = []
     event_ids: list[uuid.UUID] = []
@@ -138,9 +84,7 @@ def cleanup(db):
 
     db.expire_all()
     if collection_ids:
-        # Reports first: ``content_reports.collection_id`` is SET NULL, so a
-        # report left behind here would sit in the next test's admin queue as
-        # an orphan row naming nothing.
+        # Reports first: ``content_reports.collection_id`` is SET NULL, so a leftover report would orphan in the next test's admin queue.
         db.query(ContentReport).filter(ContentReport.collection_id.in_(collection_ids)).delete(
             synchronize_session=False
         )
@@ -196,13 +140,9 @@ def _make_event(
     deleted: bool = False,
     before_closed_status: str | None = None,
 ) -> Event:
-    """One event owned by ``owner``, defaulting to a published geolocation.
+    """One event owned by ``owner``, a published geolocation by default.
 
-    The per-state stamps match ``status`` because the table CHECKs
-    (``ck_events_geolocated_stamp``, ``ck_events_closed_stamp``,
-    ``ck_events_before_closed_status``) reject a row carrying a state without
-    its stamp.
-    """
+    The per-state stamps match ``status`` because the table CHECKs reject a state without its stamp."""
     _, _, event_ids = cleanup
     now = datetime.now(UTC)
     event = Event(
@@ -247,17 +187,14 @@ def _make_collection(
 
 
 def _reload_collection(db, collection_id: uuid.UUID) -> Collection | None:
-    """Re-read one collection, or ``None`` when the row is gone.
+    """Re-read one collection, or ``None`` when gone.
 
-    A query rather than ``Session.get``: the fixture session holds the
-    instance the endpoint's own session deleted, and ``get`` would try to
-    refresh it and raise ``ObjectDeletedError`` instead of answering "gone".
-    """
+    A query, not ``Session.get``: ``get`` would refresh the instance the endpoint deleted and raise ``ObjectDeletedError``."""
     return db.query(Collection).filter(Collection.id == collection_id).first()
 
 
 def _reload_event(db, event_id: uuid.UUID) -> Event | None:
-    """Re-read one event, or ``None`` when the row is gone. See above."""
+    """Re-read one event, or ``None`` when gone."""
     return db.query(Event).filter(Event.id == event_id).first()
 
 
@@ -265,9 +202,6 @@ def _add(db, collection: Collection, event: Event) -> None:
     """Put an event on a collection directly, skipping the endpoint."""
     db.add(CollectionEvent(collection_id=collection.id, event_id=event.id))
     db.commit()
-
-
-# ── POST / PATCH / DELETE /collections ────────────────────────────────────
 
 
 def test_create_collection_returns_an_empty_shelf(db, cleanup, owner):
@@ -317,8 +251,7 @@ def test_create_collection_rejects_a_blank_title(owner, title):
             "type": "doc",
             "content": [{"type": "paragraph", "content": [{"type": "text", "text": "   "}]}],
         },
-        # A document whose only node carries no text at all: the projection is
-        # empty, so it is a missing description like the three above.
+        # A document whose only node carries no text: empty projection, so a missing description.
         {"type": "doc", "content": [{"type": "horizontalRule"}]},
     ],
 )
@@ -350,8 +283,7 @@ def test_create_collection_rejects_a_description_past_the_cap(owner):
 
 
 def test_create_collection_rejects_an_object_that_is_not_a_document(owner):
-    """A JSON object the sanitiser will not read as a document is refused by
-    the service, which is what turns its refusal into the typed 400."""
+    """A JSON object the sanitiser will not read as a document is refused by the service, which becomes the typed 400."""
     response = client.post(
         "/api/v1/collections",
         json={"title": "Loose node", "description": {"type": "paragraph"}},
@@ -362,8 +294,7 @@ def test_create_collection_rejects_an_object_that_is_not_a_document(owner):
 
 
 def test_create_collection_rejects_a_body_that_is_not_an_object(owner):
-    """The old plain-text body is not a document at all: the field takes an
-    object, so this one never reaches the service."""
+    """The old plain-text body is not a document: the field takes an object, so it never reaches the service."""
     response = client.post(
         "/api/v1/collections",
         json={"title": "Plain text", "description": "Strikes on the rail corridor."},
@@ -389,8 +320,7 @@ def test_create_collection_strips_the_description(db, cleanup, owner):
 
 
 def test_create_collection_keeps_bold_italic_and_a_bullet_list(db, cleanup, owner):
-    """A description is the proof body's allowlist: the marks and the list
-    survive the write, and the projection reads the words they carry."""
+    """A description follows the proof allowlist: marks and lists survive the write."""
     _, collection_ids, _ = cleanup
     description = {
         "type": "doc",
@@ -440,8 +370,7 @@ def test_create_collection_keeps_bold_italic_and_a_bullet_list(db, cleanup, owne
 
 
 def test_create_collection_drops_an_image_from_the_description(db, cleanup, owner):
-    """Images are not part of a description: there is no upload path behind
-    one, so the node is dropped and the rest of the document stands."""
+    """Images are not allowed in a description (no upload path): the node is dropped, the rest stands."""
     _, collection_ids, _ = cleanup
     response = client.post(
         "/api/v1/collections",
@@ -496,8 +425,7 @@ def test_create_collection_opens_it_on_the_picked_events(db, cleanup, owner):
     assert response.status_code == 201
     body = response.json()
     collection_ids.append(uuid.UUID(body["id"]))
-    # The read is computed over the memberships the same transaction wrote, so
-    # the count and the range describe the picked set right away.
+    # The read is computed over the memberships the same transaction wrote.
     assert body["event_count"] == 2
     assert body["first_date"] == "2026-05-01"
     assert body["last_date"] == "2026-05-04"
@@ -545,8 +473,7 @@ def test_create_collection_refuses_an_ineligible_event_and_lands_nothing(db, cle
     )
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "event_not_collectable"
-    # The eligible id in the same body is not shelved either: the create is
-    # one act, so nothing of it stands.
+    # The eligible id in the same body is not shelved either: the create is all-or-nothing.
     assert _collections_of(db, owner) == 0
     db.expire_all()
     assert db.query(CollectionEvent).filter(CollectionEvent.event_id == good.id).count() == 0
@@ -676,8 +603,7 @@ def test_delete_collection_leaves_its_events_alone(db, cleanup, owner):
     collection = _make_collection(db, cleanup, owner=owner)
     event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
     _add(db, collection, event)
-    # Read the ids before the row goes: the fixture session's copy of a deleted
-    # instance cannot answer for its own columns any more.
+    # Read the ids before the row goes (the session's copy of a deleted instance cannot answer).
     collection_id, event_id = collection.id, event.id
 
     response = client.delete(
@@ -706,9 +632,6 @@ def test_delete_collection_is_owner_only(db, cleanup, owner, stranger):
     assert _reload_collection(db, collection.id) is not None
 
 
-# ── PUT / DELETE /collections/{id}/events/{event_id} ──────────────────────
-
-
 def test_add_event_is_idempotent(db, cleanup, owner):
     collection = _make_collection(db, cleanup, owner=owner)
     event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
@@ -733,15 +656,10 @@ def test_add_event_is_idempotent(db, cleanup, owner):
 def test_add_event_surfaces_a_violation_that_is_not_the_duplicate(db, cleanup, owner):
     """Only the duplicate answers idempotently; a vanished parent row raises.
 
-    The savepoint swallows SQLSTATE 23505 alone. Here the collection is
-    deleted under the request, so the INSERT fails the foreign key instead
-    (23503) and has to surface rather than tell the analyst a shelving landed
-    when no membership row exists.
-    """
+    The savepoint swallows SQLSTATE 23505 alone. With the collection deleted under the request the INSERT fails the FK (23503) and must surface."""
     collection = _make_collection(db, cleanup, owner=owner)
     event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
-    # Load what the verb reads off the collection before the row goes away, so
-    # the refusal comes from the INSERT and not from a lazy load.
+    # Load what the verb reads off the collection before the row goes, so the refusal comes from the INSERT.
     db.refresh(collection)
 
     other = SessionLocal()
@@ -822,11 +740,7 @@ def test_add_unknown_event_is_404(db, cleanup, owner):
 def test_add_ineligible_event_is_409(
     db, cleanup, owner, status_value, before_closed_status, hidden, deleted
 ):
-    """A collection shows visible, worked rows: everything else is a 409.
-
-    The caller owns the event and the collection, so the refusal is about the
-    event's state, not about permission.
-    """
+    """A collection shows visible, worked rows: everything else is a 409 (event state, not permission)."""
     collection = _make_collection(db, cleanup, owner=owner)
     event = _make_event(
         db,
@@ -881,17 +795,13 @@ def test_remove_works_on_an_event_that_became_ineligible(db, cleanup, owner):
     assert db.query(CollectionEvent).filter(CollectionEvent.event_id == event.id).count() == 0
 
 
-# ── GET /collections/{id} and its counts ──────────────────────────────────
-
-
 def test_read_counts_and_date_range_only_showable_items(db, cleanup, owner):
     collection = _make_collection(db, cleanup, owner=owner)
     _add(db, collection, _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1)))
     _add(db, collection, _make_event(db, cleanup, owner=owner, event_date=date(2026, 7, 9)))
     # Undated: counted, but outside the range the dates describe.
     _add(db, collection, _make_event(db, cleanup, owner=owner))
-    # Withheld after it was added: out of the count and the range, with no
-    # write to the membership table.
+    # Withheld after it was added: out of the count and range, with no write to the membership table.
     _add(
         db,
         collection,
@@ -899,8 +809,7 @@ def test_read_counts_and_date_range_only_showable_items(db, cleanup, owner):
     )
 
     body = client.get(f"/api/v1/collections/{collection.id}").json()
-    # The header a reader lands on: what the collection says it holds, then
-    # what it actually holds.
+    # The header: what the collection says it holds, then what it holds.
     assert body["description_text"] == "What this shelf holds."
     assert body["event_count"] == 3
     assert body["first_date"] == "2026-03-01"
@@ -911,9 +820,6 @@ def test_read_unknown_collection_is_404():
     response = client.get(f"/api/v1/collections/{uuid.uuid4()}")
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "collection_not_found"
-
-
-# ── GET /collections/{id}/events ──────────────────────────────────────────
 
 
 def test_items_read_in_chronological_order_with_undated_last(db, cleanup, owner):
@@ -974,9 +880,6 @@ def test_items_reject_a_malformed_cursor(db, cleanup, owner):
     collection = _make_collection(db, cleanup, owner=owner)
     response = client.get(f"/api/v1/collections/{collection.id}/events?cursor=not-a-cursor")
     assert response.status_code == 422
-
-
-# ── Withheld collections and the admin takedown ───────────────────────────
 
 
 def test_admin_takedown_hides_a_collection_from_everyone_but_admins(
@@ -1057,8 +960,7 @@ def test_admin_moderation_hides_then_restores_a_collection(db, cleanup, owner, a
     assert restored.json()["collection_id"] == str(collection.id)
     client.cookies.clear()
     assert client.get(f"/api/v1/collections/{collection.id}").status_code == 200
-    # The owner's profile shelf carries it again, so the restore is the whole
-    # way back and not just the detail read.
+    # The owner's profile shelf carries it again.
     body = client.get(f"/api/v1/users/{owner.username}/collections").json()
     assert [item["id"] for item in body["items"]] == [str(collection.id)]
 
@@ -1113,12 +1015,8 @@ def test_withheld_collection_is_out_of_the_profile_list(db, cleanup, owner, admi
     assert body["items"] == []
 
 
-# ── POST /collections/{id}/report ─────────────────────────────────────────
-
-
 def test_anonymous_report_of_a_collection_is_accepted(db, cleanup, owner):
-    """No account needed, the same as reporting an event: the reader who
-    notices a shelf misrepresenting what it holds rarely holds one."""
+    """No account needed, as for reporting an event."""
     collection = _make_collection(db, cleanup, owner=owner)
     client.cookies.clear()
 
@@ -1156,8 +1054,7 @@ def test_authenticated_report_of_a_collection_records_the_reporter(db, cleanup, 
 
 
 def test_report_a_withheld_collection_is_404(db, cleanup, owner, admin):
-    """A withheld collection is invisible, so it cannot be reported again: the
-    reporter gets the same 404 as for an id that never existed."""
+    """A withheld collection cannot be reported: the same 404 as an unknown id."""
     collection = _make_collection(db, cleanup, owner=owner)
     client.delete(f"/api/v1/admin/collections/{collection.id}", headers=login_as(client, admin))
     client.cookies.clear()
@@ -1188,9 +1085,6 @@ def test_report_a_collection_rejects_over_long_details(db, cleanup, owner):
         json={"reason": "other", "details": "x" * 2001},
     )
     assert response.status_code == 422
-
-
-# ── GET /users/{username}/collections ─────────────────────────────────────
 
 
 def test_empty_collections_are_the_owners_view_only(db, cleanup, owner, stranger):
@@ -1234,9 +1128,6 @@ def test_profile_collections_404_on_unknown_user():
     assert response.status_code == 404
 
 
-# ── GET /events/{id}/collections ──────────────────────────────────────────
-
-
 def test_event_collections_report_membership_to_the_owner(db, cleanup, owner):
     holding = _make_collection(db, cleanup, owner=owner, title="Holding")
     _make_collection(db, cleanup, owner=owner, title="Other")
@@ -1251,8 +1142,7 @@ def test_event_collections_report_membership_to_the_owner(db, cleanup, owner):
 
 
 def test_event_collections_count_each_collection_on_the_showable_predicate(db, cleanup, owner):
-    """The count under a title is the one that collection's own page prints: the
-    same predicate, so a withheld item is out of both."""
+    """The count under a title is the one the collection's own page prints (same predicate)."""
     collection = _make_collection(db, cleanup, owner=owner, title="Holding")
     empty = _make_collection(db, cleanup, owner=owner, title="Other")
     event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
@@ -1286,9 +1176,6 @@ def test_event_collections_are_owner_only(db, cleanup, owner, stranger):
     )
 
 
-# ── The card mosaic ───────────────────────────────────────────────────────
-
-
 def _add_media(db, event: Event, name: str, media_type: str = "image", role: str = "source"):
     """Give one event a media row the card rule may pick."""
     db.add(
@@ -1307,8 +1194,7 @@ def _tile_urls(collection: Collection) -> list[str]:
 
 
 def test_mosaic_is_empty_without_media(db, cleanup, owner):
-    """An item carrying nothing a card may show contributes no tile, so a
-    collection of such items wears the placeholder rather than a broken box."""
+    """An item with nothing a card may show contributes no tile, so the collection wears the placeholder."""
     collection = _make_collection(db, cleanup, owner=owner)
     _add(db, collection, _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1)))
     assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"] == []
@@ -1327,8 +1213,7 @@ def test_mosaic_of_one_item_is_one_tile(db, cleanup, owner):
 
 
 def test_mosaic_takes_the_first_four_items_in_chronological_order(db, cleanup, owner):
-    """Six items, four tiles: the walk is the order the collection's own page
-    lists its items in, and it stops at four rather than at the newest."""
+    """Six items, four tiles: the walk follows the collection page's order and stops at four."""
     collection = _make_collection(db, cleanup, owner=owner)
     for day in range(1, 7):
         event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, day))
@@ -1342,9 +1227,7 @@ def test_mosaic_takes_the_first_four_items_in_chronological_order(db, cleanup, o
 
 
 def test_mosaic_skips_a_graphic_item_and_keeps_walking(db, cleanup, owner):
-    """A flagged item is stepped over rather than ending the walk, so no reader
-    meets death or injury on a card they did not open and the mosaic still
-    fills from the items that follow."""
+    """A flagged item is stepped over, so no reader meets death or injury on a card and the mosaic fills from later items."""
     collection = _make_collection(db, cleanup, owner=owner)
     graphic = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1), is_graphic=True)
     _add_media(db, graphic, "graphic.jpg")
@@ -1362,9 +1245,7 @@ def test_mosaic_skips_a_graphic_item_and_keeps_walking(db, cleanup, owner):
 
 
 def test_a_tile_prefers_an_image_over_a_clip_on_the_same_item(db, cleanup, owner):
-    """A tile is a quarter of a card and never plays, so an item holding a
-    source clip beside a proof image offers the picture. An item with only a
-    clip still tiles as one, with the kind that says so."""
+    """A tile never plays: an item with a source clip and a proof image offers the picture; a clip-only item tiles as a clip."""
     collection = _make_collection(db, cleanup, owner=owner)
     both = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
     _add_media(db, both, "footage.mp4", media_type="video")
@@ -1382,11 +1263,9 @@ def test_a_tile_prefers_an_image_over_a_clip_on_the_same_item(db, cleanup, owner
 
 
 def test_a_tile_off_a_proof_image_says_so(db, cleanup, owner):
-    """An item whose footage is a clip tiles on its proof image, and the tile
-    names the role. Proof images upload without display derivatives
-    (``services/storage.upload_proof_image``), so the role is the only thing
-    telling a client to read the original rather than a ``_thumb`` that was
-    never written, which the object store answers with a 403."""
+    """A clip item tiles on its proof image and the tile names the role.
+
+    Proof images have no display derivatives (``services/storage.upload_proof_image``), so the role tells a client to read the original, not a ``_thumb`` that was never written (403)."""
     collection = _make_collection(db, cleanup, owner=owner)
     event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
     _add_media(db, event, "footage.mp4", media_type="video")
@@ -1400,8 +1279,7 @@ def test_a_tile_off_a_proof_image_says_so(db, cleanup, owner):
 
 
 def test_a_tile_off_source_footage_says_source(db, cleanup, owner):
-    """The counterpart: an item tiling on its own picture carries ``source``,
-    the role whose upload path writes the ``_hero`` / ``_thumb`` siblings."""
+    """An item tiling on its own picture carries ``source``, whose upload path writes the ``_hero`` / ``_thumb`` siblings."""
     collection = _make_collection(db, cleanup, owner=owner)
     event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1))
     _add_media(db, event, "shot.jpg")
@@ -1413,9 +1291,7 @@ def test_a_tile_off_source_footage_says_source(db, cleanup, owner):
 
 
 def test_mosaic_drops_a_withheld_or_closed_item(db, cleanup, owner):
-    """The tiles read the one predicate every other collection reading reads,
-    so a row that is taken down or closed leaves the card with no write to the
-    membership table."""
+    """The tiles read the shared predicate, so a taken-down or closed row leaves the card with no membership write."""
     collection = _make_collection(db, cleanup, owner=owner)
     hidden = _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1), hidden=True)
     _add_media(db, hidden, "hidden.jpg")
@@ -1437,18 +1313,11 @@ def test_mosaic_drops_a_withheld_or_closed_item(db, cleanup, owner):
     assert _tile_urls(collection) == ["https://media.example.com/shown.jpg"]
 
 
-# ── The derived tag union ─────────────────────────────────────────────────
-
-
 @pytest.fixture
 def make_tag(db):
-    """A factory for tags, swept with their event associations afterwards.
+    """A factory for tags, swept with their event associations.
 
-    Its own fixture rather than a branch of ``cleanup``: ``tags`` is a shared
-    referential keyed on a unique name, so a row a test leaves behind collides
-    with the next run. The sweep clears ``event_tags`` first, because it runs
-    before ``cleanup`` deletes the events those rows hang off.
-    """
+    Separate from ``cleanup``: ``tags`` is keyed on a unique name, and the sweep clears ``event_tags`` before ``cleanup`` deletes the events."""
     created: list[uuid.UUID] = []
 
     def _make(name: str, category: str = "free") -> Tag:
@@ -1472,9 +1341,7 @@ def _tag_names(payload: dict) -> list[str]:
 
 
 def test_tags_are_the_union_of_the_items_tags(db, cleanup, owner, make_tag):
-    """Two items sharing one tag and carrying one more each yield three tags:
-    the shared one is named once, and the list is ordered by category then
-    name so two surfaces print it the same way."""
+    """Two items sharing a tag and carrying one more each yield three tags: the shared one once, ordered by category then name."""
     shared = make_tag("shared")
     only_first = make_tag("alpha")
     only_second = make_tag("beta")
@@ -1503,8 +1370,7 @@ def test_tags_are_the_union_of_the_items_tags(db, cleanup, owner, make_tag):
 
 
 def test_an_item_leaving_the_collectable_set_takes_its_tags_with_it(db, cleanup, owner, make_tag):
-    """The union is computed over the same predicate the count is, so closing
-    or withholding an item drops its tags with no write to the membership."""
+    """The union uses the same predicate as the count, so closing or withholding an item drops its tags with no membership write."""
     kept = make_tag("kept")
     closed_only = make_tag("closedonly")
     hidden_only = make_tag("hiddenonly")
@@ -1539,8 +1405,7 @@ def test_an_item_leaving_the_collectable_set_takes_its_tags_with_it(db, cleanup,
 
 
 def test_a_collection_holding_nothing_tagged_has_no_tags(db, cleanup, owner):
-    """An empty collection and one whose items carry no tag both read ``[]``,
-    so a client renders no row rather than a missing field."""
+    """An empty collection and one whose items carry no tag both read ``[]``."""
     empty = _make_collection(db, cleanup, owner=owner, title="Empty")
     untagged = _make_collection(db, cleanup, owner=owner, title="Untagged")
     _add(db, untagged, _make_event(db, cleanup, owner=owner, event_date=date(2026, 3, 1)))
@@ -1550,9 +1415,7 @@ def test_a_collection_holding_nothing_tagged_has_no_tags(db, cleanup, owner):
 
 
 def test_every_read_surface_carries_the_same_tags(db, cleanup, owner, make_tag):
-    """One read shape: the collection's own page, the search hit and the
-    profile list are assembled by the same builder, so the tags cannot differ
-    between the card a reader clicks and the page it opens."""
+    """One read shape: the collection page, search hit and profile list share a builder, so the tags cannot differ."""
     curated = make_tag("satellite", category="capture_source")
     free = make_tag("corridor")
 
@@ -1572,9 +1435,6 @@ def test_every_read_surface_carries_the_same_tags(db, cleanup, owner, make_tag):
     assert [_tag_names(item) for item in listed["items"]] == [expected]
 
 
-# ── GDPR hard delete ──────────────────────────────────────────────────────
-
-
 def test_hard_deleting_the_owner_drops_the_collections_and_their_memberships(
     db, cleanup, owner, admin
 ):
@@ -1582,8 +1442,7 @@ def test_hard_deleting_the_owner_drops_the_collections_and_their_memberships(
     event = _make_event(db, cleanup, owner=owner, event_date=date(2026, 5, 1))
     _add(db, collection, event)
     client.cookies.clear()
-    # Read the ids before the erasure: the fixture session's copies of the
-    # deleted rows cannot answer for their own columns afterwards.
+    # Read the ids before the erasure (the session's copies of deleted rows cannot answer).
     collection_id, owner_id = collection.id, owner.id
 
     response = client.delete(

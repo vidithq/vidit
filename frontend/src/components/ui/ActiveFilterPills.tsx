@@ -4,8 +4,7 @@ import { X } from "lucide-react";
 import { TAP_STEP } from "./Button";
 import { Pill } from "./Pill";
 
-/** One active filter: `label` is what the pill shows, `onRemove` clears just
- *  this filter. `key` must be unique across the row (e.g. `conflict:<name>`). */
+/** `key` must be unique across the row (e.g. `conflict:<name>`). */
 export interface ActiveFilter {
   key: string;
   label: string;
@@ -14,11 +13,9 @@ export interface ActiveFilter {
 }
 
 /**
- * The one rendering of "these filters are active": a row of removable accent
- * chips, each `label ×`, shared by the map's filter overlay and the search
- * page so active state reads identically everywhere. Renders nothing when no
- * filter is active; `onClearAll` adds a quiet clear-everything affordance
- * once two or more filters are on.
+ * The one rendering of active filters: a row of removable accent chips, shared by
+ * the map's filter overlay and the search page. `onClearAll` adds a clear
+ * affordance once two or more are on.
  */
 export function ActiveFilterPills({
   filters,

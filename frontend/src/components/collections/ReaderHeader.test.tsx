@@ -38,8 +38,6 @@ describe("ReaderHeader", () => {
     expect(onStep).toHaveBeenCalledWith(2);
   });
 
-  // The end of the sequence is where a step has nowhere to go, so the control
-  // that would take it there is the one that is off.
   it.each([
     { step: 1, off: "Previous event", on: "Next event" },
     { step: 12, off: "Next event", on: "Previous event" },

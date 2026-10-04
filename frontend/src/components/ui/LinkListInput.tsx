@@ -6,62 +6,45 @@ import { Plus, X } from "lucide-react";
 import { Button } from "./Button";
 import { Input } from "./Input";
 
-// An ordered list of URL fields: one <Input> per entry, a remove affordance on
-// each, and one add button under them. Composes the existing <Input> and
-// <Button> primitives; the list mechanics (append, edit at index, remove at
-// index, the cap, and keeping a companion's values and open lines aligned with
-// the rows) are the only thing it owns.
+// An ordered list of URL fields: one <Input> per entry, a remove button on each,
+// one add button. It owns the list mechanics (append, edit, remove, the cap, and
+// keeping a companion's values and open lines aligned with the rows).
 //
-// Blank rows are kept in state while the analyst types; callers drop them when
-// they assemble their payload, so an untouched row never posts.
+// Blank rows stay in state while typing; callers drop them from the payload.
 
 /** One row, as the companion sees it. */
 interface CompanionRow {
   index: number;
-  /** The link typed in the row above. */
   url: string;
-  /** The companion's own value for this row. */
   value: string;
   onChange: (next: string) => void;
-  /** Whether the row's companion line is showing. */
   expanded: boolean;
   toggle: () => void;
 }
 
-/** A second value carried by every row: a mark inside the row's URL field, and
- *  a line under that field while the row is expanded.
+/** A second value per row: a mark inside the URL field, and a line under it while
+ *  expanded (on the source forms, the archived copy of each link).
  *
- *  On the source forms it is the archived copy of each link. The values live
- *  here rather than in the caller because the list mechanics do: an add or a
- *  removal has to move both arrays at once, and only this component knows which
- *  index moved. The expanded flags move with them for the same reason: a
- *  removal that dropped a URL and kept its open line would open the line of the
- *  next mirror down. */
+ *  The values and expanded flags live here because an add or a removal must move
+ *  all the arrays at once, and only this component knows which index moved. */
 interface LinkListCompanion {
-  /** One entry per row, index-aligned with `values`. A caller that starts from
-   *  a shorter list reads the missing entries as blank. */
+  /** Index-aligned with the row values; missing entries read as blank. */
   values: string[];
   onChange: (next: string[]) => void;
-  /** The row's URL field adornment (`<Input trailing>`), typically the mark
-   *  that toggles the line below. */
+  /** The row's `<Input trailing>`, typically the toggle mark. */
   trailing?: (row: CompanionRow) => ReactNode;
-  /** What renders under the row while it is expanded. Called only then, so the
-   *  companion states the content and the list states when it shows. */
+  /** Called only while the row is expanded. */
   render: (row: CompanionRow) => ReactNode;
 }
 
 interface LinkListInputProps {
-  /** The ordered URLs, blank entries included (a row still being typed). */
   values: string[];
   onChange: (next: string[]) => void;
-  /** Row ceiling: the add button disables once the list reaches it. Mirrors the
-   *  server cap of the field being edited. */
+  /** Row ceiling; mirrors the server cap of the field being edited. */
   max: number;
-  /** Singular name of one entry ("Secondary source"). Names each row and the
-   *  add button for screen readers, so the list needs no visible per-row label. */
+  /** Singular name of one entry ("Secondary source"), for screen readers. */
   itemLabel: string;
   placeholder?: string;
-  /** An optional second field per row (see `LinkListCompanion`). */
   companion?: LinkListCompanion;
 }
 
@@ -75,26 +58,17 @@ export function LinkListInput({
 }: LinkListInputProps) {
   const atCap = values.length >= max;
   const lower = itemLabel.toLowerCase();
-  // Normalised to the row count, so a caller that seeded a shorter list still
-  // gets an entry per row and every index below reads a string.
   const companionValues = values.map((_, i) => companion?.values[i] ?? "");
 
-  // A row whose companion already holds a value opens showing it: a seeded
-  // value nothing displays is a value the analyst cannot correct. A row added
-  // here starts closed, since nothing has been typed in it yet.
+  // A row with a seeded companion value opens showing it; a new row starts closed.
   const [expanded, setExpanded] = useState<boolean[]>(() =>
     values.map((_, i) => (companion?.values[i] ?? "") !== "")
   );
   const isExpanded = (i: number) => expanded[i] ?? false;
 
-  // Every mutation goes through one call, so the three arrays cannot move
-  // apart: a removal that dropped a URL and kept its copy would file that copy
-  // against the next mirror down.
-  //
-  // The companion is republished only when it actually moved. Typing in a URL
-  // field moves that array alone, and handing the caller a fresh companion array
-  // on every keystroke would give it a new identity per character, which every
-  // memo and effect keyed on it reads as a change.
+  // Every mutation goes through here so the three arrays cannot move apart. The
+  // companion is republished only when it moved: a fresh array per keystroke
+  // would retrigger every memo and effect keyed on it.
   const setRows = (
     nextValues: string[],
     nextCompanion: string[],
@@ -112,8 +86,6 @@ export function LinkListInput({
   };
   const expandedNow = values.map((_, i) => isExpanded(i));
 
-  // One description of a row, handed to both companion slots, so the mark in
-  // the field and the line under it read the same row.
   const companionRow = (i: number): CompanionRow => ({
     index: i,
     url: values[i],
@@ -130,16 +102,11 @@ export function LinkListInput({
   return (
     <div className="space-y-2">
       {values.map((url, i) => (
-        // Index key: the rows carry no identity of their own (a URL is edited
-        // character by character, and the same URL may sit in two rows while
-        // typing), and every field is controlled, so a removal re-renders the
-        // remaining values into the surviving inputs.
+        // Index key: rows have no identity (a URL is edited per character and may
+        // repeat while typing), and every field is controlled.
         <div key={i} className={companion ? "space-y-1.5" : undefined}>
           <div className="flex items-center gap-2">
-            {/* The row, not the field, is what `flex-1` sizes: an adorned
-                `<Input>` renders inside a wrapper of its own, and a width class
-                handed to the field would leave that wrapper at its content's
-                size. */}
+            {/* `flex-1` sizes this wrapper: an adorned `<Input>` has its own wrapper. */}
             <div className="flex-1 min-w-0">
               <Input
                 type="url"

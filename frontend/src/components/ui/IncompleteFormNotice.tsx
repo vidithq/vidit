@@ -3,20 +3,17 @@ import { AlertTriangle } from "lucide-react";
 import { FORM_ERROR_BANNER } from "./form-styles";
 
 interface IncompleteFormNoticeProps {
-  /** Human labels of every still-missing required field. Renders nothing when
-   *  empty, so callers can mount it unconditionally. */
+  /** Labels of every missing required field. Empty renders nothing. */
   missing: string[];
 }
 
 /**
  * The one "this form isn't complete yet" message, shared by every create/edit
- * flow (geolocation submit, geolocation review-validate, request). It lists *all*
- * unmet requirements at once — not just the first — so the analyst fixes the
- * form in a single pass instead of playing whack-a-mole with one error at a time.
+ * flow. It lists all unmet requirements at once, so the analyst fixes the form in
+ * one pass.
  *
- * Same design as `FORM_ERROR_BANNER` (red), but list-shaped, and it replays its
- * entrance animation each attempt: give it a `key` that changes per failed
- * submit (e.g. an attempt counter) so a repeat click visibly re-fires.
+ * `FORM_ERROR_BANNER` styling, list-shaped. It replays its entrance animation per
+ * attempt: give it a `key` that changes per failed submit.
  */
 export function IncompleteFormNotice({ missing }: IncompleteFormNoticeProps) {
   if (missing.length === 0) return null;

@@ -1,7 +1,6 @@
 """``services.auth.validate_invite_code``: which invite codes are usable.
 
-The one gate ``POST /auth/register`` runs before it mints a pending
-registration, so the rules are pinned here rather than through a route.
+The gate ``POST /auth/register`` runs before minting a pending registration.
 """
 
 import uuid

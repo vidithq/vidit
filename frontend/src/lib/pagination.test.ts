@@ -16,9 +16,8 @@ describe("nextCursor", () => {
   });
 
   it("keeps a link whose URL carries commas", () => {
-    // The next-page URL repeats every filter the page was minted under, and
-    // `bbox` is four comma-separated floats: splitting the header on `,`
-    // shredded exactly the links the map's own walk would follow.
+    // The next-page URL repeats every filter, and `bbox` is four comma-separated floats:
+    // splitting on `,` shredded it.
     expect(
       nextCursor(
         '<https://a.test/events?bbox=-90,-180,90,180&cursor=abc>; rel="next"'

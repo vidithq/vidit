@@ -26,10 +26,7 @@ describe("Avatar", () => {
     expect(container.querySelector("img")).toHaveAttribute("alt", "");
   });
 
-  // An `avatar_url` names a server-minted object, which a replace or a remove
-  // deletes, so it can still 404 (a stale payload, a CDN edge answering before
-  // a new object propagates). The circle falls back instead of showing a
-  // broken image.
+  // An `avatar_url` can 404 (replace, remove, CDN lag); the circle falls back.
   it("falls back to the initial when the picture fails to load", () => {
     const { container } = render(
       <Avatar src="https://cdn.example.com/gone.jpg" username="analyst" size="size-10" />,
@@ -41,9 +38,8 @@ describe("Avatar", () => {
     expect(screen.getByText("A")).toBeInTheDocument();
   });
 
-  // The circle is server-rendered, so a picture can fail before React hydrates
-  // and that error never reaches onError. jsdom loads nothing, so the finished
-  // but empty image is faked here.
+  // An error before hydration never reaches onError; jsdom loads nothing, so the
+  // finished but empty image is faked.
   it("falls back when the picture failed before hydration", () => {
     const complete = vi
       .spyOn(HTMLImageElement.prototype, "complete", "get")

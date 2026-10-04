@@ -81,8 +81,7 @@ export default function SettingsPage() {
 
         <Card>
           <SectionEyebrow title="Account" margin="none" />
-          {/* One column below `sm`: at 320px two columns are about 88px each,
-              and an email address is a single unbreakable token. */}
+          {/* One column below `sm`: an email address is an unbreakable token. */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div>
               <span className={FORM_LABEL}>Username</span>
@@ -104,10 +103,7 @@ export default function SettingsPage() {
               Preferences stored in this browser.
             </p>
           </div>
-          {/* Both preference rows are `<ToggleRow>`: the whole row carries the
-              switch role and the click, so a thumb that lands on the label
-              toggles rather than missing the 20x36px track. The divider between
-              them is this card's, not the primitive's. */}
+          {/* `<ToggleRow>` makes the whole row the switch, so a thumb on the label still toggles. The divider is this card's. */}
           <ToggleRow
             label="Show help tooltips"
             description={
@@ -129,9 +125,7 @@ export default function SettingsPage() {
             className="border-t border-neutral-800 pt-4"
           />
 
-          {/* The swatch row stacks under its label below `sm`: five 36px
-              controls and their gaps take 212px, which leaves the label
-              nothing to sit in on a 320px screen. */}
+          {/* Stacks below `sm`: five 36px controls take 212px, leaving the label no room at 320px. */}
           <div className="flex max-sm:flex-col max-sm:items-start items-center justify-between gap-4 border-t border-neutral-800 pt-4">
             <div>
               <p className="text-sm text-neutral-200">Accent color</p>
@@ -151,9 +145,7 @@ export default function SettingsPage() {
                   title={p.label}
                   onClick={() => setPalette(p.id)}
                   style={{ backgroundColor: p.swatch }}
-                  // `ICON_TAP_STEP`, the phone floor every small icon control
-                  // takes: the swatch is a 24px disc on a desktop, under what a
-                  // thumb reliably hits.
+                  // `ICON_TAP_STEP`: the phone floor for small icon controls (the swatch is a 24px disc).
                   className={`${ICON_TAP_STEP} sm:size-6 rounded-full transition-transform hover:scale-110 ${
                     palette === p.id
                       ? "ring-2 ring-neutral-100 ring-offset-2 ring-offset-neutral-900"

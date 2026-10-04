@@ -59,8 +59,7 @@ def _raise_admin_error(exc: admin_service.AdminError) -> NoReturn:
 
 @router.get("/me", response_model=AdminMeResponse)
 def admin_me(current_user: User = Depends(require_admin)) -> AdminMeResponse:
-    """Frontend route-guard probe: 200 + ``{is_admin: true}`` for admins, 403
-    otherwise. Does not leak ``is_admin`` into the public ``UserRead``."""
+    """Route-guard probe: 200 + ``{is_admin: true}`` for admins, 403 otherwise."""
     return AdminMeResponse(is_admin=True)
 
 
@@ -69,10 +68,9 @@ def detection_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminDetectionStatsRead:
-    """Machine-extraction quality signal: the reject-rate over machine
-    detections plus the missing-piece counts on the pending queue. Read-only,
-    no audit row (a metric read is not an administrative act). See
-    ``AdminDetectionStatsRead`` for the exact definitions."""
+    """Machine-extraction quality signal: reject-rate over machine detections
+    plus missing-piece counts on the pending queue. Read-only, no audit row.
+    See ``AdminDetectionStatsRead``."""
     return admin_service.detection_quality_stats(db)
 
 
@@ -109,12 +107,7 @@ def list_invite_codes(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> list[AdminInviteCodeRead]:
-    """Invite codes, newest first, capped at 100 per page.
-
-    The table grows one row per invite issued, so the admin console reads it a
-    page at a time through the ``Link: rel="next"`` cursor like every other
-    list.
-    """
+    """Invite codes, newest first, capped at 100 per page (``Link: rel="next"`` cursor)."""
     size = page_size(limit)
     rows, has_next = admin_service.list_invite_codes(
         db,
@@ -175,7 +168,7 @@ def search_users(
     current_user: User = Depends(require_admin),
 ) -> list[User]:
     """Case-insensitive substring match on username or email. Empty query
-    returns []; the admin search box doesn't preload the whole user table."""
+    returns [] so the search box doesn't preload the user table."""
     return admin_service.search_users(db, query=q)
 
 
@@ -189,8 +182,7 @@ def set_user_x_handle(
     current_user: User = Depends(require_admin),
 ) -> User:
     """Link or clear the X handle the bot attributes mentions to. The only
-    write path for ``users.x_handle`` today; self-serve linking waits on
-    verify-by-post."""
+    write path for ``users.x_handle``."""
     try:
         return admin_service.set_user_x_handle(
             db,
@@ -213,9 +205,8 @@ def purge_detected_events_admin(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminPurgeDetectedResponse:
-    """Hard-delete every detection the user owns (rows + S3 media),
-    keeping the account and everything else they authored. The
-    broken-archive repair."""
+    """Hard-delete every detection the user owns (rows + S3 media), keeping
+    the account and everything else. The broken-archive repair."""
     try:
         result = admin_service.purge_detected_events(db, actor_id=current_user.id, user_id=user_id)
     except admin_service.AdminError as exc:
@@ -243,8 +234,8 @@ def delete_user_admin(
 ) -> AdminUserDeleteResponse:
     """Remove a user account. Default soft (sets `users.deleted_at` and
     cascade-soft-deletes their submissions); `?hard=true` is GDPR erasure
-    (drops the row + cascade-drops their geolocations + sweeps S3). Both
-    paths invalidate the points cache."""
+    (drops the row, their geolocations and S3 objects). Both paths invalidate
+    the points cache."""
     try:
         if hard:
             result = admin_service.hard_delete_user(db, actor_id=current_user.id, user_id=user_id)
@@ -285,9 +276,9 @@ def delete_geolocation_admin(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminEventDeleteResponse:
-    """Remove a geolocation. Default is soft (sets `deleted_at`); pass
-    `?hard=true` for GDPR-grade erasure (drops the row, media rows, and
-    S3 objects). Both paths invalidate the points cache."""
+    """Remove a geolocation. Default soft (sets `deleted_at`); `?hard=true` is
+    GDPR-grade erasure (row, media rows, S3 objects). Both paths invalidate
+    the points cache."""
     try:
         if hard:
             result = admin_service.hard_delete_geolocation(
@@ -329,9 +320,9 @@ def hide_collection_admin(
 ) -> AdminCollectionHideResponse:
     """Withhold a collection from every read but an admin's.
 
-    The takedown alias of ``PATCH /admin/collections/{id}/moderation`` with
-    ``{"hidden": true}``: same stamp, same audit row, same response. Use the
-    PATCH to restore one. Idempotent, and 404 on an unknown collection.
+    Alias of ``PATCH /admin/collections/{id}/moderation`` with
+    ``{"hidden": true}``: same stamp, audit row and response. Idempotent; 404
+    on an unknown collection.
     """
     try:
         collection = admin_service.hide_collection(
@@ -360,16 +351,13 @@ def set_collection_moderation(
 ) -> AdminCollectionHideResponse:
     """Set a collection's moderation state: withhold it, or restore it.
 
-    ``hidden`` moves the one axis a collection carries. ``true`` stamps
-    ``hidden_at`` and drops the shelf out of every read but an admin's;
-    ``false`` clears the stamp and puts it back. The events on the collection
-    are untouched either way: each is moderated on its own, so restoring a
-    shelf says nothing about what it holds.
+    ``true`` stamps ``hidden_at`` and drops the shelf from every read but an
+    admin's; ``false`` clears it. The collection's events are untouched (each
+    is moderated on its own).
 
-    The counterpart of ``PATCH /admin/events/{id}/moderation``, and the verb
-    that undoes ``DELETE /admin/collections/{id}``. Idempotent: a state equal
-    to the one the row already holds changes nothing and writes no audit row.
-    404 on an unknown collection.
+    Counterpart of ``PATCH /admin/events/{id}/moderation`` and the undo of
+    ``DELETE /admin/collections/{id}``. Idempotent: an unchanged state writes
+    no audit row. 404 on an unknown collection.
     """
     try:
         collection = admin_service.set_collection_moderation(
@@ -387,9 +375,6 @@ def set_collection_moderation(
     )
 
 
-# ── Content reports ──────────────────────────────────────────────────────
-
-
 @router.get("/reports", response_model=ContentReportList)
 def list_reports(
     page: int = Query(1, ge=1),
@@ -399,9 +384,8 @@ def list_reports(
 ) -> ContentReportList:
     """The moderation queue: open reports first, newest first within each group.
 
-    Resolved rows stay in the list rather than dropping out of it: a report is
-    never deleted, so the queue doubles as the record of what was reported and
-    what was decided. Offset-paged (see ``ContentReportList``), capped at 100
+    Resolved rows stay (a report is never deleted), so the queue is also the
+    record of decisions. Offset-paged (``ContentReportList``), capped at 100
     rows per page.
     """
     per_page = page_size(per_page)
@@ -425,13 +409,11 @@ def resolve_report(
 ) -> ContentReportRead:
     """Close one report with a verdict, applying it to what the report names.
 
-    One route for both kinds of target: the service reads which one the row
-    names and applies the verdicts that kind takes, so an event report and a
-    collection report are answered through the same call. 404 on an unknown
-    report, 409 on one that already carries a verdict (reports are resolved
-    once, never reopened) and on a verdict the target cannot take. The service
-    owns the mutation and the audit trail; the points cache is dropped here,
-    and only when an event actually left the map.
+    One route for event and collection reports: the service applies the
+    verdicts the target kind takes. 404 on an unknown report, 409 on one that
+    already has a verdict (never reopened) or a verdict the target cannot
+    take. The service owns the mutation and audit trail; the points cache is
+    dropped here, only when an event actually left the map.
     """
     try:
         report, hidden_changed = reports_service.resolve_report(
@@ -458,10 +440,9 @@ def set_event_moderation(
 ) -> AdminEventModerationRead:
     """Set an event's moderation state directly, with no report behind it.
 
-    Both fields are optional and independent; a field left out, or sent equal
-    to what the row already holds, changes nothing and writes no audit row. The
-    one verb that also UNDOES a takedown. 404 for an unknown or soft-deleted
-    event.
+    Both fields are optional and independent; an omitted or unchanged field
+    writes no audit row. The one verb that also UNDOES a takedown. 404 for an
+    unknown or soft-deleted event.
     """
     try:
         event, hidden_changed = reports_service.set_event_moderation(
@@ -492,17 +473,14 @@ def redact_event_version(
 ) -> EventVersionRead:
     """Blank one filed version of an event's history.
 
-    ``event_versions`` is append-only and a version number is a public
-    address, so a version whose content the record must stop serving is blanked
-    rather than removed: the snapshot and the note go, the row, its
-    ``version_no`` and its ``created_at`` stay, and
-    [`GET /events/{id}/versions`] still lists it, marked ``redacted``. A
-    redacted version displays no images, so a proof image only it pointed at is
-    deleted with it.
+    ``event_versions`` is append-only and version numbers are public
+    addresses, so a version the record must stop serving is blanked, not
+    removed: the snapshot and note go, while the row, ``version_no`` and
+    ``created_at`` stay and the version is listed as ``redacted``. A proof
+    image only it pointed at is deleted with it.
 
-    Idempotent: redacting an already-redacted version changes nothing and
-    writes no audit row. 404 for an unknown or soft-deleted event, and for a
-    version the event does not carry.
+    Idempotent: an already-redacted version writes no audit row. 404 for an
+    unknown or soft-deleted event, or a version the event does not carry.
     """
     try:
         row = admin_service.redact_version(
@@ -545,10 +523,8 @@ def maintenance_reap_pending_registrations(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminMaintenanceResponse:
-    """Drop expired ``pending_registrations`` rows. A pending row holds
-    its email + username until the user confirms or the TTL expires;
-    the create path sweeps inline so this button mostly mops up the
-    long tail of abandoned signups."""
+    """Drop expired ``pending_registrations`` rows. The create path sweeps
+    inline, so this mostly clears abandoned signups."""
     result = registration_service.reap_pending_registrations(db)
     admin_service.log_admin_event(
         db,
@@ -569,12 +545,10 @@ def maintenance_send_completion_digests(
 ) -> AdminMaintenanceResponse:
     """Email every analyst holding unpublished detections.
 
-    One message per analyst: how many detections wait, and the link back to their
-    own Detections queue, where the batch completion publishes them. The nudge
-    behind the import: the completion mail scrolls away, the backlog does not.
-    Runs on a click like the reapers above, one provider round-trip per
-    analyst, capped at ``maintenance.COMPLETION_DIGEST_LIMIT`` addresses; a
-    provider failure on one of them is counted, not raised."""
+    One message per analyst: how many wait, and the link to their Detections
+    queue. One provider round-trip per analyst, capped at
+    ``maintenance.COMPLETION_DIGEST_LIMIT`` addresses; a provider failure on
+    one is counted, not raised."""
     result = maintenance_service.send_completion_digests(db)
     admin_service.log_admin_event(
         db,

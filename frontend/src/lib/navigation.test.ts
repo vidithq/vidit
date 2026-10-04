@@ -6,8 +6,8 @@ import {
   smartBack,
 } from "./navigation";
 
-// jsdom origin is pinned to http://localhost:3000 in vitest.config.mts —
-// the same-origin check below compares against window.location.origin.
+// jsdom origin is pinned to http://localhost:3000 in vitest.config.mts; the same-origin check
+// compares against it.
 describe("safeNext", () => {
   it("falls back to /map when the param is absent", () => {
     expect(safeNext(null)).toBe("/map");
@@ -32,27 +32,23 @@ describe("safeNext", () => {
   });
 
   it("rejects backslash normalisation (/\\evil.com)", () => {
-    // The WHATWG parser normalises \ → / in HTTP-special schemes, so
-    // this resolves to //evil.com. A character-position check misses it.
+    // The WHATWG parser normalises \ → / in HTTP-special schemes: this resolves to //evil.com.
     expect(safeNext("/\\evil.com")).toBe("/map");
   });
 
   it("rejects tab-stripped origin escapes (/\\t/evil.com)", () => {
-    // The parser strips TAB/LF/CR before parsing: "/\t/evil.com"
-    // becomes "//evil.com" and escapes the origin.
+    // The parser strips TAB/LF/CR: "/\t/evil.com" becomes "//evil.com" and escapes the origin.
     expect(safeNext("/\t/evil.com")).toBe("/map");
   });
 
   it("keeps the tab-stripped value when it stays same-origin", () => {
-    // "/\tevil.com" strips to "/evil.com" — a benign same-origin path.
+    // "/\tevil.com" strips to the benign same-origin "/evil.com".
     expect(safeNext("/\tevil.com")).toBe("/evil.com");
   });
 });
 
-// Faithful model of the real loop: a forward nav records the path being left
-// (what PathTracker does on each route change), and smartBack pops the stack +
-// pushes — that push is itself a route change, so it also records the page left
-// (which the one-shot flag must swallow).
+// Faithful model of the real loop: a forward nav records the path left (PathTracker), and
+// smartBack pops then pushes, a route change the one-shot flag must swallow.
 describe("smartBack back-stack", () => {
   let current: string;
 
@@ -85,8 +81,7 @@ describe("smartBack back-stack", () => {
     smartBack(router, "/map");
     expect(current).toBe("/profile/ana");
 
-    // The regression: the second back must continue up the chain to /map,
-    // not bounce back to /detections.
+    // The regression: the second back continues up the chain to /map, not back to /detections.
     smartBack(router, "/map");
     expect(current).toBe("/map");
 
@@ -103,8 +98,7 @@ describe("smartBack back-stack", () => {
   });
 
   it("does not loop back to the current page after a reload", () => {
-    // Reload leaves the stack in sessionStorage but the page on top is where we
-    // already are; smartBack must skip it.
+    // Reload leaves the stack in sessionStorage with the current page on top; smartBack skips it.
     navigate("/profile/ana");
     window.sessionStorage.setItem(
       "vidit:nav-stack",
@@ -115,9 +109,8 @@ describe("smartBack back-stack", () => {
   });
 });
 
-// A doorway route exists only to send the reader somewhere else. Left in the
-// chain it is a trap: walking back onto it runs its redirect again and lands
-// where the walk started, which reads as a back arrow that does nothing.
+// A doorway route only redirects: left in the chain, walking back onto it reruns the redirect
+// and the back arrow does nothing.
 describe("redirect-only routes", () => {
   let current: string;
 
@@ -150,8 +143,7 @@ describe("redirect-only routes", () => {
     skipBackRecord();
     navigate("/events/d1/edit");
 
-    // Back from the detection goes to the queue, not onto the doorway that would
-    // redirect straight back to the detection.
+    // Back goes to the queue, not onto the doorway that would redirect to the detection.
     smartBack(router, "/profile/ana/detections");
     expect(current).toBe("/profile/ana/detections");
   });

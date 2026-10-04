@@ -15,17 +15,16 @@ interface SingleEmailFlowProps {
   endpoint: string;
   submitLabel: string;
   placeholder?: string;
-  /** Body rendered once the backend accepts. Both endpoints are anti-
-   *  enumeration (204 whether or not the address matched), so the copy must
-   *  never confirm the address exists — phrase it "if X is registered…".
-   *  `reset` returns to the empty idle form. */
+  /** Body rendered once the backend accepts. Both endpoints are anti-enumeration (204 whether or
+   * not the address matched), so the copy must never confirm the address exists ("if X is
+   * registered..."). `reset` returns to the empty idle form. */
   renderSent: (email: string, reset: () => void) => ReactNode;
 }
 
 /**
- * Single-email-input machine shared by /forgot-password and
- * /resend-confirmation: idle → sending → sent | failed. Failure shows the API
- * message above the input; success swaps the form for the `renderSent` copy.
+ * Single-email-input machine shared by /forgot-password and /resend-confirmation: idle, sending,
+ * then sent or failed. Failure shows the API message above the input; success swaps the form for
+ * `renderSent`.
  */
 export function SingleEmailFlow({
   endpoint,

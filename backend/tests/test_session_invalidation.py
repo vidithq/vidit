@@ -5,10 +5,7 @@ The session JWT embeds the user's ``token_version`` as a ``tv`` claim;
 mutation points (logout, password change, password reset, soft-delete)
 invalidates every outstanding session for the user.
 
-These tests guard against regressions where a future refactor of the
-mint or check sides drops the ``tv`` semantics — without them, the
-"clearing the session cookie doesn't invalidate the token" gap returns
-silently and a leaked JWT stays live to its ``exp``.
+Without the ``tv`` semantics a leaked JWT stays live to its ``exp``.
 """
 
 from __future__ import annotations
@@ -48,7 +45,7 @@ def db():
 
 @pytest.fixture
 def user_factory(db):
-    """Create users with a known password; cascade-clean afterwards."""
+    """Create users with a known password; cleaned up afterwards."""
 
     created: list[User] = []
 
@@ -83,13 +80,12 @@ def email_recorder(monkeypatch):
 
 
 def _sibling_session_cookie_for(user: User) -> str:
-    """Mint a JWT for ``user`` at the current token_version. Simulates a
-    second device that logged in before any invalidation event."""
+    """A JWT at the current token_version, as a second device logged in earlier."""
     return auth_service.create_access_token(user)
 
 
 def _hit_me_with(client: TestClient, session_token: str) -> int:
-    """Call /auth/me with a hand-crafted session cookie. Returns status."""
+    """The status of /auth/me with ``session_token`` as the session cookie."""
     client.cookies.clear()
     client.cookies.set(SESSION_COOKIE, session_token)
     return client.get("/api/v1/auth/me").status_code
@@ -103,8 +99,7 @@ def test_logout_bumps_token_version_and_invalidates_sibling_sessions(client, use
     sibling_token = _sibling_session_cookie_for(user)
     assert _hit_me_with(client, sibling_token) == 200
 
-    # Issue logout from the device's session. Reuse login_as for the
-    # CSRF + cookie shape (logout requires a valid CSRF pair).
+    # Logout requires a valid CSRF pair, which login_as sets.
     headers = login_as(client, user)
     response = client.post("/api/v1/auth/logout", headers=headers)
     assert response.status_code == 204
@@ -120,8 +115,7 @@ def test_logout_without_cookie_does_not_touch_any_user(client, user_factory, db)
     starting_tv = user.token_version
 
     client.cookies.clear()
-    # CSRF still required (the middleware fires regardless of session); set
-    # only the CSRF pair to bypass it.
+    # CSRF applies regardless of session: set only the CSRF pair.
     client.cookies.set(CSRF_COOKIE, TEST_CSRF_TOKEN)
     response = client.post("/api/v1/auth/logout", headers={CSRF_HEADER: TEST_CSRF_TOKEN})
     assert response.status_code == 204
@@ -134,7 +128,7 @@ def test_logout_with_tampered_cookie_does_not_bump(client, user_factory, db):
     user, _ = user_factory()
     starting_tv = user.token_version
 
-    # Hand-roll a JWT signed with a different secret — would decode-fail.
+    # Signed with a different secret.
     forged = jwt.encode(
         {"sub": str(user.id), "exp": datetime.now(UTC) + timedelta(minutes=10), "tv": 0},
         "not-the-real-secret",
@@ -174,13 +168,9 @@ def test_change_password_invalidates_other_sessions_but_keeps_current_cookie_ali
     db.refresh(user)
     assert user.token_version == 1
 
-    # Sibling session minted at tv=0 → 401.
     assert _hit_me_with(client, sibling_token) == 401
 
-    # The cookie the response set carries the bumped tv. Read it from
-    # the response Set-Cookie directly — TestClient's cookie jar update
-    # path is racy across versions, so the response is the authoritative
-    # source.
+    # Read the bumped-tv cookie from the response: the TestClient jar update is racy across versions.
     response_session = response.cookies.get(SESSION_COOKIE)
     assert response_session is not None
     decoded = jwt.decode(response_session, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
@@ -219,14 +209,12 @@ def test_reset_password_bumps_token_version_for_all_sessions(client, user_factor
 
 
 def test_reset_password_rejects_soft_deleted_user_with_live_token(client, user_factory, db):
-    """Mint-side parity: ``/login`` and the forgot-password mint both reject
-    soft-deleted accounts. ``/reset-password`` must do the same so an
-    attacker holding a token captured *before* the account was disabled
-    can't rotate the password back into a usable credential."""
+    """``/login`` and the forgot-password mint reject soft-deleted accounts, so
+    ``/reset-password`` must too: a token captured before the account was
+    disabled cannot rotate the password back into a usable credential."""
     user, _ = user_factory()
     raw_token = _mint_reset_token(db, user)
 
-    # Soft-delete after the token was minted but before it's consumed.
     user.deleted_at = datetime.now(UTC)
     db.commit()
 
@@ -235,8 +223,7 @@ def test_reset_password_rejects_soft_deleted_user_with_live_token(client, user_f
         json={"token": raw_token, "new_password": "wontwork12345"},
     )
     assert response.status_code == 400
-    # And the token row is rolled back to unconsumed so the attacker
-    # doesn't even get to burn it as a side effect.
+    # The token row stays unconsumed.
     db.expire_all()
     row = (
         db.query(AuthToken)
@@ -249,8 +236,7 @@ def test_reset_password_rejects_soft_deleted_user_with_live_token(client, user_f
 
 
 def test_reset_password_rejects_deactivated_user_with_live_token(client, user_factory, db):
-    """Same mint-parity, deactivation path — covers the case soft-delete's
-    FK cascade doesn't catch (``is_active=False`` leaves rows intact)."""
+    """The same for deactivation (``is_active=False`` leaves rows intact)."""
     user, _ = user_factory(active=False)
     raw_token = _mint_reset_token(db, user)
 
@@ -265,12 +251,8 @@ def test_reset_password_rejects_deactivated_user_with_live_token(client, user_fa
 
 
 def test_soft_delete_user_bumps_token_version(user_factory, db):
-    """Admin soft-deleting a user must invalidate the user's sessions
-    immediately, not at the next token rotation. The deleted_at check in
-    get_current_user already 401s, but the explicit bump means any
-    cached / pre-check code path also fails — and an admin un-soft-
-    deleting later doesn't accidentally revive the user's old sessions.
-    """
+    """Soft-deleting a user bumps ``token_version``, so cached paths fail too and an
+    un-soft-delete does not revive old sessions."""
     from app.services import admin as admin_service
 
     actor, _ = user_factory()
@@ -288,8 +270,7 @@ def test_soft_delete_user_bumps_token_version(user_factory, db):
 
 
 def test_jwt_without_tv_claim_returns_401(client, user_factory):
-    """Pre-migration tokens (no ``tv`` claim) must 401 — the migration's
-    one-time forced logout is the intended deploy effect."""
+    """Tokens with no ``tv`` claim 401 (the one-time forced logout is intended)."""
     user, _ = user_factory()
     legacy = jwt.encode(
         {"sub": str(user.id), "exp": datetime.now(UTC) + timedelta(minutes=10)},

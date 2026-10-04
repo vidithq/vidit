@@ -13,8 +13,7 @@ import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { buttonClasses } from "@/components/ui/Button";
 import type { components } from "@/lib/api-types";
 
-/** Shape of `GET /timeline`: the same paginated-events envelope `RecentSubmissions`
- *  reads, one `EventListItem` per card. */
+/** Shape of `GET /timeline`: the paginated-events envelope `RecentSubmissions` reads. */
 type PaginatedTimeline = components["schemas"]["PaginatedEvents"];
 
 export default function TimelinePage() {
@@ -44,9 +43,7 @@ export default function TimelinePage() {
   }
 
   return (
-    // `GET /timeline` orders by submission (`created_at DESC, id DESC`), which
-    // is what the subtitle names; the cards keep showing each event's own
-    // event date, a different thing from the order they arrive in.
+    // `GET /timeline` orders by submission (`created_at DESC, id DESC`), as the subtitle says; cards still show each event's own date.
     <PageShell
       title="Timeline"
       subtitle="Activity from analysts you follow, newest submissions first."

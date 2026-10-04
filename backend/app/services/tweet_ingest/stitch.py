@@ -1,14 +1,8 @@
-"""Recombine individual tweet records into threads — union-find on reply edges.
+"""Recombine tweet records into threads (union-find on reply edges).
 
-An OSINT geolocation often spans a self-thread: the footage in the head tweet,
-the coordinate in a reply. ``stitch`` groups records that belong to the same
-reply chain so ``resolve_threads`` sees the whole thread at once (head media +
-reply coord).
-
-Source-agnostic: the edges come from whatever fed the records. An archive
-carries ``in_reply_to_status_id`` inline, so real self-threads assemble; the
-syndication path returns one tweet with no edge, so there each record is its
-own singleton thread (``stitch`` is the identity).
+A geolocation often spans a self-thread (footage in the head, coordinate in a
+reply). An archive carries ``in_reply_to_status_id``, so threads assemble; the
+syndication path returns one tweet with no edge, so ``stitch`` is the identity.
 """
 
 from __future__ import annotations
@@ -17,15 +11,11 @@ from .records import TweetRecord
 
 
 def stitch(records: list[TweetRecord]) -> list[list[TweetRecord]]:
-    """Group ``records`` into threads by their reply edges.
+    """Group ``records`` into threads by reply edges.
 
-    Two records join the same thread when one replies to the other (its
-    ``in_reply_to_status_id`` matches a record's ``tweet_id`` *present in the
-    batch* — an edge pointing outside the batch is ignored, so a reply to a
-    third party's tweet doesn't pull in a stranger). Each thread is ordered by
-    ``created_at`` ascending, then by tweet id (:func:`_chronological`), so the
-    head (the earliest, media-carrying tweet) is first. Threads keep
-    first-appearance order for determinism.
+    An edge to a tweet outside the batch is ignored, so a reply to a stranger
+    pulls nothing in. Each thread is ordered by :func:`_chronological`, head
+    first. Threads keep first-appearance order.
     """
     if not records:
         return []
@@ -57,20 +47,16 @@ def stitch(records: list[TweetRecord]) -> list[list[TweetRecord]]:
 
 
 def _chronological(record: TweetRecord) -> tuple[str, int, int]:
-    """Sort key for ordering a thread head-first.
+    """Sort key ordering a thread head-first.
 
-    ISO 8601 timestamps sort lexicographically by time. A missing ("") or
-    non-ISO ``created_at`` (an adapter that couldn't normalise the upstream
-    format) is pushed *last* so it can't hijack the head: the resolution
-    anchors the thread's provenance + event date on ``thread[0]``.
+    ISO 8601 timestamps sort lexicographically. A missing or non-ISO
+    ``created_at`` sorts last so it cannot take the head, which anchors the
+    thread's provenance and event date.
 
-    An archive stores ``created_at`` at second precision, so a reply posted in
-    the same second as its parent ties on the timestamp, and ``tweets.js`` lists
-    newest first, which would hand the head slot to the reply. The tie breaks on
-    the tweet id ascending: snowflake ids are chronological at millisecond
-    precision, so the lower id is the earlier post. A non-digit id (no upstream
-    writes one, the archive path rejects them outright) carries no order, so it
-    sorts after every digit id and keeps batch order among its peers.
+    An archive has second precision and ``tweets.js`` lists newest first, so a
+    same-second reply would take the head. Ties break on tweet id ascending
+    (snowflake ids are chronological to the millisecond). A non-digit id sorts
+    after every digit id, in batch order.
     """
     created_at = record.created_at
     when = created_at if created_at and created_at[0].isdigit() else "￿"

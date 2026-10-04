@@ -60,7 +60,6 @@ describe("CollectionsSection", () => {
     expect(
       screen.getByRole("link", { name: "Kupiansk rail corridor" }),
     ).toHaveAttribute("href", "/collections/c1");
-    // The same meta line the collection's own page prints.
     expect(screen.getByText("5 events")).toBeInTheDocument();
     expect(screen.getByText("14 Mar 2026 to 16 Mar 2026")).toBeInTheDocument();
   });
@@ -90,8 +89,7 @@ describe("CollectionsSection", () => {
 
     render(<CollectionsSection username="ana" isOwn />);
 
-    // A first-run surface keeps the heading and hands over: opening a
-    // collection is a page of its own, so the section grows no form.
+    // A first-run surface keeps the heading and links to the create page.
     expect(screen.getByText("Collections")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "New collection" }),
@@ -128,8 +126,7 @@ describe("CollectionsSection", () => {
 
     render(<CollectionsSection username="ana" isOwn={false} />);
 
-    // The grid still previews four; the whole shelf is walked in search,
-    // scoped to this analyst on the one filter a collection carries.
+    // The grid previews four; search walks the shelf, scoped to this analyst.
     expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(4);
     expect(screen.getByRole("link", { name: "Show more" })).toHaveAttribute(
       "href",

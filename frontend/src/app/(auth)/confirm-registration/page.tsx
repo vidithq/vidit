@@ -10,16 +10,7 @@ import { TEXT_LINK } from "@/components/ui/styles";
 
 type State = "confirming" | "success" | "failed";
 
-/**
- * Landing page for the registration confirmation email link.
- *
- * Auto-consumes the token on mount (a second button drops users from the
- * flow). Gated on a ref so it runs once under Strict Mode and doesn't
- * double-consume the single-use token.
- *
- * On success the backend sets session + CSRF cookies in the same response,
- * so we refresh /me and route to the map already signed in.
- */
+/** Consumes the single-use token on mount; the backend sets session and CSRF cookies in the same response. */
 function ConfirmInner() {
   const params = useSearchParams();
   const router = useRouter();
@@ -29,9 +20,7 @@ function ConfirmInner() {
   const ranRef = useRef(false);
   const { refresh } = useAuth();
 
-  // Ref (not a closure var) so it survives Strict Mode's
-  // mount→cleanup→remount and cleanup can't cancel a still-relevant
-  // fetch's state update from the previous mount.
+  // Ref (not a closure var) so it survives Strict Mode's remount.
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -52,13 +41,11 @@ function ConfirmInner() {
         try {
           await refresh();
         } catch {
-          /* non-fatal — the next page load will catch up */
+          /* non-fatal: the next page load catches up */
         }
         setState("success");
-        // Delay so the user reads the success message before the hard
-        // navigate; on a ref so unmount can cancel a stale push. A brand-new
-        // account lands on the import on-ramp (backfill your X work) rather than
-        // an empty map, the first step of the curated onboarding.
+        // Delay so the user reads the success message; a ref lets unmount cancel the push.
+        // A new account lands on the import on-ramp rather than an empty map.
         redirectTimerRef.current = setTimeout(() => router.push("/submit?import=1"), 800);
       })
       .catch((err) => {

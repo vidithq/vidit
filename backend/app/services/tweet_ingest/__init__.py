@@ -1,30 +1,21 @@
 """Tweet ingestion: acquire a tweet / thread, extract structured data.
 
-Single-responsibility bricks behind one import surface:
+* ``urls``: post URL parsing and writing, host predicates (pure string work).
+* ``records``: the normalized, source-agnostic acquire units.
+* ``extract``: pure text core (coordinates, title, proof body).
+* ``stitch``: recombine records into threads.
+* ``resolve``: the engine, threads to one ``Detection`` per coordinate, plus the
+  refusal reason and any ``RequestDraft``.
+* ``syndication``: X I/O (fetch, token, cache, payload mappers).
+* ``chase``: the one fetch a thread's declared source costs, one module per
+  technology behind a dispatcher.
+* ``acquire``: the live acquisition the bot and the paste both resolve.
+* ``archive``: the export reader (pure disk) and the CDN media fetchers.
+* ``retry``: the retry schedule every outgoing fetch shares.
 
-* ``urls``: the URL vocabulary (read a post URL to its id, write one back,
-  the host predicates), pure string work.
-* ``records``: the normalized acquire units (``TweetRecord``, ``ChasedPost``,
-  ``ParsedMedia``), source-agnostic.
-* ``extract``: pure text core (coordinates, title, proof body), reused by
-  every path.
-* ``stitch``: recombine records into threads (union-find on reply edges).
-* ``resolve``: the engine, threads to one ``Detection`` per coordinate plus the
-  reason a thread produced none and any ``RequestDraft`` that reason carries.
-* ``syndication``: X I/O (fetch + token + cache, payload mappers).
-* ``chase``: the one chase step (``chase_thread``), one module per technology
-  behind one dispatcher, for the single fetch a thread's declared source costs.
-* ``acquire``: the live acquisition, a tweet id plus the same author's post it
-  replies to, which is the thread the bot and the paste both resolve.
-* ``archive``: the export reader (pure disk), plus the CDN media fetchers.
-* ``retry``: the one retry schedule every outgoing fetch above shares, for the
-  half of a failure a second attempt can clear.
-
-The four pure modules (``records``, ``extract``, ``stitch``, ``resolve``) read
-no I/O module, which ``tests/test_ingest_boundaries.py`` states. Callers import
-the public surface from this package; the module layout is an internal detail.
-``errors`` is a leaf module so any brick can raise the shared failures without a
-cycle.
+The pure modules (``records``, ``extract``, ``stitch``, ``resolve``) read no I/O
+module (``tests/test_ingest_boundaries.py``). ``errors`` is a leaf module.
+Callers import from this package.
 """
 
 from __future__ import annotations

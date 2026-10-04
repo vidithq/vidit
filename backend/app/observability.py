@@ -9,7 +9,7 @@ import sentry_sdk
 
 from app.config import settings
 
-# The id of the HTTP request being served, set by ``RequestIdMiddleware``.
+# Id of the HTTP request being served (set by ``RequestIdMiddleware``).
 request_id: ContextVar[str | None] = ContextVar("request_id", default=None)
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s [%(request_id)s] %(message)s"
@@ -18,7 +18,7 @@ _OWN_HANDLER = "vidit_handler"
 
 
 class RequestIdFilter(logging.Filter):
-    """Stamp each record with the id of the request that emitted it, ``-`` outside one."""
+    """Stamp each record with its request id, ``-`` outside one."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         record.request_id = request_id.get() or "-"
@@ -39,16 +39,12 @@ def _handler(stream: TextIO, level: int) -> logging.Handler:
 
 def configure_logging() -> None:
     """Print each record once as a ``LOG_FORMAT`` line: below ``WARNING`` on
-    standard output, ``WARNING`` and above on standard error.
+    stdout, ``WARNING`` and above on stderr (Railway files stderr as errors).
 
-    Railway files a stderr line as an error, so a traceback shows as one.
-    Uvicorn sets up its own loggers before it imports the app; this hands each
-    one that has handlers to the root handlers, so the access log and the
-    server errors share the format. A logger uvicorn muted
-    (``--no-access-log``) stays muted, and a root logger a ``--log-config``
-    already gave handlers stays as it is. ``LOG_LEVEL`` sets the level of the
-    ``app`` loggers; libraries print from ``WARNING``, and uvicorn's loggers
-    keep the level uvicorn gave them.
+    Uvicorn's loggers that have handlers are handed to the root handlers so
+    access and server logs share the format; a logger uvicorn muted stays muted
+    and a root logger a ``--log-config`` configured is left alone. ``LOG_LEVEL``
+    sets the ``app`` loggers; libraries print from ``WARNING``.
     """
     root = logging.getLogger()
     if any(not getattr(handler, _OWN_HANDLER, False) for handler in root.handlers):
@@ -66,11 +62,9 @@ def configure_logging() -> None:
 
 
 def init_sentry() -> None:
-    """Start Sentry when ``SENTRY_DSN`` is set; do nothing otherwise.
-
-    Events leave out frame local variables and request bodies. Either can hold
-    a password or an API credential, and the SDK's denylist matches exact key
-    names only (``password``, not ``new_password``).
+    """Start Sentry when ``SENTRY_DSN`` is set. Events omit frame locals and
+    request bodies, which can hold secrets (the SDK denylist matches exact key
+    names only, e.g. ``password`` but not ``new_password``).
     """
     if not settings.sentry_dsn:
         return

@@ -14,21 +14,15 @@ interface ShareButtonsProps {
   eventDate: string | null;
   lat: number | null;
   lng: number | null;
-  /** A `detected` row is a machine detection its owner can still edit, so a shared
-   *  link's content may change. Surfaced as a caveat next to the share button. */
+  /** A `detected` row is editable by its owner, so a shared link's content may change: surfaced as a caveat. */
   status: EventStatus;
 }
 
 /**
- * Passing an event on: the X intent, prefilled with the title, the credit line
- * and the coordinates, plus the event's own URL. The intent and the button
- * itself are `<ShareOnX>`; this wrapper keeps the one thing an event share adds
- * over a plain one, the `detected` two-click confirm.
- *
- * One way out, not two. A reader who wants the address has it in the browser's
- * own address bar, so a copy button beside the share sat there to duplicate a
- * control every browser already carries; the coordinates, which the address bar
- * does not carry, keep their own copy in `<CoordinateActions>`.
+ * Passing an event on: the X intent (title, credit line, coordinates, event URL). The intent and
+ * button are `<ShareOnX>`; this wrapper keeps what an event share adds, the `detected` two-click
+ * confirm. There is no copy-link button: the address bar already carries the URL, and the
+ * coordinates keep their own copy in `<CoordinateActions>`.
  */
 export default function ShareButtons({
   id,
@@ -48,10 +42,8 @@ export default function ShareButtons({
       : []),
   ];
 
-  // A `detected` link points at an editable detection, so sharing it asks for a
-  // confirming re-click first (mirrors the review queue's two-click delete); a
-  // submitted link acts on the first click, which never reaches `trigger` and so
-  // never arms.
+  // A `detected` link points at an editable detection, so sharing asks for a confirming re-click
+  // (mirrors the review queue's two-click delete); a submitted link acts on first click and never arms.
   const { armed, trigger } = useConfirmAction(
     () => openShareIntent(path, lines),
     { timeoutMs: ARM_MS },
@@ -61,10 +53,8 @@ export default function ShareButtons({
 
   return (
     <div className="flex items-center gap-1.5">
-      {/* A detection is still editable, so a share arms on the first click;
-          this neutral nudge (site DA, not a warning colour) asks for the
-          confirming re-click. `role="status"` makes it the armed state's
-          announcement too, so the button never has to rename itself. */}
+      {/* A detection is still editable, so a share arms on the first click; this neutral nudge asks for
+          the re-click. `role="status"` announces the armed state, so the button never renames itself. */}
       {armed && (
         <span role="status" className="text-[10px] text-neutral-400">
           Detected and may still change. Click again to share.

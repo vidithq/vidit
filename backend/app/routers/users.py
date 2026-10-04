@@ -25,12 +25,8 @@ router = APIRouter()
 
 
 def _get_live_user_or_404(db: Session, username: str) -> User:
-    """Resolve ``username`` to a live (non-soft-deleted) ``User`` or 404.
-
-    Four endpoints share this lookup. Unknown and soft-deleted analysts
-    both 404 with ``User not found`` — collapsing the two keeps the URL
-    space from being a soft-delete oracle.
-    """
+    """Resolve ``username`` to a live ``User`` or 404. Unknown and soft-deleted
+    both 404 so the URL space isn't a soft-delete oracle."""
     user = db.query(User).filter(User.username == username, User.deleted_at.is_(None)).first()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -47,21 +43,17 @@ def update_my_profile(
 ) -> User:
     """Edit your own profile.
 
-    Distinguishes "field omitted" from "field set to null" via
-    ``exclude_unset``: omitting leaves the column alone, explicit null (or
-    empty string, normalised to ``None`` by the schema) clears it.
-    ``external_links`` replaces the whole JSONB blob — the edit form
-    submits the entire panel at once, so wholesale replace fits the UI.
+    ``exclude_unset`` separates omitted (column untouched) from null (clears
+    it; empty string normalises to ``None``). ``external_links`` replaces the
+    whole JSONB blob, since the form submits the entire panel.
     """
     update_data = body.model_dump(exclude_unset=True)
     if "bio" in update_data:
         current_user.bio = update_data["bio"]
     if "external_links" in update_data:
         links = update_data["external_links"]
-        # ``None`` clears every platform; a partial dict (e.g. ``{x:...}``)
-        # drops every other platform too — the "wholesale replace"
-        # semantics. Per-platform ``None`` values are stripped so the
-        # stored JSONB stays sparse.
+        # ``None`` or a partial dict replaces wholesale; per-platform ``None``
+        # values are stripped so the JSONB stays sparse.
         if links is None:
             current_user.external_links = {}
         else:
@@ -71,10 +63,10 @@ def update_my_profile(
     return current_user
 
 
-# Declared ahead of the ``/{username}`` routes below so ``/me/avatar`` is not
-# read as a username with a trailing segment. Plain ``def`` driving the async
-# service through ``asyncio.run``, so its commit stays off the server's event
-# loop (``engineering.md``, Request concurrency).
+# Ahead of the ``/{username}`` routes so ``/me/avatar`` isn't read as a
+# username. Plain ``def`` driving the async service through ``asyncio.run``,
+# so the commit stays off the event loop (``engineering.md``, Request
+# concurrency).
 @router.put("/me/avatar", response_model=UserRead)
 @limiter.limit("20/minute")
 def set_my_avatar(
@@ -85,10 +77,9 @@ def set_my_avatar(
 ) -> User:
     """Replace your profile picture with an uploaded image.
 
-    The stored object is the only thing ``avatar_url`` ever points at, so
-    every surface that renders an avatar loads it from our own media host.
-    Accepts one image (JPEG / PNG / WebP), stores a stripped and resized JPEG,
-    and deletes the picture it replaced.
+    Accepts one JPEG / PNG / WebP, stores a stripped and resized JPEG on our
+    own media host (the only thing ``avatar_url`` points at), and deletes the
+    picture it replaced.
     """
     try:
         return asyncio.run(users_service.set_avatar(db, user=current_user, file=file))
@@ -103,7 +94,7 @@ def delete_my_avatar(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> User:
-    """Drop your profile picture. Surfaces fall back to the monogram icon."""
+    """Drop your profile picture (surfaces fall back to the monogram)."""
     return users_service.clear_avatar(db, user=current_user)
 
 
@@ -118,14 +109,11 @@ def get_user_profile(
 ) -> UserProfile:
     user = _get_live_user_or_404(db, username)
 
-    # Published work, not everything owned: this is the number the profile's
-    # share card headlines and the size of the set the Recent submissions
-    # block and the coverage split's ``geolocated`` leg both count. Counting
-    # machine detections here made the page contradict itself (a headline of 496
-    # over a feed of 47) and credited an analyst with claims they never made.
-    # Same predicate as the feed below, so the card and the feed's ``total``
-    # cannot drift. The wider figure, ``geolocated`` plus ``detected``, stays
-    # available as ``total_events`` on ``GET /users/{username}/stats``.
+    # Published work, not everything owned: the profile's headline number and
+    # the size of the Recent submissions block and the coverage split's
+    # ``geolocated`` leg. Counting detections made the page contradict itself.
+    # Same predicate as the feed below. The wider ``geolocated`` + ``detected``
+    # figure is ``total_events`` on ``GET /users/{username}/stats``.
     geolocations_count = (
         db.query(Event)
         .filter(Event.owner_id == user.id, *visible_events(), published_events())
@@ -161,11 +149,8 @@ def get_user_stats(
     username: str,
     db: Session = Depends(get_db),
 ) -> UserStatsRead:
-    """Aggregated shape-of-work stats for a public profile.
-
-    Anonymous like the rest of the profile read surface; live rows only.
-    All aggregation lives in ``services/user_stats``.
-    """
+    """Aggregated shape-of-work stats for a public profile (anonymous, live
+    rows only; aggregation lives in ``services/user_stats``)."""
     user = _get_live_user_or_404(db, username)
     return user_stats.get_user_stats(db, user_id=user.id)
 
@@ -183,14 +168,9 @@ def get_user_collections(
 ) -> CollectionList:
     """One analyst's collections, newest first.
 
-    A collection with nothing showable on it is scaffolding rather than
-    published work, so a reader gets the ones that have something on them and
-    the owner gets all of theirs. The narrowing applies to ``total`` as well as
-    to the rows, so the pager describes the set it walks. Withheld collections
-    are in neither view.
-
-    Offset-paged, like the published-geolocations feed beside it, and capped at
-    100 rows per page.
+    A collection with nothing showable is scaffolding, so readers get the
+    non-empty ones and the owner gets all. ``total`` is narrowed too; withheld
+    collections are in neither view. Offset-paged, capped at 100 per page.
     """
     user = _get_live_user_or_404(db, username)
     per_page = page_size(per_page)
@@ -217,9 +197,8 @@ def follow_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Follow another analyst. Idempotent: re-following an already-followed
-    analyst returns 204 with no extra row. Self-follow is rejected with 400
-    (matching the DB-level ``ck_follows_no_self_follow`` constraint)."""
+    """Follow another analyst. Idempotent (204, no extra row). Self-follow is
+    a 400 (``ck_follows_no_self_follow``)."""
     target = _get_live_user_or_404(db, username)
     if target.id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot follow yourself")
@@ -235,9 +214,8 @@ def unfollow_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Unfollow an analyst. Idempotent: unfollowing someone you don't currently
-    follow returns 204. A typo username still gets a 404 so the UI can surface
-    the error instead of silently no-op'ing."""
+    """Unfollow an analyst. Idempotent (204). A typo username is still a 404
+    so the UI can surface it."""
     target = _get_live_user_or_404(db, username)
     social.unfollow_user(db, follower_id=current_user.id, followed_user=target)
     db.commit()
@@ -257,25 +235,18 @@ def get_user_geolocations(
     at 100 per page.
 
     Published, not merely visible: :func:`published_events` narrows to
-    ``geolocated``, so the portfolio carries only rows the analyst vouched
-    for. Machine detections and the rows they rejected are theirs to work, not
-    theirs to be credited with; the owner reaches the detections through their
-    detections queue instead. The filter is applied to the count and to the
-    rows alike, so a page of the feed and its ``total`` agree, and
-    ``geolocations_count`` on the profile payload counts the same set, so the
-    share card's headline agrees with both. The whole body of live
-    work, detections included, is ``total_events`` on
+    ``geolocated``, so detections and rejected rows are never credited. The
+    filter applies to the count and the rows, and ``geolocations_count`` on the
+    profile counts the same set. The wider live total is ``total_events`` on
     :func:`get_user_stats`.
 
-    Offset-paged rather than cursor-paged: the ordering the profile reads by
-    is ``event_date``, which is nullable and editable and so cannot key a
-    cursor, and one analyst's output is not the enumeration surface the
-    catalog list is. The pager's page is bounded either way.
+    Offset-paged: the profile orders by ``event_date``, which is nullable and
+    editable, so it cannot key a cursor.
     """
     user = _get_live_user_or_404(db, username)
 
-    # Over-asking is clamped, not rejected; ``ge=1`` above keeps a page below 1
-    # from reaching Postgres as a negative OFFSET (a 500).
+    # Over-asking is clamped; ``ge=1`` keeps a page below 1 from becoming a
+    # negative OFFSET (a 500).
     per_page = page_size(per_page)
 
     owned_and_published = (Event.owner_id == user.id, *visible_events(), published_events())
@@ -288,8 +259,7 @@ def get_user_geolocations(
             ST_Y(Event.event_coords).label("lat"),
             ST_X(Event.event_coords).label("lng"),
         )
-        # Loader choice: see the note on ``list_detections`` in
-        # ``routers/events/read.py``.
+        # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
         .options(
             joinedload(Event.owner),
             selectinload(Event.tags),
@@ -297,11 +267,8 @@ def get_user_geolocations(
             selectinload(Event.media.and_(thumbnail_media_criteria())),
         )
         .filter(*owned_and_published)
-        # ``event_date`` alone is neither unique nor non-null, so an OFFSET
-        # walk over it lets Postgres return tied rows in any order it likes
-        # and a page can repeat a row the previous one already served, or skip
-        # one. ``created_at, id`` breaks every tie and makes the ordering
-        # total.
+        # ``event_date`` is neither unique nor non-null, so ties could repeat or
+        # skip rows across OFFSET pages; ``created_at, id`` makes it total.
         .order_by(Event.event_date.desc(), Event.created_at.desc(), Event.id.desc())
         .offset((page - 1) * per_page)
         .limit(per_page)

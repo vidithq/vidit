@@ -1,18 +1,18 @@
 """Manage the X Account Activity webhook: register, subscribe, inspect.
 
-Operator tooling for the bot's nominal delivery path (see
-``routers/webhooks`` and docs/ingestion.md). One-time setup against prod:
+Operator tooling for the bot's webhook delivery path (``routers/webhooks``,
+docs/ingestion.md). One-time setup against prod:
 
     uv run python scripts/manage_x_webhook.py register https://api.vidit.app/api/v1/webhooks/x
     uv run python scripts/manage_x_webhook.py subscribe <webhook_id>
 
-then flip ``X_WEBHOOK_ENABLED=true`` on the backend services. ``list`` /
-``status`` inspect the current state, ``revalidate`` re-runs the CRC after
-the endpoint was down through a check, ``delete`` tears the webhook down.
+then set ``X_WEBHOOK_ENABLED=true`` on the backend services. ``list`` /
+``status`` inspect, ``revalidate`` re-runs the CRC after the endpoint failed a
+check, ``delete`` removes the webhook.
 
-Webhook CRUD runs app-only (bearer token); the subscription binds the bot
-account, so ``subscribe`` and ``status`` sign with the OAuth 1.0a user
-context. Exits non-zero on any upstream failure, body printed.
+Webhook CRUD is app-only (bearer token); ``subscribe`` and ``status`` sign with
+the OAuth 1.0a user context (the subscription binds the bot account). Exits
+non-zero on any upstream failure, body printed.
 """
 
 import argparse
@@ -26,9 +26,9 @@ import httpx
 from app.config import settings
 from app.services.bot import bot_credentials
 
-# Private x_api imports are deliberate: the API base and the OAuth 1.0a
-# signing have one home, and this in-repo operator script is a trusted
-# consumer, not a reason to widen x_api's public surface.
+# Private x_api imports are deliberate: the API base and OAuth 1.0a signing have
+# one home, and this trusted in-repo script is no reason to widen x_api's
+# public surface.
 from app.services.x_api import _API_BASE, _oauth1_header
 
 _TIMEOUT_S = 30.0

@@ -12,22 +12,15 @@ from app.models.event import TITLE_MAX_LENGTH
 class Collection(Base):
     """A named, curated set of one analyst's own events.
 
-    Personal: one owner, and an event joins a collection only when the same
-    account owns both (the invariant lives in
-    ``services/collections.add_event``, not in a SQL constraint, because it
-    spans two tables). Two free-text fields carry what the collection is: the
-    title, capped at the event title's own ``TITLE_MAX_LENGTH`` so one cap
-    governs both, and a required ``description`` saying what the collection
-    holds, written as a Tiptap document the way an event's ``proof`` is and
-    capped by ``schemas/collection.DESCRIPTION_MAX_LENGTH`` on its text. The
-    items order themselves by when the events happened, so a collection is
-    still a set of facts rather than a narrative: there is no manual position,
-    no denormalized count and no version history.
+    One owner, and an event joins only when the same account owns both (checked
+    in ``services/collections.add_event``; it spans two tables). The title is
+    capped by the event's ``TITLE_MAX_LENGTH``. The required ``description`` is
+    a Tiptap document capped on its text by
+    ``schemas/collection.DESCRIPTION_MAX_LENGTH``. Items order by when the
+    events happened: no manual position, denormalized count or version history.
 
-    ``owner_id`` carries ``ON DELETE CASCADE``, unlike ``Event.owner_id``: a
-    collection is one analyst's own shelf and nothing outlives their account,
-    so a GDPR erasure passes straight through with no object left behind, the
-    collection storing no file of its own.
+    ``owner_id`` cascades, unlike ``Event.owner_id``: nothing outlives the
+    owner's account, and a collection stores no file.
     """
 
     __tablename__ = "collections"
@@ -37,26 +30,18 @@ class Collection(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH), nullable=False)
-    # What the collection holds, as a Tiptap document. NOT NULL: every
-    # collection says what it holds. The empty-doc default catches ORM
-    # constructions that omit it; the write paths pass a sanitised doc. The
-    # shape ``Event.proof`` takes, minus images, which the write service drops.
-    # Inlined here (a fresh dict per row) rather than importing a constant from
-    # services, which the models layer must not depend on.
+    # Tiptap document, the shape ``Event.proof`` takes minus images (dropped by
+    # the write service). The empty-doc default catches ORM constructions that
+    # omit it; inlined because the models layer must not import from services.
     description = mapped_column(
         JSONB, nullable=False, default=lambda: {"type": "doc", "content": []}
     )
-    # The plain-text projection of ``description``, written beside it on every
-    # write (``services/collections``) from the one flattener,
-    # ``services/sanitize.tiptap_doc_text``. Stored rather than derived because
-    # the collections search index is a GIN over it and a ``to_tsvector`` over
-    # the document would index node names and punctuation. ``Text`` with no
-    # width: the 500-character cap is the API layer's, on the projection, so
-    # moving it costs no migration.
+    # Plain-text projection of ``description``, written on every write from
+    # ``services/sanitize.tiptap_doc_text``. Stored because the search GIN index
+    # would otherwise index node names and punctuation. No column width: the
+    # 500-character cap is the API's.
     description_text: Mapped[str] = mapped_column(Text, nullable=False)
-    # Takedown: NULL = visible, timestamp = withheld from every read but an
-    # admin's, the same axis ``Event.hidden_at`` carries and reversible the
-    # same way.
+    # Takedown: NULL = visible; same axis and reversal as ``Event.hidden_at``.
     hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -71,9 +56,7 @@ class Collection(Base):
     )
 
     owner = relationship("User")
-    # The membership rows, dropped with the collection. Order is not declared
-    # here: what a collection lists is the chronology of the events it points
-    # at (``services/collections``), which this table does not carry.
+    # Membership rows. Order is the events' chronology (``services/collections``).
     items = relationship(
         "CollectionEvent",
         back_populates="collection",
@@ -81,8 +64,7 @@ class Collection(Base):
     )
 
     __table_args__ = (
-        # "This analyst's collections, newest first", the profile section's
-        # only read.
+        # "This analyst's collections, newest first" (the profile's only read).
         Index("ix_collections_owner_created_at", "owner_id", "created_at"),
     )
 
@@ -90,14 +72,9 @@ class Collection(Base):
 class CollectionEvent(Base):
     """One membership: this event is in this collection.
 
-    PK is the pair, so adding an event twice is the same row and the add verb
-    is idempotent without a read-then-write. The forward read ("what is in
-    collection X") rides the PK's leading column; the reverse ("which of my
-    collections hold event X", the add-to-collection popover) rides the index
-    on ``event_id``.
-
-    Both foreign keys cascade, so neither a hard-deleted event nor a
-    hard-deleted collection can leave a membership pointing at nothing.
+    The pair PK makes the add verb idempotent without read-then-write. The
+    forward read rides the PK; the reverse (the add-to-collection popover) rides
+    the ``event_id`` index. Both FKs cascade.
     """
 
     __tablename__ = "collection_events"

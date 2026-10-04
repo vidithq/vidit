@@ -229,9 +229,8 @@ describe("renderProof", () => {
 });
 
 describe("image host pinning (NEXT_PUBLIC_MEDIA_HOST)", () => {
-  // The build's media host is the client's copy of the backend's CDN pin
-  // (`sanitize._safe_image_src`), so a foreign https host is a tracking pixel
-  // rather than evidence, whichever side of the wire it reaches.
+  // The build's media host is the client's copy of the backend CDN pin
+  // (`sanitize._safe_image_src`): a foreign https host is a tracking pixel, not evidence.
   beforeEach(() => {
     vi.stubEnv("NEXT_PUBLIC_MEDIA_HOST", "cdn.example.net");
   });
@@ -284,9 +283,8 @@ describe("proofHasImage", () => {
   });
 
   it("is false for an image node carrying no src", () => {
-    // The server counts srcs, not nodes (`sanitize.extract_image_srcs` feeding
-    // `events._require_proof_image`), so a srcless node does not clear the
-    // proof-image floor and must not be reported as if it did.
+    // The server counts srcs, not nodes (`sanitize.extract_image_srcs`), so a srcless node must
+    // not clear the proof-image floor.
     expect(proofHasImage(doc({ type: "image" }))).toBe(false);
     expect(proofHasImage(doc({ type: "image", attrs: {} }))).toBe(false);
   });
@@ -305,8 +303,8 @@ describe("proofHasImage", () => {
 });
 
 describe("tiptapDocText", () => {
-  // The projection is the reading the description's counter measures and the
-  // backend caps, so these are the rules `sanitize.tiptap_doc_text` holds.
+  // The projection the description counter measures and the backend caps
+  // (`sanitize.tiptap_doc_text`).
 
   it("joins paragraphs with one newline", () => {
     expect(tiptapDocText(doc(paragraph(text("First.")), paragraph(text("Second."))))).toBe(

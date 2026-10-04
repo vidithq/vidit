@@ -5,9 +5,9 @@ from pydantic_core import PydanticCustomError
 
 from app.schemas import NormalizedEmail
 
+# Mirrored by ``frontend/src/lib/auth.ts`` (``PASSWORD_MIN_LENGTH``).
 PASSWORD_MIN_LENGTH = 8
-# bcrypt reads at most 72 bytes of input and the ``bcrypt`` package raises on
-# more, so the ceiling is counted in UTF-8 bytes, not characters.
+# bcrypt reads at most 72 bytes, so the ceiling is in UTF-8 bytes, not characters.
 PASSWORD_MAX_BYTES = 72
 
 
@@ -22,9 +22,9 @@ def _within_bcrypt_limit(password: str) -> str:
     return password
 
 
-# A password a new credential is hashed from: register, reset, and change.
-# A character count never exceeds the byte count, so ``max_length`` only stops
-# huge input early and advertises a bound; the byte check is the rule.
+# A password a new credential is hashed from (register, reset, change). A
+# character count never exceeds the byte count, so ``max_length`` only stops
+# huge input early; the byte check is the rule.
 NewPassword = Annotated[
     str,
     Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_BYTES),
@@ -40,11 +40,8 @@ class RegisterRequest(BaseModel):
 
 
 class RegisterResponse(BaseModel):
-    """Response to a successful ``POST /auth/register``.
-
-    The user is NOT signed in — no session cookie. The address holds a pending
-    row; the account is created only when they click the confirmation link.
-    """
+    """Response to a successful ``POST /auth/register``. No session cookie: the
+    account exists only after the confirmation link."""
 
     status: Literal["pending_confirmation"] = "pending_confirmation"
     email: NormalizedEmail

@@ -4,9 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eventDetail } from "@/test/eventDetail";
 import type { EventListItem, MapPoint } from "@/types";
 
-// MapLibre touches `window` at module scope, so the reader's map never loads
-// its real canvas under jsdom. The stub reports what the reader handed it and
-// offers one pin to click, which is how a click on the sequence is measured.
+// MapLibre touches `window` at module scope, so the map is stubbed: it reports
+// what the reader handed it and offers one pin to click.
 vi.mock("next/dynamic", () => ({
   default: () =>
     function MapStub({
@@ -38,8 +37,8 @@ vi.mock("next/dynamic", () => ({
     },
 }));
 
-// The panel is the real one, so a read the reader drops shows up as a panel
-// that never leaves loading. Nobody is signed in.
+// The panel is the real one, so a dropped read shows as a panel stuck loading.
+// Nobody is signed in.
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: null }) }));
 
 const useApiResource = vi.fn();
@@ -65,8 +64,8 @@ const item = (id: string, lat: number | null): EventListItem => ({
   tags: [],
 });
 
-// Four items, the third of which carries no coordinates: the map has to skip
-// it and the count of steps must not.
+// Four items; the third has no coordinates: the map skips it, the step count
+// does not.
 const ITEMS = [item("e1", 49.1), item("e2", 49.2), item("e3", null), item("e4", 49.4)];
 
 function renderReader(step = 2) {
@@ -139,9 +138,8 @@ describe("CollectionReader", () => {
     renderReader(2);
     const map = screen.getByTestId("map");
 
-    // Three of the four items carry a pin; the current one is selected and the
-    // one step behind it is dimmed. Nothing joins them: the sequence is said
-    // by the pins and the counter, not by a line across the map.
+    // Three pins; the current one is selected and the one behind it dimmed. No line
+    // joins them.
     expect(map).toHaveAttribute("data-points", "3");
     expect(map).toHaveAttribute("data-selected", "e2");
     expect(map).toHaveAttribute("data-dimmed", "e1");
@@ -168,16 +166,13 @@ describe("CollectionReader", () => {
     fireEvent.keyDown(window, { key: "ArrowRight" });
     expect(onStep).toHaveBeenLastCalledWith(3);
 
-    // Back from where the last press left the reader, not from the step the
-    // URL still holds while the caller lands the first one.
     fireEvent.keyDown(window, { key: "ArrowLeft" });
     expect(onStep).toHaveBeenLastCalledWith(2);
   });
 
   it("walks a held key instead of re-reading the step it left", () => {
-    // The caller lands the step in the URL, so the prop is still 1 when the
-    // second press arrives: a handler counting off the prop would ask for
-    // step 2 twice and the collection would stand still under a held key.
+    // The prop is still 1 when the second press arrives: counting off it would
+    // ask for step 2 twice.
     const { onStep } = renderReader(1);
 
     fireEvent.keyDown(window, { key: "ArrowRight" });
@@ -192,8 +187,6 @@ describe("CollectionReader", () => {
     fireEvent.keyDown(window, { key: "ArrowRight" });
     fireEvent.keyDown(window, { key: "ArrowRight" });
 
-    // Four items: the walk reaches the end and the next press is the
-    // browser's again.
     expect(onStep.mock.calls).toEqual([[4]]);
   });
 
@@ -222,7 +215,6 @@ describe("CollectionReader", () => {
   it("leaves a modified arrow to the browser", () => {
     const { onStep } = renderReader(2);
 
-    // Command or Alt plus an arrow is history navigation or a word jump.
     fireEvent.keyDown(window, { key: "ArrowRight", metaKey: true });
     fireEvent.keyDown(window, { key: "ArrowLeft", altKey: true });
 

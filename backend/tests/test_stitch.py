@@ -1,8 +1,7 @@
 """Unit tests for ``stitch`` — union-find over reply edges.
 
-Pure, no DB. Synthetic records prove the multi-edge thread assembly that the
-archive feeder will exercise; the syndication path only ever hands ``stitch`` a
-single record (identity), covered by the singleton case.
+Pure, no DB. Synthetic records cover multi-edge thread assembly; the syndication
+path hands ``stitch`` a single record (the singleton case).
 """
 
 from __future__ import annotations
@@ -33,7 +32,7 @@ def test_single_record_is_its_own_thread():
 
 
 def test_reply_chain_assembles_into_one_thread_head_first():
-    # 2 replies to 1, 3 replies to 2 — one thread, ordered by created_at.
+    # One thread, ordered by created_at.
     records = [
         _rec("3", "2025-11-12T10:02:00Z", reply_to="2"),
         _rec("1", "2025-11-12T10:00:00Z"),
@@ -51,15 +50,14 @@ def test_unrelated_records_stay_separate():
 
 
 def test_edge_pointing_outside_batch_is_ignored():
-    # Reply to a third party's tweet not in the batch — no stranger pulled in.
+    # A reply to a tweet outside the batch pulls no stranger in.
     threads = stitch([_rec("5", "2025-11-12T10:00:00Z", reply_to="999")])
     assert len(threads) == 1
     assert [r.tweet_id for r in threads[0]] == ["5"]
 
 
 def test_malformed_timestamp_does_not_hijack_the_head():
-    # An empty / non-ISO created_at must sort LAST, not become the head: the
-    # resolution anchors provenance + event_date on thread[0].
+    # An empty or non-ISO created_at sorts last, not head: resolution anchors on thread[0].
     records = [
         _rec("2", "", reply_to="1"),  # missing timestamp
         _rec("1", "2025-11-12T10:00:00Z"),  # the real head
@@ -71,9 +69,8 @@ def test_malformed_timestamp_does_not_hijack_the_head():
 
 
 def test_same_second_reply_does_not_win_the_head_slot():
-    # An archive stores created_at at second precision, and tweets.js lists
-    # newest first, so a reply posted in the same second as its parent used to
-    # keep batch order and hijack the head. The lower snowflake id is the head.
+    # Archives store second precision and list newest first, so a same-second reply
+    # must not take the head: the lower snowflake id is the head.
     records = [
         _rec("2009264626035216536", "2026-01-08T14:03:11", reply_to="2009264622755283310"),
         _rec("2009264622755283310", "2026-01-08T14:03:11"),
@@ -86,8 +83,7 @@ def test_same_second_reply_does_not_win_the_head_slot():
 
 
 def test_non_digit_tweet_id_sorts_after_its_peers_without_crashing():
-    # No upstream writes one (the archive reader rejects them outright), but the
-    # key must degrade rather than raise on a non-numeric id.
+    # No upstream writes one, but the sort key must not raise on a non-numeric id.
     records = [
         _rec("abc", "2025-11-12T10:00:00Z"),
         _rec("7", "2025-11-12T10:00:00Z", reply_to="abc"),

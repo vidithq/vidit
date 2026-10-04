@@ -3,11 +3,9 @@ import type { ReactNode } from "react";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 
-// The "Proof" section: the `SectionEyebrow` + the bordered box that wraps a
-// geolocation's or a request's proof body. The shell lives here once, the
-// caller passes the proof body (which differs: a geolocation's rendered doc,
-// a request's in-progress notes). The box is the shared <Card> one density
-// step tighter (p-4): proof is a reading surface, not a form.
+// The "Proof" section: `SectionEyebrow` plus a box wrapping a geolocation's or
+// request's proof body (the caller passes the body). The box is `<Card>` one
+// density step tighter (p-4): proof is a reading surface.
 export function ProofSection({ children }: { children: ReactNode }) {
   return (
     <div>

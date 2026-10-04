@@ -1,44 +1,24 @@
 """Event lifecycle orchestration over the unified event model.
 
-`routers/events/*` parse the multipart forms into clean Python types and
-hand them to the functions here, which own every business rule, the S3 upload
-loop, proof-image intake, the DB commit, and the post-commit S3 sweep on
-rollback. The write verbs map one-to-one onto the lifecycle:
-:func:`create_with_evidence` births a ``geolocated`` row, :func:`create_request`
-a ``requested`` one, :func:`update_request` corrects an open request in place,
-:func:`geolocate` is the one generalized transition to
-``geolocated`` (fulfil a request, vouch a detection), :func:`save_version` corrects a
-published row and files the superseded state as a version, and :func:`close`
-is the terminal withdraw / reject / retract, available in every live state.
+`routers/events/*` parse the forms and call the write verbs here, which own
+every business rule, the S3 upload loop, the DB commit, and the post-commit S3
+sweep on rollback. Verbs: :func:`create_with_evidence` (``geolocated``),
+:func:`create_request` (``requested``), :func:`update_request`,
+:func:`geolocate` (fulfil a request or vouch a detection), :func:`save_version`
+(correct a published row, filing the superseded state), :func:`close`
+(withdraw / reject / retract, any live state).
 
-Errors are typed `EventError` subclasses with stable `.code`
-strings, translated to HTTP via the same `{code, message}` envelope as
-`RegistrationError` / `AdminError`. Status mapping lives in
-`routers/events/_common.py` (`_EVENT_ERROR_STATUS`), kept in sync
-when adding a code.
+Errors are `EventError` subclasses with stable `.code` strings. Add each new
+code to `_EVENT_ERROR_STATUS` in `routers/events/_common.py`.
 
-One module per write verb, over five shared modules. Dependencies run one way:
-a verb module imports shared modules, a shared module imports at most
-``errors``, ``errors`` imports no sibling module, and no verb module imports
-another.
+One module per verb over shared modules. A verb module imports shared modules,
+a shared module imports at most ``errors``, ``errors`` imports no sibling, and
+no verb module imports another.
 
-* ``errors``: the typed failures and their codes, a leaf module.
-* ``coordinates``: the bounds check and the optional point a form pair builds.
-* ``source_links``: the secondary links, normalized, paired with their archived
-  copies, and written as ordered rows.
-* ``rules``: the evidence floor, the proof sanitiser wrapper, the source-media
-  swap, the tag and conflict resolvers, and the geolocation credit.
-* ``readiness``: the batch publish floor as one SQL predicate, for the
-  detections queue.
-* ``create``: :func:`create_with_evidence`.
-* ``request``: :func:`create_request`, :func:`update_request`, and the import
-  provenance a machine-opened request carries.
-* ``geolocation``: :func:`geolocate`.
-* ``revision``: :func:`save_version`.
-* ``batch``: :func:`complete_detections` and its per-row promotion.
-* ``closure``: :func:`close`.
-
-Callers import from this package, which re-exports the public surface below.
+* ``errors``, ``coordinates``, ``source_links``, ``rules``: shared.
+* ``readiness``: the batch publish floor as one SQL predicate.
+* ``create``, ``request``, ``geolocation``, ``revision``, ``batch``,
+  ``closure``: one per verb.
 """
 
 from __future__ import annotations

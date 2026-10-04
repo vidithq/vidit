@@ -4,20 +4,13 @@ import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { NumberedSteps, type NumberedStep } from "@/components/ui/NumberedSteps";
 
-// Public methodology guide, reachable without an account (see
-// `PUBLIC_PREFIXES` in `proxy.ts`). Linked from the proof section of the
-// submit and edit forms, where the analyst needs it, and from the about
-// page. Server component for SEO, composed from the same PageShell + Card
-// primitives as the about page.
+// Public methodology guide (see `PUBLIC_PREFIXES` in `proxy.ts`), linked from the proof section of the forms. Server component for SEO.
 
 const TITLE = "Building a proof";
 const DESCRIPTION =
   "How a Vidit geolocation proof comes together: verify and archive the source, pin the visual anchors, cross-reference on satellite imagery, and annotate the match.";
 
-// Same openGraph + twitter shape as the landing so a shared link reads as
-// Vidit, not a bare title. The shared `opengraph-image.tsx` /
-// `twitter-image.tsx` at the app root supply the image without per-page
-// binary assets.
+// Same openGraph + twitter shape as the landing; the root image files supply the image.
 export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,

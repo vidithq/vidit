@@ -1,28 +1,15 @@
 """Single-use, expiring tokens for password reset.
 
-Token lifecycle
----------------
+1. ``mint`` generates a high-entropy URL-safe secret, persists ``sha256(secret)`` plus
+   user/purpose/expiry, and returns the plaintext. Only the plaintext goes on the wire (the
+   email link); only the hash sits in the DB, so a read-only DB leak hands over no live token.
+2. ``consume`` re-hashes and runs one atomic UPDATE that flips ``consumed_at`` only if the row
+   is the right purpose, unconsumed and unexpired. Zero rows means an invalid token. Two
+   parallel requests can both pass an ORM-level check under READ COMMITTED, but only one wins
+   the row-lock race inside the UPDATE.
 
-1. ``mint`` generates a high-entropy URL-safe secret, persists
-   ``sha256(secret)`` plus user/purpose/expiry, and returns the
-   *plaintext*. Only the plaintext goes on the wire (the email link); only
-   the hash sits in the DB.
-2. The user clicks the link; the frontend POSTs the secret.
-3. ``consume`` re-hashes and runs one atomic UPDATE that flips
-   ``consumed_at`` only if the row is the right purpose, unconsumed, and
-   unexpired. Zero rows = invalid token. Single-use is enforced by the
-   unique index on ``token_hash`` *plus* this UPDATE's WHERE-clause guard:
-   two parallel requests can both pass an ORM-level "consumed yet?" check
-   under READ COMMITTED, but only one wins the row-lock race inside the
-   UPDATE.
-
-Hash at rest because a read-only DB leak (logs, backups, snapshots) would
-otherwise hand over working live tokens; SHA-256 makes "read DB → log in"
-require inverting the hash.
-
-The ``purpose`` column keeps the table reusable for a second token kind
-without a second table; ``consume`` matches on it, so a token minted for one
-purpose can never be redeemed for another.
+The ``purpose`` column lets one table hold several token kinds; ``consume`` matches on it, so a
+token minted for one purpose can't be redeemed for another.
 """
 
 import secrets
@@ -38,8 +25,7 @@ from app.models.auth_token import (
 )
 from app.services.auth import hash_token
 
-# 32 bytes = 256 bits of entropy → ~43 ASCII chars in the link;
-# comfortably above the 128-bit guess-resistance floor.
+# 32 bytes = 256 bits of entropy, well above the 128-bit guess-resistance floor.
 _TOKEN_BYTES = 32
 
 
@@ -51,10 +37,8 @@ def mint(
 ) -> str:
     """Mint and persist a fresh token. Returns the plaintext secret.
 
-    Doesn't commit (the token isn't valid until the row hits the DB) so
-    the caller can keep the email-send and the DB write in one atomic
-    unit — an email failure then leaves no orphan token row. Caller
-    commits.
+    Doesn't commit, so the caller can keep the email send and the DB write in one atomic unit
+    (an email failure leaves no orphan token row). Caller commits.
     """
 
     if purpose not in ALL_PURPOSES:
@@ -72,18 +56,14 @@ def mint(
 
 
 def consume(db: Session, raw_token: str, purpose: str) -> AuthToken | None:
-    """Validate + single-use-consume the token. Returns the row, or None.
+    """Validate and single-use-consume the token. Returns the row, or None.
 
-    One atomic UPDATE ... WHERE consumed_at IS NULL ... RETURNING, so two
-    concurrent requests can't both succeed. The previous SELECT-then-mutate
-    was vulnerable under READ COMMITTED — both reads saw
-    ``consumed_at IS NULL``, both flipped it, both committed, redeeming a
-    single-use token twice; for password-reset, an attacker holding a live
-    link could race the legitimate user and win.
+    One atomic UPDATE ... WHERE consumed_at IS NULL ... RETURNING. A SELECT-then-mutate would
+    let two concurrent requests both redeem the token under READ COMMITTED (for password reset,
+    an attacker holding a live link could race the legitimate user).
 
-    Returns None for *any* failure (unknown / wrong purpose / expired /
-    already consumed / lost the race). Callers must treat all as the same
-    opaque "invalid token" so the response doesn't leak which step failed.
+    Returns None for any failure (unknown, wrong purpose, expired, consumed, lost the race).
+    Callers must answer them all with the same opaque "invalid token".
     """
 
     now = datetime.now(UTC)
@@ -103,15 +83,10 @@ def consume(db: Session, raw_token: str, purpose: str) -> AuthToken | None:
 
 
 def revoke_all_live_for_user(db: Session, user_id: uuid.UUID, purpose: str) -> int:
-    """Mark every outstanding token for (user, purpose) as consumed.
+    """Mark every outstanding token for (user, purpose) as consumed; returns the count.
 
-    Atomic UPDATE for the same race-safety reason as ``consume``: two
-    concurrent ``forgot-password`` calls must not both leave a live token
-    behind. Returns the number revoked.
-
-    Called when minting a fresh token so any older live token for the same
-    purpose becomes unusable — a stolen "old" email can't be redeemed once
-    the user requests a new one.
+    Atomic UPDATE, so two concurrent ``forgot-password`` calls can't both leave a live token.
+    Called when minting a fresh token, so a stolen older email can't be redeemed.
     """
 
     now = datetime.now(UTC)
@@ -125,7 +100,6 @@ def revoke_all_live_for_user(db: Session, user_id: uuid.UUID, purpose: str) -> i
         )
         .values(consumed_at=now)
     )
-    # CursorResult exposes rowcount; the generic Result from db.execute()
-    # doesn't, so the cast just satisfies mypy.
+    # ``db.execute`` returns a generic Result without ``rowcount``; the cast satisfies mypy.
     result: CursorResult = db.execute(stmt)  # type: ignore[assignment]
     return result.rowcount or 0

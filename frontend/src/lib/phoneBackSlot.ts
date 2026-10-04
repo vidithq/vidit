@@ -1,17 +1,11 @@
 /**
- * The back control's seat in the phone chip, and the subscription a page fills
- * it through.
+ * The back control's seat in the phone chip, and the subscription a page fills it through.
+ * `Sidebar` publishes the element (`#phone-back-slot`) from a ref; `PageShell` portals its
+ * back control into it below `sm`.
  *
- * `Sidebar` owns the element (`#phone-back-slot`) and publishes it here from a
- * ref; `PageShell` subscribes and portals its back control into it below `sm`,
- * so on a phone the arrow rides the chip in the corner instead of taking a row
- * of its own above the title. Nothing else reads the slot: the chip holds the
- * open control and this seat, and the drawer's brand mark stays in the drawer.
- *
- * A store rather than a lookup at mount, because the two mount out of order:
- * `Sidebar` renders nothing while auth resolves, so the slot can appear after
- * the page asking for it has already mounted, and a one-shot
- * `getElementById` would miss it on every cold load.
+ * A store rather than a mount-time lookup: `Sidebar` renders nothing while auth resolves, so
+ * the slot can appear after the page asking for it mounted, and a one-shot `getElementById`
+ * would miss it on every cold load.
  */
 
 type Listener = () => void;
@@ -34,9 +28,8 @@ export function subscribePhoneBackSlot(listener: Listener): () => void {
   };
 }
 
-/** The slot, or null before `Sidebar` has published one. Also the server
- *  snapshot: only a ref callback ever sets it, so a prerender reads null and
- *  portals nothing. */
+/** The slot, or null before `Sidebar` publishes one. Also the server snapshot: a prerender
+ *  reads null and portals nothing. */
 export function getPhoneBackSlot(): HTMLElement | null {
   return slot;
 }

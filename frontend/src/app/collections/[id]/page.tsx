@@ -38,55 +38,23 @@ import {
 import { renderProof } from "@/lib/proof";
 
 /**
- * One collection: what it is, where its items are, and what they are.
+ * One collection page: the header (title, owner byline with a `Collection` pill, the profile
+ * card's meta line, the tags its items carry), then three `Card` sections. **Description** is
+ * the owner's text at reading size, rendered through `renderProof` (the card clamps its
+ * plain-text projection instead). **Coverage** is the player: items on the map with the
+ * current one lit, and its event in the map page's panel beside it. **Events** is the
+ * chronological list with the player's row lit; a click moves the player.
  *
- * The header is the collection itself, the grammar the event page uses for an
- * event: the title, the owner's byline under it with a `Collection` pill saying
- * what kind of page this is, the meta line the profile card prints beside the
- * mosaic, and under it the tags the collection's items carry, in the card's own
- * pills. The mosaic itself is the profile card's picture and nothing else:
- * the page opens on the name of the collection rather than on a band the width
- * of the page.
+ * All three read one sequence, walked once, so pins, panel and rows describe the same
+ * collection.
  *
- * Then three sections, each a `Card` under its own eyebrow. **Description** is
- * what the owner says the collection holds, at reading size and whole, where
- * the card clamps its plain-text projection to two lines; it is a section
- * rather than a header line because a description runs to 500 characters of
- * text and the header is the identity of the page, not its content. The owner
- * wrote it in the proof editor, so it renders through `renderProof`, the
- * reader an event's proof body takes. **Coverage** is the player: the items on the
- * map with the current one lit, and that item's event in the map page's own
- * panel beside it. **Events** is the chronological list, where the row the
- * player stands on is lit and a click on a row moves the player to it.
- *
- * All three read one set, the sequence this page walks once, so the pins, the
- * panel and the rows can never describe different collections.
- *
- * The page is public, and so is the header cluster's first control: **Share on
- * X** (`<ShareOnX>`, the control the event page's utilities tier also renders),
- * prefilled with the title, the owner's byline and the meta line's own count
- * and span, then the collection's URL, so the unfurl shows the share card.
- * A collection carries no `detected` state, so there is no confirm to arm: the
- * plain click every other reading surface's share takes. Then **Report**, the
- * red flag every detail surface carries, open to a reader with no account
- * because the person who notices a shelf misrepresenting what it holds is
- * rarely the person holding an account here. It opens the same panel an event
- * page opens (`useReportContent`), directly under the header.
- *
- * The owner's two controls come after it, in the slot every other surface puts
- * the controls that act on the thing the page is about. **Edit** opens the
- * collection's own edit page, where the details and the item picker live.
- * **Drop** is the red trash, under the two-click confirm every destructive
- * control on the site takes, and on success the owner lands on their profile
- * where their other collections are. This is the one place the act lives: the
- * edit page is Details and Events only.
- *
- * Nothing else opens over the work the page shows: the item picker and the
- * per-row controls stay on the edit page.
+ * Header controls: **Share on X** (`<ShareOnX>`, a plain click since a collection has no
+ * `detected` state), **Report** (open to readers with no account, via `useReportContent`),
+ * then the owner's **Edit** and **Drop** (red trash under the two-click confirm, landing on
+ * the owner's profile). Drop lives only here; the edit page is Details and Events only.
  */
 export default function CollectionPage() {
-  // `useSearchParams` opts out of static prerender, so the body lives under a
-  // Suspense boundary (the shape every other page reading the query takes).
+  // `useSearchParams` opts out of static prerender, so the body sits under Suspense.
   return (
     <Suspense fallback={<PageLoading />}>
       <CollectionPageBody />
@@ -105,9 +73,8 @@ function CollectionPageBody() {
     id ? `/collections/${id}` : null,
   );
 
-  // The collection's whole sequence, read once for the three sections. The
-  // player has to say `N of M` and the list is what picks a step out of the
-  // same set, so a page of items would leave the two counting differently.
+  // The whole sequence, read once for the three sections: the player says `N of M` and the
+  // list picks a step from the same set.
   const {
     items: sequence,
     error: sequenceError,
@@ -115,18 +82,14 @@ function CollectionPageBody() {
   } = useCollectionSequence(id);
 
   const items = sequence ?? [];
-  // Clamped at read time, so a link to a step the collection no longer holds
-  // opens on its nearest real one and taking the current item off the shelf
-  // lands on whatever is nearest to where the reader was, with no write to the
-  // URL to do it.
+  // Clamped at read time, so a link to a step the collection no longer holds opens on the
+  // nearest real one, with no URL write.
   const step = readerStep(searchParams.get("step"), items.length);
 
   const goToStep = useCallback(
     (next: number) => {
-      // `replace`, not `push`: stepping through a collection is reading one
-      // page, so the browser's back button leaves the page rather than walking
-      // back through every step taken on it. `scroll: false` keeps the reader
-      // where they picked the step, which on the list is below the player.
+      // `replace`, not `push`: stepping is reading one page, so Back leaves it. `scroll: false`
+      // keeps the reader where they picked the step.
       router.replace(collectionStepHref(id, next), { scroll: false });
     },
     [id, router],
@@ -134,21 +97,18 @@ function CollectionPageBody() {
 
   const isOwner = !!user && !!collection && user.id === collection.owner.id;
 
-  // Its own state machine, called before the early returns like every hook
-  // here: the flag works signed out, and the panel it opens renders under the
-  // header where the trigger is.
+  // Called before the early returns like every hook here; works signed out, and the panel
+  // renders under the header trigger.
   const report = useReportContent("collection", id);
 
   const drop = useMutation(() => deleteCollection(id), {
     fallback: "Failed to drop the collection",
-    // Back to the owner's profile, where their other collections are: the page
-    // they are on no longer exists.
+    // Back to the owner's profile: this page no longer exists.
     onSuccess: () => router.push(`/profile/${collection?.owner.username ?? ""}`),
   });
 
-  // Two clicks, disarming on its own after a few seconds and on any click or
-  // focus landing elsewhere: the confirm the edit page's Drop card takes, so
-  // the same act asks the same way from both places.
+  // Two clicks, disarming after a few seconds or on any outside click or focus: the same
+  // confirm as the edit page's Drop card.
   const {
     armed: dropArmed,
     trigger: triggerDrop,
@@ -169,24 +129,19 @@ function CollectionPageBody() {
         <div className="space-y-1">
           <span className="flex flex-wrap items-center gap-2">
             <AuthorByline author={collection.owner} avatar />
-            {/* What kind of page this is. A collection's title reads like an
-                event's, and the two pages share a shape, so the row says which
-                one the reader is on. */}
+            {/* The row says which kind of page this is (collection and event pages share a shape). */}
             <Pill tone="neutral" icon={<CollectionIcon size={11} />}>
               Collection
             </Pill>
           </span>
           <CollectionMetaLine collection={collection} className="text-xs" />
-          {/* What the collection is about, read off the tags of the events it
-              holds. The card's row, under the meta line where the card puts
-              it, so the page and the card that opens it say the same thing. */}
+          {/* Tags of the held events, under the meta line like the card. */}
           <CollectionTags collection={collection} />
         </div>
       }
       actions={
-        // `flex-wrap` plus `justify-end`, the event cluster's own row: it
-        // breaks into stacked right-aligned lines on a phone instead of
-        // pushing the header sideways.
+        // `flex-wrap` + `justify-end` like the event cluster: stacked right-aligned lines on a
+        // phone, not a sideways push.
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           <ShareOnX
             path={collectionHref(collection.id)}
@@ -198,8 +153,7 @@ function CollectionPageBody() {
           {report.trigger}
           {isOwner && (
             <>
-              {/* Navigation, so the shape comes from `buttonClasses` on the
-                  link rather than a button nested in an anchor. */}
+              {/* Navigation: `buttonClasses` on the link, not a button nested in an anchor. */}
               <Link
                 href={collectionEditHref(collection.id)}
                 className={buttonClasses("ghost", { icon: true })}
@@ -215,8 +169,7 @@ function CollectionPageBody() {
                 disabled={drop.loading}
                 onClick={triggerDrop}
                 className={dropArmed ? DANGER_CONFIRM : ""}
-                // The label is what says which click this is, since an icon
-                // button has no text to swap.
+                // The label says which click this is (an icon button has no text to swap).
                 aria-label={
                   dropArmed
                     ? "Confirm dropping this collection"
@@ -235,7 +188,7 @@ function CollectionPageBody() {
         </div>
       }
     >
-      {/* Directly under the header, where the trigger that opened it is. */}
+      {/* Under the header, where the trigger is. */}
       {report.panel}
       {drop.error && (
         <div className={FORM_ERROR_BANNER} role="alert">
@@ -245,17 +198,13 @@ function CollectionPageBody() {
 
       <Card as="section">
         <SectionEyebrow title="Description" margin="none" />
-        {/* The owner wrote it in the proof editor, so it is read back through
-            the proof renderer: the same marks, lists and links an event's
-            proof body renders. A description carries no images, so nothing
-            here needs the graphic gate `renderProof` takes for an event. */}
+        {/* Read back through the proof renderer; a description carries no images, so no graphic gate. */}
         <div className="text-sm text-neutral-300">
           {renderProof(collection.description)}
         </div>
       </Card>
 
-      {/* A collection with nothing on it has nothing to step through, and the
-          list below says so in its own words. */}
+      {/* An empty collection has nothing to step through; the list says so. */}
       {items.length > 0 && (
         <CollectionReader items={items} step={step} onStep={goToStep} />
       )}

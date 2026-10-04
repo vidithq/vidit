@@ -36,7 +36,7 @@ const MEMBERSHIPS: CollectionMemberships = {
   ],
 };
 
-/** The row for one collection, which carries the switch and its state. */
+/** The row for one collection (the switch and its state). */
 function row(title: string): HTMLElement {
   return screen.getByRole("switch", { name: title });
 }
@@ -66,11 +66,9 @@ describe("AddToCollectionPanel", () => {
   it("gives each row the reading-size shape, with what the collection holds", () => {
     render(<AddToCollectionPanel eventId="e1" />);
 
-    // A described `<ToggleRow>` is the label at reading size over its line,
-    // which is the shape an analyst's own title needs; the count is that line.
+    // A described `<ToggleRow>` sets the title at reading size; the count is its line.
     expect(screen.getByText("1 event")).toBeInTheDocument();
     expect(screen.getByText("12 events")).toBeInTheDocument();
-    // The accessible name stays the title alone, never the count under it.
     expect(row("Kupiansk rail corridor")).toBeInTheDocument();
   });
 
@@ -80,7 +78,6 @@ describe("AddToCollectionPanel", () => {
     render(<AddToCollectionPanel eventId="e1" />);
     fireEvent.click(row("Kupiansk rail corridor"));
 
-    // Optimistic: the row is on before the write has answered.
     expect(row("Kupiansk rail corridor")).toHaveAttribute(
       "aria-checked",
       "true",
@@ -115,7 +112,6 @@ describe("AddToCollectionPanel", () => {
     render(<AddToCollectionPanel eventId="e1" />);
     fireEvent.click(row("Kupiansk rail corridor"));
 
-    // The line says what the collection holds, so it moves with the bit.
     expect(screen.getByText("2 events")).toBeInTheDocument();
     await waitFor(() =>
       expect(addEventToCollection).toHaveBeenCalledWith("c1", "e1"),
@@ -142,7 +138,6 @@ describe("AddToCollectionPanel", () => {
     fireEvent.click(row("Kupiansk rail corridor"));
 
     await waitFor(() => expect(screen.getByText("Nope.")).toBeInTheDocument());
-    // Both halves of the optimistic flip are undone, not just the switch.
     expect(row("Kupiansk rail corridor")).toHaveAttribute(
       "aria-checked",
       "false",
@@ -163,7 +158,6 @@ describe("AddToCollectionPanel", () => {
         screen.getByText("This geolocation cannot be shelved."),
       ).toBeInTheDocument(),
     );
-    // Rolled back to what the server still holds.
     expect(row("Kupiansk rail corridor")).toHaveAttribute(
       "aria-checked",
       "false",
@@ -186,8 +180,8 @@ describe("AddToCollectionPanel", () => {
   it("sends a new collection to the create page, carrying this event", () => {
     render(<AddToCollectionPanel eventId="e1" />);
 
-    // The page opens the collection with this event on it and comes back, so
-    // the panel writes no form of its own over the event being read.
+    // The create page carries this event and comes back, so the panel writes no
+    // form of its own.
     expect(
       screen.getByRole("link", { name: "New collection" }),
     ).toHaveAttribute("href", "/collections/new?event=e1");

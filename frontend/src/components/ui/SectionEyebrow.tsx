@@ -3,11 +3,10 @@ import { cn } from "@/lib/cn";
 import { FieldHelp } from "./FieldHelp";
 import type { Concept } from "@/lib/fieldHelp";
 
-// Uppercase "eyebrow" section heading used on the detail surfaces (geolocation
-// detail body, request detail page): the `text-xs … uppercase tracking-wider`
-// label + section FieldHelp. Distinct from the form `SectionHeading` (which is
-// `text-sm font-medium`). `margin` covers the page (`mb-3`) vs the dense panel
-// (none) vs the proof block (`mb-1.5`); `as` picks h2 (page) or h3 (panel).
+// Uppercase "eyebrow" heading for the detail surfaces, plus section `FieldHelp`.
+// Distinct from the form `SectionHeading` (`text-sm font-medium`). `margin`
+// covers the page (`mb-3`), the dense panel (none) and the proof block
+// (`mb-1.5`); `as` picks h2 (page) or h3 (panel).
 const MARGIN = { none: "", sm: "mb-1.5", md: "mb-3" } as const;
 
 export function SectionEyebrow({

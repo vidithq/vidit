@@ -37,8 +37,7 @@ describe("/import", () => {
   });
 
   it("opens on a chooser linking the three entry sections", () => {
-    // The chooser is the page's first action: a reader picks an entry before
-    // reading anything, so each tile must resolve to the section it names.
+    // The chooser is the first action: each tile must resolve to its section.
     const { container } = render(<ImportGuidePage />);
 
     for (const [href, title] of [
@@ -53,12 +52,7 @@ describe("/import", () => {
   });
 
   it("states the coordinate rule at the one hop the bot and the paste read", () => {
-    // Two of the three entries read the post plus the post it directly replies
-    // to, and nothing further, so a rule promising "the same thread" would send
-    // an analyst tagging the bot three replies down away empty-handed. The bare
-    // tag is the one shape that reads further, and an analyst who does not know
-    // it writes the coordinate into every reply to be safe. Only the archive
-    // reads a whole self thread, and its section is where that is said.
+    // Two entries read the post plus its direct reply parent only, so a "same thread" rule would mislead; only the bare tag reads further and only the archive reads a whole self thread.
     render(<ImportGuidePage />);
 
     expect(

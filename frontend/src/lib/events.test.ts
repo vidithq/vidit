@@ -9,8 +9,8 @@ import {
   type EventFieldsState,
 } from "./events";
 
-// A fully-complete detection, each test knocks one field out. The proof
-// carries an image node, since a geolocation's proof must (proofHasImage).
+// A fully-complete detection; each test knocks one field out. The proof carries an image node
+// (`proofHasImage`).
 const complete: EventFieldsState = {
   title: "Strike on depot",
   lat: "48.5",
@@ -107,9 +107,7 @@ describe("missingEventFields", () => {
 });
 
 describe("batchCompletionBlockers", () => {
-  // A detection as the import leaves it: coordinates, a source, its footage, and a
-  // proof body carrying the annotation image. Only the capture source is
-  // missing, and the batch supplies that.
+  // A detection as the import leaves it, missing only the capture source the batch supplies.
   const importedDetection = {
     event_coords: { lat: 48.5, lng: 37.8 },
     source_url: "https://x.com/a/status/1",
@@ -134,9 +132,8 @@ describe("batchCompletionBlockers", () => {
   });
 
   it("counts only source media, never a proof image, as the footage", () => {
-    // The floor wants the footage the geolocation is OF. An import whose
-    // annotation images landed but whose source video did not carries media
-    // rows and still misses it.
+    // The floor wants the footage the geolocation is OF: annotation images alone carry media rows
+    // and still miss it.
     expect(
       batchCompletionBlockers({
         ...importedDetection,
@@ -157,22 +154,17 @@ describe("batchCompletionBlockers", () => {
   });
 
   it("ignores what a batch never writes (title, source post time)", () => {
-    // The batch posts no fields, so those requirements belong to the submit
-    // form, not here: a detection missing them still publishes.
+    // The batch posts no fields, so title and post time belong to the submit form: a detection
+    // missing them still publishes.
     expect(batchCompletionBlockers({ ...importedDetection, source_url: "  " })).toEqual([
       "Source URL",
     ]);
   });
 
-  // The readiness rule has three expressions: this one, the server floor in
-  // `services/events/batch._publish_detection`, and the SQL the queue's `readiness`
-  // filter pages on (`services/events.detection_ready_predicate`). The queue
-  // labels rows from here and asks the server which rows to show, so a
-  // disagreement shows up as a row badged Ready that the Ready filter hides.
-  //
-  // Shape for shape, this table mirrors `backend/tests/events/
-  // _readiness_cases.py`, where the two server expressions are held to the
-  // same verdicts. Change one table, change the other.
+  // Mirrors `backend/tests/events/_readiness_cases.py`, shape for shape; change both. The
+  // readiness rule has three expressions (this one, `services/events/batch._publish_detection`,
+  // and the SQL `services/events.detection_ready_predicate`): a disagreement shows as a row
+  // badged Ready that the Ready filter hides.
   describe("agrees with the server's readiness filter, shape for shape", () => {
     const proofWithImage = {
       type: "doc",
@@ -199,9 +191,7 @@ describe("batchCompletionBlockers", () => {
       type: "doc",
       content: [{ type: "paragraph", content: [{ type: "text", text: "No imagery." }] }],
     };
-    // An image node with no `src`. The server counts srcs, not nodes, so it
-    // does not satisfy the floor; a node-type-only test here would badge the
-    // detection Ready and then never find it under the Ready filter.
+    // An image node with no `src`: the server counts srcs, not nodes, so it misses the floor.
     const proofImageWithoutSrc = { type: "doc", content: [{ type: "image" }] };
 
     const cases: [string, Parameters<typeof batchCompletionBlockers>[0], boolean][] = [
@@ -259,8 +249,7 @@ describe("missingEventRequestFields", () => {
   });
 });
 
-/** Stand in for the browser XHR `uploadArchive` drives: it only opens, sends,
- *  and reads the status plus the body back on load. */
+/** Stand in for the XHR `uploadArchive` drives (open, send, read status and body on load). */
 function stubUpload(status: number, body = "") {
   class StubXhr {
     status = 0;
@@ -269,7 +258,6 @@ function stubUpload(status: number, body = "") {
     onload: (() => void) | null = null;
     onerror: (() => void) | null = null;
     open() {
-      // The stub never opens a connection.
     }
     send() {
       this.status = status;
@@ -314,8 +302,7 @@ describe("uploadArchive", () => {
   });
 
   it("maps the dev body-size middleware's 413 to the same code", async () => {
-    // The other 413 the dev endpoint can answer with: the body-size middleware
-    // ahead of the route, whose detail carries the cap in bytes.
+    // The body-size middleware ahead of the route; its detail carries the cap in bytes.
     stubUpload(413, '{"detail":"Request body too large (max 4305453056 bytes)"}');
     await expect(uploadArchive(target, zip)).rejects.toHaveProperty(
       "code",
@@ -324,9 +311,8 @@ describe("uploadArchive", () => {
   });
 
   it("keeps ArchiveUploadError for a 413 from an intermediary", async () => {
-    // A corporate proxy capping request bodies can 413 an upload that is under
-    // our cap, which the strip just proved. Calling that archive too large
-    // would steer the analyst away from a retry that works.
+    // A corporate proxy can 413 an under-cap upload; calling that too large would steer away from
+    // a working retry.
     stubUpload(
       413,
       "<html><head><title>413 Request Entity Too Large</title></head>" +

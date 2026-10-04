@@ -24,11 +24,9 @@ import { TimelineScrubber } from "@/components/map/TimelineScrubber";
 interface FilterPanelProps {
   /** Live tag taxonomy driving the capture-source + free chip buckets. */
   tags: Tag[];
-  /** Conflicts carried by >=1 live event (`/conflicts?used=true`), driving the
-   *  Conflict chip bucket. Server-ordered: ongoing first, then name. */
+  /** Conflicts carried by at least one live event (`/conflicts?used=true`), server-ordered: ongoing first, then name. */
   conflicts: Conflict[];
-  /** Boundary-filtered points, pre-window. The histograms read them through
-   *  the status pick (below) so they only count points a scrub can reveal. */
+  /** Boundary-filtered points, pre-window; the histograms read them through the status pick. */
   points: MapPoint[];
   /** Count of points currently shown (post-window) for the header. */
   pointCount: number;
@@ -37,12 +35,9 @@ interface FilterPanelProps {
 }
 
 /**
- * The map's filter overlay: the header button, the shared removable-pill row
- * (`ActiveFilterPills`, visible even while the panel is collapsed), and the
- * shared section stack (`EventFilterSections`, the same panel the search page
- * renders). Map-specific: the two timeline scrubbers as the date sections, fed
- * by the points histogram, whose windows filter client-side. Filter state lives
- * in MapStateContext so it survives navigation.
+ * The map's filter overlay: header button, `ActiveFilterPills`, and the shared
+ * `EventFilterSections`, with the two timeline scrubbers as date sections. Filter state lives in
+ * MapStateContext so it survives navigation.
  */
 export function FilterPanel({ tags, conflicts, points, pointCount, loading }: FilterPanelProps) {
   const {
@@ -61,10 +56,8 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
   const onPatch: EventFilterPatch = (patch) =>
     setFilters((v) => ({ ...v, ...patch }));
 
-  // Stable identities: the scrubber's play interval re-subscribes whenever
-  // its `setEnd` changes, so a fresh closure per render would restart the
-  // timer on every tick and stall the sweep. `setDateWindows` is a state
-  // setter, so these are built once.
+  // Stable identities: the scrubber's play interval re-subscribes when `setEnd` changes, which would
+  // restart the timer on every tick.
   const setEventFrom = useCallback(
     (v: string) => setDateWindows((d) => ({ ...d, eventFrom: v })),
     [setDateWindows]
@@ -98,35 +91,27 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     setAddedPlaying(false);
   };
 
-  // The scrubbers histogram the same set the status chips leave on the map:
-  // feeding them raw points would count bars no scrub can reveal while a
-  // chip is active. Same helper as the map canvas, so the two can't drift.
+  // Histogram the same set the status chips leave on the map (same helper as the canvas), so no
+  // bar counts points a scrub can't reveal.
   const statusFilteredPoints = useMemo(
     () => filterPointsByStatus(points, filters.statuses),
     [points, filters.statuses]
   );
 
-  // The shared value + window pill entries.
   const activeFilters: ActiveFilter[] = [
     ...buildActiveFilterPills(filters, onPatch),
     ...buildDateWindowPills(dateWindows, clearEventWindow, clearAddedWindow),
   ];
-  // The author narrows the view without carrying a pill (its chip lives in
-  // the Author section), so the badge counts it on top of the pill entries:
-  // a filtered map must never read as unfiltered.
+  // The author narrows the view without a pill (its chip is in the Author section), so the badge
+  // counts it too.
   const activeFilterCount = activeFilters.length + (filters.author.trim() ? 1 : 0);
   const hasActiveFilters = activeFilterCount > 0;
 
   return (
-    // Below `sm` the overlay starts right of the chip's open control and runs
-    // down to a 16px bottom margin, laying its three blocks out as a column, so
-    // the section stack takes whatever height the filter bar and the pill strip
-    // leave and scrolls the rest (a fixed max-height would ignore the strip and
-    // run the stack's last sections off the bottom). The stretched box is
-    // transparent to pointers so the map keeps every tap outside the blocks
-    // themselves. `max-sm:left-16` is 64px, derived from the chip: 8px inset
-    // from the left edge, 1px border, 2px padding, 44px control, about 55px in
-    // all, which 64px clears.
+    // Below `sm` the overlay starts right of the chip's open control (`max-sm:left-16` = 64px, clearing
+    // its ~55px) and runs to a 16px bottom margin as a column, so the section stack takes the leftover
+    // height and scrolls (a fixed max-height would ignore the pill strip). The stretched box is
+    // transparent to pointers so taps outside the blocks reach the map.
     <div className="absolute top-4 left-[72px] safe-mt safe-mr safe-mb safe-ml z-1000 w-72 max-sm:bottom-4 max-sm:left-16 max-sm:right-4 max-sm:w-auto max-sm:flex max-sm:flex-col max-sm:pointer-events-none">
       <button
         onClick={() => setFiltersOpen((o) => !o)}
@@ -153,18 +138,16 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
       </button>
 
       {activeFilters.length > 0 && (
-        // Solid strip: the pills' accent surface is translucent, and bare over
-        // the canvas the map labels bled through the row. Only when there are
-        // pill entries: an author-only filter shows in its section, not here.
+        // Solid strip: the translucent pill surface let map labels bleed through. Only with pill entries
+        // (an author-only filter shows in its section).
         <div className="mt-1 bg-neutral-900 rounded-lg border border-neutral-700 px-2.5 py-2 max-sm:shrink-0 max-sm:pointer-events-auto">
           <ActiveFilterPills filters={activeFilters} onClearAll={clearFilters} />
         </div>
       )}
 
       {filtersOpen && (
-        // The one block that shrinks: `min-h-0` lets it go below its content
-        // height in the column above, and the overflow makes the sections it
-        // cannot show reachable by scroll instead of off the bottom edge.
+        // The one block that shrinks: `min-h-0` lets it go below its content height, and overflow makes
+        // cut sections reachable by scroll.
         <div className="mt-1 max-sm:min-h-0 max-sm:overflow-y-auto max-sm:pointer-events-auto">
           <EventFilterSections
             tags={tags}

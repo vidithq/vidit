@@ -7,11 +7,9 @@ import type { Concept } from "@/lib/fieldHelp";
 
 /**
  * One collapsible filter section, shared by the map's filter overlay and the
- * search page's filter area. Open/closed state is owned by the parent
- * (controlled via `open` + `onToggle`) so a panel re-render — e.g. toggling
- * "show all tags" — never resets which sections are expanded. While collapsed
- * the header shows a one-line state summary (orange when active); heavy
- * controls (the timelines) only mount when open.
+ * search page. The parent controls `open` + `onToggle`, so a re-render never
+ * resets which sections are expanded. While collapsed the header shows a
+ * one-line summary (orange when active); heavy controls only mount when open.
  */
 export function FilterSection({
   title,
@@ -23,8 +21,7 @@ export function FilterSection({
   children,
 }: {
   title: string;
-  /** Shared `?` concept for this filter (same registry as the forms / detail
-   *  page). Omit for filter-only controls with no domain concept. */
+  /** Shared `?` concept for this filter. Omit for filter-only controls. */
   concept?: Concept;
   summary: string;
   active: boolean;
@@ -32,19 +29,12 @@ export function FilterSection({
   onToggle: () => void;
   children: ReactNode;
 }) {
-  // The header is a row, not one button: the `?` is its own button (a button
-  // can't nest inside another), so the title + the summary/chevron each toggle
-  // the section while the `?` opens its tooltip independently. The row is the
-  // tap target all the same, the way `<ToggleRow>` makes its whole row the
-  // switch: the summary/chevron toggle grows into every pixel right of the
-  // title, so on a phone the only part of the header that is not a toggle is
-  // the `?` itself.
+  // The header is a row because the `?` is its own button (no nesting). The
+  // title and the summary/chevron each toggle; the summary toggle grows into the
+  // rest of the row, so on a phone only the `?` is not a toggle.
   //
-  // The vertical padding and the phone tap step sit on the two buttons rather
-  // than on the row that holds them. On the row they size the row and leave
-  // each button at its own 16px line box, which is a 36px strip with two 16px
-  // targets in it; on the buttons they are the buttons' own border boxes, so
-  // each one measures 36px below `sm` and the row takes its height from them.
+  // The padding and `TAP_STEP` sit on the buttons, not the row, so each button
+  // measures 36px below `sm` and the row takes its height from them.
   return (
     <div className="border-b border-neutral-800 last:border-b-0">
       <div className="w-full flex items-stretch justify-between group">
@@ -84,8 +74,7 @@ export function FilterSection({
   );
 }
 
-/** Collapsed-header summary for a chip bucket: "Any", a single value, or
- *  "first +N". */
+/** "Any", a single value, or "first +N". */
 export function chipSummary(values: string[]): string {
   if (values.length === 0) return "Any";
   if (values.length === 1) return values[0];
@@ -99,7 +88,7 @@ const fmtMonth = (iso: string) =>
     timeZone: "UTC",
   });
 
-/** Compact "start – end" summary from two optional ISO dates ("" = open). */
+/** Range summary from two optional ISO dates ("" = open). */
 export function rangeSummary(from: string, to: string): string {
   if (!from && !to) return "Any";
   return `${from ? fmtMonth(from) : "…"} – ${to ? fmtMonth(to) : "…"}`;

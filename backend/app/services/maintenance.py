@@ -1,10 +1,7 @@
 """On-demand maintenance ops surfaced via the admin Maintenance panel.
 
-An admin clicks when they remember rather than a cron firing on a schedule.
-That holds while every op here sweeps low-cost rows / objects whose backlog
-isn't latency-sensitive; if a table or the S3 bill outgrows admin attention,
-the move is a Railway scheduled job hitting these endpoints, not a
-standalone script.
+Run by an admin click, not a schedule: the backlogs are cheap and not
+latency-sensitive.
 """
 
 from __future__ import annotations
@@ -23,22 +20,12 @@ from app.services.event_filters import visible_events
 
 logger = logging.getLogger(__name__)
 
-# Consumed tokens kept for replay-debugging via the audit log; live-but-
-# expired rows have no value and are dropped immediately past expiry.
+# Consumed tokens stay for replay debugging; expired unconsumed rows are dropped at once.
 AUTH_TOKEN_RETENTION_DAYS = 30
 
 
 def reap_auth_tokens(db: Session) -> dict[str, int]:
-    """Drop expired and old-consumed auth_tokens rows.
-
-    Two cohorts:
-
-    * Live but expired (`consumed_at IS NULL AND expires_at < now()`) —
-      can never be redeemed, no PII (only `token_hash`).
-    * Consumed and old (`consumed_at < now() - retention_days`).
-
-    Returns counts of each cohort deleted.
-    """
+    """Drop expired-unconsumed and old-consumed auth_tokens rows; returns both counts."""
     now = datetime.now(UTC)
     retention_cutoff = now - timedelta(days=AUTH_TOKEN_RETENTION_DAYS)
 
@@ -62,12 +49,9 @@ def reap_auth_tokens(db: Session) -> dict[str, int]:
     return {"expired": expired or 0, "old_consumed": old_consumed or 0}
 
 
-# One click's ceiling on the completion digest: the action is one provider
-# round-trip per analyst with no resume marker, so the wall-clock cost of the
-# request has to be bounded by something other than the size of the analyst
-# base. Rows come
-# ordered by backlog, so the cap keeps the analysts the digest is for; a base
-# past this size is covered by clicking again once the tail matters.
+# One click's ceiling: one provider round-trip per analyst with no resume
+# marker, so request time must not scale with the analyst base. Rows are
+# ordered by backlog, so the cap keeps the biggest.
 COMPLETION_DIGEST_LIMIT = 200
 
 
@@ -76,25 +60,16 @@ def detections_awaiting_completion(
 ) -> list[tuple[User, str, int]]:
     """Every analyst holding unpublished detections, with the count.
 
-    The digest's selection rule, split out so it is readable and testable on
-    its own. Who is in: an account that still exists (not soft-deleted), is
-    active, and has an address to write to. What counts: live detections (never a
-    soft-deleted row, never a published or closed one). Ordered by count,
-    biggest backlog first, and cut at ``limit``.
-
-    The address rides in the tuple rather than being re-read off the user: the
-    ``email IS NOT NULL`` filter is what makes it a ``str``, and returning it
-    keeps that guarantee where the query is instead of forcing a second check
-    at every call site.
+    Who is in: not soft-deleted, active, has an address. What counts: live
+    detections only. Biggest backlog first, cut at ``limit``. The address is
+    returned because the ``IS NOT NULL`` filter makes it a ``str``.
     """
     rows = (
         db.query(User, User.email, func.count(Event.id))
         .join(Event, Event.owner_id == User.id)
         .filter(
             Event.status == STATUS_DETECTED,
-            # The same visibility floor `list_detections` and `_publish_detection`
-            # apply: a takedown freezes a detection for its owner, so nagging them
-            # to complete one they cannot publish is a dead-end prompt.
+            # Same floor as `list_detections`: a taken-down detection cannot be published.
             *visible_events(),
             User.deleted_at.is_(None),
             User.is_active.is_(True),
@@ -111,16 +86,11 @@ def detections_awaiting_completion(
 def send_completion_digests(db: Session) -> dict[str, int]:
     """Email each analyst the count of detections still awaiting completion.
 
-    The other half of the completion flow: an import lands dozens of detections and
-    nothing brings the analyst back to the queue once the import mail has
-    scrolled away. One message per analyst, a count and a link to their own
-    queue (see :func:`detections_awaiting_completion` for who gets one, and for the
-    :data:`COMPLETION_DIGEST_LIMIT` ceiling one click carries).
+    See :func:`detections_awaiting_completion` for who gets one and the
+    :data:`COMPLETION_DIGEST_LIMIT` ceiling.
 
-    A provider failure on one address is logged and counted, never raised: the
-    remaining analysts still get theirs, and a digest is by definition
-    re-sendable on the next run. Returns the analysts written to, the detections
-    the delivered messages covered, and the failed sends.
+    A provider failure is logged and counted, never raised, so the rest still
+    send. Returns analysts notified, detections covered, and failed sends.
     """
     notified = 0
     detections = 0
@@ -139,8 +109,7 @@ def send_completion_digests(db: Session) -> dict[str, int]:
             logger.warning("completion digest send failed for user %s", user.id, exc_info=True)
             continue
         notified += 1
-        # Counted after the send, so ``detections_pending`` reads as "detections a
-        # delivered digest covered" rather than "detections we looked at".
+        # Counted after the send: only delivered digests cover detections.
         detections += count
     return {
         "analysts_notified": notified,

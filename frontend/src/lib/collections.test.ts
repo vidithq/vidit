@@ -106,8 +106,7 @@ describe("collection paths", () => {
 });
 
 describe("collection writes", () => {
-  /** A description as the write bodies carry it: one paragraph of plain text,
-   *  which is what an analyst who marks nothing up sends. */
+  /** A description as the write bodies carry it: one plain-text paragraph. */
   const doc = (text: string) => ({
     type: "doc",
     content: [{ type: "paragraph", content: [{ type: "text", text }] }],
@@ -122,8 +121,7 @@ describe("collection writes", () => {
     const [path, options] = lastCall();
     expect(path).toBe("/collections");
     expect(options.method).toBe("POST");
-    // The ids ride every create, empty for a collection opened on its two
-    // fields alone.
+    // Ids ride every create, empty when none were picked.
     expect(JSON.parse(options.body as string)).toEqual({
       title: "Kupiansk rail corridor",
       description: doc("Three days of strikes."),
@@ -137,8 +135,7 @@ describe("collection writes", () => {
       "e2",
     ]);
 
-    // One request, so a refusal on any id takes the whole create with it and
-    // no half-filled collection lands.
+    // One request, so a refusal on any id rolls back the whole create.
     const [path, options] = lastCall();
     expect(path).toBe("/collections");
     expect(JSON.parse(options.body as string)).toEqual({
@@ -208,8 +205,7 @@ describe("readerStep", () => {
   });
 
   it("answers 1 for a value that is not a whole number of steps", () => {
-    // A hand-edited or truncated link reads as its first step rather than as
-    // no step at all.
+    // A hand-edited or truncated link reads as step 1.
     expect(readerStep("two", 12)).toBe(1);
     expect(readerStep("2.5", 12)).toBe(1);
     expect(readerStep("", 12)).toBe(1);
@@ -221,7 +217,6 @@ describe("readerStep", () => {
 });
 
 describe("fetchCollectionSequence", () => {
-  /** One page of items, the shape `apiFetchPage` hands back. */
   const page = (items: EventListItem[], nextCursor: string | null) => ({
     items,
     nextCursor,
@@ -314,9 +309,7 @@ describe("collectionPoints", () => {
 
 describe("the event picker's two sources", () => {
   it("browses the analyst's own collectable events, newest first", () => {
-    // The cursor-paged list endpoint, scoped to the owner, to the two statuses
-    // a collection may hold, so no row the add verb would refuse is offered,
-    // and to the rows the block shows.
+    // Owner-scoped, the two collectable statuses, and the block's row limit.
     expect(pickerBrowsePath("ana", null)).toBe(
       "/events?view=located&status=geolocated&status=detected&author=ana&limit=5",
     );
@@ -374,8 +367,7 @@ describe("the event picker's two sources", () => {
 
     const found = await searchPickableEvents("ana", "kakhovka");
 
-    // The hit carries its coordinates flat and its thumbnail as a list of at
-    // most one; a picker row carries the card's own pair.
+    // The hit carries coordinates flat and a thumbnail list of at most one.
     expect(found.items).toEqual([
       {
         id: "e1",
@@ -414,8 +406,7 @@ describe("pickableFromDetail", () => {
       tags: [{ id: "t1", name: "dam" }],
     } as unknown as Parameters<typeof pickableFromDetail>[0];
 
-    // The card slot takes the detail's own picked thumbnail, the pick every
-    // other card surface renders.
+    // The card takes the detail's own picked `thumbnail`.
     expect(pickableFromDetail(detail)).toEqual({
       id: "e1",
       title: "Kakhovka dam",
@@ -433,9 +424,8 @@ describe("pickableFromDetail", () => {
   });
 
   it("tiles an event whose picture is a proof image", () => {
-    // `media` carries source attachments alone, so this event's card picture
-    // is on `thumbnail` and nowhere else: reading the first source row would
-    // open the create page on an untiled row.
+    // `media` carries source attachments alone: the picture is on `thumbnail`, else the create
+    // page opens on an untiled row.
     const detail = {
       id: "e3",
       title: "Proof-only geolocation",

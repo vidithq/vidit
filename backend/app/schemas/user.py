@@ -5,19 +5,16 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-# Per-field caps: generous enough not to count characters, tight enough to keep
-# payload size predictable. The bio cap matches the "short blurb, not a post" intent.
+# Per-field caps: generous but keeping payloads predictable. Mirrors
+# ``frontend/src/components/profile/useProfileEdit.ts::BIO_MAX_LEN``.
 BIO_MAX_LEN = 500
 URL_MAX_LEN = 500
 HANDLE_MAX_LEN = 200
 
 
 def _normalise_optional(value: str | None, *, max_len: int, field: str) -> str | None:
-    """Strip whitespace, coerce empty → None, enforce a length cap.
-
-    Empty-after-strip becomes ``None`` on purpose: clearing a bio or link sends
-    ``""`` from the browser, which must mean "clear", not "store an empty string".
-    """
+    """Strip whitespace, coerce empty → None, enforce a length cap. Empty means
+    "clear", not "store an empty string"."""
     if value is None:
         return None
     cleaned = value.strip()
@@ -33,28 +30,26 @@ def _normalise_url(value: str | None, *, field: str) -> str | None:
     if cleaned is None:
         return None
     lowered = cleaned.lower()
-    # http(s) only. Blocks ``javascript:`` URLs (the XSS class auto-wrapping a
-    # free-form string in ``<a href>`` would introduce) and anything exotic.
+    # http(s) only: blocks ``javascript:`` URLs.
     if not (lowered.startswith("https://") or lowered.startswith("http://")):
         raise ValueError(f"{field} must be an http or https URL")
     return cleaned
 
 
-# The platform rules, one home for both the validator below and the profile
-# surfaces that mirror it (``frontend/src/lib/users.ts``). Canonical host first:
-# that is the one a stored handle expands to when the frontend links it.
+# The platform rules, mirrored by ``frontend/src/lib/users.ts`` (``SOCIAL_HOSTS``
+# + ``SOCIAL_HANDLE_PATTERN``; change both). Canonical host first: a stored
+# handle expands to it when linked.
 SOCIAL_PROFILE_HOSTS: dict[str, tuple[str, ...]] = {
     "x": ("x.com", "twitter.com"),
     "github": ("github.com",),
 }
 
-# Each platform's own account-name rule. ``discord`` has no profile URL, so it
-# appears here and not in the host map.
+# Each platform's account-name rule. ``discord`` has no profile URL, so it is
+# absent from the host map.
 SOCIAL_HANDLE_PATTERNS: dict[str, re.Pattern[str]] = {
     "x": re.compile(r"^[A-Za-z0-9_]{1,15}$"),
     "github": re.compile(r"^[A-Za-z0-9-]{1,39}$"),
-    # The trailing group is the legacy discriminator (``ana#1234``), which
-    # accounts made before the username migration still carry.
+    # Trailing group: the legacy discriminator (``ana#1234``).
     "discord": re.compile(r"^[A-Za-z0-9_.]{2,32}(#[0-9]{4})?$"),
 }
 
@@ -62,9 +57,8 @@ SOCIAL_HANDLE_PATTERNS: dict[str, re.Pattern[str]] = {
 def _url_path_handle(value: str, hosts: tuple[str, ...]) -> str | None:
     """The one path segment of a profile URL on ``hosts``, or ``None``.
 
-    Rejects a URL that carries a query, a fragment, or anything other than a
-    single path segment, so a status URL (``/ana/status/1``) and a product path
-    (``/i/flow``) never pass as an account name.
+    Rejects queries, fragments and multi-segment paths, so a status URL or
+    product path never passes as an account name.
     """
     parts = urlsplit(value)
     if parts.scheme.lower() not in ("http", "https"):
@@ -81,12 +75,10 @@ def _url_path_handle(value: str, hosts: tuple[str, ...]) -> str | None:
 
 
 def _normalise_handle(value: str | None, *, field: str) -> str | None:
-    """Validate one account name and store it as the bare handle.
+    """Validate one account name and store the bare handle.
 
     ``x`` and ``github`` take a handle (``ana``, ``@ana``) or a profile URL on
-    the platform's own hosts, and both store the handle alone: one form on the
-    column means a reader never has to parse two. ``discord`` takes a username
-    only, since the platform exposes no profile URL to link to.
+    the platform's hosts; ``discord`` takes a username only (no profile URL).
     """
     cleaned = _normalise_optional(value, max_len=HANDLE_MAX_LEN, field=field)
     if cleaned is None:
@@ -113,15 +105,13 @@ def _normalise_handle(value: str | None, *, field: str) -> str | None:
 
 
 class ExternalLinks(BaseModel):
-    """Linktree-style external account links rendered on the profile.
+    """Linktree-style external account links rendered on the profile
+    (``users.external_links`` JSONB).
 
-    Stored as JSONB on ``users.external_links``. Each platform validates its own
-    shape on the way in and stores one form: ``x`` and ``github`` take a handle
-    or a profile URL on the platform's own hosts (:data:`SOCIAL_PROFILE_HOSTS`)
-    and store the bare handle, ``discord`` takes a username, and ``website``
-    takes an http(s) URL. A value that fits none of those raises, so the profile
-    surfaces render an account name the platform's own rules
-    (:data:`SOCIAL_HANDLE_PATTERNS`) admit rather than free-form text.
+    ``x`` and ``github`` take a handle or profile URL on
+    :data:`SOCIAL_PROFILE_HOSTS` and store the bare handle (rules in
+    :data:`SOCIAL_HANDLE_PATTERNS`), ``discord`` a username, ``website`` an
+    http(s) URL; anything else raises.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -143,13 +133,9 @@ class ExternalLinks(BaseModel):
 
 
 class AuthorRef(BaseModel):
-    """Compact author handle used wherever one payload references another.
-
-    The public ``User`` fields other schemas need for the byline: handle and
-    avatar (geolocation card, geolocator credit, search hit).
-    ``from_attributes=True`` lets call sites assign a live SQLAlchemy row
-    directly, no field-by-field build, so ``avatar_url`` flows off the column.
-    """
+    """Compact author handle for bylines (geolocation card, geolocator credit,
+    search hit). ``from_attributes`` lets call sites assign a SQLAlchemy row
+    directly."""
 
     id: uuid.UUID
     username: str
@@ -161,10 +147,8 @@ class AuthorRef(BaseModel):
 class UserRead(BaseModel):
     """Authenticated-self payload for ``/auth/me`` and register/login.
 
-    Everything the frontend needs to render the session's own profile + sidebar
-    avatar without a second fetch. ``is_admin`` is deliberately absent — admin
-    role lives on the dedicated ``/admin/me`` probe so it doesn't leak into the
-    public OpenAPI schema.
+    ``is_admin`` is absent so the role stays off the public OpenAPI schema
+    (``/admin/me`` is the probe).
     """
 
     id: uuid.UUID
@@ -181,15 +165,9 @@ class UserRead(BaseModel):
 class UserProfile(BaseModel):
     """Public profile payload for ``GET /users/{username}``.
 
-    Excludes ``email`` (free-harvest vector) and ``is_admin`` (admin role is
-    private). Everything else is the analyst's public face: bio, avatar, links,
-    submission count.
-
-    ``geolocations_count`` counts the analyst's published geolocations, the
-    same set ``GET /users/{username}/events`` serves, so the profile's share
-    card and the feed on the page print one number. For the whole body of
-    live work, detections included, read ``total_events`` on
-    :class:`UserStatsRead`.
+    Excludes ``email`` and ``is_admin``. ``geolocations_count`` counts
+    published geolocations, the set ``GET /users/{username}/events`` serves;
+    ``total_events`` on :class:`UserStatsRead` includes detections.
     """
 
     id: uuid.UUID
@@ -207,11 +185,7 @@ class UserProfile(BaseModel):
 
 
 class TagCount(BaseModel):
-    """One (name, count) aggregation entry.
-
-    Carries a conflict tally, a capture-source tally, or a source-host tally:
-    one shape for every head-of-distribution list the stats payload returns.
-    """
+    """One (name, count) entry for a conflict, capture-source or source-host tally."""
 
     name: str
     count: int
@@ -227,23 +201,18 @@ class ActivityBucket(BaseModel):
 class UserStatsRead(BaseModel):
     """Aggregated shape-of-work payload for ``GET /users/{username}/stats``.
 
-    One population throughout: the analyst's live events (``deleted_at IS
-    NULL``, ``hidden_at IS NULL``) in ``geolocated`` or ``detected``. That set
-    is ``total_events``, and every other field here describes it, detections
-    included. A ``requested`` row is an open call for help and a ``closed`` row
-    is a duplicate, a rejected detection, a retraction or a withdrawn ask, so
-    neither takes part in any aggregate.
+    One population: the analyst's live events (``deleted_at IS NULL``,
+    ``hidden_at IS NULL``) in ``geolocated`` or ``detected``, which is
+    ``total_events``; every other field describes it. ``requested`` and
+    ``closed`` rows take part in no aggregate.
 
-    ``source_hosts`` breaks the same set down by the host of ``source_url``,
-    folded to lower case with a leading ``www.`` removed: the top hosts by
-    count, with ``other_hosts_count`` carrying the tail and ``no_source_count``
-    the events that name no readable host. The three add up to
+    ``source_hosts`` breaks the set down by ``source_url`` host (lowercased,
+    leading ``www.`` removed): top hosts, with ``other_hosts_count`` the tail
+    and ``no_source_count`` the events with no readable host. The three sum to
     ``total_events``.
 
-    ``activity`` counts ``event_date``, the date the documented event happened,
-    one bucket per calendar month over the span the analyst's own events cover:
-    earliest month first, latest last, zero-filled in between, and empty when
-    no event carries a date.
+    ``activity`` counts ``event_date`` per calendar month over the analyst's
+    span, earliest first, zero-filled, empty when no event carries a date.
     """
 
     geolocated_count: int
@@ -261,17 +230,11 @@ class UserStatsRead(BaseModel):
 class UserUpdate(BaseModel):
     """Body for ``PATCH /users/me``.
 
-    Every field optional with a sentinel default — the handler uses
-    ``model_dump(exclude_unset=True)`` so "omitted" and "set to null" differ:
-    omitted leaves the column alone, explicit null (or empty string) clears it.
+    ``exclude_unset`` separates omitted (column untouched) from null or empty
+    string (clears). ``external_links`` is wholesale-replaced, not deep-merged.
 
-    ``external_links`` is wholesale-replaced, not deep-merged: send the full
-    desired object on any change. Matches how the edit form submits the whole
-    panel at once.
-
-    ``avatar_url`` is absent on purpose: the column is server-minted, written
-    only by ``PUT`` / ``DELETE /users/me/avatar``. ``extra="forbid"`` turns an
-    attempt to set it here into a 422.
+    ``avatar_url`` is absent on purpose (server-minted by ``PUT`` / ``DELETE
+    /users/me/avatar``); ``extra="forbid"`` makes setting it a 422.
     """
 
     model_config = ConfigDict(extra="forbid")

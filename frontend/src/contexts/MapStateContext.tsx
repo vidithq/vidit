@@ -17,14 +17,8 @@ import {
   type EventFilterValues,
 } from "@/components/filters/EventFilterSections";
 
-/**
- * Persistent map-page state that survives navigation away and back.
- *
- * The map lives at /map; navigating to /profile/<x> or /events/<x> unmounts the
- * page and would lose its useState. Lifting state into a context provider in the
- * root layout (Providers) keeps it, so returning from a deep page restores the
- * view, selected point, and filter set.
- */
+/** Map-page state that survives navigating away and back: lifted into the root layout's
+ * provider so returning from a deep page restores the view, selected point and filters. */
 
 export interface ViewState {
   latitude: number;
@@ -45,19 +39,15 @@ interface MapState {
   selectedId: string | null;
   setSelectedId: (v: string | null) => void;
 
-  /** The shared event-filter vocabulary, in the same shape the filter panel
-   *  speaks (`EventFilterValues`), so the map hands it straight through. Every
-   *  tag bucket is multi-select: the server applies OR within a bucket and AND
-   *  across them (see `routers/events::_apply_filters`). The lifecycle status
-   *  pick is the exception, applied client-side: the points payload already
-   *  flags each row (`POINT_DETECTED_FLAG`), so status chips filter in memory
-   *  with no refetch. */
+  /** The shared filter vocabulary in the filter panel's shape. Server side: OR within a tag
+   *  bucket, AND across (`routers/events::_apply_filters`). The lifecycle status pick is the
+   *  exception: the points payload flags each row (`POINT_DETECTED_FLAG`), so it filters in
+   *  memory with no refetch. */
   filters: EventFilterValues;
   setFilters: Dispatch<SetStateAction<EventFilterValues>>;
 
-  /** Event date (event_date, point[3]) and Added (created_at, point[4]). Both
-   *  filter client-side off the per-point dates, so dragging and playback never
-   *  refetch. */
+  /** Event date (point[3]) and Added (point[4]); both filter client side, so dragging and
+   *  playback never refetch. */
   dateWindows: DateWindows;
   setDateWindows: Dispatch<SetStateAction<DateWindows>>;
   eventPlaying: boolean;
@@ -78,14 +68,11 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
   const [dateWindows, setDateWindows] = useState<DateWindows>(EMPTY_DATE_WINDOWS);
   const [eventPlaying, setEventPlaying] = useState(false);
   const [addedPlaying, setAddedPlaying] = useState(false);
-  // Collapsed by default: the map leads with the catalogue, and the pills row
-  // (ActiveFilterPills) still surfaces any active filter while collapsed.
+  // Collapsed by default: the map leads with the catalogue; ActiveFilterPills still surfaces
+  // active filters.
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // Memoised for a referentially-stable value across renders that don't
-  // change any state slot. React re-runs every consumer on value-identity
-  // change, so unmemoised this would re-render every consumer on every
-  // keystroke even if nothing they read moved.
+  // Memoised so consumers re-render only when a slot they read changes.
   const value = useMemo<MapState>(
     () => ({
       viewState,

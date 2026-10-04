@@ -50,10 +50,7 @@ export function OgMiniMap({
         overflow: "hidden",
       }}
     >
-      {/* The world outline, under everything else. Its user space is the same
-          plate-carrée frame the marker is projected into, scaled to the panel
-          by the viewBox, so the coastline and the crosshair agree by
-          construction and no coordinate is computed twice. */}
+      {/* Same plate-carrée frame as the marker, so coastline and crosshair agree. */}
       <svg
         width={width}
         height={height}
@@ -70,8 +67,7 @@ export function OgMiniMap({
         />
       </svg>
 
-      {/* Meridians. The prime meridian reads brighter, so the eye can place a
-          point east or west of it without labels. */}
+      {/* Meridians; the prime meridian is brighter. */}
       {Array.from({ length: MERIDIANS - 1 }, (_, i) => i + 1).map((i) => (
         <div
           key={`m${i}`}
@@ -103,8 +99,7 @@ export function OgMiniMap({
         />
       ))}
 
-      {/* Crosshair through the point, so the marker is findable at thumbnail
-          size where a 12px dot on its own disappears. */}
+      {/* Crosshair, so the marker stays findable at thumbnail size. */}
       <div
         style={{
           position: "absolute",

@@ -1,32 +1,20 @@
-// Centralised colour-treatment class strings for the chip / pill / link family.
-// Constants cover *only* colour (background, border, text, hover); shape stays
-// at the call site. Buttons are the <Button> primitive (./Button) and pills,
-// chips, and badges are the <Pill> primitive (./Pill); both bundle shape +
-// colour as variants, so no *_BUTTON or *_PILL colour constants live here.
+// Colour-treatment class strings for the chip / pill / link family. Colour only
+// (background, border, text, hover); shape stays at the call site. <Button> and
+// <Pill> bundle shape + colour as variants, so no *_BUTTON or *_PILL constants
+// live here.
 
-// Base accent surface paint, the single source for the accent orange fill.
-// The <Pill> accent tone composes it (./Pill layers a border on top); the
-// active nav / row treatments (Sidebar, landing, submit) reuse the same fill
-// without a pill border, so a pill and an active nav item can't drift apart.
-// The neutral grey counterpart lives inside <Pill> (its only consumer).
+// Base accent fill. <Pill>'s accent tone composes it; active nav / row
+// treatments reuse it, so a pill and an active nav item can't drift apart.
 export const ACCENT_SURFACE = "bg-orange-500/15 text-orange-400";
 
-// The accent as a five-step intensity ramp, strongest first. One scale for
-// every chart on the site, so a segment and a cell of the same weight are the
-// same orange: <SourceHostBar> paints its ranked segments with the whole ramp,
-// <ActivityHeatmap> paints a month's magnitude with the four strongest steps
-// (the faintest reads too close to an empty cell to carry a count). Single
-// hue on purpose: the app has one accent, and both charts order their data by
-// magnitude, so a hue per category would invent a palette to say what
-// position already says.
+// The accent as a five-step intensity ramp, strongest first, shared by every
+// chart: <SourceHostBar> uses all five, <ActivityHeatmap> the four strongest
+// (the faintest reads too close to an empty cell). Single hue on purpose: the
+// app has one accent and both charts order by magnitude.
 //
-// The ramp is the site's one sanctioned inert accent (elsewhere accent means
-// clickable): a mark whose step encodes a magnitude carries the ramp whether
-// or not a reader can act on it, and so does its legend, drawn with the same
-// cells as the data it explains. <SourceHostBar>'s ranked segments and
-// <ActivityHeatmap>'s lit months are both inert ranked marks (a month names
-// itself on hover or tap, but is paint, not a control), so both take the
-// ramp. What stands outside the ranking takes CHART_TAIL or CHART_NEUTRAL.
+// The ramp is the one sanctioned inert accent (elsewhere accent means
+// clickable): a mark whose step encodes magnitude carries it, and so does its
+// legend. What stands outside the ranking takes CHART_TAIL or CHART_NEUTRAL.
 export const ACCENT_RAMP = [
   "bg-orange-500",
   "bg-orange-500/75",
@@ -35,58 +23,42 @@ export const ACCENT_RAMP = [
   "bg-orange-500/15",
 ] as const;
 
-// The two counterparts to the ramp, for the parts of a chart the accent scale
-// must not claim. `CHART_TAIL` is a bucket that holds real work under no name
-// the chart prints (<SourceHostBar>'s "Other"). `CHART_NEUTRAL` is absence:
-// a month with no event, a slice of events naming no source. Both read against
-// the `bg-neutral-900` <Card> they sit on.
+// Counterparts to the ramp. `CHART_TAIL` is a bucket holding real work under no
+// printed name (<SourceHostBar>'s "Other"). `CHART_NEUTRAL` is absence (a month
+// with no event, events naming no source). Both read against the
+// `bg-neutral-900` <Card>.
 export const CHART_TAIL = "bg-neutral-500";
 export const CHART_NEUTRAL = "bg-neutral-800";
 
-// Tappable card / row — orange border on hover. Only the hover is the
-// invariant; pair with whatever bg + default border the card uses.
+// Tappable card / row: orange border on hover. Pair with the card's own bg and
+// default border.
 export const TAPPABLE_HOVER = "hover:border-orange-500/40 transition-colors";
 
-// Inline text link — orange label, underline on hover. The single home for
-// the "clickable orange text" treatment (bylines, "Back to X", retry actions,
-// empty-state CTAs). Size / weight stay at the call site.
+// Inline text link: orange label, underline on hover. Size and weight stay at
+// the call site.
 export const TEXT_LINK = "text-orange-400 hover:underline";
 
 // Backdrop for an icon control floating over media (a tile's download, the
-// lightbox's expand and close). Media is arbitrary pixels, so a bare glyph can
-// land on anything; the translucent dark plate plus blur keeps it readable over
-// a white sky as well as a night frame. The colours are the player's own
-// register (#f5f5f5 glyph, white hover wash, no accent), so a floating control
-// next to the player reads as part of the same family rather than an
-// app-accent button floating over a frame. Applied over
-// <Button icon variant="ghost">: the neutral colours here override the ghost
-// orange (cn resolves the conflict in the caller's favour).
+// lightbox's expand and close). The translucent dark plate plus blur stays
+// readable over any frame, in the player's own colours (no accent). Apply over
+// <Button icon variant="ghost">; `cn` resolves the conflict in the caller's
+// favour.
 export const FLOATING_CONTROL =
   "size-[38px] rounded-lg bg-black/60 text-neutral-100 hover:bg-white/20 hover:text-white backdrop-blur-sm";
 
-// Floating media controls that stay out of the reader's way: invisible at rest,
-// revealed when the pointer is over the frame (put `group` on the frame) or when
-// a control inside takes keyboard focus. Tailwind gates `hover:` behind
-// `(hover: hover)`, so a touch device would never reveal them at all; the
-// coarse-pointer rule pins them visible there instead of locking mobile out of
-// a control it cannot summon. Opacity only: the cluster's position and its
-// buttons stay at the call site.
+// Invisible at rest, revealed on pointer over the frame (put `group` on it) or
+// keyboard focus inside. Tailwind gates `hover:` behind `(hover: hover)`, so the
+// coarse-pointer rule pins them visible on touch. Opacity only.
 export const HOVER_REVEAL =
   "opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100";
 
-// The armed half of a two-click confirm, for a control that stays in place
-// while it waits: a ring plus a neutral plate, so the button reads as changed
-// without moving or resizing anything around it. One look for every armed
-// control that is not the loud red point of no return (that one is
-// `DANGER_CONFIRM` in ./Button): the event share row's detection-link pair, the
-// detection form's Submit. Pair with `useConfirmAction`, which owns the arming
-// itself; the label change stays at the call site.
+// The armed half of a two-click confirm for a control that stays in place: a
+// ring plus a neutral plate. For every armed control except the loud red point
+// of no return (`DANGER_CONFIRM` in ./Button). Pair with `useConfirmAction`.
 export const ARMED_RING = "bg-neutral-800 ring-1 ring-neutral-500";
 
-// Amber "caution / heads-up" surface — the warning counterpart to the red error
-// banners (a hard error). Amber reads as "check this, you're not blocked"
-// (duplicate-probe, curated-tags load failure, tweet-import notice). Colour only
-// (border + tint + text); radius / padding / layout stay at the call site, since
-// the callouts range from a one-line notice to an icon + list.
+// Amber "check this, you're not blocked" surface, the warning counterpart to the
+// red error banners. Colour only; radius, padding and layout stay at the call
+// site.
 export const WARNING_CALLOUT =
   "border border-amber-500/30 bg-amber-500/10 text-amber-200";

@@ -85,9 +85,7 @@ describe("DetectionsPage queue filter", () => {
 
     render(<DetectionsPage />);
 
-    // The labels are one word each and none of them says what it selects, so
-    // the sentence hangs from the house `?`, once for the bar. It repeats the
-    // row badge's promise: evidence complete, judgment still owed.
+    // The labels do not say what they select, so one house `?` carries the sentence for the bar.
     const help = screen.getByRole("button", {
       name: FIELD_HELP.detection_queue_filter.label,
     });
@@ -102,10 +100,7 @@ describe("DetectionsPage queue filter", () => {
   });
 
   it("asks the server for the filtered queue instead of hiding loaded rows", () => {
-    // The bug this replaces: the toggle filtered the ten rows on screen while
-    // the pager cut pages server-side, so an analyst whose first page happened
-    // to hold ten incomplete detections read "no ready detections" over a queue that
-    // held hundreds of them.
+    // Regression: the toggle used to filter the loaded ten rows while the pager cut server-side, reading "no ready detections" over a large queue.
     useApiResource.mockReturnValue({ data: payload(), error: null });
     render(<DetectionsPage />);
 
@@ -125,8 +120,7 @@ describe("DetectionsPage queue filter", () => {
   });
 
   it("restarts the walk at page 1 when the filter changes", () => {
-    // Page 4 of the whole queue is not page 4 of the ready one; keeping the
-    // number would land past the end of the filtered set and read as empty.
+    // A filter change resets the page: keeping it could land past the end of the filtered set.
     useApiResource.mockReturnValue({
       data: payload({ total: 40, page: 1, ready_total: 12, incomplete_total: 28 }),
       error: null,
@@ -145,8 +139,7 @@ describe("DetectionsPage queue filter", () => {
   });
 
   it("states the whole queue's split under every filter", () => {
-    // The two figures are the answer to "how much of my import is usable",
-    // and they must not depend on which page is loaded or which filter is on.
+    // The two figures must not depend on the loaded page or the filter.
     useApiResource.mockReturnValue({
       data: payload({ total: 12, ready_total: 12, incomplete_total: 28 }),
       error: null,
@@ -165,8 +158,7 @@ describe("DetectionsPage queue filter", () => {
     render(<DetectionsPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Ready" }));
-    // 12 ready rows at 10 a page: two pages, not the four the whole queue
-    // would have.
+    // 12 ready rows at 10 a page: two pages.
     expect(screen.getByText(/Page 1 of 2 · 12 ready/)).toBeInTheDocument();
   });
 
@@ -179,8 +171,7 @@ describe("DetectionsPage queue filter", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Ready" }));
     expect(screen.getByText("No ready detections.")).toBeInTheDocument();
-    // The queue itself is not empty, so the import pitch stays away and the
-    // toggle stays on screen to switch back with.
+    // The queue is not empty, so no import pitch and the toggle stays.
     expect(screen.queryByText("No detections to submit.")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Incomplete" })).toBeInTheDocument();
   });

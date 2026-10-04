@@ -1,9 +1,6 @@
 """Public read surface for `/geolocations`.
 
-List + filters, the compact `/points` payload and its cache discipline, the
-`/{id}` detail shape, the `detected`-renders-marked invariant, and `bbox`
-validation. Shared fixtures live in `conftest.py`; `client` / `_make_geo` in
-`_helpers.py`.
+List and filters, `/points` and its cache, detail shape, `bbox` validation.
 """
 
 from __future__ import annotations
@@ -21,11 +18,8 @@ from app.models.tag import Tag
 from app.services.event_filters import parse_bbox
 from tests.events._helpers import WORLD_BBOX, _make_geo, client
 
-# The parsed twin of ``WORLD_BBOX``: the cache-key builder keys off the float
-# tuple, not the raw query string. Derived, so the two can't drift.
+# The parsed twin of ``WORLD_BBOX``, which the cache-key builder keys on.
 WORLD_BOUNDS = parse_bbox(WORLD_BBOX)
-
-# ── GET /geolocations — list ──────────────────────────────────────────────
 
 
 def test_list_returns_seeded_geolocation(db, author):
@@ -37,12 +31,7 @@ def test_list_returns_seeded_geolocation(db, author):
 
 
 def test_list_excludes_soft_deleted_rows(db, author):
-    """Soft-delete is the load-bearing public-read invariant.
-
-    Every public endpoint that surfaces geolocations must filter
-    `deleted_at IS NULL`. If this regresses, admin removals leak back
-    into the public catalog with no indication to the operator.
-    """
+    """Soft-deleted rows never appear on any public read (``deleted_at IS NULL``)."""
     live = _make_geo(db, author=author)
     dead = _make_geo(db, author=author, deleted=True)
 
@@ -78,10 +67,7 @@ def test_list_filters_by_conflict(db, author, conflict):
 def test_list_conflict_filter_does_not_match_free_tag_of_same_name(db, author):
     """A free tag named like a conflict must not match `?conflict=`.
 
-    Conflict filtering joins the `conflicts` referential, never the tags
-    table. If that regresses, a `free` tag with a clashing name (e.g.
-    someone tags a geo with the free string "Ukraine") would leak into
-    the conflict filter and inflate counts.
+    Conflict filtering joins the `conflicts` referential, never the tags table.
     """
     free = Tag(name=f"clash-{uuid.uuid4().hex[:8]}", category="free")
     db.add(free)
@@ -109,9 +95,7 @@ def test_list_filters_by_capture_source(db, author, capture_source_tag):
 
 
 def test_capture_source_filter_does_not_match_free_tag_of_same_name(db, author):
-    """A free tag named like a capture-source tag must not match
-    `?capture_source=` — the filter pins `category == "capture_source"`,
-    same guard as the conflict bucket."""
+    """A free tag named like a capture-source tag must not match `?capture_source=`."""
     free = Tag(name=f"lens-{uuid.uuid4().hex[:8]}", category="free")
     db.add(free)
     db.commit()
@@ -127,24 +111,18 @@ def test_capture_source_filter_does_not_match_free_tag_of_same_name(db, author):
 
 
 def test_list_filters_by_author_exact_case_insensitive(db, author):
-    """`?author=` matches the owner username exactly (case-insensitive): the
-    filter means "this analyst's work", and the surfaces pick real handles
-    via the typeahead, so a fragment must not sweep in every containing
-    handle."""
+    """`?author=` matches the username exactly (case-insensitive), not as a fragment."""
     geo = _make_geo(db, author=author)
     response = client.get(f"/api/v1/events?author={author.username.upper()}")
     assert response.status_code == 200
     assert str(geo.id) in {row["id"] for row in response.json()}
-    # A strict substring of the username no longer matches.
     response = client.get(f"/api/v1/events?author={author.username[2:6]}")
     assert response.status_code == 200
     assert str(geo.id) not in {row["id"] for row in response.json()}
 
 
 def test_list_rejects_author_with_like_meta(author):
-    """Junk vectors (`%`, `\\`, `;`, …) and over-length input are rejected
-    at the input boundary so nothing outside `[A-Za-z0-9_-]{1,50}` reaches
-    the SQL builder."""
+    """Junk vectors (`%`, `;`, ...) and over-length input are rejected before the SQL builder."""
     for bad in ("a%", "a\\b", "a;b", "a b", "a'b", "", "a" * 51):
         response = client.get("/api/v1/events", params={"author": bad})
         assert response.status_code == 422, (
@@ -153,9 +131,8 @@ def test_list_rejects_author_with_like_meta(author):
 
 
 def test_points_rejects_author_with_like_meta(author):
-    # One ``params=`` dict, never a query string plus ``params=``: httpx
-    # *replaces* the URL's query with the mapping, which would drop ``bbox``
-    # and pass the test on the missing-parameter 422 instead of the guard.
+    # One ``params=`` dict: httpx replaces the URL query with it, so a query string
+    # would drop ``bbox`` and pass on the missing-parameter 422 instead of the guard.
     response = client.get("/api/v1/events/points", params={"bbox": WORLD_BBOX, "author": "a%"})
     assert response.status_code == 422
 
@@ -210,17 +187,13 @@ def test_list_filters_by_bbox(db, author):
 
 
 def test_list_honours_limit(db, author):
-    """One ``limit`` code path serves both views, so this covers the requested
-    queue too."""
+    """One ``limit`` code path serves both views, so this covers the requested queue too."""
     for _ in range(3):
         _make_geo(db, author=author)
     response = client.get("/api/v1/events?limit=2")
     assert response.status_code == 200
     # Three matching rows seeded, so the cap is exact, not just an upper bound.
     assert len(response.json()) == 2
-
-
-# ── GET /geolocations/{id} — detail ───────────────────────────────────────
 
 
 def test_detail_returns_full_shape(db, author, free_tag):
@@ -234,8 +207,7 @@ def test_detail_returns_full_shape(db, author, free_tag):
     assert body["event_coords"]["lng"] == pytest.approx(34.7)
     assert body["capture_source_coords"] is None
     assert body["owner"]["username"] == author.username
-    # `AuthorRef` field-set guard: the byline renders handle + avatar + trust
-    # signal off this block, so a dropped field silently empties a surface.
+    # `AuthorRef` field-set guard: the byline renders these fields off this block.
     assert set(body["owner"]) == {
         "id",
         "username",
@@ -256,12 +228,8 @@ def test_detail_404_for_soft_deleted_geo(db, author):
     assert response.status_code == 404, "soft-deleted geo must surface as 404, not the live shape"
 
 
-# ── GET /geolocations/points ──────────────────────────────────────────────
-
-
 def test_points_requires_bbox():
-    """No ``bbox``, no payload: the map serves a viewport, and a bare
-    ``curl /events/points`` must not walk away with the catalog."""
+    """No ``bbox``, no payload: a bare ``curl /events/points`` must not return the catalog."""
     response = client.get("/api/v1/events/points")
     assert response.status_code == 422
 
@@ -290,12 +258,7 @@ def test_points_requires_bbox():
     ],
 )
 def test_points_rejects_malformed_bbox(bad):
-    """Every rejection ``parse_bbox`` makes reaches the caller as a 422.
-
-    The empty case matters most: on ``/events`` an empty ``bbox`` reads as
-    "filter omitted", and if ``/points`` inherited that it would hand back
-    the whole catalog to ``?bbox=``.
-    """
+    """Every ``parse_bbox`` rejection is a 422, an empty ``bbox`` included."""
     response = client.get(f"/api/v1/events/points?bbox={bad}")
     assert response.status_code == 422, f"expected 422 for bbox={bad!r}"
 
@@ -313,12 +276,7 @@ def test_points_filters_by_bbox(db, author):
 
 
 def test_points_cache_keys_on_bbox(db, author):
-    """Two viewports must not share a cache entry.
-
-    Without ``bbox`` in the key, the first viewport's payload would be
-    served for every later one, so the map would render another region's
-    pins (and the required parameter would buy nothing).
-    """
+    """Two viewports must not share a cache entry (``bbox`` is part of the key)."""
     _make_geo(db, author=author, lat=48.5, lng=34.5)
     _make_geo(db, author=author, lat=10.0, lng=10.0)
 
@@ -327,18 +285,14 @@ def test_points_cache_keys_on_bbox(db, author):
     assert ukraine.headers.get("x-cache") == "MISS"
     assert africa.headers.get("x-cache") == "MISS", "a different viewport must MISS"
     assert ukraine.content != africa.content
-    # The same viewport twice still warms, so the key is bbox-aware, not
-    # bbox-poisoned.
     assert client.get("/api/v1/events/points?bbox=45.0,30.0,50.0,40.0").headers["x-cache"] == "HIT"
 
 
 def test_points_cache_hits_across_one_grid_cell(db, author):
     """Two viewports inside one grid cell share a cache entry.
 
-    Client boxes carry ~11 m precision, so keying on them raw would miss on
-    nearly every request and let one caller cycle a low decimal to evict the
-    whole LRU. ``snap_bbox`` grows each box outward onto the server grid
-    before it is keyed, so a jitter smaller than a cell warms the same entry.
+    ``snap_bbox`` grows each box onto the server grid before keying, so client
+    jitter cannot evict the LRU.
     """
     _make_geo(db, author=author, lat=48.5, lng=34.5)
 
@@ -386,9 +340,7 @@ def test_points_returns_compact_shape(db, author):
 
 
 def test_points_null_event_date_serialises_as_null(db, author):
-    """A dateless geolocation must reach the map as ``null``, not crash /points
-    (regression: ``event_date`` went optional and the tuple builder still
-    called ``.isoformat()`` unconditionally, 500ing the whole map payload)."""
+    """A dateless geolocation reaches the map as ``null`` (``.isoformat()`` on None 500ed)."""
     geo = Event(
         owner_id=author.id,
         title="Dateless geo",
@@ -434,7 +386,7 @@ def test_detected_row_renders_marked_across_surfaces(db, author):
     db.commit()
     db.refresh(geo)
 
-    # /points — the compact map payload marks it with the detected flag.
+    # /points: the compact map payload marks it with the detected flag.
     points = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").json()
     point = next(r for r in points if r[0] == str(geo.id))
     assert point[5] == 1
@@ -451,28 +403,17 @@ def test_detected_row_renders_marked_across_surfaces(db, author):
 
 
 def test_points_cache_miss_then_hit(db, author):
-    """First call cold, second call warm — locks in the cache contract.
-
-    The endpoint advertises this via the `X-Cache` response header so
-    operators can sanity-check cache behaviour in prod logs without
-    instrumenting metrics. Test guards against accidental cache
-    bypass (e.g. someone removing the `points_cache.set` call).
-    """
+    """First call cold, second warm (``X-Cache``); guards against a removed ``points_cache.set``."""
     _make_geo(db, author=author)
     first = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
     assert first.headers.get("x-cache") == "MISS"
     second = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
     assert second.headers.get("x-cache") == "HIT"
-    # Bytes identical too — the cached path returns the same bytes object.
     assert first.content == second.content
 
 
 def test_points_cache_keys_on_filter_combination(db, author, free_tag):
-    """Different filter combos must miss independently.
-
-    Without filter-aware keys, a cached "all points" response would
-    bleed into a "filtered" request and return wrong data.
-    """
+    """Different filter combos must miss independently, not share a cached response."""
     _make_geo(db, author=author, tags=[free_tag])
     _make_geo(db, author=author)
 
@@ -509,12 +450,8 @@ def test_points_filters_media(db, author):
 def test_points_cache_key_builder_is_separator_safe():
     """Filter values carrying the legacy ``:`` separator must not collide.
 
-    The previous key shape (``f"points:{conflict}:{tag}:..."``) folded
-    ``conflict=["a:b"], tag=None`` and ``conflict=["a"], tag=["b"]`` onto
-    the same string, so the second request silently served the first
-    request's cached payload. The hashed builder serialises the tuple
-    via ``orjson`` before the hash, so colon-bearing inputs land in
-    distinct keys.
+    The old ``f"points:{conflict}:{tag}"`` key folded ``conflict=["a:b"]`` and
+    ``conflict=["a"], tag=["b"]`` together; the hashed builder serialises via ``orjson``.
     """
     from app.routers.events.read import _build_points_cache_key
 
@@ -542,9 +479,7 @@ def test_points_cache_key_builder_is_separator_safe():
     )
     assert colliding_a != colliding_b, "colon-bearing inputs must produce distinct keys"
 
-    # Same inputs → same key. Locks in cache-hit behaviour after the
-    # builder swap so a regression doesn't silently turn every request
-    # into a MISS.
+    # Same inputs give the same key, so a builder change cannot turn every request into a MISS.
     same_a = _build_points_cache_key(
         bbox=WORLD_BOUNDS,
         conflict=["ukraine"],
@@ -569,9 +504,7 @@ def test_points_cache_key_builder_is_separator_safe():
     )
     assert same_a == same_b, "identical filter tuples must produce the same key"
 
-    # capture_source participates in the key — two filter sets that
-    # differ only by capture_source must not collide (guards against the
-    # new bucket being dropped from the hashed payload).
+    # capture_source participates in the key (guards against the bucket being dropped).
     cs_a = _build_points_cache_key(
         bbox=WORLD_BOUNDS,
         conflict=None,
@@ -603,14 +536,9 @@ def test_points_cache_key_builder_is_separator_safe():
     ids=["conflict-list", "capture-source-list", "tag-list"],
 )
 def test_points_cache_key_is_list_order_insensitive(bucket):
-    """``?bucket=a&bucket=b`` and ``?bucket=b&bucket=a`` describe the same filter.
+    """``?bucket=a&bucket=b`` and ``?bucket=b&bucket=a`` hit the same cache entry.
 
-    The user can click the chips in either order; we sort each list
-    inside the cache-key builder so both clicks hit the same cache
-    entry. Without this, the second click would always MISS and re-run
-    the query for what is logically the same filter set. Every list
-    bucket needs the same guarantee — parametrised so a future refactor
-    that sorts one but forgets another can't slip past CI.
+    Parametrised so a refactor that sorts one list bucket but not another fails.
     """
     from app.routers.events.read import _build_points_cache_key
 
@@ -639,12 +567,7 @@ def test_points_cache_key_is_list_order_insensitive(bucket):
 
 
 def test_points_or_within_free_tag_list(db, author):
-    """Multiple ``?tag=`` values match geos carrying ANY listed tag.
-
-    OR semantics within the list — clicking ``drone`` and ``tank`` on
-    the map filter should surface every geo tagged drone OR tank, not
-    the (much smaller) set that carries both.
-    """
+    """Multiple ``?tag=`` values match geos carrying ANY listed tag (OR, not AND)."""
     tag_a = Tag(name=f"a-{uuid.uuid4().hex[:8]}", category="free")
     tag_b = Tag(name=f"b-{uuid.uuid4().hex[:8]}", category="free")
     db.add_all([tag_a, tag_b])
@@ -669,12 +592,7 @@ def test_points_or_within_free_tag_list(db, author):
 
 
 def test_points_or_within_conflict_list(db, author):
-    """Multiple ``?conflict=`` values match geos in ANY listed conflict.
-
-    Same OR-within story as free tags. Conflict matching joins the
-    ``conflicts`` referential, so a free tag named like a conflict can't
-    poison the result.
-    """
+    """Multiple ``?conflict=`` values match geos in ANY listed conflict (OR within the list)."""
     conflict_a = Conflict(name=f"ca-{uuid.uuid4().hex[:8]}", ongoing=True, source="manual")
     conflict_b = Conflict(name=f"cb-{uuid.uuid4().hex[:8]}", ongoing=True, source="manual")
     free_same_name = Tag(name=conflict_a.name + "-free", category="free")
@@ -703,13 +621,7 @@ def test_points_or_within_conflict_list(db, author):
 
 
 def test_points_and_across_conflict_and_tag(db, author):
-    """``?conflict=X&tag=Y`` returns the intersection.
-
-    A geo needs at least one conflict in the conflict list AND at
-    least one free tag in the tag list. Without the AND-across-buckets
-    rule, the filter would degrade into a union and surface noise the
-    analyst didn't ask for.
-    """
+    """``?conflict=X&tag=Y`` returns the intersection (AND across buckets, not a union)."""
     conflict = Conflict(name=f"conf-{uuid.uuid4().hex[:8]}", ongoing=True, source="manual")
     free = Tag(name=f"free-{uuid.uuid4().hex[:8]}", category="free")
     db.add_all([conflict, free])
@@ -735,11 +647,7 @@ def test_points_and_across_conflict_and_tag(db, author):
 
 
 def test_points_single_tag_value_back_compat(db, author, free_tag):
-    """``?tag=X`` (single value, no second occurrence) works.
-
-    Clients may send a single tag. FastAPI parses that into ``["X"]``
-    and the list-shaped filter must accept it.
-    """
+    """A single ``?tag=X`` (parsed to ``["X"]``) works with the list-shaped filter."""
     geo = _make_geo(db, author=author, tags=[free_tag])
     _make_geo(db, author=author)
 
@@ -749,10 +657,7 @@ def test_points_single_tag_value_back_compat(db, author, free_tag):
     assert str(geo.id) in ids
 
 
-# ── bbox validation (422 on malformed) ────────────────────────────────────
-# An empty string is treated as "filter omitted" by the `if bbox:` guard, so it
-# is not one of the malformed shapes below. The well-formed case is covered by
-# `test_list_filters_by_bbox`.
+# An empty ``bbox`` reads as "filter omitted" on ``/events``, so it is not a malformed shape here.
 
 
 @pytest.mark.parametrize(

@@ -6,20 +6,16 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models.content_report import ContentReportReason, ContentReportResolution
 from app.schemas.user import AuthorRef
 
-# Ceiling on the reporter's free text. Long enough for the story behind a
-# copyright or privacy claim, short enough that the field is not a paste bin;
-# the column itself stays unbounded ``Text``.
+# Ceiling on the reporter's free text (the column is unbounded ``Text``).
+# Mirrored by ``frontend/src/lib/events.ts::REPORT_DETAILS_MAX_LEN``.
 DETAILS_MAX_LENGTH = 2000
 
 
 class ContentReportCreate(BaseModel):
     """Body for ``POST /events/{id}/report`` and ``POST /collections/{id}/report``.
 
-    ``reason`` picks one of the five buckets (see ``ContentReportReason``);
-    ``details`` is the reporter's own words, optional because the bucket alone
-    is often the whole report. One body for both targets: what a reader says
-    about a shelf is what they say about a piece of footage, and the path is
-    what names the thing.
+    ``reason`` is one of ``ContentReportReason``; ``details`` is optional. One
+    body for both targets, the path names the thing.
     """
 
     reason: ContentReportReason
@@ -27,14 +23,8 @@ class ContentReportCreate(BaseModel):
 
 
 class ReportedCollection(BaseModel):
-    """The reported collection, as the admin queue names it in a row.
-
-    Read at queue time off the live collection rather than copied onto the
-    report when it was filed, so a renamed collection reads under its current
-    name. A collection page is not a public index the way an event's is: the
-    queue prints the title and the owner so an admin can judge the row, and
-    links out for the rest.
-    """
+    """The reported collection as the admin queue names it, read live so a
+    renamed collection shows its current name."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -46,29 +36,23 @@ class ReportedCollection(BaseModel):
 class ContentReportRead(BaseModel):
     """One report as the admin queue reads it.
 
-    ``resolved_at`` / ``resolution`` / ``resolved_by`` are all NULL while the
-    report is open and all set once it is resolved (the DB holds them together),
-    so ``resolved_at is None`` is the open test on the wire too.
+    ``resolved_at`` / ``resolution`` / ``resolved_by`` are all NULL while open
+    and all set once resolved, so ``resolved_at is None`` is the open test.
 
-    A row names one target. ``event_id`` is set for a report against an event
-    and ``collection`` for one against a collection; both are NULL once that
-    target is destroyed, which is the orphan row every report can become and
-    which only ``dismissed`` closes.
+    A row names one target: ``event_id`` or ``collection``. Both are NULL once
+    the target is destroyed (the orphan row, closed only by ``dismissed``).
     """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    # NULL once the reported event is hard-deleted: the report outlives it, so
-    # the queue still shows what was complained about and what was decided.
+    # NULL once the event is hard-deleted; the report outlives it.
     event_id: uuid.UUID | None
-    # The reported collection, read off the row's own relationship. NULL for
-    # an event report, and again once the collection is gone.
+    # NULL for an event report, and once the collection is gone.
     collection: ReportedCollection | None = None
     reason: ContentReportReason
     details: str | None
-    # NULL for an anonymous report, and again once the reporter's account is
-    # erased.
+    # NULL for an anonymous report and after the reporter's erasure.
     reporter_user_id: uuid.UUID | None
     created_at: datetime
     resolved_at: datetime | None
@@ -76,11 +60,8 @@ class ContentReportRead(BaseModel):
 
 
 class ContentReportUpdate(BaseModel):
-    """Body for ``POST /admin/reports/{id}/resolve``: the verdict.
-
-    One of the three values of ``ContentReportResolution``. There is no
-    re-resolve: a report already carrying a verdict is a 409.
-    """
+    """Body for ``POST /admin/reports/{id}/resolve``: one of
+    ``ContentReportResolution``. No re-resolve (409)."""
 
     resolution: ContentReportResolution
 
@@ -88,11 +69,8 @@ class ContentReportUpdate(BaseModel):
 class ContentReportList(BaseModel):
     """One page of the admin report queue.
 
-    Offset-paged rather than cursor-paged: the queue reads open reports first
-    and then newest first within each group, and that leading group flag is not
-    a column a keyset cursor can walk (the same reason
-    ``GET /users/{username}/events`` pages by offset). ``total`` counts every
-    report, resolved ones included, so the pager knows how far the queue runs.
+    Offset-paged: the leading open/resolved group flag isn't a column a keyset
+    cursor can walk. ``total`` counts every report, resolved included.
     """
 
     items: list[ContentReportRead]

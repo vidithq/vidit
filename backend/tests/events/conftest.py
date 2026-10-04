@@ -1,10 +1,4 @@
-"""Shared fixtures for the geolocations test package.
-
-The author / second-user / curated-tag rows + the autouse cookie-and-cache
-reset that every geolocations suite (read, create, duplicates, import, review)
-leans on. The shared ``client`` and the ``_make_geo`` row factory live in
-``_helpers.py``.
-"""
+"""Shared fixtures for the events test package."""
 
 from __future__ import annotations
 
@@ -26,15 +20,7 @@ from tests.events._helpers import client
 
 @pytest.fixture(autouse=True)
 def _clear_cookies_and_cache():
-    """Prevent state-bleed across tests.
-
-    - The TestClient cookie jar sticks the session from any prior
-      ``login_as`` call; an anonymous test would otherwise inherit that
-      identity. Wipe between tests.
-    - `points_cache` is process-global; tests assert MISS / HIT
-      sequences, so we clear before each test to make the first call
-      deterministic.
-    """
+    """The cookie jar keeps prior sessions and ``points_cache`` is process-global; clear both."""
     client.cookies.clear()
     points_cache.invalidate()
     yield
@@ -52,23 +38,14 @@ def db():
 
 
 def _delete_user_and_events(db, user_id) -> None:
-    """Tear a fixture user down together with everything that FKs to it.
-
-    Superset of the plain owner cleanup so the requested-view suite can share
-    these fixtures: request rows carry ``requested_by_id`` and their credit
-    rows land in ``event_geolocators``, so we clear those too. For a user that
-    never posted a request (the pure located suites) the extra deletes are
-    no-ops.
-    """
+    """Delete a fixture user and everything that FKs to it, request rows and credits included."""
     db.expire_all()
     db.query(EventGeolocator).filter(EventGeolocator.user_id == user_id).delete(
         synchronize_session=False
     )
     db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
     db.query(Event).filter(Event.requested_by_id == user_id).delete(synchronize_session=False)
-    # A report survives the event it was filed against (``event_id`` is SET
-    # NULL, not CASCADE), so reap what those deletes just orphaned. Otherwise
-    # one suite's reports pile up in the admin queue another suite reads.
+    # ``event_id`` is SET NULL, not CASCADE: reap the orphans or they pile up in the admin queue.
     db.query(ContentReport).filter(ContentReport.event_id.is_(None)).delete(
         synchronize_session=False
     )
@@ -106,12 +83,7 @@ def second_user(db):
 
 @pytest.fixture
 def admin_user(db):
-    """An admin actor, for the suites that exercise an admin-only door.
-
-    Teardown reaps this actor's ``admin_events`` rows before the user row, so a
-    suite whose admin action is audited (a redaction, a hard delete) still tears
-    down cleanly; a suite that audits nothing pays two no-op deletes.
-    """
+    """Teardown reaps this actor's audited ``admin_events`` rows before the user row."""
     user = User(
         username=f"adm{uuid.uuid4().hex[:8]}",
         email=f"adm-{uuid.uuid4().hex}@example.com",

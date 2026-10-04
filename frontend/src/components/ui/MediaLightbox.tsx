@@ -13,22 +13,16 @@ import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { Media } from "@/types";
 
 /**
- * The one media viewer. Every surface that enlarges a picture or plays a clip
- * (the detail-page gallery, the media manager's staged and persisted tiles, a
- * proof body's embedded images) mounts this, so the viewer can't drift into
- * per-surface copies of the same overlay.
+ * The one media viewer, for every surface that enlarges a picture or plays a
+ * clip.
  *
- * Three exports, one recipe:
- *   `MediaOverlay`      the backdrop, the dialog semantics, Escape, the corner
- *                       controls. Takes arbitrary children, which is what lets
- *                       `FileManager` (whose item API is a ReactNode) share the
- *                       exact same shell.
- *   `MediaLightboxBody` the media itself at viewer size, from a source.
+ *   `MediaOverlay`      backdrop, dialog semantics, Escape, corner controls;
+ *                       takes arbitrary children (`FileManager` shares it).
+ *   `MediaLightboxBody` the media at viewer size, from a source.
  *   `MediaLightbox`     the two composed, plus the download control.
  *
- * A source is either a persisted `Media` row or a plain `{src, kind}` shape, so
- * a staged object URL (no id, no derivatives) and a proof image (an arbitrary
- * allowlisted URL) reach the same viewer as a stored row.
+ * A source is a persisted `Media` row or a plain `{src, kind}` shape (a staged
+ * object URL, or a proof image from an allowlisted URL).
  */
 export type LightboxSource =
   | Media
@@ -37,7 +31,6 @@ export type LightboxSource =
 interface ResolvedSource {
   src: string;
   isVideo: boolean;
-  /** The persisted row, when there is one. */
   media: Media | null;
   filename?: string;
 }
@@ -46,8 +39,8 @@ function resolveSource(source: LightboxSource): ResolvedSource {
   if ("media_type" in source) {
     const isVideo = source.media_type !== "image";
     return {
-      // Images view at `hero` (max-dim 1280): sharp at viewer size without the
-      // original's multi-megabyte payload. Videos have no derivatives.
+      // `hero` (max-dim 1280) avoids the original's payload. Videos have no
+      // derivatives.
       src: isVideo ? source.storage_url : displayUrlsFor(source).hero,
       isVideo,
       media: source,
@@ -62,23 +55,19 @@ function resolveSource(source: LightboxSource): ResolvedSource {
   };
 }
 
-// The viewer's size envelope: big enough to inspect, short enough that the
-// backdrop still frames it. A plain image caps directly; a next/image `fill`
-// and the player both need a sized parent instead, so they take the box form.
+// A plain image caps directly; a next/image `fill` and the player need a sized
+// parent, so they take the box form.
 const MEDIA_CAP = "max-h-[80dvh] max-w-[85vw]";
 const MEDIA_FRAME = "relative h-[80dvh] w-[85vw] max-w-4xl";
 
 /**
- * One media at viewer size. A clip plays in the shared `VideoPlayer`, which
- * letterboxes inside the frame, so a portrait clip keeps its shape instead of
- * being cropped; the bars are black on a black backdrop, so what the reader
- * sees is a centered clip. The player carries its own download, which is why
- * `MediaLightbox` below adds a corner one for images only.
+ * One media at viewer size. A clip plays in the shared `VideoPlayer` (which
+ * carries its own download, so `MediaLightbox` adds a corner one for images
+ * only).
  *
- * A persisted `Media` image goes through `next/image` (its origin is a
- * configured loader host). The plain `{src}` shape does not: object-URL bytes
- * cannot round-trip the optimiser, and a proof image has unknown natural
- * dimensions from an arbitrary allowlisted host.
+ * A persisted `Media` image goes through `next/image`. The plain `{src}` shape
+ * does not: object-URL bytes cannot round-trip the optimiser, and a proof image
+ * has unknown dimensions.
  */
 export function MediaLightboxBody({
   source,
@@ -112,39 +101,27 @@ export function MediaLightboxBody({
   );
 }
 
-// What Tab is allowed to reach inside the overlay. `[tabindex]` is what carries
-// the media-chrome controls: each is a custom element that puts the tabstop on
-// its own host, so a selector listing only native controls would walk straight
-// past the whole player.
+// `[tabindex]` carries the media-chrome controls: each custom element puts the
+// tabstop on its own host.
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
- * The overlay shell: dark backdrop over the whole viewport, closing on a
- * backdrop click or Escape, with the content click stopped so a click on the
- * media (a video's own controls included) never dismisses it. Controls sit in
- * one row at the content's top-right corner, so a download and the close never
- * land on each other.
+ * The overlay shell: backdrop closing on click or Escape, content clicks
+ * stopped, controls in one row at the content's top-right corner.
  *
- * **Escape** belongs to fullscreen first. A player put into real fullscreen is
- * layered over this overlay, and the browser exits it on Escape on its own, so
- * handling the same keystroke here as well would collapse both layers at once
- * and drop the reader back onto the page from one press.
+ * **Escape** belongs to fullscreen first: the browser exits a player's
+ * fullscreen on Escape itself, and handling it here too would close both layers
+ * at once.
  *
- * **Focus** is moved to the close button on mount, kept inside the overlay
- * while it is open (Tab wraps at either end), and handed back to whatever was
- * focused before on unmount, so dismissing the viewer returns the keyboard to
- * the tile that opened it. Hand-rolled rather than a focus-trap dependency:
- * it is one dialog with one exit, and this is the whole of it.
+ * **Focus** moves to the close button on mount, stays inside while open (Tab
+ * wraps) and returns to the previous element on unmount. Hand-rolled: one
+ * dialog with one exit.
  *
- * **Layer.** The overlay goes through a portal to `document.body`, at a
- * z-index above every floating surface (map panels 1000, sidebar 1100, banner
- * 1200). A caller can sit anywhere: inside the map's detail panel, which
- * scrolls its own overflow and paints in its own stacking context, or inside a
- * proof body, which is arbitrary rendered content that may carry a transform,
- * and `fixed` resolves against a transformed ancestor rather than the viewport
- * whenever one exists. Portalling puts the viewer out of reach of both, so it
- * covers the whole screen from every surface that mounts it.
+ * **Layer.** Portalled to `document.body` at a z-index above every floating
+ * surface (map panels 1000, sidebar 1100, banner 1200). `fixed` resolves
+ * against a transformed ancestor (a proof body, the map's detail panel), so
+ * portalling is what lets the overlay cover the screen from every caller.
  */
 export function MediaOverlay({
   label,
@@ -176,8 +153,7 @@ export function MediaOverlay({
       if (stops.length === 0) return;
       const first = stops[0];
       const last = stops[stops.length - 1];
-      // Focus inside a shadow root reports as its host, which is in the list,
-      // so a media-chrome control compares correctly here.
+      // Focus inside a shadow root reports as its host, which is in the list.
       const active = document.activeElement;
       if (e.shiftKey && (active === first || !dialogRef.current?.contains(active))) {
         e.preventDefault();
@@ -194,8 +170,7 @@ export function MediaOverlay({
   useEffect(() => {
     const restoreTo = document.activeElement as HTMLElement | null;
     dialogRef.current?.querySelector<HTMLElement>("[data-overlay-close]")?.focus();
-    // The opener can be gone by the time the viewer closes (a re-render, a
-    // navigation), so restoring is best-effort.
+    // The opener can be gone by then: best-effort.
     return () => restoreTo?.focus?.();
   }, []);
 
@@ -208,22 +183,15 @@ export function MediaOverlay({
       className="fixed inset-0 z-1500 bg-black/85 safe-pt safe-pr safe-pb safe-pl"
       onClick={onClose}
     >
-      {/* The backdrop fills the screen and the insets are its padding, not its
-          margin: the overlay covers the cutout and home-indicator bands, so a
-          tap on one closes the viewer the way a tap anywhere else on the
-          backdrop does, and the media is what moves in. The frame that centres
-          and scrolls the content is a child of it rather than the same box,
-          since its own `p-6` and the inset padding set the same property. */}
-      {/* `items-start` plus `my-auto` on the child, and not `items-center`:
-          auto margins centre the content while it fits the overlay and
-          collapse to 0 when it does not, so everything the viewer holds sits
-          at or below scroll origin. A centred flex item taller than its line
-          overflows in both directions, and the half above scroll origin is a
-          band no scroll gesture reaches: the close cluster, which hangs 12px
-          above the content, is what sits in it. The child is sized by what it
-          holds rather than clamped to the overlay's height, so a frame taller
-          than the room there is (a clip whose player chrome grows past it, a
-          short landscape viewport) scrolls instead of being cut to fit. */}
+      {/* The backdrop fills the screen with the safe-area insets as padding, so a
+          tap in the cutout or home-indicator band closes the viewer. The centring
+          frame is a child because its `p-6` and the inset padding set the same
+          property. */}
+      {/* `items-start` plus `my-auto`, not `items-center`: auto margins collapse
+          to 0 when the content overflows, while a centred overflowing item
+          leaves a band above scroll origin that no gesture reaches (where the
+          close cluster hangs). The child is sized by its content, so a tall
+          frame scrolls instead of being cut. */}
       <div className="flex h-full w-full items-start justify-center overflow-y-auto p-6">
         <div
           className="relative my-auto max-w-full"
@@ -251,18 +219,17 @@ export function MediaOverlay({
   );
 }
 
-/** The full viewer: overlay + one media + a download. A persisted row
- *  downloads its original object; a plain source downloads its `src` as is.
- *  The corner download is for images: a clip's download lives in the player's
- *  own control bar, so a video would otherwise carry two of them.
- *  Mount it conditionally; the caller owns the open state. */
+/** The full viewer: overlay, one media and a download (a persisted row
+ *  downloads its original, a plain source its `src`). The corner download is
+ *  for images only; a clip's lives in the player's bar. Mount it
+ *  conditionally; the caller owns the open state. */
 export function MediaLightbox({
   source,
   alt = "",
   onClose,
 }: {
   source: LightboxSource;
-  /** Alt text for an image, and the dialog's accessible name. */
+  /** Alt text for an image, and the dialog's name. */
   alt?: string;
   onClose: () => void;
 }) {

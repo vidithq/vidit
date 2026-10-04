@@ -1,11 +1,7 @@
-"""Archived copies: the form fields that record one, and the read that shows it.
+"""Archived copies: the snapshot form fields on create and geolocate, and the read that
+serialises them.
 
-Two halves of one contract, tested through HTTP because that is where they meet:
-the owner records a copy of one of their event's links with the write that
-stores the link (``source_snapshot_url`` for the source and
-``secondary_snapshot_urls`` for the mirrors, on create and geolocate), and every
-read of that event serialises the copy beside the link it archives. The edit
-form's own copies, and the version each files, live in ``test_versions.py``.
+Edit-form copies and the versions they file live in ``test_versions.py``.
 """
 
 from __future__ import annotations
@@ -34,12 +30,8 @@ def _wayback_of(url: str) -> str:
 
 
 def _seed_copy(db, event_id, *, url=SOURCE, snapshot_url=WAYBACK, origin="source_url"):
-    """The copy a link already carries, written straight to the table.
-
-    A stored copy is a precondition of the reconcile tests below, not the thing
-    they exercise, so it is seeded rather than made through a form: the write
-    that produces one is covered where that form is.
-    """
+    """Seeded straight to the table: a precondition of the reconcile tests, not what they
+    exercise."""
     db.add(
         SourceArchive(
             event_id=event_id,
@@ -108,13 +100,9 @@ def _geolocate(event_id, user, conflict, capture_source_tag, **overrides):
     )
 
 
-# ── the copy the submit form carries ───────────────────────────────────
-
-
 def test_create_stores_the_snapshot_posted_with_the_form(db, author, conflict, capture_source_tag):
-    """Archival starts at the submit: the analyst archives the source while
-    filling the form and the copy lands with the event, so the published page
-    carries it from its first render."""
+    """The copy lands with the event, so the published page carries it from its first
+    render."""
     response = _create(author, conflict, capture_source_tag, source_snapshot_url=WAYBACK)
     assert response.status_code == 201, response.text
     assert response.json()["archived_source"] == {"url": WAYBACK, "provider": "wayback"}
@@ -124,8 +112,6 @@ def test_create_stores_the_snapshot_posted_with_the_form(db, author, conflict, c
 
 
 def test_create_without_a_snapshot_stores_none(db, author, conflict, capture_source_tag):
-    """The field is optional: the submit form asks for a copy, it does not
-    require one."""
     response = _create(author, conflict, capture_source_tag)
     assert response.status_code == 201
     assert response.json()["archived_source"] is None
@@ -133,10 +119,9 @@ def test_create_without_a_snapshot_stores_none(db, author, conflict, capture_sou
 
 
 def test_create_stores_a_snapshot_whatever_it_replays(db, author, conflict, capture_source_tag):
-    """Validation says where a snapshot lives, not what it captured: a
-    well-formed replay URL is stored even when its embedded original is spelled
-    unlike the source (a short link, a platform's former domain). The analyst
-    owns what the snapshot shows, and the form warns them before they post."""
+    """Validation says where a snapshot lives, not what it captured: a well-formed replay
+    URL is stored even when its embedded original differs from the source (short link,
+    former domain)."""
     snapshot = _wayback_of("https://youtu.be/dQw4w9WgXcQ")
     response = _create(author, conflict, capture_source_tag, source_snapshot_url=snapshot)
     assert response.status_code == 201, response.text
@@ -157,8 +142,7 @@ def test_create_refuses_a_snapshot_on_an_unlisted_host(author, conflict, capture
 
 
 def test_a_request_keeps_the_snapshot_its_poster_made(db, author):
-    """One form posts either shape, so the paste survives the choice between
-    publishing a geolocation and posting a request."""
+    """One form posts either shape (geolocation or request)."""
     response = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
@@ -175,9 +159,7 @@ def test_a_request_keeps_the_snapshot_its_poster_made(db, author):
 
 
 def test_a_rejected_snapshot_creates_no_event(db, author, conflict, capture_source_tag):
-    """The copy rides the event's own transaction, so a paste the checks refuse
-    takes the whole create down rather than publishing an unarchived event the
-    analyst believes is archived."""
+    """The copy rides the event's transaction: a refused paste fails the whole create."""
     title = f"archival-{uuid.uuid4().hex[:8]}"
     response = _create(
         author,
@@ -188,9 +170,6 @@ def test_a_rejected_snapshot_creates_no_event(db, author, conflict, capture_sour
     )
     assert response.status_code == 400
     assert db.query(Event).filter(Event.title == title).one_or_none() is None
-
-
-# ── the copy the edit form carries ─────────────────────────────────────
 
 
 def test_geolocate_stores_the_snapshot_posted_with_the_form(
@@ -207,8 +186,7 @@ def test_geolocate_stores_the_snapshot_posted_with_the_form(
 def test_geolocate_replaces_the_copy_the_event_already_had(
     db, author, conflict, capture_source_tag
 ):
-    """Overwrite is the correction path here too: one slot per link, whichever
-    form the better snapshot arrives through."""
+    """One slot per link: overwrite is the correction path."""
     geo = _make_geo(db, author=author, status=STATUS_DETECTED, source_url=SOURCE, with_media=True)
     _seed_copy(db, geo.id)
 
@@ -224,8 +202,7 @@ def test_geolocate_replaces_the_copy_the_event_already_had(
 
 
 def test_geolocate_refuses_a_snapshot_that_is_not_one(db, author, conflict, capture_source_tag):
-    """A rejected paste writes nothing at all: the detection stays unpublished, so
-    the analyst fixes the paste and submits the same form again."""
+    """A rejected paste writes nothing; the detection stays unpublished."""
     geo = _make_geo(db, author=author, status=STATUS_DETECTED, source_url=SOURCE, with_media=True)
 
     response = _geolocate(
@@ -246,8 +223,8 @@ def test_geolocate_refuses_a_snapshot_that_is_not_one(db, author, conflict, capt
 def test_a_fulfilment_archives_the_requesters_source(
     db, author, second_user, conflict, capture_source_tag
 ):
-    """A fulfiller may not rewrite the requester's source URL, so their paste is
-    checked against the URL the row keeps, not the one the form posted."""
+    """The paste is checked against the URL the row keeps, since a fulfiller cannot
+    rewrite the requester's source."""
     geo = _make_geo(
         db,
         author=author,
@@ -269,14 +246,10 @@ def test_a_fulfilment_archives_the_requesters_source(
     assert response.json()["archived_source"] == {"url": WAYBACK, "provider": "wayback"}
 
 
-# ── the copies the mirrors carry ───────────────────────────────────────
-
-
 def test_create_stores_a_copy_of_each_mirror_posted_beside_it(
     db, author, conflict, capture_source_tag
 ):
-    """A mirror rots like the primary, so the form archives it too: one paste
-    field per mirror, posted aligned with the link it covers."""
+    """One paste field per mirror, posted aligned with the link it covers."""
     response = _create(
         author,
         conflict,
@@ -295,9 +268,8 @@ def test_create_stores_a_copy_of_each_mirror_posted_beside_it(
 
 
 def test_a_blank_mirror_row_does_not_shift_the_copies(db, author, conflict, capture_source_tag):
-    """The pairing happens on the posted lists, before normalization drops the
-    blank rows: a copy stays on the mirror it was pasted under rather than
-    sliding onto its neighbour."""
+    """Pairing happens before normalization drops blank rows, so a copy stays on its
+    mirror."""
     response = _create(
         author,
         conflict,
@@ -314,9 +286,8 @@ def test_a_blank_mirror_row_does_not_shift_the_copies(db, author, conflict, capt
 
 
 def test_create_refuses_a_mirror_snapshot_that_is_not_one(db, author, conflict, capture_source_tag):
-    """Every paste runs the same checks wherever it sits, so a mirror's paste
-    that is not a snapshot address is the same 400 as the primary's, and the
-    event it rode with is never created."""
+    """A mirror's bad paste is the same 400 as the primary's, and the event is not
+    created."""
     title = f"archival-{uuid.uuid4().hex[:8]}"
     response = _create(
         author,
@@ -376,8 +347,7 @@ def test_geolocate_stores_the_mirror_copies_posted_with_the_form(
 def test_a_snapshot_beside_a_dropped_mirror_is_dropped_with_it(
     db, author, conflict, capture_source_tag
 ):
-    """A mirror equal to the primary is normalized away, so nothing is left for
-    its copy to be filed against and no row is written."""
+    """A mirror equal to the primary is normalized away, so no copy row is written."""
     geo = _make_geo(db, author=author, status=STATUS_DETECTED, source_url=SOURCE, with_media=True)
 
     response = _geolocate(
@@ -395,15 +365,10 @@ def test_a_snapshot_beside_a_dropped_mirror_is_dropped_with_it(
     assert _copies(db, geo.id) == []
 
 
-# ── a changed source URL never keeps the old copy ──────────────────────
-
-
 def test_changing_the_source_url_drops_the_copy_of_the_old_one(
     db, author, conflict, capture_source_tag
 ):
-    """The archived source must be a copy of the source: an edit that corrects
-    the URL and pastes nothing leaves the event unarchived rather than showing
-    a snapshot of the link it just disowned."""
+    """An edit that corrects the URL and pastes nothing leaves the event unarchived."""
     geo = _make_geo(db, author=author, status=STATUS_DETECTED, source_url=SOURCE, with_media=True)
     _seed_copy(db, geo.id)
 
@@ -420,8 +385,7 @@ def test_changing_the_source_url_drops_the_copy_of_the_old_one(
 def test_changing_the_source_url_keeps_a_copy_of_a_link_that_survives(
     db, author, conflict, capture_source_tag
 ):
-    """The old URL demoted to a mirror is still a link the event carries, so its
-    copy stays and is re-filed under the origin it now has."""
+    """A source demoted to a mirror keeps its copy, re-filed under its new origin."""
     geo = _make_geo(db, author=author, status=STATUS_DETECTED, source_url=SOURCE, with_media=True)
     _seed_copy(db, geo.id)
 
@@ -444,8 +408,7 @@ def test_changing_the_source_url_keeps_a_copy_of_a_link_that_survives(
 
 
 def test_a_changed_source_url_takes_its_own_new_copy(db, author, conflict, capture_source_tag):
-    """The correction and its archive travel together: one write swaps the
-    source URL and the copy filed against it."""
+    """One write swaps the source URL and its copy."""
     geo = _make_geo(db, author=author, status=STATUS_DETECTED, source_url=SOURCE, with_media=True)
     _seed_copy(db, geo.id)
 
@@ -469,17 +432,13 @@ def test_a_changed_source_url_takes_its_own_new_copy(db, author, conflict, captu
 
 
 def test_an_untouched_source_url_keeps_its_copy(db, author, conflict, capture_source_tag):
-    """The reconcile only bites on a mismatch: an edit that leaves the source
-    alone leaves its archived copy alone too."""
+    """An edit that leaves the source alone leaves its copy alone."""
     geo = _make_geo(db, author=author, status=STATUS_DETECTED, source_url=SOURCE, with_media=True)
     _seed_copy(db, geo.id)
 
     response = _geolocate(geo.id, author, conflict, capture_source_tag)
     assert response.status_code == 200, response.text
     assert response.json()["archived_source"] == {"url": WAYBACK, "provider": "wayback"}
-
-
-# ── the read shape ─────────────────────────────────────────────────────
 
 
 def test_event_detail_serialises_the_source_copy(db, author):
@@ -500,8 +459,7 @@ def test_event_detail_serialises_the_source_copy(db, author):
 
 
 def test_event_detail_archived_source_is_null_without_a_copy(db, author):
-    """No copy is the ordinary state: archival is an act the owner performs, so
-    the surface renders the grey affordance rather than a state it cannot claim."""
+    """No copy renders the grey affordance."""
     geo = _make_geo(db, author=author, source_url=SOURCE)
 
     body = client.get(f"/api/v1/events/{geo.id}").json()
@@ -531,10 +489,8 @@ def test_event_detail_serialises_the_provenance_copy(db, author):
 
 
 def test_event_detail_aligns_mirror_copies_with_their_urls(db, author):
-    """``archived_secondary_sources`` is index-aligned with
-    ``secondary_source_urls``: entry ``i`` covers mirror ``i``. The alignment is
-    the contract the detail surface reads, so a copy must not slide onto the
-    neighbouring mirror when only some of the list is archived."""
+    """``archived_secondary_sources`` is index-aligned with ``secondary_source_urls``: a
+    copy must not slide onto the neighbouring mirror."""
     second = "https://rumble.com/v-mirror"
     geo = _make_geo(db, author=author, source_url=SOURCE, secondary_source_urls=[MIRROR, second])
     # Only the second mirror has a copy, and the row order is the reverse of the
@@ -560,8 +516,7 @@ def test_event_detail_aligns_mirror_copies_with_their_urls(db, author):
 
 
 def test_event_detail_mirror_copies_are_empty_without_mirrors(db, author):
-    """An event declaring no mirror serialises both lists empty, so the surface
-    reads one shape rather than branching on a missing key."""
+    """An event with no mirror serialises both lists empty."""
     geo = _make_geo(db, author=author, source_url=SOURCE)
 
     body = client.get(f"/api/v1/events/{geo.id}").json()

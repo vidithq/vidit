@@ -14,19 +14,12 @@ import { FORM_LABEL } from "@/components/ui/form-styles";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import type { ProfileEditState } from "./useProfileEdit";
 
-/** The platforms a profile can link, in reading order. One source for both the
- *  edit form and the view-mode buttons, so a platform added here shows up in
- *  both, under the same icon. Three of the four take their brand mark from
- *  [`BrandGlyphs`](../ui/BrandGlyphs.tsx), the marks the sidebar and the share
- *  row already use, so one platform reads the same everywhere. The glyphs paint
- *  `currentColor` and take no `className`, so a caller that wants a colour
- *  wraps them, which is what the fields below do.
- *
- *  `action` is what the reader can do with the account: `link` opens the
- *  profile, `copy` hands the value over. It is a property of the platform, not
- *  of the value, since Discord publishes no profile URL for a username at all.
- *  The hint is the shape the backend accepts, so a value the form suggests is
- *  one that saves. */
+/** The platforms a profile can link, in reading order: one source for the edit form and the view
+ * buttons. Three of four take their mark from [`BrandGlyphs`](../ui/BrandGlyphs.tsx), which paint
+ * `currentColor` and take no `className`, so callers wrap them. `action` is what the reader can
+ * do: `link` opens the profile, `copy` hands the value over (a platform property: Discord
+ * publishes no profile URL for a username). The hint is the shape the backend accepts, so a
+ * suggested value is one that saves. */
 const LINK_PLATFORMS: {
   key: keyof ExternalLinks;
   label: string;
@@ -58,9 +51,7 @@ const LINK_PLATFORMS: {
   },
 ];
 
-/** Edit-mode inputs, one per platform, sitting under the bio field so every
- *  editable field is contiguous. Nothing in view mode: reading the links is the
- *  header action cluster, not a section. */
+/** Edit-mode inputs, one per platform, under the bio field. Nothing in view mode: reading the links is the header action cluster. */
 export function LinkedAccountsFields({ edit }: { edit: ProfileEditState }) {
   if (!edit.editing) return null;
 
@@ -105,46 +96,27 @@ export function LinkedAccountsFields({ edit }: { edit: ProfileEditState }) {
 }
 
 /**
- * Where to reach the analyst: one ghost icon button per platform the profile
- * carries, the brand mark alone.
+ * Where to reach the analyst: one ghost icon button per linked platform, the brand mark alone, in
+ * the header action cluster right of the handle (above the work, like the event page's share
+ * controls). The account each mark reaches is in its `title` and accessible name
+ * (`X / Twitter: @LoLManya`). The row is the site's one icon control, the owner's Edit profile
+ * included.
  *
- * It reads in the header action cluster, right of the handle, the same place
- * the event page keeps its share controls, so reaching the analyst is an action
- * on the page rather than a line of the identity. That also puts it above the
- * work: a visitor who wants the analyst's X account does not scroll a portfolio
- * to find it. Marks rather than tiles printing the handles: four names the
- * analyst holds elsewhere, set beside the one name this page is about, take the
- * weight off the handle that titles the page. The account each mark reaches is
- * in its `title` and its accessible name (`X / Twitter: @LoLManya`), which is
- * where a reader who wants the handle itself gets it: a bare mark says the
- * platform and nothing else.
+ * The name prints `displayLinkValue`, not the stored string, so an X value reads `@LoLManya`
+ * whether stored as a URL or a bare handle.
  *
- * One shape across the whole row, and it is the site's one icon control: the
- * row is every icon control the header offers, the owner's Edit profile
- * included, so a reader meets one kind of control there rather than marks of
- * one size beside a button of another.
+ * `action` decides what the mark does, never how it looks. `copy` is `<CopyHandle>` (Discord: no
+ * profile URL exists, so copying the value is all a reader can do); `link` opens the profile in a
+ * new tab.
  *
- * The name prints `displayLinkValue`, not the stored string, so an X value reads
- * `@LoLManya` whether it was stored as a profile URL or as a bare handle.
+ * A `link` platform whose value `resolveLinkHref` refuses renders nothing: a mark that goes
+ * nowhere is a dead control. The backend validates on the way in, so this is a stored value the
+ * strict parse still refuses (a URL on a host the platform does not own, for one). A profile with
+ * no reachable account renders nothing, which on someone else's profile leaves the Follow button
+ * alone.
  *
- * The platform's `action` decides what the mark does, never how it looks.
- * `copy` is `<CopyHandle>`, the brand mark over `useCopyToClipboard`, which is
- * Discord: the platform publishes no profile URL for a username, so handing it
- * over is the one thing a reader can do with it. `link` opens the profile in a
- * new tab. The two differ in the flash and in nothing else.
- *
- * A `link` platform whose value `resolveLinkHref` refuses renders nothing: a
- * mark that goes nowhere is a dead control. The backend validates these values
- * on the way in, so an unresolvable one cannot be stored, and what falls here is
- * a stored value the strict parse still refuses, a URL on a host the platform
- * does not own among them.
- *
- * A profile carrying no reachable account renders nothing at all, which on
- * someone else's profile leaves the row to the Follow button alone.
- *
- * A fragment, not a row: the header cluster owns the row these sit in, since
- * the owner's Edit profile mark belongs to it too and a profile with no linked
- * account still has that one.
+ * A fragment, not a row: the header cluster owns the row, since the owner's Edit profile mark
+ * belongs to it too.
  */
 export function LinkedAccountsLine({ profile }: { profile: PublicProfile }) {
   return (
@@ -182,19 +154,11 @@ export function LinkedAccountsLine({ profile }: { profile: PublicProfile }) {
 }
 
 /**
- * The account a reader can only take away: the brand mark, flipping to a check
- * for the flash window.
- *
- * The gesture and its feedback are `useCopyToClipboard`, the one home for the
- * clipboard write and the flash timer, worn here the way `<CoordinateActions>`
- * wears it. The resting mark stays the platform's own, since this row is brand
- * marks and a generic copy mark would say less than the one it replaced; only
- * the flash is fixed, because what confirms a write reads the same everywhere.
- * Nothing else sets this mark apart from its neighbours.
- *
- * The accessible name is static and names the handle, and the confirmation
- * lands in a sibling live region: a name that changes on click is re-announced
- * as a new control. Only the tooltip and the mark flip.
+ * The account a reader can only take away: the brand mark, flipping to a check for the flash
+ * window. The gesture and feedback are `useCopyToClipboard`, worn as `<CoordinateActions>` wears
+ * it. The accessible name is static and names the handle, with the confirmation in a sibling live
+ * region: a name that changes on click is re-announced as a new control. Only the tooltip and the
+ * mark flip.
  */
 function CopyHandle({
   Icon,

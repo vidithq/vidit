@@ -40,7 +40,6 @@ async def test_s3_storage_upload_puts_object_and_returns_s3_url(s3_setup):
     assert result.url == f"https://{BUCKET}.s3.{REGION}.amazonaws.com/uploads/abc/evidence.jpg"
     body = s3_setup.get_object(Bucket=BUCKET, Key="uploads/abc/evidence.jpg")["Body"].read()
     assert body == b"image-bytes"
-    # Hash matches independently-computed sha256 of what landed on S3.
     assert result.sha256 == hashlib.sha256(b"image-bytes").hexdigest()
 
 
@@ -100,8 +99,7 @@ def test_s3_storage_key_from_url_inverts_public_url_without_cloudfront(s3_setup)
 
 
 def test_s3_storage_key_from_url_accepts_either_prefix_when_cloudfront_set(s3_setup):
-    """Old proofs may contain S3-direct URLs from before the CDN was added —
-    accept both so historical content stays linkable to its row."""
+    """Old proofs hold S3-direct URLs: accept them alongside the CDN host."""
     backend = S3Storage(bucket=BUCKET, region=REGION, cloudfront_domain="cdn.example.com")
     s3_url = f"https://{BUCKET}.s3.{REGION}.amazonaws.com/proof/u/abc.jpg"
     assert backend.key_from_url(s3_url) == "proof/u/abc.jpg"
@@ -129,9 +127,8 @@ def test_s3_storage_delete_many_handles_empty(s3_setup):
 
 
 def test_s3_storage_delete_many_raises_on_per_key_failure():
-    """boto3.delete_objects does NOT raise on per-key failures; it
-    reports them in response['Errors']. The wrapper must escalate that
-    to a StorageDeleteError so callers don't silently leave orphans."""
+    """boto3.delete_objects reports per-key failures in response['Errors'] instead of
+    raising; the wrapper must raise ``StorageDeleteError`` so orphans are not silent."""
     backend = S3Storage(bucket=BUCKET, region=REGION)
     backend.client = MagicMock()
     backend.client.delete_objects.return_value = {

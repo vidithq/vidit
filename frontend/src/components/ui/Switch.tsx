@@ -1,14 +1,9 @@
 import { cn } from "@/lib/cn";
 
 /**
- * The one boolean toggle. Settings ("show help tooltips") and the map filter
- * rows each hand-rolled their own track + knob with drifted paints (solid vs
- * tinted accent, two knob greys); the paints live here once.
- *
- * A `<button role="switch">` by default. Pass `as="span"` when a parent
- * control owns the click (e.g. the map filter's whole-row toggle) and the
- * switch is purely the visual state: the span is `aria-hidden`, the parent
- * carries `role="switch"` + `aria-checked`.
+ * The one boolean toggle. A `<button role="switch">` by default. Pass `as="span"`
+ * when a parent control owns the click (a whole-row toggle): the span is
+ * `aria-hidden` and the parent carries `role="switch"` + `aria-checked`.
  */
 export function Switch({
   on,
@@ -24,9 +19,8 @@ export function Switch({
   /** `md`: settings rows; `sm`: dense filter rows. */
   size?: "sm" | "md";
   as?: "button" | "span";
-  /** Reads its state but refuses the toggle (button mode only): the value is
-   *  set and this surface is not the one that can change it. Dimmed, and out
-   *  of the tab order via the native `disabled`. */
+  /** Reads its state but refuses the toggle (button mode only). Dimmed, and out
+   *  of the tab order. */
   disabled?: boolean;
   "aria-label"?: string;
 }) {

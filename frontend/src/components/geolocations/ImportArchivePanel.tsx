@@ -27,9 +27,7 @@ import {
 } from "@/lib/events";
 import type { ArchiveImportJob } from "@/types";
 
-/** The one byte rendering on this panel (the picked file's size, the upload
- *  counter): bytes below 1 KB, then KB, then real megabytes with one decimal
- *  below 100 MB and whole megabytes above. */
+/** Bytes below 1 KB, then KB, then MB with one decimal below 100 MB. */
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
@@ -39,9 +37,7 @@ function formatBytes(n: number): string {
   })} MB`;
 }
 
-/** The finished run in one line: what landed, what moved, what was left alone.
- *  Only the non-zero counts appear, so a first import reads as plainly as a
- *  re-import that updated a handful of detections. */
+/** The finished run in one line; only non-zero counts appear. */
 function importSummary(job: ArchiveImportJob): string {
   const parts: string[] = [];
   if (job.created > 0) {
@@ -69,11 +65,8 @@ const STEPS: NumberedStep[] = [
   },
 ];
 
-/** Map the strip's, the upload leg's and the enqueue's typed errors to a human
- *  message. A transit upload failure needs no case: `ArchiveUploadError`
- *  carries its own retryable message, which the `errorMessage` fallback
- *  surfaces as-is. An over-cap upload reject arrives as `archive_too_large`,
- *  the same code the strip and the enqueue raise, so all three read alike. */
+/** Maps the typed errors to a human message. A transit upload failure needs no
+ *  case: `ArchiveUploadError` carries its own message. */
 function importErrorMessage(err: unknown): string | undefined {
   if (err instanceof ApiError) {
     switch (err.code) {
@@ -91,10 +84,8 @@ function importErrorMessage(err: unknown): string | undefined {
   return undefined;
 }
 
-/** Where the import run currently is; indexes `IMPORT_STEP_LABELS`. `strip`
- *  and `upload` are client legs, `queued` and `scanning` follow the polled
- *  job, `done` is the terminal in-place state (the completed stepper stays
- *  up, with the review CTA under it). */
+/** Indexes `IMPORT_STEP_LABELS`. `strip` and `upload` are client legs, `queued`
+ *  and `scanning` follow the polled job, `done` is the terminal in-place state. */
 type ImportPhase = "strip" | "upload" | "queued" | "scanning" | "done";
 
 const IMPORT_STEP_LABELS = [
@@ -110,41 +101,32 @@ const IMPORT_PHASE_INDEX: Record<ImportPhase, number> = {
   upload: 1,
   queued: 2,
   scanning: 3,
-  // Past the last index: every step renders complete.
   done: IMPORT_STEP_LABELS.length,
 };
 
 /**
- * The bulk-import on-ramp: the "how to export from X" guide, the drop zone (via
- * `FileManager`), the in-browser strip, the upload, and the bridge to the owner
- * Detections queue. Rendered both as the `/submit` archive sub-mode and the
- * focused entry the onboarding redirect lands on. `username` is the caller (the
- * detections queue is owner-scoped). Auth + the page chrome are the parent's job.
+ * The bulk-import on-ramp: the export guide, the drop zone, the in-browser
+ * strip, the upload, and the bridge to the owner Detections queue. Rendered as
+ * the `/submit` archive sub-mode and the onboarding entry. `username` is the
+ * caller. Auth and page chrome are the parent's job.
  */
 export function ImportArchivePanel({ username }: { username: string }) {
   const { refresh: refreshDetectionCount } = useDetectionsCount();
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ArchiveImportJob | null>(null);
-  // The poll lost sight of the job (transient errors, or a very long run):
-  // the import is still running server-side, so this renders a calm
-  // "check your email" state, never the failure banner.
+  // The poll lost the job but the import still runs server-side: render a calm
+  // "check your email" state, not the failure banner.
   const [pollLost, setPollLost] = useState(false);
-  // Latest polled snapshot while the import runs: the post estimate stamped
-  // at enqueue, then the worker's live scan position (done / total).
   const [liveJob, setLiveJob] = useState<ArchiveImportJob | null>(null);
-  // Direct-to-storage upload position in raw bytes (multipart envelope
-  // included); null outside the upload leg.
+  // Raw bytes, multipart envelope included; null outside the upload leg.
   const [uploadBytes, setUploadBytes] = useState<{ loaded: number; total: number } | null>(null);
-  // The run's position in IMPORT_STEP_LABELS. Advanced as each leg starts,
-  // and kept after a failure so the error lands on the step that raised it.
+  // Kept after a failure so the error lands on the step that raised it.
   const [phase, setPhase] = useState<ImportPhase>("strip");
 
-  // Strip to the allowlisted entries in the browser first, so the sensitive
-  // rest of the export never leaves the device (and the upload is a fraction
-  // of the size). Then the presigned three-step: mint the upload, POST the
-  // zip straight to storage (never through the API), enqueue by key (202).
-  // The worker service runs the import and emails the outcome, and the poll
-  // below keeps this page live for the analyst who stayed.
+  // Strip to the allowlisted entries in the browser so the rest of the export
+  // never leaves the device. Then: presign, POST the zip straight to storage,
+  // enqueue by key (202). The worker emails the outcome; the poll keeps this
+  // page live.
   const { run, loading, error } = useMutation(
     async (archive: File): Promise<ArchiveImportJob | null> => {
       setLiveJob(null);
@@ -152,8 +134,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
       setPhase("strip");
       const stripped = await stripArchive(archive);
       setPhase("upload");
-      // Real numbers from the first frame: the stripped size is the known
-      // payload, refined by the first XHR progress event (envelope included).
+      // The stripped size, refined by the first XHR progress event.
       setUploadBytes({ loaded: 0, total: stripped.file.size });
       const presign = await presignArchiveUpload();
       await uploadArchive(presign.upload, stripped.file, (loaded, total) =>
@@ -164,28 +145,24 @@ export function ImportArchivePanel({ username }: { username: string }) {
       setLiveJob(queued);
       const onUpdate = (job: ArchiveImportJob) => {
         setLiveJob(job);
-        // The worker picked the job up: "queued" is over, the extraction is live.
+        // The worker picked the job up.
         if (job.status !== "queued") setPhase("scanning");
       };
       let job: ArchiveImportJob;
       try {
-        // Resolves only on a terminal status (done / failed); anything else
-        // keeps polling or ends as ImportPollLost.
         job = await awaitImportJob(queued.id, { onUpdate });
       } catch (err) {
         if (err instanceof ImportPollLost) return null; // still running
         throw err;
       }
       if (job.status === "done") {
-        // The completed stepper stays on screen as the receipt of the run;
-        // the CTA below it bridges to the review queue (no auto-redirect).
+        // The completed stepper stays as the receipt; the CTA below bridges to
+        // the review queue.
         setPhase("done");
         setLiveJob(job);
       }
       if (job.status === "failed") {
-        // Same story as the failure email and the API doc: a failed job
-        // keeps whatever landed before the failure, and re-uploading skips
-        // it and continues.
+        // A failed job keeps what landed; re-uploading skips it and continues.
         throw new Error(
           "The import failed on our side. Anything imported before the failure is kept; upload the same archive again to continue from there, and reach out on Discord if it keeps failing."
         );
@@ -199,10 +176,8 @@ export function ImportArchivePanel({ username }: { username: string }) {
           setPollLost(true);
           return;
         }
-        // Work landed, created or updated: stay on the page. The finished
-        // stepper is the receipt of the run and the CTA under it opens the
-        // review queue. Only a run that wrote nothing swaps to the result
-        // view (retry, or the archive was already up to date).
+        // Work landed: stay on the page. Only a run that wrote nothing sets
+        // `result` (retry, or already up to date).
         if (res.created === 0 && res.updated === 0) setResult(res);
       },
       onError: importErrorMessage,
@@ -229,9 +204,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
     );
   }
 
-  // Write-nothing outcomes (`result`) render UNDER the completed stepper like
-  // the happy path, never as a swapped-out bare view: the stepper stays as
-  // the receipt of what ran, the message + action below it say what's next.
+  // `result` (write-nothing outcomes) renders under the completed stepper.
   const failedSome = (result?.failed ?? 0) > 0;
   const alreadyImported = result !== null && !failedSome && result.skipped > 0;
 
@@ -300,7 +273,6 @@ export function ImportArchivePanel({ username }: { username: string }) {
               : []
           }
           onAddFiles={(files) => {
-            // Composing the next run clears the previous run's receipt.
             setFile(files[0] ?? null);
             setPhase("strip");
             setResult(null);
@@ -347,7 +319,6 @@ export function ImportArchivePanel({ username }: { username: string }) {
                 {
                   label: IMPORT_STEP_LABELS[2],
                   spinner: true,
-                  // Real numbers only: no detail when the estimate is absent.
                   ...(liveJob?.post_estimate != null
                     ? {
                         detail: `~${liveJob.post_estimate.toLocaleString()} post${
@@ -358,10 +329,8 @@ export function ImportArchivePanel({ username }: { username: string }) {
                 },
                 {
                   label: IMPORT_STEP_LABELS[3],
-                  // The worker runs two legs: the parse over tweets.js (no
-                  // ratio yet, `progress_total` still null), then the
-                  // per-detection persist the polled counts measure. A zero
-                  // total means nothing to persist: trivially complete.
+                  // Two worker legs: the parse (`progress_total` still null),
+                  // then the per-detection persist. A zero total is complete.
                   ...(liveJob && liveJob.progress_total !== null
                     ? {
                         progress:
@@ -382,8 +351,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
                   label: IMPORT_STEP_LABELS[4],
                   keepDetail: true,
                   // A run that wrote nothing leaves the receipt to the outcome
-                  // message below; a "0 detections ready for review" line would
-                  // fight it.
+                  // message below.
                   ...(phase === "done" &&
                   liveJob &&
                   (liveJob.created > 0 || liveJob.updated > 0)
@@ -391,9 +359,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
                     : {}),
                 },
               ].map((step, i) =>
-                // Under a failure, the raising step drops its in-flight
-                // detail and spinner: the red marker + the error banner
-                // carry the story, not a stale "Reading your posts".
+                // Under a failure the raising step drops its in-flight detail.
                 !loading && error !== null && i === IMPORT_PHASE_INDEX[phase]
                   ? { ...step, detail: undefined, spinner: false }
                   : step
@@ -401,19 +367,15 @@ export function ImportArchivePanel({ username }: { username: string }) {
               active={IMPORT_PHASE_INDEX[phase]}
               failed={!loading && error !== null}
             />
-            {/* Only once the enqueue has landed: from here the import runs
-                server-side, while closing during the strip or the upload
-                would abort the transfer. */}
+            {/* Only once enqueued: closing during strip or upload aborts. */}
             {loading && (phase === "queued" || phase === "scanning") && (
               <p className="text-xs text-neutral-500">
                 You can close this page, we email you when it&apos;s done.
               </p>
             )}
-            {/* Finished: the completed stepper above is the receipt, this is
-                the next step. In place on purpose (no auto-redirect), for the
-                zero-created outcomes too: retry the same file after partial
-                failures, the queue when it was all already imported, another
-                file when nothing was geolocatable. */}
+            {/* Next step, in place (no auto-redirect): retry after partial
+                failures, the queue if already imported, another file if
+                nothing was geolocatable. */}
             {!loading && phase === "done" && (
               <div className="space-y-3 pt-1">
                 {result && (

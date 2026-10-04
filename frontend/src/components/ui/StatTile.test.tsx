@@ -10,8 +10,6 @@ describe("StatTile", () => {
 
     const link = screen.getByRole("link", { name: /Geolocated/ });
     expect(link).toHaveAttribute("href", "/search?type=event");
-    // The whole tile navigates, so the figure sits inside the link rather
-    // than beside it.
     expect(link).toHaveTextContent("42");
   });
 

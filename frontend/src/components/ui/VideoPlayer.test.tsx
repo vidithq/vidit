@@ -13,12 +13,10 @@ const VIDEO: Media = {
   original_filename: "dashcam-original.mp4",
 };
 
-// media-chrome's elements register on import, so the controller and its bar are
-// real elements here; jsdom runs no layout and decodes no media, so what the
-// controls *show* (a duration, a fullscreen state) never fills in. These assert
-// the contract the surfaces depend on: the player mounts around a native video
-// that carries the app's own playback settings, the bar holds exactly the
-// intended controls, and the big-view control follows the context.
+// media-chrome's elements register on import, but jsdom runs no layout and
+// decodes no media. These assert the surface contract: a native video with the
+// app's playback settings, the intended controls, and the context's big-view
+// control.
 describe("VideoPlayer", () => {
   it("mounts a controller around a named native video that fills its container", () => {
     const { container } = render(
@@ -27,11 +25,8 @@ describe("VideoPlayer", () => {
 
     const controller = container.querySelector("media-controller");
     expect(controller).not.toBeNull();
-    // Fills the tile, so the container's height governs the box.
     expect(controller).toHaveClass("h-full", "w-full");
-    // The bar fades out after two undisturbed seconds of playback and returns
-    // on pointer move, hover or focus. The controller keeps the delay on the
-    // element itself rather than reflecting it to an attribute.
+    // Autohide delay (kept on the element, not reflected to an attribute).
     expect((controller as unknown as { autohide: string }).autohide).toBe("2");
 
     const video = container.querySelector("video");
@@ -39,10 +34,7 @@ describe("VideoPlayer", () => {
     expect(video).toHaveAccessibleName("A dashcam clip");
     expect(video).toHaveAttribute("playsinline");
     expect(video).toHaveAttribute("preload", "metadata");
-    // The browser's own chrome stays off: the bar is the only control surface.
     expect(video).not.toHaveAttribute("controls");
-    // A stored clip carries no poster derivative, so the media fragment makes
-    // the browser paint the frame a tenth of a second in.
     expect(video).toHaveAttribute("src", "/media/clip.mp4#t=0.1");
   });
 
@@ -54,8 +46,7 @@ describe("VideoPlayer", () => {
     expect(container.querySelector("media-controller")).toHaveClass("max-w-4xl");
   });
 
-  // The bar is stripped to what an analyst uses on evidence clips. Casting,
-  // PiP, playback speed and captions are not rendered at all.
+  // The bar is stripped: no casting, PiP, playback speed or captions.
   it("carries exactly play, scrub, time, volume, download and one big-view control", () => {
     const { container } = render(<VideoPlayer src={VIDEO.storage_url} source={VIDEO} />);
 
@@ -72,8 +63,6 @@ describe("VideoPlayer", () => {
     expect(screen.getByRole("button", { name: "Download" })).toBeInTheDocument();
   });
 
-  // A tile expands into the shared lightbox, which is where the real full
-  // screen lives, so one big-view icon shows per context.
   it("swaps fullscreen for an expand control when the context can enlarge", () => {
     const onExpand = vi.fn();
     const { container } = render(
@@ -85,8 +74,6 @@ describe("VideoPlayer", () => {
     expect(onExpand).toHaveBeenCalledTimes(1);
   });
 
-  // A clip the browser refuses swaps to the shared notice instead of leaving a
-  // silent black box.
   it("says so when the clip fails to load, keeping the original saveable", () => {
     const { container } = render(
       <VideoPlayer
@@ -100,17 +87,13 @@ describe("VideoPlayer", () => {
     fireEvent.error(container.querySelector("video")!);
     expect(screen.getByText("Video unavailable")).toBeInTheDocument();
     expect(container.querySelector("media-controller")).toBeNull();
-    // An undecodable codec is exactly when saving the original matters, and the
-    // bar that normally carries the download is gone with the player.
+    // The download stays: the bar that carried it is gone.
     expect(screen.getByRole("button", { name: "Download" })).toBeInTheDocument();
-    // The notice takes the box the controller would have had, so it fills the
-    // tile instead of collapsing to an unsized line in the lightbox.
     expect(container.firstElementChild).toHaveClass("h-full", "w-full", "max-w-4xl");
   });
 
-  // The verdict belongs to the URL that earned it: the lightbox reuses one
-  // player across sources, so a flag would strand every later clip on the
-  // notice.
+  // The verdict is keyed on the URL: the lightbox reuses one player across
+  // sources.
   it("gives a new src a fresh verdict after a failure", () => {
     const { container, rerender } = render(
       <VideoPlayer src="/media/broken.mp4" source={VIDEO} />,

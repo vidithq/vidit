@@ -10,28 +10,16 @@ if (!configuredApiUrl) {
   );
 }
 
-/**
- * Backend base URL, including the `/api/v1` suffix. Exported so the server-side
- * readers (the generated share cards) resolve the backend from the same place
- * the browser client does, instead of re-reading the env var and re-writing the
- * guard above.
- */
+/** Backend base URL including `/api/v1`; shared with the server-side readers (share cards)
+ * so the env guard lives once. */
 export const API_URL: string = configuredApiUrl;
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-/**
- * Error thrown by ``apiFetch`` for any non-2xx response. Carries the HTTP
- * status so callers can distinguish a real auth failure (401/403) from a
- * transient one (network blip, 5xx, uvicorn restart in dev); without it
- * ``AuthContext`` treated every /auth/me error as "logged out" and bounced
- * to ``/login`` on any backend hiccup.
- *
- * ``code`` is the stable identifier the backend attaches to errors worth
- * branching on (e.g. ``email_pending_confirmation`` → resend-link flow).
- * ``null`` for endpoints returning a plain string ``detail`` — only typed
- * registration errors emit a structured ``{code, message}`` shape today.
- */
+/** Thrown by `apiFetch` for any non-2xx. `status` separates a real auth failure (401/403)
+ * from a transient one (5xx, network), so a backend hiccup doesn't bounce to `/login`.
+ * `code` is the backend's stable identifier for errors worth branching on (e.g.
+ * `email_pending_confirmation`); `null` for plain string `detail`s. */
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string | null;
@@ -43,12 +31,8 @@ export class ApiError extends Error {
   }
 }
 
-/**
- * Extract a user-facing message from an unknown thrown value. ``apiFetch``
- * throws ``ApiError`` (an ``Error``), so its ``.message`` surfaces; any
- * non-Error throw falls back. The idiom every mutation handler repeated inline
- * — pair with ``useMutation``.
- */
+/** User-facing message from an unknown thrown value; non-Error throws use `fallback`. Pair
+ * with `useMutation`. */
 export function errorMessage(err: unknown, fallback = "Something went wrong."): string {
   return err instanceof Error ? err.message : fallback;
 }
@@ -58,12 +42,9 @@ interface ParsedDetail {
   code: string | null;
 }
 
-// FastAPI returns several ``detail`` shapes by error source:
-// ``{detail: string}`` for hand-rolled HTTPException,
-// ``{detail: [{loc, msg, type}, ...]}`` for Pydantic validation errors,
-// and ``{detail: {code, message}}`` for typed registration errors the
-// frontend branches on without prose substring matching. Stringifying the
-// array yields "[object Object]"; pull out the first ``msg`` instead.
+// FastAPI `detail` shapes: a string (HTTPException), `[{loc, msg, type}]` (Pydantic; take the
+// first `msg`, since stringifying yields "[object Object]"), and `{code, message}` (typed
+// errors the frontend branches on).
 function parseApiError(body: unknown, status: number): ParsedDetail {
   if (body && typeof body === "object" && "detail" in body) {
     const detail = (body as { detail: unknown }).detail;
@@ -87,12 +68,8 @@ function parseApiError(body: unknown, status: number): ParsedDetail {
   return { message: `API error ${status}`, code: null };
 }
 
-/**
- * The one request path: CSRF on unsafe methods, credentials, and the error
- * envelope turned into an ``ApiError``. Returns the raw ``Response`` so a
- * caller that needs a header (``apiFetchPage`` reads ``Link``) can have one
- * without a second copy of this plumbing.
- */
+/** The one request path: CSRF on unsafe methods, credentials, and the error envelope as an
+ * `ApiError`. Returns the raw `Response` so `apiFetchPage` can read `Link`. */
 async function send(path: string, options?: RequestInit): Promise<Response> {
   const headers: Record<string, string> = {
     ...(options?.headers as Record<string, string>),
@@ -136,22 +113,15 @@ export async function apiFetch<T>(
   return res.json();
 }
 
-/**
- * One page of a capped list, plus the cursor that reaches the next one.
- *
- * Every list endpoint caps its response, so a surface that needs more rows
- * than one page holds follows `nextCursor` (from the `Link: rel="next"`
- * header) instead of asking for a bigger page. `nextCursor` is `null` on the
- * last page.
- */
+/** One page of a capped list plus the cursor for the next (`Link: rel="next"`); `null` on
+ * the last page. */
 export async function apiFetchPage<T>(
   path: string,
   options?: RequestInit
 ): Promise<{ items: T; nextCursor: string | null }> {
   const res = await send(path, options);
   return {
-    // Same 204 guard as `apiFetch`: a body-less response has nothing to parse
-    // and `res.json()` throws on it.
+    // Same 204 guard as `apiFetch`.
     items: (res.status === 204 ? undefined : await res.json()) as T,
     nextCursor: nextCursor(res.headers.get("Link")),
   };

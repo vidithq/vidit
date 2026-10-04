@@ -24,9 +24,7 @@ interface ErrorProps {
 
 export default function Error({ error, reset }: ErrorProps) {
   useEffect(() => {
-    // The SDK only auto-captures unhandled rejections + window.onerror,
-    // not exceptions caught by an error boundary, so forward explicitly.
-    // No-op when no DSN is configured (safe in local dev / bootstrap).
+    // The SDK does not capture exceptions caught by an error boundary, so forward explicitly (no-op without a DSN).
     Sentry.captureException(error);
     console.error("Unhandled error:", error);
   }, [error]);

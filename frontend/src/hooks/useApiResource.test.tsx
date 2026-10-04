@@ -7,9 +7,8 @@ vi.mock("@/lib/api", () => ({
   apiFetch: vi.fn(),
 }));
 
-// Each apiFetch call is captured with its abort signal and manual
-// resolve/reject handles so tests control exactly when and how every
-// request settles.
+// Each apiFetch call is captured with its signal and resolve/reject handles so tests control
+// when it settles.
 interface CapturedCall {
   path: string;
   signal: AbortSignal;

@@ -24,9 +24,7 @@ export default function manifest(): MetadataRoute.Manifest {
         sizes: "512x512",
         type: "image/png",
       },
-      // No `purpose: maskable` variant: maskable expects a solid safe-zone
-      // background, but the brand mark ships transparent, so the launcher
-      // wallpaper would bleed through and look broken on light home screens.
+      // No `purpose: maskable`: the brand mark is transparent, so the launcher wallpaper would bleed through.
     ],
   };
 }

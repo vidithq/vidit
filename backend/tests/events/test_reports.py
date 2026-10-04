@@ -1,10 +1,6 @@
-"""``POST /events/{id}/report`` and the takedown it can lead to.
+"""``POST /events/{id}/report`` (open to anonymous viewers) and the takedown it can lead to.
 
-Reporting is open to anonymous viewers (a takedown request must not require an
-account), and a withheld event (``hidden_at``) drops off every public read the
-way a soft-deleted one does, with the admin detail read as the one exception:
-someone has to be able to see what was taken down. Shared fixtures live in
-`conftest.py`; `client` / `_make_geo` in `_helpers.py`.
+A withheld event drops off every public read, except the admin detail read.
 """
 
 from __future__ import annotations
@@ -23,7 +19,7 @@ from tests.events._helpers import WORLD_BBOX, _make_geo, client
 
 @pytest.fixture
 def email_recorder(monkeypatch):
-    """Capture every ``email.send()`` call in order, like the auth suite."""
+    """Capture every ``email.send()`` call in order."""
     sent: list[email.Email] = []
     monkeypatch.setattr(email, "send", sent.append)
     return sent
@@ -31,17 +27,10 @@ def email_recorder(monkeypatch):
 
 @pytest.fixture
 def notify_address(monkeypatch):
-    """Point the report notification at an address for the duration of a test.
-
-    Unset is the shipped default, so the tests that assert a send have to opt
-    in the same way an operator does.
-    """
+    """Point the report notification at an address (unset is the shipped default)."""
     address = "support@vidit.app"
     monkeypatch.setattr(settings, "report_notify_email", address)
     return address
-
-
-# ── POST /events/{id}/report ──────────────────────────────────────────────
 
 
 def test_anonymous_report_is_accepted(db, author):
@@ -104,17 +93,13 @@ def test_report_404_for_unknown_event(author):
 
 
 def test_report_404_for_hidden_event(db, author):
-    """A withheld event is invisible, so it cannot be reported again: the
-    reporter gets the same 404 as for an id that never existed."""
+    """A withheld event answers 404 to a reporter, like an id that never existed."""
     geo = _make_geo(db, author=author, hidden=True)
     response = client.post(
         f"/api/v1/events/{geo.id}/report",
         json={"reason": "other"},
     )
     assert response.status_code == 404
-
-
-# ── The moderation notification ───────────────────────────────────────────
 
 
 def test_notification_carries_the_report_for_an_anonymous_reporter(
@@ -164,8 +149,7 @@ def test_notification_names_a_signed_in_reporter(
 
 
 def test_no_notification_when_no_address_is_configured(db, author, email_recorder, monkeypatch):
-    """The shipped default sends nothing, and reporting is unaffected: the row
-    is still written and still reaches the admin queue."""
+    """The shipped default sends nothing, and the row is still written and queued."""
     monkeypatch.setattr(settings, "report_notify_email", None)
     geo = _make_geo(db, author=author)
 
@@ -181,8 +165,7 @@ def test_no_notification_when_no_address_is_configured(db, author, email_recorde
 
 
 def test_report_survives_a_notification_send_failure(db, author, monkeypatch, notify_address):
-    """The report is committed before the mail goes out, so a provider outage
-    costs the heads-up, never the report."""
+    """The report is committed before the mail goes out, so a provider outage never loses it."""
 
     def _boom(_message: email.Email) -> None:
         raise email.EmailSendError("simulated outage")
@@ -199,9 +182,6 @@ def test_report_survives_a_notification_send_failure(db, author, monkeypatch, no
     db.expire_all()
     stored = db.query(ContentReport).filter(ContentReport.id == response.json()["id"]).one()
     assert stored.reason == "copyright"
-
-
-# ── Hidden events leave the public read surface ───────────────────────────
 
 
 def test_hidden_event_absent_from_list_and_points(db, author):
@@ -235,8 +215,7 @@ def test_hidden_event_absent_from_search(db, author):
 
 
 def test_hidden_event_detail_is_404_for_everyone_but_an_admin(db, author, second_user, admin_user):
-    """The owner loses the detail read too: a takedown is not a private detection
-    state. An admin keeps it, since judging the report means seeing the row."""
+    """The owner loses the detail read too; an admin keeps it to judge the report."""
     hidden = _make_geo(db, author=author, hidden=True)
 
     assert client.get(f"/api/v1/events/{hidden.id}").status_code == 404
@@ -285,8 +264,7 @@ def test_hidden_event_absent_from_the_follow_timeline(db, author, second_user):
 
 
 def test_hidden_event_is_frozen_for_its_owner(db, author):
-    """Every ``/{id}`` verb resolves through the same helper, so a withheld
-    event can be neither closed nor investigated while it stands."""
+    """Every ``/{id}`` verb shares one helper: a withheld event cannot be closed or investigated."""
     hidden = _make_geo(db, author=author, hidden=True)
     headers = login_as(client, author)
 

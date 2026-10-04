@@ -1,33 +1,23 @@
 """Pure text core: coordinates, retweet rule, title, proof body. No I/O.
 
-One vocabulary for every entry (the bot, the pasted-tweet import, the archive
-backfill), so the recovery rate is identical regardless of where the text came
-from.
-
-Coordinate parsing
-------------------
+One vocabulary for every entry (bot, paste, archive backfill).
 
 Four extractors run over the full text, de-duped:
 
-1. Decimal pairs (``48.012345, 37.802411``; degree-marked ``48.6° 38.0°`` too)
-2. Decimal degrees plus hemisphere (``33.1°N 35.5°E``, ``50.4501N, 30.5234E``,
-   ``N48.0123 E37.8024``, with ``°`` optional and the letter on either side)
+1. Decimal pairs (``48.012345, 37.802411``; degree-marked too)
+2. Decimal degrees plus hemisphere (``33.1°N 35.5°E``, ``N48.0123 E37.8024``)
 3. DMS (``48°00'45"N 37°48'08"E``)
 4. Google Maps ``@lat,lng,zoom`` links
 
 Every coordinate found makes a detection; the 6-decimal dedup is the only guard.
-The decimal-pair extractor requires 3 or more decimal places to avoid matching
-dates / version strings (`1.2.3`, `2025-11-12`); the hemisphere and DMS forms
-use the directional letters as the discriminator (one fractional digit
-suffices); Maps URLs are unambiguous.
+Decimal pairs need 3+ decimals to skip dates and versions (`1.2.3`,
+`2025-11-12`); the hemisphere and DMS forms use the letters as discriminator.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-
-# ── Coordinate extractors ─────────────────────────────────────────────────
 
 
 @dataclass(frozen=True)
@@ -36,17 +26,12 @@ class ParsedCoord:
     lng: float
 
 
-# Horizontal whitespace only: a coordinate pair lives on one line. A separator
-# spanning a newline would pair a latitude on one line with a longitude on the
-# next. Every extractor below uses it.
+# Horizontal whitespace only, so a pair never spans a newline.
 _HWS = r"[^\S\r\n]"
 
-# Decimal pairs, optionally degree-marked (``48.621451° 38.041689°``). The
-# `.\d{3,}` floor on both sides keeps us off dates (`2025-11-12`), version
-# strings (`1.2.3`), and reply counts: none carry 3+ decimals on both numbers
-# at once. The trailing guard rejects only a *longer dotted number* (``…411.5``),
-# not a sentence-ending period (``…802411.``); the old ``(?![\d.])`` swallowed
-# that period and silently dropped real coords.
+# Decimal pairs, optionally degree-marked. The `.\d{3,}` floor on both sides
+# skips dates, versions and reply counts. The trailing guard rejects a longer
+# dotted number (``…411.5``) but not a sentence-ending period (``…802411.``).
 _DECIMAL_PAIR_RE = re.compile(
     r"(?<![\d.])"
     r"([-+]?\d{1,3}\.\d{3,})°?"
@@ -55,14 +40,11 @@ _DECIMAL_PAIR_RE = re.compile(
     r"(?!\d)(?!\.\d)"
 )
 
-# Decimal degrees plus hemisphere letter. The letter (not a decimal floor) is
-# the discriminator, so one fractional digit is enough; ``°`` is optional.
-# Latitude (N/S) first in both orderings, matching how OSINT posts write them.
-# Two variants: letter-suffix (``33.1°N 35.5°E``, ``50.4501N, 30.5234E``) and
-# letter-prefix (``N48.0123 E37.8024``). Lat-first only: lng-first input
-# (``35.5E 33.1N``) is intentionally not matched. The inter-half separator is a
-# comma / slash / horizontal whitespace (no newline, via ``_HWS``); requiring it
-# is also what rejects prose-embedded letters like ``N12.5 area E34.6``.
+# Decimal degrees plus hemisphere letter (the discriminator, so one decimal
+# suffices; ``°`` optional). Suffix form (``33.1°N 35.5°E``) and prefix form
+# (``N48.0123 E37.8024``), lat-first only: lng-first (``35.5E 33.1N``) is
+# intentionally not matched. The required separator (comma, slash, horizontal
+# whitespace) also rejects prose like ``N12.5 area E34.6``.
 _DECIMAL_HEMI_SUFFIX_RE = re.compile(
     r"(?<![\w.])"
     r"(\d{1,3}\.\d+)\s*°?\s*([NS])"
@@ -80,11 +62,8 @@ _DECIMAL_HEMI_PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 
-# DMS: degrees, minutes, seconds plus hemisphere letter. Minutes / seconds
-# accept both ASCII quotes (``'`` ``"``) and the typographic prime / double
-# prime (``′`` U+2032, ``″`` U+2033) that Google Earth and similar tools emit, a
-# real recall gap real archives surface. The inter-half separator is
-# newline-safe (``_HWS``), like the other extractors.
+# DMS plus hemisphere letter. Minutes and seconds accept ASCII quotes and the
+# typographic primes (``′`` U+2032, ``″`` U+2033) Google Earth emits.
 _DMS_RE = re.compile(
     r"(\d{1,3})°\s*(\d{1,2})['’′]\s*(\d{1,2}(?:\.\d+)?)?[\"”″]?\s*([NS])"
     rf"(?:{_HWS}|,)*"
@@ -92,14 +71,13 @@ _DMS_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Google Maps `@lat,lng,zoom` segment. Tolerant: zoom is optional.
+# Google Maps `@lat,lng,zoom` segment; zoom is optional.
 _GMAPS_RE = re.compile(
     r"(?:google\.[^/\s]+/maps[^\s]*?)@(-?\d+\.\d+),(-?\d+\.\d+)(?:,\d+(?:\.\d+)?z?)?",
     re.IGNORECASE,
 )
 
-# Every coordinate form, for asking what a line carries besides its coordinates
-# (the title rule).
+# Every coordinate form, for the title rule.
 _COORD_RES = (
     _DECIMAL_PAIR_RE,
     _DECIMAL_HEMI_SUFFIX_RE,
@@ -135,10 +113,8 @@ def _hemi_decimal(value: str, hemi: str) -> float:
 class CoordScan:
     """What the extractors saw in one text.
 
-    ``coords`` are the usable pairs. ``out_of_bounds`` says a coordinate-shaped
-    string was read and dropped because its latitude or longitude sits outside
-    the world, which is the one refusal a caller can name apart from "no
-    coordinate at all".
+    ``out_of_bounds`` says a coordinate-shaped string was dropped for sitting
+    outside the world, a refusal distinct from "no coordinate at all".
     """
 
     coords: list[ParsedCoord] = field(default_factory=list)
@@ -146,14 +122,10 @@ class CoordScan:
 
 
 def scan_coords(text: str) -> CoordScan:
-    """Run all extractors over ``text``, in order: decimal pairs (most common in
-    OSINT posts), decimal degrees plus hemisphere, DMS (older intel), then
-    Google Maps URLs.
+    """Run all extractors over ``text`` (decimal pairs, hemisphere, DMS, Maps).
 
-    No cap: every coordinate the analyst wrote makes a detection, and the text
-    length of a post already bounds how many that is. Dedup by
-    rounded-to-6-decimals key; finer gives float-equality artefacts, coarser
-    conflates candidates the analyst wants distinct.
+    No cap: post length bounds the count. Dedup on a 6-decimal rounded key
+    (finer gives float-equality artefacts, coarser conflates distinct candidates).
     """
     coords: list[ParsedCoord] = []
     seen: set[tuple[float, float]] = set()
@@ -200,75 +172,48 @@ def scan_coords(text: str) -> CoordScan:
 
 
 def extract_coords(text: str) -> list[ParsedCoord]:
-    """The usable coordinates in ``text`` (:func:`scan_coords` without the
-    out-of-bounds signal)."""
+    """The usable coordinates in ``text`` (:func:`scan_coords` minus the signal)."""
     return scan_coords(text).coords
 
 
-# ── Retweet rule ──────────────────────────────────────────────────────────
-
-
-# The X handle grammar the platform enforces: 1 to 15 word characters. One
-# home, read by the retweet prefix below and by the mention pattern of
-# :func:`is_mentions_only`.
+# The X handle grammar: 1 to 15 word characters.
 _HANDLE = r"[A-Za-z0-9_]{1,15}"
 
 
-# The retweet discriminator, and the one home for why the text is the only
-# reliable signal. An export entry carries no flag worth trusting: there is no
-# ``retweeted_status`` object (the exporter drops it) and the ``retweeted``
-# boolean is written ``false`` on every entry, retweets included. What survives
-# is the text X stores for a retweet, ``RT @<handle>: <original text>``, so the
-# prefix is the signal. A handle is 1 to 15 word characters and the colon must
-# follow, which keeps a post that merely opens on the letters "RT" out of the
-# match. The heuristic's deliberate boundary: X writes the canonical form, so
-# variants like a lowercase ``rt`` or a missing colon are out of scope, and a
-# post the owner hand-typed with the canonical prefix is dropped along with real
-# retweets, its content being someone else's either way.
+# The text is the only reliable retweet signal: an export has no
+# ``retweeted_status`` and writes ``retweeted: false`` on every entry. What
+# survives is ``RT @<handle>: <original text>``. Deliberate boundary: only the
+# canonical form matches (not lowercase ``rt`` or a missing colon), and a
+# hand-typed canonical prefix is dropped too.
 _RETWEET_PREFIX_RE = re.compile(rf"^RT @{_HANDLE}:")
 
 
 def is_retweet(text: str) -> bool:
-    """Whether ``text`` opens on the retweet prefix, so the post carries someone
-    else's words.
+    """Whether ``text`` opens on the retweet prefix (someone else's words).
 
-    Read by the archive reader (which drops the entry before stitching) and by
-    the detection engine (which drops the record before resolving), so a
-    retweet produces nothing on any entry.
+    The archive reader and the detection engine both drop such a post.
     """
     return _RETWEET_PREFIX_RE.match(text) is not None
 
 
-# ── Bot tag ───────────────────────────────────────────────────────────────
-
-
-# A mention as X writes it: ``@`` plus a handle.
 _MENTION_RE = re.compile(rf"@({_HANDLE})")
 
 
 def is_mentions_only(text: str) -> bool:
-    """Whether ``text`` says nothing beyond the accounts it addresses.
+    """Whether ``text`` is only mentions and whitespace.
 
-    Every ``@handle`` comes out and what is left is what the analyst wrote, so
-    mentions and whitespace alone answer true. Any other residue answers false,
-    a dot-mention's leading period (``.@viditbot``) included; the acquisition
-    reads that answer to tell a post that points at a thread from a post that
-    says something (:func:`acquire._is_bare_tag`).
+    Any other residue answers false, a dot-mention's period (``.@viditbot``)
+    included (:func:`acquire._is_bare_tag`).
     """
     return not _MENTION_RE.sub("", text).strip()
 
 
 def _past_leading_mentions(text: str) -> str:
-    """``text`` past the run of mentions that opens it.
+    """``text`` past the run of mentions X writes at the start of a reply.
 
-    X writes the first line of a reply for the author: the parent's author,
-    then the parent's own mentions minus the replier, one ``@handle`` after
-    another. The run ends at the first token that is not one of those, and
-    everything from there on is what the author typed. Two shapes end it early
-    and leave their mention in the typed region: any other character before a
-    mention, and any non-whitespace character directly after one, so both the
-    period of a dot-mention (``.@viditbot``) and the comma of ``@viditbot,
-    look`` read as typed.
+    The run ends at the first token that is not a bare mention. A character
+    before a mention, or a non-whitespace character right after one, ends it
+    early, so ``.@viditbot`` and ``@viditbot, look`` read as typed.
     """
     end = 0
     for match in _MENTION_RE.finditer(text):
@@ -284,17 +229,14 @@ def _past_leading_mentions(text: str) -> str:
 def tags_bot(text: str, handle: str, *, inherits_prefix: bool) -> bool:
     """Whether ``text`` carries an ``@handle`` tag its author typed.
 
-    The tag rule, pure: the text goes in and the verdict comes out, so the two
-    deliveries and the parent read share one answer. Entities carry no position,
-    and position is the whole rule, so the text is what it reads; both
-    deliveries carry the full text (the webhook prefers
-    ``extended_tweet.full_text``, which holds a tag past the truncation point).
+    Pure, so both deliveries and the parent read share one answer. It reads the
+    text, since entities carry no position (the webhook prefers
+    ``extended_tweet.full_text``, which keeps a tag past the truncation point).
 
-    ``inherits_prefix`` says X may have written a leading run of mentions the
-    author never typed, which is true of every reply: only the region past that
-    run (:func:`_past_leading_mentions`) counts. Pass ``False`` for a post that
-    is not a reply, and for the plain question "does this text mention the
-    handle at all", which is what a parent post is asked.
+    ``inherits_prefix``: X may have written a leading run of mentions in a
+    reply, so only the region past it counts (:func:`_past_leading_mentions`).
+    Pass ``False`` for a non-reply and for "does this text mention the handle
+    at all" (the parent post question).
     """
     if not handle:
         return False
@@ -306,9 +248,7 @@ def tags_bot(text: str, handle: str, *, inherits_prefix: bool) -> bool:
 def strip_bot_tag(text: str, handle: str) -> str:
     """``text`` with the bot's ``@handle`` removed where it opens a line.
 
-    The one thing the proof drops beyond the wrappers of attached media: the tag
-    is addressing, not content. A tag written inside a sentence stays, because
-    there the analyst is talking about the bot.
+    A tag inside a sentence stays (the analyst is talking about the bot).
     """
     if not handle:
         return text
@@ -320,37 +260,22 @@ def strip_bot_tag(text: str, handle: str) -> str:
     )
 
 
-# ── Title ─────────────────────────────────────────────────────────────────
-
-
 _WHITESPACE_RE = re.compile(r"\s+")
-# The derived title's readability cap. Well under the ``events.title`` column
-# (255): a headline longer than this is a paragraph, and the analyst rewrites it
-# at review anyway.
+# Readability cap of the derived title, well under the ``events.title`` column (255).
 _TITLE_MAX_LEN = 120
 
 
-# A URL as it appears inline in a line of post text.
 _URL_TOKEN_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 
-# The enumeration a line may open on once its coordinates are gone: an OSINT
-# thread numbers its posts (``9|``) and a coordinate list numbers its entries
-# (``1.``, ``2)``). Bullets and every other separator are punctuation, which
-# :data:`_NON_TEXT_RE` removes on its own.
+# Enumeration a line may open on: thread numbering (``9|``) or list entries
+# (``1.``, ``2)``). Other separators are punctuation (:data:`_NON_TEXT_RE`).
 _LIST_MARKER_RE = re.compile(r"^\s*\d+\s*[.)\]|:-]")
 
-# Punctuation, separators and whitespace: what carries no text of its own.
 _NON_TEXT_RE = re.compile(r"[\W_]", re.UNICODE)
 
 
 def _carries_text(line: str) -> bool:
-    """Whether ``line`` says anything beyond its coordinates and its links.
-
-    Every coordinate token and every URL token comes out, then the list marker
-    the line may open on, then the punctuation around them. What is left is the
-    analyst's own words, and a line with none of them is a coordinate dump, a
-    link dump, or both at once.
-    """
+    """Whether ``line`` has words beyond its coordinates, links, list marker and punctuation."""
     residue = _URL_TOKEN_RE.sub(" ", line)
     for rx in _COORD_RES:
         residue = rx.sub(" ", residue)
@@ -358,19 +283,15 @@ def _carries_text(line: str) -> bool:
 
 
 def derive_title(text: str) -> str:
-    """The first line of ``text`` carrying text beyond coordinates and links,
-    whitespace-collapsed and cut at ``_TITLE_MAX_LEN`` on a word boundary.
+    """The first line of ``text`` passing :func:`_carries_text`, whitespace-collapsed
+    and cut at ``_TITLE_MAX_LEN``.
 
-    :func:`_carries_text` decides which line that is, so a line pairing a
-    coordinate with the maps link it came from is skipped exactly as a bare
-    coordinate is. The chosen line is then taken verbatim, coordinates, links,
-    hashtags and list marker included: what the analyst wrote is the headline,
-    and the review pass is where a bad one gets rewritten. ``""`` when no line
-    qualifies, so the analyst types one; a wrong title in the field is worse
-    than none.
+    The line is taken verbatim (coordinates, links and hashtags included); the
+    analyst rewrites it at review. ``""`` when no line qualifies: a wrong title
+    is worse than none.
 
-    Truncation prefers the last space inside the limit; with none (one long
-    token, for instance a no-space cyrillic address) it hard-cuts.
+    Truncation prefers the last space in the limit, else hard-cuts (one long
+    token).
     """
     for raw_line in text.splitlines():
         line = _WHITESPACE_RE.sub(" ", raw_line).strip()
@@ -378,34 +299,24 @@ def derive_title(text: str) -> str:
             continue
         if len(line) <= _TITLE_MAX_LEN:
             return line
-        # Last space within the truncation window: slice first then look back
-        # (``rsplit`` would find the last space in the whole string).
+        # Slice first (``rsplit`` would find the last space in the whole string).
         clipped = line[:_TITLE_MAX_LEN]
         cut_at = clipped.rfind(" ")
-        if cut_at >= 40:  # don't cut so aggressively the title becomes a stub
+        if cut_at >= 40:  # avoid a stub title
             return clipped[:cut_at].rstrip()
         return clipped.rstrip()
     return ""
 
 
-# ── Proof text ────────────────────────────────────────────────────────────
-
-
-# ``t.co`` shortlinks as they appear inline in raw tweet text. By the time the
-# proof is cleaned, every link the analyst wrote has been expanded back to its
-# real URL (``records.expand_shortlinks``), so what is left under this pattern is
-# the wrapper X appends for the post's own attached media: a permalink to the
-# post itself, not something the analyst typed.
+# By the time the proof is cleaned, analyst links are expanded
+# (``records.expand_shortlinks``), so a remaining ``t.co`` is the wrapper X
+# appends for attached media.
 _T_CO_URL_RE = re.compile(r"https?://t\.co/\S+", re.IGNORECASE)
 
 
 def clean_proof_text(text: str) -> str:
-    """The thread's text as the proof stores it: the wrappers of attached media
-    dropped, blank lines dropped, internal whitespace collapsed.
-
-    Nothing else is removed. The coordinate line stays, the analyst's reference
-    links stay, and the analyst edits the proof at review.
-    """
+    """The thread's text as the proof stores it: media wrappers and blank lines
+    dropped, whitespace collapsed. Coordinates and reference links stay."""
     out_lines: list[str] = []
     for raw_line in text.splitlines():
         line = _T_CO_URL_RE.sub("", raw_line)
