@@ -1,6 +1,6 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod promo promo-v05 promo-v05b promo-collections gen-api-types check-dup vulture check-video-routes hygiene
+.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin import-prod promo promo-v05 promo-v05b promo-collections gen-api-types check-dup vulture check-video-routes check-changelog hygiene
 
 help:
 	@echo "Available commands:"
@@ -21,7 +21,7 @@ help:
 	@echo "  make dev           - Run both backend and frontend in parallel"
 	@echo "  make test          - Run backend test suite (pytest)"
 	@echo "  make gen-api-types - Regenerate frontend API types from the backend OpenAPI spec"
-	@echo "  make hygiene       - Duplication (jscpd) + dead-code (knip frontend, vulture backend) + video-route checks"
+	@echo "  make hygiene       - Duplication (jscpd) + dead-code (knip frontend, vulture backend) + video-route + changelog line-length checks"
 	@echo "  make clean         - Stop containers and purge local storage/cache/builds"
 	@echo "  make promo         - Regenerate the promo MP4 (see video/README.md)"
 	@echo "  make promo-v05     - Regenerate the v0.5 portfolio promo MP4 (see video/README.md)"
@@ -216,7 +216,11 @@ vulture:
 check-video-routes:
 	./video/check-routes.sh
 
-hygiene: check-dup vulture check-video-routes
+# CHANGELOG entries stay one short line each (CONTRIBUTING.md).
+check-changelog:
+	awk 'length($$0) > 300 { print "::error file=CHANGELOG.md,line=" NR "::Line is " length($$0) " characters; keep a CHANGELOG entry to one line of at most 300"; bad=1 } END { exit bad }' CHANGELOG.md
+
+hygiene: check-dup vulture check-video-routes check-changelog
 	cd frontend && npm run knip
 	cd frontend && npm run palette:check
 
