@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { PASSWORD_MIN_LENGTH, validatePasswordChange } from "@/lib/auth";
+import { PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH, validatePasswordChange } from "@/lib/auth";
 import { useMutation } from "@/hooks/useMutation";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { TEXT_LINK } from "@/components/ui/styles";
@@ -100,6 +100,7 @@ function ResetPasswordInner() {
             type="password"
             required
             minLength={PASSWORD_MIN_LENGTH}
+            maxLength={PASSWORD_MAX_BYTES}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
@@ -114,6 +115,7 @@ function ResetPasswordInner() {
             type="password"
             required
             minLength={PASSWORD_MIN_LENGTH}
+            maxLength={PASSWORD_MAX_BYTES}
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
           />

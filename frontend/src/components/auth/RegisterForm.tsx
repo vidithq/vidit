@@ -7,7 +7,7 @@ import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { ApiError } from "@/lib/api";
-import { PASSWORD_MIN_LENGTH } from "@/lib/auth";
+import { PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH, validateNewPassword } from "@/lib/auth";
 import {
   FORM_ERROR_BANNER,
   FORM_LABEL_COMPACT,
@@ -58,11 +58,16 @@ export default function RegisterForm({
       onSuccess: (resolvedEmail) => onSuccess(resolvedEmail),
     }
   );
-  const { error } = submitRegister;
+  const { error, setError } = submitRegister;
   const submitting = submitRegister.loading;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const validationError = validateNewPassword(password);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     await submitRegister.run();
   };
 
@@ -142,6 +147,7 @@ export default function RegisterForm({
             type="password"
             required
             minLength={PASSWORD_MIN_LENGTH}
+            maxLength={PASSWORD_MAX_BYTES}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />

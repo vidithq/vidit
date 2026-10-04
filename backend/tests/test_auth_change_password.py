@@ -143,6 +143,21 @@ def test_change_password_refuses_a_new_password_over_72_bytes(client, user_facto
     assert ok.status_code == 200
 
 
+def test_change_password_explains_the_byte_limit_for_an_over_long_ascii_password(
+    client, user_factory
+):
+    user, current = user_factory()
+    response = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": current, "new_password": "a" * 73},
+        headers=login_as(client, user),
+    )
+    assert response.status_code == 422
+    (error,) = response.json()["detail"]
+    assert error["type"] == "password_too_long"
+    assert "72 bytes" in error["msg"]
+
+
 @pytest.mark.parametrize("current", ["é" * 40, "a" * 201], ids=["80-bytes", "201-chars"])
 def test_change_password_treats_an_over_long_current_password_as_incorrect(
     client, user_factory, current
