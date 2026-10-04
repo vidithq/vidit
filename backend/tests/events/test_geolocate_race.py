@@ -1,28 +1,15 @@
 """HTTP-level concurrency on the geolocate transition.
 
-``services/events.geolocate`` locks the row with ``with_for_update()`` FIRST,
-then re-checks ``status`` under the lock (see the function's docstring). Two
-concurrent ``POST /events/{id}/geolocate`` calls on the same ``requested`` row
-are meant to race on that lock: the DB, not app-level luck, should decide the
-winner. The first test exercises the race through the real endpoint with two
-independent ``TestClient`` instances (each opens its own DB session via
-``get_db``, mirroring
-``test_registration_pending.py::test_confirm_is_atomic_under_parallel_use``),
-so the two requests genuinely contend for the row lock rather than serializing
-on a single shared session.
+``services/events.geolocate`` takes the row lock first, then re-checks ``status`` with
+``populate_existing()``, so the loser reads the post-lock ``geolocated`` status and
+gets a clean 409. The first test races two independent ``TestClient`` instances (own
+DB sessions, as in
+``test_registration_pending.py::test_confirm_is_atomic_under_parallel_use``) so the
+requests contend for the lock.
 
-The lock alone is not enough: the router's ``_resolve_live_event`` already
-loaded this row into the session identity map, so the locked re-fetch must call
-``.populate_existing()`` to overwrite the stale in-memory attributes from the
-freshly locked row. With that in place the loser reads the post-lock
-``geolocated`` status and gets a clean 409, so exactly one geolocate wins.
-
-Two clients also mean two event loops, and production has one: a single uvicorn
-process serves every request. The shared-loop test sends both geolocates
-through one ``with TestClient(app)``, so the request queued on the row lock
-stalls the whole API unless its handler keeps every query off that loop. The
-last test pins the bound on any lock wait, ``database.LOCK_TIMEOUT_MS``, and
-the 409 that answers it.
+The shared-loop test sends both through one client, as production's single uvicorn
+process does: a handler that queries on the loop would stall the whole API. The last
+test pins ``database.LOCK_TIMEOUT_MS`` and the 409 that answers it.
 """
 
 from __future__ import annotations
@@ -52,9 +39,8 @@ from app.services.auth_cookies import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
 from tests.conftest import TEST_CSRF_TOKEN, login_as
 from tests.events._helpers import client, proof_file_part, proof_form_field
 
-# Every wait in the shared-loop test is bounded, so a regression fails it rather
-# than hanging the suite: ``lock_timeout`` frees a loop stuck in a lock wait,
-# and these bound the rest.
+# Every wait in the shared-loop test is bounded, so a regression fails instead of
+# hanging the suite.
 _WAIT_S = 30
 # How long ``/health`` may take while a writer waits on the row lock: well
 # under the lock timeout, which is how long a stuck loop stays stuck.
@@ -63,13 +49,8 @@ _PROBE_S = LOCK_TIMEOUT_MS / 1000 / 2
 
 @pytest.fixture
 def third_user(db):
-    """A second potential fulfiller, alongside ``second_user``.
-
-    Either racer here can win the fulfilment and become the event's
-    ``owner_id``, so teardown needs the fuller ``owner_id`` /
-    ``requested_by_id`` sweep ``conftest.py``'s ``_delete_user_and_events``
-    uses for ``author`` / ``second_user``, not just the credit-table cleanup.
-    """
+    """Either racer can win and become ``owner_id``, so teardown needs the full owner_id
+    / requested_by_id sweep from conftest."""
     user = User(
         username=f"race{uuid.uuid4().hex[:8]}",
         email=f"race-{uuid.uuid4().hex}@example.com",
@@ -90,10 +71,8 @@ def third_user(db):
 
 
 def _make_requested_with_media(db, *, author):
-    """A ``requested`` event with its one source media, mirroring
-    ``test_requests.py::_make_request`` (kept local: this suite only needs the
-    happy-path shape, not the withdrawn / tagged variants that module
-    supports)."""
+    """A ``requested`` event with its source media; a local copy of
+    ``test_requests.py::_make_request``."""
     from datetime import UTC, datetime
 
     from app.models.media import Media
@@ -140,15 +119,8 @@ def _fulfilment_form(conflict, capture_source_tag, *, title: str) -> dict[str, s
 def test_concurrent_geolocate_exactly_one_wins(
     db, author, second_user, third_user, conflict, capture_source_tag
 ):
-    """Two different analysts both try to fulfil the same open request at once.
-
-    Both requests reach the endpoint with the row still ``requested``; the
-    ``with_for_update()`` lock in ``services.events.geolocate`` serializes them
-    at the database, and ``populate_existing()`` makes the loser re-read the
-    locked row, so exactly one sees ``200`` (and becomes owner + the sole
-    geolocator) while the other sees a clean ``409 invalid_state``, never a 500,
-    and never two winners.
-    """
+    """Two analysts fulfil one open request at once: exactly one 200, the other a clean
+    ``409 invalid_state``, never a 500 or two winners."""
     request = _make_requested_with_media(db, author=author)
     request_id = request.id
 
@@ -177,8 +149,6 @@ def test_concurrent_geolocate_exactly_one_wins(
     t1.join(timeout=10)
     t2.join(timeout=10)
 
-    # Exactly one clean win, one clean documented conflict: never a 500 and
-    # never two winners.
     winners = [s for s in statuses if s == 200]
     losers = [s for s in statuses if s == 409]
     assert len(winners) == 1, f"exactly one geolocate must succeed; got {statuses}"
@@ -186,16 +156,14 @@ def test_concurrent_geolocate_exactly_one_wins(
     loser_body = bodies[statuses.index(409)]
     assert loser_body["detail"]["code"] == "invalid_state"
 
-    # The row moved exactly once: geolocated, owned by whichever fulfiller won
-    # (not left ``requested``, not double-flipped).
+    # Moved exactly once: geolocated, owned by the winner.
     db.expire_all()
     row = db.query(Event).filter(Event.id == request_id).one()
     assert row.status == STATUS_GEOLOCATED
     assert row.owner_id in (second_user.id, third_user.id)
     assert row.requested_by_id == author.id  # the original poster, untouched
 
-    # Exactly one durable geolocator credit row: the loser's attempt left no
-    # trace in the credit table.
+    # Exactly one credit row: the loser left no trace.
     credit = db.query(EventGeolocator).filter(EventGeolocator.event_id == request_id).all()
     assert len(credit) == 1
     assert credit[0].user_id == row.owner_id
@@ -228,16 +196,10 @@ def _lock_waiter_appears(db) -> bool:
 def test_a_writer_queued_on_the_row_lock_leaves_the_loop_serving(
     db, author, second_user, third_user, conflict, capture_source_tag, monkeypatch
 ):
-    """Both geolocates share one event loop, as they do in production.
-
-    The holder takes the row lock and pauses inside its upload; the waiter
-    queues on that lock. The wait must block the waiter's own worker thread and
-    nothing else: the loop keeps answering ``/health`` and runs no query, the
-    holder resumes and commits, and the waiter re-reads a ``geolocated`` row and
-    loses on ``invalid_state``. With a handler back on the loop, the waiter's
-    lock wait blocks the loop, the holder cannot resume to release the lock, and
-    only ``lock_timeout`` ends the stall, with a ``lock_timeout`` 409.
-    """
+    """Both geolocates share one event loop, as in production. The waiter's lock wait
+    must block only its own worker thread: the loop keeps answering ``/health`` while
+    the holder resumes and commits, and the waiter loses on ``invalid_state``. With a
+    handler back on the loop, the stall lasts until ``lock_timeout``."""
     request_id = _make_requested_with_media(db, author=author).id
 
     holding = threading.Event()
@@ -319,14 +281,9 @@ def test_a_writer_queued_on_the_row_lock_leaves_the_loop_serving(
 def test_a_lock_wait_past_the_timeout_answers_409(
     db, author, second_user, conflict, capture_source_tag
 ):
-    """A geolocate queued behind a lock nobody releases gives up and answers 409.
-
-    The test's own session holds the row lock while the request runs, so the
-    wait ends only when Postgres cancels it at ``LOCK_TIMEOUT_MS``, and
-    ``get_db`` answers that with the typed ``lock_timeout`` envelope rather than
-    a 500. Nothing is written. Without the cap the request would wait for good,
-    so it runs in a thread the test stops waiting for after ``_WAIT_S``.
-    """
+    """A geolocate behind a lock nobody releases answers the typed ``lock_timeout`` 409
+    at ``LOCK_TIMEOUT_MS``, not a 500, and writes nothing. It runs in a thread the
+    test stops waiting for after ``_WAIT_S``."""
     request_id = _make_requested_with_media(db, author=author).id
     headers = login_as(client, second_user)
     form = _fulfilment_form(conflict, capture_source_tag, title="Never lands")

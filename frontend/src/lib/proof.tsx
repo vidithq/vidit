@@ -16,17 +16,13 @@ const intAttr = (v: unknown): number | undefined =>
 const stringAttr = (v: unknown): string | undefined =>
   typeof v === "string" ? v : undefined;
 
-/** The dev backend's static media mount, mirroring
- * `storage.LOCAL_STORAGE_URL_PREFIX`: the one non-https origin a proof image
- * may carry, and only in a build that pins no media host. */
+/** Mirrors `storage.LOCAL_STORAGE_URL_PREFIX` (dev backend media mount): the one non-https
+ * origin a proof image may carry, only in a build that pins no media host. */
 const LOCAL_STORAGE_URL_PREFIX = "http://localhost:8000/local-storage/";
 
-/** Mirrors backend `sanitize.safe_link_href`: only an explicit http(s)://
- * URL with a hostname is safe to render as an anchor href. The backend
- * sanitizer is the source of truth (it strips anything else before the
- * doc is ever persisted); this is defense-in-depth in case a doc reaches
- * the renderer unsanitized. Rejects `javascript:`, `data:`, `mailto:`, and
- * schemeless/relative hrefs (Tiptap links are always absolute). */
+/** Mirrors backend `sanitize.safe_link_href`; change both. Defense in depth: only an explicit
+ * http(s) URL with a hostname becomes an anchor href (rejects `javascript:`, `data:`,
+ * `mailto:`, relative). The backend sanitizer is the source of truth. */
 function isSafeLinkHref(href: string): boolean {
   let parsed: URL;
   try {
@@ -40,23 +36,15 @@ function isSafeLinkHref(href: string): boolean {
   );
 }
 
-/** Mirrors backend `sanitize._safe_image_src`: a proof image is a relative
- * path or an https URL on the host this deployment serves media from, so a
- * persisted `<image src="https://attacker/pixel.gif">` can't exfiltrate a
- * viewer's IP / UA. `NEXT_PUBLIC_MEDIA_HOST` is that host (the same value
- * `next.config.mjs` pins `next/image` to; NEXT_PUBLIC_ vars are inlined at
- * build, so reading it here is the client's own copy of the pin). A build
- * that sets no media host keeps the dev shape instead of failing closed: any
- * https host plus the backend's local-storage prefix, which is what a
- * `STORAGE_BACKEND=local` backend mints and what the backend itself accepts
- * with no CDN configured.
+/** Mirrors backend `sanitize._safe_image_src`; change both. A proof image is a relative path
+ * or an https URL on this deployment's media host, so a persisted
+ * `<image src="https://attacker/pixel.gif">` can't exfiltrate a viewer's IP/UA.
+ * `NEXT_PUBLIC_MEDIA_HOST` is that host (inlined at build, the same pin `next.config.mjs`
+ * gives `next/image`). With no media host set it keeps the dev shape: any https host plus
+ * the local-storage prefix.
  *
- * The backend sanitizer is the source of truth (it applies its own host pin
- * before the doc is persisted); this is defense in depth for a doc that
- * reaches the renderer unsanitized. Normalise the value the way a browser
- * will first (WHATWG): strip ASCII tab/CR/LF from anywhere and treat a
- * backslash as a slash, so `/\host`, `/<TAB>/host` and `//host` all reduce to
- * the network path `//host`. */
+ * Normalise like a browser (WHATWG) first: strip tab/CR/LF and treat `\` as `/`, so `/\host`,
+ * `/<TAB>/host` and `//host` reduce to `//host`. */
 function isSafeImageSrc(src: string): boolean {
   const normalized = src.replace(/[\t\r\n]/g, "").replace(/\\/g, "/");
   if (normalized.slice(0, 2) === "//") return false;
@@ -123,10 +111,8 @@ function renderInline(content: TiptapNode[] | undefined): ReactNode {
   });
 }
 
-/** Render-time options the renderer only passes down, never inspects per node.
- *  `gateImages` carries the event's `is_graphic` flag to the one leaf that
- *  paints pixels, so a flagged event's proof imagery is covered by the same
- *  age confirmation its source media is. */
+/** Options passed down, never inspected per node. `gateImages` carries `is_graphic` to the
+ *  leaf that paints pixels, so proof imagery gets the same age confirmation as source media. */
 interface ProofRenderOptions {
   gateImages?: boolean;
 }
@@ -212,10 +198,8 @@ function renderBlock(
       if (!src || !isSafeImageSrc(src)) return null;
       const alt = stringAttr(node.attrs?.alt) ?? "";
       const title = stringAttr(node.attrs?.title);
-      // The one interactive leaf of an otherwise static render: a click opens
-      // the shared MediaLightbox, since a proof image is evidence and is only
-      // auditable at full size. See ProofImage for why it is a client
-      // component and why it stays a plain `<img>`.
+      // The one interactive leaf: a click opens the shared MediaLightbox (evidence is only
+      // auditable at full size). See ProofImage.
       return (
         <ProofImage
           key={key}
@@ -243,21 +227,14 @@ export function renderProof(
 }
 
 /**
- * The plain-text projection of a Tiptap document.
+ * Plain-text projection of a Tiptap document. Mirrors backend `sanitize.tiptap_doc_text`
+ * (fills `collections.description_text`, which the search index reads and
+ * `services/collections` measures its 500-character cap on); change both.
  *
- * Mirrors backend `sanitize.tiptap_doc_text`, the one home of the projection
- * server-side (it fills `collections.description_text`, which the search index
- * reads, and it is what `services/collections` measures the 500-character
- * cap on).
- * The rule is the same on both sides: concatenate the text of every text node,
- * start a new line at every block boundary and at a `hardBreak`, drop blank
- * lines, strip each line, join with a single `\n`. A node carrying no text of
- * its own (an image, a horizontal rule) contributes nothing.
- *
- * The collection description's counter measures this string, so the two
- * flatteners have to agree: a front end that counts differently either lets
- * the analyst submit a body the server answers 422 on, or refuses one the
- * server would have taken.
+ * Concatenate the text of every text node, start a new line at every block boundary and
+ * `hardBreak`, drop blank lines, strip each line, join with `\n`. The collection description
+ * counter measures this string, so a divergence lets a body through that the server 422s, or
+ * refuses one it would take.
  */
 export function tiptapDocText(doc: Record<string, unknown> | null): string {
   if (!doc) return "";
@@ -280,8 +257,7 @@ export function tiptapDocText(doc: Record<string, unknown> | null): string {
       return;
     }
     node.content?.forEach(walk);
-    // Every block but the root ends its line here. A container whose children
-    // already ended theirs (a list, a blockquote) flushes nothing.
+    // Every block but the root ends its line; a container whose children already flushed adds nothing.
     if (node.type !== "doc") flush();
   };
 
@@ -290,13 +266,9 @@ export function tiptapDocText(doc: Record<string, unknown> | null): string {
   return lines.join("\n");
 }
 
-/** Every image `src` the proof document carries, in document order.
- *
- *  Mirrors `sanitize.extract_image_srcs`, the collection the server reaches its
- *  own verdicts from: a `src` string is what counts, not the node type, so an
- *  image node without one is not an image here either. A `placeholder://` src
- *  counts on both sides: it is the not-yet-uploaded image riding in the same
- *  request. */
+/** Every image `src` the proof carries, in document order. Mirrors
+ *  `sanitize.extract_image_srcs`: a `src` string is what counts, not the node type, and a
+ *  `placeholder://` src counts on both sides. */
 function proofImageSrcs(proof: Record<string, unknown> | null): string[] {
   if (!proof) return [];
   const srcs: string[] = [];
@@ -310,11 +282,9 @@ function proofImageSrcs(proof: Record<string, unknown> | null): string[] {
   return srcs;
 }
 
-/** True when the proof document carries at least one image (anywhere in the
- *  tree). A geolocation's proof is a source-media ↔ satellite cross-reference,
- *  so it must show the imagery: text alone can't be audited. The server refuses
- *  an empty collection in `events._require_proof_image`, over the same srcs
- *  `proofImageSrcs` collects. */
+/** True when the proof carries at least one image: a geolocation's proof is a source ↔
+ *  satellite cross-reference, and text alone can't be audited. The server enforces it in
+ *  `events._require_proof_image` over the same srcs. */
 export function proofHasImage(proof: Record<string, unknown> | null): boolean {
   return proofImageSrcs(proof).length > 0;
 }

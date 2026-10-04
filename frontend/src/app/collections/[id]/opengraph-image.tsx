@@ -29,35 +29,23 @@ export const size = OG_SIZE;
 export const contentType = OG_CONTENT_TYPE;
 export const alt = "A collection on Vidit: title, what it holds, and the mosaic of its items.";
 
-/** Three lines of title in the card's left column. */
 const TITLE_MAX = 64;
 
-/** Handle width the byline can hold under the readings. */
 const HANDLE_MAX = 24;
 
-/** The mosaic panel: 16:9, the aspect the profile card's slot holds it at, at
- *  the width the event card gives its locator. `gap` is `<CollectionCover>`'s,
- *  so the tiles read as one picture divided rather than as four cards. */
+/** Mosaic panel: 16:9; `gap` matches `<CollectionCover>`. */
 const PANEL = { width: 480, height: 270, gap: 2 };
 
-/** What one tile of the mosaic draws. A clip has no still the server can read,
- *  and a picture whose fetch was refused has none either, so both fall back to
- *  the panel colour and only the clip says why. */
+/** One mosaic tile. A clip, or a picture whose fetch was refused, falls back to the panel colour. */
 type MosaicTile =
   | { kind: "image"; src: string }
   | { kind: "video" }
   | { kind: "blank" };
 
 /**
- * Read one cover tile as something the card can draw.
- *
- * A picture is inlined through the guarded fetch (`ogImageDataUri`), at the
- * derivative the tile's own size wants: the wide `_hero` for a tile that fills
- * the panel, the 400px `_thumb` for one sharing it, which is the pick
- * `<CollectionCover>` makes for the same two cases. The tile's `role` is what
- * decides whether there is a derivative to want at all, so a tile off a proof
- * image is fetched at its original. A clip carries no derivative and no poster,
- * so nothing is fetched for it.
+ * Reads one cover tile for the card: pictures are inlined through the guarded
+ * fetch at the `_hero` or `_thumb` derivative `<CollectionCover>` picks (a proof
+ * tile uses its original, by `role`); a clip fetches nothing.
  */
 async function readTile(tile: CollectionCoverTile, lone: boolean): Promise<MosaicTile> {
   if (tile.media_type !== "image") return { kind: "video" };
@@ -70,8 +58,7 @@ async function readTile(tile: CollectionCoverTile, lone: boolean): Promise<Mosai
   return src ? { kind: "image", src } : { kind: "blank" };
 }
 
-/** The triangle a clip's tile wears in place of a frame. Drawn as a path rather
- *  than borrowed from the app's icon set, which Satori cannot render. */
+/** Play triangle as a path; Satori cannot render the app's icon set. */
 function PlayGlyph({ size: glyph }: { size: number }) {
   return (
     <svg width={glyph} height={glyph} viewBox="0 0 24 24">
@@ -90,8 +77,7 @@ function MosaicTileBox({ tile, box }: { tile: MosaicTile; box: OgMosaicBox }) {
     height: `${box.height}px`,
   };
   if (tile.kind === "image") {
-    // Satori draws `<img>`, not `next/image`: this tree is rasterised on the
-    // server and never reaches a browser that could run the optimizer.
+    // Satori draws `<img>`, not `next/image`: this tree is rasterised on the server.
     return (
       <img
         src={tile.src}
@@ -109,14 +95,7 @@ function MosaicTileBox({ tile, box }: { tile: MosaicTile; box: OgMosaicBox }) {
   );
 }
 
-/**
- * The mosaic, in `<CollectionCover>`'s arrangement: `ogMosaicBoxes` states
- * where each tile sits and this draws them, so the unfurl and the profile card
- * divide the same slot the same way.
- *
- * A collection with nothing showable draws the panel under the site's own
- * placeholder wording rather than an empty box.
- */
+/** The mosaic in `<CollectionCover>`'s arrangement (`ogMosaicBoxes`); empty collections draw the placeholder wording. */
 function MosaicPanel({ tiles }: { tiles: MosaicTile[] }) {
   const boxes = ogMosaicBoxes(tiles.length, PANEL);
   return (
@@ -131,8 +110,6 @@ function MosaicPanel({ tiles }: { tiles: MosaicTile[] }) {
         height: `${PANEL.height}px`,
         borderRadius: "16px",
         border: `2px solid ${OG_COLOR.border}`,
-        // What shows between the tiles, and what a collection with no mosaic
-        // shows instead of them.
         background: OG_COLOR.panel,
         overflow: "hidden",
       }}
@@ -173,18 +150,15 @@ export default async function CollectionOpenGraphImage({
   if (read.status === "missing") {
     return ogImageResponse(<NotFoundCard />);
   }
-  // A read that failed rather than answered says nothing about the link, so the
-  // card says nothing about it either.
+  // A failed read says nothing about the link, so neither does the card.
   if (read.status === "failed") {
     return ogFailedReadResponse();
   }
 
   const collection = read.data;
-  // As many tiles as the panel divides into, and no more: the arrangement is
-  // what decides how many boxes there are, so a wider cover cannot spill out.
+  // As many tiles as the arrangement has boxes, so a wider cover cannot spill out.
   const cover = collection.cover.slice(0, ogMosaicBoxes(collection.cover.length, PANEL).length);
-  // Every tile at once, each under the fetch's own budget, so a card costs one
-  // round of requests rather than a chain of them.
+  // Fetch all tiles at once, each under its own budget.
   const tiles = await Promise.all(cover.map((tile) => readTile(tile, cover.length === 1)));
 
   return ogImageResponse(
@@ -202,8 +176,6 @@ export default async function CollectionOpenGraphImage({
           <div style={{ display: "flex", fontSize: "44px", lineHeight: 1.15, color: OG_COLOR.text }}>
             {ogTruncate(collection.title, TITLE_MAX)}
           </div>
-          {/* How much it holds and the span its items cover, in the phrasing
-              the page and the profile card both print. */}
           <div style={{ display: "flex", marginTop: "24px", fontSize: "26px", color: OG_COLOR.accent }}>
             {collectionMetaSegments(collection).join("  ·  ")}
           </div>

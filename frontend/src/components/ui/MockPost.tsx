@@ -1,26 +1,20 @@
 import type { ReactNode } from "react";
 import { Bot, ImageIcon, Play } from "lucide-react";
 
-// A fake X post, rendered in X's own dark card so a guide can show the shape of
-// a real post instead of describing it. Used by the import guide (`/import`),
-// which teaches what to write and what the bot answers;
-// the composition mirrors the promo video's BotBeat
-// (video/src/components/BotBeat.tsx). The analyst is a placeholder identity,
-// never a real account.
+// A fake X post in X's dark card, so a guide can show a post's shape. Used by the
+// import guide (`/import`); the composition mirrors the promo video's BotBeat
+// (video/src/components/BotBeat.tsx). The analyst is a placeholder identity.
 //
-// Illustration only: nothing here is interactive, and the "links" are coloured
-// spans (<MockPostLink>), not anchors, since they point at posts that do not
-// exist.
+// Illustration only: the "links" are coloured spans (<MockPostLink>), not
+// anchors, since the posts do not exist.
 
-/** The one fake analyst the guides attribute their examples to, so a reader
- *  moving between them reads one person's posts rather than three accounts. */
+/** The one fake analyst every guide attributes its examples to. */
 export const MOCK_ANALYST = {
   name: "analyst",
   handle: "@analyst",
   avatar: "bg-gradient-to-br from-orange-500 to-red-600",
 } as const;
 
-/** The bot's own identity, for the reply a guide shows it posting. */
 export const MOCK_BOT = {
   name: "Vidit",
   handle: "@viditbot",
@@ -28,12 +22,10 @@ export const MOCK_BOT = {
   bot: true,
 } as const;
 
-/** X's anchor colour for a "link" inside a mock body. Display only. */
 export function MockPostLink({ children }: { children: ReactNode }) {
   return <span className="text-sky-500">{children}</span>;
 }
 
-/** The grey box standing in for an attached photo or video. */
 function Attachment({
   kind,
   label,
@@ -65,15 +57,13 @@ export function MockPost({
 }: {
   name: string;
   handle: string;
-  /** Avatar paint (a gradient class). The initial rides on top of it. */
+  /** A gradient class; the initial rides on top. */
   avatar: string;
-  /** Render the bot glyph instead of the name's initial. */
+  /** Render the bot glyph instead of the initial. */
   bot?: boolean;
   /** Handle this post answers, shown in the byline. */
   replyingTo?: string;
-  /** One attachment placeholder under the body. */
   media?: { kind: "video" | "image"; label: string };
-  /** The quote card X renders when the post quotes another post. */
   quoted?: {
     handle: string;
     text: string;
@@ -93,9 +83,7 @@ export function MockPost({
           <p className="truncate text-[15px] font-bold text-neutral-100">
             {name}
           </p>
-          {/* Wraps rather than truncates: "@handle · replying to @handle" is
-              longer than a narrow mock is wide, and an ellipsis there reads as
-              a broken byline. The name above it still truncates. */}
+          {/* Wraps: an ellipsis on a long byline reads as broken. */}
           <p className="text-[13px] text-neutral-500">
             {handle}
             {replyingTo && (
@@ -107,10 +95,9 @@ export function MockPost({
           </p>
         </div>
       </div>
-      {/* `overflow-wrap:anywhere` for the same reason the proof body carries it:
-          a mock link is one unbreakable token, and a long one sets the column's
-          min-content width, which pushed the guide's two-column case grid a few
-          pixels past its track on a phone. */}
+      {/* `overflow-wrap:anywhere`, as on the proof body: a long mock link sets
+          the column's min-content width and pushed the guide's case grid past
+          its track on a phone. */}
       <div className="mt-2.5 whitespace-pre-line text-[14px] leading-[21px] text-neutral-100 [overflow-wrap:anywhere]">
         {children}
       </div>

@@ -2,17 +2,11 @@ import { Clock, Download, Settings } from "lucide-react";
 
 import type { NumberedStep } from "@/components/ui/NumberedSteps";
 
-/** X's official walkthrough for requesting the data archive. */
 export const X_ARCHIVE_HELP =
   "https://help.x.com/en/managing-your-account/how-to-download-your-x-archive";
 
-/**
- * Getting the export out of X, the part that happens on X's side and is the
- * same wherever it is taught: the import panel on `/submit` walks a signed-in
- * analyst through it, and the public `/import` guide teaches it to a reader
- * with no account yet. Each caller appends its own closing step, since where
- * the zip goes differs between the two.
- */
+/** Getting the export out of X, shared by the `/submit` import panel and the public `/import`
+ * guide. Each caller appends its own closing step. */
 export const ARCHIVE_EXPORT_STEPS: NumberedStep[] = [
   {
     icon: Settings,

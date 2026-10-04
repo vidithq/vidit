@@ -33,7 +33,7 @@ export default function AppleIcon() {
           fontWeight: 700,
           fontSize: `${size.width * 0.9}px`,
           lineHeight: 1,
-          // Optical centring — see comment in icon.tsx.
+          // Optical centring, see icon.tsx.
           paddingTop: `${size.width * 0.18}px`,
         }}
       >

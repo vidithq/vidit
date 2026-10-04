@@ -1,8 +1,7 @@
 """Unit tests for the paid X API client — mentions read + reply write.
 
-Everything runs through ``httpx.MockTransport``; no network, no credentials.
-The OAuth 1.0a signature is pinned against the worked example in X's
-"Creating a signature" developer doc, so the signer can't drift silently.
+Runs through ``httpx.MockTransport``. The OAuth 1.0a signature is pinned to the
+worked example in X's "Creating a signature" doc.
 """
 
 from __future__ import annotations
@@ -94,9 +93,7 @@ def test_fetch_mentions_empty_timeline():
 
 
 def test_oauth1_signature_matches_x_docs_worked_example():
-    # The full worked example from X's "Creating a signature" developer doc:
-    # given these exact params and secrets, the doc's expected signature is
-    # hCtSmYh+iHYCEqBWrE7C7hYmtUk= — byte-for-byte.
+    # X's documented signature for these params and secrets: hCtSmYh+iHYCEqBWrE7C7hYmtUk=
     params = {
         "status": "Hello Ladies + Gentlemen, a signed OAuth request!",
         "include_entities": "true",

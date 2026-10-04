@@ -15,14 +15,11 @@ from app.services.thumbnails import thumbnail_media_criteria
 def follow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> bool:
     """Insert a follow row. Idempotent: returns ``False`` if the edge exists.
 
-    The router resolves the target user (and enforces ``follower_id !=
-    followed_user.id`` + the soft-delete filter) before calling.
+    The router resolves the target user and rejects self-follows first.
 
-    The canonical SAVEPOINT-idempotency note, shared by ``routers/tags``:
-    two requests race past the existence check, only one INSERT wins, and the loser hits the uniqueness violation
-    on flush. Staging the INSERT in a SAVEPOINT lets that ``IntegrityError``
-    roll back without poisoning the outer transaction, so the loser gets the
-    advertised idempotent answer instead of a 500.
+    Two requests can race past the existence check. The INSERT runs in a
+    SAVEPOINT so the loser's ``IntegrityError`` rolls back without poisoning
+    the outer transaction (same pattern as ``routers/tags``).
     """
     existing = (
         db.query(Follow)
@@ -68,23 +65,15 @@ def get_timeline(
     page: int = 1,
     per_page: int = 20,
 ) -> dict:
-    """Page through the published geolocations of the users ``user_id`` follows.
+    """Page (by offset) through the published geolocations of followed users.
 
-    Filtered on :func:`services.event_filters.published_events` beside the
-    visibility pair, so the feed carries what a followed analyst stood behind
-    and nothing else: a detection they have not vouched for is machine output,
-    and a geolocation they retracted is a claim taken back. Both leave the feed
-    the moment their status says so, which is the same set the analyst's own
-    profile feed serves.
+    Filtered on :func:`services.event_filters.published_events`, the same set
+    the analyst's own profile feed serves.
 
     Returns ``{"items": [(geo, lat, lng), ...], "total": int}``, ordered by
-    ``created_at DESC, id DESC``: submission order, the ordering the
-    rest of the read surface walks and the only one on this table that is
-    total and immutable, so the keyset cursor can key on it. ``event_date`` is
-    nullable and editable, so it cannot. Coordinates land in the same SELECT
-    via ``ST_X / ST_Y`` so the router avoids an N+1 fetching them per row.
-
-    ``page`` walks by offset.
+    ``created_at DESC, id DESC``: total and immutable, unlike the nullable,
+    editable ``event_date``, so a keyset cursor can key on it. Coordinates
+    come from the same SELECT to avoid an N+1.
     """
     followed_ids_stmt = select(Follow.followed_id).where(Follow.follower_id == user_id)
     followed_ids = list(db.execute(followed_ids_stmt).scalars().all())
@@ -100,8 +89,7 @@ def get_timeline(
             ST_Y(Event.event_coords).label("lat"),
             ST_X(Event.event_coords).label("lng"),
         )
-        # Loader choice: see the note on ``list_detections`` in
-        # ``routers/events/read.py``.
+        # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
         .options(
             joinedload(Event.owner),
             selectinload(Event.tags),

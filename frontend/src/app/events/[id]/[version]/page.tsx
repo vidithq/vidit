@@ -15,19 +15,10 @@ import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
 
 /**
- * One filed version of an event, at `/events/{id}/vN`.
- *
- * It renders through the same body the canonical page renders, fed the version's
- * snapshot instead of the live row, so a version cannot drift into a second
- * layout of its own. The banner says which version this is before anything else,
- * and the action cluster is absent: sharing, reporting and editing act on the
- * record, and the record is at `/events/{id}`. The body renders read-only for
- * the same reason, so its owner is offered no archive action on a link this
- * version showed and the live row may no longer carry.
- *
- * Three reads, each only when it is needed: the event (the immutables and the
- * version count), the version itself, and the version below it, which is where
- * the API files the byline and date of the edit that produced this one.
+ * One filed version at `/events/{id}/vN`: the canonical body fed the version's
+ * snapshot, read-only, with no action cluster (those act on the record). Three
+ * reads: the event, the version, and the version below (it holds the edit's
+ * byline and date).
  */
 export default function EventVersionPage() {
   const params = useParams();
@@ -40,8 +31,7 @@ export default function EventVersionPage() {
   const { data: geo, error } = useApiResource<EventDetail>(
     eventId && number !== null ? `/events/${eventId}` : null
   );
-  // The live row is the current version, so only the versions below it are
-  // filed and readable here.
+  // Only versions below the live row are filed.
   const filed = geo !== null && number !== null && number < geo.version_no;
   const { data: row, error: rowError } = useApiResource<EventVersion>(
     filed ? eventVersionPath(eventId, number!) : null
@@ -53,25 +43,19 @@ export default function EventVersionPage() {
   const isCurrent = geo !== null && number === geo.version_no;
   useEffect(() => {
     if (!isCurrent) return;
-    // The current version has one address, and this is not it: a `/vN` link
-    // that has since become the current version forwards to the canonical page
-    // rather than serving the record at two addresses. The page declares itself
-    // out of the back-stack first, so the arrow never walks onto a redirect.
+    // The current version has one address: forward to it, declaring this page out of the back-stack first.
     skipBackRecord();
     router.replace(`/events/${eventId}`);
   }, [isCurrent, router, eventId]);
 
-  // A segment that is not `v<number>` names no version of anything.
   if (number === null) notFound();
   if (error) return <PageError message={error} />;
   if (!geo) return <PageLoading />;
-  // Past the current version there is nothing to have been filed.
   if (number > geo.version_no) notFound();
   if (isCurrent) return <PageLoading />;
   if (rowError) return <PageError message={rowError} />;
   if (!row) return <PageLoading />;
-  // The byline read is the last one to land; a failed one costs the banner its
-  // byline rather than the page its content.
+  // The byline read lands last; if it fails the banner loses its byline, not the page its content.
   if (number > 1 && !producedBy && !producedByError) return <PageLoading />;
 
   const version = eventVersion(geo, number, { own: row, producedBy });

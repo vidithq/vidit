@@ -19,25 +19,18 @@ import { Pill } from "@/components/ui/Pill";
 import type { Concept } from "@/lib/fieldHelp";
 
 /**
- * THE event filter panel, shared by the map overlay and the search page: one
- * component owns the section list (Status → Conflict → Capture source →
- * Source media → the surface's date sections → Tags → Author), so a change to the
- * filter vocabulary lands on both surfaces at once. The surfaces differ only
- * in their date controls (the map's timeline scrubbers vs the search page's
- * date inputs), injected as data via `dateSections`, and in how much of the
- * stack they offer: `sections` names the subset, so a scope no section
- * narrows (the search page's Collections group, which `author` alone
- * narrows) opens the same panel on its own sections rather than a panel of
- * its own.
+ * The event filter panel, shared by the map overlay and the search page: one component owns the
+ * section list (Status, Conflict, Capture source, Source media, the surface's date sections, Tags,
+ * Author), so a vocabulary change lands on both. Surfaces differ in their date controls (injected
+ * via `dateSections`) and in `sections`, the subset they offer (the search page's Collections
+ * group is narrowed by `author` alone).
  *
- * State stays surface-owned (the map's context survives navigation, the
- * search page syncs the URL): this component receives one `values` object and
- * emits patches. `buildActiveFilterPills` derives the matching removable-pill
- * entries from the same shape so the two renderings can't drift either.
+ * State stays surface-owned: this component takes one `values` object and emits patches.
+ * `buildActiveFilterPills` derives the matching pill entries from the same shape so the
+ * renderings can't drift.
  */
 
-/** The common event filter values (the server vocabulary minus the
- *  surface-specific date windows). */
+/** The common event filter values (the server vocabulary minus the surface-specific date windows). */
 export interface EventFilterValues {
   statuses: string[];
   conflicts: string[];
@@ -58,9 +51,7 @@ export const EMPTY_EVENT_FILTERS: EventFilterValues = {
 
 export type EventFilterPatch = (patch: Partial<EventFilterValues>) => void;
 
-/** The panel's own sections, named so a surface can offer a subset. The
- *  injected date sections are not listed: a surface drops those by passing no
- *  `dateSections`. */
+/** The panel's own sections, so a surface can offer a subset. Date sections are dropped by passing no `dateSections`. */
 export type EventFilterSectionName =
   | "status"
   | "conflict"
@@ -69,8 +60,7 @@ export type EventFilterSectionName =
   | "tags"
   | "author";
 
-/** The whole stack, in render order: what a surface gets when it names no
- *  subset. */
+/** The whole stack in render order: the default when a surface names no subset. */
 export const ALL_FILTER_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
   "status",
   "conflict",
@@ -80,9 +70,7 @@ export const ALL_FILTER_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
   "author",
 ];
 
-/** The two date windows both event surfaces carry, whatever control drives them
- *  (the map's timeline scrubbers, the search page's date inputs). Empty string
- *  = open at that edge. */
+/** The two date windows both surfaces carry, whatever drives them. Empty string = open at that edge. */
 export interface DateWindows {
   eventFrom: string;
   eventTo: string;
@@ -100,8 +88,7 @@ export const EMPTY_DATE_WINDOWS: DateWindows = {
 export const eventWindowActive = (w: DateWindows) => !!(w.eventFrom || w.eventTo);
 export const addedWindowActive = (w: DateWindows) => !!(w.addedFrom || w.addedTo);
 
-/** A surface-specific section (the date controls) rendered inside the shared
- *  accordion at its canonical position. */
+/** A surface-specific section (the date controls) rendered in the accordion at its canonical position. */
 export interface InjectedSection {
   title: string;
   concept?: Concept;
@@ -110,13 +97,11 @@ export interface InjectedSection {
   children: ReactNode;
 }
 
-// Author typeahead debounce: long enough not to fetch usernames per keystroke,
-// short enough that the list is up by the time you stop typing.
+// Author typeahead debounce: not a fetch per keystroke, but up by the time typing stops.
 const AUTHOR_SUGGEST_DEBOUNCE_MS = 250;
 
-// Free-tag bucket grows unbounded; show this many, hide the rest behind
-// "Show all". Selected tags past the cut are surfaced regardless so you can
-// still see and clear them without expanding.
+// The free-tag bucket is unbounded: show this many, the rest behind "Show all". Selected tags past
+// the cut always show.
 const TAGS_PREVIEW = 8;
 
 // Fixed media-presence options (Media.media_type values).
@@ -125,33 +110,26 @@ const MEDIA_TYPES: ReadonlyArray<[string, string]> = [
   ["video", "Video"],
 ];
 
-/** The lifecycle statuses this panel offers (Event.status values), in the order
- *  the backend vocabulary declares them. The three live ones: a search reaches
- *  requested rows (the profile's open-requests block links into them), and the
- *  map and the search event groups show geolocated + detected. `closed` is left
- *  out, since a retracted row carries its own surfaces and the chip could only
- *  empty the result. Hand-kept mirror of the backend status vocabulary
- *  (`event_filters.STATUSES`, see AGENTS.md), every status but that one.
- *  Exported so the search page can gate crafted-URL values to the same
- *  vocabulary. */
+/** The lifecycle statuses this panel offers (Event.status values), in the backend vocabulary's
+ * order. Hand-kept mirror of `event_filters.STATUSES` (see AGENTS.md): every status but `closed`,
+ * whose retracted rows carry their own surfaces and which the chip could only empty. A search
+ * reaches requested rows (the profile's open-requests block links into them). Exported so the
+ * search page can gate crafted-URL values to the same vocabulary. */
 export const STATUS_FILTER_OPTIONS: ReadonlyArray<[string, string]> = [
   ["requested", "Requested"],
   ["detected", "Detected"],
   ["geolocated", "Geolocated"],
 ];
 
-// Value → chip label, so the pill row and the section summary reuse the
-// options' labels instead of re-deriving them from the raw value.
+// Value to chip label, shared by the pill row and the section summary.
 const STATUS_FILTER_LABELS: Record<string, string> = Object.fromEntries(STATUS_FILTER_OPTIONS);
 const statusLabel = (value: string) => STATUS_FILTER_LABELS[value] ?? value;
 
 const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
-/** The removable-pill entries for the common filter values; the surfaces
- *  append their date-window entries to the same array. The author is NOT a
- *  pill: its committed chip already lives inside the Author section, and a
- *  second "by @x" above it was pure duplication. Surfaces that show an
- *  active-filter total count it on top of these entries. */
+/** The removable-pill entries for the common values; surfaces append their date-window entries.
+ * The author is not a pill: its chip lives in the Author section. Surfaces count it on top of
+ * these entries. */
 export function buildActiveFilterPills(
   values: EventFilterValues,
   onPatch: EventFilterPatch
@@ -187,10 +165,8 @@ export function buildActiveFilterPills(
   ];
 }
 
-/** The removable-pill entries for the two date windows, appended after the
- *  value pills above. The clear callbacks are per window rather than a patch,
- *  because a surface may have more to reset than the dates (the map also stops
- *  that window's playback). */
+/** Pill entries for the two date windows. Clear callbacks are per window, not a patch, because a
+ * surface may reset more than dates (the map also stops that window's playback). */
 export function buildDateWindowPills(
   windows: DateWindows,
   onClearEvent: () => void,
@@ -218,9 +194,8 @@ export function buildDateWindowPills(
   ];
 }
 
-/** True when anything in the shared vocabulary narrows the view. The author
- *  counts even though it carries no pill (its chip lives in the Author
- *  section), so a filtered surface can never read as unfiltered. */
+/** True when anything in the shared vocabulary narrows the view. The author counts though it has
+ * no pill, so a filtered surface never reads as unfiltered. */
 export function hasAnyFilter(
   values: EventFilterValues,
   windows: DateWindows
@@ -252,37 +227,29 @@ export function EventFilterSections({
   values: EventFilterValues;
   onPatch: EventFilterPatch;
   dateSections?: InjectedSection[];
-  /** Which sections this surface offers. Defaults to the whole stack; a
-   *  surface scoped to a view a section cannot narrow leaves it out rather
-   *  than offering a control that can only empty the result (the search
-   *  page's legacy request scope has no Status, its Collections scope has the
-   *  Author alone). */
+  /** Which sections this surface offers (default: all). A surface scoped to a view a section can't
+   * narrow leaves it out rather than offer a control that can only empty the result. */
   sections?: ReadonlyArray<EventFilterSectionName>;
 }) {
   const offers = (name: EventFilterSectionName) => sections.includes(name);
   const [showAllTags, setShowAllTags] = useState(false);
-  // The author input is commit-style, like picking a tag chip: typing stays
-  // local and fetches real usernames to pick from (the filter itself is an
-  // exact match server-side, so a fragment must become a handle), and the
-  // committed value renders as a removable chip below. Live-filtering per
-  // keystroke refetched the surface on every letter and flashed partial
-  // "by @a" pills.
+  // The author input is commit-style, like a tag chip: typing stays local and fetches usernames to
+  // pick from (the server filter is an exact match, so a fragment must become a handle); the
+  // committed value renders as a removable chip. Live-filtering per keystroke refetched on every
+  // letter and flashed partial pills.
   const [authorDraft, setAuthorDraft] = useState("");
   const [authorSuggestions, setAuthorSuggestions] = useState<string[]>([]);
   const commitAuthor = (name: string) => {
     const v = name.trim();
-    // Same gate as the server's ?author= pattern: an ineligible draft (space,
-    // @, too long) is silently not committed instead of 422ing the surface.
+    // Same gate as the server's ?author= pattern: an ineligible draft is not committed, instead of 422ing.
     if (!AUTHOR_FILTER_RE.test(v)) return;
     onPatch({ author: v });
     setAuthorDraft("");
     setAuthorSuggestions([]);
   };
 
-  // Debounced typeahead over live usernames. An ineligible draft (under two
-  // characters, or carrying something the ?author= gate rejects) can't be
-  // queried, so it clears the list instead of 422ing; that clear is immediate,
-  // only the fetch waits out the debounce.
+  // Debounced typeahead over usernames. An ineligible draft (under two characters or rejected by
+  // the ?author= gate) clears the list instead of 422ing; the clear is immediate, only the fetch waits.
   const authorQuery = authorDraft.trim();
   const canSuggest = authorQuery.length >= 2 && AUTHOR_FILTER_RE.test(authorQuery);
   useEffect(() => {
@@ -306,8 +273,7 @@ export function EventFilterSections({
     [authorQuery, canSuggest],
     AUTHOR_SUGGEST_DEBOUNCE_MS,
   );
-  // Accordion open-state lives here (not per-section) so a re-render never
-  // resets which sections are expanded. Curated buckets open by default.
+  // Accordion open-state lives here so a re-render never resets it. Curated buckets open by default.
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     Conflict: true,
     "Capture source": true,
@@ -470,10 +436,8 @@ export function EventFilterSections({
               type="text"
               value={authorDraft}
               onChange={(e) => setAuthorDraft(e.target.value)}
-              // Enter commits the top suggestion (a real handle) when one is
-              // up, else the raw draft. No blur commit: clicking away
-              // mid-typing must not apply a partial username, the
-              // accidental-filter behavior the commit style exists to prevent.
+              // Enter commits the top suggestion when one is up, else the raw draft. No blur commit: clicking
+              // away mid-typing must not apply a partial username.
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();

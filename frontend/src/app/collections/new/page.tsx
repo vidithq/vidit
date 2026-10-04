@@ -18,30 +18,13 @@ import {
 import type { EventDetail } from "@/types";
 
 /**
- * Opening a collection: its own page, the address `/submit` is for an event.
- *
- * A collection is a thing an analyst names and describes, so the write gets a
- * page with the two fields on it rather than a panel that opens inside whatever
- * surface the analyst happened to be reading. Two surfaces send the reader
- * here, the profile's Collections section and the add-to-collection panel on an
- * event, and both hand over rather than growing a form of their own.
- *
- * `?event=<id>` is the second of those: the event arrives on the picker's
- * first block, so it rides the create like every other row the analyst adds,
- * and the page returns to the event, which makes shelving on a collection that
- * does not exist yet one trip away from the event and back. Without it the
- * page opens the collection it just created. The event is read here (the row
- * the block renders is the catalogue card's, which needs the event and not
- * only its id) and the form waits on that read, since it seeds its blocks
- * once.
- *
- * The page is behind the wall (`useRequireAuth`, the client-side bounce every
- * write sub-route under a public prefix takes), and both its exits, Cancel and
- * the header's Back, land where the reader came from.
+ * Opens a collection. `?event=<id>` puts that event in the picker's first
+ * block (it rides the create) and the page returns to the event; otherwise the
+ * new collection opens. The form waits on the event read since it seeds its
+ * blocks once. Behind `useRequireAuth`; both exits land where the reader came from.
  */
 export default function NewCollectionPage() {
-  // `useSearchParams` opts out of static prerender, so the body lives under a
-  // Suspense boundary (the shape every other page reading the query takes).
+  // `useSearchParams` opts out of static prerender, so the body sits under Suspense.
   return (
     <Suspense fallback={<PageLoading />}>
       <NewCollectionPageBody />
@@ -55,23 +38,18 @@ function NewCollectionPageBody() {
   const { user, loading } = useRequireAuth();
   const eventId = searchParams.get(NEW_COLLECTION_EVENT_PARAM);
 
-  // The one event a `?event=` link carries, as the picker's first block
-  // renders it. Skipped entirely without the parameter.
+  // The `?event=` event for the picker's first block; skipped without the parameter.
   const { data: event, error: eventError } = useApiResource<EventDetail>(
     eventId ? `/events/${encodeURIComponent(eventId)}` : null,
   );
 
-  // Where the reader came from, and where both exits land: the event they were
-  // shelving, or their own profile, which is where the section that offers this
-  // page lives.
+  // Where both exits land: the event being shelved, else the reader's profile.
   const origin = eventId
     ? `/events/${encodeURIComponent(eventId)}`
     : `/profile/${encodeURIComponent(user?.username ?? "")}`;
 
   const create = useMutation(
-    // One request: the picked events ride the create, so a refusal on any of
-    // them says so on this page rather than landing the reader on a
-    // collection holding part of what they picked.
+    // One request: picked events ride the create, so a refusal on any of them shows here.
     (title: string, description: CollectionDescription, eventIds: string[]) =>
       createCollection(title, description, eventIds),
     {
@@ -83,9 +61,7 @@ function NewCollectionPageBody() {
 
   if (loading || !user) return <PageLoading />;
   if (eventError) return <PageError message={eventError} backHref={origin} />;
-  // The form seeds its blocks once, so it waits on the event: mounting it
-  // before the read lands would open the collection holding nothing, and the
-  // create would drop the event the analyst was shelving.
+  // The form seeds once: mounting before the read lands would drop the event.
   if (eventId && !event) return <PageLoading />;
 
   return (

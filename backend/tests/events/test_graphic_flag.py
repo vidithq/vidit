@@ -1,11 +1,6 @@
-"""The author-set graphic-content flag across the write and read surfaces.
+"""The author-set ``is_graphic`` flag.
 
-``is_graphic`` is declared on the create / request forms and ratchets on the
-geolocate edit: the form raises the flag and never lowers it, so only the admin
-moderation endpoint can clear one. Both read payloads carry it, so a card and a
-detail page can cover the imagery without a second request. Shared fixtures
-live in `conftest.py`; `client` / `_make_geo` / the proof helpers in
-`_helpers.py`.
+It ratchets on edit (only admin moderation clears it) and both read payloads carry it.
 """
 
 from __future__ import annotations
@@ -60,8 +55,7 @@ def _geolocate_form(conflict, capture_source_tag, **overrides):
 
 
 def test_create_defaults_to_not_graphic(db, author, conflict, capture_source_tag):
-    """A form that omits the field submits an unflagged event, so an older
-    client cannot accidentally mark every submission."""
+    """A form that omits the field submits an unflagged event."""
     response = client.post(
         "/api/v1/events",
         data=_create_form(conflict, capture_source_tag),
@@ -92,8 +86,7 @@ def test_create_records_the_declared_flag(db, author, conflict, capture_source_t
 
 
 def test_request_records_the_declared_flag(db, author):
-    """A request carries the poster's footage from the start, so it declares
-    the flag on the same terms as a direct submit."""
+    """A request declares the flag on the same terms as a direct submit."""
     response = client.post(
         "/api/v1/events/requests",
         data={
@@ -127,8 +120,7 @@ def test_geolocate_sets_the_flag(db, author, conflict, capture_source_tag):
 
 
 def test_geolocate_cannot_clear_the_flag(db, author, conflict, capture_source_tag):
-    """The flag ratchets: unlike every other field on the form, an omitted box
-    leaves a flag the detection already carried rather than clearing it."""
+    """An omitted box leaves a flag the detection already carried, unlike every other form field."""
     geo = _make_geo(
         db,
         author=author,
@@ -153,8 +145,7 @@ def test_geolocate_cannot_clear_the_flag(db, author, conflict, capture_source_ta
 def test_admin_can_still_unmark_a_ratcheted_flag(
     db, author, admin_user, conflict, capture_source_tag
 ):
-    """The moderation endpoint is the one door out: after the form has failed
-    to clear the flag, an admin unmark still does."""
+    """An admin unmark clears a flag the form cannot."""
     geo = _make_geo(
         db,
         author=author,
@@ -185,8 +176,7 @@ def test_admin_can_still_unmark_a_ratcheted_flag(
 
 
 def test_flag_travels_on_the_list_and_detail_payloads(db, author):
-    """Both read shapes carry it: the card covers its thumbnail, the detail
-    page covers the media, neither needs a second request to find out."""
+    """Both read shapes carry the flag, so no second request is needed."""
     graphic = _make_geo(db, author=author, is_graphic=True)
     plain = _make_geo(db, author=author)
 

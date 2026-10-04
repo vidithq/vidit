@@ -1,25 +1,17 @@
 """Content reports and the takedown they resolve into.
 
-A report names one target, an event or a collection, and both walk one queue.
-Four writes and one read live here: a viewer files a report against an event
-(:func:`create_event_report`) or against a collection
-(:func:`create_collection_report`), an admin walks the queue
-(:func:`list_reports`) and closes a row with a verdict
-(:func:`resolve_report`), and an admin acts on an event directly, with no
-report to hang it on (:func:`set_event_moderation`). The two admin writes
-share one home because they perform the same two mutations, the graphic flag
-and ``events.hidden_at``, and each mutation must leave the same audit trail
-whichever door it came through. The collection takedown a verdict applies is
-``services/admin.withhold_collection``, the same mutation the admin's own
-``DELETE /admin/collections/{id}`` performs, for the same reason.
+A report names one target, an event or a collection, and both walk one queue:
+a viewer files one (:func:`create_event_report`, :func:`create_collection_report`),
+an admin walks the queue (:func:`list_reports`) and closes a row with a verdict
+(:func:`resolve_report`), or acts on an event directly
+(:func:`set_event_moderation`). The two admin writes share a home because they
+perform the same mutations (graphic flag, ``events.hidden_at``) and must leave
+the same audit trail. The collection takedown is
+``services/admin.withhold_collection``, shared with
+``DELETE /admin/collections/{id}``.
 
-The two create verbs meet at :func:`_file_report`, which writes the row and
-sends the notification: what differs between them is which target the row
-names and how that target is resolved, not what filing a report does.
-
-Errors are typed with stable ``code`` strings, translated to HTTP via the
-shared ``{code, message}`` envelope; :data:`REPORT_ERROR_STATUS` is the one
-mapping every router reads, the shape ``evidence_intake`` uses.
+Errors carry stable ``code`` strings; :data:`REPORT_ERROR_STATUS` is the one
+code-to-HTTP mapping every router reads.
 """
 
 from __future__ import annotations
@@ -50,12 +42,7 @@ logger = logging.getLogger(__name__)
 
 
 class ReportError(Exception):
-    """Base for friendly errors raised by the reports service.
-
-    Carries a ``code`` so a router maps to an HTTP status without
-    string-matching exception text. Mirrors
-    :class:`app.services.admin.AdminError`.
-    """
+    """Friendly error; ``code`` maps to HTTP status. Mirrors ``admin.AdminError``."""
 
     code: str = "report_error"
 
@@ -68,13 +55,10 @@ class EventNotFoundError(ReportError):
 
 
 class CollectionNotFoundError(ReportError):
-    """The reported collection does not exist, is withheld, or belongs to a
-    soft-deleted account.
+    """The collection does not exist, is withheld, or belongs to a soft-deleted account.
 
-    The collection half of :class:`EventNotFoundError`, answering the same way
-    for the same reason: all three states are invisible to the caller, so all
-    three read alike rather than confirming which one it is. The code is the
-    one every ``/collections`` path already raises for an unreadable id.
+    All three read alike so the caller cannot tell which. The code is the one
+    every ``/collections`` path raises for an unreadable id.
     """
 
     code = "collection_not_found"
@@ -87,43 +71,32 @@ class ReportNotFoundError(ReportError):
 class ReportAlreadyResolvedError(ReportError):
     """The report already carries a verdict.
 
-    Reports are resolved once and never reopened or deleted, so a second
-    resolve is a conflict rather than an overwrite: the first verdict is the
-    record of what was decided, and its audit row names the admin who decided
-    it.
+    Reports are resolved once, so a second resolve conflicts instead of
+    overwriting the first verdict and its audit row.
     """
 
     code = "report_already_resolved"
 
 
 class ReportTargetGoneError(ReportError):
-    """The reported target was deleted, so this verdict has nothing to act on.
+    """The target was deleted (both target columns are SET NULL).
 
-    The report survives the deletion (both target columns are SET NULL), which
-    keeps the record of the complaint, but every verdict except ``dismissed``
-    mutates a row that no longer exists. ``dismissed`` stays available: closing
-    the report is still a verdict.
+    Every verdict except ``dismissed`` mutates a row that no longer exists.
     """
 
     code = "report_target_gone"
 
 
 class ReportVerdictNotApplicableError(ReportError):
-    """This verdict does not exist for this kind of target.
+    """The verdict does not exist for this target kind.
 
-    One verdict set serves both kinds, and ``marked_graphic`` belongs to an
-    event alone: the flag is a column on ``events``, and a collection carries
-    no footage of its own, only items each moderated on their own. Refused
-    rather than ignored, on the same terms as a verdict aimed at a deleted
-    target: an admin who picks it is told the report is still open instead of
-    reading a verdict that changed nothing.
+    ``marked_graphic`` is an event column; a collection holds no footage of
+    its own. Refused so the admin learns the report is still open.
     """
 
     code = "report_verdict_not_applicable"
 
 
-# Status per code, read by the two public report endpoints and the admin
-# router. One home, so they cannot drift.
 REPORT_ERROR_STATUS: dict[str, int] = {
     "event_not_found": 404,
     "collection_not_found": 404,
@@ -149,15 +122,9 @@ def _notify_new_report(
 ) -> None:
     """Tell the moderation address a report landed, best effort.
 
-    Runs as a background task, after the response: the report is already
-    recorded and already in the admin queue, so the notification is a heads-up
-    rather than the delivery mechanism, and a reporter must not wait on a
-    Resend round trip to learn their report landed. A provider outage is
-    logged and swallowed on the same terms as the auth mailers.
-
-    Plain values rather than the ``ContentReport`` row: the request's session
-    is gone by the time this runs, so an ORM instance would be detached with
-    expired attributes.
+    Runs as a background task after the response; a provider outage is logged
+    and swallowed. Takes plain values because the request's session is gone
+    by then (an ORM row would be detached).
     """
     try:
         email.send(
@@ -178,13 +145,7 @@ def _notify_new_report(
 
 
 class _ReportTarget(NamedTuple):
-    """What one report names, resolved before the row is written.
-
-    ``kind`` is the word the notification puts in every line describing the
-    thing. Exactly one of the two id fields is set, which is the row the
-    report points at and the half of ``ck_content_reports_one_target`` the app
-    layer holds.
-    """
+    """What one report names. Exactly one id field is set (``ck_content_reports_one_target``)."""
 
     kind: str
     event_id: uuid.UUID | None
@@ -205,18 +166,10 @@ def _file_report(
 ) -> ContentReport:
     """Write one report against a resolved target and notify the moderators.
 
-    The half of filing a report that does not depend on what was reported, so
-    an event report and a collection report land the same row, in the same
-    queue, with the same notification behind them. The caller resolves the
-    target first, which is where the "you cannot report what you cannot see"
-    refusal lives.
-
-    The notification goes out when an address is configured, enqueued after
-    the commit and run after the response, so the send is never on the
-    reporter's critical path and never at the report's expense.
-    ``reporter_username`` comes from the caller's session rather than a lookup:
-    the commit expires the row, so re-reading it here would cost a second query
-    for a name the router already holds.
+    The caller resolves the target first, which is where the "cannot report
+    what you cannot see" refusal lives. The notification is enqueued after the
+    commit when an address is configured. ``reporter_username`` comes from the
+    caller because the commit expires the row.
     """
     report = ContentReport(
         event_id=target.event_id,
@@ -259,14 +212,9 @@ def create_event_report(
 ) -> ContentReport:
     """File one report against a live event.
 
-    ``reporter_user_id`` is the caller's id when they happened to be logged in
-    and ``None`` otherwise: reporting is open to anonymous viewers, because the
-    people a piece of footage harms rarely hold an account on the platform that
-    published it.
-
-    An event that does not exist, is soft-deleted, or is already withheld reads
-    as :class:`EventNotFoundError` (404): all three are invisible to the caller,
-    so all three answer the same way rather than confirming which.
+    ``reporter_user_id`` is ``None`` for anonymous viewers; reporting is open
+    to them. A missing, soft-deleted, or withheld event raises
+    :class:`EventNotFoundError` (404) alike.
     """
     visible = (
         db.query(Event.id, Event.title).filter(Event.id == event_id, *visible_events()).first()
@@ -303,18 +251,11 @@ def create_collection_report(
 ) -> ContentReport:
     """File one report against a readable collection.
 
-    The same gesture as reporting an event, open to anonymous viewers on the
-    same terms and under the same per-IP limit: a shelf can misrepresent what
-    it holds, and the reader who notices rarely holds an account here.
-
-    A collection that does not exist, is already withheld, or belongs to a
-    soft-deleted account reads as :class:`CollectionNotFoundError` (404), the
-    three states its own page already answers 404 for, through the one
-    readability predicate that page reads
-    (``services/collections.visible_collections``). The read is deliberately
-    viewer-blind, unlike ``services/collections.resolve_collection``: an admin
-    reads a withheld collection in order to judge it, which is not a reason to
-    let one more report be filed against a shelf already taken down.
+    Open to anonymous viewers under the same per-IP limit as event reports.
+    An unreadable collection raises :class:`CollectionNotFoundError` (404) via
+    ``services/collections.visible_collections``. The read is viewer-blind,
+    unlike ``resolve_collection``: an admin may read a withheld collection, but
+    no more reports should be filed against it.
     """
     visible = (
         db.query(Collection.id, Collection.title)
@@ -344,16 +285,12 @@ def create_collection_report(
 def list_reports(db: Session, *, page: int, per_page: int) -> tuple[list[ContentReport], int]:
     """One page of the queue: open reports first, newest first within each group.
 
-    ``resolved_at IS NOT NULL`` sorts ascending, so ``false`` (open) leads. The
-    ``created_at, id`` tie-break makes the ordering total, which an offset walk
-    needs to avoid serving a row twice. ``ix_content_reports_queue`` carries
-    these three expressions in this order, so the walk reads the index rather
-    than sorting the table; changing this ORDER BY means changing that index.
+    The ``created_at, id`` tie-break makes the order total so an offset walk
+    never serves a row twice. ``ix_content_reports_queue`` carries these three
+    expressions in this order; change both together.
 
-    One list for both kinds of target. The reported collection rides along
-    eagerly, owner included, because the queue names a collection row by its
-    title and its owner: a lazy load would cost two round trips per collection
-    report on a page of twenty.
+    The collection and its owner load eagerly to avoid two lazy round trips
+    per collection report.
     """
     total = db.query(func.count(ContentReport.id)).scalar() or 0
     rows = (
@@ -372,11 +309,7 @@ def list_reports(db: Session, *, page: int, per_page: int) -> tuple[list[Content
 
 
 def _mark_graphic(db: Session, *, event: Event, actor_id: uuid.UUID, graphic: bool) -> bool:
-    """Set or clear the graphic flag over the author's declaration.
-
-    Returns whether the row actually changed; a no-op writes no audit row,
-    since re-affirming a flag is not an administrative act.
-    """
+    """Set or clear the graphic flag. Returns whether it changed (a no-op writes no audit row)."""
     if event.is_graphic == graphic:
         return False
     event.is_graphic = graphic
@@ -390,11 +323,10 @@ def _mark_graphic(db: Session, *, event: Event, actor_id: uuid.UUID, graphic: bo
 
 
 def _set_hidden(db: Session, *, event: Event, actor_id: uuid.UUID, hidden: bool) -> bool:
-    """Withhold the event from the public read surface, or restore it.
+    """Withhold the event from public reads, or restore it.
 
-    Returns whether the row actually changed, which is also what tells the
-    router whether the points cache has to be dropped: an idempotent hide moves
-    nothing on the map.
+    Returns whether it changed, which tells the router whether to drop the
+    points cache.
     """
     if hidden == (event.hidden_at is not None):
         return False
@@ -417,45 +349,29 @@ def resolve_report(
 ) -> tuple[ContentReport, bool]:
     """Close one report with a verdict, applying it to what the report names.
 
-    ``dismissed`` closes the report and leaves the target untouched, whichever
-    kind it is. ``hidden`` withholds the target from every public read, the
-    event's ``hidden_at`` or the collection's, the same stamp
-    ``DELETE /admin/collections/{id}`` writes. ``marked_graphic`` sets an
-    event's graphic flag and exists for an event alone, so a collection report
-    answers it with :class:`ReportVerdictNotApplicableError` (409) rather than
-    closing on a verdict that changed nothing.
+    ``dismissed`` leaves the target untouched. ``hidden`` withholds the target
+    from public reads (same stamp as ``DELETE /admin/collections/{id}``).
+    ``marked_graphic`` is event-only: a collection report raises
+    :class:`ReportVerdictNotApplicableError` (409).
 
-    Each verdict stamps the report and appends a ``report_resolved`` audit row
-    naming the target under its own key; a verdict that actually changed the
-    target appends the matching action too (``event_marked_graphic``,
-    ``event_hidden``, ``collection_hidden``), so the trail reads the same
-    whether the change came from the queue or from the admin verb beside it.
+    Each verdict appends a ``report_resolved`` audit row, plus the matching
+    action (``event_marked_graphic``, ``event_hidden``, ``collection_hidden``)
+    when the target changed, so the trail is the same as via the admin verbs.
 
-    A report whose target was deleted since (both id columns NULL) accepts
-    ``dismissed`` only: every other verdict mutates a row that is no longer
-    there.
+    A report whose target was deleted (both id columns NULL) accepts
+    ``dismissed`` only (:class:`ReportTargetGoneError`, 409).
 
-    Concurrency: the report is fetched ``with_for_update()`` FIRST and its
-    verdict re-checked under the lock, so two admins resolving the same report
-    serialize and the loser sees the 409 rather than overwriting the first
-    verdict. Every target-mutating verdict locks its target the same way;
-    ``dismissed`` touches no target, so it neither fetches nor locks one.
+    The report is locked ``FOR UPDATE`` first and its verdict re-checked, so
+    concurrent resolves serialize and the loser gets
+    :class:`ReportAlreadyResolvedError` (409). Target-mutating verdicts lock
+    their target the same way.
 
-    Returns ``(report, hidden_changed)``; the flag is the router's cue to drop
-    the points cache, and it is only ever set by an event takedown, a
-    collection holding no point of its own. Raises
-    :class:`ReportNotFoundError` (404) on an unknown id,
-    :class:`ReportAlreadyResolvedError` (409) on a report that already carries
-    a verdict, and :class:`ReportTargetGoneError` (409) on a target-mutating
-    verdict against a deleted target.
+    Returns ``(report, hidden_changed)``; the flag tells the router to drop
+    the points cache and is only set by an event takedown. Raises
+    :class:`ReportNotFoundError` (404) on an unknown id.
     """
-    # Lock the report row FIRST, then re-check the verdict under the lock, the
-    # ``_publish_detection`` pattern: two admins resolving the same report
-    # serialize here and the loser reads the winner's verdict, so the
-    # documented 409 holds under concurrency instead of both writes landing.
-    # ``populate_existing()`` is load-bearing whenever the row is already in
-    # the session's identity map, where the locked SELECT would otherwise be
-    # answered from a stale Python object.
+    # ``populate_existing()`` keeps the locked SELECT from returning a stale
+    # identity-map object.
     report = (
         db.query(ContentReport)
         .filter(ContentReport.id == report_id)
@@ -469,16 +385,12 @@ def resolve_report(
         raise ReportAlreadyResolvedError("This report is already resolved")
 
     hidden_changed = False
-    # ``dismissed`` closes the row and touches no target, so it skips the fetch
-    # and the lock below entirely. It is also the only verdict an orphaned
-    # report accepts.
+    # ``dismissed`` touches no target, so it skips the fetch and lock.
     if resolution != "dismissed":
         if report.event_id is not None:
-            # Locked because the verdict mutates it: a resolve racing the
-            # direct moderation endpoint over the same event serializes on
-            # this row rather than interleaving the two writes. Soft-deleted
-            # and already-hidden rows are reachable on purpose: a report filed
-            # before the removal still deserves a verdict.
+            # Locked so a resolve racing the direct moderation endpoint
+            # serializes. Soft-deleted and hidden events stay reachable: a
+            # report filed before the removal still deserves a verdict.
             event = (
                 db.query(Event)
                 .filter(Event.id == report.event_id)
@@ -495,11 +407,9 @@ def resolve_report(
                 raise ReportVerdictNotApplicableError(
                     "A collection carries no footage of its own, so it cannot be marked graphic"
                 )
-            # Locked like the event above, so this door and
-            # ``DELETE /admin/collections/{id}`` serialize on the row they
-            # both stamp. An already withheld collection is reachable on
-            # purpose: a second report against it still deserves a verdict,
-            # and the stamp is idempotent.
+            # Locked like the event above, serializing with
+            # ``DELETE /admin/collections/{id}``. Already withheld stays
+            # reachable (the stamp is idempotent).
             collection = (
                 db.query(Collection)
                 .filter(Collection.id == report.collection_id)
@@ -509,8 +419,6 @@ def resolve_report(
             )
             withhold_collection(db, collection=collection, actor_id=actor_id)
         else:
-            # The target was deleted; the report outlived it (SET NULL). There
-            # is nothing left to mark or hide.
             raise ReportTargetGoneError(
                 "The reported item was deleted, so this report can only be dismissed"
             )
@@ -524,10 +432,7 @@ def resolve_report(
         action="report_resolved",
         target={
             "report_id": str(report.id),
-            # Both target keys, every time, so one shape reads the trail: the
-            # one the report names carries an id and the other is NULL. Both
-            # are NULL on a report whose target was deleted, which is the
-            # orphan the branch above refuses anything but ``dismissed`` for.
+            # Both keys always present so one shape reads the trail.
             "event_id": str(report.event_id) if report.event_id is not None else None,
             "collection_id": (
                 str(report.collection_id) if report.collection_id is not None else None
@@ -550,21 +455,16 @@ def set_event_moderation(
 ) -> tuple[Event, bool]:
     """Apply an admin's moderation state to one event, with no report behind it.
 
-    Both fields are optional and independent: ``None`` leaves that axis alone,
-    and a value equal to what the row already holds writes nothing at all, so
-    re-sending the current state is not an administrative act. The one verb that
-    can also UNDO a takedown, which is why it does not go through
-    ``_resolve_live_event`` (that helper hides withheld rows by design).
+    ``None`` leaves that axis alone; a value equal to the current one writes
+    nothing. This verb can also undo a takedown, so it bypasses
+    ``_resolve_live_event`` (which hides withheld rows).
 
-    Concurrency: the event is fetched ``with_for_update()``, like the one a
-    report verdict mutates, so the two admin doors onto the same two columns
+    The event is locked ``FOR UPDATE`` so this door and a report verdict
     serialize.
 
     Returns ``(event, hidden_changed)``. Raises :class:`EventNotFoundError`
     (404) for an unknown or soft-deleted event.
     """
-    # Locked like the event a report verdict mutates, so the two admin doors
-    # onto the same two columns serialize instead of interleaving.
     event = (
         db.query(Event)
         .filter(Event.id == geolocation_id, Event.deleted_at.is_(None))

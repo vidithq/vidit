@@ -12,13 +12,11 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { collectionPoints, eventCountLabel } from "@/lib/collections";
 import type { EventDetail, EventListItem } from "@/types";
 
-// The same dynamic import every other map surface takes: MapLibre touches
-// `window` at module scope, so it never server-renders.
+// MapLibre touches `window` at module scope, so it never server-renders.
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
-/** True for a target that owns its own arrow keys: a field being typed into,
- *  a select being walked, or an editable box. The step keys are a reading
- *  shortcut, and a shortcut never takes a caret away from what it is doing. */
+/** True for a target that owns its arrow keys (a field, a select, an editable
+ *  box): the step shortcut never takes a caret away. */
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
@@ -26,45 +24,31 @@ function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 /**
- * The collection's Coverage card, stepped: the whole set on the map, one item
- * at a time in the panel beside it.
+ * The collection's Coverage card, stepped: the whole set on the map, one item at
+ * a time in the panel beside it.
  *
- * It is the map page's own two surfaces, rearranged around a position rather
- * than around a selection. The map is the shared [`<Map>`](../map/Map.tsx)
- * over the items' pins, framed on the whole set on open and flying to the
- * current item on every step, with the steps already walked dimmed. The panel
- * is the map's own `DetailSidePanel`, which fetches nothing and renders the
- * event handed to it, under a header saying where in the collection the reader
- * stands and how to move.
+ * The map is the shared `<Map>` over the items' pins, framed on the whole set
+ * on open and flying to the current item on each step, walked steps dimmed. The
+ * panel is the map's `DetailSidePanel`, which renders the event handed to it
+ * under a header saying where the reader stands.
  *
- * **The two sit side by side rather than one over the other.** The panel is
- * 384px wide and caps its height against the viewport, both of which are
- * answers about a full-screen canvas: inside a card it would cover most of the
- * block at `sm` and run past its bottom edge, and below `sm` the same panel is
- * a sheet pinned to the viewport, which is wrong on a page that scrolls. So
- * the card holds a two-column block whose columns stack below `sm`, and the
- * panel takes its `inline` placement, where it is a column of the page with no
- * insets, no sheet and no cap of its own. The block's height is the card's one
- * fixed figure from `sm` up, held under the map page's own panel cap so a
- * short laptop window never has to scroll the page to see the bottom of it.
+ * **Side by side.** The panel's 384px width and viewport-relative height cap
+ * suit a full-screen canvas, and below `sm` it is a viewport-pinned sheet. So
+ * the card holds a two-column block (stacked below `sm`) and the panel takes its
+ * `inline` placement. The block's height is fixed from `sm` up, under the map
+ * page's panel cap.
  *
- * Nothing here is the owner's: `DetailSidePanel` takes no action tier on any
- * surface, so the player shows every reader the same panel.
- *
- * The step itself belongs to the caller, which keeps it in the URL: the step
- * is the share unit, and a component that held it in state would make a shared
- * link open somewhere else. The arrow keys keep a cursor of their own over
- * that same number, so a held key walks the collection rather than waiting on
- * the round trip through the URL for each press.
+ * The step lives in the caller's URL (the step is the share unit). The arrow
+ * keys keep their own cursor over it, so a held key walks the collection
+ * without waiting on the URL round trip.
  */
 export function CollectionReader({
   items,
   step,
   onStep,
 }: {
-  /** The collection's items, in the order they happened. */
   items: EventListItem[];
-  /** Which item is being read, 1-based and already clamped into `items`. */
+  /** 1-based, already clamped into `items`. */
   step: number;
   onStep: (step: number) => void;
 }) {
@@ -72,20 +56,16 @@ export function CollectionReader({
   const current = items[step - 1];
   const currentId = current?.id ?? null;
 
-  // The panel's event, read the way every other page reads one row. The hook
-  // aborts the request in flight when the reader steps again, so a slow event
-  // can never land on top of the one the reader moved to.
+  // The hook aborts the request in flight on the next step.
   const detail = useApiResource<EventDetail>(
     currentId ? `/events/${currentId}` : null,
   );
 
   const points = useMemo(() => collectionPoints(items), [items]);
-  // The opening camera: the whole sequence, so the reader sees the shape of
-  // what they are about to walk before the first step moves them into it.
+  // The opening camera: the whole sequence.
   const bounds = useMemo(() => pointsBounds(points), [points]);
 
-  // The steps behind the reader. Ids rather than indices, since the map knows
-  // the set by id.
+  // Ids, since the map knows the set by id.
   const walkedIds = useMemo(
     () => new Set(items.slice(0, step - 1).map((item) => item.id)),
     [items, step],
@@ -101,30 +81,23 @@ export function CollectionReader({
     [items, onStep],
   );
 
-  // Where the keys have walked to: the step on screen, plus the presses the
-  // caller has not landed in the URL yet. A held arrow repeats faster than the
-  // router's `replace` round trip, so counting from the `step` prop would
-  // compute every press of a burst off the same stale number and walk one step
-  // however long the key is held. Re-synced from the prop on every step that
-  // lands, wherever it came from: the URL, the header buttons, a pin click.
+  // The step plus presses not yet in the URL. A held arrow repeats faster than
+  // the router's `replace`, so counting from `step` would walk one step however
+  // long the key is held. Re-synced from the prop on every step that lands.
   const walked = useRef(step);
   useEffect(() => {
     walked.current = step;
   }, [step]);
 
-  // The arrow keys step. They are read on the window, since the reader's own
-  // focus may be anywhere on the page (or nowhere), and skipped while a field
-  // has the caret or a modifier is held, where the same press means something
-  // else to the browser or to the field.
+  // Read on the window (focus may be anywhere); skipped while a field has the
+  // caret or a modifier is held.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       if (isTypingTarget(event.target)) return;
       const next = walked.current + (event.key === "ArrowLeft" ? -1 : 1);
-      // At either end the press is the browser's again, which is what keeps a
-      // page-length collection scrolling under a key the reader holds past the
-      // last item.
+      // At either end the press goes back to the browser.
       if (next < 1 || next > total) return;
       event.preventDefault();
       walked.current = next;
@@ -143,19 +116,13 @@ export function CollectionReader({
         </span>
       </div>
 
-      {/* One fixed height for the block from `sm` up, under the map page's own
-          panel cap: 32rem is a real canvas beside a readable column, and the
-          cap keeps the whole block on screen in a short window. Below `sm` the
-          columns stack and each takes its own height, the map fixed like every
-          other embedded map and the panel as long as its event. */}
+      {/* Fixed height from `sm` up (32rem, capped to stay on screen in a short
+          window); stacked below `sm`, each column takes its own height. */}
       <div className="flex flex-col gap-3 sm:flex-row sm:h-[32rem] sm:max-h-[calc(100dvh-4.5rem)]">
-        {/* A set with no mappable point renders no map at all, the rule the
-            profile's own coverage map keeps: an empty world map says less than
-            no map, and the panel and the list below say the rest. */}
+        {/* No mappable point, no map (as on the profile's coverage map). */}
         {bounds && (
-          // `sm:flex-1` and not `flex-1`: while the columns are stacked the
-          // flex axis is vertical, and a basis of 0 there collapses the map to
-          // a line instead of leaving it the height it was given.
+          // `sm:flex-1`, not `flex-1`: stacked, the axis is vertical and a basis
+          // of 0 would collapse the map to a line.
           <div className="h-64 sm:h-full min-w-0 sm:flex-1 overflow-hidden rounded-lg border border-neutral-700">
             <Map
               points={points}
@@ -170,9 +137,7 @@ export function CollectionReader({
         )}
 
         <DetailSidePanel
-          // Keyed by event, the map page's own rule: a remount is what starts
-          // every piece of per-event state inside the panel clean, and here it
-          // also puts a long event back at its top when the reader steps.
+          // Keyed by event: a remount resets per-event state and scrolls to top.
           key={currentId ?? "empty"}
           placement="inline"
           resource={detail}

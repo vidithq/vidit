@@ -60,8 +60,7 @@ def admin_user(db):
     db.commit()
     user_id = user.id
     yield user
-    # Reap this actor's audit rows so the user row deletes cleanly, the same
-    # teardown shape as the admin suite.
+    # Reap this actor's audit rows so the user row deletes cleanly.
     db.expire_all()
     db.query(AdminEvent).filter(AdminEvent.actor_id == user_id).delete()
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
@@ -81,8 +80,7 @@ def regular_user(db):
     yield user
     db.expire_all()
     db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-    # A report outlives its target (both id columns are SET NULL), so reap what
-    # the delete above orphaned rather than leaving it in the next test's queue.
+    # Both id columns are SET NULL, so reap the orphaned reports.
     db.query(ContentReport).filter(
         ContentReport.event_id.is_(None), ContentReport.collection_id.is_(None)
     ).delete(synchronize_session=False)
@@ -191,7 +189,6 @@ def test_resolve_marked_graphic_sets_the_flag_and_stamps_the_report(db, admin_us
 
     db.expire_all()
     assert db.query(Event).filter(Event.id == event.id).one().is_graphic is True
-    # ``resolved_by`` is a column the operator queries, not a wire field.
     stored = db.query(ContentReport).filter(ContentReport.id == report.id).one()
     assert stored.resolved_by == admin_user.id
 
@@ -238,7 +235,6 @@ def test_resolve_dismissed_leaves_the_event_untouched(db, admin_user, event):
     refreshed = db.query(Event).filter(Event.id == event.id).one()
     assert refreshed.is_graphic is False
     assert refreshed.hidden_at is None
-    # The verdict is still an administrative act, so it is still audited.
     assert _audit(db, admin_user, "report_resolved") is not None
     assert _audit(db, admin_user, "event_hidden") is None
 
@@ -262,7 +258,6 @@ def test_resolving_twice_is_a_conflict(db, admin_user, event):
     assert second.json()["detail"]["code"] == "report_already_resolved"
 
     db.expire_all()
-    # The first verdict stands and the event never moved.
     assert db.query(ContentReport).filter(ContentReport.id == report.id).one().resolution == (
         "dismissed"
     )
@@ -293,19 +288,14 @@ def test_resolve_403_for_regular_user(db, regular_user, event):
 
 
 def _hard_delete(db, event) -> None:
-    """Erase the event row itself, so the FK's SET NULL fires.
-
-    Not the soft delete every user-facing path performs: this is the row
-    leaving the table, which is what the report has to survive.
-    """
+    """Erase the event row itself (not the soft delete), so the FK's SET NULL fires."""
     db.query(Event).filter(Event.id == event.id).delete(synchronize_session=False)
     db.commit()
     db.expire_all()
 
 
 def test_report_survives_a_hard_delete_of_its_event(db, admin_user, event):
-    """The report is the record that a complaint was handled, so destroying the
-    event leaves the row behind with a NULL ``event_id`` instead of taking it."""
+    """The report is the record of a handled complaint: it survives with a NULL ``event_id``."""
     report = _report(db, event, reason="illegal_content")
 
     _hard_delete(db, event)
@@ -323,8 +313,7 @@ def test_report_survives_a_hard_delete_of_its_event(db, admin_user, event):
 
 @pytest.mark.parametrize("resolution", ["marked_graphic", "hidden"])
 def test_orphaned_report_refuses_an_event_mutating_verdict(db, admin_user, event, resolution):
-    """Both verdicts mutate an event row that is gone, so both are a 409 and
-    the report stays open."""
+    """Both verdicts need the event row: 409, and the report stays open."""
     report = _report(db, event)
     _hard_delete(db, event)
 
@@ -341,7 +330,7 @@ def test_orphaned_report_refuses_an_event_mutating_verdict(db, admin_user, event
 
 
 def test_orphaned_report_can_still_be_dismissed(db, admin_user, event):
-    """Closing the row is the one verdict left, and it is still audited."""
+    """Dismissing is the one verdict left, and it is audited."""
     report = _report(db, event)
     _hard_delete(db, event)
 
@@ -419,8 +408,7 @@ def test_moderation_overrides_the_graphic_flag_both_ways(db, admin_user, event):
 
 
 def test_moderation_no_op_writes_no_audit_row(db, admin_user, event):
-    """Re-sending the state the row already holds is not an administrative
-    act, so the trail stays a record of actual changes."""
+    """Re-sending the current state is not an administrative act and is not audited."""
     response = client.patch(
         f"/api/v1/admin/events/{event.id}/moderation",
         json={"is_graphic": False, "hidden": False},
@@ -457,9 +445,7 @@ def test_moderation_403_for_regular_user(regular_user, event):
 
 
 def test_queue_lists_reports_of_both_kinds(db, admin_user, event, collection, regular_user):
-    """One queue answers for both. A collection row carries the title and the
-    owner, because a collection has no public index an admin recognises it by;
-    an event row carries its id, which the queue links out on."""
+    """A collection row carries its title and owner (no public index to recognise it by); an event row carries its id."""
     event_report = _report(db, event)
     collection_report = _collection_report(db, collection, reason="privacy")
 
@@ -478,8 +464,7 @@ def test_queue_lists_reports_of_both_kinds(db, admin_user, event, collection, re
 
 
 def test_resolve_hidden_withholds_the_collection(db, admin_user, collection):
-    """The verdict writes the stamp ``DELETE /admin/collections/{id}`` writes,
-    so the shelf leaves every public read and the trail reads the same."""
+    """The verdict writes the same stamp as ``DELETE /admin/collections/{id}``."""
     report = _collection_report(db, collection, reason="illegal_content")
 
     response = client.post(
@@ -492,9 +477,7 @@ def test_resolve_hidden_withholds_the_collection(db, admin_user, collection):
 
     db.expire_all()
     assert db.query(Collection).filter(Collection.id == collection.id).one().hidden_at is not None
-    # Withheld, so its own page answers 404 for a reader. The cookie jar still
-    # holds the admin session that resolved it, and an admin reads what was
-    # taken down in order to judge it.
+    # Clear the admin session: admins can read taken-down collections.
     client.cookies.clear()
     assert client.get(f"/api/v1/collections/{collection.id}").status_code == 404
 
@@ -511,8 +494,7 @@ def test_resolve_hidden_withholds_the_collection(db, admin_user, collection):
 
 
 def test_resolve_marked_graphic_is_refused_for_a_collection(db, admin_user, collection):
-    """The flag is a column on ``events`` and a collection carries no footage of
-    its own, so the verdict is a 409 and the report stays open for a real one."""
+    """``is_graphic`` lives on ``events``, so the verdict is a 409 and the report stays open."""
     report = _collection_report(db, collection, reason="graphic_not_flagged")
 
     response = client.post(
@@ -546,8 +528,7 @@ def test_resolve_dismissed_leaves_the_collection_untouched(db, admin_user, colle
 
 
 def test_a_report_names_one_target_at_most(db, event, collection):
-    """``ck_content_reports_one_target``: the database refuses a row pointing at
-    both, so no queue row can ever describe two things at once."""
+    """``ck_content_reports_one_target``: the database refuses a row with both targets."""
     db.add(ContentReport(event_id=event.id, collection_id=collection.id, reason="other"))
     with pytest.raises(IntegrityError):
         db.commit()

@@ -55,14 +55,9 @@ _WORD_TOKEN = "text"
 
 
 def _digit_swapped(span: str, rng: random.Random) -> str | None:
-    """Swap every digit in a coordinate substring, preserving all decoration and
-    digit-run lengths, until the result still parses to an in-bounds coordinate.
-
-    Same-length runs keep decimal precision and the format's shape; the retry
-    loop rejects a draw that pushes latitude past 90 / longitude past 180.
-    Returns ``None`` if no in-bounds draw is found (caller uses a canonical
-    fallback), never returns the real digits.
-    """
+    """Swap every digit in a coordinate substring (same-length runs, decoration kept)
+    until it still parses in bounds. Returns ``None`` if no draw lands in bounds
+    (the caller falls back to a canonical one), never the real digits."""
     for _ in range(40):
         cand = _DIGIT_RUN_RE.sub(
             lambda m: "".join(rng.choice("0123456789") for _ in range(len(m.group()))), span
@@ -73,8 +68,7 @@ def _digit_swapped(span: str, rng: random.Random) -> str | None:
 
 
 def _canonical(fmt: str, rng: random.Random) -> str:
-    """A clean synthetic coordinate of ``fmt``: the fallback when digit-swapping
-    a pathological span can't land in bounds."""
+    """A clean synthetic coordinate of ``fmt``, the digit-swap fallback."""
     lat = round(rng.uniform(35.0, 60.0), 5)
     lng = round(rng.uniform(-10.0, 60.0), 5)
     if fmt == "hemisphere":
@@ -97,11 +91,9 @@ def _to_dms(value: float, pos: str, neg: str, minute: str = "'", second: str = '
 
 
 def _synth_dms(original: str, rng: random.Random) -> str:
-    """A synthetic DMS coordinate with valid minutes/seconds (0-59), preserving
-    the original's prime glyphs (ASCII ``' "`` vs typographic ``′ ″``) because
-    the typographic form is the exact recall gap real archives surface, so a
-    fixture must keep it. (Digit-swapping DMS would emit invalid 60+ minutes.)
-    """
+    """A synthetic DMS coordinate with valid minutes/seconds, keeping the original's
+    prime glyphs (ASCII or typographic: the typographic form is a real recall gap).
+    Digit-swapping would emit invalid 60+ minutes."""
     minute = "′" if "′" in original else "'"
     second = "″" if "″" in original else '"'
     lat = rng.uniform(35.0, 60.0)
@@ -112,16 +104,14 @@ def _synth_dms(original: str, rng: random.Random) -> str:
 def _rewrite(text: str, rng: random.Random) -> str:
     """Skeletonise ``text``: synthesize coordinate spans, redact handles/links,
     collapse prose to ``text``. Single pass over non-overlapping spans."""
-    # Priority 0 coords, 1 urls, 2 handles: the lower priority wins an overlap,
-    # so a gmaps coordinate (which is also a url) survives instead of being
-    # redacted away. Resolve strictly by priority, not by which starts first.
+    # Priority 0 coords, 1 urls, 2 handles: the lowest wins an overlap, so a gmaps
+    # coordinate (also a url) survives redaction.
     by_priority: dict[int, list[tuple[int, int, str]]] = {0: [], 1: [], 2: []}
     for fmt, rx in _COORD_RES:
         for m in rx.finditer(text):
             start, end = m.start(), m.end()
             if fmt == "gmaps":
-                # Absorb any scheme prefix so the whole URL is replaced cleanly
-                # rather than leaving a mangled "text://text." husk in the gap.
+                # Absorb the scheme prefix so no "text://text." husk is left.
                 pre = re.search(r"(?:https?://)?(?:www\.)?\Z", text[:start])
                 start = pre.start() if pre else start
                 repl = _canonical("gmaps", rng)

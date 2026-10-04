@@ -9,10 +9,8 @@ function textDoc(text: string): Record<string, unknown> {
   };
 }
 
-// The description is written in the Tiptap proof editor, which boots
-// ProseMirror. What this file locks in is what the form does with the document
-// the editor hands it, so the editor is a textarea that emits one, and the
-// props the form passes it are asserted through the marks it prints.
+// The editor is stubbed as a textarea that emits a document; the props the form
+// passes it are asserted through the marks it prints.
 vi.mock("@/components/editor/ProofEditor", () => ({
   default: ({
     onChange,
@@ -32,7 +30,7 @@ vi.mock("@/components/editor/ProofEditor", () => ({
   ),
 }));
 
-// The picker reaches the catalogue; what it lists is its own test's subject.
+// The picker is `EventPicker.test.tsx`'s subject.
 vi.mock("@/hooks/useCursorList", () => ({
   useCursorList: () => ({
     items: [],
@@ -52,8 +50,10 @@ import { CollectionDetailsForm } from "./CollectionDetailsForm";
 const onSubmit = vi.fn();
 const onCancel = vi.fn();
 
-/** Render, then wait for the editor: the form loads it through `next/dynamic`,
- *  so the description field lands one microtask after the first paint. */
+/**
+ * Render, then wait for the `next/dynamic` editor (one microtask after first
+ *  *  paint).
+ */
 async function renderForm(props: Record<string, unknown> = {}) {
   const result = render(
     <CollectionDetailsForm
@@ -106,8 +106,7 @@ describe("CollectionDetailsForm", () => {
     await renderForm();
     fill("March strikes", "Twelve chars");
 
-    // `remaining / cap`, over the projection rather than over the serialised
-    // document: the same reading the server measures the cap on.
+    // Counted over the plain-text projection, as the server measures the cap.
     expect(
       screen.getByText(`${COLLECTION_DESCRIPTION_MAX_LEN - 12} / ${COLLECTION_DESCRIPTION_MAX_LEN}`),
     ).toBeInTheDocument();
@@ -131,8 +130,7 @@ describe("CollectionDetailsForm", () => {
     fill("March strikes", "x".repeat(COLLECTION_DESCRIPTION_MAX_LEN + 1));
 
     expect(submit()).toBeDisabled();
-    // The outline and the disabled submit turn over together, the way every
-    // capped field on the site behaves.
+    // The outline and the disabled submit turn over together.
     expect(descriptionField()).toHaveAttribute("data-invalid", "true");
   });
 
@@ -144,7 +142,6 @@ describe("CollectionDetailsForm", () => {
     });
 
     expect(titleField()).toHaveValue("Kupiansk rail corridor");
-    // Nothing retyped: the save carries what the form opened on.
     fireEvent.click(screen.getByRole("button", { name: "Save collection" }));
     expect(onSubmit).toHaveBeenCalledWith(
       "Kupiansk rail corridor",

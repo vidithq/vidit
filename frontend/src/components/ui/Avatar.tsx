@@ -3,13 +3,9 @@
 import { useState } from "react";
 import { User } from "lucide-react";
 
-// User avatar circle: the avatar image, or a fallback (a neutral user icon, or
-// the username initial). Every surface that shows a profile picture composes
-// this, the geolocation feed card's author circle included.
-//
-// A `<div>` by default. Pass `as="span"` inside phrasing content (the
-// `AuthorByline`, itself a `<span>` that sits in paragraphs and headings),
-// where a block-level child is invalid nesting.
+// User avatar circle: the image, or a fallback (a neutral icon or the username
+// initial). A `<div>` by default; pass `as="span"` inside phrasing content
+// (`AuthorByline`), where a block child is invalid nesting.
 export function Avatar({
   src,
   username,
@@ -21,25 +17,19 @@ export function Avatar({
 }: {
   src?: string | null;
   username: string;
-  /** Sizing utility, e.g. `w-11 h-11` or `size-10`. The icon fallback scales
-   *  off it, so the circle is the only dimension a caller sets. */
+  /** Sizing utility, e.g. `size-10`. The icon fallback scales off it. */
   size: string;
   fallback?: "initial" | "icon";
   as?: "div" | "span";
-  /** Drop the image's alt text, for a host that already names itself (the
-   *  sidebar identity row, whose link is titled with the handle). An `<img>`
-   *  carrying alt text becomes the link's accessible name and wins over that
-   *  title, so the row would announce "user's avatar" instead of the handle. */
+  /** Drop the alt text for a host that names itself (the sidebar identity
+   *  row): alt text would win over the link's title as its accessible name. */
   decorative?: boolean;
-  /** Colour utility for the icon fallback, so a host whose row paints its own
-   *  `currentColor` (hover, active) can hand it down with `text-current`.
-   *  Sizing stays with `size`. */
+  /** Colour for the icon fallback (`text-current` to follow the host). */
   iconClassName?: string;
 }) {
-  // An `avatar_url` addresses an object on our own media host, so it can still
-  // 404: the object is deleted the moment the picture is replaced or removed,
-  // and a CDN edge can answer before a freshly stored one propagates. Track
-  // the src that failed rather than a flag, so a new picture retries.
+  // An `avatar_url` can 404 (the object is deleted on replace, and a CDN edge
+  // can lag a new one). Track the failed src, not a flag, so a new picture
+  // retries.
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const showImage = !!src && src !== failedSrc;
 
@@ -53,20 +43,15 @@ export function Avatar({
           src={src}
           alt={decorative ? "" : `${username}'s avatar`}
           onError={() => setFailedSrc(src)}
-          // The markup is server-rendered, so the browser starts the request
-          // before React hydrates and an error that lands in that window never
-          // reaches `onError`. Read the element the first time we hold it: an
-          // image that finished loading with nothing decoded is one that
-          // failed, so the circle falls back on a reload too.
+          // An error before hydration never reaches `onError`; an image that
+          // completed with nothing decoded failed.
           ref={(node) => {
             if (node?.complete && node.naturalWidth === 0) setFailedSrc(src);
           }}
           className="w-full h-full object-cover"
         />
       ) : fallback === "icon" ? (
-        // Sized in CSS, not by lucide's `size` prop: the class wins over the
-        // svg's width/height attributes, so the glyph tracks whatever circle
-        // the caller asked for instead of being pinned to one avatar size.
+        // Sized in CSS so the glyph tracks the circle, not lucide's `size` prop.
         <User className={`w-1/2 h-1/2 ${iconClassName}`} />
       ) : (
         <span className="text-neutral-300 font-medium">

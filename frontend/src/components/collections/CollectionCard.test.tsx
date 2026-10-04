@@ -5,12 +5,9 @@ import { CollectionCard } from "./CollectionCard";
 import type { Collection } from "@/lib/collections";
 
 /**
- * What the card has to get right is the readings it prints beside the mosaic:
- * the meta line, and the tags the collection's items carry.
- *
- * The tags are derived server-side from the items, so the card neither builds
- * nor caps them: it prints the row the event card prints, in the same pills,
- * and prints nothing at all for a collection holding nothing tagged.
+ * The meta line and the tags the collection's items carry. Tags are derived
+ * server-side: the card prints the event card's pills, uncapped, and nothing for
+ * an untagged collection.
  */
 const collection = (over: Partial<Collection> = {}): Collection => ({
   id: "c1",
@@ -51,8 +48,6 @@ describe("CollectionCard", () => {
       />,
     );
 
-    // Uncapped, the event card's own rule: every tag the union holds reaches
-    // the card, and the meta line it sits under still reads.
     for (const name of ["satellite", "rail", "corridor"]) {
       expect(screen.getByText(name)).toBeInTheDocument();
     }

@@ -1,10 +1,7 @@
 """End-to-end tests for /auth/change-password.
 
-Authenticated password rotation. Sibling to /auth/reset-password but with
-a different threat model: the user is *already* signed in and we need
-them to re-prove knowledge of the current credential before the rotation
-goes through, so a stolen session alone cannot lock the legitimate
-owner out.
+Authenticated rotation: the user re-proves the current password, so a stolen
+session alone cannot lock the owner out.
 """
 
 from __future__ import annotations
@@ -40,13 +37,7 @@ def db():
 
 @pytest.fixture
 def email_recorder(monkeypatch):
-    """Capture every email.send() call in order.
-
-    Mirrors the recovery-test fixture: monkeypatches ``email.send`` on
-    the *router* import site so the background task that fires after
-    the response goes out lands in the recorder instead of attempting
-    a real Resend round-trip.
-    """
+    """Capture every email.send() call, patched on the router import site."""
 
     sent: list[email.Email] = []
 
@@ -92,10 +83,7 @@ def test_change_password_happy_path(client, user_factory):
     )
     assert response.status_code == 204
 
-    # New password works, old one doesn't. Clear the jar between each /login so
-    # the ``login_as`` session cookie can't carry into the next request and mask
-    # a regression where /login started caring about prior session state — the
-    # assertion target is password-acceptance, not session-handoff.
+    # Clear the jar so the ``login_as`` cookie cannot mask a /login that depends on session state.
     client.cookies.clear()
     ok = client.post(
         "/api/v1/auth/login",
@@ -178,10 +166,7 @@ def test_change_password_requires_authentication(client):
 
 
 def test_change_password_writes_audit_event(client, user_factory, db, email_recorder):
-    # ``email_recorder`` absorbs the heads-up background task — without it,
-    # ``email.send`` follows the live ``EMAIL_PROVIDER`` and could pad wall time
-    # or attempt a real Resend round-trip. Assertion target is the audit row,
-    # not the email (the dedicated email test is below).
+    # ``email_recorder`` keeps the heads-up task from hitting the live provider.
     user, current = user_factory()
     response = client.post(
         "/api/v1/auth/change-password",
@@ -199,14 +184,8 @@ def test_change_password_writes_audit_event(client, user_factory, db, email_reco
 
 
 def test_change_password_sends_heads_up_email(client, user_factory, email_recorder):
-    """A successful rotation must trigger one informational email.
-
-    The endpoint enforces re-asserting the current password, so this
-    notification is the only out-of-band signal a legitimate owner gets
-    if their credentials are stuffed against the form. Without this
-    test, a future refactor (e.g. dropping the BackgroundTask) would
-    silently delete the heads-up surface.
-    """
+    """A successful rotation sends one email: the only out-of-band signal an owner gets
+    if credentials are stuffed against the form."""
     user, current = user_factory()
     response = client.post(
         "/api/v1/auth/change-password",
@@ -239,13 +218,7 @@ def test_change_password_does_not_email_on_wrong_current(client, user_factory, e
 
 
 def test_change_password_swallows_email_send_failure(client, user_factory, monkeypatch, db):
-    """A Resend outage must not unwind a successful rotation.
-
-    The password is rotated and the audit event committed before the
-    background task fires. If ``email.send`` raises ``EmailSendError``,
-    the dispatcher swallows it and logs — the user sees a 204 and the
-    new password works on the next login.
-    """
+    """An ``EmailSendError`` from the background task is swallowed: 204, and the new password works."""
 
     def _boom(_email_obj):
         raise email.EmailSendError("simulated provider outage")

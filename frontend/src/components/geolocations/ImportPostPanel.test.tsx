@@ -33,7 +33,9 @@ function outcome(overrides: Partial<TweetImportOutcome> = {}): TweetImportOutcom
 }
 
 function paste() {
-  fireEvent.change(screen.getByPlaceholderText(/x\.com/), { target: { value: POST_URL } });
+  fireEvent.change(screen.getByPlaceholderText("https://x.com/handle/status/…"), {
+    target: { value: POST_URL },
+  });
   fireEvent.click(screen.getByRole("button", { name: "Create the detection" }));
 }
 
@@ -54,9 +56,7 @@ describe("ImportPostPanel", () => {
   });
 
   it("stays put and names the warnings, with the review one click away", async () => {
-    // The API hands each code its sentence, out of the one backend table the
-    // bot's reply and the archive's email also read, so the panel renders what
-    // it is given and keeps no wording of its own.
+    // The API supplies each code's sentence; the panel keeps no wording.
     vi.mocked(importFromPost).mockResolvedValue(
       outcome({
         created: ["d1", "d2"],
@@ -104,8 +104,7 @@ describe("ImportPostPanel", () => {
   });
 
   it("says a matched row was left as it is, and offers no review link for it", async () => {
-    // A skipped row is one the import must not touch (published, closed,
-    // withheld), so the review link would open an edit that cannot land.
+    // A skipped row is not the import's to edit, so no review link.
     vi.mocked(importFromPost).mockResolvedValue(outcome({ skipped: ["d9"] }));
     render(<ImportPostPanel />);
 

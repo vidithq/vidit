@@ -14,35 +14,25 @@ import { HOVER_REVEAL } from "@/components/ui/styles";
 
 /**
  * The detail-surface media block, shared by the geolocation detail page, the
- * map's detail side panel, and the request detail page (which had each grown
- * their own copy, drifting on video posters and img vs next/image).
+ * map's detail side panel, and the request detail page.
  *
- * - `page`: 2-up grid at `hero` resolution (~384 CSS px per cell, sharp at 2x
- *   DPI without the original's multi-megabyte payload).
+ * - `page`: 2-up grid at `hero` resolution (~384 CSS px per cell, sharp at 2x).
  * - `panel`: stacked tiles at `thumbnail` resolution (max-dim 400). The panel
- *   (~380 CSS px) is the most-fetched surface (every map popup), so it avoids
- *   bleeding bandwidth.
+ *   (~380 CSS px) is the most-fetched surface (every map popup).
  *
- * **Video tiles** are [`VideoPlayer`](./VideoPlayer.tsx), whose hover-revealed
- * bar carries play, scrub, download and one expand control (`onExpand`) that
- * opens the same in-page lightbox as an image tile, so the "see it bigger"
- * gesture is identical across media types. The actual full screen lives on the
- * lightbox's player only, so a single big-view icon shows per context. A clip
- * the browser can't decode swaps to a text notice instead of a silent black
- * box.
+ * **Video tiles** are `VideoPlayer`, whose bar carries one expand control
+ * (`onExpand`) opening the same lightbox as an image tile. Full screen lives on
+ * the lightbox's player only. An undecodable clip swaps to a text notice.
  *
- * **Image tiles** keep `object-cover`: on a tile the crop is deliberate, and the
- * whole tile opens `MediaLightbox` at `hero` resolution to see it uncropped.
- * Their download floats in the corner, revealed on hover so it isn't permanent
- * furniture over the picture (`HOVER_REVEAL` keeps it visible on touch, where
- * there is no hover to reveal it with).
+ * **Image tiles** keep `object-cover` (the crop is deliberate); the tile opens
+ * `MediaLightbox` at `hero` uncropped. Their download floats in the corner,
+ * revealed on hover (`HOVER_REVEAL` keeps it visible on touch).
  *
- * No media renders one marked empty box (no generated stand-ins).
+ * No media renders one marked empty box.
  *
- * `isGraphic` covers the whole block with `GraphicContentGate`: the author
- * declared the footage graphic, so the gate goes around the tiles rather than
- * around each one, and the reader answers once per gallery. The lightbox stays
- * outside it, since a gated tile takes no clicks and cannot open one.
+ * `isGraphic` wraps the whole block in `GraphicContentGate`, so the reader
+ * answers once per gallery. The lightbox stays outside it: a gated tile takes no
+ * clicks.
  */
 export function MediaGallery({
   media,
@@ -54,12 +44,10 @@ export function MediaGallery({
   /** Alt text for image media (the entity title). */
   alt: string;
   variant?: "page" | "panel";
-  /** The event's `is_graphic` flag: blur the tiles behind an age confirmation. */
   isGraphic?: boolean;
 }) {
   const compact = variant === "panel";
   const itemHeight = compact ? "h-40" : "h-48";
-  // Which media the shared viewer is showing, if any.
   const [viewing, setViewing] = useState<Media | null>(null);
 
   if (media.length === 0) {
@@ -75,9 +63,8 @@ export function MediaGallery({
   const items = media.map((m) => (
     <div
       key={m.id}
-      // `group` is what the image tile's hover-revealed download reads. The
-      // backdrop is unconditional: it is what the letterbox bars of a portrait
-      // video are painted on, in both variants.
+      // `group` drives the image tile's hover-revealed download. The backdrop is
+      // what a portrait video's letterbox bars paint on.
       className={`group relative ${itemHeight} rounded-lg overflow-hidden border border-neutral-700 bg-neutral-900`}
     >
       {m.media_type === "image" ? (
@@ -89,16 +76,13 @@ export function MediaGallery({
             sizes={compact ? "380px" : "(min-width: 768px) 384px, 100vw"}
             className="object-cover"
           />
-          {/* An image tile is cropped, so the whole tile opens the uncropped
-              viewer. The button is a plain sibling laid over the picture: the
-              control cluster below comes later in DOM order and paints on top,
+          {/* A sibling over the picture; the control cluster below paints on top,
               so a download click is never also a view click. */}
           <button
             type="button"
             onClick={() => setViewing(m)}
-            // Named by its alt, like a proof image: a gallery holds several
-            // tiles, and "View image" repeated N times tells a screen-reader
-            // user nothing about which one they are on.
+            // Named by its alt: repeated "View image" says nothing about which
+            // tile.
             aria-label={alt ? `View image: ${alt}` : "View image"}
             className="absolute inset-0 h-full w-full cursor-zoom-in"
           />
@@ -132,8 +116,7 @@ export function MediaGallery({
 
   return (
     <>
-      {/* The full interstitial in both variants: even the 380px panel stacks
-          160px tiles, so the whole sentence fits. */}
+      {/* Full interstitial in both variants: the panel's 160px tiles fit it. */}
       {isGraphic ? <GraphicContentGate>{tiles}</GraphicContentGate> : tiles}
       {viewer}
     </>

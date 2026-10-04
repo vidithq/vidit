@@ -24,17 +24,11 @@ import { cn } from "@/lib/cn";
 import { posterFrameUrl } from "@/lib/mediaUrls";
 
 /**
- * The player's whole skin. media-chrome renders each control in its own shadow
- * root and exposes the paint as custom properties, so the theme is a set of
- * variables on the host rather than selectors reaching inside: no specificity
- * fight with Tailwind, and one place to read the palette off.
- *
- * The values are the app's own: neutral-100 glyphs and text on a translucent
- * dark bar, the accent left out because playback chrome is not app navigation.
- * Controls are flat (`--media-control-background: transparent`) so the bar
- * itself carries the plate, and the hover wash matches `BAR_BUTTON` below.
- * Tooltips are off: a tile is 160 px tall and the controller clips its
- * overflow, so a tooltip would be sliced in half.
+ * The player's skin. media-chrome renders each control in its own shadow root
+ * and exposes the paint as custom properties, so the theme is variables on the
+ * host (no specificity fight with Tailwind). Controls are flat so the bar
+ * carries the plate. Tooltips are off: a tile is 160 px tall and the controller
+ * clips its overflow.
  */
 const PLAYER_THEME = {
   "--media-primary-color": "#f5f5f5",
@@ -48,66 +42,41 @@ const PLAYER_THEME = {
   "--media-tooltip-display": "none",
 } as CSSProperties;
 
-// Our own controls sit in the bar next to media-chrome's, so they take
-// media-chrome's box: a control is a 24 px icon inside 10 px of padding, 44 px
-// square (`--media-control-height` + `--media-control-padding`), square-cornered
-// and flat, with the hover wash from the theme above. The floating plate of
-// `FLOATING_CONTROL` (which `MediaDownloadButton` carries by default) flattens
-// away here, since the bar already provides the backdrop.
+// Our controls take media-chrome's box: a 24 px icon in 10 px of padding, 44 px
+// square, flat. The floating plate of `FLOATING_CONTROL` flattens away here.
 const BAR_BUTTON =
   "size-11 shrink-0 rounded-none bg-transparent text-neutral-100 backdrop-blur-none hover:bg-white/10 hover:text-white [&_svg]:size-6";
 
-// The same 10 px, handed back to the controls that come with media-chrome.
-// Tailwind's preflight zeroes `padding` on every element in the document, and a
-// document rule outranks a `:host` rule inside a shadow root whatever the
-// specificity, so each control would otherwise draw its icon edge to edge and
-// sit 24 px wide next to our 44 px ones. The sliders are unaffected: they pad
-// inside their shadow root, where the reset cannot reach.
+// Hands the 10 px back to media-chrome's own controls: Tailwind's preflight zeroes
+// `padding`, and a document rule outranks a shadow-root `:host` rule. The sliders
+// pad inside their shadow root and are unaffected.
 const BAR_CONTROL = "px-2.5";
 
 /**
- * The one video player. Every surface that plays a clip (the detail gallery's
- * video tiles, the shared lightbox, and through it the media manager's staged
- * and persisted views) mounts this, so playback chrome can't drift into
- * per-surface copies of a native `<video controls>`.
+ * The one video player, for every surface that plays a clip.
  *
- * The engine is media-chrome: a `<media-controller>` wrapping a plain
- * `<video>`, with the browser's own controls left off and a `<media-control-bar>`
- * stripped to what an analyst uses on evidence clips: play, scrub, elapsed and
- * total time, mute, volume, download, and one big-view control. Casting, PiP,
- * playback speed and captions (stored clips carry no text tracks) are not
- * rendered at all. The controls are web components, so their behaviour is
- * independent of the React version, and their skin is the CSS variables above.
+ * Engine: media-chrome's `<media-controller>` around a plain `<video>`, with a
+ * bar stripped to play, scrub, time, mute, volume, download and one big-view
+ * control.
  *
- * **Auto-hide.** The bar fades out while the clip plays untouched and returns on
- * pointer move, hover or keyboard focus (`autohide`, in seconds). A paused clip
- * always shows it.
+ * **Auto-hide.** The bar fades while the clip plays untouched and returns on
+ * pointer move, hover or focus. A paused clip always shows it.
  *
- * **Poster.** A stored clip carries no poster derivative, so the source URL gets
- * the `#t=0.1` media fragment: the browser seeks a tenth of a second in while
- * loading metadata and paints that frame instead of a black rectangle.
+ * **Poster.** Stored clips have no poster derivative, so the source gets the
+ * `#t=0.1` media fragment and the browser paints that frame.
  *
- * **Download.** A plain `<a download>` is ignored cross-origin, and media is
- * served from a separate origin (CloudFront in prod), so such an anchor
- * navigates to the file instead of saving it. The bar therefore carries
- * `MediaDownloadButton`, the same blob-fetch control every other media surface
- * uses, which saves a persisted row under its `original_filename`.
+ * **Download.** `<a download>` is ignored cross-origin and media is served from
+ * a separate origin (CloudFront in prod), so the bar carries
+ * `MediaDownloadButton`, the blob-fetch control.
  *
- * **Sizing.** The controller fills its container and the frame is letterboxed
- * (`object-contain`), so a portrait clip keeps its shape instead of being
- * cropped by a landscape tile, and the bars show the tile's own backdrop. The
- * volume slider is the one control that drops out under 448 px of container
- * width (`@max-md`, Tailwind's `md` container breakpoint at 28rem, so it is the
- * tile that decides, not the viewport): the seven controls overflow a gallery
- * tile, which is ~380 px in the map panel and ~384 px in the page grid, and the
- * controller clips what does not fit. The lightbox is wide enough to keep all
- * of them.
+ * **Sizing.** The frame is `object-contain`, so a portrait clip keeps its
+ * shape. The volume slider drops out under 448 px of container width (`@max-md`,
+ * the tile decides, not the viewport) because the controls overflow a ~380 px
+ * gallery tile and the controller clips the rest.
  *
- * **Failure.** A clip the browser refuses to decode swaps to a notice, keeping
- * the download beside it: an unplayable codec is exactly when saving the
- * original matters most. The verdict is keyed on the URL that produced it, so
- * a player handed a new `src` (the lightbox swapping media) starts fresh
- * instead of staying stuck on the notice.
+ * **Failure.** A clip the browser cannot decode swaps to a notice and keeps the
+ * download. The verdict is keyed on the failing URL, so a new `src` starts
+ * fresh.
  */
 export function VideoPlayer({
   src,
@@ -117,35 +86,26 @@ export function VideoPlayer({
   className,
   onExpand,
 }: {
-  /** The playable URL. */
   src: string;
   /** What the download control saves: a persisted row, or a plain URL. */
   source: DownloadSource;
   /** Accessible name for the player. */
   title?: string;
-  /** Tighter type on the failure notice, for the panel-width tiles. */
+  /** Tighter type on the failure notice. */
   compact?: boolean;
-  /** Sizing from the call site; the player fills whatever box it is given. */
   className?: string;
-  /** Big-view handler for a tile context: replaces the bar's fullscreen button
-   *  with an expand control opening the shared lightbox, so a video tile and an
-   *  image tile share one "see it bigger" gesture and only the lightbox's
-   *  player offers the actual full screen. Omit for the lightbox context. */
+  /** Tile context: replaces the fullscreen button with an expand control that
+   *  opens the shared lightbox. Omit in the lightbox. */
   onExpand?: () => void;
 }) {
-  // The URL that failed, not a bare flag: comparing it to the current `src` is
-  // what resets the verdict when the call site swaps clips, with no effect to
-  // keep in sync.
+  // The failed URL, not a flag: comparing to `src` resets the verdict on a swap.
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
   if (failedSrc === src) {
     return (
-      // The same box the controller would have taken, so the notice fills the
-      // tile (and the lightbox's frame) instead of collapsing to a bare line.
       <div className={cn("relative block h-full w-full", className)}>
         <TileNotice compact={compact}>Video unavailable</TileNotice>
-        {/* No player means no control bar, so the download the bar carries
-            moves to the corner, where an image tile keeps its own. */}
+        {/* No bar, so the download moves to the corner. */}
         <div className="absolute right-2 top-2 z-10">
           <MediaDownloadButton source={source} />
         </div>
@@ -167,9 +127,7 @@ export function VideoPlayer({
         preload="metadata"
         className="h-full w-full object-contain"
         onError={() => setFailedSrc(src)}
-        // media-chrome stamps tabindex="-1" on the slotted media element when
-        // the custom element upgrades, which can beat React to hydration; the
-        // controller wrapper already suppresses the same mismatch on itself.
+        // media-chrome stamps tabindex="-1" on upgrade, which can beat hydration.
         suppressHydrationWarning
       />
       <MediaControlBar className="w-full bg-black/60 backdrop-blur-sm">
@@ -177,13 +135,9 @@ export function VideoPlayer({
         <MediaTimeRange />
         <MediaTimeDisplay showDuration className={BAR_CONTROL} />
         <MediaMuteButton className={BAR_CONTROL} />
-        {/* Hidden under a 448 px container (`md` = 28rem), where the full set
-            of controls no longer fits. See the Sizing note above. */}
         <MediaVolumeRange className="@max-md:hidden" />
         <MediaDownloadButton source={source} className={BAR_BUTTON} />
-        {/* One big-view icon per context: a tile expands into the shared
-            lightbox, so the control sits where fullscreen normally lives; the
-            lightbox itself keeps the real full screen. */}
+        {/* One big-view control per context. */}
         {onExpand ? (
           <Button
             icon

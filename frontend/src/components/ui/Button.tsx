@@ -2,30 +2,22 @@ import type { ComponentPropsWithRef } from "react";
 
 import { cn } from "@/lib/cn";
 
-// The one button primitive: shape and colour in a single unit, so call sites
-// never re-roll padding / sizing. `variant` picks the colour treatment; the
-// shape is uniform (one size) by design, the single home if the button size
-// ever changes. `fullWidth` stretches it (auth submits); pass orthogonal extras
-// (margins, font-mono, an icon's own classes) via `className`.
+// The one button primitive: shape and colour in one unit. `variant` picks the
+// colour; the shape is uniform. `fullWidth` stretches it; pass other extras via
+// `className`. Defaults to `type="button"`; pass `type="submit"` where needed.
 //
-// Defaults to `type="button"` so a button never submits a form by accident;
-// pass `type="submit"` explicitly where it should.
 // Five variants on two axes: tone (accent or danger) and emphasis (filled,
-// outline, text). Everything clickable is the accent colour; red is only for
-// destructive or alerting. There is no grey button, since a grey clickable
-// reads as not-clickable: grey lives in the <Pill> neutral tone, and in the
-// disabled state, which is neutral grey text on a neutral border rather than a
-// faded accent, because a control carries colour exactly while it acts.
+// outline, text). Clickable is accent; red is for destructive or alerting.
+// There is no grey button, since grey reads as not-clickable (grey lives in the
+// <Pill> neutral tone and the disabled state).
 //   primary      accent, filled    the one main action of a view
 //   secondary    accent, outline   a secondary action
 //   ghost        accent, text      quiet: cancel, dismiss, dense rows, icons
-//   danger       red, outline      a destructive action (secondary, but red)
-//   dangerGhost  red, text         a red control at ghost weight, so it sits
-//                                  in an icon row without outweighing its
-//                                  accent neighbours (the report flag)
-// The loud filled red is not an everyday variant: it is `DANGER_CONFIRM`, applied
-// only to the armed second click of a two-click confirm, so the strongest red
-// shows up once, at the point of no return.
+//   danger       red, outline      a destructive action
+//   dangerGhost  red, text         red at ghost weight, for an icon row (the
+//                                  report flag)
+// The loud filled red is `DANGER_CONFIRM`, for the armed second click of a
+// two-click confirm only.
 export type ButtonVariant =
   | "primary"
   | "secondary"
@@ -33,41 +25,25 @@ export type ButtonVariant =
   | "danger"
   | "dangerGhost";
 
-// Disabled is neutral grey, not a faded version of the variant's colour: on
-// this site colour means a control acts and grey means it cannot, so a
-// half-opacity accent would read as an accent that needs a brighter screen
-// rather than as a button that refuses the click. The rules restate the hover
-// treatments as well as the resting ones, so they win over every variant's
+// Disabled is neutral grey, not a faded variant colour: colour means a control
+// acts. The rules restate the hover treatments so they win over every variant's
 // `hover:` (equal specificity, and `disabled:hover:` lands last).
 const DISABLED =
   "disabled:cursor-not-allowed disabled:text-neutral-600 disabled:border-neutral-800 disabled:bg-transparent disabled:hover:bg-transparent disabled:hover:text-neutral-600 disabled:hover:border-neutral-800";
 
 const BASE = `inline-flex items-center justify-center rounded-md transition-colors ${DISABLED}`;
-// The text shape (the default) versus the square icon-only shape. `icon` keeps
-// the same hover/colour treatment but drops the text padding for a compact
-// square affordance (share, a × close), so a bare icon button doesn't have to
-// re-roll its own size.
-// Both shapes take a step up on a phone, where the pointer is a fingertip: the
-// desktop text button stands 28px tall and the icon square 32px, under what a
-// thumb reliably hits. The type scale and the horizontal padding are untouched,
-// so only the tappable height grows; from `sm` up the desktop shape is exact.
-// The phone tap step itself, on its own because the button is not the only
-// control that takes it: an interactive `<Pill>`, a `<FilterSection>` header
-// row and the quiet text controls of the filter surfaces are all things a
-// thumb has to hit, and a second figure for the same floor is how two controls
-// on one row end up two different heights. It raises the tappable box to 36px
-// below `sm` and returns the exact desktop shape from `sm` up. Height only: a
-// control keeps its own type scale and its own horizontal padding.
+// The text shape (default) versus the square icon-only shape (no text padding).
+// Both step up on a phone, where the desktop 28px text button and 32px icon
+// square are under what a thumb reliably hits. Only the tappable height grows.
+// The phone tap step, shared by every control a thumb has to hit (an
+// interactive `<Pill>`, a `<FilterSection>` header, quiet filter controls): 36px
+// below `sm`, the exact desktop shape from `sm` up. Height only.
 export const TAP_STEP = "min-h-9 sm:min-h-0";
 
-// The same 36px floor for a square control that is smaller than the icon
-// button's own square and has to stay that size on a desktop: the settings
-// accent swatch, the remove control on a `<FileManager>` tile, the map
-// scrubber's play and reset controls, the sidebar's brand links. Height and
-// width together, since a square is what those controls are, and the caller
-// names its desktop square beside it (`${ICON_TAP_STEP} sm:size-6`), which is
-// the one figure that differs between them. Hand-written per call site, the
-// phone figure drifts the moment one of them is re-tuned.
+// The same 36px floor for a square control smaller than the icon button that
+// keeps its size on a desktop (settings swatch, `<FileManager>` remove, map
+// scrubber controls, sidebar brand links). The caller names its desktop square
+// beside it (`${ICON_TAP_STEP} sm:size-6`).
 export const ICON_TAP_STEP = "size-9";
 
 const TEXT_SHAPE = `gap-1.5 px-3 py-1.5 ${TAP_STEP} text-xs font-medium`;
@@ -82,17 +58,13 @@ const VARIANT: Record<ButtonVariant, string> = {
   dangerGhost: "text-red-400 hover:bg-red-500/10",
 };
 
-// The one loud filled red, for the armed second click of a two-click confirm
-// only. Applied via `className` (the `!` overrides the `danger` outline), so
-// destructive triggers stay quiet and the strong red marks the point of no
-// return: `<Button variant="danger" className={armed ? DANGER_CONFIRM : ""}>`.
+// The armed second click of a two-click confirm only. The `!` overrides the
+// `danger` outline: `<Button variant="danger" className={armed ? DANGER_CONFIRM : ""}>`.
 export const DANGER_CONFIRM =
   "!bg-red-500 !border-red-500 !text-white hover:!bg-red-400";
 
-// The class string for the one button shape plus a variant's colour. `<Button>`
-// applies it to a real `<button>`; a `<Link>` / `<a>` that should look like a
-// button (a CTA that navigates) applies it directly, so a navigation control
-// gets the same shape + colour without nesting a `<button>` inside an anchor.
+// The button shape plus a variant's colour, for a `<Link>` / `<a>` that should
+// look like a button without nesting a `<button>` in an anchor.
 export function buttonClasses(
   variant: ButtonVariant = "primary",
   {
@@ -110,9 +82,8 @@ export function buttonClasses(
   );
 }
 
-// `ComponentPropsWithRef`, not `ButtonHTMLAttributes`: a caller that has to
-// measure or focus the real button (the overflow menu anchors its panel off it)
-// passes `ref` through like any other native prop.
+// `ComponentPropsWithRef` so a caller can pass `ref` to measure or focus the
+// real button.
 interface ButtonProps extends ComponentPropsWithRef<"button"> {
   variant?: ButtonVariant;
   fullWidth?: boolean;

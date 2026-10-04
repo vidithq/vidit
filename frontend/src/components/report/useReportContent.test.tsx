@@ -104,8 +104,7 @@ describe("useReportContent per kind", () => {
     render(<ReportHarness kind="collection" eventId="c1" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Report" }));
-    // The form names what it is about, so a reader knows what they are
-    // flagging.
+    // The form names what it is about, so a reader knows what they are flagging.
     expect(screen.getByText("Report this collection")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Details (optional)"), {
       target: { value: "  not what it says  " },

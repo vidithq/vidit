@@ -158,9 +158,7 @@ const ROADMAP: {
 export default function LandingPage() {
   return (
     <main className="bg-neutral-950 text-neutral-100">
-      {/* The shared PageFrame puts the landing's content at the same left inset
-          and column as every app page; each section adds only its own vertical
-          rhythm. */}
+      {/* PageFrame aligns the landing with every app page; sections add only vertical rhythm. */}
       <PageFrame>
         <section className="pt-16 pb-12 text-center">
           <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.1]">
@@ -179,8 +177,7 @@ export default function LandingPage() {
             platform where OSINT/GEOINT analysts publish, archive and share
             geolocated events from armed conflicts.
           </p>
-          {/* Readers first, not only analysts, so the hero carries the read
-              path alone; joining lives in the sidebar's sign-in. */}
+          {/* The hero carries the read path alone; joining lives in the sidebar's sign-in. */}
           <div className="mt-8 flex items-center justify-center">
             <Link href="/map" className={buttonClasses("primary")}>
               Explore the map
@@ -204,8 +201,7 @@ export default function LandingPage() {
                 />
               )
             ) : (
-              /* Fallback rendered only when `DEMO_VIDEO_URL` is unset, so it
-                 shows in local dev or on a misconfigured deploy. */
+              /* Fallback when `DEMO_VIDEO_URL` is unset (local dev or a misconfigured deploy). */
               <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-center">
                 <span className="size-12 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-neutral-400">
                   <Play size={18} />

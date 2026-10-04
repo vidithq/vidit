@@ -1,20 +1,9 @@
 """End-to-end tests for /auth/forgot-password and /auth/reset-password.
 
-The pre-creation registration flow (and its email confirmation) lives
-in `test_registration_pending.py`. The soft-verify endpoints
-(/auth/verify-email, /auth/resend-verification) were removed in the
-pre-creation cutover and so are not exercised here.
-
-We exercise the wired-up endpoints rather than the auth_tokens service in
-isolation: the mint/consume contract is the primitive, but the endpoints
-are where wrong-token / replay safety actually has to hold. A test on the
-service alone wouldn't catch a router that consumes with the wrong purpose.
-The purpose match itself is the one case pinned at the service level, since
-the CHECK constraint allows a single stored value.
-
-The email service is monkeypatched with a recorder rather than mocked at
-the HTTP layer — we want to assert that the right *Email* object went to
-the right *recipient*, not "httpx.Client.post was called once".
+The tests go through the endpoints, where wrong-token and replay safety must
+hold; the purpose match is the one case pinned at the service level, since the
+CHECK constraint allows a single stored value. The email service is patched
+with a recorder to assert the right *Email* went to the right recipient.
 """
 
 from __future__ import annotations
@@ -41,10 +30,7 @@ from app.services import auth_tokens, email
 
 @pytest.fixture
 def client():
-    # Fresh client per test so cookie jars don't leak: once any test
-    # logs in, the session cookie sticks on the client and the CSRF
-    # middleware starts 403'ing every subsequent POST that isn't on
-    # the exempt list. Same pattern as test_auth_cookies.py.
+    # Fresh client per test: a leaked session cookie makes CSRF 403 later POSTs.
     return TestClient(app)
 
 
@@ -174,14 +160,8 @@ def test_forgot_password_revokes_previously_outstanding_tokens(
 
 
 def test_forgot_password_dispatches_work_to_background_task(client, user_factory, monkeypatch):
-    """The mint + send happens off the request thread.
-
-    Without this, the live-user branch is hundreds of ms slower than the
-    no-user branch (DB UPDATE + bcrypt mint + Resend round-trip), which
-    leaks user existence via response time regardless of any rate limit.
-    We assert the endpoint route handler itself never calls the worker —
-    only schedules it via FastAPI's BackgroundTasks.
-    """
+    """The mint + send runs off the request thread; inline work would leak user
+    existence via response time. The handler must schedule the worker, not call it."""
     user, _ = user_factory()
 
     called_inline = False
@@ -190,9 +170,6 @@ def test_forgot_password_dispatches_work_to_background_task(client, user_factory
         nonlocal called_inline
         called_inline = True
 
-    # Patch the worker symbol the route handler closes over. The route
-    # MUST add it as a background task (which the TestClient runs *after*
-    # response), not call it directly.
     real_worker = auth_router._process_forgot_password
     monkeypatch.setattr(auth_router, "_process_forgot_password", fake_worker)
 
@@ -201,10 +178,8 @@ def test_forgot_password_dispatches_work_to_background_task(client, user_factory
         json={"email": user.email},
     )
 
-    # TestClient runs BackgroundTasks before handing back the response, so the
-    # post-response invocation proves the handler used the background-task
-    # dispatch path. The absence of inline blocking isn't directly observable in
-    # TestClient; this is the strongest assertion available.
+    # TestClient runs BackgroundTasks before returning, so a call here proves
+    # background dispatch (inline blocking is not observable).
     assert response.status_code == 204
     assert called_inline is True, "background task was not scheduled"
 
@@ -224,8 +199,7 @@ def test_forgot_password_swallows_email_send_failure(client, monkeypatch, user_f
         "/api/v1/auth/forgot-password",
         json={"email": user.email},
     )
-    # Must NOT 5xx — would leak account existence (200 for unknown,
-    # 500 for known-but-email-broken would be a side channel).
+    # A 5xx here would leak account existence.
     assert response.status_code == 204
 
 
@@ -325,11 +299,7 @@ def test_reset_password_rejects_expired_token(client, user_factory, db):
 def test_consume_rejects_a_token_minted_for_another_purpose(user_factory, db):
     """``consume`` must match on ``purpose``, not on the token hash alone.
 
-    The shared auth_tokens table makes it easy to mix purposes up at the call
-    site, so this is the regression line. Asserted from the consume side (a
-    live ``password_reset`` token redeemed against a different purpose): the
-    CHECK constraint pins the column to the one purpose the app mints, so a
-    second stored value cannot exist to assert from the mint side.
+    Asserted from the consume side: the CHECK constraint allows one stored purpose.
     """
     user, _ = user_factory()
     raw = auth_tokens.mint(
@@ -349,22 +319,16 @@ def test_consume_rejects_a_token_minted_for_another_purpose(user_factory, db):
 
 
 def test_consume_atomic_under_parallel_use(user_factory):
-    """Two concurrent consume() calls on the same token must not both win.
+    """Two concurrent consume() calls on one token must not both win.
 
-    Pre-fix this test failed: with a SELECT-then-mutate pattern under
-    READ COMMITTED, two threads could both observe `consumed_at IS NULL`,
-    both set it, and both commit. With the atomic UPDATE...WHERE
-    consumed_at IS NULL one thread wins the row-lock; the other sees
-    zero rows updated and returns None. For password-reset that's the
-    difference between a stolen-token race ending in attacker control
-    and ending in a wasted attempt.
+    A SELECT-then-mutate under READ COMMITTED lets both see `consumed_at IS NULL`;
+    the atomic UPDATE...WHERE consumed_at IS NULL gives one winner.
     """
     import threading
 
     user, _ = user_factory()
 
-    # Mint via its own session so the test fixture session doesn't hold
-    # a lock on the row when the threads start hammering.
+    # Own session, so the fixture session holds no row lock.
     minting_session = SessionLocal()
     try:
         raw = auth_tokens.mint(
@@ -409,10 +373,7 @@ def test_consume_atomic_under_parallel_use(user_factory):
 
 
 def test_credential_less_account_cannot_log_in(client, user_factory):
-    """A profile with no password — an unclaimed assembled profile, or a future
-    OAuth-only claim — must never authenticate by password, and must fail
-    cleanly with 401 rather than crash on the NULL hash.
-    """
+    """A profile with no password never authenticates: 401, not a crash on the NULL hash."""
     user, _ = user_factory(password=None)
     assert user.password_hash is None
 

@@ -6,19 +6,10 @@ import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { TEXT_LINK } from "@/components/ui/styles";
 
-// Public privacy policy, reachable without an account (see `PUBLIC_PREFIXES`
-// in `proxy.ts`). Linked from the about page, the legal notice and the auth
-// screens. Server component, same PageShell + Card composition as the legal
-// notice.
-//
-// Every claim below is checked against the code that writes the data:
-// `models/user.py` for the account, `models/auth_event.py` and
-// `services/audit.py` for the connection log (no IP, no user agent: the client
-// IP is a rate-limit key that never reaches a table),
-// `models/pending_registration.py` and `services/registration.py` for the
-// unconfirmed sign-up TTL, `services/maintenance.py` for the sweeps, and
-// `models/content_report.py` for the reports. Change the code, change this
-// page.
+// Public privacy policy (see `PUBLIC_PREFIXES` in `proxy.ts`). Every claim is checked against the code that writes the data:
+// `models/user.py`, `models/auth_event.py` + `services/audit.py` (connection log, no IP or user agent),
+// `models/pending_registration.py` + `services/registration.py` (sign-up TTL), `services/maintenance.py` (sweeps),
+// `models/content_report.py`. Change the code, change this page.
 
 const TITLE = "Privacy policy";
 const DESCRIPTION =
@@ -44,7 +35,6 @@ export const metadata: Metadata = {
   },
 };
 
-// Where data requests and other legal mail land, as on `/legal`.
 const CONTACT_EMAIL = "support@vidit.app";
 
 const PARAGRAPH = "text-sm text-neutral-300 leading-relaxed";

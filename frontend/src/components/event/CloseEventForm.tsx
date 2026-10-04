@@ -10,16 +10,10 @@ import { Textarea } from "@/components/ui/Input";
 import { FORM_LABEL, FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
 /**
- * What each row is called, for the one verb that closes all of them. The verb
- * is always *Close*: one write ends a request, a detection and a published
- * geolocation alike, and giving each shape its own verb asked a reader to learn
- * three words for one act and left the action row, the panel eyebrow and the
- * confirm button free to drift apart. The noun still names the row, so the
- * label says what is being closed.
- *
- * A `closed` row is the state the verb produces and offers no close, so it
- * never reaches this map; the generic noun covers it rather than a fourth
- * entry claiming a shape that has none.
+ * What each row is called, for the one verb that closes all of them. The verb is always *Close*:
+ * one write ends a request, a detection and a published geolocation, and per-shape verbs would
+ * let the action row, panel eyebrow and confirm button drift. The noun names the row. A `closed`
+ * row offers no close, so the generic noun covers it rather than a fourth entry.
  */
 const CLOSE_NOUN: Partial<Record<EventStatus, string>> = {
   requested: "request",
@@ -40,8 +34,7 @@ export function closeActionLabel(status: EventStatus): string {
 
 interface CloseEventFormProps {
   eventId: string;
-  /** The row's current status, which names the row in the copy: a request, a
-   *  detection or a geolocation. The verb is *Close* in every case. */
+  /** The row's current status, which names the row in the copy. */
   status: EventStatus;
   /** Called with the closed event on success (the parent refetches / routes). */
   onClosed: (closed: EventDetail) => void;
@@ -52,12 +45,10 @@ interface CloseEventFormProps {
 }
 
 /**
- * Inline "close this event" panel: a required free-text reason plus a confirm /
- * cancel pair, composed from the shared primitives (`Textarea`, `Button`, the
- * `FORM_*` constants). One verb closes all three live shapes, and `status` only
- * picks the noun it is spelled with (`CLOSE_NOUN`). The reason stays publicly
- * visible on the closed row (transparency), which is why the backend requires
- * it; this enforces the same non-empty rule client-side.
+ * Inline "close this event" panel: a required free-text reason plus confirm and cancel, composed
+ * from shared primitives. `status` only picks the noun (`CLOSE_NOUN`). The reason stays publicly
+ * visible on the closed row, so the backend requires it; this enforces the same non-empty rule
+ * client-side.
  */
 export function CloseEventForm({
   eventId,

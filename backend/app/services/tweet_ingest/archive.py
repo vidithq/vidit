@@ -1,10 +1,8 @@
 """Acquire from an X "Download your data" archive: ``tweets.js`` to TweetRecords.
 
-The archive is the analyst's own export: full history, no API, and crucially
-the reply edges + media inline that syndication can't expose, so ``stitch`` can
-rebuild real self-threads. We read only the copy-allowlisted entries
-(``tweets.js`` plus ``tweets_media/``): a copy-allowlist fails safe where a
-delete-denylist would leak the DMs / email / phone that ride in the same zip.
+The export carries the reply edges and media inline that syndication cannot
+expose, so ``stitch`` can rebuild self-threads. Only the copy-allowlisted
+entries are read (see ``archive_zip``).
 """
 
 from __future__ import annotations
@@ -25,15 +23,12 @@ from .retry import parse_retry_after, retrying_async
 from .syndication import extract_source_links, media_entry
 from .urls import is_trusted_media_url
 
-# Byte cap on a single remote-media fetch: every chased CDN URL is streamed into
-# memory under it. Sized for the upload ceilings (10 MB image / 95 MiB video)
-# plus HTTP-framing overhead. Anything bigger is an unexpected upstream response
-# or a hostile content-length lie; cap and bail so a fetch cannot buffer an
-# unbounded stream in memory.
+# Byte cap on one remote-media fetch, streamed into memory: the upload ceilings
+# (10 MB image / 95 MiB video) plus framing overhead. Larger is hostile or
+# unexpected, so bail rather than buffer an unbounded stream.
 MEDIA_FETCH_MAX_BYTES = 110 * 1024 * 1024
 
-# Each ``.js`` payload is wrapped ``window.YTD.tweets.part0 = [ ... ]``: strip
-# the assignment prefix, then it's plain JSON.
+# Each ``.js`` payload is ``window.YTD.tweets.part0 = [ ... ]``: strip the prefix for JSON.
 _YTD_PREFIX_RE = re.compile(r"^\s*window\.YTD\.\w[\w-]*\.part\d+\s*=\s*")
 
 # Twitter's ``created_at``: ``Wed Nov 12 14:33:00 +0000 2025``.
@@ -41,11 +36,8 @@ _TWITTER_TIME_FMT = "%a %b %d %H:%M:%S %z %Y"
 
 
 def _to_iso(created_at: str) -> str:
-    """Normalize Twitter's ``created_at`` to ISO 8601, the form a record carries.
-
-    Falls back to the raw value if it's already ISO or otherwise unparseable:
-    the resolution degrades to the epoch date rather than raising.
-    """
+    """Normalize Twitter's ``created_at`` to ISO 8601; an unparseable value is
+    returned as is (the resolution degrades to the epoch date)."""
     try:
         return datetime.strptime(created_at, _TWITTER_TIME_FMT).isoformat()
     except ValueError:
@@ -61,11 +53,7 @@ def _strip_ytd_prefix(text: str) -> Any:
 
 
 def _tweet_text(tweet: dict[str, Any]) -> str:
-    """An export entry's text: ``full_text``, falling back to ``text``.
-
-    The first key holding a ``str`` wins, so a malformed non-string ``full_text``
-    cannot mask a usable ``text``. Empty string when neither holds one.
-    """
+    """An export entry's ``full_text``, else ``text``; the first ``str`` wins, else ``""``."""
     for key in ("full_text", "text"):
         value = tweet.get(key)
         if isinstance(value, str):
@@ -74,14 +62,9 @@ def _tweet_text(tweet: dict[str, Any]) -> str:
 
 
 def _is_retweet(tweet: dict[str, Any]) -> bool:
-    """Whether the entry is a retweet rather than a post the owner wrote.
+    """Whether the entry is a retweet (``extract.is_retweet``, as for live entries).
 
-    An export lists the account's retweets alongside its own tweets, and a
-    retweet's content belongs to someone else: importing one would attribute a
-    stranger's geolocation to the analyst running the import. Recognised by
-    ``extract.is_retweet``, the same rule the detection engine applies to the
-    live entries; dropping the entry here also keeps a retweet out of the
-    stitching and out of the in-archive quote join.
+    Importing one would attribute a stranger's geolocation to the analyst.
     """
     return is_retweet(_tweet_text(tweet))
 
@@ -89,16 +72,11 @@ def _is_retweet(tweet: dict[str, Any]) -> bool:
 def _archive_media(tweet: dict[str, Any], tweet_id: str) -> list[ParsedMedia]:
     """Map a tweet's inline media to archive-relative ``ParsedMedia``.
 
-    ``remote_url`` carries the archive-relative path, not a URL: the export
-    downloads each media beside ``tweets.js`` as
-    ``tweets_media/<tweet_id>-<basename>``, where the basename is the last path
-    segment of the URL the entry declares (``syndication.media_entry``, the one
-    reader of a media entry, which picks a video's highest-bitrate mp4 variant,
-    the one the export saved). The basename names the file and nothing else: an
-    imported photo's stored type is a constant
-    (``records.PHOTO_CONTENT_TYPE``), so a file the entry's extension describes
-    badly costs nothing, and a basename that names no saved file degrades to a
-    fetch that comes back empty, never a failure.
+    ``remote_url`` is the path ``tweets_media/<tweet_id>-<basename>``, the basename
+    being the last segment of the declared URL (``syndication.media_entry`` picks
+    a video's highest-bitrate mp4, the one the export saved). It names the file
+    only (the stored type is ``records.PHOTO_CONTENT_TYPE``); a missing file
+    degrades to an empty fetch.
     """
     container = tweet.get("extended_entities") or tweet.get("entities") or {}
     entries = container.get("media") if isinstance(container, dict) else None
@@ -120,12 +98,10 @@ def _archive_media(tweet: dict[str, Any], tweet_id: str) -> list[ParsedMedia]:
 def _archive_quoted(
     quoted_id: str | None, by_id: dict[str, dict[str, Any]], *, handle: str
 ) -> QuotedTweet | None:
-    """The quoted post ``quoted_id`` names, joined inside the export itself.
+    """The quoted post ``quoted_id`` names, joined inside the export (no fetch).
 
-    Pure disk: both posts are in the same file, so the owner quoting their own
-    post needs no fetch. A quote the export does not hold stays unresolved on
-    the record (``TweetRecord.quoted_status_id``), which is the one target
-    ``chase.chase_thread`` reads it for.
+    A quote the export lacks stays unresolved (``TweetRecord.quoted_status_id``,
+    read by ``chase.chase_thread``).
     """
     src = by_id.get(quoted_id) if quoted_id is not None else None
     if quoted_id is None or src is None:
@@ -142,18 +118,11 @@ def _archive_quoted(
 
 
 def read_tweets(archive_dir: Path, *, handle: str) -> list[TweetRecord]:
-    """Parse ``tweets.js`` under ``archive_dir`` into enriched ``TweetRecord``s.
+    """Parse ``tweets.js`` under ``archive_dir`` into ``TweetRecord``s (pure disk).
 
-    ``handle`` is the verified owner handle; the export is the owner's own
-    tweets. Each record carries the inline reply edges (so ``stitch`` rebuilds
-    real self-threads), the OP media, the links it carries (``entities.urls``)
-    and the quoted post joined inside the export. Pure disk: the footage a
-    thread points at off the export is ``chase.chase_thread``'s one fetch, run
-    on the stitched threads.
-
-    Retweets (:func:`_is_retweet`) are dropped here, the earliest point that
-    can tell them apart, so nothing downstream can attribute another account's
-    post to ``handle``.
+    ``handle`` is the verified owner handle. Records carry reply edges, OP media,
+    links and the in-export quoted post. Retweets are dropped here, so nothing
+    downstream attributes another account's post to ``handle``.
     """
     raw = (archive_dir / "tweets.js").read_text(encoding="utf-8")
     entries = _strip_ytd_prefix(raw)
@@ -167,15 +136,14 @@ def read_tweets(archive_dir: Path, *, handle: str) -> list[TweetRecord]:
         and isinstance(entry.get("tweet"), dict)
         and not _is_retweet(entry["tweet"])
     ]
-    # For the in-archive quote join (the owner quote-tweeting their own post).
+    # For the in-archive quote join.
     by_id = {t["id_str"]: t for t in tweets if isinstance(t.get("id_str"), str)}
 
     records: list[TweetRecord] = []
     for tweet in tweets:
         tweet_id = tweet.get("id_str")
-        # ``id_str`` is woven into a filesystem path (``tweets_media/<id>-...``)
-        # and the export is attacker-controlled, so reject anything that isn't
-        # digits-only before it can carry ``..`` or a separator into the path.
+        # ``id_str`` enters a filesystem path and the export is attacker-controlled:
+        # digits only, so no ``..`` or separator.
         if not isinstance(tweet_id, str) or not tweet_id.isdigit():
             continue
         created_at = tweet.get("created_at")
@@ -199,18 +167,12 @@ def read_tweets(archive_dir: Path, *, handle: str) -> list[TweetRecord]:
 
 
 async def fetch_cdn_media(parsed: ParsedMedia) -> tuple[bytes, str] | None:
-    """Fetch a chased source media from a CDN.
+    """Fetch a chased source media from a CDN (absolute ``remote_url``).
 
-    A chase carries absolute CDN URLs in ``remote_url``, unlike the archive's own
-    media, which are ``tweets_media/`` disk paths. SSRF-guarded by
-    ``is_trusted_media_url``, the one host allowlist. Streamed with a byte cap
-    (``MEDIA_FETCH_MAX_BYTES``) so a hostile or buggy CDN file that lies about
-    its size can't OOM the worker; over the cap degrades to ``None``
-    (media-incomplete), fail-soft like a fetch error.
-
-    A throttled or unreachable CDN is retried on the package's one schedule
-    (:mod:`tweet_ingest.retry`) before it degrades: the footage is the point of
-    the detection, and a CDN blip is the cheapest thing in this pipeline to sit out.
+    SSRF-guarded by ``is_trusted_media_url``. Streamed under
+    ``MEDIA_FETCH_MAX_BYTES`` so a CDN lying about size cannot OOM the worker;
+    over the cap, or any fetch error, degrades to ``None`` (media-incomplete).
+    A throttled or unreachable CDN is retried (:mod:`tweet_ingest.retry`) first.
     """
     if not is_trusted_media_url(parsed.remote_url):
         return None
@@ -224,12 +186,9 @@ async def fetch_cdn_media(parsed: ParsedMedia) -> tuple[bytes, str] | None:
 
 
 async def _read_cdn_media(url: str) -> bytes | None:
-    """One streamed GET of a trusted media URL: its bytes, or ``None``.
-
-    The unit :func:`fetch_cdn_media` retries. ``None`` for the outcomes a second
-    attempt cannot change (a refusal that is not throttling, a body over the
-    cap); a throttled or unreachable CDN raises, which is what earns the retry.
-    """
+    """One streamed GET: the bytes, or ``None`` where a retry cannot help (a
+    non-throttling refusal, an over-cap body). Throttling or an unreachable CDN
+    raises, which earns the retry."""
     try:
         async with (
             httpx.AsyncClient(timeout=20.0) as client,
@@ -255,23 +214,18 @@ async def _read_cdn_media(url: str) -> bytes | None:
 def archive_media_fetcher(
     archive_dir: Path,
 ) -> Callable[[ParsedMedia], Awaitable[tuple[bytes, str] | None]]:
-    """A media fetcher for a backfill: the archive's own media from
-    ``tweets_media/`` on disk, chased source media from the CDN it lives on.
+    """A backfill media fetcher (the assemble step's ``MediaFetcher``).
 
-    Matches the assemble step's ``MediaFetcher`` signature and dispatches on
-    ``remote_url``: an absolute URL is a chased source media (CDN); anything else
-    is the archive-relative disk path. Returns ``None`` for a missing / untrusted
-    media, so the detection persists media-incomplete rather than failing the
-    whole backfill.
+    An absolute ``remote_url`` is chased source media (CDN); anything else is
+    an archive-relative disk path. A missing or untrusted media returns ``None``,
+    so the detection persists media-incomplete.
     """
-
     base = archive_dir.resolve()
 
     async def fetch(parsed: ParsedMedia) -> tuple[bytes, str] | None:
         if parsed.remote_url.startswith("http"):
             return await fetch_cdn_media(parsed)
-        # Defence in depth behind ``read_tweets``' id check: never read outside
-        # the extraction dir, whatever ``remote_url`` resolves to.
+        # Defence in depth behind ``read_tweets``' id check.
         target = (base / parsed.remote_url).resolve()
         if not target.is_relative_to(base):
             return None

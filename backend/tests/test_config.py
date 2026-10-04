@@ -120,9 +120,8 @@ def test_default_jwt_secret_with_unparseable_host_fails(monkeypatch):
 
 
 def test_cors_origin_regex_dropped_on_remote_db(monkeypatch):
-    """The localhost dev regex must not survive to a non-local deployment: a
-    live localhost origin regex + allow_credentials would let any localhost page
-    make credentialed cross-origin reads against the API."""
+    """The localhost dev regex must not survive to a non-local deployment: with
+    allow_credentials it would let any localhost page read the API with credentials."""
     _clear_storage_env(monkeypatch)
     monkeypatch.setenv("JWT_SECRET", "a-real-secret")
     monkeypatch.setenv("COOKIE_SECURE", "true")
@@ -152,9 +151,7 @@ def test_cors_origin_regex_non_localhost_pattern_kept_on_remote_db(monkeypatch):
 
 
 def test_cors_origin_regex_custom_localhost_substring_kept_on_remote_db(monkeypatch):
-    """Only the exact shipped default is auto-dropped: a custom pattern that
-    merely contains the substring 'localhost' is the operator's and stands, so
-    the drop can't silently break a real origin that happens to spell it."""
+    """Only the exact shipped default is dropped; a custom pattern containing 'localhost' stands."""
     _clear_storage_env(monkeypatch)
     monkeypatch.setenv("JWT_SECRET", "a-real-secret")
     monkeypatch.setenv("COOKIE_SECURE", "true")

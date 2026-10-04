@@ -1,11 +1,8 @@
 """The one retry schedule every ingest fetch shares, and what it is spent on.
 
-Two halves: the policy itself (how many attempts, which failures earn one, what
-an upstream's ``Retry-After`` moves) and the syndication read that runs it over
-a mock transport. The other two callers are tested where they live, the CDN
-media stream in ``test_archive`` and the Telegram embed in
-``test_chase_telegram``. Nothing leaves the box, and nothing sleeps: the
-``retry_sleeps`` fixture records the pauses the schedule asked for.
+Covers the policy (attempts, which failures retry, ``Retry-After``) and the
+syndication read that runs it on a mock transport. The CDN stream and Telegram
+embed callers are tested in ``test_archive`` and ``test_chase_telegram``.
 """
 
 from __future__ import annotations
@@ -35,9 +32,7 @@ def _clear_tweet_cache():
 
 
 def test_a_transient_failure_is_attempted_the_whole_schedule(retry_sleeps):
-    """Three attempts, pausing the documented backoff between them, and the last
-    failure is what the caller sees: a retry changes when a fetch answers, never
-    what it answers."""
+    """Three attempts with the documented backoff between them; the caller sees the last failure."""
     attempts: list[int] = []
 
     def call() -> str:
@@ -68,9 +63,7 @@ def test_a_transient_failure_that_clears_answers_on_the_retry(retry_sleeps):
     [TweetNotAccessible("gone"), TweetFetchFailed("upstream returned __typename 'X'")],
 )
 def test_a_failure_a_retry_cannot_fix_is_raised_at_once(failure, retry_sleeps):
-    """A deleted post and a payload that drifted come back on the first attempt.
-    Retrying either one spends a request and the analyst's wait on an answer that
-    cannot change, and on the paste it holds the request open for nothing."""
+    """A deleted post or a drifted payload fails on the first attempt: a retry cannot change the answer."""
     attempts: list[int] = []
 
     def call() -> str:
@@ -84,9 +77,7 @@ def test_a_failure_a_retry_cannot_fix_is_raised_at_once(failure, retry_sleeps):
 
 
 def test_a_short_retry_after_replaces_the_pause_it_is_longer_than(retry_sleeps):
-    """The upstream named a delay, so coming back sooner than it asked is what
-    earns the next refusal. Only when it asks for longer than the schedule: a
-    header asking for less does not shorten the backoff."""
+    """A ``Retry-After`` longer than the schedule is honoured; a shorter one does not shorten the backoff."""
 
     def call() -> str:
         raise TweetUpstreamBusy("upstream returned 429", retry_after=2.0)
@@ -97,9 +88,7 @@ def test_a_short_retry_after_replaces_the_pause_it_is_longer_than(retry_sleeps):
 
 
 def test_a_long_retry_after_ends_the_attempts_instead_of_stretching_them(retry_sleeps):
-    """A fetch never sleeps past ``RETRY_BUDGET_S`` in total, so an upstream
-    asking to be left alone for a minute is answered now: the paste runs one of
-    these inline, and the analyst can act on the warning it lands with."""
+    """A fetch never sleeps past ``RETRY_BUDGET_S`` in total (the paste runs it inline)."""
     attempts: list[int] = []
 
     def call() -> str:
@@ -117,8 +106,7 @@ def test_a_long_retry_after_ends_the_attempts_instead_of_stretching_them(retry_s
     [("3", 3.0), (" 12 ", 12.0), ("0", 0.0), ("Wed, 21 Oct 2026 07:28:00 GMT", None), ("-1", None)],
 )
 def test_retry_after_reads_the_delta_seconds_form_only(header, expected):
-    """The HTTP-date spelling is ignored rather than parsed: honouring it means
-    trusting a remote clock against ours to decide how long to hold a request."""
+    """The HTTP-date spelling is ignored: parsing it would trust a remote clock."""
     assert retry.parse_retry_after(header) == expected
     assert retry.parse_retry_after(None) is None
 
@@ -137,8 +125,7 @@ def _client(responses: list[httpx.Response]) -> tuple[httpx.Client, list[httpx.R
 
 
 def test_a_throttled_syndication_read_retries_into_the_body(retry_sleeps):
-    """X throttling one read is the common case the retry exists for: the second
-    attempt serves the post, and the analyst's import never learns of the 429."""
+    """A throttled first read is retried and the second serves the post."""
     body = {"__typename": "Tweet", "id_str": _TWEET_ID, "text": "hello"}
     client, seen = _client([httpx.Response(429), httpx.Response(200, json=body)])
     with client:
@@ -166,8 +153,7 @@ def test_a_deleted_post_costs_one_syndication_read(retry_sleeps):
 
 
 def test_only_a_served_body_is_cached(retry_sleeps):
-    """The cache sits outside the retried round trip: the 429 leaves nothing
-    behind, and the body the retry won is what the next read is served."""
+    """The cache sits outside the retried round trip: the 429 caches nothing, and the won body is served next."""
     body = {"__typename": "Tweet", "id_str": _TWEET_ID}
     client, seen = _client([httpx.Response(429), httpx.Response(200, json=body)])
     with client:

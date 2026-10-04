@@ -11,33 +11,22 @@ import {
 } from "@/lib/collections";
 
 /**
- * One collection on the profile's grid: the mosaic, the title, the
- * description's plain-text projection clamped to two lines, the meta line the
- * collection's own page prints under its heading, and the tags its items carry.
+ * One collection on the profile's grid: the mosaic, the title, the description's
+ * plain-text projection clamped to two lines, the meta line, and the tags its
+ * items carry.
  *
- * The catalogue click model, the one every row on the site uses: the whole card
- * is a stretched link to the collection, and nothing inside it competes for the
- * click. The row shell is the catalogue card's own (`bg-neutral-900` on a
- * `border-neutral-800` `rounded-md` at `p-3`, accent border on hover), so a
- * collection card and an event card read as the same object in two shapes; the
- * mosaic sits over the text rather than beside it, the `feed` arrangement,
- * since it is the collection's own picture rather than a thumbnail of one
- * item.
- *
- * The card wears no type mark beside its title. The mosaic is what identifies
- * a collection in a grid, and a square glyph in front of the heading only takes
- * width from the two lines the title has to render in. The surfaces that do
- * have to name the type carry `CollectionIcon` instead.
+ * The whole card is a stretched link. The shell matches the catalogue card's, with
+ * the mosaic over the text (the `feed` arrangement). No type mark beside the
+ * title: the mosaic identifies a collection, and a glyph would take width from
+ * the two title lines.
  */
 export function CollectionCard({
   collection,
   showOwner = false,
 }: {
   collection: Collection;
-  /** Lead the meta line with the owner's handle. Off on the profile, where
-   *  every card on the page belongs to the analyst the page names; on for a
-   *  search result, which stands beside other analysts' collections and where
-   *  nothing else says whose shelf this is. */
+  /** Lead the meta line with the owner's handle. On for a search result, off on
+   *  the profile where the page names the analyst. */
   showOwner?: boolean;
 }) {
   return (
@@ -54,11 +43,7 @@ export function CollectionCard({
         <h3 className="line-clamp-2 text-sm font-medium text-neutral-100 group-hover:text-orange-400">
           {collection.title}
         </h3>
-        {/* What the collection says it holds, clamped to two lines: a card is
-            one row of a grid, and the collection's own page carries the
-            description whole, marks and lists included. The card reads the
-            plain-text projection the server stores beside the document, since
-            two lines of a grid row have no room for rich text. */}
+        {/* The plain-text projection the server stores beside the document. */}
         <p className="line-clamp-2 text-xs text-neutral-400">
           {collection.description_text}
         </p>
@@ -70,17 +55,10 @@ export function CollectionCard({
 }
 
 /**
- * What the collection is about, as the tags of the events it holds.
- *
- * The event card's own tag row (`EntityCard`), in the slot that card puts it
- * in: under the meta line, the same `Pill` at the same size, uncapped, so a
- * collection and an event read as the same object in a grid. The tags are
- * derived server-side and carry no filter of their own here, so the pills are
- * text rather than links: the card is one stretched link to the collection.
- *
- * Shared by the card and the collection page's own header, the way
- * `CollectionMetaLine` is, so the two cannot print different tags for one
- * collection. A collection whose items carry no tag renders nothing.
+ * The tags of the events the collection holds, in the slot and `Pill` size
+ * `EntityCard` uses. Derived server-side, so the pills are text, not links (the
+ * card is one stretched link). Shared by the card and the page header so they
+ * cannot print different tags. Renders nothing without tags.
  */
 export function CollectionTags({ collection }: { collection: Collection }) {
   if (collection.tags.length === 0) return null;
@@ -97,15 +75,10 @@ export function CollectionTags({ collection }: { collection: Collection }) {
 
 /**
  * The meta line under a collection's name: how much it holds, then the span its
- * items cover. Shared by the card and the collection page's own header, so the
- * two cannot count or date one collection differently.
+ * items cover. Shared by the card and the page header. Each segment stays on one
+ * line, so the row wraps between segments at 375px.
  *
- * Each segment holds together on its own line, the profile metadata line's
- * rule, so the row wraps between segments rather than inside a date at 375px.
- *
- * `owner` leads with the byline, the catalogue card's own meta grammar
- * (`by @user` first, then the readings), for the one surface where a
- * collection stands beside other analysts': the search results.
+ * `owner` leads with the byline (`by @user`), for search results.
  */
 export function CollectionMetaLine({
   collection,
@@ -113,17 +86,14 @@ export function CollectionMetaLine({
   owner = false,
 }: {
   collection: Collection;
-  /** The host's own type size: `text-[11px]` on a card, `text-xs` on the page
-   *  header where it sits under a heading rather than inside a row. */
+  /** The host's type size (`text-xs` on the page header). */
   className?: string;
-  /** Lead with `by @user`. Off wherever the surface already names the owner. */
   owner?: boolean;
 }) {
   return (
     <p className={`flex flex-wrap items-center text-neutral-500 ${className}`}>
       {owner && (
-        // The card is one stretched link, so the handle is text rather than a
-        // second anchor the mouse and the keyboard would disagree about.
+        // The card is one stretched link, so the handle is text, not a second anchor.
         <span className="whitespace-nowrap">
           <AuthorByline author={collection.owner} link={false} />
         </span>
@@ -138,8 +108,7 @@ export function CollectionMetaLine({
   );
 }
 
-/** The dot between two segments. Decorative, so a reader who is read the line
- *  hears the readings and not the punctuation between them. */
+/** Decorative, so a screen reader does not read the punctuation. */
 const SEPARATOR = (
   <span aria-hidden="true" className="px-1.5 text-neutral-700">
     ·

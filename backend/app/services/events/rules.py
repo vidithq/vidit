@@ -1,12 +1,4 @@
-"""The rules every write verb shares: the evidence floor and the source swap.
-
-The floor a row clears to become ``geolocated`` (:func:`_require_submission_media`,
-:func:`_require_proof_image`, :func:`_require_submission_floor`), the proof
-sanitiser wrapper, the source-media swap (:class:`SourceSwap`), the tag and
-conflict resolvers, and :func:`_credit_geolocator`, the one home of the
-owner-among-geolocators invariant. The verbs import from here and never from
-each other.
-"""
+"""Rules every write verb shares: the evidence floor, the source swap, geolocator credit."""
 
 from __future__ import annotations
 
@@ -27,13 +19,8 @@ from .errors import InvalidProofError, ProofImageRequiredError, TagRequirementsE
 
 
 def _sanitize_proof(proof_data: dict | None, *, allow_placeholders: bool = False) -> dict | None:
-    """Sanitise a proof body, ``None`` passing through untouched.
-
-    The absent-proof branch, and nothing else: the mapping from the
-    sanitiser's ``ValueError`` to a typed 400 is
-    :func:`services.sanitize.sanitize_tiptap_doc_or_raise`, which a
-    collection's description takes with its own error class.
-    """
+    """Sanitise a proof body; ``None`` passes through. The typed 400 comes from
+    :func:`services.sanitize.sanitize_tiptap_doc_or_raise`."""
     if proof_data is None:
         return None
     return sanitize_tiptap_doc_or_raise(
@@ -42,14 +29,11 @@ def _sanitize_proof(proof_data: dict | None, *, allow_placeholders: bool = False
 
 
 def _require_submission_floor(tags: list[Tag], conflicts: list[Conflict]) -> None:
-    """Enforce the curated floor: one conflict + one ``capture_source`` tag.
+    """Require one conflict and one ``capture_source`` tag.
 
-    Half of the evidence floor a row must clear to become ``geolocated``. A
-    human create runs it up front; a request / machine detection is born
-    bare and runs it at the geolocate transition. Checked against resolved
-    ``Conflict`` / ``Tag`` rows, so a bogus id payload fails like an empty
-    one. Both domains ship an escape value (the ``Other`` conflict, the
-    ``Other`` capture source), so the rule is always satisfiable.
+    A create runs it up front; a request or detection runs it at geolocate.
+    Checked on resolved rows, so bogus ids fail like an empty list. The
+    ``Other`` values keep the rule satisfiable.
     """
     if not conflicts:
         raise TagRequirementsError("A conflict is required")
@@ -58,41 +42,27 @@ def _require_submission_floor(tags: list[Tag], conflicts: list[Conflict]) -> Non
 
 
 def _require_submission_media(has_media: bool) -> None:
-    """Enforce the source floor: one source media on the row.
-
-    The sibling of :func:`_require_submission_floor`, shared by every write
-    (create, request, geolocate): an event never exists without its footage.
-    """
+    """Require a source media on the row, for every write."""
     if not has_media:
         raise MediaRequiredError("A source media file is required")
 
 
 @dataclass(frozen=True)
 class SourceSwap:
-    """What a write does to an event's source media: what it drops, what survives.
-
-    The one place the source-media rules live, for the two writes that carry the
-    fields (:func:`geolocate` and :func:`save_version`): the removal list names
-    stored rows, ``files`` carries the replacement, and the two together have to
-    leave the event on exactly one ``source`` media.
-    """
+    """The source media a write drops and how many survive (:func:`geolocate`,
+    :func:`save_version`); the result must be exactly one ``source`` media."""
 
     removed: list[Media]
     survivors: int
 
 
 def _plan_source_swap(geo: Event, *, remove_media_ids: list, files: list[UploadFile]) -> SourceSwap:
-    """Read a write's source-media fields against the row, before any S3 work.
+    """Plan a write's source-media changes before any S3 work.
 
-    Ids arrive as JSON strings from the form, so the comparison is on the string
-    form. Raises :class:`TooManyFilesError` (422) when kept plus new would leave
-    the event on more than one source media: the row an upload replaces has to
-    be named for removal in the same call, which is also what the
-    ``uq_media_source_per_event`` index enforces at the database.
-
-    The caller checks ``survivors`` against the floor
-    (:func:`_require_submission_media`) and applies the removals with
-    :func:`_apply_source_removals`, so a refused write touches nothing.
+    Ids arrive as strings, so compare on the string form. Raises
+    :class:`TooManyFilesError` (422) when kept plus new exceeds one, as
+    ``uq_media_source_per_event`` enforces in the DB. The caller checks
+    ``survivors`` against the floor, so a refused write touches nothing.
     """
     removing = {str(x) for x in remove_media_ids}
     sources = [m for m in geo.media if m.role == "source"]
@@ -108,14 +78,12 @@ def _plan_source_swap(geo: Event, *, remove_media_ids: list, files: list[UploadF
 
 
 def _apply_source_removals(db: Session, swap: SourceSwap) -> None:
-    """Delete the source rows a write drops, and flush the deletes.
+    """Delete the dropped source rows and flush.
 
-    The flush is the load-bearing half: delete-then-insert has to reach Postgres
-    in that order, or the replacement source trips
-    ``uq_media_source_per_event`` mid-flush. Call it before the intake attaches
-    the new file. What happens to the S3 objects is the caller's own call: a
-    pre-publication swap sweeps them, while a version keeps them, since the
-    snapshot it just filed renders that media.
+    Delete must reach Postgres before the insert, or the replacement trips
+    ``uq_media_source_per_event``. Call before the intake attaches the new file.
+    S3 objects are the caller's: a pre-publication swap sweeps them, a version
+    keeps them (its snapshot renders that media).
     """
     for media in swap.removed:
         db.delete(media)
@@ -123,12 +91,7 @@ def _apply_source_removals(db: Session, swap: SourceSwap) -> None:
 
 
 def _require_proof_image(proof_doc: dict | None) -> None:
-    """Enforce the proof-image floor: the proof body embeds at least one image.
-
-    The third leg of the evidence floor at ``geolocated``: a vouched location
-    without a visual argument isn't reviewable. Counts both already-uploaded
-    URLs (the edit flow) and ``placeholder://`` srcs about to resolve.
-    """
+    """Require at least one image in the proof, uploaded or ``placeholder://``."""
     if proof_doc is None or not extract_image_srcs(proof_doc):
         raise ProofImageRequiredError("At least one proof image is required")
 
@@ -142,15 +105,11 @@ def _resolve_conflicts(db: Session, conflict_ids: list) -> list[Conflict]:
 
 
 def _credit_geolocator(db: Session, geo: Event, user: User) -> None:
-    """Make ``user`` the owner of record and record durable geolocation credit.
+    """Make ``user`` the owner and credit them as geolocator.
 
-    The one place that upholds the invariant "a ``geolocated`` event's
-    ``owner_id`` is always among its ``event_geolocators``" (asserted on the
-    model, and the basis for the GDPR-erasure floor in
-    ``admin.hard_delete_user``). Every geolocation-producing path routes through
-    here instead of hand-pairing the two writes, so a future transition can't set
-    the owner and forget the credit. Idempotent on the credit row by its
-    composite PK.
+    Upholds "a ``geolocated`` event's ``owner_id`` is among its
+    ``event_geolocators``" (the basis of the GDPR-erasure floor in
+    ``admin.hard_delete_user``). Every geolocating path goes through here.
     """
     geo.owner_id = user.id
     db.add(EventGeolocator(event_id=geo.id, user_id=user.id))

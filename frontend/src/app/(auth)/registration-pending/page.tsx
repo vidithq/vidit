@@ -11,13 +11,7 @@ import { TEXT_LINK } from "@/components/ui/styles";
 
 type ResendState = "idle" | "sending" | "sent" | "failed";
 
-/**
- * Landing after `POST /auth/register`: registration accepted and a
- * confirmation email queued, but no `users` row exists yet.
- *
- * Resend is rate-limited server-side (5/hour per IP); not mirrored on the
- * client — worst case is a 429 surfaced as a generic failure.
- */
+/** Landing after `POST /auth/register`; no `users` row exists yet. Resend is rate-limited server-side (5/hour per IP), not mirrored on the client. */
 function PendingInner() {
   const params = useSearchParams();
   const email = params.get("email") ?? "";

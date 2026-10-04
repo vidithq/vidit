@@ -11,10 +11,7 @@ export default function AuthLayout({
   return (
     <main>
       <PageCenter className="px-4 bg-neutral-950">
-        {/* The auth card plus the one discreet line under it. The legal notice
-            and the privacy policy have to be reachable before an account
-            exists, and the sign-in screen is where a visitor without one
-            lands. */}
+        {/* The legal notice and privacy policy must be reachable before an account exists. */}
         <div className="flex flex-col items-center gap-4">
           {children}
           <p className="text-[11px] text-neutral-600">

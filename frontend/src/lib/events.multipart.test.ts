@@ -113,8 +113,7 @@ describe("createEvent multipart", () => {
       "https://t.me/c/3",
       "https://x.com/u/status/2",
     ]);
-    // Blank where that mirror was not archived, so position i on the wire
-    // names mirror i whatever the analyst filled in.
+    // Blank where that mirror was not archived, so position i names mirror i.
     expect(body.getAll("secondary_snapshot_urls")).toEqual([
       "",
       "https://archive.ph/abcde",
@@ -192,8 +191,7 @@ describe("createEvent multipart", () => {
 });
 
 describe("saveVersion multipart", () => {
-  /** The version form: the geolocate form, whole. The evidence anchor rides
-   *  along, since a correction to it is versioned like any other. */
+  /** The version form: the geolocate form, whole, anchor included. */
   const versionInput = { ...createInput, remove_media_ids: [] };
 
   it("carries the evidence anchor, so a published source can be corrected", async () => {
@@ -219,9 +217,7 @@ describe("saveVersion multipart", () => {
   });
 
   it("omits a blank source_posted_at so the published instant survives", async () => {
-    // The server reads an absent field as "keep": posting "" would ask it to
-    // tell a blanked field from an untouched one, and a correction to the title
-    // would wipe the instant the record was vouched with.
+    // An absent field means "keep": posting "" would wipe the instant on a title correction.
     mockFetch.mockResolvedValue({ id: "e1", status: "geolocated" });
     await saveVersion("e1", { ...versionInput, source_posted_at: "" });
     expect(lastBody().has("source_posted_at")).toBe(false);

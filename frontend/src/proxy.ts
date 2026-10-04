@@ -2,58 +2,37 @@ import { NextRequest, NextResponse } from "next/server";
 
 const CANONICAL_HOST = "vidit.app";
 
-// Mirrors `CSRF_COOKIE` in `lib/auth.ts`. Inlined because importing
-// `lib/auth.ts` pulls in a `document.cookie` reference the edge runtime
-// lacks. The backend sets/clears it in lockstep with the HttpOnly session
-// cookie, so its presence is a good-enough proxy for "has a session" —
-// validating the JWT here would add a dependency for a UX-flash fix only;
-// a stale cookie still 401s at the API and the page bounces in its effect.
+// Mirrors `CSRF_COOKIE` in `lib/auth.ts`; change both. Inlined because `lib/auth.ts` touches
+// `document.cookie`, absent in the edge runtime. The backend sets and clears it with the
+// HttpOnly session cookie, so its presence proxies "has a session"; a stale cookie still 401s
+// at the API and the page bounces in its effect.
 const CSRF_COOKIE = "vidit_csrf";
 
-// Paths reachable WITHOUT a session; everything else is default-deny below.
-// Anonymous read is open: the content routes (map, events, requests,
-// profiles, search) are public. Write and account surfaces (`/submit`,
-// `/settings`, `/admin`, `/timeline`) stay behind the wall;
-// write sub-routes living under a public prefix (`/events/[id]/edit`,
-// `/profile/[username]/detections`) are bounced client-side by
-// `useRequireAuth`. The invite code gates registration only (at
-// `POST /auth/register`) — no site-wide gate cookie.
+// Paths reachable without a session; everything else is default-deny. Content routes (map,
+// events, requests, profiles, search) are public. Write and account surfaces (`/submit`,
+// `/settings`, `/admin`, `/timeline`) stay behind the wall; write sub-routes under a public
+// prefix (`/events/[id]/edit`, `/profile/[username]/detections`) bounce client side via
+// `useRequireAuth`. The invite code gates registration only (`POST /auth/register`).
 const PUBLIC_EXACT = new Set<string>(["/"]);
 const PUBLIC_PREFIXES = [
   "/about",
-  // The import guide: what the detection engine reads and how the three
-  // entries differ, read by analysts weighing the upload or the tag before
-  // they have a session.
+  // Import guide: read by analysts before they have a session.
   "/import",
-  // The two routes the import guide absorbed, kept as redirects into it:
-  // `/archive` for the links already published against it, `/bot` because the
-  // bot's X bio and pinned post point there. Both stay public so a signed-out
-  // reader is forwarded rather than bounced to the login page.
+  // Redirects into the import guide: `/archive` (published links) and `/bot` (the bot's X bio
+  // and pinned post). Public so a signed-out reader is forwarded, not bounced to login.
   "/archive",
   "/bot",
-  // The getting-started guide: the platform's overall loop, linked from the
-  // about page and the landing, and read by analysts sizing up the platform
-  // before they have a session.
   "/guide",
-  // The legal notice: the publisher and host identification the law asks for,
-  // which has to be reachable by anyone, an authority included, with no
-  // account.
+  // Legal notice: must be reachable by anyone, an authority included.
   "/legal",
-  // The privacy policy: what is collected and how to have it removed, read
-  // before signing up as often as after, so it sits outside the wall too.
+  // Privacy policy, read before signing up as often as after.
   "/privacy",
-  // The proof methodology guide: linked from the about page and from the
-  // proof section of the submit / edit forms, and read by analysts sizing
-  // up the platform before they have a session.
   "/methodology",
-  // The Sentry tunnel: browsers POST error envelopes here (rewritten to
-  // Sentry ingest by next.config's tunnelRoute). Anonymous readers crash
-  // too; behind the wall their reports redirected to /login and died 405.
+  // Sentry tunnel (rewritten to ingest by next.config's tunnelRoute): anonymous readers crash
+  // too, and behind the wall their reports redirected to /login and died 405.
   "/monitoring",
   "/map",
-  // A collection is shown on its owner's public profile and reads
-  // anonymously, the same terms the events it holds read on, so the page a
-  // shared collection link opens is outside the wall too.
+  // A collection reads anonymously on its owner's public profile, like the events it holds.
   "/collections",
   "/events",
   "/requests",
@@ -77,9 +56,8 @@ function isPublic(pathname: string): boolean {
 
 function redirectToLogin(request: NextRequest): NextResponse {
   const url = request.nextUrl.clone();
-  // Round-trip the original destination so login lands the user back where
-  // they came from. The login page sanitises it before honouring it
-  // (open-redirect guard against `//evil.com`).
+  // Round-trip the destination; the login page sanitises it (open-redirect guard against
+  // `//evil.com`).
   const target = request.nextUrl.pathname + request.nextUrl.search;
   url.pathname = "/login";
   url.search = `?next=${encodeURIComponent(target)}`;
@@ -90,15 +68,11 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = !!request.cookies.get(CSRF_COOKIE);
 
-  // 1. Host redirect, PROD ONLY (would bounce localhost to vidit.app).
-  // Collapse EVERY non-canonical alias (www, per-deploy hash URLs, the
-  // project alias, anything pointed at the build) onto the apex, killing
-  // duplicate-content surface. www is deliberately NOT exempted: Vercel
-  // serves the app on it with a 200 (no domain-layer redirect), and a page
-  // loaded on www dies on the API's CORS allowlist (the login preflight
-  // 400s), so the middleware owns the 308 whatever the Vercel domain config
-  // says. Strip an optional `:port` before the equality check; a stray
-  // `Host: vidit.app:443` would otherwise miss the match and redirect-loop.
+  // 1. Host redirect, PROD ONLY (it would bounce localhost). Collapse every non-canonical alias
+  // (www, per-deploy URLs, the project alias) onto the apex. www is deliberately not exempt:
+  // Vercel serves it with a 200 and a page loaded there dies on the API's CORS allowlist, so
+  // this owns the 308. Strip an optional `:port` first, or `Host: vidit.app:443` would
+  // redirect-loop.
   if (process.env.NODE_ENV !== "development") {
     const host = request.headers.get("host") ?? "";
     const hostOnly = host.split(":")[0];
@@ -111,10 +85,8 @@ export function proxy(request: NextRequest) {
     }
   }
 
-  // 2. Default-deny auth wall — DEV AND PROD. Anything outside the public
-  // set requires a session, redirected at the edge BEFORE the page renders
-  // so gated surfaces never render for a signed-out visitor. Runs in
-  // dev too so local matches production (log in as the seeded admin).
+  // 2. Default-deny auth wall, dev and prod (so local matches production). Redirects at the edge
+  // before the page renders, so gated surfaces never render for a signed-out visitor.
   if (!isPublic(pathname) && !hasSession) {
     return redirectToLogin(request);
   }
@@ -123,24 +95,16 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Run on every request except Next.js internals and well-known static
-  // assets. Icon / apple-icon / manifest stay public — an auth redirect on
-  // a favicon request makes the tab fall back to its default stub icon.
-  // `maplibre-gl/` is the map's web worker (see `next.config.mjs`); behind
-  // the wall a signed-out reader's worker request gets the login page and the
-  // map renders blank.
-  // `opengraph-image` / `twitter-image` are Next.js metadata routes served
-  // at `/opengraph-image?<hash>` (hash = cache busting); social crawlers
-  // fetch them unauthenticated, so they must bypass the wall too — else the
-  // pinned tweet renders login-redirect HTML instead of the og:image.
+  // Every request except Next.js internals and well-known static assets. Icon, apple-icon and
+  // manifest stay public (an auth redirect on a favicon makes the tab fall back to a stub
+  // icon). `maplibre-gl/` is the map's web worker: behind the wall it would get the login page
+  // and the map renders blank. `opengraph-image` / `twitter-image` metadata routes are fetched
+  // unauthenticated by social crawlers, so they bypass the wall too.
   //
-  // The lookahead is anchored at the path start, so it only excludes
-  // ROOT-LEVEL `/opengraph-image` + `/twitter-image`. Every segment-nested
-  // card rides on its page's entry in `PUBLIC_PREFIXES` instead: the per-event
-  // and per-profile cards on `/events` and `/profile`, the `/about` variants on
-  // `/about`. Moving one of those prefixes behind auth breaks its social card,
-  // so widen this matcher to the segment-nested form (e.g. `.*opengraph-image`)
-  // if that ever happens.
+  // The lookahead is anchored at the path start, so it only excludes root-level cards.
+  // Segment-nested cards ride on their page's `PUBLIC_PREFIXES` entry (`/events`, `/profile`,
+  // `/about`); moving one of those behind auth breaks its social card, so widen the matcher
+  // (e.g. `.*opengraph-image`) then.
   matcher: [
     "/((?!_next|favicon.ico|icon|apple-icon|manifest.webmanifest|maplibre-gl/|robots.txt|sitemap.xml|opengraph-image|twitter-image).*)",
   ],

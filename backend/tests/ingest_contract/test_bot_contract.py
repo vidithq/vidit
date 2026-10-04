@@ -1,19 +1,9 @@
 """Bot entry contract: every typology through the bot's per-mention detection.
 
-The bot's detection half is the shared one-hop acquisition
-(``bot.acquire_tagged_thread``) followed by the engine (``resolve_threads``),
-and nothing else: the bot adds a reply on top, never a grammar. It runs here
-against the same typology fixtures the resolve contract uses, offline (a
-``MockTransport`` over the typology's bodies) and with no DB, so what this file
-pins is that the bot's entry answers what the shared expectation says.
-
-Each typology's expected value is ``expected.json``'s top level. A ``paths.bot``
-block holds only the bot's own vocabulary, the failure reason its reply names,
-or a ``skip`` for a shape no live post can carry.
-
-The engine's second exit is pinned here too: a coordinate-less mirror post
-yields the refusal plus one request draft, which is the branch the bot's
-integration test then writes through.
+Runs ``bot.acquire_tagged_thread`` then ``resolve_threads`` offline (``MockTransport``,
+no DB) against the shared typology fixtures. Expected values are ``expected.json``'s top
+level; a ``paths.bot`` block holds only the bot's failure reason or a ``skip``.
+A coordinate-less mirror post also yields the refusal plus one request draft (the second exit).
 """
 
 from __future__ import annotations
@@ -31,8 +21,7 @@ _PATH = "bot"
 def _resolution(typology: str) -> Resolution:
     """Run the bot's detection half over the typology's post, as if tagged there.
 
-    ``with_requests`` as the bot passes it: the second exit is the bot's alone,
-    so a contract that reads it has to ask for it the way the entry does.
+    ``with_requests`` is passed as the bot passes it: the second exit is the bot's alone.
     """
     body = loader.load_body(typology)
     with loader.syndication_client(typology) as client:
@@ -48,9 +37,7 @@ def test_typology_matches_the_bot_contract(typology: str) -> None:
     loader.assert_resolution_matches(typology, _PATH, _resolution(typology))
 
 
-# Every typology the catalogue says drafts a request, read off the fixtures
-# rather than listed here, so a mirror shape added to the catalogue enters this
-# test with it.
+# Read off the fixtures so a mirror shape added to the catalogue enters this test.
 _MIRROR_TYPOLOGIES = [
     typology for typology in loader.typology_names() if "request" in loader.load_expected(typology)
 ]
@@ -58,10 +45,7 @@ _MIRROR_TYPOLOGIES = [
 
 @pytest.mark.parametrize("typology", _MIRROR_TYPOLOGIES)
 def test_a_coordinate_less_mirror_post_drafts_one_request(typology: str) -> None:
-    """The mirror shapes: no coordinate, so the thread refuses as it always
-    did, and the same resolution carries one request draft the bot reads off the
-    second exit. Both halves travel together, which is what keeps an entry that
-    reads detections alone refusing exactly as before."""
+    """Mirror shapes: no coordinate, so the thread refuses, and the resolution carries one request draft the bot reads off the second exit."""
     resolution = _resolution(typology)
 
     assert resolution.detections == []
@@ -70,10 +54,10 @@ def test_a_coordinate_less_mirror_post_drafts_one_request(typology: str) -> None
 
 
 def test_the_bot_reads_the_same_authors_parent() -> None:
-    """The two-post field format: the coordinate on the analyst's post, the
-    footage link on their own reply, the bot tagged on the reply. The parent
-    comes from the shared acquisition, so provenance anchors on it and the
-    coordinate the reply itself does not carry still lands."""
+    """Two-post field format: coordinate on the analyst's post, footage link on their reply, bot tagged on the reply.
+
+    The parent comes from the shared acquisition, so provenance anchors on it.
+    """
     typology = "self_reply_geo_then_source"
     expected = loader.load_expected(typology)
     resolution = _resolution(typology)

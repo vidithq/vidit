@@ -1,16 +1,8 @@
 """Shared test fixtures: upload bytes, the X-export file every archive test
-writes, and the two direct reads / writes of the local storage root.
+writes, and direct reads / writes of the local storage root.
 
-Real (non-stub) image bytes. The previous ``b"\\xff\\xd8\\xff\\xd9"`` 4-byte
-JPEG stub passed content-type sniffing but Pillow rejects it as
-``UnidentifiedImageError``, which broke every upload test once the EXIF-strip
-pass landed (the strip pre-decodes via PIL).
-
-Embedded as hex so the test module doesn't need Pillow at collection time —
-generated once via:
-
-    img = Image.new("RGB", (1, 1), color="red")
-    img.save(buf, format="JPEG", quality=95)
+The JPEG is real image bytes (the EXIF strip pre-decodes via Pillow, which
+rejects a stub). It is embedded as hex so collection needs no Pillow.
 """
 
 from __future__ import annotations
@@ -25,42 +17,27 @@ from app.services.tweet_ingest.records import TweetRecord
 
 
 def stored_path(key: str) -> Path:
-    """Where ``LocalStorage`` puts the object named ``key``.
-
-    Read at call time, so a test that repoints ``local_storage_dir`` at its own
-    ``tmp_path`` is followed.
-    """
+    """Where ``LocalStorage`` puts ``key``, read at call time so a repointed ``local_storage_dir`` is followed."""
     return Path(settings.local_storage_dir) / key
 
 
 def stored_bytes(key: str) -> bytes:
-    """What storage holds at ``key``, read off the local root.
+    """What storage holds at ``key``; raises ``FileNotFoundError`` on a miss.
 
-    The production protocol has no whole-object read (a staged archive runs to
-    4 GB, so ``get_to_path`` streams instead), and a test that wants to know
-    whether an object survived a sweep needs one. Raises ``FileNotFoundError``
-    on a key holding nothing, which is what the miss assertions expect.
+    The production protocol has no whole-object read (archives stream via ``get_to_path``).
     """
     return stored_path(key).read_bytes()
 
 
 def store_bytes(data: bytes, key: str) -> None:
-    """Put ``data`` at ``key`` on the local root, skipping the upload path.
-
-    For tests that need an object staged before the call under test, not tests
-    of the upload itself.
-    """
+    """Stage ``data`` at ``key`` on the local root, skipping the upload path."""
     path = stored_path(key)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
 
 
 def write_archive_js(dest: Path, entries: list[dict[str, Any]]) -> None:
-    """Write ``tweets.js`` under ``dest`` wrapping ``entries`` in the export shape.
-
-    Each entry is a raw X-export tweet dict; the reader unwraps
-    ``window.YTD.tweets.part0 = [{"tweet": ...}, ...]``.
-    """
+    """Write ``tweets.js`` under ``dest`` from raw X-export tweet dicts."""
     dest.mkdir(parents=True, exist_ok=True)
     (dest / "tweets.js").write_text(
         "window.YTD.tweets.part0 = " + json.dumps([{"tweet": e} for e in entries]),
@@ -68,8 +45,7 @@ def write_archive_js(dest: Path, entries: list[dict[str, Any]]) -> None:
     )
 
 
-# 1×1 red JPEG, ~635 bytes, no EXIF, no ICC. Round-trips through any
-# image decoder (Pillow, libvips, browser, OS preview) cleanly.
+# 1×1 red JPEG, no EXIF, no ICC.
 _TINY_JPEG_HEX = (
     "ffd8ffe000104a46494600010100000100010000ffdb0043000201010101010201010102020202020403020202020504040304060506060605060606070908060709070606080b08090a0a0a0a0a06080b0c0b0a0c090a0a0a"
     "ffdb004301020202020202050303050a0706070a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
@@ -84,20 +60,12 @@ _TINY_JPEG_HEX = (
 
 TINY_JPEG: bytes = bytes.fromhex(_TINY_JPEG_HEX)
 
-# A minimal, non-empty stand-in for an mp4's bytes. The ingest path stores
-# videos without decoding them (``prepare_media`` passes non-image types
-# through, ``validate_bytes`` only size-checks video/mp4), so any short byte
-# string round-trips as a video Media row.
+# Stand-in mp4 bytes: ingest stores videos without decoding them.
 TINY_MP4: bytes = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isomFAKE"
 
 
 def tweet_record(**kw: Any) -> TweetRecord:
-    """A ``TweetRecord`` with the fields a test does not care about filled in.
-
-    The one builder for the engine's pure tests: every one of them names a post
-    id, a handle, a text and a date to construct a record at all, and almost
-    none of them is what the test is about. Defaults are overridden by keyword.
-    """
+    """A ``TweetRecord`` with defaults for the fields a test does not care about."""
     base: dict[str, Any] = {
         "tweet_id": "1",
         "handle": "analyst",
@@ -109,14 +77,7 @@ def tweet_record(**kw: Any) -> TweetRecord:
 
 
 def collection_description(text: str = "What this shelf holds.") -> dict[str, Any]:
-    """The two description columns a ``collections`` row carries, from plain text.
-
-    A collection's description is a Tiptap document with a stored plain-text
-    projection beside it, and a test that builds a row through the ORM has to
-    write both. One builder so every such fixture writes a consistent pair:
-    the document ``sanitize.tiptap_doc_from_text`` builds (one paragraph per
-    non-blank line) and the projection ``sanitize.tiptap_doc_text`` reads back
-    off it, which is what the service writes.
+    """The Tiptap description and its plain-text projection a ``collections`` row stores.
 
     Spread it into the constructor: ``Collection(..., **collection_description("…"))``.
     """
@@ -125,8 +86,5 @@ def collection_description(text: str = "What this shelf holds.") -> dict[str, An
 
 
 def tiny_jpeg(filename: str = "tiny.jpg") -> tuple[str, bytes, str]:
-    """Drop-in replacement for ``_tiny_jpeg()`` — works with FastAPI's
-    ``TestClient`` multipart helpers. Returns a tuple of
-    ``(filename, bytes, content_type)``.
-    """
+    """A ``(filename, bytes, content_type)`` tuple for ``TestClient`` multipart."""
     return (filename, TINY_JPEG, "image/jpeg")

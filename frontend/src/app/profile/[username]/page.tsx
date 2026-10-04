@@ -34,38 +34,31 @@ export default function ProfilePage() {
   const params = useParams();
   const { user: currentUser, loading: authLoading, logout, refresh } = useAuth();
 
-  // Public read surface: the profile and its submissions load without a
-  // session (`GET /users/{username}` is anonymous); only the owner
-  // affordances below gate on `currentUser`.
+  // Public read surface (`GET /users/{username}` is anonymous); only owner affordances gate on `currentUser`.
   const username = typeof params.username === "string" ? params.username : "";
   const {
     data: profile,
     error,
     refetch: refetchProfile,
   } = useApiResource<PublicProfile>(username ? `/users/${username}` : null);
-  // Error deliberately unread: a failed submissions list renders empty
-  // rather than blocking the profile card.
+  // Error deliberately unread: a failed list renders empty rather than blocking the profile card.
   const { data: submissionsData } = useApiResource<PaginatedSubmissions>(
     username ? `/users/${username}/events?per_page=5` : null
   );
   const submissions = submissionsData?.items ?? [];
-  // The analyst's open calls, from the same public list the requests board
-  // reads. Error deliberately unread, like the submissions above: a failed read
-  // renders no block rather than blocking the profile.
+  // The analyst's open calls, from the requests board's public list; error deliberately unread.
   const { data: openRequests } = useApiResource<EventListItem[]>(
     username
       ? eventListPath({
           view: "requested",
           status: "requested",
           author: username,
-          // The same five rows the submissions block above shows.
+          // Same five rows as the submissions block.
           limit: 5,
         })
       : null
   );
-  // Shared with the sidebar dot via the provider — owner-scoped server-side, so
-  // it's the signed-in user's pending count regardless of whose profile this is
-  // (gated to the own-profile render below).
+  // Shared with the sidebar dot; owner-scoped server-side, so it is the signed-in user's count (gated to the own-profile render).
   const { count: detectionCount } = useDetectionsCount();
 
   const edit = useProfileEdit({
@@ -75,9 +68,7 @@ export default function ProfilePage() {
     refetchProfile,
   });
 
-  // Two-click confirm so an accidental tap doesn't end the session;
-  // auto-reverts after 3s. Signing out just re-renders this page in its
-  // anonymous shape (the profile is public); no redirect needed.
+  // Two-click confirm against accidental taps; reverts after 3s. Signing out re-renders the anonymous profile, no redirect.
   const signOut = useConfirmAction(
     () => {
       logout();
@@ -85,8 +76,7 @@ export default function ProfilePage() {
     { timeoutMs: 3000 }
   );
 
-  // Wait for auth to resolve before rendering, so the owner affordances
-  // (edit, sign-out) don't pop in after an anonymous-looking first paint.
+  // Wait for auth so owner affordances do not pop in after an anonymous-looking first paint.
   if (authLoading) {
     return <PageLoading />;
   }
@@ -101,45 +91,17 @@ export default function ProfilePage() {
 
   const isOwn = !!currentUser && profile.username === currentUser.username;
 
-  // Portfolio order: the identity and how to reach the analyst in the header,
-  // then the work most probative first: the map, what interprets it, then the
-  // list that grows.
-  //
-  // The identity is one compact block and not a section: the handle titles the
-  // page, the avatar sits beside it, and the bio plus the followers /
-  // following / member-since line follow it (`ProfileIdentity`). Where to reach
-  // the analyst is an action rather than a line of that block, so the
-  // linked-account icons ride the header action cluster right of the handle
-  // (`ProfileActions`), beside Follow on someone else's profile, which leaves a
-  // visitor one scroll-free glance from both the evidence and the analyst's
-  // other accounts. Then the coverage map, which shows the work at its widest,
-  // and Insights directly under it, since the summary that interprets that map
-  // belongs beside it: the map says where, and the card says what kind, how
-  // much and when. Recent submissions follow, because a list that grows reads
-  // better last of the work blocks, and the open requests follow them: published
-  // work is what a portfolio shows, and a request is an open question about
-  // footage, which reads after the answers. It is public, like the requests
-  // board, so a visitor can answer what they find there; the cards link to each
-  // request, where the verbs are. Sign out sinks under all of it.
-  //
-  // The detections entry is the exception to "work first": it is pending work
-  // rather than an account control, so on the owner's own profile it stays
-  // above the fold. A queue of hundreds read as buried at the bottom.
-  //
-  // Editing collapses that order to the form alone: every editable field sits
-  // between the header and Save, with the read-only portfolio sections dropped
-  // for the duration. The bio and the linked-accounts inputs stay contiguous,
-  // which is what keeps Save on screen by the time you reach them, and they
-  // stay in the order the page reads them.
+  // Portfolio order: identity block (`ProfileIdentity`) and linked-account icons in the header actions
+  // (`ProfileActions`), then the coverage map, Insights, recent submissions, open requests, sign out.
+  // The detections entry is the exception: pending work, so it stays above the fold on the owner's profile.
+  // Editing collapses the page to the form alone (bio and linked-accounts inputs contiguous, so Save stays on screen).
   const bio = edit.editing ? null : profile.bio?.trim() || null;
   const ownerEmail = isOwn ? currentUser?.email : undefined;
   return (
     <PageShell
       back
       title={<ProfileTitle profile={profile} edit={edit} />}
-      // The metadata line makes the slot unconditional in view mode. Editing
-      // drops it (the page collapses to the form), so the slot goes back to
-      // carrying only what the owner is given there: the account email.
+      // View mode always shows the metadata line; editing drops it, so the slot carries only the account email.
       subtitle={
         <ProfileIdentity
           bio={bio}

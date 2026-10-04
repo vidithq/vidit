@@ -22,14 +22,10 @@ def get_timeline(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> PaginatedEvents:
-    """Geolocations authored by accounts the current user follows.
+    """Geolocations authored by accounts the current user follows, newest first.
 
-    Empty when the user follows nobody: the frontend renders an empty-state
-    instead of falling back to a global firehose, so the page stays a
-    deliberate signal rather than a noisy default feed.
-
-    Newest submission first, walked with the ``page`` / ``per_page`` offset
-    pager and capped at 100 rows per page.
+    Empty when the user follows nobody (the frontend shows an empty state, not
+    a global feed). Offset-paged, capped at 100 rows per page.
     """
     per_page = page_size(per_page)
     result = social.get_timeline(

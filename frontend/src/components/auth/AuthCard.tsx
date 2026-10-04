@@ -5,17 +5,13 @@ interface AuthCardProps {
   icon?: LucideIcon;
   title?: ReactNode;
   subtitle?: ReactNode;
-  /** Centered closing line — pass the copy and links ("Back to sign in").
-   *  For multiple closing lines or non-standard sizing, render them as
-   *  children instead (see LoginForm). */
+  /** Centered closing line (copy and links, e.g. "Back to sign in"). For several lines or custom
+   * sizing, render children instead (see LoginForm). */
   footer?: ReactNode;
   children?: ReactNode;
 }
 
-/**
- * Card shell shared by every `(auth)` surface. One home for the max-w-sm
- * dark-card treatment so a theme tweak doesn't chase nine hand-rolled copies.
- */
+/** Card shell shared by every `(auth)` surface: one home for the max-w-sm dark-card treatment. */
 export function AuthCard({
   icon: Icon,
   title,

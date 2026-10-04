@@ -1,9 +1,4 @@
-"""The direct create: a ``geolocated`` row born with its full evidence.
-
-:func:`create_with_evidence` is the one write that meets the whole evidence
-floor up front. A request is born through ``request.create_request`` and
-promoted later by ``geolocation.geolocate``.
-"""
+"""The direct create: a ``geolocated`` row born with its full evidence."""
 
 from __future__ import annotations
 
@@ -60,45 +55,26 @@ async def create_with_evidence(
     source_snapshot_url: str | None = None,
     secondary_snapshot_urls: list[str] | None = None,
 ) -> Event:
-    """Create a ``geolocated`` event row + its evidence (a direct geolocate).
+    """Create a ``geolocated`` event with its evidence (a direct geolocate).
 
-    The router has already turned raw multipart fields into clean Python
-    types; this deals only with business rules and IO. The row is born
-    ``geolocated`` (the model's ``status`` server_default), stamped
-    ``geolocated_at``, and the creator lands in ``event_geolocators`` (the
-    durable credit the owner column alone doesn't carry).
+    The creator is stamped ``geolocated_at`` and credited in ``event_geolocators``.
 
-    The full evidence floor applies: subject coordinates, exactly ONE source
-    file, at least one proof image in the proof body (a ``placeholder://`` src
-    resolved from ``proof_files``, see ``evidence_intake``), a conflict, and
-    the curated ``capture_source`` tag. ``capture_source_lat`` / ``lng``
-    (the camera point) are optional, both-or-neither.
+    The full evidence floor applies: subject coordinates, exactly one source
+    file, a proof image (a ``placeholder://`` src resolved from
+    ``proof_files``, see ``evidence_intake``), a conflict, and a
+    ``capture_source`` tag. The camera point (``capture_source_lat`` / ``lng``)
+    is optional, both-or-neither.
 
-    ``source_snapshot_url`` is the archived copy of ``source_url`` the analyst
-    made while filling the form, and ``secondary_snapshot_urls`` carries the
-    same per mirror, aligned with ``secondary_source_urls``: optional, checked
-    by ``services/source_archive`` and stored as the event's archived copies in
-    this same transaction, so a rejected paste (:class:`SnapshotRejected`,
-    raised before any upload) creates no event.
+    ``source_snapshot_url`` and ``secondary_snapshot_urls`` (aligned with
+    ``secondary_source_urls``) are archived copies checked by
+    ``services/source_archive`` and stored in this transaction. A rejected
+    paste (:class:`SnapshotRejected`) raises before any upload.
 
-    Failure modes (:class:`EvidenceIntakeError` subclasses, event rules
-    here, shared file/media rules from ``evidence_intake``):
+    Raises :class:`EvidenceIntakeError` subclasses: bad coordinates, no source
+    file, invalid or image-less proof, missing conflict or tag, too many
+    secondary links, or a file/proof intake failure.
 
-    * Out-of-range lat/lng (:class:`InvalidCoordinatesError`)
-    * No source file (:class:`MediaRequiredError`)
-    * Tiptap proof fails sanitisation (:class:`InvalidProofError`)
-    * No proof image (:class:`ProofImageRequiredError`)
-    * Missing required conflict / `capture_source` tag
-      (:class:`TagRequirementsError`)
-    * More secondary source links than the cap
-      (:class:`TooManySourceLinksError`)
-    * File type/size rejected, a proof placeholder/file mismatch, or the
-      uploader raises (``InvalidFileError`` / ``ProofFilesMismatchError`` /
-      ``EvidenceProcessingFailedError``)
-
-    Any failure rolls back the transaction and best-effort sweeps every S3
-    key that landed before it. Returns the persisted ``Event``,
-    refreshed from the row.
+    Any failure rolls back and best-effort sweeps the S3 keys already written.
     """
     validate_coordinates(lat, lng)
     capture_point = _optional_point(capture_source_lat, capture_source_lng, field="capture_source")
@@ -108,13 +84,11 @@ async def create_with_evidence(
     )
     secondary_links = normalize_secondary_source_urls(secondary_source_urls, source_url)
 
-    # Every event needs its footage: exactly one source file.
     _require_submission_media(file is not None)
 
     proof_data = _sanitize_proof(proof_data, allow_placeholders=True)
 
-    # The rest of the floor, checked before any upload: a missing tag or an
-    # image-less proof 400s without paying an S3 round-trip.
+    # Check the rest of the floor before any upload to save the S3 round-trip.
     _require_proof_image(proof_data)
     effective_tags = _resolve_tags(db, tag_ids)
     effective_conflicts = _resolve_conflicts(db, conflict_ids)
@@ -126,8 +100,7 @@ async def create_with_evidence(
         event_coords=from_shape(Point(lng, lat), srid=4326),
         capture_source_coords=capture_point,
         source_url=source_url,
-        # ``proof`` lands via the intake below (placeholders rewritten); the
-        # model default keeps the column NOT NULL until then.
+        # ``proof`` lands via the intake below; the model default covers NOT NULL until then.
         event_date=event_date,
         event_time=event_time,
         source_posted_at=source_posted_at,
@@ -140,15 +113,10 @@ async def create_with_evidence(
 
     db.add(geo)
     db.flush()
-    # Durable credit: the creator vouched this location. ``owner_id`` is already
-    # on the row above; ``_credit_geolocator`` re-asserts it and adds the credit
-    # row so the owner-among-geolocators invariant lives in one place.
     _credit_geolocator(db, geo, current_user)
 
-    # The copies the analyst archived while filling the form, the source's and
-    # the mirrors'. The rows need the event's id, so they are staged after the
-    # flush, and still before the first upload: a rejected paste costs no S3
-    # round-trip.
+    # Staged after the flush (rows need the event id) and before the first
+    # upload, so a rejected paste costs no S3 round-trip.
     if source_snapshot_url:
         source_archive.stage_source_snapshot(db, event=geo, snapshot_url=source_snapshot_url)
     source_archive.stage_secondary_snapshots(db, event=geo, snapshots=mirror_snapshots)

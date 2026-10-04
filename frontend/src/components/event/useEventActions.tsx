@@ -18,67 +18,43 @@ import { useReportContent } from "@/components/report/useReportContent";
 import type { EventDetail } from "@/types";
 
 /**
- * The action grammar for one event, in one place: every detail surface calls
- * this and renders what it gets back, so no surface hand-assembles a row of its
- * own and the same control can't drift between them.
+ * The action grammar for one event: every detail surface calls this and renders what it gets back,
+ * so no surface hand-assembles a row and controls can't drift between them.
  *
- * Three tiers, always in this order, always in the surface's top-right slot
- * (`docs/design.md` → *Page chrome*):
+ * Three tiers, in this order, in the surface's top-right slot (`docs/design.md`, Page chrome):
  *
- * 1. **Utilities**, far right, icon-compact: the share pair plus the report
- *    flag, on the detail pages, because reading an event and passing it on or
- *    flagging it needs no standing in the row. The event page opens the row
- *    with the version history, a read like the others. The edit form carries
- *    none: sharing or reporting a draft one is in the middle of writing acts on
- *    a record that is not the one on screen. Neither does the map panel, whose
- *    job is to preview the row it is one click away from: actions belong to the
- *    page the title links to, not to a hover-sized preview of it.
- * 2. **The flow action**, at most one, filled: what this surface exists to move
- *    forward. Only an open request carries one (geolocate it).
- * 3. **Owner management**: the controls only the author holds, as icon buttons
- *    in the row like every other control in it. Both detail pages carry editing
- *    an open request, which overwrites it, as a pencil. The event page carries
- *    two more: shelving the row on one of the author's own collections, which
- *    writes no version and changes nothing a reader sees on the record, and
- *    editing a published geolocation, which files a version rather than
- *    overwriting the record, as the same pencil on a row in the other state.
- *    Both detail pages carry closing the row, which is how
- *    an author takes their own work back. Nothing here destroys a row: closing
- *    keeps it readable with its reason, and removing one for good is an admin
- *    act.
+ * 1. **Utilities**, far right, icon-compact: the share pair plus the report flag on the detail
+ *    pages. The event page opens the row with the version history. The edit form carries none
+ *    (they would act on a record other than the one on screen), nor does the map panel (actions
+ *    belong to the page its title links to).
+ * 2. **The flow action**, at most one, filled. Only an open request carries one (geolocate it).
+ * 3. **Owner management**, icon buttons only the author holds: editing an open request
+ *    (overwrites it) on both detail pages; on the event page also shelving the row on one of the
+ *    author's collections (writes no version) and editing a published geolocation (files a
+ *    version); on both pages closing the row, which is how an author takes work back. Nothing here
+ *    destroys a row: closing keeps it readable with its reason, and removal is an admin act.
  *
- * The hook returns nodes rather than rendering them, the shape
- * `useReportContent` already uses, because the row and the panels its triggers open land in two
- * different slots: `actions` goes in `PageShell`'s `actions` (or the map
- * panel's byline row) and `panels` goes directly under the header, where the
- * trigger that opened it is. It is called before a surface's early returns,
- * with `event` null while the row loads, so the hook order is stable.
+ * The hook returns nodes rather than rendering them (like `useReportContent`) because the row and
+ * the panels its triggers open land in different slots: `actions` goes in `PageShell`'s `actions`
+ * (or the map panel's byline row), `panels` directly under the header. Called before a surface's
+ * early returns, with `event` null while the row loads, so hook order is stable.
  */
 
 /** Which surface is asking, which is what selects the tiers. */
 export type ActionSurface = "event" | "request" | "panel" | "edit";
 
-// The grammar itself, one flag per tier per surface. The map panel and the edit
-// form render nothing at all here: the panel previews a row whose page is one
-// click away on the title, so its actions live there rather than in a preview of
-// it, and the form's own flow action is its bottom submit while its utilities
-// would act on a record the reader is currently rewriting. The event page has no
-// flow action (a published geolocation is finished work) but does carry the
-// correction its author makes.
+// The grammar: one flag per tier per surface. The map panel and edit form render nothing here (the
+// panel previews a row whose page is one click away; the form's flow action is its submit and its
+// utilities would act on a record being rewritten). The event page has no flow action but carries
+// the correction its author makes.
 //
-// Owner management is four entries, not one, because the surfaces claim
-// different parts of it: `collect` is shelving the row on one of the author's
-// own collections, which only the event page offers; `editRequest` is
-// correcting an open request, which both detail pages offer since both serve
-// one; `saveVersion` is correcting a published geolocation, which only the
-// event page offers; and `close` is taking a row back, which both detail pages offer since both serve rows their author
-// may still want to take back. The two edits never appear together, since no row
-// is both requested and published, and both lead to the one edit address. What
-// each row actually gets is decided per status below, so a
-// surface never offers a close to a row that cannot take one. `history` is the read into a
-// published record's versions, public, first in the utilities row: the event
-// page alone carries it, since the map panel and the forms show one version by
-// construction.
+// Owner management is four entries because surfaces claim different parts: `collect` (shelve on
+// one of the author's collections, event page only), `editRequest` (correct an open request, both
+// detail pages), `saveVersion` (correct a published geolocation, event page only), `close` (take
+// a row back, both detail pages). The two edits never appear together (no row is both requested
+// and published) and lead to one edit address. Per-status offers are decided below, so a surface
+// never offers a close to a row that cannot take one. `history` is the public read into a
+// published record's versions, first in the utilities row, event page only.
 const TIERS: Record<
   ActionSurface,
   {
@@ -97,8 +73,7 @@ const TIERS: Record<
   edit:    { flow: false, collect: false, editRequest: false, saveVersion: false, close: false, history: false, utilities: false },
 };
 
-// Ties the menu entry to the panel it opens two levels down the tree, which
-// `aria-controls` needs since the two are not DOM siblings.
+// Ties the menu entry to the panel it opens (`aria-controls`; they are not DOM siblings).
 const CLOSE_FORM_ID = "close-request-form";
 const COLLECT_PANEL_ID = "add-to-collection-panel";
 
@@ -123,19 +98,14 @@ export function useEventActions({
   onChanged,
 }: EventActionsOptions): EventActions {
   const { user } = useAuth();
-  // The report control is its own state machine (it works signed out and
-  // outlives a surface's other actions), consumed here so the utilities tier is
-  // assembled once.
+  // The report control is its own state machine (works signed out, outlives other actions),
+  // consumed here so the utilities tier is assembled once.
   const report = useReportContent("event", event?.id ?? "");
-  // Whether the inline close panel is open.
   const [closing, setClosing] = useState(false);
-  // Whether the add-to-collection panel is open.
   const [collecting, setCollecting] = useState(false);
 
-  // Same leak the report form had: this hook survives a client navigation from
-  // one row to the next, so per-event state has to follow the row rather than
-  // the mount. Without it the next row opens with the previous one's close
-  // panel already open.
+  // This hook survives a client navigation between rows, so per-event state follows the row, not
+  // the mount: otherwise the next row opens with the previous one's close panel open.
   useEffect(() => {
     setClosing(false);
     setCollecting(false);
@@ -147,35 +117,26 @@ export function useEventActions({
   const isAuthor = user?.id === event.owner.id;
   const isOpenRequest = event.status === "requested";
 
-  // Tier 3. Per surface, then per state. Every owner verb is an icon button in
-  // the row, the shape the flow action and the utilities beside it already
-  // take: the author's own controls are the ones they reach for most, and a
-  // disclosure holding two entries costs a click on every use to hide what the
-  // row has width for.
-  // The owner's edit of an open request. Owner-only, unlike the geolocate beside
-  // it: anyone may answer a request, and only the analyst who asked rewrites the
-  // question. The write overwrites the row rather than filing a version, which
-  // is what the label says by not promising one.
+  // Tier 3. Every owner verb is an icon button in the row, like the flow action and utilities beside
+  // it: a disclosure for two entries would cost a click on every use.
+  // The owner's edit of an open request. Owner-only, unlike geolocate: anyone may answer a request,
+  // only the asker rewrites the question. It overwrites the row rather than filing a version, so
+  // the label promises none.
   const canEditRequest = isAuthor && tiers.editRequest && isOpenRequest;
   const canSaveVersion = isAuthor && tiers.saveVersion && event.status === "geolocated";
-  // Every live state closes, `geolocated` included: a published claim its
-  // author no longer stands behind is retracted rather than left standing or
-  // destroyed. `closed` is terminal, so the verb disappears once taken.
+  // Every live state closes, `geolocated` included: a claim its author no longer stands behind is
+  // retracted, not left standing or destroyed. `closed` is terminal, so the verb disappears.
   const canClose = isAuthor && tiers.close && event.status !== "closed";
   const closeLabel = closeActionLabel(event.status);
-  // Shelving the row on one of the owner's collections. The two worked
-  // statuses only, the same set a collection may hold
-  // (`services/event_filters.collectable_events`): a request is an ask rather
-  // than an answer and a closed row is one its owner took back, so neither
-  // belongs on a curated shelf and the control is absent rather than offered
-  // and refused.
+  // Shelving the row on one of the owner's collections. The two worked statuses only, the set a
+  // collection may hold (`services/event_filters.collectable_events`): a request is an ask and a
+  // closed row was taken back, so the control is absent rather than offered and refused.
   const canCollect =
     isAuthor && tiers.collect && COLLECTABLE_STATUSES.includes(event.status);
 
-  // A surface whose every tier is off, or off for this row, gets nothing rather
-  // than an empty row: the wrapper is itself an item in the host's own cluster,
-  // so an empty one prints a gap beside the controls the host adds of its own
-  // (the edit form's queue position, Skip and Close).
+  // A surface whose tiers are all off, or off for this row, gets nothing rather than an empty row:
+  // the wrapper is an item in the host's cluster, so an empty one prints a gap beside the host's
+  // own controls.
   const rowIsEmpty =
     !tiers.utilities &&
     !(tiers.flow && isOpenRequest) &&
@@ -185,9 +146,8 @@ export function useEventActions({
     !canClose;
 
   return {
-    // `flex-wrap` plus `justify-end`: the row is wider than a phone, so it
-    // breaks into stacked right-aligned lines instead of pushing the header
-    // sideways (PageShell caps the cluster at the header width).
+    // `flex-wrap` plus `justify-end`: the row is wider than a phone, so it breaks into right-aligned
+    // lines instead of pushing the header sideways (PageShell caps the cluster at the header width).
     actions: rowIsEmpty ? null : (
       <div className="flex flex-wrap items-center justify-end gap-1.5">
         {tiers.flow && isOpenRequest && (
@@ -208,11 +168,8 @@ export function useEventActions({
             aria-expanded={collecting}
             aria-label="Add to collection"
             title="Add to collection"
-            // The open trigger wears the active-row paint, so the reader can
-            // tell which control the panel under the header belongs to. It is
-            // a toggle rather than a one-way open: the panel writes on every
-            // click inside it, so there is nothing to cancel and the trigger
-            // itself closes it.
+            // The open trigger wears the active-row paint so the reader sees which control the panel belongs
+            // to. A toggle, since the panel writes on every click inside it and there is nothing to cancel.
             className={collecting ? ACCENT_SURFACE : ""}
           >
             <CollectionIcon size={14} />
@@ -222,9 +179,8 @@ export function useEventActions({
           <Link
             href={`/events/${event.id}/edit`}
             className={buttonClasses("ghost", { icon: true })}
-            // The same address the published correction uses, and a label that
-            // names the row rather than the write: editing a request overwrites
-            // it, so there is no version to promise.
+            // The same address the published correction uses; the label names the row, not the write: editing
+            // a request overwrites it, so no version is promised.
             aria-label="Edit this request"
             title="Edit this request"
           >
@@ -235,8 +191,7 @@ export function useEventActions({
           <Link
             href={`/events/${event.id}/edit`}
             className={buttonClasses("ghost", { icon: true })}
-            // "Edit" alone would read as an in-place rewrite. The record is
-            // corrected by adding a version, and the label says so.
+            // "Edit" alone would read as an in-place rewrite; the record is corrected by adding a version.
             aria-label="Edit this geolocation"
             title="Edit this geolocation (saves a new version)"
           >
@@ -249,28 +204,22 @@ export function useEventActions({
             variant="ghost"
             onClick={() => setClosing(true)}
             aria-controls={CLOSE_FORM_ID}
-            // The row is taken back, not deleted: it stays readable with its
-            // reason, so this is not a destructive verb and does not wear the
-            // destructive colour. One verb closes every shape, and the label
-            // names the row it closes.
+            // The row is taken back, not deleted: it stays readable with its reason, so this verb is not
+            // destructive and doesn't wear the destructive colour. One verb closes every shape.
             aria-label={closeLabel}
             title={closeLabel}
           >
             <CircleX size={14} />
           </Button>
         )}
-        {/* The utilities tier, one unit so it stays together when the row
-            wraps: the history (event page only), the share pair, then the
-            report flag, in that order. Reading surfaces only: a form carries
-            the controls that finish the edit, not the ones that pass the
-            record on. */}
+        {/* The utilities tier, one unit so it stays together when the row wraps: history (event page
+            only), the share pair, then the report flag. Reading surfaces only: a form carries the controls
+            that finish the edit. */}
         {tiers.utilities && (
           <div className="flex items-center gap-1.5">
-            {/* The way into the record's history, first in the row. Public like
-                the history itself: a corrected record is only auditable if any
-                reader can walk the corrections, so it is not the owner's
-                control. A published row is the only one with versions to walk,
-                since every other state is edited in place. */}
+            {/* The way into the record's history, first in the row. Public, since a corrected record is only
+                auditable if any reader can walk the corrections. Only a published row has versions (other
+                states are edited in place). */}
             {tiers.history && hasPublishedRecord(event) && (
               <Link
                 href={eventHistoryHref(event.id)}
@@ -295,10 +244,8 @@ export function useEventActions({
         )}
       </div>
     ),
-    // Both panels open directly under the header, where the triggers that
-    // opened them are. They stack rather than replace each other: each is its
-    // own titled card, so a reader who somehow opens both reads two separate
-    // forms in a column, never two forms sharing a slot.
+    // Both panels open directly under the header, where their triggers are. They stack rather than
+    // replace each other: each is its own titled card.
     panels: (
       <>
         {canCollect && collecting && (
@@ -310,9 +257,8 @@ export function useEventActions({
           </div>
         )}
         {closing && (
-          // The `id` sits on a wrapper, not the Card, so `aria-controls` on a
-          // trigger that is not a DOM sibling still resolves (same shape the
-          // report form uses).
+          // The `id` sits on a wrapper, not the Card, so `aria-controls` on a non-sibling trigger still
+          // resolves (same shape as the report form).
           <div id={CLOSE_FORM_ID}>
             <Card as="section">
               <SectionEyebrow title={closeLabel} margin="none" />

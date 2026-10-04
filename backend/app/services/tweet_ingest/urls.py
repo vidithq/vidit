@@ -1,15 +1,11 @@
 """The URL vocabulary of ingestion: what a link names, which hosts are trusted.
 
-Pure string work, no I/O, so every brick can read it without pulling a fetch
-module in. Three jobs live here because all three answer "what is this URL":
+Pure string work, no I/O:
 
-* reading an X post URL down to its id (:func:`normalise_tweet_url`, the one
-  parse, run at the router) and writing one back from an id plus a handle
-  (:func:`canonical_tweet_url`, the one build, run at the engine's exit);
-* the host predicates the source rule and the chase ask (is this an X status,
-  an X link naming none, a ``t.me`` post);
-* the media-host allowlist every remote fetch checks first
-  (:func:`is_trusted_media_url`).
+* :func:`normalise_tweet_url` (the one parse, at the router) and
+  :func:`canonical_tweet_url` (the one build, at the engine's exit);
+* the host predicates the source rule and the chase ask;
+* the media-host allowlist every remote fetch checks (:func:`is_trusted_media_url`).
 """
 
 from __future__ import annotations
@@ -29,14 +25,11 @@ T_CO_HOST_RE = re.compile(r"^t\.co$", re.IGNORECASE)
 TELEGRAM_HOST_RE = re.compile(r"^(?:www\.)?t\.me$", re.IGNORECASE)
 
 # A tweet status path: ``/<handle>/status/<id>`` or the handle-less
-# ``/i/web/status/<id>``. Single source of truth for "this X link names a
-# status", which is what the chase needs and what separates a status from a
-# profile or a search page.
+# ``/i/web/status/<id>``. Separates a status from a profile or search page.
 X_STATUS_URL_RE = re.compile(r"(?:x|twitter)\.com/(?:\w+/status|i/web/status)/(\d+)", re.IGNORECASE)
 
-# A public t.me post path: ``/<channel>/<id>``, channel a bare username, id
-# numeric. Excludes the private ``/c/<n>/<m>`` and ``/joinchat/...`` forms
-# (extra path segments / non-numeric id), which have no public embed anyway.
+# A public t.me post path: ``/<channel>/<id>``. Excludes the private
+# ``/c/<n>/<m>`` and ``/joinchat/...`` forms, which have no public embed.
 TELEGRAM_POST_PATH_RE = re.compile(r"^/([A-Za-z0-9_]{1,64})/(\d{1,19})$")
 
 
@@ -49,12 +42,10 @@ def hostname(url: str) -> str:
 
 
 def x_status_id(url: str) -> str | None:
-    """The X status id ``url`` names, or ``None`` when it names none.
+    """The X status id ``url`` names, or ``None``.
 
-    Host-gated on purpose: a non-X URL that merely carries
-    ``x.com/<handle>/status/<id>`` inside its path, an archive.org capture being
-    the common OSINT case, names no status of its own and must never be chased
-    as one.
+    Host-gated: a non-X URL carrying ``x.com/<handle>/status/<id>`` in its path
+    (an archive.org capture) must never be chased as a status.
     """
     if TWITTER_URL_HOST_RE.match(hostname(url)) is None:
         return None
@@ -65,11 +56,9 @@ def x_status_id(url: str) -> str | None:
 def telegram_post_url(url: str) -> str | None:
     """The canonical ``https://t.me/<channel>/<id>`` post URL, or ``None``.
 
-    The SSRF gate the Telegram chase fetches behind: returns a URL only for a
-    public Telegram post (a ``t.me`` host per :data:`TELEGRAM_HOST_RE`, a bare
-    channel, a numeric id). A private ``t.me/c/...`` link, a ``joinchat``
-    invite, a channel-only link, embedded credentials, a non-standard port, or
-    any non-Telegram host all yield ``None`` and are never fetched.
+    The SSRF gate of the Telegram chase: only a public post passes. Private
+    ``t.me/c/...`` links, invites, channel-only links, credentials, ports and
+    non-Telegram hosts yield ``None`` and are never fetched.
     """
     try:
         parsed = urlparse(url)
@@ -93,8 +82,7 @@ def telegram_post_url(url: str) -> str | None:
 
 _TWEET_ID_PATTERN = re.compile(r"^\d{5,25}$")
 
-# The handle a URL carries when it names none (the ``/i/web/status/<id>``
-# form). The caller sources the real handle from the response.
+# The handle of a URL that names none (``/i/web/status/<id>``).
 NO_HANDLE = "i"
 
 
@@ -107,15 +95,9 @@ class NormalisedTweetUrl:
 def normalise_tweet_url(raw: str) -> NormalisedTweetUrl:
     """Validate a tweet URL and return the post it names.
 
-    The one parse. The URL a caller typed is read down to an id plus a handle
-    here and never carried further: what a surface displays is built back from
-    the pair by :func:`canonical_tweet_url`.
-
-    Accepts ``x.com`` / ``twitter.com`` (with or without ``www.``), strips query
-    and fragment, reduces the path to ``/<handle>/status/<id>``. Anything else
-    (profiles, lists, search, home feed, unrelated host) raises
-    ``InvalidTweetUrl``. The handle is not validated for existence: that is the
-    syndication endpoint's 404 turning into ``TweetNotAccessible``.
+    Accepts ``x.com`` / ``twitter.com`` (with or without ``www.``), drops query
+    and fragment. Anything else raises ``InvalidTweetUrl``. The handle's
+    existence is not checked (the syndication 404 becomes ``TweetNotAccessible``).
     """
     parsed = urlparse(raw.strip())
     if parsed.scheme not in ("http", "https"):
@@ -123,8 +105,7 @@ def normalise_tweet_url(raw: str) -> NormalisedTweetUrl:
     if (parsed.hostname or "").lower() not in _TWITTER_HOSTS:
         raise InvalidTweetUrl("Not a tweet URL")
 
-    # Path shape: /<handle>/status/<id>, and also the older /i/web/status/<id>
-    # form some clients emit with no handle context.
+    # ``/<handle>/status/<id>``, or ``/i/web/status/<id>`` from some clients.
     parts = [p for p in parsed.path.split("/") if p]
     tweet_id: str | None = None
     handle: str | None = None
@@ -146,11 +127,9 @@ def normalise_tweet_url(raw: str) -> NormalisedTweetUrl:
 
 
 def canonical_tweet_url(tweet_id: str, handle: str) -> str:
-    """The canonical permalink for ``tweet_id`` posted by ``handle``.
+    """The canonical permalink, the one build of a post URL.
 
-    The one build: `tweet_id` is the identity every surface carries, and a URL
-    is written from it here and nowhere else. ``handle`` is :data:`NO_HANDLE`
-    when the caller has none, and that form is kept as X serves it, since
+    :data:`NO_HANDLE` keeps the ``/i/web/status/`` form, since
     ``x.com/i/status/<id>`` 404s.
     """
     if handle == NO_HANDLE:
@@ -164,34 +143,22 @@ def canonical_tweet_url(tweet_id: str, handle: str) -> str:
 # Allowlist of hosts the backend will fetch media from.
 TWITTER_MEDIA_HOSTS = frozenset({"pbs.twimg.com", "video.twimg.com"})
 
-# Registrable bases Telegram serves footage from: its own CDN (the apex
-# ``cdn-telegram.org`` plus its ``cdnN.cdn-telegram.org`` shards) and
-# ``telesco.pe``. Matched by strict dot-boundary suffix (see
-# :func:`_host_matches_base`), never a substring, so a look-alike like
-# ``evil-cdn-telegram.org`` is rejected.
+# Telegram's CDN (apex plus ``cdnN`` shards) and ``telesco.pe``, matched by
+# dot-boundary suffix (:func:`_host_matches_base`) so ``evil-cdn-telegram.org`` fails.
 TELEGRAM_MEDIA_BASE_HOSTS = frozenset({"cdn-telegram.org", "telesco.pe"})
 
 
 def _host_matches_base(host: str, base: str) -> bool:
-    """Whether ``host`` is ``base`` itself or a subdomain of it.
-
-    A dot-boundary suffix test, not a substring: ``cdn4.cdn-telegram.org``
-    matches ``cdn-telegram.org`` while ``evil-cdn-telegram.org`` (shares the
-    trailing string but not the ``.`` boundary) does not.
-    """
+    """Whether ``host`` is ``base`` or a subdomain of it (dot-boundary, not substring)."""
     return host == base or host.endswith("." + base)
 
 
 def is_trusted_media_url(url: str) -> bool:
-    """The allowlist gate every remote media fetch passes first.
+    """The allowlist gate every remote media fetch passes first (SSRF guard).
 
-    Single source of truth: the syndication mapper (filtering what a payload
-    advertises), the Telegram embed reader and the archive chase (before
-    fetching a CDN media) all call this. Drift would silently drop legitimate
-    media or open an outbound fetch to an arbitrary host (SSRF). Admits the X
-    CDN (``TWITTER_MEDIA_HOSTS``, exact) and the Telegram CDN
-    (``TELEGRAM_MEDIA_BASE_HOSTS``, strict dot-boundary suffix so a look-alike
-    host cannot slip through), ``https`` only.
+    Admits the X CDN (exact hosts) and the Telegram CDN (dot-boundary suffix),
+    ``https`` only. The syndication mapper, the Telegram embed reader and the
+    archive chase all call this.
     """
     try:
         parsed = urlparse(url)

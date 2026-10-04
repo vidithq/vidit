@@ -9,9 +9,7 @@ function RegisterContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const code = searchParams.get("code") ?? "";
-  // Already signed in? Send them to the app. Block render while
-  // AuthContext resolves /auth/me so a signed-in visitor never sees a
-  // form flash before the redirect.
+  // Already signed in: send to the app. Render nothing while /auth/me resolves to avoid a form flash.
   const { user, loading } = useRedirectIfAuthenticated();
   if (loading || user) return null;
   return (

@@ -13,117 +13,69 @@ import type {
   SearchEventHit,
 } from "@/types";
 
-/**
- * The collections surface: the routes, the one hand-kept cap, and the two
- * readings every collection surface prints (the meta line and the item pins).
- *
- * A collection is one analyst's own curated set of `geolocated` and `detected`
- * events, shown on their public profile. The title and a description written
- * in the proof editor are its two written fields, and the items order
- * themselves by when their events happened, so there is nothing else here to
- * write.
- */
+/** The collections surface: routes, the hand-kept caps, and the meta line and item pins
+ *  every collection surface prints. */
 
-/** How long a collection title may be. Mirrors `models/event.TITLE_MAX_LENGTH`,
- *  which `schemas/collection` applies to the create and the update alike: the
- *  field stops at the cap instead of letting the server 422 a title someone
- *  just typed out. */
+/** Mirrors `models/event.TITLE_MAX_LENGTH`, which `schemas/collection` applies to create
+ *  and update alike; change both. */
 export const COLLECTION_TITLE_MAX_LEN = 255;
 
-/** How long a collection description may be, counted on the plain-text
- *  projection of its document (`lib/proof.tsx::tiptapDocText`). Mirrors
- *  `schemas/collection.DESCRIPTION_MAX_LENGTH`, which `services/collections`
- *  applies to the same projection on the create and the update: the field stops
- *  at the cap instead of letting the server refuse a paragraph someone just
- *  typed out with a 400 `invalid_description`, and counting the
- *  text rather than the markup is what keeps bolding a word from costing an
- *  analyst characters. The profile bio's figure for the same class of body,
- *  kept as its own constant because the two are separate concepts. */
+/** Counted on the plain-text projection of the document (`lib/proof.tsx::tiptapDocText`),
+ *  so bolding a word costs no characters. Mirrors `schemas/collection.DESCRIPTION_MAX_LENGTH`,
+ *  which `services/collections` applies to the same projection; change both. */
 export const COLLECTION_DESCRIPTION_MAX_LEN = 500;
 
-/** One collection's header, as every read surface renders it. */
 export type Collection = components["schemas"]["CollectionRead"];
 
-/** What a collection says it holds: a Tiptap document, the same shape an
- *  event's proof body is, minus images. A read carries it beside
- *  `description_text`, its plain-text projection, so a surface renders the
- *  document through `renderProof` and reads the projection where it has no
- *  room for rich text. */
+/** A Tiptap document like an event's proof body, minus images. A read carries it beside
+ *  `description_text`, its plain-text projection. */
 export type CollectionDescription = Collection["description"];
 
-/** One tile of the mosaic a collection's profile card wears: the url of one
- *  item's media, the kind of file it is, and its role. The kind picks the
- *  element that can render it, since most source media are clips; the role says
- *  whether the picture has display derivatives, since a proof image has none
- *  (`lib/mediaUrls.ts`). */
+/** One mosaic tile: an item's media url, its file kind (picks the rendering element) and
+ *  its role (a proof image has no display derivatives, see `lib/mediaUrls.ts`). */
 export type CollectionCoverTile =
   components["schemas"]["CollectionCoverTile"];
 
-/** One page of `GET /users/{username}/collections`, offset-paged. */
 export type CollectionPage = components["schemas"]["CollectionList"];
 
-/** One row of the add-to-collection panel: a collection and whether this event
- *  is already on it. */
 export type CollectionMembership =
   components["schemas"]["CollectionMembershipRead"];
 
-/** The panel's whole read, `GET /events/{id}/collections`. */
 export type CollectionMemberships =
   components["schemas"]["CollectionMembershipList"];
 
-/**
- * The mark that names the type wherever a surface has to say what kind of thing
- * it is: the `Collection` pill on the page, the search scope chip, the profile
- * section's first-run state, and the shelving control on an event page.
- *
- * One export for all of them, so the glyph changes in one line. The profile
- * card wears none: its mosaic is what tells one collection from the next, and a
- * mark beside the title only narrows the column the title renders in.
- */
+/** The mark that names a collection wherever a surface says what kind of thing it is.
+ *  The profile card wears none: its mosaic tells collections apart. */
 export const CollectionIcon = Layers;
 
-/** The collection's page. */
 export function collectionHref(id: string): string {
   return `/collections/${encodeURIComponent(id)}`;
 }
 
-/** The owner's edit page: the two details, and the one control that drops the
- *  collection. */
 export function collectionEditHref(id: string): string {
   return `${collectionHref(id)}/edit`;
 }
 
-/** The query parameter the create page reads the event to shelve from. */
 export const NEW_COLLECTION_EVENT_PARAM = "event";
 
-/**
- * The create page.
- *
- * `eventId` asks it to put that event on the collection it opens and to return
- * to the event afterwards, which is how the add-to-collection panel opens a
- * collection without losing the event the analyst was shelving.
- */
+/** The create page. `eventId` puts that event on the new collection and returns to the
+ *  event afterwards. */
 export function newCollectionHref(eventId?: string): string {
   return eventId
     ? `/collections/new?${NEW_COLLECTION_EVENT_PARAM}=${encodeURIComponent(eventId)}`
     : "/collections/new";
 }
 
-/** An analyst's collections, newest first. The profile grid reads the first
- *  page and asks for as many rows as it shows, so `perPage` is the grid's own
- *  size rather than the endpoint's default; the whole shelf is walked in
- *  `/search` instead. */
+/** An analyst's collections, newest first. `perPage` is the profile grid's own size. */
 export function userCollectionsPath(username: string, perPage: number): string {
   return `/users/${encodeURIComponent(username)}/collections?per_page=${perPage}`;
 }
 
-/** The owner's collections, each carrying whether this event is on it. */
 export function eventCollectionsPath(eventId: string): string {
   return `/events/${encodeURIComponent(eventId)}/collections`;
 }
 
-/** One page of a collection's items, oldest event first. `cursor` is null for
- *  the first page, then the value out of the `Link: rel="next"` header. */
+/** One page of a collection's items, oldest event first; `cursor` is null for the first. */
 export function collectionEventsPath(
   id: string,
   cursor: string | null,
@@ -132,33 +84,18 @@ export function collectionEventsPath(
   return cursor === null ? base : `${base}?cursor=${encodeURIComponent(cursor)}`;
 }
 
-/** The collection's page, opened on one step of its sequence. The step is
- *  1-based and rides the query string of the page itself, so a link says which
- *  event the sender was on and opens the page there. */
+/** The collection's page opened on a 1-based `?step=`. */
 export function collectionStepHref(id: string, step: number): string {
   return `${collectionHref(id)}?step=${step}`;
 }
 
-/** How many items the page ever steps through. A collection is a curated set,
- *  so this is a ceiling on a runaway read rather than a page size: past it the
- *  page holds the first 500 items.
- *
- *  What the reader sees at the ceiling: the first 500 items of the reading
- *  order, which is the earliest 500 by event date, and nothing of what happened
- *  after them. The counter, the pins and the list all read the same truncated
- *  walk, so a longer collection counts to 500 and nothing on the page marks
- *  where the cut falls. */
+/** Ceiling on a runaway read, not a page size. Past it the page holds the earliest 500
+ *  items by event date, and nothing on the page marks the cut. */
 export const READER_MAX_ITEMS = 500;
 
-/**
- * Every page of a collection's items, in one read.
- *
- * The page needs the whole sequence before it can say `N of M`, so it follows
- * the `Link: rel="next"` cursor to the end rather than paging as the reader
- * steps. One read serves the pins, the panel's sequence and the list, which is
- * what keeps the three describing the same collection. A collection is a
- * curated set, and `READER_MAX_ITEMS` bounds the walk for the one that is not.
- */
+/** Every page of a collection's items in one read, following the `Link: rel="next"`
+ *  cursor: the page needs the whole sequence for `N of M`, and one read keeps the pins,
+ *  the panel and the list describing the same collection. Bounded by `READER_MAX_ITEMS`. */
 export async function fetchCollectionSequence(
   id: string,
   signal?: AbortSignal,
@@ -166,8 +103,7 @@ export async function fetchCollectionSequence(
   const items: EventListItem[] = [];
   let cursor: string | null = null;
   for (;;) {
-    // Annotated: `cursor` is written from this page and read to build the
-    // next one, which TypeScript cannot resolve from the call alone.
+    // Annotated: TypeScript cannot resolve `cursor` from the call alone.
     const page: { items: EventListItem[]; nextCursor: string | null } =
       await apiFetchPage<EventListItem[]>(collectionEventsPath(id, cursor), {
         signal,
@@ -179,34 +115,20 @@ export async function fetchCollectionSequence(
   }
 }
 
-/**
- * Which step a reader link opens on, read off `?step=`.
- *
- * The value is 1-based and clamped into the sequence, so a link to a step the
- * collection no longer holds opens on its nearest real one instead of on
- * nothing. Anything that is not a positive whole number is step 1, the same
- * answer a link carrying no step at all gets.
- */
+/** Step a reader link opens on, read off `?step=`: 1-based, clamped into the sequence;
+ *  anything but a positive whole number is step 1. */
 export function readerStep(raw: string | null, total: number): number {
   if (total <= 0) return 1;
   if (!raw || !/^\d+$/.test(raw)) return 1;
   return Math.min(Math.max(Number.parseInt(raw, 10), 1), total);
 }
 
-/**
- * The two statuses a collection may hold, as the picker asks the read surfaces
- * for them. Mirrors `services/event_filters.collectable_events`, the one
- * predicate the item list, the count, the date range, the mosaic and the add
- * verb all read: a picker offering a row the add verb then refuses hands the
- * analyst a 409 on something they were invited to tick.
- */
+/** Statuses a collection may hold. Mirrors `services/event_filters.collectable_events`, the
+ *  one predicate the list, count, date range, mosaic and add verb read; a status it drops
+ *  would invite a tick the add verb refuses with a 409. */
 export const COLLECTABLE_STATUSES: EventStatus[] = ["geolocated", "detected"];
 
-/** One row of the event picker, on either of its blocks: the slots a compact
- *  `<EntityCard>` fills. A catalogue row (`EventListItem`) already is one; a
- *  search hit becomes one through `pickableFromHit` and an event's own read
- *  through `pickableFromDetail`, so every source the picker reads renders as
- *  the same row. */
+/** One row of the event picker: the slots a compact `<EntityCard>` fills. */
 export type PickableEvent = Pick<
   EventListItem,
   | "id"
@@ -219,16 +141,12 @@ export type PickableEvent = Pick<
   | "tags"
 >;
 
-/** How many rows the picker's add block ever shows, whichever source answers
- *  it. The block is a way to reach one event, not a second catalogue, so both
- *  halves ask their endpoint for this many and the block says how to reach
- *  what it left out. */
+/** Rows the picker's add block ever shows, whichever source answers: a way to reach one
+ *  event, not a second catalogue. */
 export const PICKER_ROW_LIMIT = 5;
 
-/** The analyst's own collectable events, newest first: what the add block
- *  shows with nothing typed. The list endpoint serves this half because it is
- *  the cursor-paged one, so the block knows from the cursor whether more of
- *  the catalogue stands behind the rows it shows. */
+/** The analyst's collectable events, newest first. The cursor-paged list endpoint serves
+ *  this half so the block knows from the cursor whether more stand behind its rows. */
 export function pickerBrowsePath(
   username: string,
   cursor: string | null,
@@ -242,13 +160,8 @@ export function pickerBrowsePath(
   });
 }
 
-/** An event's own read as a picker row. The create page reads the one event a
- *  `?event=` link carries this way, so the row it opens holding renders like
- *  every other row on the page. The card slot takes the detail's own picked
- *  `thumbnail`, the pick every other card surface renders (the source
- *  attachment, else the first proof image): `media` carries source attachments
- *  alone, so reading its first row tiles nothing for an event whose picture is
- *  a proof image. */
+/** An event's own read as a picker row. Uses the detail's `thumbnail` (source attachment,
+ *  else first proof image) since `media` carries source attachments alone. */
 export function pickableFromDetail(event: EventDetail): PickableEvent {
   return {
     id: event.id,
@@ -262,8 +175,7 @@ export function pickableFromDetail(event: EventDetail): PickableEvent {
   };
 }
 
-/** A search hit as a picker row: the hit carries its coordinates flat and its
- *  picked thumbnail as a list of at most one, which is the card's `media`. */
+/** A search hit as a picker row (the hit's thumbnail list of at most one is the `media`). */
 function pickableFromHit(hit: SearchEventHit): PickableEvent {
   return {
     id: hit.id,
@@ -277,15 +189,8 @@ function pickableFromHit(hit: SearchEventHit): PickableEvent {
   };
 }
 
-/**
- * The analyst's own collectable events matching a typed query, and how many
- * matched in all.
- *
- * `/search` serves the typed half because it is the endpoint that reads the
- * words: `type=event` for the located group and `author=` for their own
- * catalogue, the pair every profile link into search already carries. `total`
- * is the pre-cap match count, so the block can say what its rows leave out.
- */
+/** The analyst's collectable events matching a query, via `/search` (the endpoint that
+ *  reads words). `total` is the pre-cap match count. */
 export async function searchPickableEvents(
   username: string,
   q: string,
@@ -303,15 +208,8 @@ export async function searchPickableEvents(
   };
 }
 
-/**
- * Open a collection under a title and a description, both required, holding
- * the events the create page's picker ticked.
- *
- * `eventIds` rides the create rather than following it as a request per row:
- * the server puts them on inside the same transaction, so a refusal on any one
- * of them takes the whole create with it and the analyst is never left with a
- * collection holding part of what they picked.
- */
+/** Open a collection with a required title and description. `eventIds` rides the create so
+ *  one refusal rolls back the whole transaction, never a partly filled collection. */
 export function createCollection(
   title: string,
   description: CollectionDescription,
@@ -323,9 +221,7 @@ export function createCollection(
   });
 }
 
-/** Write a collection's title and description. Both ride every edit, so one
- *  request states what the collection is and a renamed collection cannot be
- *  left describing the old one. */
+/** Both fields ride every edit, so a renamed collection cannot keep describing the old one. */
 export function updateCollection(
   id: string,
   title: string,
@@ -343,14 +239,8 @@ export function deleteCollection(id: string): Promise<void> {
   });
 }
 
-/**
- * Report a collection: `POST /collections/{id}/report`. The event report's
- * twin (`reportEvent`), down to the body and the per-IP cap: open to anyone,
- * signed in or not, because the reader who notices a shelf misrepresenting
- * what it holds is rarely the one who holds an account here. `apiFetch` omits
- * the CSRF header when no session cookie is present, so the same call works
- * logged out.
- */
+/** `POST /collections/{id}/report`. Twin of `reportEvent`: open to anyone, per-IP capped,
+ *  and `apiFetch` omits the CSRF header with no session cookie. */
 export function reportCollection(
   id: string,
   body: components["schemas"]["ContentReportCreate"],
@@ -361,8 +251,7 @@ export function reportCollection(
   );
 }
 
-/** Put one of the analyst's own events on one of their collections. Idempotent
- *  server-side, so the panel can re-send a row it is unsure about. */
+/** Idempotent server-side, so the panel can re-send an uncertain row. */
 export function addEventToCollection(
   collectionId: string,
   eventId: string,
@@ -373,8 +262,8 @@ export function addEventToCollection(
   );
 }
 
-/** Take one event off a collection. Idempotent, and it never re-checks the
- *  event's state, so a membership whose event has since closed still clears. */
+/** Idempotent; never re-checks the event's state, so a membership whose event has since
+ *  closed still clears. */
 export function removeEventFromCollection(
   collectionId: string,
   eventId: string,
@@ -385,29 +274,13 @@ export function removeEventFromCollection(
   );
 }
 
-/**
- * How much a collection holds, as every surface says it.
- *
- * One phrasing for the three that state it: the collection page's meta line,
- * the profile card's, and the add-to-collection panel's row, so the same
- * collection never reads as `12 events` on one surface and `12` on another.
- */
+/** One phrasing for the page meta line, the profile card and the panel row. */
 export function eventCountLabel(count: number): string {
   return `${count} event${count === 1 ? "" : "s"}`;
 }
 
-/**
- * The meta line both the page and the profile card print: how much the
- * collection holds, then the span its items cover.
- *
- * One builder for the two surfaces, so a card and the page it opens cannot
- * count or date the same collection differently. The count is always stated,
- * zero included, because an empty collection is a real thing its owner reads.
- * The span is stated only when the items carry dates (`first_date` and
- * `last_date` are both null for an empty collection and for one whose items
- * all lack a date), and a collection whose items fall on one day prints that
- * day once rather than as a range from itself to itself.
- */
+/** The meta line the page and profile card print: the count (zero included), then the span
+ *  of item dates when they carry any (one day prints once, not as a range). */
 export function collectionMetaSegments(collection: Collection): string[] {
   const { event_count: count, first_date: first, last_date: last } = collection;
   const segments = [eventCountLabel(count)];
@@ -421,19 +294,10 @@ export function collectionMetaSegments(collection: Collection): string[] {
   return segments;
 }
 
-/**
- * The collection's items as map points, for the shared `<Map>`.
- *
- * The items already arrived as `EventList` rows, so the pins are read off them
- * rather than fetched again: there is no points endpoint scoped to a
- * collection, and a second read would frame the map on a set the list below it
- * might not hold. An item with no coordinates carries no pin.
- *
- * The tuple's `event_date` and `added_date` slots are filled from the row's own
- * event date: `<Map>` reads the id, the pair and the `detected` flag, and the
- * two date slots are the map page's scrubber payload, which no embedded map
- * renders.
- */
+/** The items as map points for `<Map>`. Read off the already loaded rows (there is no
+ *  points endpoint per collection, and a second read could frame a different set). No
+ *  coordinates, no pin. The two date slots are the map page's scrubber payload, unused by
+ *  an embedded map. */
 export function collectionPoints(items: EventListItem[]): MapPoint[] {
   return items.flatMap((item) =>
     item.event_coords

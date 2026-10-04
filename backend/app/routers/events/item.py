@@ -1,9 +1,9 @@
-"""Single-event ops by id: detail, the lifecycle verbs (geolocate, close), the
-open-request correction path (update_request), and the published-row correction
-path (save_version + its version history).
+"""Single-event ops by id: detail, lifecycle verbs (geolocate, close), the
+open-request correction (update_request) and the published-row correction
+(save_version + version history).
 
-No delete: an owner takes a row back with ``close``, which keeps the record
-readable, and destruction is the admin router's ``DELETE /admin/events/{id}``.
+No delete: an owner takes a row back with ``close``; destruction is
+``DELETE /admin/events/{id}``.
 """
 
 import asyncio
@@ -80,8 +80,7 @@ from app.services.thumbnails import thumbnail_media_criteria
 
 router = APIRouter()
 
-# Every relationship the detail serializer reads, eager-loaded so one event
-# costs a bounded set of queries (no per-contributor lazy hits).
+# Every relationship the detail serializer reads, eager-loaded to bound queries.
 _DETAIL_LOADS = (
     joinedload(Event.owner),
     joinedload(Event.requested_by),
@@ -89,20 +88,15 @@ _DETAIL_LOADS = (
     selectinload(Event.tags),
     selectinload(Event.conflicts),
     selectinload(Event.geolocators).joinedload(EventGeolocator.user),
-    # The archived-source fallback in ``build_event_read`` reads this set; a
-    # detail loader without it pays a lazy query per event.
+    # ``build_event_read`` reads this set; without it, a lazy query per event.
     selectinload(Event.archives),
     selectinload(Event.source_links),
 )
 
 
 def _serialize_event(db: Session, geo: Event) -> EventRead:
-    """Build the read model for a just-mutated row.
-
-    Re-projects both points out of PostGIS with the same ``ST_Y`` / ``ST_X``
-    cast ``GET /{id}`` uses, so a mutation returns a response identical in
-    shape to a fresh read.
-    """
+    """Build the read model for a just-mutated row, re-projecting the points
+    the way ``GET /{id}`` does so the shapes match."""
     lat, lng, capture_lat, capture_lng = (
         db.query(
             ST_Y(Event.event_coords),
@@ -116,9 +110,8 @@ def _serialize_event(db: Session, geo: Event) -> EventRead:
     return build_event_read(geo, lat=lat, lng=lng, capture_lat=capture_lat, capture_lng=capture_lng)
 
 
-# Defined ahead of the ``/{geolocation_id}`` reads below: the extra path
-# segment means the catch-all cannot shadow it, and keeping the public write
-# next to them states the order the router matches in.
+# Ahead of the ``/{geolocation_id}`` reads: the extra path segment means the
+# catch-all cannot shadow it.
 @router.post(
     "/{geolocation_id}/report",
     response_model=ContentReportRead,
@@ -135,13 +128,11 @@ def report_event(
 ) -> ContentReport:
     """Report an event for moderation.
 
-    Open to anonymous viewers: the people a piece of footage harms rarely hold
-    an account here, so requiring one would close the door on the reports that
-    matter most. A signed-in reporter is recorded on the row; an anonymous one
-    leaves ``reporter_user_id`` NULL. The per-IP limit is the abuse floor.
+    Open to anonymous viewers: the people footage harms rarely hold an account
+    here. A signed-in reporter is recorded; an anonymous one leaves
+    ``reporter_user_id`` NULL. The per-IP limit is the abuse floor.
 
-    An unknown, soft-deleted or already-withheld event answers 404: all three
-    are invisible to the caller, so all three read the same.
+    An unknown, soft-deleted or already-withheld event answers 404.
     """
     try:
         return reports_service.create_event_report(
@@ -168,9 +159,8 @@ def get_event(
 ):
     """The detail read.
 
-    A withheld event (``hidden_at``) answers 404 for everyone but an admin, who
-    still needs to read what was taken down in order to judge the report that
-    took it down.
+    A withheld event (``hidden_at``) answers 404 for everyone but an admin,
+    who must read what was taken down to judge the report.
     """
     query = (
         db.query(
@@ -194,23 +184,19 @@ def get_event(
 
 
 # ── Lifecycle verbs ───────────────────────────────────────────────────
-# Geolocate writes the caller's edits and moves a ``requested`` or
-# ``detected`` event to ``geolocated``; close is the terminal withdraw /
-# reject / retract, available in every live state. A detection is owner-only; a
-# ``requested`` event is answerable by anyone (the fulfiller becomes the owner).
-# Before the geolocate an open request is corrected through ``update_request``,
-# owner-only, which overwrites it: a request is a question, so there is no
-# vouched version for the edit to supersede.
-# Past the geolocate a row is corrected through ``save_version``, owner-only,
-# which files the superseded version rather than overwriting it. Removing a row
-# is not among them: destruction is the admin router's
-# ``DELETE /admin/events/{id}``, so an owner's own way out of a published claim
-# is the retraction, which keeps the record. See ``api.md``.
+# Geolocate moves a ``requested`` or ``detected`` event to ``geolocated``;
+# close is the terminal withdraw / reject / retract, in every live state. A
+# detection is owner-only; a ``requested`` event is answerable by anyone (the
+# fulfiller becomes the owner). A ``requested`` row is corrected through
+# ``update_request`` (overwrites, owner-only: a request is a question, so no
+# vouched version exists to supersede). A ``geolocated`` row is corrected
+# through ``save_version`` (owner-only, files the superseded version). An
+# owner's way out of a published claim is the retraction; destruction is
+# admin-only. See ``api.md``.
 #
-# The three multipart writes are plain ``def`` and drive their async service
-# through ``asyncio.run``, so their queries and the row lock they hold across
-# the upload stay off the server's event loop (``engineering.md``, Request
-# concurrency).
+# The three multipart writes are plain ``def`` driving their async service
+# through ``asyncio.run``, so their queries and the row lock held across the
+# upload stay off the event loop (``engineering.md``, Request concurrency).
 
 
 @router.post("/{geolocation_id}/geolocate", response_model=EventRead)
@@ -218,45 +204,36 @@ def get_event(
 def geolocate_event(
     request: Request,
     geolocation_id: uuid.UUID,
-    # Multipart, mirroring create: the form posts the whole state and the service
-    # writes it and flips to ``geolocated`` atomically. ``max_length`` ceilings are
-    # the shared model constants (same as create) so over-length input is rejected
-    # before the files hit S3.
+    # Multipart like create: the service writes the whole form and flips to
+    # ``geolocated`` atomically. ``max_length`` uses the shared model constants
+    # so over-length input is rejected before files hit S3.
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     lat: float = Form(...),
     lng: float = Form(...),
     capture_source_lat: float | None = Form(None),
     capture_source_lng: float | None = Form(None),
     source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
-    # The archived copy of the stored source URL, if the analyst made one while
-    # editing (same field the submit form carries). Optional; checked against
-    # the source URL this write stores.
+    # Archived copy of the stored source URL, checked against what this write stores.
     source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
-    # The mirrors, repeated once per link. The submitted list REPLACES whatever
-    # the row held, on a requested fulfilment too: unlike ``source_url`` these
-    # carry no requester protection (see the service docstring).
+    # Mirrors, repeated per link. The list REPLACES what the row held, even on a
+    # requested fulfilment (no requester protection, see the service docstring).
     secondary_source_urls: list[SecondarySourceUrl] = Form([]),
-    # The archived copy of each mirror, aligned with the list above by position
-    # and blank where that mirror was not archived. The alignment is the
-    # contract: the client posts one entry here per entry there, blank included,
-    # so a copy never arrives without the link it covers and
-    # ``pair_secondary_snapshots`` can key the two by position before
-    # normalization drops any row.
+    # Archived copy of each mirror, aligned by position with the list above and
+    # blank where not archived: the client posts one entry per mirror so
+    # ``pair_secondary_snapshots`` can key them before normalization drops rows.
     secondary_snapshot_urls: list[SecondarySourceUrl] = Form([]),
-    # Optional, mirroring create: the footage doesn't always establish when the
-    # depicted event happened; NULL reads as "Unknown".
+    # Optional like create; NULL reads as "Unknown".
     event_date: str | None = Form(None),
     event_time: str | None = Form(None),
     source_posted_at: str = Form(...),
     proof: str | None = Form(None),
     tag_ids: str | None = Form(None),
     conflict_ids: str | None = Form(None),
-    # The author's graphic-content declaration. Unlike the fields around it
-    # this one ratchets: omitting it leaves a flag the event already carries,
-    # and only the admin moderation endpoint can clear one.
+    # Graphic-content declaration. Ratchets: omitting it keeps an existing
+    # flag; only the admin moderation endpoint clears one.
     is_graphic: bool = Form(False),
-    # Ids of existing media to drop (JSON array). A replacement source rides
-    # in ``files``; the proof body's new inline images in ``proof_files``.
+    # Ids of media to drop (JSON array). A replacement source rides in
+    # ``files``; new inline proof images in ``proof_files``.
     remove_media_ids: str | None = Form(None),
     files: list[UploadFile] | None = File(None),
     proof_files: list[UploadFile] | None = File(None),
@@ -265,26 +242,21 @@ def geolocate_event(
 ):
     """Give an event a vouched location: ``requested`` | ``detected`` → ``geolocated``.
 
-    The one generalized fulfil / submit transition. The caller posts the whole
-    form (title, coordinates, source URL, dates, the graphic-content flag,
-    proof + its images, tags, and the source media: ``files`` added,
-    ``remove_media_ids`` dropped), and on
-    success the row is written and published as ``geolocated``, with the caller
-    credited as a geolocator; from there it is corrected through ``save_version``,
-    which files each superseded version. Only ``detected_from_url`` (provenance) and
-    ``status`` carry no field. A detection is owner-only (403
-    otherwise); a ``requested`` event is answerable by anyone, and the
-    fulfiller becomes its owner (``requested_by`` keeps the original poster).
-    Blocked until the evidence floor is met (one source media, a proof image,
-    a conflict, and the ``capture_source`` tag, 400 otherwise). Off
-    ``requested`` / ``detected`` → 409. Soft-deleted rows read as 404.
+    The caller posts the whole form (title, coordinates, source URL, dates,
+    graphic flag, proof + images, tags, source media via ``files`` /
+    ``remove_media_ids``). On success the row is published as ``geolocated`` and
+    the caller is credited as a geolocator; later corrections go through
+    ``save_version``. A detection is owner-only (403 otherwise); a ``requested``
+    event is answerable by anyone and the fulfiller becomes its owner
+    (``requested_by`` keeps the poster). Blocked (400) until the evidence floor
+    is met (one source media, a proof image, a conflict, the ``capture_source``
+    tag). Other statuses 409; soft-deleted 404.
 
-    ``source_snapshot_url`` records the archived source in the same write and
-    ``secondary_snapshot_urls`` records one copy per mirror, on the checks every
-    archived-copy field runs (a paste that is not a snapshot of the link it sits
-    beside is a 400, and nothing is written). An edit that changes the source URL
-    and pastes no new snapshot leaves the event with no archived source rather
-    than the old one's copy.
+    ``source_snapshot_url`` and ``secondary_snapshot_urls`` record archived
+    copies in the same write, on the checks every archived-copy field runs (a
+    paste that is not a snapshot of its link is a 400 and nothing is written).
+    Changing the source URL without pasting a new snapshot leaves no archived
+    source rather than the old one's copy.
     """
     files = files or []
     proof_files = proof_files or []
@@ -296,8 +268,7 @@ def geolocate_event(
     parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
     parsed_remove_ids = parse_json_id_list(remove_media_ids, field="remove_media_ids")
 
-    # Not owner-gated at the router: the service enforces per-status ownership
-    # (owner-only for ``detected``, open for ``requested``) under a row lock.
+    # The service enforces per-status ownership under a row lock.
     geo = resolve_live_event(db, geolocation_id)
     try:
         geolocated = asyncio.run(
@@ -338,33 +309,29 @@ def geolocate_event(
 def update_event_request(
     request: Request,
     geolocation_id: uuid.UUID,
-    # Multipart, mirroring the create form at ``POST /events/requests``: the same
-    # fields, the same ceilings, and the whole state posted at once. The one
-    # difference is the source media, which arrives as the plural swap pair the
-    # two published writes take, since the row already carries a file.
+    # Multipart like ``POST /events/requests``: same fields and ceilings. The
+    # source media uses the plural swap pair the published writes take, since
+    # the row already carries a file.
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     source_url: str = Form(..., max_length=SOURCE_URL_MAX_LENGTH),
     source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
     secondary_source_urls: list[SecondarySourceUrl] = Form([]),
     secondary_snapshot_urls: list[SecondarySourceUrl] = Form([]),
     proof: str | None = Form(None),
-    # The approximate guess a request may carry, both halves or neither.
+    # The approximate guess a request may carry: both halves or neither.
     lat: float | None = Form(None),
     lng: float | None = Form(None),
     capture_source_lat: float | None = Form(None),
     capture_source_lng: float | None = Form(None),
     event_date: str | None = Form(None),
     event_time: str | None = Form(None),
-    # Optional, unlike on the human create form: the bot opens a request whose
-    # source date it could not read, so an owner corrects that row without
-    # inventing an instant. Empty or omitted keeps what the row holds, NULL
-    # included; only a value replaces it.
+    # Optional: the bot opens requests whose source date it could not read.
+    # Empty or omitted keeps what the row holds (NULL included).
     source_posted_at: str | None = Form(None),
     tag_ids: str | None = Form(None),
     conflict_ids: str | None = Form(None),
     is_graphic: bool = Form(False),
-    # Ids of existing source media to drop (JSON array); the replacement rides
-    # in ``files``, under the one-source cap every write shares.
+    # Ids of source media to drop (JSON array); the replacement rides in ``files``.
     remove_media_ids: str | None = Form(None),
     files: list[UploadFile] | None = File(None),
     proof_files: list[UploadFile] | None = File(None),
@@ -373,18 +340,15 @@ def update_event_request(
 ):
     """Correct an open request, overwriting it in place (owner-only).
 
-    The owner's edit of a request they opened, or the bot opened for them. No
-    version is filed: a version supersedes a vouched claim, and a request is a
-    question rather than a claim, so the row is overwritten, keeps its id, its
-    ``requested_at``, its requester and its provenance columns, and moves
-    ``updated_at``. Allowed only while ``requested`` (409 otherwise): a fulfilled
-    row is corrected through ``save_version``, and a withdrawn one is terminal.
+    No version is filed: a version supersedes a vouched claim, and a request is
+    a question. The row keeps its id, ``requested_at``, requester and
+    provenance columns, and moves ``updated_at``. Allowed only while
+    ``requested`` (409 otherwise).
 
-    Every field the create form writes is editable on the same rules, the
-    coordinate guess and the camera point included, and the curated floor stays
-    unenforced until the geolocate. The source media moves on the
-    ``remove_media_ids`` + ``files`` pair, under the same one-source cap, and the
-    row must still carry footage afterwards. Soft-deleted rows read as 404.
+    Every create-form field is editable, the coordinate guess and camera point
+    included; the curated floor stays unenforced until geolocate. Source media
+    moves on the ``remove_media_ids`` + ``files`` pair under the one-source cap
+    and the row must still carry footage. Soft-deleted rows read as 404.
     """
     files = files or []
     proof_files = proof_files or []
@@ -403,8 +367,7 @@ def update_event_request(
         source_posted_at, field="source_posted_at"
     )
 
-    # Not owner-gated at the router: the service re-checks ownership and status
-    # under the row lock, where the decision is race-free.
+    # The service re-checks ownership and status under the row lock (race-free).
     geo = resolve_live_event(db, geolocation_id)
     try:
         edited = asyncio.run(
@@ -445,81 +408,64 @@ def update_event_request(
 def save_event_version(
     request: Request,
     geolocation_id: uuid.UUID,
-    # Multipart, mirroring geolocate: the form posts the whole editable state
-    # and the service writes it, plus the superseded version, atomically.
+    # Multipart like geolocate: the service writes the editable state and the
+    # superseded version atomically.
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     lat: float = Form(...),
     lng: float = Form(...),
     capture_source_lat: float | None = Form(None),
     capture_source_lng: float | None = Form(None),
-    # The footage origin, editable here as on geolocate and versioned with the
-    # rest. Optional, unlike on geolocate: omitted or empty keeps what the row
-    # holds (FastAPI reads an empty form value as an absent one, so the two
-    # arrive here identically), while a whitespace-only value is a 400, since a
-    # published row always carries one.
+    # Footage origin, versioned with the rest. Optional here: omitted or empty
+    # keeps the row's value (FastAPI reads empty as absent); whitespace-only is
+    # a 400 since a published row always carries one.
     source_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
-    # The archived copy of the source URL this write stores.
+    # Archived copy of the source URL this write stores.
     source_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
-    # The archived copy of the post a machine detection came from, on the same
-    # terms: the provenance link is immutable, and archiving it is not a change
-    # to it. Absent on a human submit, which carries no provenance link.
+    # Archived copy of a machine detection's origin post. The provenance link
+    # is immutable; archiving it is not a change. Absent on human submits.
     detected_from_snapshot_url: str | None = Form(None, max_length=SOURCE_URL_MAX_LENGTH),
-    # The mirrors, repeated once per link. Outside the anchor, so the submitted
-    # list replaces whatever the row held; the archived copy of each rides
-    # beside it, aligned by position. The two lists are index-aligned by
-    # contract: the client posts one ``secondary_snapshot_urls`` entry per
-    # ``secondary_source_urls`` entry, blank where that mirror carries no copy,
-    # so a copy is never posted without the link it covers.
+    # Mirrors: the list replaces what the row held. The archived copy of each
+    # rides in ``secondary_snapshot_urls``, index-aligned (one entry per mirror,
+    # blank where none) so a copy never arrives without its link.
     secondary_source_urls: list[SecondarySourceUrl] = Form([]),
     secondary_snapshot_urls: list[SecondarySourceUrl] = Form([]),
     event_date: str | None = Form(None),
     event_time: str | None = Form(None),
-    # Optional, unlike on geolocate: a detection whose source post time was
-    # never resolved publishes with the column NULL, so an edit of that row must
-    # be able to leave it NULL. Absent or empty keeps whatever the row holds
-    # (NULL included), a value replaces it.
+    # Optional: a detection with an unresolved source post time publishes with
+    # NULL, so an edit must be able to leave it NULL. Absent or empty keeps the
+    # row's value; a value replaces it.
     source_posted_at: str | None = Form(None),
     proof: str | None = Form(None),
     tag_ids: str | None = Form(None),
     conflict_ids: str | None = Form(None),
-    # Ratchets exactly as on geolocate: a posted false leaves a flagged event
-    # flagged, and only the admin moderation endpoint clears one.
+    # Ratchets as on geolocate.
     is_graphic: bool = Form(False),
-    # The editor's own words about this edit, stored on the version it
-    # supersedes. Optional.
+    # The editor's note, stored on the version this edit supersedes.
     note: str | None = Form(None, max_length=VERSION_NOTE_MAX_LENGTH),
-    # Ids of existing media to drop (JSON array), as on geolocate: the
-    # replacement source rides in ``files``, and the version this call files
-    # keeps the dropped one renderable.
+    # Ids of media to drop (JSON array); the filed version keeps the dropped
+    # one renderable.
     remove_media_ids: str | None = Form(None),
     files: list[UploadFile] | None = File(None),
-    # The proof body's new inline images, matched to its ``placeholder://`` srcs.
+    # New inline proof images, matched to ``placeholder://`` srcs.
     proof_files: list[UploadFile] | None = File(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Correct a published event, keeping the version it replaces readable.
 
-    Owner-only, and only while ``geolocated`` (409 otherwise): a correction to a
-    vouched record must not silently rewrite it, so the pre-edit state is filed
-    as an ``event_versions`` row and the event moves to the next
+    Owner-only and only while ``geolocated`` (409 otherwise). The pre-edit state
+    is filed as an ``event_versions`` row and the event moves to the next
     ``version_no``, in one transaction under a row lock.
 
-    The evidence anchor is editable, and versioned with everything else:
-    ``source_url`` takes a field here, and the source media moves on the
-    ``remove_media_ids`` + ``files`` pair ``POST /events/{id}/geolocate`` takes,
-    under the same one-source cap. The version this call files carries the
-    source URL and the source media it supersedes, so the record still shows
-    what the claim rested on. The published evidence floor is re-checked on the
-    post-edit state, so a version cannot drop the row below it. Soft-deleted
-    rows read as 404.
+    The evidence anchor is versioned too: ``source_url`` and the source media
+    (``remove_media_ids`` + ``files``, one-source cap) are editable, and the
+    filed version keeps what it supersedes. The published evidence floor is
+    re-checked on the post-edit state. Soft-deleted rows read as 404.
 
-    This is also where an archived copy of one of the row's links is recorded:
-    ``source_snapshot_url``, ``detected_from_snapshot_url`` and
-    ``secondary_snapshot_urls`` archive a link without changing it, and land in
-    the version this call produces. A save whose only change is a copy is
-    accepted even at the version ceiling, since evidence preservation never
-    waits on a quota.
+    Archived copies are recorded here too: ``source_snapshot_url``,
+    ``detected_from_snapshot_url`` and ``secondary_snapshot_urls`` archive a link
+    without changing it and land in the produced version. A save whose only
+    change is a copy is accepted even at the version ceiling.
     """
     proof_files = proof_files or []
     parsed_event_date = parse_optional_iso_date(event_date, field="event_date")
@@ -532,8 +478,7 @@ def save_event_version(
     parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
     parsed_remove_ids = parse_json_id_list(remove_media_ids, field="remove_media_ids")
 
-    # Not owner-gated at the router: the service re-checks ownership and status
-    # under the row lock, where the decision is race-free.
+    # The service re-checks ownership and status under the row lock (race-free).
     geo = resolve_live_event(db, geolocation_id)
     try:
         edited = asyncio.run(
@@ -574,13 +519,10 @@ def save_event_version(
 
 
 def _readable_event(db: Session, geolocation_id: uuid.UUID, current_user: User | None) -> Event:
-    """The event a history read is allowed to serve, or a 404.
+    """The event a history read may serve, or a 404.
 
-    Soft-deleted rows are invisible to everyone; a withheld row is invisible to
-    everyone but an admin, who still needs to read what was taken down in order
-    to judge the report that took it down. The same branch ``GET /{id}`` takes,
-    shared by the two history reads so one of them cannot start serving a
-    takedown the other hides.
+    Same visibility as ``GET /{id}`` (soft-deleted hidden from all, withheld
+    visible to admins), shared so the two history reads cannot diverge.
     """
     query = db.query(Event).filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
     if current_user is None or not current_user.is_admin:
@@ -605,17 +547,13 @@ def list_event_versions(
 ):
     """The event's superseded versions, newest first.
 
-    Public, like the event itself: a corrected record is only auditable if the
-    corrections are readable. The live row is the current version and is not
-    listed here, so an event nobody has edited answers with an empty list.
-    Soft-deleted rows read as 404; a withheld row does too for everyone but an
-    admin, who still needs to read what was taken down in order to judge the
-    report that took it down (the same branch ``GET /{id}`` takes).
+    Public: a corrected record is only auditable if corrections are readable.
+    The live row is the current version and is not listed. Visibility as
+    ``GET /{id}``.
 
-    Paged like every other list: ``services/versions.HISTORY_PAGE_SIZE`` rows by
-    default, capped at 100 however large ``limit`` is, and a caller reading past
-    the first page follows the ``cursor`` in the ``Link: rel="next"`` header.
-    ``total`` is the whole history, not the page.
+    Paged: ``services/versions.HISTORY_PAGE_SIZE`` rows by default, capped at
+    100, following the ``Link: rel="next"`` cursor. ``total`` is the whole
+    history.
     """
     geo = _readable_event(db, geolocation_id, current_user)
 
@@ -648,15 +586,10 @@ def get_event_version(
 ):
     """One superseded version of an event, by its number.
 
-    The direct read behind the ``/vN`` address: a reader opening one version
-    reads that version, rather than walking the history until the page holding
-    it comes back. Public and visibility-gated exactly like the list above.
-
-    The live row is the current version and is not filed here, so its number
-    answers 404: ``GET /{id}`` is where the current version is read. A number
-    the event never carried answers 404 too, and a redacted version answers
-    with its blanked shape rather than a 404, since the version exists and the
-    record still shows that it does.
+    The direct read behind the ``/vN`` address, visibility-gated like the list.
+    The live row's number answers 404 (read it at ``GET /{id}``), as does a
+    number the event never carried. A redacted version answers with its
+    blanked shape.
     """
     geo = _readable_event(db, geolocation_id, current_user)
     row = versions_service.get_version(db, event_id=geo.id, version_no=version_no)
@@ -675,11 +608,8 @@ def list_event_collections(
 ):
     """Your collections, each saying whether this event is already on it.
 
-    The add-to-collection popover's read, owner-only: a collection is
-    personal, and only the event's owner may shelve it, so nobody else has an
-    answer to give here. Empty collections are listed, since putting the first
-    event on one is what the popover is for. 404 on a soft-deleted or withheld
-    event, 403 when the event is somebody else's.
+    The add-to-collection popover's read, owner-only. Empty collections are
+    listed. 404 on a soft-deleted or withheld event, 403 when not yours.
     """
     geo = resolve_live_event(db, geolocation_id)
     ensure_owner(geo, current_user)
@@ -699,14 +629,13 @@ def close_event(
 ):
     """Close an event: withdraw, reject or retract it (owner-only).
 
-    One terminal verb for all three dismissal shapes, available in every live
-    state; ``before_closed_status`` records which state the row left, and the
-    required ``close_reason`` stays publicly visible. The row remains readable
-    (transparency) and drops off the map. A closed detection stays in the
-    located catalog and stays re-importable; closing a ``geolocated`` row is a
-    public retraction, which keeps the page, the version history, the credits
-    and the archives, and leaves the published set for good. Already closed →
-    409; soft-deleted → 404; not the owner → 403.
+    One terminal verb for all three, in every live state;
+    ``before_closed_status`` records the state left and the required
+    ``close_reason`` is public. The row stays readable and drops off the map. A
+    closed detection stays in the located catalog and re-importable; closing a
+    ``geolocated`` row is a public retraction that keeps the page, versions,
+    credits and archives and leaves the published set for good. Already closed
+    409; soft-deleted 404; not the owner 403.
     """
     geo = resolve_live_event(db, geolocation_id)
     try:

@@ -28,8 +28,7 @@ def test_parse_optional_iso_time_rejects_garbage():
 
 
 def test_parse_optional_iso_time_rejects_offset_aware():
-    # An offset-aware time can't be normalised to UTC without a date, so it's
-    # rejected rather than silently stored with the offset dropped.
+    # An offset-aware time cannot be normalised to UTC without a date: rejected, not stored without the offset.
     with pytest.raises(HTTPException) as exc:
         parse_optional_iso_time("14:30+02:00", field="event_time")
     assert exc.value.status_code == 422
@@ -47,8 +46,7 @@ def test_parse_json_id_list_as_uuid_coerces_valid_uuids():
 
 
 def test_parse_json_id_list_as_uuid_rejects_malformed_element():
-    # A non-UUID element must 422, not fall through to a psycopg DataError
-    # (an uncaught 500) when the caller feeds it into a UUID column.
+    # Must 422, not reach a UUID column as a psycopg DataError (500).
     raw = json.dumps(["not-a-uuid"])
     with pytest.raises(HTTPException) as exc:
         parse_json_id_list(raw, field="tag_ids", as_uuid=True)
@@ -56,8 +54,7 @@ def test_parse_json_id_list_as_uuid_rejects_malformed_element():
 
 
 def test_parse_json_id_list_default_keeps_strings():
-    # remove_media_ids is compared as strings downstream, so it must not be
-    # coerced to UUID even though it looks like one.
+    # remove_media_ids is compared as strings downstream: no UUID coercion.
     raw = json.dumps(["not-a-uuid", "also-not-a-uuid"])
     assert parse_json_id_list(raw, field="remove_media_ids") == [
         "not-a-uuid",
@@ -73,8 +70,7 @@ def test_parse_json_id_list_over_cap_rejected():
 
 
 def test_parse_json_id_list_over_cap_rejected_without_uuid_coercion():
-    # The cap applies regardless of as_uuid (remove_media_ids stays uncapped
-    # in element type but not in length).
+    # The length cap applies regardless of as_uuid.
     raw = json.dumps([str(i) for i in range(MAX_ID_LIST_LENGTH + 1)])
     with pytest.raises(HTTPException) as exc:
         parse_json_id_list(raw, field="remove_media_ids")

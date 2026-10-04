@@ -19,10 +19,7 @@ import {
   type PaginatedEventDetails,
 } from "@/lib/events";
 
-/** The queue's one filter: everything, the detections that only need the two human
- *  choices, or the ones still missing evidence. It is a query the server
- *  answers over the whole queue, so what the page reports is the queue and not
- *  the ten rows that happen to be loaded. */
+/** The queue's one filter, answered by the server over the whole queue (not just the loaded rows). */
 const FILTERS: { value: DetectionReadiness; label: string }[] = [
   { value: "all", label: "All" },
   { value: "ready", label: "Ready" },
@@ -45,23 +42,17 @@ export default function DetectionsPage() {
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<DetectionReadiness>("all");
 
-  // The list is the caller's own: the endpoint scopes to ``current_user`` and
-  // ignores the URL username, so viewing it under another analyst's handle
-  // would show your detections under their name. Send a non-owner to that
-  // profile.
+  // The endpoint scopes to `current_user` and ignores the URL username: send a non-owner to their own profile.
   useEffect(() => {
     if (user && !isOwn) router.replace(`/profile/${username}`);
   }, [user, isOwn, username, router]);
 
-  // The filter rides in the path, so picking one refetches instead of hiding
-  // rows: the page it lands on is cut from the filtered queue server-side.
+  // The filter rides in the path, so a pick refetches server-side instead of hiding rows.
   const { data, error } = useApiResource<PaginatedEventDetails>(
     isOwn ? detectionsPath(page, undefined, filter) : null
   );
 
-  // A filter change restarts the walk: page 4 of the whole queue is not page 4
-  // of the ready one, and landing past the end would show an empty page over a
-  // non-empty set.
+  // A filter change restarts the walk: a page index from one filter can land past the end of another.
   const pick = (next: DetectionReadiness) => {
     setFilter(next);
     setPage(1);
@@ -79,8 +70,7 @@ export default function DetectionsPage() {
   } else if (!data) {
     listBody = <p className="text-sm text-neutral-500">Loading…</p>;
   } else if (data.ready_total + data.incomplete_total === 0) {
-    // Nothing in the queue at all, whatever the filter says: the import pitch,
-    // not a filter that came back empty.
+    // Empty queue regardless of filter: show the import pitch.
     listBody = (
       <EmptyState
         variant="plain"
@@ -109,9 +99,7 @@ export default function DetectionsPage() {
     listBody = (
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* The three labels are one word each, so the `?` beside the bar
-              carries what Ready and Incomplete stand for, the same affordance
-              every other explanation on the app hangs from. */}
+          {/* The `?` beside the bar explains Ready and Incomplete. */}
           <span className="inline-flex items-center gap-1.5">
             <SegmentedControl
               options={FILTERS}
@@ -121,9 +109,7 @@ export default function DetectionsPage() {
             />
             <FieldHelp concept="detection_queue_filter" />
           </span>
-          {/* The whole queue split in two, under every filter and on every
-              page, so the split is read at a glance rather than counted by
-              paging. */}
+          {/* The whole queue split in two, under every filter and page. */}
           <span className="text-xs text-neutral-500">
             {data.ready_total} ready · {data.incomplete_total} incomplete
           </span>
@@ -148,8 +134,7 @@ export default function DetectionsPage() {
             >
               Previous
             </Button>
-            {/* Both figures describe the filtered set: the pager walks it, so
-                it is what the count has to name. */}
+            {/* Both figures describe the filtered set the pager walks. */}
             <span>
               Page {page} of {totalPages} · {data.total}{" "}
               {filter === "all" ? "pending" : filter}

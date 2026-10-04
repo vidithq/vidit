@@ -1,12 +1,9 @@
 """Dump the FastAPI OpenAPI spec as deterministic JSON to the path in argv[1].
 
-Feeds the frontend codegen chain (``make gen-api-types``): the written spec is
-read by ``openapi-typescript`` so the frontend's enum types are generated from
-the backend schema rather than hand-maintained. ``sort_keys=True`` keeps the
-output byte-stable across runs so the CI drift gate (``git diff --exit-code``)
-only fires on a real schema change, not on dict-ordering noise. The spec goes
-to a file, not stdout, so a log line printed while the app imports cannot land
-in it.
+Feeds the frontend codegen (``make gen-api-types``, ``openapi-typescript``).
+``sort_keys=True`` keeps the output byte-stable so the CI drift gate
+(``git diff --exit-code``) fires only on a real schema change. Written to a
+file, not stdout, so an import-time log line can't land in it.
 """
 
 import json

@@ -40,8 +40,7 @@ describe("ogTruncate", () => {
   });
 
   it("cuts on a word boundary near the end of the budget", () => {
-    // The last space (index 19) sits past 75% of the 24-character budget, so
-    // the trailing partial word goes rather than being cut through.
+    // The last space (index 19) is past 75% of the 24-character budget, so the partial word goes.
     expect(ogTruncate("alpha bravo charlie delta", 24)).toBe("alpha bravo charlie…");
   });
 
@@ -58,8 +57,7 @@ describe("ogTruncate", () => {
   });
 
   it("measures the budget in code points, not UTF-16 units", () => {
-    // Two astral characters are four UTF-16 units: a length-based budget would
-    // cut this, a code-point one leaves it alone.
+    // Two astral characters are four UTF-16 units: a length budget would cut them.
     expect(ogTruncate("🚀🚀", 3)).toBe("🚀🚀");
   });
 });
@@ -106,8 +104,7 @@ describe("ogMosaicBoxes", () => {
   });
 
   it("keeps a cover longer than the arrangement inside the panel", () => {
-    // The backend caps the cover at four tiles; a fifth would otherwise have no
-    // box to sit in, so the count is clamped rather than trusted.
+    // The backend caps the cover at four tiles; the count is clamped, not trusted.
     expect(ogMosaicBoxes(9, frame)).toEqual(ogMosaicBoxes(4, frame));
   });
 
@@ -148,9 +145,8 @@ describe("isFetchableAvatarUrl", () => {
   });
 
   it("rejects a private name spelled with the root's trailing dot", () => {
-    // `localhost.` resolves exactly like `localhost`, and it carries a dot, so
-    // it clears both the dotted-hostname check and every suffix comparison
-    // unless the root label is stripped first.
+    // `localhost.` resolves like `localhost` and has a dot, so it passes every check unless the
+    // root label is stripped first.
     expect(isFetchableAvatarUrl("https://localhost./x.png")).toBe(false);
     expect(isFetchableAvatarUrl("https://printer.local./x.png")).toBe(false);
     expect(isFetchableAvatarUrl("https://db.internal./x.png")).toBe(false);

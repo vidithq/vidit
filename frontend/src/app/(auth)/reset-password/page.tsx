@@ -16,12 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
 
-/**
- * Reset-password landing, opened from the email link; token comes from the
- * query string. Backend returns the same opaque 400 for every failure mode
- * (unknown / expired / consumed / wrong-purpose) to avoid leaking which
- * step rejected; the UI mirrors that with one "invalid link" path.
- */
+/** Opened from the email link. The backend returns one opaque 400 for every failure mode; the UI mirrors it with one "invalid link" path. */
 function ResetPasswordInner() {
   const params = useSearchParams();
   const router = useRouter();

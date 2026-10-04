@@ -54,9 +54,8 @@ import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
 
-// The reader-facing type picker: the two event groups are one "Events" entry
-// (the filter set below only applies to events, so the picker doesn't force
-// the geolocation vs request split; results still render as two groups).
+// The type picker: the two event groups are one "Events" entry (the filters only apply to
+// events); results still render as two groups.
 const TYPE_FILTERS: { value: SearchType; label: string; icon?: ReactNode }[] = [
   { value: "all", label: "All" },
   { value: "event", label: "Events", icon: <MapPin size={11} /> },
@@ -64,29 +63,22 @@ const TYPE_FILTERS: { value: SearchType; label: string; icon?: ReactNode }[] = [
   { value: "user", label: "Analysts", icon: <Users size={11} /> },
 ];
 
-// The type values that scope to events (the legacy singletons stay valid in
-// a shared URL even though the picker no longer offers them).
+// Types that scope to events (the legacy singletons stay valid in shared URLs).
 const EVENT_TYPES: ReadonlyArray<SearchType> = ["event", "geolocation", "request"];
 
-// The requests group serves status `requested` only, so on the legacy request
-// scope (shared URLs; the picker no longer offers it) both offered status
-// chips could only empty the result. A URL-carried status still shows as a
-// removable pill above, so it can't narrow the view invisibly.
+// The requests group serves status `requested` only, so on the legacy request scope both
+// status chips could only empty the result. A URL-carried status still shows as a removable pill.
 const REQUEST_SECTIONS = ALL_FILTER_SECTIONS.filter((s) => s !== "status");
 
-// The backend narrows collections on `author` and empties the group on every
-// other event predicate, so that scope opens the panel on the Author section
-// alone (the same typeahead the event filters use) and carries no date
-// sections either.
+// The backend narrows collections on `author` and empties the group on every other event
+// predicate, so that scope offers the Author section alone.
 const COLLECTION_SECTIONS: ReadonlyArray<EventFilterSectionName> = ["author"];
 
-// Debounce window: reactive enough to feel live, long enough not to fire
-// on every keystroke of a long phrase.
+// Debounce window: live-feeling, but not one request per keystroke.
 const DEBOUNCE_MS = 300;
 
 export default function SearchPage() {
-  // `useSearchParams` opts out of static prerender, so the body lives
-  // under a Suspense boundary (Next 14 requirement).
+  // `useSearchParams` opts out of static prerender, so the body sits under Suspense.
   return (
     <Suspense fallback={<PageLoading />}>
       <SearchPageBody />
@@ -98,12 +90,11 @@ function SearchPageBody() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // URL is the source of truth so shared links land in the same view;
-  // the inputs bind to local state so typing isn't gated on URL round-trips.
+  // The URL is the source of truth so shared links land in the same view; inputs bind to local
+  // state so typing isn't gated on URL round-trips.
   const initialQ = searchParams.get("q") ?? "";
   const initialValues: EventFilterValues = {
-    // Only the vocabulary the panel offers: a crafted `?status=` value the
-    // chips can't represent is dropped rather than carried as invisible state.
+    // Only the vocabulary the panel offers: a crafted `?status=` the chips can't represent is dropped.
     statuses: searchParams
       .getAll("status")
       .filter((s) => STATUS_FILTER_OPTIONS.some(([value]) => value === s)),
@@ -111,8 +102,8 @@ function SearchPageBody() {
     captureSources: searchParams.getAll("capture_source"),
     tags: searchParams.getAll("tag"),
     mediaTypes: searchParams.getAll("media"),
-    // A crafted URL can carry anything; the shared gate keeps an ineligible
-    // value from 422ing every fetch on the page.
+    // A crafted URL can carry anything; the shared gate keeps an ineligible value from 422ing
+    // every fetch.
     author: (() => {
       const raw = searchParams.get("author") ?? "";
       return AUTHOR_FILTER_RE.test(raw) ? raw : "";
@@ -125,8 +116,8 @@ function SearchPageBody() {
     addedTo: searchParams.get("submitted_to") ?? "",
   };
   const arrivedFiltered = hasAnyFilter(initialValues, initialDates);
-  // A filtered link without an explicit type (the profile's "Show more")
-  // lands on the Events scope: filters are event predicates.
+  // A filtered link without a type (the profile's "Show more") lands on Events: filters are
+  // event predicates.
   const initialType =
     (searchParams.get("type") as SearchType) || (arrivedFiltered ? "event" : "all");
 
@@ -135,8 +126,7 @@ function SearchPageBody() {
   const [values, setValues] = useState<EventFilterValues>(initialValues);
   const [dates, setDates] = useState<DateWindows>(initialDates);
 
-  // The debounced snapshot the fetch + URL run on, so typing (the query or
-  // the author field) doesn't fire a request per keystroke.
+  // The debounced snapshot the fetch and URL run on, so typing doesn't fire a request per keystroke.
   const [committed, setCommitted] = useState({ q: initialQ, values: initialValues, dates: initialDates });
 
   const [results, setResults] = useState<SearchResponse | null>(null);
@@ -153,7 +143,6 @@ function SearchPageBody() {
     setDates(EMPTY_DATE_WINDOWS);
   };
 
-  // The shared value + date-window pill entries.
   const activeFilters: ActiveFilter[] = [
     ...buildActiveFilterPills(values, onPatch),
     ...buildDateWindowPills(
@@ -164,9 +153,8 @@ function SearchPageBody() {
   ];
   const hasActiveFilters = hasAnyFilter(values, dates);
   const onEventScope = EVENT_TYPES.includes(typeFilter);
-  // The panel sections the current scope offers, or null where no filter in
-  // the vocabulary narrows what the scope shows (Analysts, and All, which
-  // spans all four groups).
+  // Panel sections the scope offers, or null where no filter narrows it (Analysts, and All,
+  // which spans four groups).
   const filterSections: ReadonlyArray<EventFilterSectionName> | null = onEventScope
     ? typeFilter === "request"
       ? REQUEST_SECTIONS
@@ -175,20 +163,16 @@ function SearchPageBody() {
       ? COLLECTION_SECTIONS
       : null;
 
-  // Monotonic request token: each fetch increments it, late responses
-  // apply only if their token is still latest. Comparing on `response.query`
-  // alone missed the type-filter race — same `q`, different `type` could
-  // land an older response over a newer one.
+  // Monotonic request token: late responses apply only if still latest. Comparing
+  // `response.query` alone missed the type-filter race (same `q`, different `type`).
   const latestRequestId = useRef<number>(0);
 
-  // Debounced commit: inputs → the committed snapshot + the URL via
-  // `replace` (not `push`) so the back button doesn't fill with
-  // intermediate states.
+  // Debounced commit of inputs to the snapshot and URL via `replace`, so Back doesn't fill
+  // with intermediate states.
   useDebouncedEffect(
     () => {
-      // Identity-preserving commit: if nothing changed (e.g. the chip click
-      // already committed synchronously), keep the previous object so the
-      // fetch effect doesn't refire on a content-identical snapshot.
+      // Identity-preserving: if nothing changed (e.g. a chip click already committed), keep the
+      // previous object so the fetch doesn't refire.
       setCommitted((prev) => {
         const next = { q: queryInput, values, dates };
         return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
@@ -213,9 +197,8 @@ function SearchPageBody() {
     DEBOUNCE_MS
   );
 
-  // Issue the API call whenever the committed snapshot / type changes.
-  // Any active filter with an empty query is a valid search (browse mode:
-  // the filtered view, the profile's "Show more" landing).
+  // Fetch whenever the committed snapshot or type changes. Any active filter with an empty
+  // query is a valid search (browse mode, the profile's "Show more" landing).
   useEffect(() => {
     const q = committed.q.trim();
     const v = committed.values;
@@ -244,8 +227,7 @@ function SearchPageBody() {
       submittedTo: d.addedTo || undefined,
     })
       .then((response) => {
-        // Stale response (a newer request started since) — drop so the
-        // in-flight fetch gets the final word.
+        // Stale response (a newer request started): drop it.
         if (requestId !== latestRequestId.current) return;
         setResults(response);
         setLoading(false);
@@ -270,14 +252,11 @@ function SearchPageBody() {
   }, [results]);
 
   const onChipClick = (t: SearchType) => {
-    // The filters are event predicates: leaving the Events scope while some
-    // are active would silently keep constraining the event groups, so they
-    // clear with the scope. Collections keep the author, the one predicate
-    // that narrows that group instead of emptying it, so stepping from an
-    // analyst's events to their shelf stays on the same analyst. The
-    // committed snapshot updates in the same render: the fetch effect keys on
-    // it plus the type, and letting the debounce catch up 300 ms later would
-    // fire one request with the STALE filters first (type=user&conflict=…
+    // Filters are event predicates: leaving Events with some active would silently keep
+    // constraining the event groups, so they clear with the scope. Collections keep the author
+    // (the one predicate that narrows that group), so stepping from an analyst's events to
+    // their shelf stays on them. The snapshot updates in the same render: waiting for the
+    // 300 ms debounce would fire one request with stale filters first (`type=user&conflict=…`
     // flashing "No matches").
     if (!EVENT_TYPES.includes(t) && hasActiveFilters) {
       const kept: EventFilterValues =
@@ -297,8 +276,7 @@ function SearchPageBody() {
     group: "geolocation" | "request" | "collection" | "user"
   ): boolean => {
     if (typeFilter === "all") return true;
-    // The Events scope is the two event groups: a collection is not an event,
-    // and the filter panel the scope opens describes none of one.
+    // The Events scope is the two event groups; a collection is not an event.
     if (typeFilter === "event") return group === "geolocation" || group === "request";
     return typeFilter === group;
   };
@@ -334,10 +312,8 @@ function SearchPageBody() {
 
         <ActiveFilterPills filters={activeFilters} onClearAll={clearFilters} />
 
-        {/* Picking a scope the filters describe surfaces the panel directly
-            (the sections collapse individually); no separate toggle to find.
-            The date windows are event predicates, so they ride with the event
-            scopes and stay off the Collections one. */}
+        {/* The panel shows directly when the scope has filters (sections collapse individually).
+            Date windows are event predicates, so they stay off the Collections scope. */}
         {filterSections && (
           <EventFilterSections
             tags={tagsData ?? []}
@@ -404,9 +380,8 @@ function SearchPageBody() {
           </div>
         )}
 
-        {/* Emptiness gates read the LIVE inputs (not the debounced snapshot)
-            so clearing filters doesn't flash stale results under the
-            start-typing prompt for a debounce window. */}
+        {/* Emptiness gates read the LIVE inputs, so clearing filters doesn't flash stale results
+            under the start-typing prompt for a debounce window. */}
         {!queryInput.trim() && !hasActiveFilters && (
           <EmptyState>
             Start typing to search across geolocations, requests, collections
@@ -463,14 +438,11 @@ function SearchPageBody() {
                 title="Collections"
                 count={results.total.collections}
               >
-                {/* The profile's grid, so a mosaic stands at a card's width
-                    rather than as a banner across the page. One column on a
-                    phone, the rule the profile's grid keeps. */}
+                {/* The profile's grid: a mosaic at a card's width, one column on a phone. */}
                 <div className="grid gap-2 sm:grid-cols-2">
                   {results.collections.map((collection) => (
-                    // The profile's card, with the byline it hides there: a
-                    // result stands beside other analysts' shelves, so the hit
-                    // says whose this is.
+                    // The profile's card with the byline it hides there: a result stands beside other
+                    // analysts' shelves.
                     <CollectionCard
                       key={collection.id}
                       collection={collection}
@@ -494,8 +466,8 @@ function SearchPageBody() {
   );
 }
 
-/** The search surface's date controls (the map uses its timeline scrubbers
- *  for the same two sections): a from/to pair of native date inputs. */
+/** The date controls (the map uses timeline scrubbers for the same sections): a from/to pair
+ *  of native date inputs. */
 function DateRange({
   label,
   from,
@@ -508,9 +480,8 @@ function DateRange({
   onChange: (from: string, to: string) => void;
 }) {
   return (
-    // The pair stacks below `sm`: a native date control needs more width than
-    // the two columns leave on a 320px screen, and the separator only reads as
-    // one while the two fields sit on a row, so it goes with the row.
+    // The pair stacks below `sm`: a native date control needs more width than two columns leave
+    // on 320px, and the separator only reads on a row.
     <div className="flex max-sm:flex-col max-sm:items-stretch items-center gap-2">
       <Input
         type="date"
@@ -532,9 +503,8 @@ function DateRange({
 }
 
 /**
- * Render a sentinel-wrapped highlight string as text + `<mark>` elements.
- * The backend emits well-formed pairs, so `splitHighlights`' even/odd
- * index parity is safe without a stateful parser.
+ * Render a sentinel-wrapped highlight string as text and `<mark>`; `splitHighlights`' even/odd
+ * parity is safe since the backend emits well-formed pairs.
  */
 function Highlighted({ value }: { value: string }) {
   const segments = splitHighlights(value);
@@ -576,7 +546,6 @@ function ResultGroup({
 }
 
 function EventResult({ hit }: { hit: SearchEventHit }) {
-  // Tags render as one uniform chip regardless of category.
   return (
     <EntityCard
       variant="compact"
@@ -611,9 +580,8 @@ function RequestResult({ hit }: { hit: SearchRequestHit }) {
 }
 
 function UserResult({ hit }: { hit: SearchUserHit }) {
-  // Sanctioned duplicate of EntityCard's shell (see design.md): a user hit has
-  // no media slot / meta rows, and folding it into EntityCard would leak
-  // avatar + no-thumb conditionals into the card for one consumer.
+  // Sanctioned duplicate of EntityCard's shell (see design.md): a user hit has no media slot or
+  // meta rows, and folding it in would leak avatar and no-thumb conditionals into the card.
   return (
     <Link
       href={`/profile/${hit.username}`}

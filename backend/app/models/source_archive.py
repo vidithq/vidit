@@ -14,41 +14,32 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
-# Where the link was found on the event. ``source_url`` is the event's declared
-# footage source (the column of the same name); ``secondary_source`` is one of
-# the analyst-submitted mirrors in ``event_source_links``; ``detected_from`` is
-# the analyst's own post a machine detection came from (``events.
-# detected_from_url``), provenance rather than footage origin; ``proof_link`` is
-# an href carried by a link mark inside the proof body's Tiptap document.
+# Where the link was found: ``source_url`` (declared footage source),
+# ``secondary_source`` (a mirror in ``event_source_links``), ``detected_from``
+# (``events.detected_from_url``, provenance), ``proof_link`` (an href in the
+# proof body's Tiptap document).
 SourceArchiveOrigin = Literal["source_url", "secondary_source", "detected_from", "proof_link"]
 
-# Which service holds the snapshot, inferred from its host when the row is
-# written: ``web.archive.org`` is ``wayback``, archive.today's six interchangeable
-# domains are ``archive_today``, and ``ghostarchive.org`` is ``ghostarchive``.
-# ``services/source_archive.PROVIDER_HOSTS`` is the host-to-provider map. A
-# discriminator on one stored URL, not a slot per service: the read surface
-# renders one icon and names it from this.
+# Which service holds the snapshot, inferred from its host at write time
+# (``services/source_archive.PROVIDER_HOSTS``). A discriminator on one stored
+# URL, not a slot per service.
 SourceArchiveProvider = Literal["wayback", "archive_today", "ghostarchive"]
 
 
 class SourceArchive(Base):
     """One link on one event, and the archived copy an analyst recorded for it.
 
-    A child table rather than a column on ``events`` because one event carries
-    several links: its ``source_url``, its secondary source links, the post a
-    machine detection came from, and every href in the proof body.
+    A child table because an event carries several links (``source_url``,
+    secondary links, the detection's origin post, proof-body hrefs).
 
-    One row per link, holding one snapshot from whichever provider produced it.
-    The capture happens in the analyst's own browser, on the provider's own
-    submit page, and ``POST /events/{event_id}/archives`` is where the resulting
-    snapshot URL comes back (see ``services/source_archive``). A link either has
-    a copy or it does not, so there is no queue state, no attempt counter and no
-    per-provider slot: a second provider's snapshot of the same link would be
-    redundancy the reader never asked for.
+    One row per link, one snapshot from whichever provider produced it. The
+    capture happens in the analyst's browser and
+    ``POST /events/{event_id}/archives`` takes the snapshot URL back
+    (``services/source_archive``). A link has a copy or not: no queue state,
+    attempt counter or per-provider slot.
 
-    ``(event_id, original_url)`` is unique, which is what makes a resubmission
-    by the owner an overwrite: pasting a better snapshot corrects the row
-    instead of adding a competing one.
+    ``(event_id, original_url)`` is unique, so a resubmission by the owner
+    overwrites instead of adding a competing row.
     """
 
     __tablename__ = "source_archives"
@@ -57,14 +48,11 @@ class SourceArchive(Base):
     event_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    # The link as it appears on the event, byte for byte: it is half the
-    # identity of the row and what the read surface matches ``source_url``
-    # against, so it is never normalised.
+    # The link byte for byte, never normalised: half the row's identity and what
+    # the read surface matches ``source_url`` against.
     original_url: Mapped[str] = mapped_column(Text, nullable=False)
     origin: Mapped[SourceArchiveOrigin] = mapped_column(String(20), nullable=False)
-    # The archived copy. NOT NULL: a row exists because a copy exists, so the
-    # read surface treats the row's presence and the copy's presence as one
-    # fact.
+    # The archived copy. NOT NULL: the row exists because a copy exists.
     snapshot_url: Mapped[str] = mapped_column(Text, nullable=False)
     provider: Mapped[SourceArchiveProvider] = mapped_column(String(20), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -76,12 +64,10 @@ class SourceArchive(Base):
     event = relationship("Event", back_populates="archives")
 
     __table_args__ = (
-        # One archived copy per link per event: the anchor that makes a
-        # resubmission an overwrite rather than a duplicate.
+        # One archived copy per link per event (makes resubmission an overwrite).
         UniqueConstraint("event_id", "original_url", name="uq_source_archives_event_url"),
-        # Pin the value domains at the DB, not just the app-layer Literals.
-        # Mirrors ``SourceArchiveOrigin`` / ``SourceArchiveProvider``; keep them
-        # in step.
+        # Pin the value domains at the DB. Mirrors ``SourceArchiveOrigin`` /
+        # ``SourceArchiveProvider``; keep them in step.
         CheckConstraint(
             "origin IN ('source_url', 'secondary_source', 'detected_from', 'proof_link')",
             name="ck_source_archives_origin_valid",

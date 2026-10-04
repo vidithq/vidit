@@ -18,56 +18,34 @@ import {
 } from "@/lib/collections";
 import { tiptapDocText } from "@/lib/proof";
 
-// The same dynamic load the submit form's proof panel takes: Tiptap boots
-// ProseMirror, which needs the DOM, so it stays off the server render.
+// Tiptap boots ProseMirror, which needs the DOM.
 const ProofEditor = dynamic(() => import("@/components/editor/ProofEditor"), {
   ssr: false,
 });
 
-/** A description with nothing in it, which is what a create opens on. */
 const EMPTY_DESCRIPTION: CollectionDescription = { type: "doc", content: [] };
 
 /**
- * The one form behind every collection write: what the collection is called,
- * what it says it holds, and which of the analyst's events it holds.
+ * The one form behind every collection write (`/collections/new` and
+ * `/collections/{id}/edit`): title, description, and which of the analyst's
+ * events it holds. A caller passes the starting values and is handed all three
+ * on submit.
  *
- * Both write pages carry it, `/collections/new` and `/collections/{id}/edit`,
- * so opening a collection and changing one are the same form with a different
- * verb on the button, and a per-page copy is how the counters, the caps and
- * the refusals end up spelled twice. The drafts live here: a caller passes the
- * values it starts from and is handed all three on submit.
+ * It renders the *Details* card, `<EventPicker>`'s two cards, and the Save /
+ * Cancel row past them, all in one `<form>` so Enter submits.
  *
- * **It renders three cards, plus the page's own action row past them.**
- * *Details* holds the two free-text fields, `<EventPicker>` renders the other
- * two as *Events in this collection* and *Add events*, and the Save / Cancel
- * row sits below all three, the way the submit and event edit pages place
- * theirs: past the last field block rather than inside it. One `<form>` wraps
- * every card, so Enter in a field submits like it does on those pages, and the
- * primary button is `type="submit"` rather than a bare click handler. One
- * component owns the state and the submit either way, so the create and edit
- * pages hand it their values and render nothing of the form themselves.
+ * Title and description are required; the submit refuses a blank or over-long
+ * value rather than letting the server refuse typed text. Each carries a
+ * `<CharCounter>` that turns red exactly when the submit starts refusing.
  *
- * The two written fields are required, so the submit refuses a blank or
- * over-long value on either rather than letting the server refuse text the
- * analyst has already typed. Each carries the shared `remaining / cap`
- * counter (`<CharCounter>`), which turns red exactly when the submit starts
- * refusing.
+ * **The description is written in `<ProofEditor>`** with `allowImages={false}`
+ * (no upload path, and the server drops the node). The form holds the Tiptap
+ * document, and its counter measures the plain-text projection (`tiptapDocText`),
+ * the reading the server caps, so markup costs nothing.
  *
- * **The description is written in the proof editor**, the same `<ProofEditor>`
- * an event's proof body uses, with `allowImages={false}`: a description carries
- * bold, italic, lists and links, and no images, because there is no upload path
- * behind one and the server drops the node. What the form holds and hands back
- * is the Tiptap document, not a string. Its counter measures the document's
- * plain-text projection (`tiptapDocText`), the same reading the server caps, so
- * marking a word up costs the analyst nothing.
- *
- * **The picker renders its own two cards** (`<EventPicker>`), because the set
- * is part of what the analyst is writing: naming a collection and choosing
- * what goes on it is one act on one page. The pending set is rows rather than
- * ids, since the first card renders what the collection will hold: it is
- * seeded from `initialEvents` (the collection's current items on an edit, the
- * event a `?event=` create arrived with) and handed back as ids on submit, so
- * the caller writes the create or the diff rather than tracking clicks.
+ * The pending event set is rows, not ids, because the first card renders what
+ * the collection will hold. It is seeded from `initialEvents` and handed back
+ * as ids on submit.
  */
 export function CollectionDetailsForm({
   initialTitle = "",
@@ -83,17 +61,13 @@ export function CollectionDetailsForm({
 }: {
   /** Seed for an edit; empty for a create. */
   initialTitle?: string;
-  /** The collection's own document on an edit; an empty one for a create. The
-   *  editor reads it once, at construction. */
+  /** The editor reads it once, at construction. */
   initialDescription?: CollectionDescription;
-  /** What the collection holds when the form opens: its current items on an
-   *  edit, the one event a `?event=` create carries, none otherwise. */
+  /** The current items on an edit, the `?event=` event on a create. */
   initialEvents?: PickableEvent[];
-  /** Whose events the picker lists: the signed-in analyst, since a collection
-   *  holds its owner's own work. */
+  /** Whose events the picker lists: the signed-in analyst. */
   username: string;
-  /** A line under the fields, where the surface has room to say what they are
-   *  for (the create page). */
+  /** A line under the fields (the create page). */
   hint?: string;
   /** The verb: *Create collection*, *Save details*, *Create and add*. */
   submitLabel: string;
@@ -103,9 +77,8 @@ export function CollectionDetailsForm({
     eventIds: string[],
   ) => void;
   onCancel: () => void;
-  /** The caller's write is in flight: both controls refuse the click. */
+  /** The caller's write is in flight. */
   busy?: boolean;
-  /** The caller's write failed, in the one error banner. */
   error?: string | null;
 }) {
   const [title, setTitle] = useState(initialTitle);
@@ -114,9 +87,7 @@ export function CollectionDetailsForm({
   const titleId = useId();
   const descriptionId = useId();
 
-  // Both acts are pending state: nothing is written until the caller's submit
-  // runs, and adding a row already held is the same set, so the guard keeps
-  // the block from printing it twice.
+  // Pending state only; the guard keeps a held row from printing twice.
   const addEvent = (event: PickableEvent) =>
     setEvents((current) =>
       current.some((held) => held.id === event.id)
@@ -126,9 +97,7 @@ export function CollectionDetailsForm({
   const removeEvent = (eventId: string) =>
     setEvents((current) => current.filter((held) => held.id !== eventId));
 
-  // The cap and the blank test both read the document's plain-text projection,
-  // the reading `services/collections` measures server-side, so the counter,
-  // the disabled submit and the server's refusal all agree on the same number.
+  // Plain-text projection, as `services/collections` measures it server-side.
   const descriptionText = tiptapDocText(description);
   const titleOver = title.length > COLLECTION_TITLE_MAX_LEN;
   const descriptionOver =
@@ -173,9 +142,8 @@ export function CollectionDetailsForm({
 
         <div className="space-y-1.5">
           <span className="flex items-center justify-between gap-2">
-            {/* The editor's typing surface is a ProseMirror div rather than a
-                form control, so the label names it through `htmlFor` /
-                `aria-labelledby` on the wrapper instead of wrapping it. */}
+            {/* The editor is a ProseMirror div, not a form control, so the label
+                names it through `aria-labelledby` on the wrapper. */}
             <span id={descriptionId} className={FORM_LABEL}>
               Description
             </span>
@@ -207,8 +175,6 @@ export function CollectionDetailsForm({
 
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
 
-      {/* The page's own action row, past all three cards, the way the submit
-          and event edit pages place theirs. */}
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" variant="primary" disabled={!ready || busy}>
           {busy ? "Saving…" : submitLabel}

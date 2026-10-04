@@ -1,7 +1,6 @@
 import type { EventDetail } from "@/types";
 
-/** A geolocated event with every optional field empty, for tests that render
- *  the detail panel. */
+/** A geolocated event with every optional field empty, for detail-panel tests. */
 export const eventDetail = (id: string, title: string): EventDetail => ({
   id,
   title,

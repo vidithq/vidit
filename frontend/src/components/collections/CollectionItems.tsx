@@ -12,30 +12,21 @@ import { profileSearchHref } from "@/lib/search";
 import type { EventListItem } from "@/types";
 
 /**
- * A collection's items, in the order the events happened.
+ * A collection's items, in the order the events happened, as
+ * `<CollectionItemCard>` rows.
  *
- * Each row is `<CollectionItemCard>`, the row every collection surface renders,
- * so an item here and the same event on the edit page's picker fill the same
- * slots.
- *
- * **The list is the player's step control.** A click anywhere on a row moves
- * the player above it to that item, and the row the player stands on wears the
- * accent border, so the list doubles as the index of the walk instead of
- * carrying a second control per row to start one. A row carries one gesture,
- * the same for the owner and a visitor: the title renders as plain text, and
- * the event's own page is reached from the player panel's own title above the
- * list.
+ * **The list is the player's step control.** A click on a row moves the player
+ * above to that item, and the current row wears the accent border. A row carries
+ * one gesture for owner and visitor alike: the title is plain text, and the
+ * event's page is reached from the player panel's title.
  *
  * The header's one link is the owner's own catalogue in search, since an event
- * joins a collection from its own page and the owner has to get to one to do
- * it. The sentence under the eyebrow says so, and names the other way, the
- * picker on the collection's edit page, which is also where an item leaves the
- * collection: this page only reads the set, so its rows carry no control of
- * their own.
+ * joins a collection from its own page. The sentence under the eyebrow names
+ * that and the edit page's picker (also where an item leaves); this page only
+ * reads the set.
  *
- * The list holds the collection's whole sequence, the one the page reads for
- * the map and the panel too, so the rows and the pins can never describe
- * different collections and the row numbers and `N of M` are one count.
+ * The list holds the whole sequence the map and panel read, so rows and pins
+ * describe one collection and `N of M` is one count.
  */
 export function CollectionItems({
   ownerUsername,
@@ -46,13 +37,12 @@ export function CollectionItems({
   step,
   onStep,
 }: {
-  /** The handle the owner's catalogue link carries. */
   ownerUsername: string;
   items: EventListItem[];
   isOwner: boolean;
   loading: boolean;
   error: string | null;
-  /** Which item the player above the list stands on, 1-based. */
+  /** The item the player stands on, 1-based. */
   step: number;
   onStep: (step: number) => void;
 }) {
@@ -69,12 +59,8 @@ export function CollectionItems({
           </p>
         </div>
         {isOwner && (
-          // Where the owner goes to shelve something: their own catalogue,
-          // since an event joins a collection from its own page or from the
-          // edit page's picker. No status filter, unlike the profile's "Show
-          // more", because a detection the owner has yet to confirm is still
-          // theirs to put on a collection.
-          // Same builder as every other link into a filtered catalogue.
+          // No status filter, unlike the profile's "Show more": an unconfirmed
+          // detection can still go on a collection.
           <Link
             href={profileSearchHref(ownerUsername)}
             className={buttonClasses("secondary", {

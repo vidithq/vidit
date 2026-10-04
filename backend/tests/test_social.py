@@ -1,26 +1,9 @@
 """End-to-end tests for the social-graph endpoints.
 
-Coverage matrix:
-
-* ``POST /users/{username}/follow`` — happy path (204 + row appears),
-  idempotent re-follow (still 204, no duplicate row), self-follow rejected
-  with 400, follow against unknown / soft-deleted user yields 404, and
-  the endpoint demands an authenticated caller.
-* ``DELETE /users/{username}/follow`` — happy path removes the row,
-  idempotent re-unfollow (204 even when no edge), 404 on unknown / soft-
-  deleted target so a typo username surfaces an error instead of silently
-  no-op'ing.
-* ``GET /timeline`` — 401 anonymous, empty when the caller follows nobody,
-  surfaces only live (non-soft-deleted), published geolocations from followed
-  users with their coordinates inline (no per-row N+1), and respects pagination
-  (``page``, ``per_page``).
-* ``GET /users/{username}`` — ``followers_count`` / ``following_count`` /
-  ``is_following`` reflect the current state for both an anonymous viewer
-  and a logged-in viewer.
-* Self-follow is blocked at the DB layer too (``ck_follows_no_self_follow``).
-
-Tests rely on the same Postgres+PostGIS instance as the rest of the
-backend suite — the follows migration must already be applied.
+Covers follow and unfollow (idempotent, 404 on an unknown or soft-deleted
+target, auth required), ``GET /timeline`` (live published geolocations from
+followed users, coordinates inline, pagination), the profile follow counters
+and ``is_following``, and the DB-level ``ck_follows_no_self_follow``.
 """
 
 from __future__ import annotations
@@ -108,8 +91,7 @@ def cleanup(db):
     if created_geo_ids:
         db.query(Event).filter(Event.id.in_(created_geo_ids)).delete(synchronize_session=False)
     if created_user_ids:
-        # Follow rows carry ON DELETE CASCADE so deleting the users removes
-        # the social edges automatically — no explicit purge.
+        # Follow rows cascade on user delete.
         db.query(User).filter(User.id.in_(created_user_ids)).delete(synchronize_session=False)
     db.commit()
 
@@ -239,15 +221,11 @@ def test_check_constraint_blocks_self_follow(db, cleanup):
 
 
 def test_follow_swallows_integrity_error_from_concurrent_race(db, cleanup, monkeypatch):
-    """Two requests can race past the existence check (two browser tabs,
-    or any two-in-flight scenario). Only one INSERT can win the composite-
-    PK unique constraint; the loser hits ``IntegrityError`` on flush. The
-    service stages the INSERT inside a SAVEPOINT and swallows the error so
-    the loser returns ``False`` (idempotent ``204`` at the router) rather
-    than letting it bubble up as a 500.
+    """Two requests racing past the existence check hit ``IntegrityError`` on the
+    composite PK; the service swallows it in a SAVEPOINT and returns ``False``
+    (idempotent ``204``), not a 500.
 
-    Forced here by pre-populating the row + patching the existence check
-    so the service falls through to the savepoint path."""
+    Forced by pre-populating the row and patching the existence check."""
     from app.services import social as social_service
 
     record_user, _ = cleanup
@@ -256,15 +234,11 @@ def test_follow_swallows_integrity_error_from_concurrent_race(db, cleanup, monke
     record_user(follower)
     record_user(target)
 
-    # Pre-populate the edge — any subsequent INSERT will violate the PK.
     db.add(Follow(follower_id=follower.id, followed_id=target.id))
     db.commit()
 
-    # Patch ``Query.first`` to return ``None`` so the existence check
-    # short-circuit doesn't run. Then ``follow_user`` falls through to the
-    # savepoint INSERT, which must hit the PK violation and swallow it.
-    # The patch lives only for the call; the cleanup fixture's later
-    # queries see the real DB state again.
+    # ``Query.first`` returning None skips the existence check, so ``follow_user``
+    # reaches the savepoint INSERT.
     from sqlalchemy.orm import Query
 
     monkeypatch.setattr(Query, "first", lambda self: None)
@@ -303,10 +277,8 @@ def test_timeline_returns_followed_users_geolocations_with_coords(db, cleanup):
     record_user(author_b)
     record_user(stranger)
 
-    # A and B carry opposed orderings on the two candidate keys: A's event date
-    # is the older one, its submission the newer. So the assertion below reads
-    # the contract (newest submission first) rather than agreeing with both
-    # keys by accident, which is what equal insertion order would give.
+    # A and B order oppositely on the two candidate keys (A: older event date,
+    # newer submission), so the assertion pins newest submission first.
     geo_a = _make_geo(db, author=author_a, title="A", event=date(2026, 5, 10))
     geo_b = _make_geo(db, author=author_b, title="B", event=date(2026, 5, 11))
     geo_stranger = _make_geo(db, author=stranger, title="Stranger", event=date(2026, 5, 12))
@@ -334,15 +306,11 @@ def test_timeline_returns_followed_users_geolocations_with_coords(db, cleanup):
     titles = [item["title"] for item in body["items"]]
     assert "A" in titles and "B" in titles
     assert "Stranger" not in titles
-    # Newest submission first: A was submitted after B, though B's event date
-    # is the later one. Ordering by event date would put B first.
     assert titles.index("A") < titles.index("B")
     assert body["total"] == 2
-    # Coordinates are inline (no N+1 follow-up fetch required).
     for item in body["items"]:
         assert isinstance(item["event_coords"]["lat"], (int, float))
         assert isinstance(item["event_coords"]["lng"], (int, float))
-    # The card thumbnail rides the list payload: first media row, else null.
     by_title = {item["title"]: item for item in body["items"]}
     assert by_title["A"]["media"]["storage_url"].endswith("thumb.jpg")
     assert by_title["A"]["media"]["media_type"] == "image"
@@ -374,14 +342,8 @@ def test_timeline_excludes_soft_deleted_geolocations(db, cleanup):
 
 
 def test_timeline_carries_only_what_the_author_published(db, cleanup):
-    """The follow feed serves the published set and nothing else.
-
-    A ``detected`` row is machine output the author never vouched for, and a
-    retraction is published work they took back, so neither belongs in a feed
-    that says "here is what the people you follow have documented". Same
-    predicate as the author's own profile feed, so one analyst's rows read the
-    same whichever way a reader reaches them.
-    """
+    """The follow feed serves the published set only (the author's profile feed
+    predicate): a ``detected`` row is unvouched machine output and a retraction is withdrawn."""
     record_user, record_geo = cleanup
     viewer = _make_user(db, suffix="viewer")
     author = _make_user(db, suffix="author")
@@ -431,7 +393,6 @@ def test_timeline_paginates(db, cleanup):
     assert page1["total"] == 5
     assert len(page1["items"]) == 2
     assert len(page2["items"]) == 2
-    # No overlap between page 1 and page 2.
     assert {it["id"] for it in page1["items"]} & {it["id"] for it in page2["items"]} == set()
 
 
@@ -493,8 +454,6 @@ def test_profile_includes_follow_counters_and_is_following(db, cleanup):
     record_user(target)
     record_user(other_follower)
 
-    # ``me`` follows ``target``; ``other_follower`` also follows ``target``;
-    # ``target`` follows ``me`` (so following_count = 1).
     db.add(Follow(follower_id=me.id, followed_id=target.id))
     db.add(Follow(follower_id=other_follower.id, followed_id=target.id))
     db.add(Follow(follower_id=target.id, followed_id=me.id))
@@ -512,8 +471,7 @@ def test_profile_includes_follow_counters_and_is_following(db, cleanup):
 
 
 def test_profile_self_view_is_following_false(db, cleanup):
-    """Viewing your own profile never reports ``is_following=true`` even if
-    a stray edge slipped past the CHECK constraint (e.g. legacy data)."""
+    """Your own profile never reports ``is_following=true``, even with a stray self edge."""
     record_user, _ = cleanup
     me = _make_user(db, suffix="me")
     record_user(me)

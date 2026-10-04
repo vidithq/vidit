@@ -8,17 +8,14 @@ from app.database import Base
 
 
 class Follow(Base):
-    """One directed edge of the social graph — ``follower`` follows ``followed``.
+    """One directed edge of the social graph: ``follower`` follows ``followed``.
 
-    PK is the pair ``(follower_id, followed_id)`` so duplicates can't exist and
-    the forward lookup ("who is X following?") rides the PK's leading column. A
-    separate index on ``followed_id`` covers the reverse ("who follows X?"). The
-    ``CHECK`` blocks self-follow at the DB layer — the router 400s it too, but
-    the constraint is the durable invariant.
+    The pair PK blocks duplicates and serves "who is X following?"; an index on
+    ``followed_id`` serves the reverse. The ``CHECK`` blocks self-follow (the
+    router 400s it too).
 
-    No ORM ``relationship`` is declared: current queries hit ``follower_id`` /
-    ``followed_id`` directly (counts, the ``Follow.follower_id == ...`` filters),
-    so backrefs would only bloat the ``User`` mapper without serving a read path.
+    No ORM ``relationship``: queries hit the FK columns directly, and backrefs
+    would only bloat the ``User`` mapper.
     """
 
     __tablename__ = "follows"

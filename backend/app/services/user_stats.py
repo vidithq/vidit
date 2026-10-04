@@ -1,15 +1,8 @@
 """Aggregate an analyst's live events into the profile stats payload.
 
-Pure read-side queries over existing columns (no new model, no migration):
-status split, media count, top conflicts, capture-source breakdown, the
-source-host breakdown, and a zero-filled monthly row spanning the analyst's own
-event dates.
-
-One population for every field, so the card the payload feeds can state it
-once: the analyst's visible events (``deleted_at IS NULL AND hidden_at IS
-NULL``) in :data:`COUNTED_STATUSES`, ``geolocated`` and ``detected``. That is
-the set ``total_events`` counts. No two figures on the card describe different
-sets.
+One population for every field: the analyst's visible events (``deleted_at IS
+NULL AND hidden_at IS NULL``) in :data:`COUNTED_STATUSES`. No two figures on
+the card describe different sets.
 """
 
 import uuid
@@ -27,41 +20,25 @@ from app.schemas.user import ActivityBucket, TagCount, UserStatsRead
 from app.services.event_filters import visible_events
 from app.services.sanitize import normalised_host
 
-# The statuses that are work the profile vouches for: the two the payload
-# splits into its own counts, and the two ``total_events`` sums. A
-# ``requested`` row is an open call for help, and a ``closed`` row is a
-# duplicate, a rejected detection, a retraction or a withdrawn ask, so neither
-# is documented work and counting one would inflate every figure on the card.
+# Work the profile vouches for. ``requested`` (open call for help) and
+# ``closed`` (duplicate, rejection, retraction) are not documented work.
 COUNTED_STATUSES = (STATUS_GEOLOCATED, STATUS_DETECTED)
 
-# The activity grid draws one row per calendar year, twelve month cells wide.
-# 10 rows is the ceiling: at 375 px, the narrowest width the profile renders
-# at, a year label plus twelve cells leaves each cell about 21 px, and ten rows
-# of them still fit the card without scrolling. A longer archive keeps its 10
-# most recent years; the dropped events still count in every other aggregate,
-# and the row labels say which years are on screen.
+# One grid row per calendar year. Ten rows fit the card at 375 px (about 21 px
+# per cell). Older years drop out of the grid but still count elsewhere.
 MAX_ACTIVITY_YEARS = 10
 
-# The payload carries the head of each distribution, not the full tail. One
-# ceiling for all three lists (conflicts, capture sources, source hosts), so
-# there is a single rule for how much of a tail a client can read.
+# One ceiling for the conflicts, capture sources, and source hosts lists.
 TOP_N = 5
 
 
 def _month_keys(earliest: date, latest: date) -> list[str]:
-    """Every ``YYYY-MM`` key from ``earliest`` to ``latest`` inclusive.
+    """Every ``YYYY-MM`` key from ``earliest`` to ``latest``, oldest first.
 
-    Oldest first, and cut to the :data:`MAX_ACTIVITY_YEARS` most recent
-    calendar years. Counting in months since year 0 keeps the wrap-around
-    arithmetic branch-free.
-
-    Both ends are clamped to today, because the write path accepts any valid
-    ISO ``event_date`` and the year cap is anchored on the late end. One
-    mistyped year (``2925-06-01`` for ``2025-06-01``) would otherwise open the
-    window on 2916 to 2925 and drop every real event out of the grid. A span
-    holding nothing but future dates has no coverage left after the clamp and
-    returns an empty grid rather than a nonsense one; the events themselves
-    still count in every other aggregate.
+    Cut to the :data:`MAX_ACTIVITY_YEARS` most recent years. The late end is
+    clamped to today because the write path accepts any ISO ``event_date``: a
+    mistyped ``2925-06-01`` would otherwise push every real event out of the
+    window. A span of only future dates returns an empty grid.
     """
     today = date.today()
     if earliest > today:
@@ -117,12 +94,9 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
         .all()
     )
 
-    # The host comes off the URL in Python, not in SQL, so the folding rule has
-    # one home (:func:`sanitize.normalised_host`, shared with source archival)
-    # rather than a second spelling in a regex. SQL still does the counting:
-    # grouping on the URL hands back one row per distinct link, so this loop is
-    # bounded by how many links an analyst reuses rather than by how much work
-    # they have, on an endpoint anyone can call.
+    # The host is folded in Python (:func:`sanitize.normalised_host`, the one
+    # home for the rule). Grouping on the URL in SQL bounds this loop by
+    # distinct links, not event count, on a public endpoint.
     tally: Counter[str] = Counter()
     no_source_count = 0
     url_rows = (
@@ -141,9 +115,7 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
     source_hosts = ranked[:TOP_N]
     other_hosts_count = sum(count for _, count in ranked[TOP_N:])
 
-    # The window is the analyst's own coverage, not a window off today: an
-    # archive spanning years is the shape the product asks for, and a fixed
-    # recent window would drop most of it off the left edge.
+    # The window is the analyst's own coverage, not a fixed recent window.
     dated = (*live, Event.event_date.isnot(None))
     earliest, latest = (
         db.query(func.min(Event.event_date), func.max(Event.event_date)).filter(*dated).one()

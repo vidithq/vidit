@@ -1,15 +1,9 @@
 /**
- * Viewport → `?bbox=` maths for the map's point fetch.
+ * Viewport to `?bbox=` maths for the map's point fetch (`/events/points` requires a bbox).
  *
- * `/events/points` requires a bbox, so the map asks for the region it is
- * showing instead of the catalog. These helpers turn a MapLibre viewport
- * into a request box the backend accepts, pad it so a small pan is already
- * covered, and answer whether a new viewport still fits inside the box that
- * was fetched last.
- *
- * Hand-kept mirror of `services/event_filters.parse_bbox`: field order
- * `south,west,north,east`, latitudes in [-90, 90], longitudes in [-180, 180],
- * south <= north, west <= east. Change the two together (see AGENTS.md).
+ * Hand-kept mirror of `services/event_filters.parse_bbox`: field order `south,west,north,east`,
+ * latitudes in [-90, 90], longitudes in [-180, 180], south <= north, west <= east. Change the
+ * two together.
  */
 
 import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "@/lib/coordinates";
@@ -22,11 +16,7 @@ export interface MapBounds {
   east: number;
 }
 
-/**
- * The whole planet. `bbox` is required, so a fetch that wants every matching
- * point rather than a viewport slice (the profile's coverage map) says so
- * with this box.
- */
+/** The whole planet, for fetches that want every matching point (the profile's coverage map). */
 export const WORLD_BOUNDS: MapBounds = {
   south: LAT_MIN,
   west: LNG_MIN,
@@ -34,44 +24,26 @@ export const WORLD_BOUNDS: MapBounds = {
   east: LNG_MAX,
 };
 
-/**
- * How far past each edge of the viewport the fetched box reaches, as a
- * fraction of the viewport's own span. 0.25 buys a quarter-screen margin on
- * every side: pans shorter than that reuse the points already in memory,
- * while the payload stays within ~2.25x the visible area.
- */
+/** Margin past each viewport edge as a fraction of its span: a quarter-screen, so shorter
+ *  pans reuse points in memory (payload stays within ~2.25x the visible area). */
 export const VIEWPORT_PADDING = 0.25;
 
-/**
- * How long the map waits after the last `moveend` before refetching. A drag
- * across several regions, or a wheel zoom that emits a burst of move events,
- * settles into one request instead of one per intermediate viewport.
- */
+/** Wait after the last `moveend` before refetching, so a burst of move events settles into
+ *  one request. */
 export const VIEWPORT_DEBOUNCE_MS = 300;
 
-/** Decimal places kept in the `?bbox=` value (~11 m at the equator).
- *  Rounding is outward, so the box only ever grows. */
+/** Decimal places in the bbox (~11 m at the equator); rounding is outward. */
 const BBOX_PRECISION = 4;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-/**
- * Bring a longitude pair into [-180, 180] as a unit.
- *
- * MapLibre reports an unwrapped viewport: panning past the antimeridian
- * yields values like `[-200, -190]`, which the backend rejects. Shifting the
- * pair by whole turns puts most of those back in range. A box that still
- * straddles an edge after the shift genuinely crosses the antimeridian,
- * which the endpoint does not model (`west <= east`), so it widens to the
- * full longitude range: over fetching the rest of the latitude band beats
- * dropping half the viewport.
- *
- * `west > east` on the way in gets the same answer. The globe projection can
- * report a wrapped pair, and there is no narrower box that covers both sides
- * of the seam.
- */
+/** Bring a longitude pair into [-180, 180] as a unit. MapLibre reports an unwrapped viewport
+ *  (`[-200, -190]` past the antimeridian), which the backend rejects: shift by whole turns. A
+ *  box still straddling an edge crosses the antimeridian, which the endpoint doesn't model,
+ *  so it widens to the full range (overfetching beats dropping half the viewport).
+ *  `west > east` (globe projection) gets the same answer. */
 function normalizeLongitudes(west: number, east: number): [number, number] {
   if (
     !Number.isFinite(west) ||
@@ -87,14 +59,8 @@ function normalizeLongitudes(west: number, east: number): [number, number] {
   return shifted;
 }
 
-/**
- * Bring a latitude pair into [-90, 90], smallest first.
- *
- * The finiteness guard is the one the longitude path already has, for the
- * same reason: `getBounds()` called before the map has a size answers with
- * NaN, which would serialise as `"NaN,..."` and 422 the fetch. The full
- * range is the safe answer, since it is a superset of any real viewport.
- */
+/** Bring a latitude pair into [-90, 90], smallest first. `getBounds()` before the map has a
+ *  size answers NaN, which would 422 the fetch; the full range is the safe superset. */
 function normalizeLatitudes(south: number, north: number): [number, number] {
   if (!Number.isFinite(south) || !Number.isFinite(north)) return [LAT_MIN, LAT_MAX];
   return [
@@ -110,9 +76,8 @@ export function normalizeBounds(bounds: MapBounds): MapBounds {
   return { south, west, north, east };
 }
 
-/** Grow a viewport by `VIEWPORT_PADDING` of its own span on every side,
- *  clamped to the valid ranges. The result is what gets fetched; the viewport
- *  itself is what gets tested against it. */
+/** Grow a viewport by `VIEWPORT_PADDING` of its span on every side, clamped. This is what
+ *  gets fetched; the viewport is tested against it. */
 export function padBounds(bounds: MapBounds): MapBounds {
   const base = normalizeBounds(bounds);
   const latMargin = (base.north - base.south) * VIEWPORT_PADDING;
@@ -137,11 +102,8 @@ export function boundsContain(outer: MapBounds, inner: MapBounds): boolean {
   );
 }
 
-/** Serialise to the `south,west,north,east` value the endpoint parses.
- *  Each edge rounds outward, so the string never describes a smaller box
- *  than the caller asked for, and two viewports that differ below the
- *  precision floor produce the same value (and so the same server cache
- *  entry). */
+/** Serialise to `south,west,north,east`. Edges round outward, so the box never shrinks and
+ *  viewports differing below the precision floor share one server cache entry. */
 export function toBboxParam(bounds: MapBounds): string {
   const scale = 10 ** BBOX_PRECISION;
   const down = (v: number) => Math.floor(v * scale) / scale;

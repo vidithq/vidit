@@ -12,9 +12,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push, replace, back: vi.fn() }),
 }));
 
-// MapLibre touches `window` at module scope, so the player's map never loads
-// its real canvas under jsdom. The stub reports the pins it was handed and
-// which of them is lit, which is what the step moves.
+// MapLibre touches `window` at module scope; the stub reports the pins and which is lit.
 vi.mock("next/dynamic", () => ({
   default: () =>
     function MapStub({
@@ -34,9 +32,7 @@ vi.mock("next/dynamic", () => ({
     },
 }));
 
-// The panel is the map page's own, covered there. Stubbed, so what the player
-// is measured on is the step header it pins to the panel's top edge and the
-// event it hands the panel to render.
+// The panel is covered on the map page; stubbed so the step header and the handed event are what is measured.
 vi.mock("@/components/map/DetailSidePanel", () => ({
   DetailSidePanel: ({
     header,
@@ -60,8 +56,7 @@ vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => useApiResource(path),
 }));
 
-// The page walks the cursor once and hands that one sequence to the player,
-// the panel and the list, so a spec picks the set it measures here.
+// The page walks the cursor once and hands that sequence to the player, panel and list.
 const fetchCollectionSequence = vi.fn();
 const deleteCollection = vi.fn();
 const reportCollection = vi.fn();
@@ -134,9 +129,7 @@ const ITEMS: EventListItem[] = [
   },
 ];
 
-/** The paths the page reads, answered by which one is asked for: the
- *  collection itself for the header, and the current step's event for the
- *  panel. */
+/** Paths the page reads: the collection for the header, the current step's event for the panel. */
 function mockReads(data: Collection) {
   useApiResource.mockImplementation((path: string | null) =>
     path?.startsWith("/events/")
@@ -150,8 +143,7 @@ function mockReads(data: Collection) {
   );
 }
 
-/** Render, then wait for the sequence walk to land: the player and the list
- *  are both drawn from it, so a measurement before it reads an empty page. */
+/** Render, then wait for the sequence walk: the player and list draw from it. */
 async function renderPage() {
   render(<CollectionPage />);
   await screen.findByRole("heading", { name: "Kupiansk rail corridor" });
@@ -219,8 +211,7 @@ describe("CollectionPage", () => {
     await renderPage();
 
     expect(screen.getByText("Description")).toBeInTheDocument();
-    // The owner wrote it in the proof editor, so the marks and the list it
-    // carries are painted rather than flattened into a run of text.
+    // Written in the proof editor, so marks and the list are painted, not flattened.
     expect(screen.getByText("strikes").tagName).toBe("STRONG");
     expect(
       screen.getByText("The eastern approach.").closest("li"),
@@ -235,8 +226,7 @@ describe("CollectionPage", () => {
   });
 
   it("shows the tags the collection's items carry, under the meta line", async () => {
-    // Derived server-side from the items, so the header states what the
-    // collection is about without the owner writing a single tag.
+    // Derived server-side from the items.
     mockReads(
       collection({
         tags: [
@@ -263,9 +253,7 @@ describe("CollectionPage", () => {
   });
 
   it("carries no cover upload and no per-row byline", async () => {
-    // The mosaic is the profile card's picture, so the header renders none of
-    // it, nothing is uploaded for a collection, and the byline is the one slot
-    // a row drops: the header above already names the analyst.
+    // The header renders no mosaic, and the byline is the slot a row drops (the header names the analyst).
     useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
     mockReads(
       collection({
@@ -339,8 +327,7 @@ describe("CollectionPage", () => {
       }),
     );
 
-    // `replace`, so the back button leaves the page rather than walking back
-    // through every step taken on it.
+    // `replace`, so Back leaves the page instead of walking every step.
     expect(replace).toHaveBeenCalledWith("/collections/c1?step=2", {
       scroll: false,
     });
@@ -352,8 +339,7 @@ describe("CollectionPage", () => {
     expect(
       screen.queryByRole("link", { name: "Strike on the rail junction" }),
     ).not.toBeInTheDocument();
-    // The stretched button still carries the row's accessible name, so the
-    // one click a row offers is still nameable and still moves the player.
+    // The stretched button keeps the row's accessible name and still moves the player.
     expect(
       screen.getByRole("button", {
         name: "Read this collection from Strike on the rail junction",
@@ -416,7 +402,7 @@ describe("CollectionPage", () => {
   it("hands a visitor the report flag and no owner control", async () => {
     await renderPage();
 
-    // Reporting works signed out, which is the whole point of the control.
+    // Reporting works signed out.
     expect(screen.getByRole("button", { name: "Report" })).toBeInTheDocument();
     expect(
       screen.queryByRole("button", {
@@ -436,9 +422,7 @@ describe("CollectionPage", () => {
 
     await renderPage();
 
-    // The owner's own events, detections included: the list offers no picker,
-    // because an event joins a collection from its own page, and the sentence
-    // above the rows says so.
+    // The owner's own events, detections included; no picker (an event joins from its own page).
     expect(
       screen.getByRole("link", { name: "Your geolocations" }),
     ).toHaveAttribute("href", "/search?type=event&author=ana");
@@ -455,8 +439,7 @@ describe("CollectionPage", () => {
 
     await renderPage();
 
-    // The details and the item picker live on the edit page, so the header
-    // carries the two acts on the collection itself and no per-row control.
+    // Details and picker live on the edit page; the header has the two acts and no per-row control.
     expect(
       screen.getByRole("link", { name: "Edit this collection" }),
     ).toHaveAttribute("href", "/collections/c1/edit");
@@ -477,8 +460,7 @@ describe("CollectionPage", () => {
     await renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: "Report" }));
-    // The panel names what it is about, so the flag cannot be mistaken for a
-    // report on the item the player is standing on.
+    // The panel names its subject so the flag is not mistaken for a report on the player's item.
     expect(screen.getByText("Report this collection")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Reason"), {
       target: { value: "copyright" },
@@ -502,7 +484,7 @@ describe("CollectionPage", () => {
 
     await renderPage();
 
-    // One click arms; nothing is written yet.
+    // One click arms; nothing is written.
     fireEvent.click(screen.getByRole("button", { name: "Drop this collection" }));
     expect(deleteCollection).not.toHaveBeenCalled();
 
@@ -512,8 +494,7 @@ describe("CollectionPage", () => {
     fireEvent.click(armed);
 
     await waitFor(() => expect(deleteCollection).toHaveBeenCalledWith("c1"));
-    // The page it was on is gone, so the owner lands where their other
-    // collections are.
+    // The owner lands where their other collections are.
     await waitFor(() => expect(push).toHaveBeenCalledWith("/profile/ana"));
   });
 

@@ -15,18 +15,10 @@ import { TEXT_LINK } from "@/components/ui/styles";
 import { Button, buttonClasses } from "@/components/ui/Button";
 
 export default function RequestsPage() {
-  // The board is the open queue: only ``requested`` events. A fulfilled request
-  // becomes a ``geolocated`` event and moves to the map; a withdrawn one goes
-  // ``closed`` and drops off here (still reachable by permalink). No status
-  // filter: "closed" here would mean "withdrawn", which reads as "done" on a
-  // work queue and misleads. Enriching this into a triage board (sort, filters,
-  // activity signals) is a v1.0 item, gated on request volume (see next.md).
-  // Public read: no auth gate; "Post request" routes through /submit, which
-  // bounces a signed-out visitor to login.
-  //
-  // Cursor-paged: the list endpoint caps a response at 100 rows, so a queue
-  // longer than that is read by following the `Link: rel="next"` cursor rather
-  // than by asking for one wide page.
+  // The board is the open queue: only `requested` events (fulfilled ones move to the map, withdrawn ones go `closed`
+  // and stay reachable by permalink). No status filter: "closed" would read as "done" on a work queue.
+  // Public read; "Post request" routes through /submit, which bounces signed-out visitors to login.
+  // Cursor-paged: the endpoint caps a response at 100 rows, so follow the `Link: rel="next"` cursor.
   const buildPath = useCallback(
     (cursor: string | null) =>
       eventListPath({ view: "requested", status: "requested", cursor }),

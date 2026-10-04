@@ -21,10 +21,8 @@ router = APIRouter()
 def _warn_if_truncated(rows: list[Tag], *, view: str) -> list[Tag]:
     """Log when a referential response lands exactly on the ceiling.
 
-    A vocabulary hydrated whole has no ``Link`` header to say it was cut, so a
-    picker silently loses options once the referential outgrows the ceiling.
-    The log is the signal to raise ``REFERENTIAL_MAX_ROWS`` or page the
-    picker.
+    A whole-hydrated vocabulary carries no ``Link`` header to say it was cut;
+    the log is the signal to raise ``REFERENTIAL_MAX_ROWS`` or page the picker.
     """
     if len(rows) == REFERENTIAL_MAX_ROWS:
         logger.warning(
@@ -36,15 +34,12 @@ def _warn_if_truncated(rows: list[Tag], *, view: str) -> list[Tag]:
     return rows
 
 
-# Categories authenticated users may create via the API. `capture_source`
-# is curated (by the seeding migration) since it is a required, filterable
-# map dimension that must stay clean; only `free` is open to user creation.
-# Conflicts are not tags at all: they live in the `conflicts` referential.
+# Categories users may create. `capture_source` is curated (seeded) because it
+# is a required map dimension; conflicts live in the `conflicts` referential.
 USER_CREATABLE_CATEGORIES = {"free"}
 
-# Server-managed taxonomy: every new geolocation must carry one tag from it
-# (enforced in `services/events/rules.py`). Surfaced as the required selector on
-# the submit form via `?curated=true`.
+# Server-managed taxonomy: every new geolocation needs one tag from it
+# (`services/events/rules.py`); the submit form's `?curated=true` selector.
 CURATED_CATEGORIES = ("capture_source",)
 
 
@@ -57,26 +52,17 @@ def list_tags(
     curated: bool = False,
     db: Session = Depends(get_db),
 ):
-    """Return tags that are referenced by at least one *live* geolocation.
+    """Return tags referenced by at least one *live* geolocation, so the map
+    filter shows no chips that match nothing.
 
-    Filters out orphan tags (no live row currently uses them) so the map
-    filter UI doesn't surface chips that match zero results. Soft-deleted
-    geos don't count toward the live set, so a tag falls off the filter
-    once every geo using it is removed.
+    ``curated=true`` instead returns the full curated ``capture_source``
+    taxonomy regardless of usage: the submit form needs every option in this
+    required bucket, even for the first analyst to tag it.
 
-    ``curated=true`` flips the default: it returns the full curated
-    ``capture_source`` taxonomy regardless of live usage. The submit form
-    needs *every* option in this required bucket up front so the analyst can
-    pick the right one even when they're first to tag it; the usage filter
-    that's right for the map is wrong here.
-
-    Bounded by ``REFERENTIAL_MAX_ROWS``, not by the 100-row list cap: the
-    pickers and the filter panel hydrate this vocabulary whole and filter it
-    client-side, so a page of it would be a page of missing options. The
-    ceiling is what keeps ``free``-category growth (the one user-writable
-    category) from turning this into an unbounded hydration, and a response
-    that lands on it is logged, since the payload carries no way to say it was
-    cut.
+    Bounded by ``REFERENTIAL_MAX_ROWS``, not the 100-row list cap: pickers and
+    the filter panel hydrate the vocabulary whole and filter client-side. The
+    ceiling bounds ``free``-category growth; a response landing on it is
+    logged because the payload can't say it was cut.
     """
     if curated:
         query = db.query(Tag).filter(Tag.category.in_(CURATED_CATEGORIES))
@@ -117,13 +103,9 @@ def create_tag(
 
     existing = db.query(Tag).filter(Tag.name == body.name).first()
     if existing:
-        # Idempotent create: same name + same category → hand the row
-        # back. The lookup is by exact name over EVERY tag row, orphans
-        # included, because ``GET /tags`` hides orphan tags (refs == 0):
-        # a name-matched 409 here would leave the form with no way out for
-        # a tag the picker never offered. Returns ``200 OK`` (not the
-        # ``201`` default) to surface "no new row created" to consumers
-        # that care.
+        # Idempotent create: same name + category returns the row (200, not
+        # 201). The lookup covers every tag, orphans included, because
+        # ``GET /tags`` hides orphans and a 409 would leave the form no way out.
         if existing.category == body.category:
             return Response(
                 content=TagRead.model_validate(existing, from_attributes=True).model_dump_json(),
@@ -138,10 +120,9 @@ def create_tag(
             ),
         )
 
-    # The SELECT above only buys the friendly category-conflict message; the
-    # UNIQUE on ``tags.name`` is the actual race backstop, and the SAVEPOINT
-    # turns the loser into the 409 the caller retries on. Mechanism:
-    # ``services/social.follow_user``.
+    # The SELECT only buys the friendly category-conflict message; the UNIQUE on
+    # ``tags.name`` is the race backstop, and the SAVEPOINT turns the loser into
+    # the retryable 409 (see ``services/social.follow_user``).
     tag = Tag(name=body.name, category=body.category)
     try:
         with db.begin_nested():

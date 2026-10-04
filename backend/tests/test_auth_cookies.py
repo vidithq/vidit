@@ -27,9 +27,7 @@ def db():
 @pytest.fixture
 def user_with_password(db):
     password = "correct-horse-battery-staple"
-    # ``example.com`` (not ``.test``): pydantic's EmailStr backend rejects
-    # the latter at request-validation time as "reserved", and we need the
-    # email to round-trip through /login.
+    # ``example.com``, not ``.test``: EmailStr rejects ``.test`` as reserved.
     user = User(
         username=f"cookie-{uuid.uuid4().hex[:8]}",
         email=f"{uuid.uuid4().hex}@example.com",
@@ -76,13 +74,8 @@ def test_me_with_session_cookie_works(user_with_password):
 
 
 def test_bearer_header_ignored_on_get(user_with_password):
-    """A valid JWT handed in ``Authorization: Bearer`` is ignored — the
-    request is anonymous and gets 401.
-
-    The Bearer auth path was removed when the test suite migrated to
-    cookies; the cookie + CSRF pair is the only authenticated channel
-    into the backend now.
-    """
+    """A valid JWT in ``Authorization: Bearer`` is ignored: the request is anonymous (401).
+    The cookie + CSRF pair is the only authenticated channel."""
     user, _ = user_with_password
     token = create_access_token(user)
     client = _client()
@@ -245,12 +238,10 @@ def test_csrf_blocks_cookie_auth_with_wrong_header(user_with_password):
 
 
 def test_login_works_with_stale_session_cookie(user_with_password):
-    """A leftover (now-invalid) ``vidit_session`` cookie must not block login.
+    """A stale ``vidit_session`` cookie must not block login.
 
-    Repro for the bug where a user whose JWT went stale (server restart,
-    secret rotation) could never sign back in: the HTTPOnly cookie is in the
-    jar, the browser keeps attaching it, the CSRF middleware would see it
-    and demand a token the client doesn't have on the login form.
+    Regression: the browser keeps attaching the HTTPOnly cookie and CSRF would
+    demand a token the login form lacks.
     """
     user, password = user_with_password
     client = _client()
@@ -264,13 +255,10 @@ def test_login_works_with_stale_session_cookie(user_with_password):
 
 
 def test_login_ignores_csrf_header_mismatch_with_stale_cookies(user_with_password):
-    """Exempt paths must bypass CSRF *even* when the request looks malicious.
+    """Exempt paths bypass CSRF even on a header/cookie mismatch.
 
-    A user landing on /auth/login with a stale ``vidit_session`` and a stale
-    ``vidit_csrf`` from a prior identity can't access the HTTPOnly session to
-    clear it — the form submits whatever the browser auto-attaches. If the
-    middleware enforced CSRF here, a header/cookie mismatch (or missing
-    header) would 403 and lock the user out forever.
+    A user with stale cookies from a prior identity cannot clear the HTTPOnly
+    session, so enforcing CSRF here would lock them out.
     """
     user, password = user_with_password
     client = _client()
@@ -286,10 +274,8 @@ def test_login_ignores_csrf_header_mismatch_with_stale_cookies(user_with_passwor
 
 
 def test_logout_clears_cookies_with_prod_attributes(monkeypatch, user_with_password):
-    """In prod (``Secure``, ``SameSite=none``) the deletion ``Set-Cookie`` must
-    carry the same attributes — otherwise browsers drop the header and the
-    cookie persists past logout.
-    """
+    """In prod (``Secure``, ``SameSite=none``) the deletion ``Set-Cookie`` must carry
+    the same attributes, or browsers drop it and the cookie outlives logout."""
     from app.config import settings
 
     monkeypatch.setattr(settings, "cookie_secure", True)
@@ -321,7 +307,6 @@ def test_logout_clears_cookies_with_prod_attributes(monkeypatch, user_with_passw
     )
     assert session_clear is not None and csrf_clear is not None
     for header in (session_clear, csrf_clear):
-        # Browsers reject ``SameSite=None`` without ``Secure``. Both must
-        # appear on the deletion header for the clear to take effect.
+        # Browsers reject ``SameSite=None`` without ``Secure``.
         assert "samesite=none" in header.lower()
         assert "secure" in header.lower()

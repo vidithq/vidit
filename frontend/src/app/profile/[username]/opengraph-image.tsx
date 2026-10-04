@@ -62,12 +62,10 @@ function Avatar({ src, username }: { src: string | null; username: string }) {
     background: OG_COLOR.panel,
   };
   if (src) {
-    // Satori draws `<img>`, not `next/image`: this tree is rasterised on the
-    // server and never reaches a browser that could run the optimizer.
+    // Satori draws `<img>`, not `next/image`: this tree is rasterised on the server.
     return <img src={src} alt="" width={AVATAR_PX} height={AVATAR_PX} style={{ ...shared, objectFit: "cover" }} />;
   }
-  // Monogram fallback, the same grammar as the app's `<Avatar>` primitive: the
-  // handle's first character, centred in the circle.
+  // Monogram fallback, as in `<Avatar>`: the handle's first character.
   return (
     <div style={{ ...shared, alignItems: "center", justifyContent: "center" }}>
       <div style={{ display: "flex", fontSize: "72px", color: OG_COLOR.muted }}>
@@ -108,8 +106,7 @@ export default async function ProfileOpenGraphImage({
   if (profileRead.status === "missing") {
     return ogImageResponse(<NotFoundCard username={username} />);
   }
-  // A read that failed rather than answered says nothing about the handle, so
-  // the card says nothing about it either.
+  // A failed read says nothing about the handle, so neither does the card.
   if (profileRead.status === "failed") {
     return ogFailedReadResponse();
   }
@@ -117,18 +114,10 @@ export default async function ProfileOpenGraphImage({
   const profile = profileRead.data;
   const stats = statsRead.status === "ok" ? statsRead.data : null;
 
-  // The avatar is the one leg that cannot be parallelised: its URL arrives with
-  // the profile. It is budgeted tighter than the payload reads for that reason,
-  // and a miss costs the monogram, not the card.
+  // The avatar URL arrives with the profile, so it is budgeted tighter; a miss costs the monogram, not the card.
   const avatar = await ogImageDataUri(profile.avatar_url);
 
-  // The card leads with the analyst's published geolocations, under the page's
-  // own label for that number: `Geolocated`, the status vocabulary the
-  // Insights card reads in and the page's only name for the figure. It reads
-  // off the profile payload, which counts that set and equals
-  // `stats.geolocated_count`, so the headline survives a stats read that
-  // failed and never disagrees with the page it links to. The stats payload
-  // still fills the caption and the media tile.
+  // The headline reads off the profile payload (equals `stats.geolocated_count`), so it survives a failed stats read; stats fill the caption and media tile.
   const conflicts = (stats?.top_conflicts ?? []).map((c) => c.name).join(" · ");
 
   return ogImageResponse(

@@ -1,11 +1,8 @@
 """`POST /events/import-from-tweet`: the paste creates a detection of your own post.
 
-The route runs the shared engine and the shared write path, so what is pinned
-here is the entry: the own-post check, the outcome payload, the re-import
-upsert, and the error mapping. X is mocked at the transport (``httpx.Client``
-swapped for a ``MockTransport`` factory), so the acquisition runs exactly where
-production runs it. The grammar itself is pinned by ``tests/ingest_contract``.
-Shared fixtures live in `conftest.py`; `client` in `_helpers.py`.
+Pins the entry: own-post check, outcome payload, re-import upsert, error mapping.
+X is mocked at the transport (``httpx.Client`` swapped for a ``MockTransport``).
+The grammar is pinned by ``tests/ingest_contract``.
 """
 
 from __future__ import annotations
@@ -80,11 +77,7 @@ def _url(tweet_id: str, handle: str = HANDLE) -> str:
 
 @pytest.fixture(autouse=True)
 def _mock_syndication(monkeypatch):
-    """Serve the fixture bodies for every syndication fetch, 404 elsewhere.
-
-    Returns the list of tweet ids the route actually asked X for, so a test can
-    pin that a refusal happened before any budget was spent.
-    """
+    """Serve the fixture bodies, 404 elsewhere; yields the tweet ids asked for."""
     _cache_clear()
     asked: list[str] = []
     real_client = httpx.Client
@@ -111,7 +104,6 @@ def _mock_syndication(monkeypatch):
 
 @pytest.fixture
 def linked_author(db, author):
-    """The caller, with ``HANDLE`` linked as their X account."""
     author.x_handle = HANDLE
     db.commit()
     return author
@@ -160,9 +152,7 @@ def test_several_coordinates_land_several_detections_and_a_warning(db, linked_au
     assert response.status_code == 200, response.text
     body = response.json()
     assert len(body["created"]) == 2
-    # The stable codes, each with the one sentence the bot's reply and the
-    # archive's outcome email also say for it, so the page renders what it is
-    # handed rather than keeping its own wording.
+    # Same sentences as the bot's reply and the archive outcome email.
     assert body["warnings"] == [
         {"code": "several_coordinates", "message": WARNING_MESSAGES["several_coordinates"]},
         {"code": "source_missing", "message": WARNING_MESSAGES["source_missing"]},
@@ -192,8 +182,6 @@ def test_pasting_the_same_post_twice_never_duplicates_the_detection(db, linked_a
 
     assert second.status_code == 200, second.text
     body = second.json()
-    # Nothing moved between the two passes, so the re-import leaves the detection
-    # exactly as it stands and says so: one detection, never a duplicate.
     assert body["created"] == [] and body["skipped"] == created
     assert len(_detections(db, linked_author)) == 1
 
@@ -225,12 +213,7 @@ def test_someone_elses_post_is_refused(db, linked_author):
 
 
 def test_a_strangers_post_is_refused_before_the_parent_hop(db, linked_author, _mock_syndication):
-    """The own-post check runs on the pasted post alone.
-
-    The parent hop and the chase each read a post the pasted URL only points at,
-    on the shared syndication budget, so a linked account must not be able to
-    drive them by pasting a stranger's thread.
-    """
+    """A stranger's thread must not drive the parent hop on the shared budget."""
     response = _post(linked_author, OTHER_AUTHOR_REPLY_ID, handle="someone_else")
 
     assert response.status_code == 400
@@ -259,9 +242,7 @@ def test_a_url_that_names_no_post_is_a_400(linked_author):
 
 
 def test_a_post_x_will_not_serve_is_a_404(linked_author):
-    """A post readable only behind an X login answers a ``TweetTombstone``
-    body: a 404 the analyst can act on, not a 502 that pages an operator. It
-    carries the bot's code and the bot's sentence for the same case."""
+    """A ``TweetTombstone`` body is an actionable 404, not a 502 that pages an operator."""
     response = _post(linked_author, TOMBSTONE_ID)
 
     assert response.status_code == 404, response.text
@@ -278,8 +259,7 @@ def test_a_throttled_upstream_is_a_503(linked_author):
 
 
 def test_an_unusable_upstream_body_is_a_502(linked_author):
-    """An exactly-empty ``{}`` body is X rejecting the locally computed token,
-    so import is down for everyone: a 502 an operator is alerted on."""
+    """An empty ``{}`` body is X rejecting the computed token: down for everyone, so a 502."""
     response = _post(linked_author, DRIFT_ID)
 
     assert response.status_code == 502, response.text

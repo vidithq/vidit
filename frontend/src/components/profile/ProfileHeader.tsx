@@ -13,14 +13,9 @@ import FollowButton from "./FollowButton";
 import { LinkedAccountsLine } from "./LinkedAccounts";
 import type { ProfileEditState } from "./useProfileEdit";
 
-/** The page title: avatar + handle. The analyst is what the page is about, so
- *  the handle is the H1 (the event detail page titles itself with the event
- *  the same way), and `<PageShell>` owns the heading markup.
- *
- *  Avatar shown is `edit.avatarPreview`, the one derivation the picker reads
- *  too; it falls back to the icon if it resolves to nothing. It is decorative
- *  here (the handle next to it is the accessible name), hence `aria-hidden`:
- *  without it the heading reads the avatar's alt text before the handle. */
+/** The page title: avatar and handle (H1; `<PageShell>` owns the heading markup). The avatar is
+ * `edit.avatarPreview`, falling back to the icon if it resolves to nothing, and `aria-hidden` (the
+ * handle is the accessible name; otherwise the heading reads the alt text first). */
 export function ProfileTitle({
   profile,
   edit,
@@ -28,9 +23,8 @@ export function ProfileTitle({
   profile: PublicProfile;
   edit: ProfileEditState;
 }) {
-  // `avatarPreview` is the hook's single derivation of what to show, shared
-  // with the picker below. A staged pick whose bytes are still being read has
-  // no url yet, which renders the icon rather than the picture it replaces.
+  // `avatarPreview` is the hook's one derivation, shared with the picker. A staged pick still being
+  // read has no url yet and renders the icon.
   const displayedAvatar =
     edit.avatarPreview.kind === "none" ? null : edit.avatarPreview.url;
   return (
@@ -44,45 +38,28 @@ export function ProfileTitle({
           fallback="icon"
         />
       </span>
-      {/* Wraps rather than truncates: on a narrow screen the action cluster
-          leaves the title little room, and a clipped handle is the one thing
-          this page cannot afford to lose. */}
+      {/* Wraps rather than truncates: the action cluster leaves the title little room, and a clipped
+          handle is the one thing to keep. */}
       <span className="min-w-0 break-words">{profile.username}</span>
     </span>
   );
 }
 
 /**
- * The lines under the handle: the analyst's own framing, then the account
- * metadata, then the account's email on your own profile.
+ * The lines under the handle: the analyst's own framing (bio), then account metadata, then the
+ * account's email on your own profile. `<PageShell>` owns the slot and its
+ * `[overflow-wrap:anywhere]`, which keeps a bio holding a bare URL or an email inside the frame on
+ * a phone.
  *
- * The bio reads here rather than in a card of its own, so a visitor meets the
- * identity as one compact block (picture, handle, one line of prose) and the
- * evidence starts immediately below it. `<PageShell>` owns the slot and its
- * `[overflow-wrap:anywhere]`, which is what keeps a bio holding a bare URL, or
- * an email that is one unbreakable token, inside the frame on a phone.
+ * The bio: empty renders nothing; a link is plain text that breaks where it must; long wraps
+ * rather than clamps (`BIO_MAX_LEN` caps it at 500, and an ellipsis would hide the analyst's
+ * framing). Typed line breaks collapse into the flow here and stay in the edit field.
  *
- * The bio has three shapes, each deliberate. **Empty:** it renders nothing, so
- * the handle sits over the metadata line alone. **With a link:** the URL is
- * plain text that breaks where it must. **Long:** it wraps instead of
- * clamping. `BIO_MAX_LEN` already caps it at 500 characters, and hiding the
- * tail behind an ellipsis would drop the analyst's own framing with nothing
- * offering to reveal it. Line breaks the author typed collapse into the flow,
- * so a multi-paragraph bio reads as one line of prose here and keeps its shape
- * in the edit field.
+ * `meta` is the followers / following / member-since line, secondary text rather than tiles (the
+ * work figures live in the Insights card). Zero values print. Each segment holds together so the
+ * row wraps between segments at 375 px. `null` drops the line, as edit mode does.
  *
- * `meta` is the followers / following / member-since line: social and account
- * age, which say who the analyst is rather than what they documented. It reads
- * as secondary text inside the identity block instead of as tiles, because a
- * grid weighing as much as the Insights card is a grid claiming to say as
- * much. The work figures have one home, the Insights card. Zero values print:
- * a profile that hides its zeros is one whose numbers cannot be read at all.
- * Each segment holds together on its own line, so the row wraps between
- * segments rather than inside one at 375 px. Passing `null` drops the line,
- * which is what edit mode does: the page collapses to the form there.
- *
- * One `space-y-1` on the wrapper owns the spacing between every line here, so a
- * line that drops out leaves no gap behind it.
+ * One `space-y-1` on the wrapper owns the spacing, so a line that drops out leaves no gap.
  */
 export function ProfileIdentity({
   bio,
@@ -123,24 +100,13 @@ export function ProfileIdentity({
   );
 }
 
-/** The header action cluster: the icon row (the linked accounts, then Edit
- *  profile on your own profile), and Follow on someone else's or the save pair
- *  while editing.
- *
- *  Reaching the analyst is an action on the page rather than a line of the
- *  identity, so the marks sit where every other page keeps the controls that
- *  act on the thing the page is about, right of the title. One shape for the
- *  whole row: ghost icon buttons, the owner's Edit profile included, so the
- *  header offers one kind of control rather than four marks beside a button.
- *  The row's `gap-1.5` is the event page's action-cluster spacing, so two rows
- *  of icon controls on two pages sit the same distance apart; the cluster's own
- *  `gap-2` separates the row from whatever button sits at the far right. The
- *  cluster wraps and right-aligns, the shape every page-level action cluster
- *  uses, so the marks and the button break onto separate lines on a phone
- *  instead of widening the header.
- *
- *  Editing drops the row: the links are the inputs below for the duration, and
- *  the page is already in the mode Edit profile would enter. */
+/** The header action cluster: the icon row (linked accounts, then Edit profile on your own
+ * profile), and Follow on someone else's or the save pair while editing. The marks sit right of
+ * the title, where pages keep controls that act on their subject: ghost icon buttons throughout,
+ * Edit profile included. `gap-1.5` matches the event page's action cluster; the cluster's `gap-2`
+ * separates the row from the far-right button. It wraps and right-aligns, so on a phone marks and
+ * button break onto separate lines. Editing drops the row: the inputs below are the links, and the
+ * page is already in edit mode. */
 export function ProfileActions({
   profile,
   isOwn,
@@ -197,13 +163,10 @@ export function ProfileActions({
   );
 }
 
-/** Edit-mode fields that belong to the header rather than to a section card:
- *  the avatar picker (it edits the picture in the title) and the save-error
- *  banner. Nothing in view mode.
- *
- *  The picker is the shared `FileManager` in single-file image mode: its own
- *  remove control drops the picture, and its drop zone comes back once none is
- *  staged, so add and remove are the one primitive rather than two. */
+/** Edit-mode fields that belong to the header rather than a section card: the avatar picker and
+ * the save-error banner. Nothing in view mode. The picker is the shared `FileManager` in
+ * single-file image mode: its remove control drops the picture, and its drop zone returns once
+ * none is staged. */
 export function ProfileHeaderEditFields({
   profile,
   edit,
@@ -213,16 +176,13 @@ export function ProfileHeaderEditFields({
 }) {
   if (!edit.editing && !edit.saveError) return null;
 
-  // The same derivation the title reads. A staged file always renders as a
-  // tile, url or not: what Save uploads has to be what the picker shows, so a
-  // pick whose bytes are still being read names the file instead of falling
-  // back to the picture it would replace.
+  // The same derivation the title reads. A staged file always renders as a tile, url or not: what
+  // Save uploads must be what the picker shows.
   const shown = edit.avatarPreview;
   const item =
     shown.kind === "staged"
       ? {
-          // Identity of the pick, not of its bytes: a data URL is a whole
-          // encoded image and re-keys the tile the moment the read lands.
+          // Identity of the pick, not of its bytes: a data URL re-keys the tile the moment the read lands.
           key: `${shown.file.name}-${shown.file.size}-${shown.file.lastModified}`,
           content: shown.url ? (
             <Avatar

@@ -9,32 +9,26 @@ import { CuratedTagsError } from "@/components/geolocations/CuratedTagsError";
 import type { Conflict, Tag } from "@/types";
 
 /**
- * The tag + conflict block both geolocation forms carry (submit and the
- * detection edit): the three taxonomy fetches, their retryable failure banners,
- * and the `TagPicker` itself. One home so the two forms can't drift on which
- * lists they load, what a failed load says, or when the floor can be judged.
+ * The tag and conflict block both geolocation forms carry: the three taxonomy
+ * fetches, their retryable failure banners, and the `TagPicker`.
  *
- * Split in two because the forms need the data before they render: `useTaxonomy`
- * owns the fetches and answers whether the taxonomy is usable, `TaxonomyFields`
- * renders it. The form keeps the selection state, since publishing is its job.
+ * `useTaxonomy` owns the fetches and says whether the taxonomy is usable (the
+ * forms need the data before they render); `TaxonomyFields` renders it. The form
+ * keeps the selection state.
  */
 
 export interface TaxonomyState {
-  /** Full curated taxonomy, zero-usage rows included (`?curated=true`): the
-   *  first analyst to use a capture source must still be able to pick it. */
+  /** Zero-usage rows included (`?curated=true`), so the first analyst to use a
+   *  capture source can pick it. */
   curatedTags: Tag[];
-  /** The conflicts referential, fetched whole once (~800 rows) and filtered
-   *  client-side by the picker's typeahead. */
+  /** Fetched whole once (~800 rows), filtered client-side. */
   conflicts: Conflict[];
-  /** Null once both curated lists are loaded and the publish floor can be
-   *  judged; otherwise the message to surface. A pending or failed load is a
-   *  recoverable state, not a missing field: judging the floor against an empty
-   *  taxonomy would report both curated tags missing when the analyst picked
-   *  nothing wrong. The two cases read differently (retry vs wait), and the
-   *  failed one points at the banners `TaxonomyFields` renders. */
+  /** Null once both curated lists are loaded; otherwise the message to surface.
+   *  A pending or failed load is recoverable, not a missing field: judging the
+   *  floor against an empty taxonomy would report both curated tags missing. */
   blockedMessage: string | null;
-  /** Live free tags plus the picker's local appends (a newly created tag lands
-   *  here without a refetch). */
+  /** Live free tags plus the picker's local appends (a new tag lands without a
+   *  refetch). */
   tags: Tag[];
   setTags: Dispatch<SetStateAction<Tag[]>>;
   reloadCuratedTags: () => void;
@@ -44,8 +38,7 @@ export interface TaxonomyState {
 }
 
 export function useTaxonomy(): TaxonomyState {
-  // useState, not useApiResource: TagPicker appends newly created tags via
-  // setTags, so the list is server-seeded but locally mutable.
+  // useState, not useApiResource: TagPicker appends created tags via setTags.
   const [tags, setTags] = useState<Tag[]>([]);
   const {
     data: curatedTagsData,
@@ -58,9 +51,7 @@ export function useTaxonomy(): TaxonomyState {
     refetch: reloadConflicts,
   } = useApiResource<Conflict[]>("/conflicts");
 
-  // Stable references (the `?? []` fallback would otherwise mint a new array
-  // each render), so a caller's readiness memos don't recompute on unrelated
-  // renders.
+  // Stable references: `?? []` would mint a new array each render.
   const curatedTags = useMemo(() => curatedTagsData ?? [], [curatedTagsData]);
   const conflicts = useMemo(() => conflictsData ?? [], [conflictsData]);
 
@@ -104,8 +95,7 @@ export function TaxonomyFields({
   setSelectedTagIds: Dispatch<SetStateAction<string[]>>;
   selectedConflictIds: string[];
   setSelectedConflictIds: Dispatch<SetStateAction<string[]>>;
-  /** Flag a curated group as a missing required field (red label + outline)
-   *  when the form's publish was blocked on it. */
+  /** Flag a group blocking publish (red label + outline). */
   conflictInvalid?: boolean;
   captureSourceInvalid?: boolean;
 }) {

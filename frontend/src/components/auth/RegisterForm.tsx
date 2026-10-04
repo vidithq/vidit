@@ -18,9 +18,7 @@ import { Input } from "@/components/ui/Input";
 
 
 interface Props {
-  /** Called once the backend accepts the payload (202). Receives the
-   * email the confirmation link will be sent to so the next screen can
-   * display it back to the user. */
+  /** Called once the backend accepts the payload (202), with the email the confirmation link goes to. */
   onSuccess: (email: string) => void;
   initialInviteCode?: string;
 }
@@ -42,12 +40,10 @@ export default function RegisterForm({
         const result = await register(username, email, password, inviteCode);
         return result.email;
       } catch (err) {
-        // Already registered but unconfirmed (closed the tab / lost the
-        // email): recoverable, so route to the pending screen's Resend rather
-        // than a dead-end error. Branch on the backend's stable ``code`` (see
-        // ``RegistrationError`` in ``backend/app/services/registration.py``),
-        // not English prose. Resolving with the typed email funnels both
-        // paths through `onSuccess` — no error surfaces.
+        // Already registered but unconfirmed: recoverable, so route to the pending screen's Resend rather
+        // than a dead-end error. Branch on the backend's stable `code` (`RegistrationError` in
+        // `backend/app/services/registration.py`), not English prose. Resolving with the typed email
+        // sends both paths through `onSuccess`.
         if (
           err instanceof ApiError &&
           err.code === "email_pending_confirmation"

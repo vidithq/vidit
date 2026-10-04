@@ -12,7 +12,7 @@ vi.mock("next/navigation", () => ({
 const useAuth = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => useAuth() }));
 
-/** The one-paragraph document the editor emits for a line of unmarked text. */
+/** The one-paragraph document for a line of unmarked text. */
 function textDoc(text: string): Record<string, unknown> {
   return {
     type: "doc",
@@ -20,16 +20,13 @@ function textDoc(text: string): Record<string, unknown> {
   };
 }
 
-/** That document read back as text, for the stub's seeded value. */
+/** That document as text, for the stub's seed. */
 function docText(doc: Record<string, unknown> | null | undefined): string {
   const paragraph = (doc?.content as { content?: { text?: string }[] }[])?.[0];
   return paragraph?.content?.[0]?.text ?? "";
 }
-// The description is written in the Tiptap proof editor, which boots
-// ProseMirror and reads its content once at construction. What these lock in
-// is what the page does with the document, not how it is typed, so the editor
-// is a textarea that prints the document it was seeded with and emits the
-// one-paragraph document the real editor emits for unmarked text.
+// The Tiptap editor boots ProseMirror once, so it is stubbed as a textarea that prints its seeded document
+// and emits the one-paragraph document the real editor emits for unmarked text.
 vi.mock("@/components/editor/ProofEditor", () => ({
   default: ({
     initialContent,
@@ -71,9 +68,7 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
     searchPickableEvents(username, q),
 }));
 
-// The add block's list, held empty: what these lock in is the diff the save
-// writes, which is what the picker holds against the items the page opened
-// on.
+// The add block's list is held empty: these specs lock in the diff the save writes.
 const useCursorList = vi.fn();
 vi.mock("@/hooks/useCursorList", () => ({
   useCursorList: () => useCursorList(),
@@ -85,8 +80,7 @@ import EditCollectionPage from "./page";
 
 const USER = { id: "u1", username: "ana" };
 
-/** One of the analyst's own events, as the sequence walk and the add block
- *  both hand it over. */
+/** One of the analyst's own events. */
 const event = (id: string, title: string) => ({
   id,
   title,
@@ -101,7 +95,7 @@ const event = (id: string, title: string) => ({
   before_closed_status: null,
 });
 
-/** What the add block lists, `useCursorList`'s own shape. */
+/** What the add block lists (`useCursorList`'s shape). */
 function mockBrowse(items: unknown[]) {
   useCursorList.mockReturnValue({
     items,
@@ -134,7 +128,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   ...over,
 });
 
-/** The read the page makes: the collection it edits. */
+/** The page's read: the collection it edits. */
 function mockRead(data: Collection | null, error: string | null = null) {
   useApiResource.mockReturnValue({
     data,
@@ -144,13 +138,11 @@ function mockRead(data: Collection | null, error: string | null = null) {
   });
 }
 
-/** The collection the page opens on, as the sequence walk hands it over: the
- *  rows the picker's first block renders, and the baseline the save diffs
- *  against. */
+/** The collection the page opens on: the picker's first-block rows and the save's baseline. */
 const sequenceOf = (...ids: string[]) =>
   ids.map((id) => event(id, `Strike ${id}`));
 
-/** Render, then wait for the two reads the form needs before it mounts. */
+/** Render, then wait for the two reads the form needs. */
 async function renderPage() {
   render(<EditCollectionPage />);
   await screen.findByLabelText("Title");
@@ -194,9 +186,7 @@ describe("EditCollectionPage", () => {
     expect(screen.getByLabelText("Title")).toHaveValue(
       "Kupiansk rail corridor",
     );
-    // The editor opens seeded with the collection's own document. `find`,
-    // because the form loads it through `next/dynamic`, so the field lands a
-    // tick after the first paint.
+    // Seeded with the collection's document; `find` because the form loads it through `next/dynamic`.
     expect(
       await screen.findByRole("textbox", { name: "Description" }),
     ).toHaveValue("Three days of strikes on the eastern approach.");
@@ -221,7 +211,7 @@ describe("EditCollectionPage", () => {
     expect(
       screen.getByRole("heading", { name: "Add events" }),
     ).toBeInTheDocument();
-    // No drop card here: dropping the collection lives on its own page header.
+    // Dropping lives on the collection page's header.
     expect(
       screen.queryByRole("heading", { name: "Drop this collection" }),
     ).not.toBeInTheDocument();
@@ -234,8 +224,7 @@ describe("EditCollectionPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save collection" }));
 
-    // Both fields ride every write, so a renamed collection cannot be left
-    // describing the old one.
+    // Both fields ride every write, so a rename cannot leave the old description.
     await waitFor(() =>
       expect(updateCollection).toHaveBeenCalledWith(
         "c1",
@@ -250,9 +239,7 @@ describe("EditCollectionPage", () => {
     await renderPage();
 
     expect(fetchCollectionSequence).toHaveBeenCalledWith("c1");
-    // The first block is the collection's current items, each with the cross
-    // that takes it off, so the edit starts on the collection rather than on
-    // nothing.
+    // The first block is the current items, each with a remove cross.
     expect(
       screen.getByText("2 events, ordered by event date, earliest first."),
     ).toBeInTheDocument();
@@ -265,8 +252,7 @@ describe("EditCollectionPage", () => {
 
   it("writes the difference the picker made, after the details", async () => {
     mockBrowse([event("e4", "Strike on the depot")]);
-    // The collection opens holding `e3`, which the cross below takes off, and
-    // `e2`, which it keeps. `e4` is added from the block under them.
+    // Opens holding `e3` (removed below) and `e2` (kept); `e4` is added.
     fetchCollectionSequence.mockResolvedValue(sequenceOf("e2", "e3"));
 
     await renderPage();
@@ -283,9 +269,7 @@ describe("EditCollectionPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save collection" }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/collections/c1"));
-    // The details first, then only what moved: the row the picker still holds
-    // is left alone, since both membership routes are idempotent but a write
-    // per row would be a request for every item on a long shelf.
+    // Details first, then only what moved: a write per row would flood a long shelf.
     expect(updateCollection).toHaveBeenCalled();
     expect(addEventToCollection).toHaveBeenCalledWith("c1", "e4");
     expect(removeEventFromCollection).toHaveBeenCalledWith("c1", "e3");
@@ -335,8 +319,7 @@ describe("EditCollectionPage", () => {
 
     render(<EditCollectionPage />);
 
-    // The gate the backend enforces with a 403, stated before the form rather
-    // than after a bounced write, with the way to the collection itself.
+    // The backend's 403 gate, stated before the form, with the way to the collection.
     expect(
       screen.getByText(/You can only edit your own collections/),
     ).toBeInTheDocument();

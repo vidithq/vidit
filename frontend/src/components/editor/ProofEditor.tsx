@@ -11,27 +11,20 @@ import { cn } from "@/lib/cn";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
 import { PROOF_PLACEHOLDER_PREFIX, safeProofFilename } from "@/lib/proofImages";
 
-/** A link the proof pipeline carries end to end: an absolute http(s) URL.
- *  Exported for its test. */
+/** A link the proof pipeline carries end to end: an absolute http(s) URL. Exported for its test. */
 export const isProofLinkUri = (url: string): boolean => /^https?:\/\//i.test(url);
 
-// Links are http(s) only, for the same reason underline is off below. StarterKit
-// v3 registers the Link extension with linkify's default protocol set (mailto,
-// tel, ftp, sms, xmpp, …) and autolink on, while both sanitisers downstream take
-// http(s) only (`services/sanitize.py::safe_link_href`, `lib/proof.tsx::
-// isSafeLinkHref`), so an autolinked `mailto:` would read as a link to the
-// analyst and be stripped at publish. The `protocols` option can only widen
-// linkify's set, so the narrowing goes through `isAllowedUri`, which the paste,
-// autolink and render paths all consult. Autolink survives for what the mirrors
-// accept: a typed or pasted `https://…` still links, a bare `example.com` and an
-// email address no longer do. Change this only together with those two mirrors.
+// Links are http(s) only, like both sanitisers downstream (`services/sanitize.py::safe_link_href`,
+// `lib/proof.tsx::isSafeLinkHref`). StarterKit v3 registers Link with linkify's wider protocol set
+// (mailto, tel, ...) and autolink on, so an autolinked `mailto:` would look like a link and be
+// stripped at publish. `protocols` can only widen, so the narrowing goes through `isAllowedUri`,
+// which paste, autolink and render consult. A typed `https://...` still links; a bare
+// `example.com` or email address doesn't. Change only together with those two mirrors.
 //
-// Underline is off: StarterKit v3 registers it by default (Cmd/Ctrl+U), but the
-// proof pipeline has no underline anywhere downstream. The backend sanitizer
-// drops the mark (`services/sanitize.py`, `_ALLOWED_MARKS` = bold / italic /
-// strike / code / link) and the renderer can't paint it (`lib/proof.tsx`,
-// `applyMarks`), so an underlined run would silently lose its formatting at
-// publish. Change this only together with those two mirrors.
+// Underline is off: StarterKit v3 registers it (Cmd/Ctrl+U), but the backend sanitizer drops the
+// mark (`services/sanitize.py`, `_ALLOWED_MARKS` = bold / italic / strike / code / link) and the
+// renderer can't paint it (`lib/proof.tsx`, `applyMarks`), so an underlined run would silently
+// lose its formatting at publish. Change only together with those two mirrors.
 const PROOF_STARTER_KIT = StarterKit.configure({
   underline: false,
   link: { isAllowedUri: isProofLinkUri },
@@ -39,24 +32,16 @@ const PROOF_STARTER_KIT = StarterKit.configure({
 
 interface ProofEditorProps {
   onChange: (json: Record<string, unknown>) => void;
-  /** The proof body's inline images, kept locally while typing and uploaded
-   *  only at publish (as `proof_files[]`). Fires on every add / removal so the
-   *  parent stages exactly the files the doc still references. */
+  /** The proof body's inline images, kept locally while typing and uploaded at publish (as
+   * `proof_files[]`). Fires on every add or removal so the parent stages exactly the files the doc
+   * still references. */
   onProofFilesChange?: (files: File[]) => void;
-  // Optional initial Tiptap doc (a draft the analyst comes back to). Tiptap
-  // reads it once at construction — pair with a ``key`` on the parent to
-  // re-seed after mount.
+  // Optional initial Tiptap doc (a draft). Read once at construction: pair with a `key` on the parent to re-seed.
   initialContent?: Record<string, unknown> | null;
-  /** Whether the body may carry images. False drops the "+ Image" control and
-   *  the divider before it, for a surface with no upload path behind one: a
-   *  collection's description is written here and stored with
-   *  `sanitize_tiptap_doc(allow_images=False)`, so an image node would be
-   *  dropped at the server anyway. The rest of the toolbar is untouched, so
-   *  one editor serves both surfaces. */
+  /** Whether the body may carry images. False drops the "+ Image" control for a surface with no
+   * upload path (a collection's description is stored with `sanitize_tiptap_doc(allow_images=False)`). */
   allowImages?: boolean;
-  /** Red invalid outline on the editor's own box, the same FORM_INVALID_FIELD
-   *  every field and section card wears, for a caller whose submit refuses
-   *  what the body currently holds. */
+  /** Red invalid outline on the editor's box (FORM_INVALID_FIELD) for a caller whose submit refuses the body. */
   invalid?: boolean;
 }
 
@@ -66,12 +51,8 @@ type ImageEntry = { previewUrl: string; placeholder: string; file: File };
 
 type ImageNode = { attrs: Record<string, unknown>; content?: unknown[] };
 
-/**
- * Depth-first walk calling `visit` on every Tiptap image node (a node with
- * `type: "image"` and a string `attrs.src`). Shared by `resolveProofDoc` and
- * `emit` below, the doc's only two places that inspect image srcs, so the
- * tree-walking itself has one home.
- */
+/** Depth-first walk calling `visit` on every Tiptap image node. Shared by `resolveProofDoc` and
+ * `emit`, the only places that inspect image srcs. */
 function walkImageNodes(node: unknown, visit: (n: ImageNode) => void): void {
   if (typeof node !== "object" || node === null) return;
   const n = node as { type?: string; attrs?: Record<string, unknown>; content?: unknown[] };
@@ -81,14 +62,10 @@ function walkImageNodes(node: unknown, visit: (n: ImageNode) => void): void {
   if (Array.isArray(n.content)) n.content.forEach((c) => walkImageNodes(c, visit));
 }
 
-/**
- * The core of `emit` below, pulled out as a pure function so the
- * `previewUrl` → file matching (and its identical-content collision fix)
- * is directly testable without booting a real Tiptap editor. Rewrites
- * live-preview srcs in a copy of `json` back to their `placeholder://`
- * form, and returns the files the rewritten doc still references (a
- * deleted image node drops its file from the upload batch).
- */
+/** The core of `emit`, pure so the `previewUrl` to file matching (and its identical-content
+ * collision fix) is testable without a Tiptap editor. Rewrites live-preview srcs in a copy of
+ * `json` back to `placeholder://` and returns the files the doc still references (a deleted image
+ * drops its file). */
 export function resolveProofDoc(
   json: Record<string, unknown>,
   entries: ImageEntry[]
@@ -96,9 +73,7 @@ export function resolveProofDoc(
   const byPreviewUrl = new Map(entries.map((e) => [e.previewUrl, e]));
   const referenced = new Set<string>();
 
-  // Deep-clone first: mutating Tiptap's own JSON in place corrupts its
-  // document state. `structuredClone` is available in every runtime this
-  // ships to (modern browsers + the test env).
+  // Deep-clone first: mutating Tiptap's own JSON corrupts its document state.
   const doc = structuredClone(json);
   walkImageNodes(doc, (n) => {
     const src = n.attrs.src as string;
@@ -116,26 +91,19 @@ export function resolveProofDoc(
 }
 
 /**
- * The Tiptap proof editor with proof-at-publish image handling. "+ Image" holds
- * a picked file locally: it inserts an image node with a blob-URL src for a live
- * preview, and remembers the file under a `placeholder://<filename>` key.
- * On every edit the emitted JSON rewrites live-preview srcs back to their
- * `placeholder://` form, so the document handed up (and eventually stored) never
- * carries one. Nothing touches S3 until the parent submits: it reads the
- * still-referenced files via `onProofFilesChange` and posts them as
- * `proof_files[]` on create / geolocate, where the server matches each file to
- * its placeholder by filename and rewrites the src to the stored URL (see
- * `docs/data-model.md` → media → "Upload timing").
+ * The Tiptap proof editor with proof-at-publish image handling. "+ Image" holds a picked file
+ * locally: it inserts an image node with a blob-URL src for preview and remembers the file under a
+ * `placeholder://<filename>` key. Emitted JSON rewrites those srcs back to `placeholder://`, so the
+ * stored document never carries a blob URL. Nothing touches S3 until the parent submits: it reads
+ * the still-referenced files via `onProofFilesChange` and posts them as `proof_files[]`, where the
+ * server matches each file to its placeholder by filename (see `docs/data-model.md`, media,
+ * "Upload timing").
  *
- * `allowImages={false}` takes that control off the toolbar and leaves the rest
- * of it alone, for a body stored under the same allowlist minus images: a
- * collection's description. One editor rather than two, so the marks, the
- * lists and the link rules stay the same wherever an analyst writes.
+ * `allowImages={false}` removes that control for a body stored under the same allowlist minus
+ * images (a collection's description): one editor, so marks, lists and link rules stay the same.
  */
-// One shape for every toolbar control, plus the two state paints. The row
-// repeats the same box five times, so it is written once here, and it carries
-// the phone tap step `<Button>` takes: the resting control is about 24px tall,
-// and this row is what a reader reaches for while writing proof on a phone.
+// One shape for every toolbar control plus the two state paints, with the phone tap step
+// `<Button>` takes (the resting control is about 24px tall).
 const TOOL = `inline-flex items-center px-2 py-1 rounded text-xs ${TAP_STEP}`;
 const TOOL_ON = "bg-neutral-600 text-white";
 const TOOL_OFF = "text-neutral-400 hover:bg-neutral-700";
@@ -147,17 +115,14 @@ export default function ProofEditor({
   allowImages = true,
   invalid = false,
 }: ProofEditorProps) {
-  // Files staged locally, keyed by blob URL. A ref (not state) so the Tiptap
-  // `onUpdate` closure always sees the live map without re-creating the editor.
+  // Files staged locally, keyed by blob URL. A ref so the `onUpdate` closure sees the live map without re-creating the editor.
   const entriesRef = useRef<ImageEntry[]>([]);
-  // Filenames already claimed this session, so two picks of `IMG.jpg` don't
-  // collide on one placeholder (the server rejects a duplicate proof filename).
+  // Filenames claimed this session, so two picks of `IMG.jpg` don't share a placeholder (the server
+  // rejects a duplicate proof filename).
   const usedNamesRef = useRef<Set<string>>(new Set());
 
-  // Rewrite blob srcs → their `placeholder://` form in a copy of the emitted
-  // doc, then report the copy plus the files it still references. Kept in a ref
-  // so the editor's `onUpdate` callback stays stable. The actual matching
-  // lives in `resolveProofDoc` (pulled out for testability).
+  // Rewrite blob srcs to `placeholder://` in a copy of the emitted doc and report the copy plus its
+  // files (matching lives in `resolveProofDoc`). A ref keeps `onUpdate` stable.
   const emit = useCallback(
     (json: Record<string, unknown>) => {
       const { doc, files } = resolveProofDoc(json, entriesRef.current);
@@ -182,8 +147,7 @@ export default function ProofEditor({
     },
   });
 
-  // Revoke every "+ Image"-staged blob URL on unmount so a compose → navigate
-  // cycle doesn't leak object URLs.
+  // Revoke staged blob URLs on unmount so compose then navigate doesn't leak object URLs.
   useEffect(() => {
     const entries = entriesRef.current;
     return () => {
@@ -196,10 +160,8 @@ export default function ProofEditor({
     const name = safeProofFilename(file.name, usedNamesRef.current);
     if (name === null) return; // unusable filename, skip rather than stage junk
     usedNamesRef.current.add(name);
-    // Upload the file under exactly `name` so the server's
-    // `safe_original_filename` reproduces the placeholder suffix. When the
-    // sanitised / disambiguated name differs from the original, rebuild the
-    // File so its `.name` matches (a bare rename can't be done on a File).
+    // Upload under exactly `name` so the server's `safe_original_filename` reproduces the placeholder
+    // suffix; rebuild the File when the name differs (a File can't be renamed).
     const staged =
       file.name === name ? file : new File([file], name, { type: file.type });
     const blobUrl = URL.createObjectURL(staged);
@@ -208,18 +170,16 @@ export default function ProofEditor({
       placeholder: `${PROOF_PLACEHOLDER_PREFIX}${name}`,
       file: staged,
     });
-    // The blob URL is the *live preview* src; `emit` swaps it for the
-    // placeholder in everything that leaves this component.
+    // The blob URL is the live-preview src; `emit` swaps it for the placeholder in everything leaving here.
     editor.chain().focus().setImage({ src: blobUrl }).run();
   };
 
   if (!editor) return null;
 
   return (
-    // The field box every other input wears: the same border and fill, the
-    // accent focus border `<Input>`'s default variant takes (through
-    // `focus-within`, since what takes focus here is the ProseMirror surface
-    // inside), and `FORM_INVALID_FIELD` when the caller flags it.
+    // The field box every other input wears: same border and fill, the accent focus border `<Input>`
+    // takes (via `focus-within`: focus lands on the inner ProseMirror surface), and
+    // `FORM_INVALID_FIELD` when flagged.
     <div
       className={cn(
         "border border-neutral-700 rounded-sm bg-neutral-800 focus-within:border-orange-500",
@@ -266,8 +226,7 @@ export default function ProofEditor({
         {allowImages && (
           <>
             <div className="w-px h-4 bg-neutral-700 mx-1" />
-            {/* Holds the picked file locally (blob preview + retained File);
-                the upload happens at publish via proof_files[]. */}
+            {/* Holds the picked file locally (blob preview plus retained File); upload happens at publish. */}
             <label
               className={`${TOOL} ${TOOL_OFF} cursor-pointer`}
               title="Add a proof image (uploaded when you publish)"

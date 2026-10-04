@@ -14,25 +14,19 @@ class User(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    # Nullable for historical credential-less rows (the retired assembled-
-    # profile mechanism minted users from an X handle alone); every account
-    # created today carries both, set by the registration flow.
+    # Nullable for historical credential-less rows; every account created today
+    # carries both.
     email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # The X handle the bot attributes mentions to, stored lowercased without
-    # the leading `@`. Two write paths, neither self-serve: registration copies
-    # an invite-bound handle, and `PATCH /admin/users/{id}/x-handle` repairs
-    # or backfills (verify-by-post linking is a later gate).
-    # UNIQUE: one account per handle. Distinct from `external_links["x"]`, a
-    # free-text display link the owner sets; this is the attribution anchor.
+    # The X handle the bot attributes mentions to, lowercased without `@`.
+    # Written by registration (invite-bound handle) and
+    # `PATCH /admin/users/{id}/x-handle`; not self-serve. UNIQUE: one account per
+    # handle. Distinct from `external_links["x"]`, a free-text display link.
     x_handle: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # Deliberate audit stamp: written once by the registration flow, read by no
-    # code path. A ``users`` row exists only because the analyst clicked the
-    # confirmation link, so this is non-NULL for any row minted after the
-    # pending_registrations migration; legacy rows (pre-cutover, never verified)
-    # may hold NULL. Keep it: it is the record of when email control was proven.
+    # Audit stamp written once by registration, read by no code path: when email
+    # control was proven. Legacy rows may hold NULL.
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -41,39 +35,28 @@ class User(Base):
         default=lambda: datetime.now(UTC),
         nullable=False,
     )
-    # Instant of the account's most recent authenticated request, throttled.
-    # ``dependencies.get_current_user`` refreshes it once per
-    # ``LAST_SEEN_THROTTLE`` window, so a signed-in session costs one UPDATE
-    # per window instead of one per request; the login and register-confirm
-    # routes stamp it when they issue cookies, so a fresh session reads as
-    # active straight away. NULL on a row that has made no authenticated
-    # request since the column landed.
+    # Most recent authenticated request, throttled: ``dependencies.get_current_user``
+    # refreshes it once per ``LAST_SEEN_THROTTLE`` window; login and
+    # register-confirm stamp it too. NULL if no request since the column landed.
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Soft-delete: NULL = live, timestamp = removed. Login + auth checks reject
-    # soft-deleted users; public reads filter `deleted_at IS NULL`. Soft-
-    # deleting a user cascade-soft-deletes every geolocation they authored.
+    # Soft-delete: NULL = live. Auth checks reject soft-deleted users and public
+    # reads filter them; it cascade-soft-deletes their geolocations.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Monotonic session-invalidation counter. The session JWT embeds it as a
-    # `tv` claim at mint time and `get_current_user` 401s on mismatch. Bumped on
-    # logout, password change, password reset, and soft-delete so all
-    # outstanding sessions die at once — clearing the cookie alone doesn't
-    # invalidate the token.
+    # Session-invalidation counter: the session JWT embeds it as `tv` and
+    # `get_current_user` 401s on mismatch. Bumped on logout, password change,
+    # password reset and soft-delete (clearing the cookie doesn't kill the token).
     token_version: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", nullable=False
     )
-    # Public profile fields. Bio is plain text (no Tiptap, no inline media: a
-    # short signal, not a post), opt-in via PATCH /users/me.
+    # Plain-text bio, opt-in via PATCH /users/me.
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Server-minted, never a value the owner types: PUT /users/me/avatar stores
-    # one stripped 400 px JPEG under `avatars/<user id>/` and writes its public
-    # URL here, DELETE clears both. Every viewer's browser therefore fetches
-    # the picture from our own media host, so a profile field cannot become a
-    # beacon that collects the IP and User-Agent of everyone who loads a page
-    # the avatar appears on.
+    # Server-minted, never typed by the owner: PUT /users/me/avatar stores one
+    # stripped 400 px JPEG under `avatars/<user id>/`, DELETE clears both. Keeps
+    # the picture on our own media host so a profile field can't be a beacon
+    # collecting viewers' IPs.
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # JSONB keyed by platform (x, discord, website, github). Default ``{}`` so
-    # the read path is always a dict (never NULL); PATCH is wholesale-replace,
-    # not deep-merge.
+    # Keyed by platform (x, discord, website, github); ``{}`` default; PATCH
+    # replaces wholesale.
     external_links: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, nullable=False, server_default="{}"
     )

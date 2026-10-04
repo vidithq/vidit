@@ -15,54 +15,34 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 // One card for every catalogue entity (geolocated / detected geolocation,
 // requested event), in either layout.
 //
-// - Click model is uniform: the whole card navigates to `detailHref` via a
-//   stretched link. The author byline sits above it (`relative z-20`) and
-//   stays independently clickable. No nested <a>.
-// - `onSelect` swaps that one link for a stretched button, for a list whose
-//   rows pick a position on the surface they sit on rather than leave it (the
-//   collection page's step list). A card carries one gesture: the title is
-//   plain text in this mode (same typography as the linked title, minus the
-//   link styling and the z-20 lift) and `detailHref` renders nowhere on the
-//   row. The entity's own page stays reachable elsewhere (the player panel's
-//   own title, above the list).
-// - It renders the slots that carry data; an entity without `coords` (a request)
-//   simply omits that bit. No `kind` flag.
-// - The thumbnail is the private `MediaThumb` below: the real media when
-//   `media` is present, its marked "no media" box otherwise.
+// - The whole card navigates to `detailHref` via a stretched link. The author
+//   byline sits above it (`relative z-20`) and stays clickable. No nested <a>.
+// - `onSelect` swaps that link for a stretched button, for a list whose rows
+//   pick a position on the surface they sit on (the collection page's step
+//   list). The title is plain text in this mode and `detailHref` renders
+//   nowhere.
+// - Slots without data are omitted (a request has no `coords`). No `kind` flag.
 
-// The one fixed-ratio media slot on cards: the real media when there is one
-// (the image derivative `size` names, or muted video first-frame via `posterFrameUrl` +
-// `preload="metadata"` so it paints as a poster), else a marked "no media"
-// box. No generated stand-ins: a card without media says so. The video is
-// `object-contain` on the slot's backdrop, so a portrait clip letterboxes in
-// the 16:9 slot rather than showing a cropped band of itself. Consumers: this
-// card, the map's pin preview, and the detections queue row (the detail
-// surfaces use MediaGallery).
+// The one fixed-ratio media slot on cards: the real media, else a marked "no
+// media" box. Video shows its first frame via `posterFrameUrl` +
+// `preload="metadata"`, `object-contain` so a portrait clip letterboxes.
+// Consumers: this card, the map's pin preview, the detections queue row.
 //
-// `isGraphic` covers the slot with the compact `GraphicContentGate`, the same
-// per-session confirmation the detail gallery asks for, so a flagged event
-// never paints its footage on a card the reader was only scrolling past. The
-// gate wraps the picture and not the slot, so the "no media" box is never
-// covered (there is nothing to cover).
+// `isGraphic` covers the picture (not the "no media" box) with the compact
+// `GraphicContentGate`.
 export function MediaThumb({
   media,
   size = "thumbnail",
   className,
   isGraphic = false,
 }: {
-  /** Anything carrying a stored url, its kind and its role: an event's `Media`
-   *  row, or one tile of a collection's mosaic, which is one item's media read
-   *  off the collection read. The kind is what picks the element, so a clip
-   *  plays as a clip on every surface that shows this slot; the role is what
-   *  `displayUrlsFor` reads to know whether the picture has derivatives. */
+  /** The kind picks the element; the role tells `displayUrlsFor` whether the
+   *  picture has derivatives. */
   media?: Pick<Media, "storage_url" | "media_type" | "role">;
-  /** Which image derivative the slot reads: the 400 px `thumbnail` a card row
-   *  shows, or the 1280 px `hero` a slot spanning its column needs (a
-   *  collection's mosaic where one tile fills it). Videos and proof images have
-   *  no derivatives and ignore it. */
+  /** Image derivative: 400 px `thumbnail` or 1280 px `hero`. Videos and proof
+   *  images have none and ignore it. */
   size?: "thumbnail" | "hero";
   className?: string;
-  /** The event's `is_graphic` flag. */
   isGraphic?: boolean;
 }) {
   const picture = media ? (
@@ -87,18 +67,13 @@ export function MediaThumb({
   return (
     <div
       className={cn(
-        // `self-start` keeps the aspect ratio: in a stretch-aligned flex row a
-        // tall neighbour otherwise pulls the slot to full card height and the
-        // thumbnail renders as a column.
+        // `self-start` keeps the aspect ratio in a stretch-aligned flex row.
         "relative w-28 aspect-video self-start rounded-md overflow-hidden bg-neutral-800 shrink-0",
         className,
       )}
     >
       {picture ? (
-        // The compact gate lifts its own reveal control above the card's
-        // stretched link (`z-20`, the lift `AuthorLink` gets), so the control
-        // takes the click; once revealed nothing is left above the link and
-        // the thumbnail navigates like any other card surface.
+        // The compact gate lifts its reveal control above the stretched link.
         isGraphic ? (
           <GraphicContentGate variant="compact">{picture}</GraphicContentGate>
         ) : (
@@ -113,77 +88,51 @@ export function MediaThumb({
   );
 }
 
-// The stretched link needs a plain-string accessible name. When `title` is a
-// string it doubles as that name and `titleText` is optional; when `title` is a
-// node (search highlights) `titleText` is required, so the link can never end
-// up unnamed.
+// The stretched link needs a plain-string name: `title` doubles as it when a
+// string, else `titleText` is required.
 type TitleProps =
   | { title: string; titleText?: string }
   | { title: ReactNode; titleText: string };
 
 interface EntityCardBaseProps {
-  /** A rendered status pill: `<StatusBadge>` (any lifecycle state). */
   badge?: ReactNode;
   media?: Media;
-  /** The event's `is_graphic` flag, forwarded to the card's media slot. */
   isGraphic?: boolean;
-  /** The card's byline. Shown on every catalogue surface, where a card stands
-   *  beside other analysts' work and the handle is what tells them apart.
-   *  Omitted on a surface that is one analyst's own set and names them once in
-   *  its header (a collection's item list), where repeating the same handle on
-   *  every row says nothing about any of them. */
+  /** Omitted on a surface that names one analyst once in its header (a
+   *  collection's item list). */
   author?: { username: string };
-  /** The fixed height floor that keeps every row of a catalogue list the same
-   *  height whatever slots its entity fills (a 1-line title, tags or none).
-   *  A list whose rows all carry the same short shape turns it off: a
-   *  collection's items drop the byline and stand under a header that names
-   *  the analyst, so the floor would leave a band of empty space under two
-   *  lines of text on every row. Off, the row stands on its media column and
-   *  the text centres against it. */
+  /** Fixed height floor so catalogue rows match whatever slots they fill. Off,
+   *  the row stands on its media column and the text centres against it. */
   uniformHeight?: boolean;
-  /** True for the row the surface currently stands on: the card wears the
-   *  accent border its hover treatment already uses, and the stretched control
-   *  is marked as the current one. */
+  /** The row the surface currently stands on: accent border, marked current. */
   selected?: boolean;
   date?: string;
   coords?: { lat: number; lng: number } | null;
-  /** ``url`` is null on a sourceless machine detection; `SourceLabel` renders the
-   *  muted "To confirm" label for it. */
+  /** `url` is null on a sourceless machine detection ("To confirm" label). */
   source?: { url: string | null };
   tags?: { id: string; name: string }[];
 }
 
-// The row control belongs to the compact row, which has a column to hang it
-// in: the badge's, at the bottom right. The feed card has no such column (its
-// badge floats over the media in the corner), so the type refuses the prop
-// there rather than letting a feed caller pass a control that renders
-// nowhere.
+// The row control hangs in the compact row's badge column. The feed card has no
+// such column, so the type refuses the prop there.
 type VariantProps =
   | {
       variant?: "compact";
-      /** A control that acts on this row rather than opening it (taking an
-       *  item off a collection). It renders above the stretched link, at the
-       *  bottom of the badge's column, so it takes its own click and sits as
-       *  far from the row's own destination as the column allows; a row with
-       *  none stays one click. */
+      /** A control that acts on this row rather than opening it. Renders above
+       *  the stretched link, at the bottom of the badge's column. */
       action?: ReactNode;
     }
   | { variant: "feed"; action?: undefined };
 
-// A card carries one gesture. The default mode's stretched link needs
-// `detailHref`; `onSelect`'s stretched button needs none, since the title
-// renders as plain text and the entity's own page is reached elsewhere in
-// that mode.
+// A card carries one gesture: `detailHref` for the link, `onSelect` for the
+// button.
 type SelectableProps =
   | { onSelect?: undefined; detailHref: string; selectLabel?: undefined }
   | {
-      /** Picks this row on the surface it sits on instead of opening it. The
-       *  whole card becomes the button that does it. */
+      /** Picks this row instead of opening it. */
       onSelect: () => void;
       detailHref?: string;
-      /** What that button is called. Required, since the title beside it
-       *  already carries the row's own name and two controls reading the same
-       *  words say nothing about either. */
+      /** The button's name; the title already names the row. */
       selectLabel: string;
     };
 
@@ -207,8 +156,6 @@ function CoordsMeta({ coords }: { coords: { lat: number; lng: number } }) {
   );
 }
 
-// The author link is interactive (-> profile), so it sits above the stretched
-// link.
 function AuthorLink({ username }: { username: string }) {
   return (
     <Link
@@ -258,17 +205,9 @@ export function EntityCard({
       className="absolute inset-0 z-10 rounded-[inherit]"
     />
   );
-  // A card carries one gesture: on a selecting row the title is plain text,
-  // same as every other row, where the whole card is the link already. It
-  // carries no `detailHref` of its own in that mode; the entity's own page is
-  // reached elsewhere (the player panel's own title, on the collection page).
-  // The one border a selected row wears, the accent its hover already reaches
-  // for, so standing on a row and pointing at one read as the same colour.
   const shell = cn(SHELL, selected && "border-orange-500/60");
-  // Always a thumbnail (keeps the row height uniform): MediaThumb renders the
-  // real media or its own "no media" box. Narrower on a phone, where the
-  // desktop 112px slot plus the status badge left the title column no width at
-  // all and the heading rendered as an empty strip.
+  // Narrower on a phone, where the 112px slot plus the badge left the title no
+  // width.
   const thumb = (
     <MediaThumb media={media} isGraphic={isGraphic} className="w-20 sm:w-28" />
   );
@@ -319,24 +258,12 @@ export function EntityCard({
     <div className={cn(shell, TAPPABLE_HOVER)}>
       {stretched}
       {thumb}
-      {/* The badge shares the row with the text from `sm` up and drops under it
-          on a phone: as a `shrink-0` column beside a `min-w-0` one it took its
-          full width out of the title's, and a status pill is wide enough to
-          leave nothing behind. */}
+      {/* The badge drops under the text on a phone: beside it, the pill left
+          the title no width. */}
       <div className="flex-1 min-w-0 flex flex-col gap-1.5 sm:flex-row sm:items-stretch sm:gap-2">
-        {/* Under `uniformHeight`, a fixed min-height keeps every compact card
-            the same height. Content packs to the top, so a 1-line title leaves
-            its slack at the bottom of the card rather than as a gap under the
-            title. Dropped on a phone, where the badge's own row already fills
-            it and the floor only added dead space.
-
-            Without it the row stands on its media column, and text shorter
-            than that column centres against it, so two lines sit beside the
-            thumbnail instead of hanging from its top edge over a band of
-            nothing. Text taller than the column sets the row's height and
-            `justify-center` has nothing left to move, which is why a row
-            carrying a byline, a meta line and tags reads the same either
-            way. */}
+        {/* `uniformHeight` sets a min-height (dropped on a phone) and packs content
+            to the top. Without it, text shorter than the media column centres
+            against it. */}
         <div
           className={cn(
             "flex-1 min-w-0 flex flex-col gap-1.5",
@@ -369,15 +296,9 @@ export function EntityCard({
           )}
         </div>
         {(badge || action) && (
-          // The badge is inert and sits under the stretched link; the action is
-          // a control, so it is lifted above it (`relative z-20`, the lift the
-          // author link takes) and takes its own click.
-          //
-          // The column holds the two apart: the badge at the top of the row and
-          // the action at its bottom right, the far corner from the title, so a
-          // control that takes the row away is never under the pointer aiming
-          // at the row itself. A column carrying only a badge keeps it at the
-          // top, which is where every other catalogue row wears it.
+          // The badge is inert; the action is lifted above the stretched link
+          // (`relative z-20`) and sits at the bottom right, the far corner from
+          // the row's own destination.
           <div className="shrink-0 flex items-start justify-between gap-1.5 sm:flex-col sm:items-end">
             {badge}
             {action && <div className="relative z-20">{action}</div>}

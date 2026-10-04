@@ -1,17 +1,7 @@
-"""Shared helpers for the events sub-routers.
-
-What the ``read`` / ``write`` / ``item`` sub-routers all need, kept here so
-none imports another:
-
-* the typed-error → HTTP envelopes (``_raise_event_error``,
-  :func:`raise_archive_error` and :func:`raise_version_error`, each over its
-  ``code → status`` map),
-* :func:`build_event_read` and :func:`build_event_list`, the single
-  ``EventRead`` / ``EventList`` assemblers shared by every response site
-  (including the users and social routers, which import from here), and
-* the small projection helpers (:func:`coords_or_none`, :func:`thumbnail_media`)
-  every serializer leans on, and :func:`resolve_live_event`, the by-id fetch
-  the write sub-routers share.
+"""Shared helpers for the events sub-routers (``read`` / ``write`` / ``item``),
+kept here so none imports another: the typed-error to HTTP envelopes, the
+``EventRead`` / ``EventList`` assemblers (also imported by the users and social
+routers), the projection helpers and :func:`resolve_live_event`.
 """
 
 import uuid
@@ -37,17 +27,12 @@ from app.services.source_archive import SnapshotRejected, archive_row_for
 from app.services.thumbnails import pick_thumbnail
 from app.services.versions import VersionLimitError
 
-# Item type of the repeated ``secondary_source_urls`` multipart field, shared by
-# the create / request / geolocate forms. The ceiling rides on the ITEM: a
-# ``max_length`` on the ``list[str]`` parameter would cap how many entries the
-# form accepts, not how long each URL may be.
+# Item type of the repeated ``secondary_source_urls`` field. The ceiling rides
+# on the item: ``max_length`` on the ``list[str]`` would cap the entry count.
 SecondarySourceUrl = Annotated[str, StringConstraints(max_length=SOURCE_URL_MAX_LENGTH)]
 
-# Every ``SnapshotRejected`` code is the same verdict about the same two
-# fields: what the analyst pasted is not a snapshot address, or names a link the
-# event does not carry. 400 across the board, with the code telling them which
-# check it failed. Shared by every write form that carries a snapshot field, so
-# one paste is answered the same way wherever it arrives.
+# Every ``SnapshotRejected`` code is a 400; the code says which check failed.
+# Shared by every write form with a snapshot field.
 ARCHIVE_ERROR_STATUS: dict[str, int] = {
     "original_url_not_on_event": 400,
     "snapshot_url_invalid": 400,
@@ -90,10 +75,8 @@ _VERSION_ERROR_STATUS: dict[str, int] = {"version_limit": 409}
 def raise_version_error(exc: VersionLimitError) -> NoReturn:
     """Translate a refused version into its 409.
 
-    Its own envelope rather than an entry in :data:`_EVENT_ERROR_STATUS`,
-    because the ceiling is raised by ``services/versions`` and
-    :class:`VersionLimitError` is not an :class:`EvidenceIntakeError`, which is
-    the one base :func:`_raise_event_error` catches.
+    Its own map because :class:`VersionLimitError` is not an
+    :class:`EvidenceIntakeError`, the base :func:`_raise_event_error` catches.
     """
     raise_typed_error(exc, _VERSION_ERROR_STATUS)
 
@@ -101,14 +84,10 @@ def raise_version_error(exc: VersionLimitError) -> NoReturn:
 def resolve_live_event(db: Session, event_id: uuid.UUID) -> Event:
     """Fetch a live event by id, or 404.
 
-    A soft-deleted row reads as 404 (an admin-removed row isn't actionable, the
-    same surface as a genuine 404, no enumeration oracle). A withheld row
-    (``hidden_at``) reads the same way: a takedown freezes the event for its
-    owner too, so it can be neither edited, closed, investigated nor archived
-    while it stands, and only the admin moderation endpoint lifts it.
-    Permission is the caller's concern: the geolocate transition owns
-    per-status ownership (a ``requested`` event is answerable by anyone), while
-    the owner-only verbs call ``permissions.ensure_owner`` themselves.
+    A soft-deleted or withheld (``hidden_at``) row reads as 404: a takedown
+    freezes the event for its owner too, until the admin moderation endpoint
+    lifts it. Permission is the caller's concern (geolocate owns per-status
+    ownership; owner-only verbs call ``permissions.ensure_owner``).
     """
     geo = db.query(Event).filter(Event.id == event_id, *visible_events()).first()
     if geo is None:
@@ -117,22 +96,16 @@ def resolve_live_event(db: Session, event_id: uuid.UUID) -> Event:
 
 
 def coords_or_none(lat: float | None, lng: float | None) -> CoordsRead | None:
-    """Fold a projected ``(lat, lng)`` pair into the nested wire shape.
-
-    A PostGIS point projects to two floats or two NULLs; half a pair never
-    occurs, so ``None`` on either side means "no point".
-    """
+    """Fold a projected ``(lat, lng)`` pair into the nested wire shape; a
+    ``None`` on either side means no point."""
     if lat is None or lng is None:
         return None
     return CoordsRead(lat=lat, lng=lng)
 
 
 def thumbnail_media(geo: Event) -> MediaRead | None:
-    """The event's card thumbnail as its wire shape, or None.
-
-    Delegates the pick to ``services.thumbnails.pick_thumbnail`` (first
-    ``source`` row, else first ``proof`` image), the one home for the rule.
-    """
+    """The event's card thumbnail as its wire shape, or None
+    (``services.thumbnails.pick_thumbnail`` owns the pick)."""
     row = pick_thumbnail(geo.media)
     return MediaRead.model_validate(row) if row is not None else None
 
@@ -145,10 +118,8 @@ def build_event_list(
 ) -> EventList:
     """Assemble the ``EventList`` card for one event.
 
-    The list-payload twin of :func:`build_event_read`, shared by every paged
-    surface (the events index, a user's geolocations, the follow timeline) so
-    a card is the same shape wherever it renders. Coordinates come in
-    re-projected by the caller, same contract as :func:`build_event_read`.
+    The list twin of :func:`build_event_read`; coordinates come in
+    re-projected by the caller.
     """
     return EventList(
         id=geo.id,
@@ -168,11 +139,8 @@ def build_event_list(
 def build_version_read(row: EventVersion) -> EventVersionRead:
     """Assemble one superseded version's wire shape.
 
-    The snapshot travels as stored, so a version reads back exactly as it was
-    filed, and a redacted one reads back blank because that is what redaction
-    wrote. A soft-deleted editor is dropped for the same reason
-    :func:`build_event_read` drops a soft-deleted requester or geolocator: a
-    banned account must not surface as the byline of a still-live event.
+    The snapshot travels as stored. A soft-deleted editor is dropped, as
+    :func:`build_event_read` does for requesters and geolocators.
     """
     editor = row.edited_by
     return EventVersionRead(
@@ -189,9 +157,8 @@ def build_version_read(row: EventVersion) -> EventVersionRead:
 def _archived_link(geo: Event, url: str | None) -> ArchivedLinkRead | None:
     """One link's archived copy as wire shape, or ``None`` when it has none.
 
-    The one place the stored row becomes wire shape, so the primary source, the
-    provenance link and every mirror serialise identically. ``None`` is the
-    ordinary state: a copy exists only where the owner recorded one.
+    The one place the stored row becomes wire shape, so every link serialises
+    identically.
     """
     row = archive_row_for(geo, url)
     if row is None:
@@ -209,17 +176,12 @@ def build_event_read(
 ) -> EventRead:
     """Assemble the ``EventRead`` response for one event.
 
-    Coordinates are passed in (re-projected from the PostGIS points by the
-    caller, or already in hand from a create) rather than re-queried here, so
-    the response sites (create, detail, and the lifecycle mutations) build an
-    identical shape from one place. ``requested_by`` reads off the model
-    relationship (``None`` for a directly-submitted geolocation); callers
-    eager-load it along with ``geolocators`` and their users. ``media``
-    carries only the ``source`` rows: proof images travel
-    inside the proof JSON as URLs. ``thumbnail`` is the card pick
-    (``services.thumbnails``), which may be a proof image on a source-less
-    event; callers that want it non-null on such rows must eager-load media
-    with ``thumbnail_media_criteria``.
+    Coordinates are passed in (re-projected by the caller) so every response
+    site builds an identical shape. Callers eager-load ``requested_by``,
+    ``geolocators`` and their users. ``media`` carries only ``source`` rows
+    (proof images travel inside the proof JSON). ``thumbnail`` may be a proof
+    image on a source-less event; callers wanting it non-null there must
+    eager-load media with ``thumbnail_media_criteria``.
     """
     return EventRead(
         id=geo.id,
@@ -227,16 +189,11 @@ def build_event_read(
         event_coords=coords_or_none(lat, lng),
         capture_source_coords=coords_or_none(capture_lat, capture_lng),
         source_url=geo.source_url,
-        # Reads the eager-loaded ``archives`` collection; callers that skip
-        # that load pay a lazy query per event, so every detail loader carries
-        # it (see ``_DETAIL_LOADS``).
+        # Reads the eager-loaded ``archives`` (see ``_DETAIL_LOADS``).
         archived_source=_archived_link(geo, geo.source_url),
-        # Ordered by the relationship's ``position``, so the read order is the
-        # order the submitter gave.
+        # Ordered by ``position``, the submitter's order.
         secondary_source_urls=[link.url for link in geo.source_links],
-        # Built from the same walk, so the two lists stay index-aligned by
-        # construction. Reads the same eager-loaded ``archives`` collection as
-        # ``archived_source``, so a mirror costs no extra query.
+        # Same walk, so the lists stay index-aligned; no extra query.
         archived_secondary_sources=[_archived_link(geo, link.url) for link in geo.source_links],
         proof=geo.proof,
         event_date=geo.event_date,
@@ -252,24 +209,18 @@ def build_event_read(
         before_closed_status=geo.before_closed_status,
         detected_from_url=geo.detected_from_url,
         detected_via=geo.detected_via,
-        # Same eager-loaded collection as the source and the mirrors, so the
-        # provenance row costs no extra query either.
+        # Same eager-loaded collection, no extra query.
         archived_detected_from=_archived_link(geo, geo.detected_from_url),
         owner=geo.owner,
-        # Null a soft-deleted requester so a banned account never surfaces in the
-        # requested_by slot of a still-live event owned by someone else (the
-        # owner's own soft-delete cascade-hides their events; the requester's does
-        # not, so it is guarded here).
+        # Null a soft-deleted requester: a banned account must not surface on a
+        # live event owned by someone else (the owner's soft-delete hides their
+        # events; the requester's does not).
         requested_by=(
             geo.requested_by
             if geo.requested_by is not None and geo.requested_by.deleted_at is None
             else None
         ),
-        # Pydantic ``from_attributes`` coerces each SQLAlchemy ``User`` into
-        # ``AuthorRef`` at validation time. Drop soft-deleted contributors for
-        # the same reason as ``requested_by`` above: a banned account must not
-        # surface as a credited geolocator on a still-live event owned by
-        # someone else.
+        # Drop soft-deleted contributors for the same reason as ``requested_by``.
         geolocators=[g.user for g in geo.geolocators if g.user.deleted_at is None],
         media=[m for m in geo.media if m.role == "source"],
         thumbnail=thumbnail_media(geo),

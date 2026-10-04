@@ -18,25 +18,11 @@ import {
 import { MAX_UPLOAD_LABEL } from "@/lib/archive";
 import { ARCHIVE_EXPORT_STEPS, X_ARCHIVE_HELP } from "@/lib/archiveExport";
 
-// The one analyst-facing import guide, reachable without an account (see
-// `PUBLIC_PREFIXES` in `proxy.ts`). One detection engine reads every entry, so
-// the conditions are stated once, in one paragraph under "What makes a
-// detection", and each entry section holds only what differs.
-// `docs/ingestion.md` holds the mechanism; this page is its reader-facing
-// projection.
-//
-// Order is the common block, then the entries: one card holds what Vidit
-// reads, the two conditions, the fields a detection carries and a chooser
-// linking the three entry sections; the entries follow in the order a reader
-// picks them (archive for a whole history, paste for a single post, bot for a
-// daily feed).
-//
-// Anchors are contract: `/bot` and `/archive` redirect to `#bot` and
-// `#archive`, the bot's X bio points at `/bot`, and the import panels link to
+// The one import guide, public (see `PUBLIC_PREFIXES` in `proxy.ts`). One detection engine reads every entry, so the
+// conditions are stated once under "What makes a detection" and each entry section holds only what differs.
+// `docs/ingestion.md` holds the mechanism. Order: common block, then archive, paste, bot.
+// Anchors are contract: `/bot` and `/archive` redirect to `#bot` and `#archive`, the import panels link to
 // `#paste` and `#archive`. Keep the three heading ids.
-//
-// Server component for SEO, on the same PageShell + Card scaffolding as the
-// other guides (`/guide`, `/methodology`).
 
 const TITLE = "Import your work from X";
 const DESCRIPTION =
@@ -69,9 +55,7 @@ const LIST = `list-disc space-y-1 pl-4 ${NOTE}`;
 const TILE = "rounded-lg border border-neutral-800 bg-neutral-900 p-4";
 const TILE_TITLE = "text-sm font-medium text-neutral-100";
 
-// The three X-side export steps are shared with the import panel on `/submit`;
-// only the closing step differs, since a reader here has not opened the drop
-// zone yet.
+// The X-side export steps are shared with the import panel on `/submit`; only the closing step differs.
 const EXPORT_STEPS: NumberedStep[] = [
   ...ARCHIVE_EXPORT_STEPS,
   {
@@ -90,18 +74,14 @@ const EXPORT_STEPS: NumberedStep[] = [
   },
 ];
 
-// The chooser under the intro, in the order the sections follow. Each line
-// says when to use that entry, not what it does; the section says that. The
-// glyphs are the ones the Submit page's mode control uses for the same entries
-// (X glyph for a post, Archive for the export) and the landing's for the bot.
+// The chooser says when to use each entry; glyphs match the Submit page's mode control.
 const GLYPH = {
   archive: <Archive size={13} strokeWidth={1.8} />,
   paste: <XGlyph size={12} />,
   bot: <AtSign size={13} strokeWidth={1.8} />,
 };
 
-// A section heading carrying its entry's glyph, so the chooser tile and the
-// section it scrolls to read as the same thing.
+// Section heading with its entry's glyph, matching the chooser tile.
 const ENTRY_HEADING = `inline-flex items-center gap-1.5 ${SECTION}`;
 
 const ENTRIES = [

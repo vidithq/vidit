@@ -11,9 +11,15 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - **The README, CONTRIBUTING, templates, planning files and promo pipeline guide are deduplicated and corrected against the code.**
+- **Dependabot waits before opening a version-update PR** ([`.github/dependabot.yml`](.github/dependabot.yml), [`docs/engineering.md`](docs/engineering.md)). Each ecosystem sets a `cooldown`: 7 days for a major, 3 for a minor and 1 for a patch on `pip` and `npm`, and 7 days flat on `github-actions`. Security updates are unaffected.
+
 - **The events service is a package, one module per write verb** ([#371](https://github.com/vidithq/vidit/pull/371), [`backend/app/services/events/`](backend/app/services/events), [`docs/engineering.md`](docs/engineering.md)). `services/events/` holds `create`, `request`, `geolocation`, `revision`, `batch` and `closure`, one write verb each, over the shared `errors`, `coordinates`, `source_links`, `rules` and `readiness` modules. The package root re-exports the public API, so every caller imports from `app.services.events` as before. The code moved unchanged.
 
 ### Fixed
+
+- **Local storage refuses a key that escapes its root on delete too** ([`backend/app/services/storage.py`](backend/app/services/storage.py), [`docs/engineering.md`](docs/engineering.md)). `LocalStorage.delete_many` skips such a key, as `head_size` already did, and the containment check uses a form CodeQL recognises, which clears its `py/path-injection` alerts.
+
+- **The narrow-viewport smoke job no longer fails on the collection pages at random** ([#374](https://github.com/vidithq/vidit/pull/374), [`frontend/patches/next+16.3.8.patch`](frontend/patches/next+16.3.8.patch), [`frontend/e2e/collection.spec.ts`](frontend/e2e/collection.spec.ts)). `next dev` could publish a route table built from a partial Watchpack scan after a complete one, so `/collections/[id]/edit` answered 404 for the life of the server; the frontend now applies the upstream fix (vercel/next.js#97920) to Next 16.3.8 through `patch-package`. The collection page spec also waits for the player's first event before it measures the Events header, which the event used to push below the fold.
 
 - **The map detail panel shows only the selected event** ([#357](https://github.com/vidithq/vidit/pull/357), [`frontend/src/app/map/page.tsx`](frontend/src/app/map/page.tsx), [`frontend/src/components/map/DetailSidePanel.tsx`](frontend/src/components/map/DetailSidePanel.tsx), [`docs/design.md`](docs/design.md#layout)). A failed load shows the error with a Retry control instead of the previous event, on the map and in the collection page's step player, and a late response for an earlier pin is discarded. The panel takes the whole read as one prop, so a caller cannot drop the error. Reopening a pin after closing it reads the event again.
 

@@ -4,13 +4,9 @@ import { ArrowRight, Bot } from "lucide-react";
 import { ACCENT_SURFACE } from "@/components/ui/styles";
 import { Dot } from "@/components/ui/Dot";
 
-/**
- * Own-profile entry point into the detections list. Surfaces the count of
- * machine-`detected` geolocations awaiting the owner's submission and links to
- * `/profile/{username}/detections`. The parent renders it only when `count > 0`,
- * so a clean profile stays clean. Accent-tinted to match `StatusBadge`, the same
- * "machine, pending" signal, and follows the user's chosen palette.
- */
+/** Own-profile entry into the detections list: the count of machine-`detected` geolocations
+ * awaiting submission, linking to `/profile/{username}/detections`. The parent renders it only when
+ * `count > 0`. Accent-tinted like `StatusBadge`, the same "machine, pending" signal. */
 export function DetectionsEntry({
   username,
   count,
@@ -26,8 +22,7 @@ export function DetectionsEntry({
       <div className="flex items-center gap-3">
         <span className={`relative flex size-9 shrink-0 items-center justify-center rounded-full ${ACCENT_SURFACE}`}>
           <Bot size={18} />
-          {/* Same orange dot as the sidebar profile row, so the user ties the
-              sidebar nudge to this block. */}
+          {/* Same orange dot as the sidebar profile row, tying the nudge to this block. */}
           <Dot className="absolute -top-0.5 -right-0.5 size-2.5 ring-2 ring-neutral-950" />
         </span>
         <div>

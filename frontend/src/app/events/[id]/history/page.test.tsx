@@ -12,8 +12,7 @@ vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: () => ({ data: event, error: null, loading: false, refetch: () => {} }),
 }));
 
-// The walk itself is `useCursorList`'s (covered by its own consumers); what this
-// page owns is what it makes of the rows a walk hands back.
+// The walk is `useCursorList`'s; this page owns what it makes of the rows.
 const walk = {
   items: [] as EventVersion[],
   error: null as string | null,
@@ -86,9 +85,7 @@ function version(
 
 const snapshot = (title: string): Record<string, unknown> => ({
   title,
-  // Every filed version names the evidence anchor, so the fixture does too:
-  // omitting it here would read as a swap on the edit that produced the next
-  // version and print a changed field no edit moved.
+  // Every filed version names the evidence anchor; omitting it would read as a swap and print a phantom changed field.
   source_url: "https://t.me/channel/12345",
   source_media: [],
   event_coords: { lat: 48.01, lng: 37.8 },
@@ -139,17 +136,14 @@ describe("EventHistoryPage", () => {
     // The note filed on version 2 describes the edit that produced version 3.
     expect(within(row(3)).getByText("coordinates were off")).toBeTruthy();
     expect(within(row(3)).getByText("bob")).toBeTruthy();
-    // Version 1 was published rather than edited, so it carries the record's
-    // own author and no note.
+    // Version 1 was published, not edited: the record's own author and no note.
     expect(within(row(1)).getByText("ana")).toBeTruthy();
     expect(within(row(1)).queryByText("coordinates were off")).toBeNull();
   });
 
   it("leaves the editor's handle unlinked under the row's own link", () => {
     render(<EventHistoryPage />);
-    // The row is one click. A profile anchor under the stretched link is a
-    // target the mouse reaches by z-order and the keyboard reaches as a
-    // separate stop, so the two would disagree about what the row does.
+    // The row is one click: a profile anchor under the stretched link would disagree between mouse (z-order) and keyboard (separate stop).
     expect(within(row(3)).getByText("bob").closest("a")).toBeNull();
     expect(
       within(row(3))
@@ -167,9 +161,7 @@ describe("EventHistoryPage", () => {
 
   it("names the event in the header without a second way back to it", () => {
     render(<EventHistoryPage />);
-    // The *Current* row already opens the event, so the subtitle states the
-    // title and nothing more: two controls onto one page is one the reader has
-    // to tell apart from the other.
+    // The *Current* row already opens the event, so the subtitle is plain title text.
     expect(screen.getByText("Strike on a depot")).not.toBeInstanceOf(HTMLAnchorElement);
     expect(
       screen.getAllByRole("link").filter((a) => a.getAttribute("href") === "/events/e1")

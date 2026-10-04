@@ -6,31 +6,22 @@ import { Button, buttonClasses } from "@/components/ui/Button";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { formatCoordinates, mapsUrl } from "@/lib/coordinates";
 
-/** What the map control says while the pair cannot be opened. Its name carries
- *  the state, since the mark itself only says "maps". */
+/** What the map control says while the pair cannot be opened (its name carries the state; the mark only says "maps"). */
 const NO_MAP_LINK = "No map link until the coordinate pair is complete";
 const MAP_LINK = "View on Maps";
 
 /**
- * The two things anyone does with a coordinate pair: check it against
- * satellite imagery, or take it away. One home and one shape, so the entry
- * control (`CoordinateInputs`, where it is the longitude field's trailing
- * adornment) and the event detail page's coordinates row can't drift apart.
- * What lands on the clipboard is the same 6-decimal rendering the page shows,
- * which pastes back into the inputs as a pair.
+ * The two things anyone does with a coordinate pair: check it against satellite imagery, or take
+ * it away. One home so `CoordinateInputs` (the longitude field's trailing adornment) and the event
+ * page's coordinates row can't drift. The clipboard gets the page's 6-decimal rendering, which
+ * pastes back into the inputs as a pair.
  *
- * Two ghost icon buttons, the one icon control on the site: the same square and
- * the same hover plate the share row and the page-header clusters carry, so a
- * control reads the same wherever it sits. They sit a hair apart, so the two
- * hover plates read as two controls rather than as one wide one.
+ * Two ghost icon buttons, the site's one icon control, a hair apart so the hover plates read as
+ * two controls.
  *
- * A null pair (a coordinate still being typed, or one out of bounds) keeps both
- * controls in place and disabled rather than removing them: they occupy the same
- * width whether or not they can act, so the field they sit in never jumps, and a
- * grey control says the point is not usable yet where a vanished one says
- * nothing at all. `disabled` is what paints them grey, the same neutral every
- * refusing control on the site wears, and the map link becomes a button in that
- * state: there is nothing to navigate to, and a disabled anchor is not a thing.
+ * A null pair (half-typed or out of bounds) keeps both controls in place and disabled, so the
+ * field never jumps and grey says the point isn't usable yet. The map link becomes a button then:
+ * a disabled anchor isn't a thing.
  */
 export function CoordinateActions({
   lat,
@@ -66,15 +57,11 @@ export function CoordinateActions({
 }
 
 /**
- * The pair on the clipboard, in the one icon-control shape.
- *
- * `useCopyToClipboard` owns the write and the flash timer, so every copy
- * gesture on the site is this one hook worn in whatever shape its surroundings
- * call for (the profile's Discord account is the same icon button; the admin
- * invite row is a text button). What no shape may differ on is the
- * accessibility of the flash: the name is static, because a name that changes
- * on click is re-announced as a new control, and the confirmation lands in a
- * sibling live region instead. Only the tooltip and the mark itself flip.
+ * The pair on the clipboard, in the one icon-control shape. `useCopyToClipboard` owns the write
+ * and flash timer, worn in whatever shape the surroundings need (the profile's Discord account,
+ * the admin invite row). No shape may differ on accessibility: the name is static (a name that
+ * changes on click is re-announced as a new control) and the confirmation lands in a sibling live
+ * region. Only the tooltip and mark flip.
  */
 function CopyCoordinates({ point }: { point: { lat: number; lng: number } | null }) {
   const { copied, copy } = useCopyToClipboard();
@@ -86,9 +73,7 @@ function CopyCoordinates({ point }: { point: { lat: number; lng: number } | null
       <Button
         icon
         variant="ghost"
-        // Nothing to write while the pair is incomplete, and a control that
-        // cannot act is grey and inert rather than a button that copies a
-        // coordinate nobody typed.
+        // Nothing to write while the pair is incomplete: the control is grey and inert.
         disabled={point === null}
         aria-label={label}
         title={copied ? copiedLabel : label}
@@ -98,8 +83,7 @@ function CopyCoordinates({ point }: { point: { lat: number; lng: number } | null
       >
         {copied ? <Check size={14} /> : <Copy size={14} />}
       </Button>
-      {/* Sibling, not the button's own name: as the name it would re-announce
-          the control on every flip instead of reporting a status. */}
+      {/* Sibling, not the button's name: as the name it would re-announce the control on every flip. */}
       <span className="sr-only" role="status" aria-live="polite">
         {copied ? copiedLabel : ""}
       </span>

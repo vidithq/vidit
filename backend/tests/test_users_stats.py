@@ -1,24 +1,21 @@
 """End-to-end tests for ``GET /users/{username}/stats``.
 
-The profile insights aggregation. Contracts to lock in:
+The profile insights aggregation:
 
-* An empty profile returns all zeros and an empty activity row.
-* A mixed profile splits by status, counts media, and surfaces conflict +
-  capture-source tallies.
-* The source-host breakdown folds ``www.``, keeps the top ``TOP_N`` hosts,
-  tips the rest into ``other_hosts_count``, counts a source-less event in
+* An empty profile returns zeros and an empty activity row.
+* A mixed profile splits by status, counts media, and tallies conflicts and
+  capture sources.
+* The source-host breakdown folds ``www.``, keeps the top ``TOP_N`` hosts, tips
+  the rest into ``other_hosts_count``, counts source-less events in
   ``no_source_count``, and adds up to ``total_events``.
-* The activity row spans the analyst's own earliest and latest event date, one
-  bucket per month, zero-filled, cut to the ``MAX_ACTIVITY_YEARS`` most recent
-  calendar years, with both ends clamped to today so a mistyped future year
-  cannot push the real events out of the window.
-* Every aggregate describes one population: visible ``geolocated`` and
-  ``detected`` events. Soft-deleted rows, ``requested`` calls and every
-  ``closed`` row take no part.
-* Unknown and soft-deleted usernames 404 the same way as the profile.
+* The activity row spans the analyst's earliest to latest event date, one
+  zero-filled bucket per month, cut to the ``MAX_ACTIVITY_YEARS`` latest years,
+  both ends clamped to today (a mistyped future year cannot push real events out).
+* Every aggregate covers visible ``geolocated`` and ``detected`` events only;
+  soft-deleted, ``requested`` and ``closed`` rows take no part.
+* Unknown and soft-deleted usernames 404 like the profile.
 
-Fixtures are local on purpose: the events package fixtures live in its own
-``conftest.py`` and importing across test packages couples the suites.
+Fixtures are local: importing the events package's ``conftest.py`` would couple the suites.
 """
 
 from __future__ import annotations
@@ -154,11 +151,9 @@ def _make_geo(
 ) -> Event:
     """Minimal event-row factory, stamped per the lifecycle CHECKs.
 
-    ``event_date=None`` stores NULL, which the column allows in every status
-    and which the activity row has to survive. ``source_url=None`` needs a
-    ``detected`` or ``closed`` status: ``ck_events_source_url_status`` requires
-    the column on the other two. ``before_closed_status`` only applies to a
-    ``closed`` row and says which status it was closed from.
+    ``source_url=None`` needs a ``detected`` or ``closed`` status
+    (``ck_events_source_url_status``). ``before_closed_status`` applies to a
+    ``closed`` row only.
     """
     now = datetime.now(UTC)
     geo = Event(
@@ -209,8 +204,7 @@ def test_stats_empty_profile_all_zeros(live_user):
     assert body["source_hosts"] == []
     assert body["other_hosts_count"] == 0
     assert body["no_source_count"] == 0
-    # No event, so no span to draw: the grid is empty rather than a window of
-    # zeros off today. The frontend renders a sentence for this.
+    # No event, no span: the grid is empty, not a window of zeros.
     assert body["activity"] == []
 
 
@@ -235,16 +229,13 @@ def test_stats_mixed_profile(db, live_user, conflict, capture_source_tag, free_t
     assert body["total_events"] == 3
     assert body["media_count"] == 2
     assert body["top_conflicts"] == [{"name": conflict.name, "count": 2}]
-    # The free-category tag must not leak into the capture-source breakdown.
     assert body["capture_sources"] == [{"name": capture_source_tag.name, "count": 1}]
     assert body["source_hosts"] == [{"name": "example.com", "count": 3}]
-    # Every row shares one date, so the span is one bucket carrying all three.
     assert body["activity"] == [{"period": _month_str(today), "count": 3}]
 
 
 def test_stats_activity_spans_the_analysts_own_dates(db, live_user):
-    """The row runs earliest to latest event date, zero-filled between, with
-    no bucket keyed off today."""
+    """The row runs earliest to latest event date, zero-filled between, with no bucket keyed off today."""
     _make_geo(db, author=live_user, event_date=date(2025, 3, 9))
     _make_geo(db, author=live_user, event_date=date(2025, 3, 22))
     _make_geo(db, author=live_user, event_date=date(2025, 6, 1))
@@ -259,8 +250,7 @@ def test_stats_activity_spans_the_analysts_own_dates(db, live_user):
 
 
 def test_stats_activity_undated_events_stay_out_of_the_row(db, live_user):
-    """An event with no date has no bucket to land in, and cannot pull the
-    span with it. It still counts in the status split."""
+    """A dateless event lands in no bucket and does not stretch the span, but counts in the status split."""
     _make_geo(db, author=live_user, event_date=None)
     _make_geo(db, author=live_user, event_date=date(2025, 3, 9))
 
@@ -278,23 +268,20 @@ def test_stats_activity_no_dated_events_at_all(db, live_user):
 
 
 def test_stats_activity_keeps_month_granularity_over_a_long_span(db, live_user):
-    """A multi-year span stays month by month: the grid gains rows, never a
-    coarser cell. Five years of coverage is five rows of twelve."""
+    """A multi-year span stays month by month: more rows, never coarser cells."""
     _make_geo(db, author=live_user, event_date=date(2022, 3, 1))
     _make_geo(db, author=live_user, event_date=date(2026, 7, 4))
 
     row = client.get(f"/api/v1/users/{live_user.username}/stats").json()["activity"]
     assert row[0] == {"period": "2022-03", "count": 1}
     assert row[-1] == {"period": "2026-07", "count": 1}
-    # March 2022 through July 2026 inclusive.
     assert len(row) == (2026 - 2022) * 12 + 7 - 3 + 1
     assert all(bucket["count"] == 0 for bucket in row[1:-1])
 
 
 def test_stats_activity_caps_the_span_at_ten_calendar_years(db, live_user):
-    """Past ten year rows the grid keeps its recent end rather than shrinking
-    every cell, and it starts at January of the oldest year it shows. The
-    dropped events still count in the totals."""
+    """Past ten year rows the grid keeps its recent end, starting at January of the oldest
+    year shown. Dropped events still count in the totals."""
     _make_geo(db, author=live_user, event_date=date(1990, 5, 1))
     _make_geo(db, author=live_user, event_date=date(2026, 3, 3))
 
@@ -307,13 +294,11 @@ def test_stats_activity_caps_the_span_at_ten_calendar_years(db, live_user):
 
 
 def test_stats_activity_ignores_a_future_event_date(db, live_user):
-    """A date past today takes no bucket and cannot drag the window with it.
+    """A future date takes no bucket and cannot drag the window.
 
-    ``event_date`` accepts any valid ISO date on the write path, and the ten
-    year cap is anchored on the late end of the span, so an un-clamped typo
-    (``2925`` for ``2025``) would open the grid on 2916 to 2925 and blank it.
-    The mistyped row still counts in the status split, like any other event
-    the grid has no cell for.
+    The ten year cap anchors on the late end, so an un-clamped typo (``2925`` for
+    ``2025``) would open the grid on 2916 to 2925 and blank it. The row still
+    counts in the status split.
     """
     today = date.today()
     real = date(today.year - 1, 3, 1)
@@ -323,19 +308,15 @@ def test_stats_activity_ignores_a_future_event_date(db, live_user):
     body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
     assert body["total_events"] == 2
     assert body["geolocated_count"] == 2
-    # The window runs from the real event to today rather than out to 2925.
-    # Un-clamped, the ten year cap would start it at 2916 and the real event
-    # would fall off the left edge with nothing left on the grid.
+    # The window runs from the real event to today, not out to 2925.
     row = body["activity"]
     assert row[0] == {"period": _month_str(real), "count": 1}
     assert row[-1]["period"] == _month_str(today)
-    # The mistyped row has no cell anywhere, so the grid sums to the real one.
     assert sum(bucket["count"] for bucket in row) == 1
 
 
 def test_stats_activity_all_future_dates_draw_no_grid(db, live_user):
-    """Nothing but future dates leaves no coverage to draw, so the grid is
-    empty rather than a window on a century that has not happened."""
+    """Only future dates leave no coverage to draw: the grid is empty."""
     _make_geo(db, author=live_user, event_date=date(2925, 6, 1))
 
     body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
@@ -366,9 +347,7 @@ def test_stats_excludes_soft_deleted_events(db, live_user, conflict, capture_sou
 
 
 def test_stats_excludes_requested_calls_for_help(db, live_user, conflict, capture_source_tag):
-    """A ``requested`` row is an open call for help, not documented work: it
-    is outside the population every figure on the card describes, so it takes
-    no part in any aggregate."""
+    """A ``requested`` row is an open call, not documented work: no aggregate counts it."""
     _make_geo(db, author=live_user, event_date=date(2025, 4, 2))
     _make_geo(
         db,
@@ -393,21 +372,16 @@ def test_stats_excludes_requested_calls_for_help(db, live_user, conflict, captur
 @pytest.mark.parametrize(
     ("before_closed_status", "source_url"),
     [
-        # A bot detection closed as a duplicate or rejected, with no source:
-        # counted, it showed as "No source" on the profile.
+        # A detection closed as a duplicate or rejected, with no source.
         (STATUS_DETECTED, None),
-        # A retracted geolocation.
         (STATUS_GEOLOCATED, "https://retracted.example/post"),
-        # A withdrawn call for help.
         (STATUS_REQUESTED, "https://withdrawn.example/post"),
     ],
 )
 def test_stats_excludes_closed_rows(
     db, live_user, conflict, capture_source_tag, before_closed_status, source_url
 ):
-    """A ``closed`` row is a duplicate, a rejected detection, a retraction or
-    a withdrawn ask, whichever status it was closed from: it moves no figure
-    on the card."""
+    """A ``closed`` row (duplicate, rejected detection, retraction, withdrawn ask) moves no figure."""
     _make_geo(db, author=live_user, event_date=date(2025, 4, 2))
     _make_geo(
         db,
@@ -435,8 +409,7 @@ def test_stats_excludes_closed_rows(
 
 
 def test_stats_counts_an_open_detection(db, live_user, conflict, capture_source_tag):
-    """A ``detected`` row the analyst has not closed stays in every aggregate,
-    a source-less one included."""
+    """An open ``detected`` row stays in every aggregate, source-less included."""
     _make_geo(
         db,
         author=live_user,
@@ -462,9 +435,8 @@ def test_stats_counts_an_open_detection(db, live_user, conflict, capture_source_
 
 
 def test_stats_source_hosts_fold_www_and_rank_by_count(db, live_user):
-    """One platform is one entry: the host is lower-cased and a leading
-    ``www.`` comes off, so ``www.tiktok.com`` and ``tiktok.com`` do not split
-    the same beat across two segments. Ties break on the host name."""
+    """The host is lower-cased and a leading ``www.`` dropped, so one platform is one
+    entry. Ties break on the host name."""
     for path in range(3):
         _make_geo(db, author=live_user, source_url=f"https://x.com/a/status/{path}")
     _make_geo(db, author=live_user, source_url="https://www.tiktok.com/@a/video/1")
@@ -482,10 +454,9 @@ def test_stats_source_hosts_fold_www_and_rank_by_count(db, live_user):
 
 
 def test_stats_source_hosts_keep_five_and_tip_the_tail_into_other(db, live_user):
-    """The named segments stop at ``TOP_N``; the sixth host and everything
-    after it lands in ``other_hosts_count``. Pinned at the boundary: five
-    hosts name themselves, six do not."""
-    # Descending counts, so the ranking is unambiguous: 6, 5, 4, 3, 2, 1.
+    """Named segments stop at ``TOP_N``; the rest land in ``other_hosts_count``
+    (boundary: five hosts name themselves, six do not)."""
+    # Descending counts keep the ranking unambiguous.
     for rank, count in enumerate([6, 5, 4, 3, 2, 1]):
         for i in range(count):
             _make_geo(db, author=live_user, source_url=f"https://host{rank}.example/{i}")
@@ -505,9 +476,8 @@ def test_stats_source_hosts_keep_five_and_tip_the_tail_into_other(db, live_user)
 
 
 def test_stats_source_hosts_count_a_source_less_detection(db, live_user):
-    """A machine detection whose post declared no source, and a stored value no
-    host can be read from, both land in ``no_source_count`` rather than
-    vanishing: the breakdown adds up to ``total_events``."""
+    """A source-less detection and an unparseable stored value land in
+    ``no_source_count``, so the breakdown adds up to ``total_events``."""
     _make_geo(db, author=live_user, status=STATUS_DETECTED, source_url=None)
     _make_geo(db, author=live_user, status=STATUS_DETECTED, source_url="not a url")
     _make_geo(db, author=live_user, source_url="https://x.com/a/status/1")

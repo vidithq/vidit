@@ -17,8 +17,7 @@ vi.mock("@/lib/api", () => ({
   apiFetch: vi.fn(),
 }));
 
-// Capture each apiFetch call with its abort signal and manual
-// resolve/reject handles so tests control when and how every probe settles.
+// Capture each apiFetch call with its abort signal and resolve/reject handles.
 interface CapturedCall {
   path: string;
   signal: AbortSignal;
@@ -153,8 +152,7 @@ describe("DuplicateProbe", () => {
     await act(async () => {
       calls[1].reject(new Error("429"));
     });
-    // Stale-but-truthful: a transient failure must not wipe a warning
-    // the analyst was already looking at.
+    // A transient failure must not wipe a warning already in view.
     expect(screen.getByText("Existing geo")).toBeInTheDocument();
   });
 

@@ -107,8 +107,7 @@ describe("groupStacks", () => {
 });
 
 describe("nearestFeature", () => {
-  // The map's own projection, stubbed as the identity on a 1 degree = 1 px
-  // grid, so a feature's coordinates read as its screen position.
+  // The map's projection, stubbed as identity on a 1 degree = 1 px grid.
   const project = ([lng, lat]: [number, number]) => ({ x: lng, y: lat });
 
   it("takes the feature closest to the tap, not the topmost", () => {
@@ -135,8 +134,7 @@ describe("nearestFeature", () => {
       properties: {},
       geometry: { type: "LineString", coordinates: [[100, 100], [101, 101]] },
     };
-    // Two pins, so the filtered list runs past the single-candidate fast path
-    // and the distance loop is what has to ignore the line.
+    // Two pins, so the filtered list passes the single-candidate fast path and the distance loop must ignore the line.
     const far = point(120, 100);
     const near = point(108, 100);
     expect(

@@ -89,7 +89,6 @@ def test_heading_level_out_of_range_dropped():
         ],
     }
     cleaned = sanitize_tiptap_doc(doc)
-    # level dropped, attrs becomes empty, attrs key omitted
     assert "attrs" not in cleaned["content"][0]
 
 
@@ -117,9 +116,7 @@ def test_image_relative_url_passes():
 
 
 def test_allow_images_false_drops_images_keeps_text():
-    """A request's proof sanitises with allow_images=False: an otherwise-valid
-    image is dropped (no proof_files ride the request path to anchor it) while
-    the surrounding text survives."""
+    """``allow_images=False`` (a request's proof) drops a valid image, since no proof_files anchor it; text survives."""
     doc = {
         "type": "doc",
         "content": [
@@ -149,7 +146,7 @@ def test_data_url_image_dropped():
 
 
 def test_http_image_dropped_https_only():
-    """Plain http:// is rejected — only https or relative paths pass."""
+    """Plain http:// is rejected; only https or relative paths pass."""
     doc = {
         "type": "doc",
         "content": [{"type": "image", "attrs": {"src": "http://example.com/x.png"}}],
@@ -159,11 +156,9 @@ def test_http_image_dropped_https_only():
 
 
 def test_image_protocol_relative_url_dropped():
-    """Protocol-relative ``//evil.com/x.gif`` must NOT slip through the
-    ``startswith("/")`` early-return: the browser resolves it against
-    the page's scheme and turns it into an outbound request to an
-    arbitrary host. Without this guard the sanitiser leaks every
-    viewer's IP/UA/Referer through a persisted tracking pixel."""
+    """Protocol-relative ``//evil.com/x.gif`` must not slip through the
+    ``startswith("/")`` early-return: it would leak every viewer's IP/UA/Referer
+    through a persisted tracking pixel."""
     doc = {
         "type": "doc",
         "content": [
@@ -175,10 +170,7 @@ def test_image_protocol_relative_url_dropped():
 
 
 def test_image_backslash_protocol_relative_url_dropped():
-    """The backslash spelling of a protocol-relative URL must also drop:
-    browsers normalise a backslash to a forward slash (WHATWG), so a src of
-    ``/`` followed by a backslash and ``evil.com`` resolves to ``//evil.com``
-    and leaks the viewer's IP/UA exactly like the plain ``//`` form."""
+    """The backslash spelling also drops: browsers normalise ``/\\evil.com`` to ``//evil.com`` (WHATWG)."""
     doc = {
         "type": "doc",
         "content": [
@@ -190,10 +182,8 @@ def test_image_backslash_protocol_relative_url_dropped():
 
 
 def test_image_tab_obfuscated_protocol_relative_url_dropped():
-    """A browser strips ASCII tab/CR/LF from a URL before parsing (WHATWG), so
-    a src of ``/`` + TAB + ``/evil.com`` resolves to ``//evil.com`` just like
-    the plain form. The sanitiser must strip the same characters, or the tab
-    spelling reopens the tracking-pixel leak the backslash guard closed."""
+    """Browsers strip ASCII tab/CR/LF from a URL (WHATWG), so ``/`` TAB ``/evil.com``
+    resolves to ``//evil.com``; the sanitiser must strip the same characters."""
     doc = {
         "type": "doc",
         "content": [
@@ -232,9 +222,7 @@ def test_image_any_https_passes_when_no_cdn(monkeypatch):
 
 
 def test_local_storage_url_passes_in_dev(monkeypatch):
-    """In dev (no CDN, local backend), the http://localhost local-storage
-    prefix is allowed so editor-uploaded proof images survive
-    sanitization end-to-end."""
+    """In dev (no CDN, local backend) the http://localhost local-storage prefix is allowed."""
     monkeypatch.setattr(settings, "cloudfront_domain", "")
     monkeypatch.setattr(settings, "storage_backend", "local")
     doc = {
@@ -254,8 +242,7 @@ def test_local_storage_url_passes_in_dev(monkeypatch):
 
 
 def test_local_storage_url_dropped_when_backend_is_s3(monkeypatch):
-    """The dev escape requires both no-CDN AND local backend. A misconfigured
-    staging env (CDN-less but S3-backed) must NOT accept loopback URLs."""
+    """The dev escape needs no CDN and a local backend: a CDN-less S3 env rejects loopback URLs."""
     monkeypatch.setattr(settings, "cloudfront_domain", "")
     monkeypatch.setattr(settings, "storage_backend", "s3")
     doc = {
@@ -272,8 +259,7 @@ def test_local_storage_url_dropped_when_backend_is_s3(monkeypatch):
 
 
 def test_image_src_pinned_to_s3_bucket_when_no_cdn(monkeypatch):
-    """A bare-S3 deploy (no CloudFront) must pin image src to the bucket's
-    own endpoint, not fall through to any https host."""
+    """A bare-S3 deploy pins image src to the bucket's endpoint, not any https host."""
     monkeypatch.setattr(settings, "cloudfront_domain", "")
     monkeypatch.setattr(settings, "storage_backend", "s3")
     monkeypatch.setattr(settings, "s3_bucket", "vidit-prod")
@@ -332,7 +318,6 @@ def test_link_mark_javascript_href_dropped():
         ],
     }
     cleaned = sanitize_tiptap_doc(doc)
-    # link mark dropped, no marks key remaining
     assert "marks" not in cleaned["content"][0]["content"][0]
 
 
@@ -425,8 +410,7 @@ def test_link_mark_invalid_target_dropped():
 
 
 def test_link_mark_schemeless_href_dropped():
-    """Schemeless URLs ('example.com') would render as relative paths in
-    a browser — not a link off-site. Reject."""
+    """Schemeless URLs ('example.com') render as relative paths in a browser: rejected."""
     doc = {
         "type": "doc",
         "content": [
@@ -644,20 +628,17 @@ def test_doc_text_of_an_empty_doc_is_empty():
 
 
 def test_doc_text_reverses_doc_from_text():
-    """The migration's shape round-trips: what ``tiptap_doc_from_text`` wraps,
-    ``tiptap_doc_text`` reads back, which is what lets a stored description and
-    its projection describe the same words."""
+    """``tiptap_doc_text`` reads back what ``tiptap_doc_from_text`` wraps."""
     text = "Strikes on the corridor.\nThree days, one rail line."
     assert tiptap_doc_text(tiptap_doc_from_text(text)) == text
 
 
 class _Refused(Exception):
-    """The typed error a caller of the shared helper hands it."""
+    """The typed error a caller hands the shared helper."""
 
 
 def test_sanitize_or_raise_returns_the_sanitized_doc():
-    """The passing case is the sanitiser's own, options included: the helper
-    adds the error mapping and nothing else."""
+    """The passing case is the sanitiser's own; the helper only adds the error mapping."""
     doc = {
         "type": "doc",
         "content": [
@@ -672,8 +653,7 @@ def test_sanitize_or_raise_returns_the_sanitized_doc():
 
 
 def test_sanitize_or_raise_raises_the_callers_error_with_the_message():
-    """A body the sanitiser refuses leaves as the caller's class, carrying the
-    sanitiser's own wording, which is what says which rule the document broke."""
+    """A refused body raises the caller's class with the sanitiser's message."""
     with pytest.raises(_Refused) as exc:
         sanitize_tiptap_doc_or_raise({"type": "paragraph"}, error=_Refused)
     assert "type='doc'" in str(exc.value)

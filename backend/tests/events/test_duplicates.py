@@ -1,9 +1,4 @@
-"""`GET /geolocations/possible-duplicates` — the submit-form duplicate probe.
-
-Host + date match legs, the distance window, LIKE-meta rejection in the host
-filter, soft-delete exclusion, and distance ordering. Shared fixtures live in
-`conftest.py`; `client` / `_make_geo` in `_helpers.py`.
-"""
+"""`GET /geolocations/possible-duplicates`, the submit-form duplicate probe."""
 
 from __future__ import annotations
 
@@ -18,8 +13,6 @@ from app.models.user import User
 from tests.conftest import login_as
 from tests.events._helpers import client
 
-# ── GET /geolocations/possible-duplicates ─────────────────────────────────
-
 
 def _make_geo_with_source(
     db,
@@ -30,9 +23,8 @@ def _make_geo_with_source(
     source_url: str,
     event_date_value: date,
 ) -> Event:
-    """Constructor wrapper that lets the duplicate-probe tests pin the
-    source URL and event date. ``_make_geo`` defaults both to fixed
-    values that don't exercise the host / date match legs."""
+    """Pins the source URL and event date, which ``_make_geo`` defaults away from the
+    host / date legs."""
     geo = Event(
         owner_id=author.id,
         title=f"Geo {uuid.uuid4().hex[:8]}",
@@ -49,9 +41,7 @@ def _make_geo_with_source(
 
 
 def test_possible_duplicates_requires_auth():
-    """Anonymous callers get 401 — the proximity probe is a cheap
-    sidestep of the bbox-required /points hardening, so it stays
-    behind the cookie."""
+    """Anonymous callers get 401: the probe bypasses the bbox requirement of /points."""
     response = client.get(
         "/api/v1/events/possible-duplicates",
         params={
@@ -66,8 +56,6 @@ def test_possible_duplicates_requires_auth():
 
 
 def test_possible_duplicates_returns_host_match(db, author):
-    """Nearby geolocation whose source URL host matches the caller's
-    is surfaced. Distance-from-caller is rendered as ``distance_m``."""
     target = _make_geo_with_source(
         db,
         author=author,
@@ -80,7 +68,7 @@ def test_possible_duplicates_returns_host_match(db, author):
     response = client.get(
         "/api/v1/events/possible-duplicates",
         params={
-            "lat": 48.50050,  # ~55 m north — comfortably inside 500 m
+            "lat": 48.50050,  # ~55 m north, inside 500 m
             "lng": 34.50000,
             "source_url": "https://t.me/somechannel/99999",  # same host
             "event_date": "2025-01-01",  # no date match → host leg only
@@ -99,8 +87,6 @@ def test_possible_duplicates_returns_host_match(db, author):
 
 
 def test_possible_duplicates_returns_date_match(db, author):
-    """Nearby geolocation with the same event date but a different
-    source host is surfaced via the date leg."""
     target = _make_geo_with_source(
         db,
         author=author,
@@ -125,13 +111,7 @@ def test_possible_duplicates_returns_date_match(db, author):
 
 
 def test_possible_duplicates_excludes_distant_rows(db, author):
-    """Geo > 500 m away is not surfaced even when host + date match.
-
-    Locks the proximity leg in — without it the endpoint would
-    degenerate into "every geo this analyst ever submitted that
-    happens to share a host", which is useless on a soft-warning
-    surface that lists every candidate inline.
-    """
+    """Proximity is a required leg: without it every geo sharing a host would match."""
     distant = _make_geo_with_source(
         db,
         author=author,
@@ -152,11 +132,8 @@ def test_possible_duplicates_excludes_distant_rows(db, author):
         },
     )
     assert response.status_code == 200
-    # Tighter than ``== []``: assert this *specific* distant row is
-    # absent. If a pre-existing dev-DB geolocation happens to sit
-    # inside the 500 m radius AND share the source host or the
-    # event_date, the response can legitimately be non-empty without
-    # invalidating the invariant under test.
+    # Assert this specific row is absent rather than ``== []``: a dev-DB geolocation may
+    # legitimately sit in the radius.
     ids = {hit["id"] for hit in response.json()}
     assert str(distant.id) not in ids, (
         "distant geo must not surface even with both match legs satisfied"
@@ -164,17 +141,9 @@ def test_possible_duplicates_excludes_distant_rows(db, author):
 
 
 def test_possible_duplicates_rejects_like_meta_characters_in_host(db, author):
-    """The host extractor's `[a-z0-9.-]+` whitelist disarms LIKE-meta
-    characters before the host reaches the ILIKE substring match.
-    Without the whitelist, ``source_url=https://%.com/x`` would
-    extract ``%.com`` and `ILIKE '%%.com%'` would match every row
-    whose stored ``source_url`` happens to contain ``.com``.
-
-    Regression test for the central safety claim in the endpoint's
-    docstring and the CHANGELOG entry — a future commit loosening
-    `_HOST_SAFE_PATTERN` (e.g. accidentally allowing `_`) would slip
-    past CI silently without this test.
-    """
+    """The host whitelist ``[a-z0-9.-]+`` disarms LIKE metacharacters:
+    ``https://%.com/x`` must not extract ``%.com`` and ILIKE-match every ``.com`` row.
+    Regression guard for ``_HOST_SAFE_PATTERN``."""
     unrelated = _make_geo_with_source(
         db,
         author=author,
@@ -189,12 +158,8 @@ def test_possible_duplicates_rejects_like_meta_characters_in_host(db, author):
         params={
             "lat": 48.50050,
             "lng": 34.50000,
-            # Host carrying a LIKE wildcard. With the whitelist
-            # active, ``_extract_host`` returns None → host leg is
-            # dropped → only the date leg fires, and we pass a date
-            # that doesn't match either → empty response. Without
-            # the whitelist, ``%.com`` would substring-match
-            # ``twitter.com`` and surface the unrelated row.
+            # A LIKE wildcard host: the whitelist drops the host leg, leaving a
+            # non-matching date leg. Without it ``%.com`` would match ``twitter.com``.
             "source_url": "https://%.com/x",
             "event_date": "2025-01-01",
             "source_posted_at": "2026-05-01T12:00",
@@ -233,9 +198,7 @@ def test_possible_duplicates_excludes_soft_deleted(db, author):
 
 
 def test_possible_duplicates_returns_empty_without_either_leg(db, author):
-    """No source URL AND no event date → no usable match leg →
-    empty list. The frontend calls eagerly while fields are being
-    typed, so this contract spares an obviously-empty round trip."""
+    """No usable match leg returns empty, sparing the eager frontend call a round trip."""
     _make_geo_with_source(
         db,
         author=author,
@@ -254,10 +217,8 @@ def test_possible_duplicates_returns_empty_without_either_leg(db, author):
 
 
 def test_possible_duplicates_tolerates_partial_source_url(db, author):
-    """Mid-form pastes like ``t.me/channel/123`` (no scheme) still
-    yield a usable host. The frontend can't promise a well-formed URL
-    while the user is still typing — the endpoint normalises silently
-    rather than 422-ing."""
+    """A scheme-less mid-form paste still yields a host; the endpoint normalises instead
+    of 422-ing."""
     target = _make_geo_with_source(
         db,
         author=author,
@@ -282,8 +243,7 @@ def test_possible_duplicates_tolerates_partial_source_url(db, author):
 
 
 def test_possible_duplicates_orders_by_distance(db, author):
-    """Closer candidates come first — the UI relies on this to put
-    the most plausibly-duplicate row at the top of the warning."""
+    """Closer candidates come first; the UI shows the likeliest duplicate on top."""
     far = _make_geo_with_source(
         db,
         author=author,
@@ -313,10 +273,8 @@ def test_possible_duplicates_orders_by_distance(db, author):
     )
     assert response.status_code == 200
     body = response.json()
-    # Two-stage assertion so a dev-DB bleed (the LIMIT 10 cutting
-    # `near` off the response entirely) surfaces as "row absent" rather
-    # than as a confusing ordering mismatch. The "both present" line
-    # guards against silently testing ordering on a single-row list.
+    # Assert ``near`` is present first so a dev-DB bleed (LIMIT 10) shows as a missing
+    # row, not an ordering mismatch.
     present = {hit["id"] for hit in body}
     assert str(near.id) in present, f"near row missing from response: {body}"
     assert str(far.id) in present, f"far row missing from response: {body}"

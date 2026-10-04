@@ -24,9 +24,8 @@ type ActionableUser = Omit<AdminUser, "created_at">;
 
 type DangerMode = "soft" | "hard" | "purge";
 
-/** One user's admin actions: X-handle link, soft/hard delete, and the
- *  detections purge. Shared between the Manage-analysts search and the
- *  onboarding table so the two never drift. */
+/** One user's admin actions: X-handle link, soft/hard delete, detections purge. Shared by
+ * Manage-analysts search and the onboarding table. */
 export function UserActionsCard({
   user,
   detectedCount,
@@ -80,8 +79,7 @@ export function UserActionsCard({
 
   const linking = xHandleMutation.loading;
   const acting = deleteMutation.loading || purgeMutation.loading;
-  // One shared error slot across the card's actions; each action clears
-  // the others.
+  // One shared error slot across the card's actions; each clears the others.
   const error =
     xHandleMutation.error ?? deleteMutation.error ?? purgeMutation.error;
 

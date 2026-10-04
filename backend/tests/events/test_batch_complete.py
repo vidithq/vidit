@@ -1,9 +1,7 @@
-"""Batch completion: ``POST /events/batch-complete``.
+"""Batch completion ``POST /events/batch-complete``.
 
-The import queue's bulk publish. What these lock in is the property the batch
-lives or dies on: it is the SAME evidence floor as the single-row geolocate,
-applied one transaction per row, so a mixed selection publishes the detections that
-clear it and leaves the others exactly as they were, each with its reason.
+Same evidence floor as the single-row geolocate, one transaction per row: a mixed
+selection publishes what clears it and leaves the rest untouched, each with a reason.
 """
 
 from __future__ import annotations
@@ -16,9 +14,8 @@ from tests.events._helpers import _make_geo, client
 
 _URL = "/api/v1/events/batch-complete"
 
-# A detection's proof as the import leaves it: prose plus the annotation image the
-# thread carried. Already-uploaded URLs count towards the proof-image floor
-# exactly like the submit form's ``placeholder://`` srcs.
+# A detection's proof as the import leaves it. Uploaded URLs count toward the
+# proof-image floor like ``placeholder://`` srcs.
 _PROOF_WITH_IMAGE = {
     "type": "doc",
     "content": [
@@ -33,9 +30,7 @@ _PROOF_TEXT_ONLY = {
 
 
 def _detection(db, author, *, proof: dict | None = None, **kwargs) -> Event:
-    """A machine detection as the archive import leaves it: coordinates, a source,
-    its footage, and an annotated proof body. Tagless: the conflict and the
-    capture source are exactly what the batch supplies."""
+    """A machine detection as the import leaves it, tagless (the batch supplies the tags)."""
     geo = _make_geo(
         db,
         author=author,
@@ -73,9 +68,7 @@ def test_batch_complete_requires_authentication(db, author, conflict, capture_so
 def test_batch_complete_publishes_a_ready_detection(
     db, author, conflict, capture_source_tag, free_tag
 ):
-    """The whole promotion: state, stamp, the conflict set once, the picked
-    capture source, and the durable geolocator credit. Tags the import already
-    put on the row survive."""
+    """The whole promotion: state, stamp, conflict, capture source, geolocator credit."""
     detection = _detection(db, author, tags=[free_tag])
 
     response = client.post(
@@ -137,9 +130,7 @@ def test_batch_complete_replaces_an_imported_capture_source(
 
 
 def test_batch_complete_publishes_what_clears_the_floor(db, author, conflict, capture_source_tag):
-    """The mixed selection: the ready rows publish, the one missing its proof
-    image stays a detection carrying its reason, and neither outcome touches the
-    other."""
+    """A mixed selection: ready rows publish, the one missing proof stays a detection."""
     ready_one = _detection(db, author)
     ready_two = _detection(db, author)
     imageless = _detection(db, author, proof=_PROOF_TEXT_ONLY)
@@ -233,10 +224,7 @@ def test_batch_complete_reports_each_floor_miss_against_its_row(
 def test_batch_complete_reports_a_pointless_detection_as_coordinates_required(
     db, author, conflict, capture_source_tag
 ):
-    """A detection the import could not place fails on absent coordinates, not
-    malformed ones: the code is the ``*_required`` shape every other floor leg
-    uses, so a client reads "this detection is missing a piece" rather than "the
-    client sent a bad number"."""
+    """An unplaced detection fails with the ``*_required`` code, not a malformed-input one."""
     pointless = _detection(db, author)
     pointless.event_coords = None
     db.commit()
@@ -256,9 +244,7 @@ def test_batch_complete_reports_a_pointless_detection_as_coordinates_required(
 
 
 def test_batch_complete_rejects_a_detection_listed_twice(db, author, conflict, capture_source_tag):
-    """One row per detection. The second occurrence could only ever fail (the first
-    published the row), which would report a state error against a detection that
-    did publish and inflate ``failed``; the shape is rejected instead."""
+    """A detection listed twice is rejected by shape, not reported as a state error."""
     detection = _detection(db, author)
 
     response = client.post(

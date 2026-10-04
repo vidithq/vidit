@@ -7,21 +7,17 @@ from app.models.tag import TagCategory
 
 
 class TagCreate(BaseModel):
-    # Free-tag names are user-typed. `strip_whitespace=True` trims before the
-    # DB write so `"  drone  "` and `"drone"` don't duplicate, and the min/max
-    # bound matches the `String(100)` column cap so the DB never rejects what
-    # Pydantic accepted. Dedup stays case-sensitive (per the unique constraint
-    # on `tags.name`).
+    # User-typed. ``strip_whitespace`` stops `"  drone  "` duplicating
+    # `"drone"`; the bounds match the `String(100)` column (mirrored by
+    # ``frontend/src/components/ui/TagPicker.tsx::TAG_NAME_MAX_LEN``). Dedup is
+    # case-sensitive, per the unique constraint on `tags.name`.
     name: Annotated[
         str,
         StringConstraints(strip_whitespace=True, min_length=1, max_length=100),
     ]
-    # Deliberately ``str``, not ``TagCategory``: the router validates the value
-    # against ``USER_CREATABLE_CATEGORIES`` and returns 403 with a specific
-    # message for a non-creatable or unknown category. Narrowing this to the
-    # Literal would shift an unknown category like "evil" to a Pydantic 422 — a
-    # behaviour change. Only the Read side (``TagRead``) carries the enum, which
-    # is what the OpenAPI spec → frontend type derive from.
+    # ``str``, not ``TagCategory``: the router answers a non-creatable or
+    # unknown category with a specific 403, and the Literal would turn it into a
+    # 422. Only ``TagRead`` carries the enum (OpenAPI to frontend type).
     category: str
 
 

@@ -1,10 +1,6 @@
-// Third-party brand marks lucide doesn't ship. Inline SVG paths (~200 B each),
-// so an icon dependency would be heavier than the whole file. One home for all
-// three: the X mark alone had drifted into three identical pastes (sidebar
-// footer, the submit form's "From an X post" segment, the share row).
-//
-// Each takes `size` in px and paints `currentColor`, so the caller sets the
-// colour with a text utility like any lucide icon.
+// Third-party brand marks lucide doesn't ship, as inline SVG paths (an icon
+// dependency would be heavier than the file). Each takes `size` in px and paints
+// `currentColor`.
 
 export function XGlyph({ size = 13 }: { size?: number }) {
   return (

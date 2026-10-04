@@ -3,10 +3,9 @@ import { describe, expect, it } from "vitest";
 import { snapshotArchivesAnotherLink } from "./snapshots";
 
 /**
- * The paste field's seatbelt. The server checks where a snapshot lives and not
- * what it captured, so this is the only place a mis-paste is noticed, and it
- * refuses nothing: what matters is that it stays quiet on every spelling of the
- * link it was pasted under, and speaks up on a link that is plainly another one.
+ * The paste field's seatbelt: the server never checks what a snapshot captured, so this is the
+ * only mis-paste check. It refuses nothing: quiet on every spelling of the pasted-under link,
+ * loud on a plainly different one.
  */
 describe("snapshotArchivesAnotherLink", () => {
   const CAPTURE = "https://web.archive.org/web/20260811120000";
@@ -23,8 +22,7 @@ describe("snapshotArchivesAnotherLink", () => {
   });
 
   it("stays quiet on a snapshot that says nothing about what it captured", () => {
-    // An archive.today code and a Ghostarchive id embed no original, so there is
-    // nothing to compare and nothing to warn about.
+    // Short codes and ids embed no original: nothing to compare.
     expect(snapshotArchivesAnotherLink(SOURCE, "https://archive.ph/abcde")).toBeNull();
     expect(
       snapshotArchivesAnotherLink(SOURCE, "https://ghostarchive.org/archive/aBcD1")
@@ -33,9 +31,8 @@ describe("snapshotArchivesAnotherLink", () => {
     expect(snapshotArchivesAnotherLink(SOURCE, "not a url")).toBeNull();
   });
 
-  // Every one of these is one link written two ways, which is what made a
-  // server-side comparison refuse correct snapshots. A warning fires on none of
-  // them.
+  // One link written two ways (what made server-side comparison refuse correct snapshots):
+  // no warning.
   it.each([
     ["a scheme the crawler settled on", SOURCE, "http://t.me/channel/42"],
     ["a trailing slash picked up in a browser", SOURCE, "https://t.me/channel/42/"],
@@ -73,8 +70,7 @@ describe("snapshotArchivesAnotherLink", () => {
   });
 
   it("still warns when an X status id is genuinely another post", () => {
-    // The share parameters come off, and nothing else does: the status id is
-    // what identifies the post, so a different one is a different link.
+    // Share parameters come off, nothing else: the status id identifies the post.
     expect(
       snapshotArchivesAnotherLink(
         "https://x.com/analyst/status/9876543210",
@@ -83,8 +79,7 @@ describe("snapshotArchivesAnotherLink", () => {
     ).toBe("https://twitter.com/analyst/status/1234567890?s=20");
   });
 
-  // archive.today's long form embeds the original exactly as a replay path
-  // does, so the same warning has to reach it.
+  // archive.today's long form embeds the original like a replay path, so it warns too.
   it("reads the original out of an archive.today capture URL", () => {
     expect(
       snapshotArchivesAnotherLink(SOURCE, "https://archive.ph/20260811120000/https://elsewhere.test/x")
@@ -95,11 +90,9 @@ describe("snapshotArchivesAnotherLink", () => {
   });
 
   it("stays quiet on an archive.today short code, which embeds nothing", () => {
-    // Including an all-digit code, which the long form's timestamp leg must not
-    // read as a capture missing its link.
+    // An all-digit code must not read as a capture missing its link.
     expect(snapshotArchivesAnotherLink(SOURCE, "https://archive.is/12345")).toBeNull();
-    // A lookup, not a capture: the server refuses it, and there is no timestamp
-    // to read an original behind.
+    // A lookup, not a capture: no timestamp to read an original behind.
     expect(snapshotArchivesAnotherLink(SOURCE, `https://archive.ph/newest/${SOURCE}`)).toBeNull();
   });
 
@@ -109,8 +102,8 @@ describe("snapshotArchivesAnotherLink", () => {
   });
 
   it("puts the captured link's own query back before comparing", () => {
-    // The embedded original is a whole URL in a path segment, so its query was
-    // parsed off the replay URL: dropping it would read two pages as one.
+    // The embedded original's query was parsed off the replay URL: dropping it would read two
+    // pages as one.
     const link = "https://newsdesk.example/post?id=42";
     expect(snapshotArchivesAnotherLink(link, `${CAPTURE}/${link}`)).toBeNull();
     expect(snapshotArchivesAnotherLink(link, `${CAPTURE}/https://newsdesk.example/post?id=7`)).toBe(

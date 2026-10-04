@@ -6,12 +6,7 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import { SingleEmailFlow } from "@/components/auth/SingleEmailFlow";
 import { TEXT_LINK } from "@/components/ui/styles";
 
-/**
- * Standalone "resend confirmation" surface for users who closed the
- * `/registration-pending` tab. Returns the same UX regardless of whether
- * the address matched a pending row, so it can't enumerate addresses with
- * live pending registrations. Linked from `/login`.
- */
+/** Resend surface for users who closed `/registration-pending`; same UX whether or not the address matched, so it cannot enumerate. */
 export default function ResendConfirmationPage() {
   return (
     <AuthCard
