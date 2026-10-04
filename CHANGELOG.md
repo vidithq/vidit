@@ -12,7 +12,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
-- Password forms stop input at 72 bytes and explain the limit in plain words, and `make install` installs the backend test tools so `make test` runs on a fresh machine (PR_LINK).
+- Password forms stop input at 72 bytes and explain the limit in plain words, and `make install` installs the backend test tools so `make test` runs on a fresh machine ([#529](https://github.com/vidithq/vidit/pull/529)).
 - Local storage refuses a key that escapes its root on delete too, which clears the CodeQL path-injection alerts ([#525](https://github.com/vidithq/vidit/pull/525)).
 - The narrow-viewport smoke job no longer fails at random on the collection pages ([#374](https://github.com/vidithq/vidit/pull/374)).
 - The map detail panel shows only the selected event, and a failed load shows the error with a Retry control ([#357](https://github.com/vidithq/vidit/pull/357)).
