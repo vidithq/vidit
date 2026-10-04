@@ -16,18 +16,15 @@ import { Input } from "@/components/ui/Input";
 import { ActionReceipt } from "@/components/admin/ActionReceipt";
 
 /**
- * The direct moderation override, by event id, with no report behind it: the
- * `PATCH /admin/events/{id}/moderation` counterpart of the report queue's
- * verdicts, and the one verb that undoes a takedown. Same input-by-id shape as
- * the delete panel, since an admin reaches both from an id they already have.
+ * The direct moderation override by event id, with no report behind it: the
+ * `PATCH /admin/events/{id}/moderation` counterpart of the report verdicts, and the one verb that
+ * undoes a takedown. Same input-by-id shape as the delete panel.
  *
- * Two independent axes: `is_graphic` overrides the author's declaration,
- * `hidden` withholds the event from every public read. Each action moves one
- * axis and leaves the other exactly as it is.
+ * Two independent axes: `is_graphic` overrides the author's declaration, `hidden` withholds the
+ * event from every public read. Each action moves one axis.
  */
 
-// One action per button: the label plus the body it PATCHes. Hiding is the
-// destructive arm, so it takes the two-click confirm.
+// One action per button: label plus the PATCH body. Hiding is destructive, so it takes the two-click confirm.
 const ACTIONS = [
   { key: "mark", label: "Mark graphic", body: { is_graphic: true } },
   { key: "unmark", label: "Unmark graphic", body: { is_graphic: false } },
@@ -131,8 +128,7 @@ export function EventModerationPanel() {
 
       {result && (
         <ActionReceipt
-          // `hidden_at` is the takedown, so a withheld row reads as the hard
-          // mode of this panel and a live one as the soft mode.
+          // `hidden_at` is the takedown: a withheld row reads as this panel's hard mode, a live one as soft.
           mode={result.hidden_at ? "hard" : "soft"}
           header={
             <>

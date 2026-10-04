@@ -1,10 +1,8 @@
 import { cn } from "@/lib/cn";
 
 /**
- * The orange notification dot ("new content awaits" / "live"): sidebar nav
- * badges, the landing + beta pills, the detections entry. Decorative
- * (`aria-hidden`); position, ring, and a larger size come via `className`
- * (`cn` caller-wins).
+ * The orange notification dot ("new content awaits" / "live"). Decorative;
+ * position, ring and size come via `className` (`cn`, caller wins).
  */
 export function Dot({ className = "" }: { className?: string }) {
   return (

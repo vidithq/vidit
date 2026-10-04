@@ -20,8 +20,7 @@ export default function AdminPage() {
   const { isAdmin, loading: adminLoading } = useAdmin();
   const router = useRouter();
 
-  // Decide nothing until both probes resolve, else an admin sees
-  // "Loading… → 404" on first paint as the probes race.
+  // Decide nothing until both probes resolve, else the first paint flashes "Loading… → 404".
   const probing = authLoading || adminLoading;
 
   useEffect(() => {
@@ -44,8 +43,6 @@ export default function AdminPage() {
       <DetectionStatsPanel />
       <CatalogueFeedPanel />
       <ManageAnalystsPanel />
-      {/* Moderation reads top to bottom: the queue says what was reported,
-          the panel under it is the same two axes moved by hand. */}
       <ReportsPanel />
       <EventModerationPanel />
       <EventDeletePanel />

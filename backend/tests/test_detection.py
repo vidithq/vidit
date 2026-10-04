@@ -1,10 +1,4 @@
-"""Integration tests for the machine-detection write path.
-
-Exercises ``persist_detections`` against the DB + local storage: a ``Detection``
-becomes a ``detected`` row owned by the importer, media lands as ``Media``
-with a sha256, and a detection matching a row the owner already holds resolves
-through the disposition matrix (skip / upsert / create).
-"""
+"""Integration tests for the machine-detection write path (``persist_detections``)."""
 
 from __future__ import annotations
 
@@ -51,10 +45,10 @@ ARCHIVE = Path(__file__).parent / "data" / "synthetic_archive"
 
 
 def _blue_jpeg() -> bytes:
-    """A second, distinct image: "the archive now holds different bytes for this
-    media", which is what forces the upsert down its replacement branch. Real
-    pixels, because the strip pass re-encodes and would erase a doctored copy of
-    ``TINY_JPEG`` back into the same bytes."""
+    """Different bytes for the same media, to force the upsert replacement branch.
+
+    Real pixels: the strip pass re-encodes and would erase a doctored ``TINY_JPEG``.
+    """
     from PIL import Image
 
     buf = io.BytesIO()
@@ -66,12 +60,7 @@ OTHER_JPEG = _blue_jpeg()
 
 
 def _stored_objects(event_id: uuid.UUID) -> set[str]:
-    """Every object the local storage backend holds under one event's prefix.
-
-    Scoped to the event, not to the whole backend: the storage root is shared
-    by every test in the run, so a bucket-wide snapshot would move under a
-    parallel worker's uploads.
-    """
+    """Objects under one event's prefix (the storage root is shared across parallel workers)."""
     prefix = stored_path(f"detected/{event_id}")
     return {str(p.relative_to(prefix)) for p in prefix.rglob("*") if p.is_file()}
 
@@ -98,7 +87,6 @@ def owner(db):
     user_id = user.id
     yield user
     db.expire_all()
-    # media rows cascade off the geolocation FK (ondelete=CASCADE).
     db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
     db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
@@ -115,7 +103,7 @@ async def _missing_fetcher(_parsed: ParsedMedia) -> tuple[bytes, str] | None:
 async def _persist(
     db, *, owner: User, detections: list[Detection], fetch_media, via: DetectedVia = "archive"
 ) -> Outcome:
-    """Persist ``detections`` as one resolution, which is what an entry hands over."""
+    """Persist ``detections`` as one resolution."""
     return await persist_detections(
         db,
         owner=owner,
@@ -126,11 +114,7 @@ async def _persist(
 
 
 def _row(db, event_id) -> Event:
-    """The stored row behind an id the outcome named.
-
-    ``Outcome`` carries ids rather than mapped rows (see ``services/detection``),
-    so a test reading a column re-reads the row it wrote.
-    """
+    """Re-read the row an id in ``Outcome`` names (``Outcome`` carries ids, not rows)."""
     return db.query(Event).filter(Event.id == event_id).one()
 
 
@@ -149,21 +133,16 @@ def _detection(
     title: str = "Strike at Bakhmut",
     proof_text: str = "Strike at Bakhmut\nGeolocated by analyst",
 ) -> Detection:
-    """A detection. Source-less by default, matching the resolve contract: a tweet
-    that neither quotes nor links footage declares no source. Sourced tests pass
-    ``source_url`` / ``source_posted_at`` explicitly."""
+    """A source-less detection by default; sourced tests pass ``source_url`` explicitly."""
     return Detection(
         coordinate=ParsedCoord(lat=lat, lng=lng),
         title=title,
         proof_text=proof_text,
         source_url=source_url,
-        # The post id the engine keys on, read back off the URL the caller named
-        # so a test varying one varies both, as the engine does.
+        # The engine keys on the post id, so it follows the URL.
         detected_from_tweet_id=int(url.rsplit("/", 1)[-1]),
         detected_from_url=url,
-        # A one-post thread by default: the anchor is the whole thread, which
-        # is what the two live entries read off a post with no same-author
-        # parent. A stitched thread passes its ids.
+        # One-post thread by default; a stitched thread passes its ids.
         thread_tweet_ids=(
             thread_tweet_ids if thread_tweet_ids is not None else (int(url.rsplit("/", 1)[-1]),)
         ),
@@ -182,12 +161,7 @@ def _img() -> ParsedMedia:
 
 
 def _publish_the_default_pair(db, owner: User) -> None:
-    """A ``geolocated`` row at the post and coordinate ``_detection()`` defaults to.
-
-    The human submit a machine re-detection has to leave alone, which is what
-    the skip, the untouched row and the empty warning count are all read
-    against.
-    """
+    """A ``geolocated`` row at the post and coordinate ``_detection()`` defaults to."""
     db.add(
         Event(
             owner_id=owner.id,
@@ -206,8 +180,7 @@ def _publish_the_default_pair(db, owner: User) -> None:
 
 
 async def test_assemble_injects_proof_images_into_proof_doc(db, owner):
-    # Proof media persist as role=proof rows AND land as image nodes in the proof
-    # JSON; that is how the read surfaces proof images (source travels in ``media``).
+    # Proof media persist as role=proof rows and as image nodes in the proof JSON.
     from app.models.media import Media as MediaRow
 
     detection = _detection(proof_media=[_img(), _img()])
@@ -221,9 +194,7 @@ async def test_assemble_injects_proof_images_into_proof_doc(db, owner):
 
 
 async def test_proof_video_is_skipped_not_orphaned(db, owner):
-    # A proof video is never referenced by the proof doc (only images are
-    # injected) and the read serialises only source media, so persisting it would
-    # orphan the bytes. It is skipped: no media row, no proof image node.
+    # A proof video would be persisted but never referenced, orphaning the bytes.
     video = ParsedMedia(kind="video", remote_url="https://video.twimg.com/v.mp4")
     outcome = await _persist(
         db, owner=owner, detections=[_detection(proof_media=[video])], fetch_media=_image_fetcher
@@ -234,8 +205,6 @@ async def test_proof_video_is_skipped_not_orphaned(db, owner):
 
 
 async def test_proof_image_kept_when_mixed_with_video(db, owner):
-    # A mix of proof image + proof video: only the image persists and is injected
-    # into the proof doc; the video is skipped.
     video = ParsedMedia(kind="video", remote_url="https://video.twimg.com/v.mp4")
     outcome = await _persist(
         db,
@@ -250,8 +219,6 @@ async def test_proof_image_kept_when_mixed_with_video(db, owner):
 
 
 async def test_assemble_persists_detected_row(db, owner):
-    # A sourced detection (the quote typology): the declared source URL + date
-    # and the quote's media land on the row, the media in the source slot.
     sourced = _detection(
         media=[_img()],
         source_url="https://x.com/src/status/9",
@@ -267,7 +234,6 @@ async def test_assemble_persists_detected_row(db, owner):
     assert geo.source_url == "https://x.com/src/status/9"
     assert geo.source_posted_at == datetime(2025, 11, 11, 9, 0, tzinfo=UTC)
     assert geo.event_date == date(2025, 11, 12)
-    # proof is the wrapped tweet text, never NULL.
     assert geo.proof and geo.proof["type"] == "doc" and geo.proof["content"]
 
     media = db.query(Media).filter(Media.event_id == geo.id).all()
@@ -278,8 +244,7 @@ async def test_assemble_persists_detected_row(db, owner):
 
 
 async def test_assemble_prefills_secondary_source_links(db, owner):
-    # The mirrors the resolution found land as ordered child rows, so the owner
-    # reviews them at submit instead of re-finding the links by hand.
+    # Mirrors land as ordered child rows.
     sourced = _detection(
         source_url="https://x.com/src/status/9",
         secondary_source_urls=["https://t.me/channel/11", "https://www.youtube.com/watch?v=M1"],
@@ -293,10 +258,8 @@ async def test_assemble_prefills_secondary_source_links(db, owner):
 
 
 async def test_two_fetchable_source_media_caps_at_one_role_source_row(db, owner):
-    # A quoted tweet can carry both a photo and a video (both fetchable);
-    # uq_media_source_per_event allows at most one role=source row per event, so
-    # the source-media loop must stop after the first that fetches + prepares
-    # cleanly, not attempt a second insert that would raise IntegrityError.
+    # uq_media_source_per_event allows one role=source row: the loop must stop
+    # after the first success instead of raising IntegrityError on a second insert.
     async def _both_fetcher(parsed: ParsedMedia) -> tuple[bytes, str]:
         if parsed.content_type.startswith("video/"):
             return b"\x00\x00\x00\x18ftypmp42fake", "video/mp4"
@@ -314,9 +277,7 @@ async def test_two_fetchable_source_media_caps_at_one_role_source_row(db, owner)
 
 
 async def test_media_less_detection_persists(db, owner):
-    # A detected row may be media-incomplete and source-less; the owner
-    # completes it before submitting. Unlike a human submit, no media, no
-    # source URL, no source date required, and none is fabricated.
+    # Unlike a human submit, no media, source URL or source date is required or fabricated.
     outcome = await _persist(
         db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher
     )
@@ -337,17 +298,14 @@ async def test_unchanged_pair_is_skipped_not_updated(db, owner):
 
 
 async def test_a_pass_that_wrote_a_row_drops_the_points_cache(db, owner):
-    """A ``detected`` row is public the moment it lands, so the map must not
-    serve a cached payload without it, the same invalidation every human write
-    performs."""
+    """A ``detected`` row is public on landing, so the map cache must drop."""
     points_cache.set("points:whatever", b"[]")
     await _persist(db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher)
     assert points_cache.get("points:whatever") is None
 
 
 async def test_a_pass_that_wrote_nothing_leaves_the_points_cache_alone(db, owner):
-    """A second run over the same export writes no row, so it drops nobody's
-    cached map: the invalidation follows the write, not the pass."""
+    """The invalidation follows the write, not the pass."""
     await _persist(db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher)
     points_cache.set("points:whatever", b"[]")
     outcome = await _persist(
@@ -358,8 +316,7 @@ async def test_a_pass_that_wrote_nothing_leaves_the_points_cache_alone(db, owner
 
 
 async def test_soft_deleted_pair_is_skipped(db, owner):
-    # An admin took the event down. A re-import must not put it back: the row
-    # stays removed and no live twin appears beside it.
+    # A re-import must not resurrect an admin takedown or add a live twin.
     await _persist(db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher)
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     geo.deleted_at = datetime.now(UTC)
@@ -374,8 +331,7 @@ async def test_soft_deleted_pair_is_skipped(db, owner):
 
 
 async def test_withheld_pair_is_skipped(db, owner):
-    # A takedown freezes the row for its owner too, so a re-import neither
-    # overwrites it nor creates a second copy beside it.
+    # A takedown freezes the row: no overwrite, no second copy.
     await _persist(db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher)
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     geo.hidden_at = datetime.now(UTC)
@@ -396,9 +352,7 @@ async def test_withheld_pair_is_skipped(db, owner):
 
 
 async def test_closed_detection_is_skipped(db, owner):
-    # The owner-reject shape: the row stays visible as ``closed``
-    # (before_closed_status='detected'). The rejection is analyst work, so the
-    # re-import respects it instead of queueing the same post again.
+    # An owner reject (``closed``, before_closed_status='detected') is respected by re-imports.
     await _persist(db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher)
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     geo.before_closed_status = STATUS_DETECTED
@@ -417,13 +371,7 @@ async def test_closed_detection_is_skipped(db, owner):
 
 
 async def test_retracted_geolocation_is_skipped(db, owner):
-    """A retraction is published work taken back, so the machine stays off it.
-
-    Same rule as the ``geolocated`` skip: the row a person published is never
-    written by an import, and closing it does not hand the import a way in.
-    Without the guard a re-import would reopen the retracted claim as a fresh
-    ``detected`` row carrying the machine's parse of the same post.
-    """
+    """Closing a published row does not let a re-import reopen it as a fresh ``detected`` row."""
     _publish_the_default_pair(db, owner)
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
     geo_id, stored_title = geo.id, geo.title
@@ -446,9 +394,7 @@ async def test_retracted_geolocation_is_skipped(db, owner):
 
 
 async def test_same_source_and_coordinate_skips_across_provenance_urls(db, owner):
-    # The delete-and-repost duplicate: two different tweets (distinct
-    # detected_from_url) declaring the same footage source at the same
-    # coordinate are one event — the second detection skips.
+    # Delete-and-repost: two tweets declaring the same source at one coordinate are one event.
     first = _detection(url="https://x.com/own/status/1", source_url="https://t.me/chan/1")
     second = _detection(url="https://x.com/own/status/2", source_url="https://t.me/chan/1")
     await _persist(db, owner=owner, detections=[first], fetch_media=_missing_fetcher)
@@ -458,14 +404,9 @@ async def test_same_source_and_coordinate_skips_across_provenance_urls(db, owner
 
 
 async def test_a_corrected_source_url_still_matches_its_own_re_import(db, owner):
-    """Correcting the evidence anchor does not earn the owner a duplicate row.
+    """A hand-submitted row is matched by source URL, so the match must also read the versions.
 
-    A hand-submitted published row carries no provenance post, so its source URL
-    is the only leg that can recognise it. Once the owner corrects that URL the
-    live column no longer holds the one the post declares, while the version the
-    correction filed still does; matching the live column alone would land a
-    re-import of the same post as a fresh ``detected`` row beside the published
-    one it already produced.
+    After the owner corrects the URL only the filed version still holds the original.
     """
     original = "https://t.me/chan/original"
     geo = Event(
@@ -480,8 +421,6 @@ async def test_a_corrected_source_url_still_matches_its_own_re_import(db, owner)
     )
     db.add(geo)
     db.commit()
-    # The correction: the row moves to a better link, the version it filed keeps
-    # the one the record was submitted under.
     db.add(
         EventVersion(
             event_id=geo.id,
@@ -508,8 +447,7 @@ async def test_a_corrected_source_url_still_matches_its_own_re_import(db, owner)
 
 
 async def test_same_source_different_coordinate_still_creates(db, owner):
-    # Same footage can legitimately yield two events at different places (one
-    # video, two strikes) — the source_url leg must not collapse them.
+    # One video can show two strikes: the source_url leg must not collapse them.
     first = _detection(url="https://x.com/own/status/1", source_url="https://t.me/chan/1")
     second = _detection(
         url="https://x.com/own/status/2", source_url="https://t.me/chan/1", lat=48.6, lng=34.6
@@ -521,8 +459,7 @@ async def test_same_source_different_coordinate_still_creates(db, owner):
 
 
 async def test_sourceless_dtos_do_not_dedup_on_null_source(db, owner):
-    # Two source-less detections from different posts at the same coordinate
-    # stay distinct: NULL source_url declares nothing, so it can't collide.
+    # NULL source_url declares nothing, so it cannot collide.
     first = _detection(url="https://x.com/own/status/1")
     second = _detection(url="https://x.com/own/status/2")
     await _persist(db, owner=owner, detections=[first], fetch_media=_missing_fetcher)
@@ -531,9 +468,7 @@ async def test_sourceless_dtos_do_not_dedup_on_null_source(db, owner):
 
 
 async def test_two_spellings_of_one_post_land_on_one_detection(db, owner):
-    # The match anchor is the post id, not the URL: the same post reached
-    # through ``twitter.com`` and through ``x.com`` is one geolocation, and the
-    # second pass overwrites the detection the first left.
+    # The match anchor is the post id, not the URL (``twitter.com`` vs ``x.com``).
     await _persist(
         db,
         owner=owner,
@@ -549,18 +484,14 @@ async def test_two_spellings_of_one_post_land_on_one_detection(db, owner):
     assert len(outcome.updated) == 1 and outcome.created == []
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert row.title == "Second read"
-    # The provenance the row was filed under is not the import's to move.
+    # Provenance is not the import's to move.
     assert row.detected_from_url == "https://x.com/own/status/7"
 
 
 async def test_an_archive_thread_then_a_bot_tag_on_its_tail_is_one_detection(db, owner):
-    """The cross-entry case the anchor alone could not see.
+    """Self-thread A, B, C with the coordinate in C: the export anchors on A, a bot tag on C on B.
 
-    A 3-post self-thread A→B→C with the coordinate in C. The export stitches it
-    whole and anchors the detection on A; a bot tag on C carries content of its
-    own, so it reads one hop and anchors on B. Two anchors, one geolocation, so
-    the match reads the threads' post ids and finds the row whichever entry ran
-    first.
+    The match reads the threads' post ids, so one row results whichever entry ran first.
     """
     archive = _detection(
         url="https://x.com/own/status/101",
@@ -583,16 +514,14 @@ async def test_an_archive_thread_then_a_bot_tag_on_its_tail_is_one_detection(db,
     assert len(outcome.updated) == 1 and outcome.created == []
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert row.title == "From the tag"
-    # Provenance is not the import's to move, the entry that first read the post
-    # included: the row still says where the detection came from.
+    # Provenance and entry stay those of the first read.
     assert row.detected_from_url == "https://x.com/own/status/101"
     assert row.detected_thread_tweet_ids == [101, 102, 103]
     assert row.detected_via == "archive"
 
 
 async def test_a_bot_tag_then_the_archive_of_the_same_thread_is_one_detection(db, owner):
-    """The same, in the other order: the export arrives after the tag and lands
-    on the row the tag created rather than beside it."""
+    """The reverse order of the archive-then-tag case."""
     tagged = _detection(
         url="https://x.com/own/status/102",
         thread_tweet_ids=(102, 103),
@@ -617,9 +546,7 @@ async def test_a_bot_tag_then_the_archive_of_the_same_thread_is_one_detection(db
 
 
 async def test_two_threads_sharing_no_post_are_two_detections(db, owner):
-    """The overlap is what matches, so two unrelated threads at one coordinate
-    still land as two rows: the leg widens the match, it does not collapse
-    everything an owner holds at one place."""
+    """Only an overlap matches: unrelated threads at one coordinate stay two rows."""
     first = _detection(url="https://x.com/own/status/201", thread_tweet_ids=(201, 202))
     second = _detection(url="https://x.com/own/status/301", thread_tweet_ids=(301, 302))
     await _persist(db, owner=owner, detections=[first], fetch_media=_missing_fetcher)
@@ -643,8 +570,6 @@ async def test_the_entry_that_produced_a_detection_is_stamped_on_the_row(db, own
 
 
 async def test_geolocated_pair_is_skipped(db, owner):
-    # A geolocated row already at this (detected_from_tweet_id, coordinate)
-    # blocks a machine re-detection.
     _publish_the_default_pair(db, owner)
 
     outcome = await _persist(
@@ -653,14 +578,8 @@ async def test_geolocated_pair_is_skipped(db, owner):
     assert len(outcome.skipped) == 1 and outcome.created == []
 
 
-# ── The upsert: an open detection takes the newer parse in place ───────────────
-
-
 async def test_detected_detection_is_upserted_in_place(db, owner):
-    # The production shape in miniature: the first import stored a source-less,
-    # mirror-less, media-less detection; today's parser reads the designation. The
-    # newer parse lands on the SAME row, and everything the row is (id, owner,
-    # created_at, detected_at, status, provenance) survives it.
+    # A newer parse lands on the same row; its identity fields survive.
     await _persist(db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher)
     stored = db.query(Event).filter(Event.owner_id == owner.id).one()
     before = {
@@ -685,10 +604,9 @@ async def test_detected_detection_is_upserted_in_place(db, owner):
 
     db.expire_all()
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
-    # What the row IS, preserved.
     assert {k: getattr(row, k) for k in before} == before
     assert row.status == STATUS_DETECTED
-    # What the import OWNS, overwritten.
+    # Import-owned fields are overwritten.
     assert row.title == "Depot hit, Shebekino"
     assert row.source_url == "https://t.me/channel/42"
     assert row.source_posted_at == datetime(2025, 11, 11, 9, 0, tzinfo=UTC)
@@ -699,12 +617,7 @@ async def test_detected_detection_is_upserted_in_place(db, owner):
 
 
 async def test_a_re_import_whose_fetch_comes_back_short_keeps_the_stored_media(db, owner):
-    """A CDN answering nothing is not the post losing its media.
-
-    Every fetch failure used to resolve to an empty media list, which the upsert
-    read as "the post has no media any more": it deleted every ``Media`` row and
-    swept the objects, for an outage that clears on its own.
-    """
+    """A failed fetch (CDN outage) must not read as the post losing its media."""
     await _persist(
         db,
         owner=owner,
@@ -719,8 +632,7 @@ async def test_a_re_import_whose_fetch_comes_back_short_keeps_the_stored_media(d
     outcome = await _persist(
         db,
         owner=owner,
-        # Same post, same coordinate, a newer title: the write path has
-        # something to update, and the fetcher answers nothing for the media.
+        # A newer title gives the write path something to update.
         detections=[_detection(media=[_img()], proof_media=[_img()], title="Corrected wording")],
         fetch_media=_missing_fetcher,
     )
@@ -732,15 +644,13 @@ async def test_a_re_import_whose_fetch_comes_back_short_keeps_the_stored_media(d
     assert {(m.role, m.storage_url, m.sha256) for m in row.media} == before
     for key in keys:
         assert key is not None and stored_bytes(key)
-    # The proof document still points at the image that is still stored.
     assert [n["attrs"]["src"] for n in row.proof["content"] if n.get("type") == "image"] == [
         url for role, url, _sha in sorted(before) if role == "proof"
     ]
 
 
 async def test_a_re_import_that_only_loses_its_media_moves_nothing(db, owner):
-    """The same, with nothing else to write: the row is left exactly as it is
-    and the pass counts it skipped rather than updated."""
+    """With nothing else to write, the row is untouched and counted skipped."""
     await _persist(
         db, owner=owner, detections=[_detection(media=[_img()])], fetch_media=_image_fetcher
     )
@@ -760,11 +670,7 @@ async def test_a_re_import_that_only_loses_its_media_moves_nothing(db, owner):
 
 
 async def test_a_pass_that_wrote_nothing_reports_no_warnings(db, owner):
-    """Warnings are what review has to answer on the rows the pass wrote.
-
-    A detection whose match is a published row is left alone, so there is no detection
-    to go and look at and nothing to warn about.
-    """
+    """A detection matching a published row is left alone, so nothing warns."""
     _publish_the_default_pair(db, owner)
 
     outcome = await _persist(
@@ -791,8 +697,7 @@ async def test_the_warnings_count_the_rows_the_pass_wrote(db, owner):
 
 
 async def test_upsert_replaces_source_media_and_sweeps_the_old_objects(db, owner):
-    # Replacing the footage drops the old row AND its objects, but only once the
-    # transaction that dropped the row has landed (commit-then-sweep).
+    # Objects are swept only after the transaction dropping the row has landed.
     await _persist(
         db, owner=owner, detections=[_detection(media=[_img()])], fetch_media=_image_fetcher
     )
@@ -817,8 +722,7 @@ async def test_upsert_replaces_source_media_and_sweeps_the_old_objects(db, owner
 
 
 async def test_upsert_rewrites_proof_media_and_the_nodes_that_carry_it(db, owner):
-    # Proof images live in the proof document, so a media replacement has to
-    # move both halves or the document points at a swept object.
+    # The proof doc and the media rows must move together, or the doc points at a swept object.
     await _persist(
         db, owner=owner, detections=[_detection(proof_media=[_img()])], fetch_media=_image_fetcher
     )
@@ -842,9 +746,7 @@ async def test_upsert_rewrites_proof_media_and_the_nodes_that_carry_it(db, owner
 
 
 async def test_upsert_matched_through_the_source_url_leg(db, owner):
-    # The delete-and-repost duplicate: a second post declaring the same footage
-    # at the same coordinate updates the detection the first one created, under the
-    # provenance URL the detection was filed with.
+    # Delete-and-repost: the second post updates the first one's detection.
     first = _detection(url="https://x.com/own/status/1", source_url="https://t.me/chan/1")
     await _persist(db, owner=owner, detections=[first], fetch_media=_missing_fetcher)
     stored_id = db.query(Event).filter(Event.owner_id == owner.id).one().id
@@ -861,14 +763,11 @@ async def test_upsert_matched_through_the_source_url_leg(db, owner):
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
     assert row.id == stored_id
     assert row.title == "Corrected wording"
-    # The provenance the detection was filed under is not the import's to move.
     assert row.detected_from_url == "https://x.com/own/status/1"
 
 
 async def test_upsert_drops_a_snapshot_of_a_source_url_the_row_no_longer_declares(db, owner):
-    # The one analyst artifact a detection can carry: an archived copy. A copy filed
-    # as the source of a URL the event stops declaring must not survive as the
-    # archived source of a link that is gone.
+    # An archived copy must not outlive the source URL it was filed for.
     first = _detection(source_url="https://t.me/chan/1")
     await _persist(db, owner=owner, detections=[first], fetch_media=_missing_fetcher)
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
@@ -891,8 +790,7 @@ async def test_upsert_drops_a_snapshot_of_a_source_url_the_row_no_longer_declare
 
 
 async def test_reimporting_the_same_detection_twice_writes_nothing(db, owner):
-    # Idempotence, the whole promise: no field churn, no proof rewrite, no media
-    # re-upload, no new objects in the bucket, and ``updated_at`` does not move.
+    # Idempotence: no field churn, re-upload, new objects, or ``updated_at`` move.
     detection = _detection(
         source_url="https://t.me/chan/1",
         secondary_source_urls=["https://www.youtube.com/watch?v=M1"],
@@ -916,11 +814,10 @@ async def test_reimporting_the_same_detection_twice_writes_nothing(db, owner):
 
 
 async def test_a_backfill_refuses_an_owner_with_no_linked_handle(db, owner):
-    """The handle is the precondition, never a fallback onto the username: the
-    provenance permalinks and the own-status exclusion are both written from it,
-    so an unlinked owner refuses the run rather than importing under a name that
-    may be someone else's on X. The worker's gate answers the analyst
-    (``archive_jobs.process``); this is the backstop behind it."""
+    """Never fall back onto the username (it may be someone else's on X).
+
+    Backstop behind the worker's gate in ``archive_jobs.process``.
+    """
     owner.x_handle = None
     db.commit()
 
@@ -930,8 +827,7 @@ async def test_a_backfill_refuses_an_owner_with_no_linked_handle(db, owner):
 
 
 async def test_thread_media_fetched_and_prepared_once_across_coordinates(db, owner):
-    # Two coordinates from the same post (same detected_from_url + media) → two
-    # rows, but the shared image is fetched / stripped only once (cache).
+    # Two coordinates from one post: two rows, one fetch of the shared image.
     calls = {"n": 0}
 
     async def counting_fetcher(_parsed: ParsedMedia) -> tuple[bytes, str]:
@@ -951,8 +847,7 @@ async def test_thread_media_fetched_and_prepared_once_across_coordinates(db, own
 
 
 async def test_unusable_media_is_skipped_and_detection_still_persists(db, owner):
-    # An undecodable image must not abort the detection — it persists
-    # media-incomplete, not failed.
+    # An undecodable image leaves the detection media-incomplete, not failed.
     async def bad_image_fetcher(_parsed: ParsedMedia) -> tuple[bytes, str]:
         return b"this is not a real image", "image/jpeg"
 
@@ -965,12 +860,8 @@ async def test_unusable_media_is_skipped_and_detection_still_persists(db, owner)
 
 
 async def test_over_cap_media_is_skipped_and_detection_still_persists(db, owner, monkeypatch):
-    # The other half of the unusable-media surface: bytes that decode fine but
-    # sit over ``max_image_size``. The size guard is the same ``ValueError`` the
-    # undecodable image raises, so the detection lands media-incomplete rather than
-    # failing, on both roles at once. The empty source slot is then reported as
-    # ``source_footage_missing``: the source photo was the one dropped, and the
-    # source date came back, so that is the only warning the row earns.
+    # Over ``max_image_size`` raises the same ``ValueError`` as an undecodable image.
+    # Only the dropped source photo warns (``source_footage_missing``).
     monkeypatch.setattr(settings, "max_image_size", len(TINY_JPEG) - 1)
 
     async def over_cap_fetcher(_parsed: ParsedMedia) -> tuple[bytes, str]:
@@ -980,8 +871,7 @@ async def test_over_cap_media_is_skipped_and_detection_still_persists(db, owner,
         source_url="https://t.me/chan/42",
         source_posted_at=datetime(2025, 11, 11, 8, 0, tzinfo=UTC),
         media=[_img()],
-        # A second URL, since the fetch + prepare cache keys on it: one shared
-        # URL would make this a single media in two roles.
+        # A distinct URL: the fetch cache keys on it.
         proof_media=[ParsedMedia(kind="image", remote_url="https://pbs.twimg.com/media/y.jpg")],
     )
     outcome = await _persist(db, owner=owner, detections=[detection], fetch_media=over_cap_fetcher)
@@ -994,8 +884,7 @@ async def test_over_cap_media_is_skipped_and_detection_still_persists(db, owner,
 
 
 async def test_failed_detection_is_isolated_not_lost(db, owner, monkeypatch):
-    # One detection raising mid-persist is caught, counted, rolled back — the
-    # others still land, and no partial row survives.
+    # A mid-persist failure is rolled back and counted; the others still land.
     async def boom(*_a, **_k):
         raise RuntimeError("upload exploded")
 
@@ -1006,7 +895,6 @@ async def test_failed_detection_is_isolated_not_lost(db, owner, monkeypatch):
     outcome = await _persist(db, owner=owner, detections=[bad, good], fetch_media=_image_fetcher)
     assert outcome.failed == 1
     assert len(outcome.created) == 1
-    # The failed detection's partial row was rolled back, not orphaned.
     assert db.query(Event).filter(Event.owner_id == owner.id).count() == 1
 
 
@@ -1022,13 +910,8 @@ def test_validate_bytes_guards_type_and_size():
         validate_bytes(b"x" * (settings.max_image_size + 1), "image/jpeg")  # oversize
 
 
-# ── The warnings the write path raises ────────────────────────────────────
-
-
 async def test_a_sourced_detection_that_stored_no_footage_warns(db, owner):
-    """The three warnings only the write path can answer, on one created row:
-    the source was declared but no ``role=source`` media landed, and its post
-    date came back unknown. The engine's own warnings are unaffected."""
+    """A declared source with no ``role=source`` media and an unknown post date warns."""
     detection = _detection(
         source_url="https://t.me/chan/42",
         media=[_img()],
@@ -1040,10 +923,7 @@ async def test_a_sourced_detection_that_stored_no_footage_warns(db, owner):
 
 
 async def test_a_source_the_chase_could_not_reach_warns_that_it_may_come_back(db, owner):
-    """A footage-less row whose chase died on an upstream that would not answer
-    reads differently to one whose source simply carries no footage: the same
-    import later may well fill it, so the warning says to run it again rather
-    than to go and find the footage by hand."""
+    """An upstream failure differs from a source with no footage: a re-run may fill it."""
     detection = _detection(
         source_url="https://t.me/chan/42",
         media=[_img()],
@@ -1067,9 +947,7 @@ async def test_a_detection_with_footage_and_a_source_date_warns_about_neither(db
 
 
 async def test_an_empty_source_slot_suppresses_the_footage_and_date_warnings(db, owner):
-    """A detection the engine already flagged source-less carries no footage or date
-    warning: the empty slot says why there is neither, and repeating it would
-    cost the bot's reply two lines for one fact."""
+    """A source-less detection already says why there is no footage or date."""
     detection = _detection(media=[_img()])
     detection = dataclasses.replace(detection, warnings=[SOURCE_MISSING])
     outcome = await _persist(db, owner=owner, detections=[detection], fetch_media=_missing_fetcher)
@@ -1078,9 +956,7 @@ async def test_an_empty_source_slot_suppresses_the_footage_and_date_warnings(db,
 
 
 async def test_media_already_on_another_event_warns_once_per_row(db, owner):
-    """Exact sha256 equality against events outside the pass. The pass's own
-    rows are excluded, so the two coordinate detections of one post, which share
-    the media, do not flag each other; a later import of the same bytes does."""
+    """Exact sha256 match against events outside the pass; the pass's own rows do not flag each other."""
     first = await _persist(
         db, owner=owner, detections=[_detection(proof_media=[_img()])], fetch_media=_image_fetcher
     )

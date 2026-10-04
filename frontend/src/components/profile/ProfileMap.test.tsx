@@ -1,9 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-// MapLibre touches `window` at module scope, so the real canvas never loads
-// under jsdom. The stub reports the points it was handed, which is what the
-// camera is fitted to.
+// MapLibre touches `window` at module scope, so the canvas never loads under jsdom. The stub
+// reports the points it was handed, which the camera fits to.
 vi.mock("next/dynamic", () => ({
   default: () =>
     function MapStub({ points }: { points: unknown[] }) {
@@ -42,8 +41,7 @@ describe("ProfileMap", () => {
 
     // The whole set frames the camera, detections included.
     expect(screen.getByTestId("map")).toHaveAttribute("data-points", "3");
-    // The Insights card below splits its own status counts under these two
-    // names, so the two numbers on the page can't contradict each other.
+    // The Insights card splits its counts under these two names, so the page's numbers can't contradict.
     expect(screen.getByText("2 geolocated, 1 detected on the map")).toBeInTheDocument();
   });
 

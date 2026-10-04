@@ -31,24 +31,20 @@ from app.services.tweet_ingest import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# The sentence for a refusal the copy table does not word, which the code test
-# makes unreachable while it passes. The page renders what it is given, so the
-# fallback belongs here rather than as a second table on the page.
+# Wording for a refusal the copy table lacks (unreachable while the code test
+# passes); here so the page needn't keep a second table.
 _UNNAMED_REFUSAL = "That post produced no detection."
 
 
 def _refuse(status_code: int, code: str, message: str) -> NoReturn:
-    """Answer with the typed ``{code, message}`` envelope the app shares."""
+    """Answer with the shared typed ``{code, message}`` envelope."""
     raise HTTPException(status_code=status_code, detail={"code": code, "message": message})
 
 
-# Declared ``def``, so FastAPI runs the whole handler in its threadpool. The
-# import is one long blocking stretch (the syndication fetch, then the per-detection
-# queries, commits and image re-encodes of ``persist_detections``), and on the event
-# loop it would hold every other in-flight request behind it. ``asyncio.run``
-# gives that stretch its own loop inside the worker thread, which is the shape
-# the bot's cron and the archive worker already run under. Kept out of the
-# docstring: the docstring is the endpoint's OpenAPI description.
+# ``def``, so FastAPI runs the handler in its threadpool: the import is one long
+# blocking stretch that would hold every other request on the event loop.
+# ``asyncio.run`` gives it its own loop, as the bot's cron and the archive
+# worker do. Not in the docstring (that is the OpenAPI description).
 @router.post("/import-from-tweet", response_model=TweetImportRead)
 @limiter.limit("30/minute")
 def import_from_tweet(
@@ -59,14 +55,12 @@ def import_from_tweet(
 ):
     """Import the caller's own X post as detections.
 
-    The paste runs the same engine and the same write path as the bot and the
-    archive backfill (``detection.import_pasted_post``), so one post yields one
-    detection per coordinate it carries, owned by the caller. A second paste of the
-    same post overwrites the open detection instead of duplicating it.
+    Runs the same engine and write path as the bot and the archive backfill
+    (``detection.import_pasted_post``): one detection per coordinate, owned by
+    the caller, and a repeat paste overwrites the open detection.
 
-    Auth-only, and own posts only: the post's author must be the handle linked
-    to the caller's account. Per-IP 30/minute bounds what one caller can spend
-    of the shared, finite syndication budget.
+    Auth-only, own posts only (the author must be the handle linked to the
+    caller). Per-IP 30/minute bounds the shared syndication budget.
     """
     try:
         outcome = asyncio.run(import_pasted_post(db, owner=current_user, url=body.url))
@@ -75,16 +69,13 @@ def import_from_tweet(
     except InvalidTweetUrl as exc:
         _refuse(400, "invalid_tweet_url", str(exc))
     except TweetNotAccessible:
-        # The bot's verdict for the same case, in the same words: X serves the
-        # post to no unauthenticated reader (deleted, protected, age-restricted,
-        # withheld). One code and one sentence across the entries, read off the
-        # shared table rather than composed from the exception's own message.
+        # Same code and sentence as the bot's verdict, from the shared table
+        # (X serves the post to no unauthenticated reader).
         _refuse(404, POST_UNREADABLE, REFUSAL_MESSAGES[POST_UNREADABLE])
     except TweetUpstreamBusy as exc:
-        # Ahead of ``TweetFetchFailed`` (its base class): X throttling us reads
-        # as a temporary refusal the analyst can wait out, so it earns a truthful
-        # 503 and its own detail. Still 5xx, so Sentry keeps capturing it, in its
-        # own issue instead of buried in the schema-drift bucket.
+        # Ahead of ``TweetFetchFailed`` (its base class): throttling is a
+        # temporary refusal, so a truthful 503 with its own detail. Still 5xx so
+        # Sentry captures it, separate from schema-drift.
         logger.warning("Tweet syndication busy for %s: %s", scrub_log(body.url), exc)
         _refuse(
             503,
@@ -92,14 +83,11 @@ def import_from_tweet(
             "X is not serving posts right now, retry in a minute.",
         )
     except TweetFetchFailed as exc:
-        # Hide transport / schema-drift detail from the client; log it so the
-        # operator can spot a syndication-endpoint outage.
+        # Log the detail; hide it from the client.
         logger.warning("Tweet syndication fetch failed for %s: %s", scrub_log(body.url), exc)
         _refuse(502, "upstream_unreadable", "Couldn't read that post, try again later.")
-    # Each code travels with its sentence, read off the one backend table the
-    # bot's reply and the archive's outcome email also read, so the page renders
-    # what it is handed instead of keeping a fourth copy of the wording. The
-    # warnings keep the table's order, which is the order every surface reads.
+    # Each code travels with its sentence from the one backend table the bot
+    # reply and the archive email also read. Warnings keep the table's order.
     return TweetImportRead(
         created=outcome.created,
         updated=outcome.updated,

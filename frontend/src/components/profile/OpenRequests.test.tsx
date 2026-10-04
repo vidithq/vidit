@@ -40,8 +40,7 @@ function openRequest(id: string): EventListItem {
 
 describe("OpenRequests", () => {
   it("sends each card to the request's own page, not the event route", () => {
-    // A request is an `events` row, but it is read at `/requests/{id}`: the
-    // event page is where a located row lives.
+    // A request is an `events` row but is read at `/requests/{id}`; the event page is where a located row lives.
     render(
       <OpenRequests profile={profileFixture()} requests={[openRequest("r1")]} />
     );

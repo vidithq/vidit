@@ -1,11 +1,6 @@
 import { redirect } from "next/navigation";
 
-/**
- * Submit moved to `/submit` (one unified form: fill what you have, then publish
- * a geolocation or post a request). This legacy route redirects, preserving the
- * query so deep links like `?request_id=…` (fulfilment) and `?import=1` (the
- * archive on-ramp) keep working.
- */
+/** Legacy route: redirects to `/submit`, preserving the query (`?request_id=`, `?import=1`). */
 export default async function LegacyNewGeolocationPage({
   searchParams,
 }: {

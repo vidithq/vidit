@@ -19,16 +19,15 @@ export default function FollowButton({
 }: FollowButtonProps) {
   const [following, setFollowing] = useState(initialFollowing);
   const [loading, setLoading] = useState(false);
-  // Surfaced under the button on a failed follow/unfollow: otherwise the
-  // button silently re-enables in its old state and the click looks lost.
+  // Shown under the button on a failed follow/unfollow, so the click doesn't look lost.
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
   const toggleFollow = async () => {
-    // Following requires an account; the profile page is public, so the
-    // proxy can't intercept. Route through login and land back here.
+    // Following requires an account and the profile page is public, so the proxy can't intercept:
+    // route through login and return here.
     if (!user) {
       router.push(loginNext(pathname ?? "/"));
       return;

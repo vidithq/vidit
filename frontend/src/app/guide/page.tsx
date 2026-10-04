@@ -8,23 +8,13 @@ import {
 } from "@/components/ui/NumberedSteps";
 import { TEXT_LINK } from "@/components/ui/styles";
 
-// Public getting-started guide, reachable without an account (see
-// `PUBLIC_PREFIXES` in `proxy.ts`). This is where the platform's overall
-// loop is taught: the pages themselves carry no explanatory subtitles, so a
-// reader sizing up Vidit learns the whole cycle here and the two deeper
-// guides (`/methodology`, `/import`) pick up from it. Linked from the about
-// page's Guides section and from the landing. Server component for SEO,
-// composed from the same PageShell + Card primitives as the methodology
-// guide.
+// Public getting-started guide (see `PUBLIC_PREFIXES` in `proxy.ts`): teaches the whole loop; `/methodology` and `/import` go deeper. Server component for SEO.
 
 const TITLE = "How Vidit works";
 const DESCRIPTION =
   "The Vidit loop end to end: explore the map, read a geolocation and its proof, publish your own work, and pick up open requests.";
 
-// Same openGraph + twitter shape as the landing so a shared link reads as
-// Vidit, not a bare title. The shared `opengraph-image.tsx` /
-// `twitter-image.tsx` at the app root supply the image without per-page
-// binary assets.
+// Same openGraph + twitter shape as the landing; the root image files supply the image.
 export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,

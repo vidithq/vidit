@@ -26,7 +26,6 @@ export const size = OG_SIZE;
 export const contentType = OG_CONTENT_TYPE;
 export const alt = "A geolocation on Vidit: title, coordinates, and the analyst who filed it.";
 
-/** Two lines of title at the card's heading size. */
 const TITLE_MAX = 76;
 
 // Near the 2:1 of the world it frames, and sized so a two-line title still
@@ -35,10 +34,7 @@ const MAP_WIDTH = 480;
 const MAP_HEIGHT = 232;
 
 function EventBadges({ event }: { event: EventDetail }) {
-  // Word and emphasis come from `EVENT_STATUS_META`, the same map the page's
-  // `<StatusBadge>` renders from, so the card cannot call a row by a name the
-  // page never uses. The map is total over `EventStatus`, so there is nothing
-  // to fall back to.
+  // From `EVENT_STATUS_META`, the map `<StatusBadge>` renders from; total over `EventStatus`.
   const { label, tone } = EVENT_STATUS_META[event.status];
   return (
     <div style={{ display: "flex", gap: "12px" }}>
@@ -73,8 +69,7 @@ export default async function EventOpenGraphImage({
   if (read.status === "missing") {
     return ogImageResponse(<NotFoundCard />);
   }
-  // A read that failed rather than answered says nothing about the link, so the
-  // card says nothing about it either.
+  // A failed read says nothing about the link, so neither does the card.
   if (read.status === "failed") {
     return ogFailedReadResponse();
   }
@@ -121,8 +116,7 @@ export default async function EventOpenGraphImage({
             </div>
           </div>
 
-          {/* A coordless row (a request served by id) has no point to frame, so
-              the locator panel is omitted rather than drawn empty. */}
+          {/* A coordless row (a request served by id) has no point to frame. */}
           {coords ? (
             <OgMiniMap
               lat={coords.lat}

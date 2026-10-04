@@ -8,12 +8,10 @@ from app.models.conflict import ConflictTier
 class ConflictRead(BaseModel):
     """One row of the conflicts referential on the wire.
 
-    ``last_seen_at`` and ``source`` stay off the wire: they are sync-machinery
-    internals, not product facts. ``ongoing`` drives the picker's default
-    (ongoing first, ended behind a toggle); ``start_year`` / ``end_year``
-    disambiguate same-named historical entries in the typeahead; ``tier``
-    (Wikipedia death-toll tier, NULL when unknown) lets the picker rank
-    ongoing conflicts by severity.
+    ``last_seen_at`` and ``source`` are sync internals and stay off it.
+    ``ongoing`` drives the picker default; ``start_year`` / ``end_year``
+    disambiguate same-named entries; ``tier`` (NULL when unknown) ranks ongoing
+    conflicts.
     """
 
     id: uuid.UUID

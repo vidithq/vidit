@@ -12,24 +12,14 @@ import { Button } from "@/components/ui/Button";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
-/** The history read answers an envelope rather than a bare array, so the walk
- *  is told where its rows are. Module-level: `useCursorList` keys its fetches on
- *  this function's identity. */
+/** The history read answers an envelope; module-level because `useCursorList` keys fetches on this function's identity. */
 const versionRows = (page: EventVersionList): EventVersion[] => page.items;
 
 /**
- * Every version of one event, newest first.
- *
- * Public, like the history endpoint and the event itself: a corrected record is
- * only auditable if any reader can walk the corrections. Each row opens the
- * version it names, and the current version opens the canonical
- * `/events/{id}`.
- *
- * The list walks the shared cursor (`Link: rel="next"`) like every other list
- * on the site. A version's authorship is filed on the version it superseded, so
- * the oldest row of an unfinished walk is the authorship of the row above it
- * rather than a row of its own; `eventVersions` holds it back until *Load more*
- * brings the page that completes it.
+ * Every version of one event, newest first. Public so any reader can audit
+ * corrections. A version's authorship is filed on the version it superseded, so
+ * `eventVersions` holds back the oldest row of an unfinished walk until *Load
+ * more* brings the page that completes it.
  */
 export default function EventHistoryPage() {
   const params = useParams();
@@ -57,9 +47,7 @@ export default function EventHistoryPage() {
   const versions = eventVersions(geo, rows, hasMore);
 
   return (
-    // The event's title names what the history is of, as plain text: the
-    // *Current* row below already links to the event, and a second way there in
-    // the header is one control the reader has to tell apart from it.
+    // Plain-text title: the *Current* row already links to the event.
     <PageShell back title="Version history" subtitle={geo.title}>
       {historyError && <div className={FORM_ERROR_BANNER}>{historyError}</div>}
 

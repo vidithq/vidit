@@ -1,20 +1,13 @@
 """Archive integration contract: the typology catalogue through the backfill.
 
-Assembles every typology this entry runs into one consolidated X export, runs
-the real ``read_tweets`` to ``stitch`` to ``resolve_threads`` to
-``persist_detections`` chain over it against the test database, and asserts per
-typology: the ``detected`` status,
-``source_url`` NULL exactly where the contract says so, the media roles in the
-``media`` table, and the proof images injected into the proof JSON.
+Assembles every typology this entry runs into one X export, runs ``read_tweets``,
+``stitch``, ``resolve_threads``, ``persist_detections`` against the test database, and
+asserts per typology the ``detected`` status, ``source_url`` NULL where the contract says
+so, the media roles in the ``media`` table, and the proof images injected into the proof JSON.
 
-Which typologies those are is read off the catalogue, not off a list here: a
-shape this entry cannot be pointed at declares ``paths.archive.skip`` with its
-reason beside the fixture, exactly as the bot and the paste do, so a typology
-added without a declaration enters the run rather than going unnoticed.
-
-Strictly offline: every media byte is written to disk from ``TINY_JPEG`` /
-``TINY_MP4``, and the one chased-source case stubs ``acquire.fetch_syndication``
-plus supplies synthetic bytes for the CDN media, so no request leaves the box.
+A shape this entry cannot be pointed at declares ``paths.archive.skip`` beside the fixture.
+Offline: media bytes come from ``TINY_JPEG`` / ``TINY_MP4`` and the chased-source case stubs
+``acquire.fetch_syndication``.
 """
 
 from __future__ import annotations
@@ -77,11 +70,7 @@ def owner(db):
 
 
 def _head_url(owner: User, typology: str) -> str:
-    """The ``detected_from_url`` a typology's row(s) carry under ``owner``.
-
-    The backfill derives the permalink from the owner's handle, not the fixture
-    handle, so the lookup URL uses the owner handle + the fixture's head id.
-    """
+    """The ``detected_from_url`` a typology's rows carry under ``owner`` (the permalink uses the owner handle, not the fixture handle)."""
     body = loader.load_body(typology)
     if loader.is_self_thread(body):
         head_id = loader.load_expected(typology)["head_tweet_id"]
@@ -100,9 +89,7 @@ def _proof_image_count(event: Event) -> int:
 
 
 async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
-    # Every typology the catalogue does not declare out of this entry's reach:
-    # a new one enters the run by default, and skipping it takes a reason in
-    # ``paths.archive.skip`` beside the fixture (``loader.typologies_for_path``).
+    # Every typology not declared out of reach (``loader.typologies_for_path``).
     archive = tmp_path / "consolidated"
     loader.build_consolidated_archive(loader.typologies_for_path("archive"), archive)
 
@@ -119,12 +106,9 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     assert all(r.proof and r.proof["content"] for r in rows)
 
     assert _rows_for(db, owner, "no_coord") == []
-    # The export runs the same write path as the bot and the paste, so a thread
-    # it refuses is counted under the code they name back. Four threads carry
-    # no coordinate here, the three mirror shapes included: the archive writes
-    # detections and nothing else, so a mirror post is a plain refusal on this
-    # entry whatever second exit the engine offers the bot. ``reason`` stays
-    # unset because rows landed.
+    # A refused thread is counted under the code the bot and paste name. Four carry no
+    # coordinate here (mirror shapes included): the archive writes detections only.
+    # ``reason`` stays unset because rows landed.
     assert outcome.refusals == {COORDS_MISSING: 4}
     assert outcome.reason is None
 
@@ -141,20 +125,16 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
             assert row.source_url is None, typology
             assert row.source_posted_at is None, typology
 
-    # self_thread: provenance is the head permalink (the coordinate lived in the
-    # reply, but the head is the thread anchor), and the provisional event_date
-    # is the head's post date.
+    # self_thread: provenance is the head permalink; event_date is the head's post date.
     [thread_row] = _rows_for(db, owner, "self_thread")
     assert thread_row.detected_from_url == _head_url(owner, "self_thread")
     assert thread_row.event_date == _fixture_event_date("self_thread")
 
-    # mention_prefix: the title is the line as the analyst wrote it, leading
-    # @mentions and coordinate included.
+    # mention_prefix: the title is the line as written, @mentions and coordinate included.
     [mention_row] = _rows_for(db, owner, "mention_prefix")
     assert mention_row.title == loader.load_expected("mention_prefix")["title"]
 
-    # Link typologies: source_url = the declared link, no source media row, and
-    # (link footage is off-platform / not chased here) no source media at all.
+    # Link typologies: source_url is the declared link, no source media (not chased here).
     link_expected = {
         "telegram_link": "https://t.me/somechannel/12345",
         "youtube_link": "https://www.youtube.com/watch?v=FAKEVIDEO01",
@@ -173,15 +153,13 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     assert _media_roles(db, ref) == {"proof": 2}
     assert _proof_image_count(ref) == 2
 
-    # self_video: the tweet's only media is a video and nothing else declared a
-    # source, so it fills the source slot. The proof doc stays image-only, hence
-    # empty, and the video survives as evidence instead of being dropped.
+    # self_video: the only media is a video and nothing declared a source, so it fills the
+    # source slot; the proof doc stays empty and the video survives as evidence.
     [sv] = _rows_for(db, owner, "self_video_no_signal")
     assert _media_roles(db, sv) == {"source": 1}
     assert _proof_image_count(sv) == 0
 
-    # self_thread: head video + reply photo. The video takes the empty source
-    # slot; the photo stays proof and is injected into the proof doc.
+    # self_thread: the head video takes the empty source slot; the reply photo stays proof.
     [st] = _rows_for(db, owner, "self_thread")
     assert _media_roles(db, st) == {"source": 1, "proof": 1}
     assert _media_types(db, st) == {"video", "image"}
@@ -223,10 +201,7 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
 
 
 async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, monkeypatch):
-    """The chase branch end to end: an X status link (no inline quote) is chased,
-    and the chased tweet's video lands as the source media row while the OP photo
-    stays proof. Offline: the X chaser's fetch is stubbed and the CDN
-    media bytes are supplied by a synthetic fetcher."""
+    """The chase branch end to end: the chased X status's video lands as source media while the OP photo stays proof."""
     import app.services.tweet_ingest.archive as archive_mod
     import app.services.tweet_ingest.chase.x as x_chase_mod
 
@@ -246,9 +221,7 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
         return chased_body
 
     async def fake_cdn(parsed: ParsedMedia) -> tuple[bytes, str] | None:
-        # Stand in for the X CDN GET the chased source media would trigger, so
-        # the disk fetcher's real path (photos from tweets_media/) still runs but
-        # nothing leaves the box.
+        # Stand in for the X CDN GET; photos still read from tweets_media/.
         return TINY_MP4, parsed.content_type
 
     monkeypatch.setattr(x_chase_mod, "fetch_syndication", fake_fetch)
@@ -278,12 +251,7 @@ async def test_x_status_link_chase_persists_source_media(db, owner, tmp_path, mo
 
 
 async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: Any) -> Event:
-    """Backfill the ``telegram_link`` fixture as a one-tweet archive with the
-    Telegram chaser stubbed to ``embed``, and return the single created row.
-
-    Offline: the chaser answers a constant and any source-media CDN GET is
-    served synthetic bytes, so nothing leaves the box.
-    """
+    """Backfill the ``telegram_link`` fixture as a one-tweet archive with the Telegram chaser stubbed to ``embed``; return the created row."""
     import app.services.tweet_ingest.archive as archive_mod
     import app.services.tweet_ingest.chase.telegram as telegram_mod
     from app.services.tweet_ingest.records import ChaseResult
@@ -323,8 +291,7 @@ async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: 
 
 
 async def test_telegram_chase_fills_date_and_source_media(db, owner, tmp_path, monkeypatch):
-    """A t.me footage link, chased: the embed's date fills ``source_posted_at``
-    and its video lands as the source media, while the OP photos stay proof."""
+    """A chased t.me link: the embed's date fills ``source_posted_at`` and its video becomes the source media; OP photos stay proof."""
     from app.services.tweet_ingest.records import ChasedPost
 
     embed = ChasedPost(
@@ -349,8 +316,7 @@ async def test_telegram_chase_fills_date_and_source_media(db, owner, tmp_path, m
 
 
 async def test_telegram_chase_sensitive_degrades_to_date_only(db, owner, tmp_path, monkeypatch):
-    """A sensitive t.me post: the embed serves the date but no media. The date
-    fills, no source media is stored, and the backfill does not fail."""
+    """A sensitive t.me post: the date fills, no source media is stored, the backfill does not fail."""
     from app.services.tweet_ingest.records import ChasedPost
 
     embed = ChasedPost(url="https://t.me/somechannel/12345", posted_at="2026-03-04T09:00:00+00:00")
@@ -367,12 +333,7 @@ async def test_telegram_chase_sensitive_degrades_to_date_only(db, owner, tmp_pat
 async def test_reimport_fills_a_detection_an_earlier_run_left_bare(
     db, owner, tmp_path, monkeypatch
 ):
-    """A re-import completes a detection in place instead of leaving it bare.
-
-    A first pass with the chase off stored the post with no ``source_url``, no
-    source date and no source media. Running the same export with the chase on
-    fills all three on the same row rather than creating a second one beside it.
-    """
+    """A re-import with the chase on fills source_url, date and media on the same row a chase-less pass left bare."""
     import app.services.tweet_ingest.archive as archive_mod
     import app.services.tweet_ingest.chase.telegram as telegram_mod
     from app.services.tweet_ingest.records import ChasedPost, ChaseResult
@@ -405,8 +366,7 @@ async def test_reimport_fills_a_detection_an_earlier_run_left_bare(
     monkeypatch.setattr(telegram_mod, "chase", fake_chase)
     monkeypatch.setattr(archive_mod, "fetch_cdn_media", fake_cdn)
 
-    # The row the old import left behind: the right post at the right place,
-    # and nothing the whole-line designation would have given it.
+    # The row the chase-less import left behind.
     stale = await persist_detections(
         db,
         owner=owner,
@@ -421,8 +381,7 @@ async def test_reimport_fills_a_detection_an_earlier_run_left_bare(
     assert stale_row.source_links == []
     assert db.query(Media).filter(Media.event_id == stale_id, Media.role == "source").all() == []
 
-    # The same export with the chase on: the Telegram embed answers with the
-    # date and the footage.
+    # The same export with the chase on.
     outcome = await backfill_from_archive(db, owner=owner, archive_dir=archive, chase=True)
     assert outcome.created == [] and len(outcome.updated) == 1 and outcome.failed == 0
 
@@ -440,9 +399,7 @@ async def test_reimport_fills_a_detection_an_earlier_run_left_bare(
 
 
 def _bare_detection(tweet_id: str, permalink: str) -> Detection:
-    """What a chase-less pass produced for this post: the coordinate, the text
-    and the annotation photo, and nothing else, so the detection carried no source
-    URL, no mirrors and no footage."""
+    """What a chase-less pass produced: coordinate, text and annotation photo, no source URL, mirrors or footage."""
     return Detection(
         coordinate=ParsedCoord(lat=44.6123, lng=33.5221),
         title="Geolocated airfield perimeter",
@@ -491,9 +448,6 @@ def _telegram_source_archive(tmp_path: Any, tweet_id: str) -> Any:
     loader.write_archive_js(archive, [entry])
     (archive / "tweets_media" / f"{tweet_id}-FAKEOP9A.jpg").write_bytes(TINY_JPEG)
     return archive
-
-
-# ── Small DB-shape helpers ─────────────────────────────────────────────────
 
 
 def _media_roles(db, event: Event) -> dict[str, int]:

@@ -1,10 +1,6 @@
-"""The engine: a thread becomes 0..N detections, plus what they still need.
+"""The engine: a thread becomes 0..N detections (pure, no DB).
 
-Pure, no DB. The shapes themselves are pinned typology by typology, on all four
-consumers, by ``tests/ingest_contract``; what is left here is the edges that
-catalogue does not carry: an unbounded coordinate count, an out-of-bounds pair,
-the spellings of a Google Maps link, a garbled timestamp, and the batch a
-multi-thread export resolves into.
+Typology shapes live in ``tests/ingest_contract``; this file holds the edges it does not carry.
 """
 
 from datetime import date
@@ -60,9 +56,6 @@ def _coords(thread: list[TweetRecord]):
     return [detection.coordinate for detection in _detections(thread)]
 
 
-# ── Coordinates ───────────────────────────────────────────────────────────
-
-
 def test_coords_come_from_the_analysts_own_text():
     # Both posts carry one: the quoted author's is theirs, never the analyst's.
     quoted = QuotedTweet(tweet_id="2", handle="src", text="50.000000, 30.000000", created_at="")
@@ -84,11 +77,8 @@ def test_an_out_of_bounds_pair_is_named_as_such():
     assert resolution.reason == COORDS_INVALID
 
 
-# ── Source ────────────────────────────────────────────────────────────────
-
-
 def test_the_own_status_exclusion_is_case_insensitive():
-    # X status URLs don't lowercase the handle segment.
+    # X status URLs keep the handle's case.
     record = _rec(
         handle="analyst",
         external_sources=[SourceLink(url="https://x.com/Analyst/status/111")],
@@ -99,7 +89,7 @@ def test_the_own_status_exclusion_is_case_insensitive():
 def test_a_google_maps_link_is_excluded():
     for url in (
         "https://maps.app.goo.gl/x",
-        # The legacy share form, still all over older posts.
+        # Legacy share form.
         "https://goo.gl/maps/aBcDeF12345",
         "https://www.google.com/maps/@48.012345,37.802411,15z",
         "https://maps.google.com/?q=48.012345,37.802411",
@@ -108,15 +98,13 @@ def test_a_google_maps_link_is_excluded():
 
 
 def test_a_goo_gl_link_outside_maps_stays_a_candidate():
-    # The bare shortener serves every Google product, so only the ``/maps/``
-    # prefix says "this points at a coordinate rather than at footage".
+    # The shortener serves every Google product; only the ``/maps/`` prefix marks a coordinate.
     url = "https://goo.gl/photos/aBcDeF12345"
     assert resolve_source([_rec(external_sources=[SourceLink(url=url)])]) == (url, None)
 
 
 def test_two_records_quoting_one_post_are_one_candidate():
-    # A thread that repeats its quote (the analyst quote-tweets the same footage
-    # twice) names one post, so the slot fills as a single quote would.
+    # Quoting the same footage twice names one post.
     quoted = QuotedTweet(tweet_id="222", handle="src", text="", created_at="2024-12-31T09:00:00Z")
     url, posted = resolve_source(
         [_rec(tweet_id="1", quoted=quoted), _rec(tweet_id="2", quoted=quoted)]
@@ -125,12 +113,8 @@ def test_two_records_quoting_one_post_are_one_candidate():
     assert posted == "2024-12-31T09:00:00Z"
 
 
-# ── Proof ─────────────────────────────────────────────────────────────────
-
-
 def test_proof_keeps_a_reference_link_readable():
-    # Raw tweet text carries only opaque t.co wrappers; the entity's expansion is
-    # what keeps the link readable in the stored proof.
+    # Raw text carries opaque t.co wrappers; the entity's expansion keeps the proof readable.
     record = _rec(
         text="Strike at 48.012345, 37.802411\nSource: https://t.co/fakeIG",
         external_sources=[_INSTAGRAM],
@@ -138,13 +122,9 @@ def test_proof_keeps_a_reference_link_readable():
     assert _detection([record]).proof_text.splitlines()[-1] == f"Source: {_INSTAGRAM.url}"
 
 
-# ── Media split ───────────────────────────────────────────────────────────
-
-
 def test_split_media_promotes_only_the_first_own_video_to_source():
-    # Nothing else can fill the source slot and the proof document embeds images
-    # only, so leaving the video in proof would drop it at persistence. The
-    # second one stays annotation: one role=source media per event.
+    # Proof embeds images only, so a video left there would be dropped at persistence.
+    # The second video stays annotation: one role=source media per event.
     record = _rec(media=[_media("image", "op"), _media("video", "op"), _media("video", "op")])
     source, proof = split_media([record])
     assert [m.kind for m in source] == ["video"]
@@ -152,15 +132,11 @@ def test_split_media_promotes_only_the_first_own_video_to_source():
 
 
 def test_split_media_quote_keeps_precedence_over_an_own_video():
-    # A quote is the source even when it carried no media at all, so the
-    # analyst's own video stays annotation.
+    # A quote is the source even without media, so the own video stays annotation.
     quoted = QuotedTweet(tweet_id="2", handle="src", text="", created_at="")
     source, proof = split_media([_rec(media=[_media("video", "op")], quoted=quoted)])
     assert source == []
     assert [m.kind for m in proof] == ["video"]
-
-
-# ── The detection a thread resolves to ────────────────────────────────────────
 
 
 def test_a_single_coordinate_resolves_to_one_detection():
@@ -170,15 +146,13 @@ def test_a_single_coordinate_resolves_to_one_detection():
     assert detection.detected_from_tweet_id == 1
     assert detection.detected_from_url == "https://x.com/analyst/status/1"
     assert detection.event_date == date(2025, 11, 12)
-    # A referenceless annotation declares no source: both slots stay empty
-    # rather than deducing the tweet's own URL / date.
+    # No source is deduced from the tweet's own URL or date.
     assert detection.source_url is None
     assert detection.source_posted_at is None
 
 
 def test_the_provenance_url_is_built_from_the_id_whatever_case_the_handle_carried():
-    # The id is the identity; the URL is written from it at the exit, so a
-    # handle spelled two ways in one export cannot split one post in two.
+    # The id is the identity, so a handle spelled two ways cannot split one post.
     lower = _detection([_rec(text="48.012345, 37.802411", handle="analyst")])
     upper = _detection([_rec(text="48.012345, 37.802411", handle="Analyst")])
     assert lower.detected_from_tweet_id == upper.detected_from_tweet_id == 1
@@ -186,9 +160,7 @@ def test_the_provenance_url_is_built_from_the_id_whatever_case_the_handle_carrie
 
 
 def test_malformed_time_recovers_date_and_nulls_detected_post_at():
-    # A valid date with a garbled time-of-day: event_date is recovered from the
-    # date prefix; detected_post_at is NULL, not a false 1970, and the source
-    # slots stay empty (no source declared, no fabricated date).
+    # event_date is recovered from the date prefix; detected_post_at is NULL, not a false 1970.
     detection = _detection(
         [_rec(text="Strike 48.012345, 37.802411", created_at="2025-11-12T99:99:99Z")]
     )
@@ -198,14 +170,10 @@ def test_malformed_time_recovers_date_and_nulls_detected_post_at():
 
 
 def test_fully_unparseable_timestamp_yields_no_dates():
-    # Nothing recoverable: every date stays NULL rather than a fabricated epoch.
     detection = _detection([_rec(text="Strike 48.012345, 37.802411", created_at="not-a-timestamp")])
     assert detection.event_date is None
     assert detection.source_posted_at is None
     assert detection.detected_post_at is None
-
-
-# ── Warnings and refusals: what every entry surfaces ──────────────────────
 
 
 def test_several_candidate_links_warn_source_ambiguous():
@@ -226,8 +194,7 @@ def test_several_candidate_links_warn_source_ambiguous():
 
 
 def test_the_resolution_counts_what_its_detections_carry():
-    # The count the bot's reply and the archive's outcome email both read: one
-    # per detection carrying the warning, not one per thread that raised it.
+    # One count per detection carrying the warning, not per thread.
     resolution = _resolve([_rec(text="Two sites 48.012345, 37.802411 and 50.450100, 30.523400")])
     assert resolution.warnings == {SEVERAL_COORDINATES: 2, SOURCE_MISSING: 2}
 
@@ -237,8 +204,6 @@ def test_an_empty_thread_is_refused_as_missing():
 
 
 def test_several_threads_resolve_into_one_batch():
-    # The export shape: the detections of every thread in one list, thread by
-    # thread, and one count per refusal code across the threads that gave none.
     resolution = resolve_threads(
         [
             [_rec(tweet_id="1", text="Geolocated 48.012345, 37.802411")],
@@ -249,6 +214,5 @@ def test_several_threads_resolve_into_one_batch():
     )
     assert [d.detected_from_tweet_id for d in resolution.detections] == [1]
     assert resolution.refusals == {COORDS_MISSING: 2, COORDS_INVALID: 1}
-    # Several reasons, so no single one to name back even though nothing landed
-    # for three of the four threads.
+    # Several refusal reasons, so none is named.
     assert resolution.reason is None

@@ -8,10 +8,8 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
 
-// Local to this panel: admin surfaces inline their markup rather than minting a
-// shared primitive (see docs/design.md, the admin-dialect section, where admin
-// internals don't earn palette entries). A quiet bordered stat cell, not a
-// reusable card.
+// Local to this panel: admin surfaces inline their markup rather than mint primitives
+// (docs/design.md, admin dialect). A quiet bordered stat cell.
 function Stat({
   value,
   label,

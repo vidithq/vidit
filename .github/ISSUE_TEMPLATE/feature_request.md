@@ -20,15 +20,7 @@ What else did you weigh, and why did you rule it out?
 
 ## Milestone fit
 
-Where does this fit on the roadmap?
-
-- [ ] v0.6: Phone-ready
-- [ ] v0.7: Collaboration & reviews
-- [ ] v1.0: Public v1
-- [ ] Refactor / hygiene (no version gating)
-- [ ] Unscheduled candidate
-
-See the [GitHub Project](https://github.com/orgs/vidithq/projects/1) for open work by version, including the Unscheduled items. Items in [`planning/roadmap.md`](../../planning/roadmap.md) → *Future considerations* carry a documented rationale and revisit trigger: check that your proposal isn't already covered there.
+Which roadmap milestone fits, if any? See [`planning/roadmap.md`](../../planning/roadmap.md) for the milestones and the [GitHub Project](https://github.com/orgs/vidithq/projects/1) for the open work by version, including the Unscheduled items. Items in [`planning/roadmap.md`](../../planning/roadmap.md) → *Future considerations* carry a documented rationale and revisit trigger: check that your proposal is not already covered there.
 
 ## Anything else
 

@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+import os
 import shutil
 import unicodedata
 from pathlib import Path, PurePosixPath
@@ -15,23 +16,17 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# 64 KB chunk balances per-chunk syscall overhead against bounded memory:
-# one chunk in memory during the hash, regardless of file size.
+# 64 KB: one chunk in memory during the hash, whatever the file size.
 _HASH_CHUNK_SIZE = 64 * 1024
 
 
 class UploadResult(NamedTuple):
     """What an ``upload`` / ``upload_bytes`` call hands back.
 
-    ``sha256`` is persisted on the ``Media`` row as a stable content
-    fingerprint. The S3 ETag is unfit: MD5 for non-multipart, not stable
-    across copies.
-
-    ``derivative_keys`` are the sibling S3 keys this upload landed alongside
-    the original (hero + thumbnail for images, empty for videos). Callers add
-    them to their row-creation cleanup list so a failed DB commit sweeps the
-    derivatives too, instead of leaving indexable derivatives with no Media
-    row pointing at them.
+    ``sha256`` is stored on the ``Media`` row (the S3 ETag is unfit: MD5, not
+    stable across copies). ``derivative_keys`` are the sibling hero and
+    thumbnail keys (empty for videos); callers add them to their cleanup list
+    so a failed commit sweeps them too.
     """
 
     url: str
@@ -40,14 +35,8 @@ class UploadResult(NamedTuple):
 
 
 def _hash_uploadfile(file: UploadFile) -> str:
-    """Stream-hash the bytes behind an ``UploadFile``, rewinding after.
-
-    Bounded memory (one chunk regardless of file size) over
-    ``hashlib.sha256(await file.read())``, which would pin up to
-    ``max_video_size`` (95 MiB) per concurrent upload on the Railway worker.
-    Seeks back to 0 so the caller can hand the same file to a streaming
-    uploader.
-    """
+    """Stream-hash an ``UploadFile`` in bounded memory (a full read would pin up to
+    ``max_video_size`` per upload), then rewind for the uploader."""
     hasher = hashlib.sha256()
     file.file.seek(0)
     while True:
@@ -60,11 +49,10 @@ def _hash_uploadfile(file: UploadFile) -> str:
 
 
 class StorageDeleteError(RuntimeError):
-    """Raised when one or more keys could not be deleted from storage.
+    """One or more keys could not be deleted.
 
-    Carries the failing keys + per-key error message so callers can
-    surface a diagnostic rather than swallow silent partial failures (boto3
-    reports per-key errors in the response, not via exception).
+    Carries per-key errors, since boto3 reports them in the response, not as
+    an exception.
     """
 
     def __init__(self, errors: dict[str, str]) -> None:
@@ -80,11 +68,9 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
 ALLOWED_TYPES = ALLOWED_IMAGE_TYPES | ALLOWED_VIDEO_TYPES
 
-# Extension derived from the validated MIME, NOT ``file.filename`` (fully
-# attacker-controlled): a 2000-char suffix can blow past S3's 1024-byte key
-# limit, an RTL-override can disguise the ext, and a hostile ``.html`` on a
-# ``video/mp4`` payload makes a key whose name lies about its content. MIME
-# guarantees a short ASCII suffix.
+# Extension comes from the validated MIME, never ``file.filename`` (attacker
+# controlled: a long suffix can pass S3's 1024-byte key limit, an RTL override
+# can disguise it, a ``.html`` on a ``video/mp4`` lies about content).
 _EXTENSION_FOR_CONTENT_TYPE = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
@@ -95,13 +81,9 @@ _EXTENSION_FOR_CONTENT_TYPE = {
 
 
 def safe_storage_extension(content_type: str | None) -> str:
-    """Return the canonical extension for an allowed MIME type.
+    """Canonical extension for an allowed MIME type, ``""`` for anything else.
 
-    Falls back to ``""`` for anything off the map, safer than emitting an
-    attacker-controlled string into an S3 key. The one home for the mapping:
-    every key this module mints reads it, and so does the machine writer that
-    names the file it hands the evidence intake
-    (``detection.open_request``).
+    Shared by every key this module mints and by ``detection.open_request``.
     """
     if content_type is None:
         return ""
@@ -109,21 +91,16 @@ def safe_storage_extension(content_type: str | None) -> str:
 
 
 LOCAL_STORAGE_MOUNT_PATH = "/local-storage"
-# One home for the dev API origin: the static mount URL and the dev staging
-# upload URL both derive from it, so a port change has one spot to touch.
 LOCAL_DEV_BASE_URL = "http://localhost:8000"
 LOCAL_STORAGE_URL_PREFIX = f"{LOCAL_DEV_BASE_URL}{LOCAL_STORAGE_MOUNT_PATH}"
 
-# The dev/CI stand-in for the S3 POST-policy target (see ``main.py``, mounted
-# only when STORAGE_BACKEND=local): accepts the same field + file form the
-# browser would send S3 and writes the key through ``LocalStorage``.
+# Dev/CI stand-in for the S3 POST-policy target (``main.py``, local backend only).
 DEV_STAGING_UPLOAD_PATH = "/dev/staging-upload"
 
 
 class PresignedUpload(NamedTuple):
-    """One browser-side direct-to-storage upload: POST a multipart form to
-    ``url`` carrying every ``fields`` entry ahead of the file part. The same
-    shape for both backends, so the frontend has a single upload code path."""
+    """Browser direct upload: POST a multipart form to ``url`` with every
+    ``fields`` entry ahead of the file part. Same shape for both backends."""
 
     url: str
     fields: dict[str, str]
@@ -132,9 +109,8 @@ class PresignedUpload(NamedTuple):
 def _media_type_and_max_size(content_type: str | None) -> tuple[str, int]:
     """Resolve an allowed MIME to ``(media_type, max byte size)``.
 
-    The one place :func:`validate_file` (multipart) and :func:`validate_bytes`
-    (bytes) agree on the type allowlist + per-type size ceiling, so they can't
-    drift. Raises ``ValueError`` on a disallowed type.
+    Shared by :func:`validate_file` and :func:`validate_bytes`. Raises
+    ``ValueError`` on a disallowed type.
     """
     if content_type in ALLOWED_IMAGE_TYPES:
         return "image", settings.max_image_size
@@ -172,19 +148,22 @@ class LocalStorage:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
 
-    def _path(self, key: str) -> Path:
-        # Containment check at the single chokepoint every read/write funnels
-        # through: keys are internally minted today, but an absolute or
-        # dot-dot key must never escape the storage root.
-        path = (self.root / key).resolve()
-        if not path.is_relative_to(self.root.resolve()):
+    def _resolve(self, key: str) -> Path:
+        # An absolute or dot-dot key must not escape the root. CodeQL accepts
+        # this realpath + startswith guard, not ``Path.is_relative_to``.
+        root = os.path.realpath(self.root)
+        full = os.path.realpath(os.path.join(root, key))
+        if not full.startswith(root + os.sep):
             raise ValueError(f"Storage key escapes the root: {key!r}")
+        return Path(full)
+
+    def _path(self, key: str) -> Path:
+        path = self._resolve(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
     async def upload(self, file: UploadFile, key: str) -> UploadResult:
-        # Read once into memory: we hash the bytes anyway and size is bounded
-        # by ``max_image_size`` / ``max_video_size``, so buffering is fine.
+        # Buffering is fine: size is bounded and we hash the bytes anyway.
         file.file.seek(0)
         data = await file.read()
         sha256 = content_sha256(data)
@@ -206,13 +185,16 @@ class LocalStorage:
         return None
 
     def delete_many(self, keys: list[str]) -> None:
+        root = Path(os.path.realpath(self.root))
         for key in keys:
-            path = self.root / key
+            try:
+                path = self._resolve(key)
+            except ValueError:
+                continue
             path.unlink(missing_ok=True)
-            # Best-effort: remove parent dirs we just emptied (e.g.
-            # proof/<user>/ once its last image is gone). Stops at root.
+            # Best-effort: remove parent dirs we just emptied, up to the root.
             parent = path.parent
-            while parent != self.root and parent.is_dir():
+            while parent != root and parent.is_dir():
                 try:
                     parent.rmdir()
                 except OSError:
@@ -222,11 +204,10 @@ class LocalStorage:
     def presign_staging_upload(
         self, key: str, *, max_bytes: int, content_type: str
     ) -> PresignedUpload:
-        """Point the browser at the dev upload endpoint with the same field
-        shape S3's POST policy would return, so the frontend upload code is
-        identical against either backend. ``max_bytes`` is unused here: the
-        dev endpoint re-reads the guard itself (a form field would be
-        client-tamperable, and dev/CI archives are small anyway).
+        """Dev upload endpoint with S3's POST-policy field shape.
+
+        ``max_bytes`` is unused: the dev endpoint enforces its own guard (a
+        form field is client-tamperable).
         """
         del max_bytes
         return PresignedUpload(
@@ -268,16 +249,11 @@ class S3Storage:
         self.client = boto3.client("s3", **client_kwargs)
 
     async def upload(self, file: UploadFile, key: str) -> UploadResult:
-        # Two passes: (1) stream-hash in 64 KB chunks (see
-        # ``_hash_uploadfile``); (2) hand the rewound file to
-        # ``upload_fileobj`` for multipart-streamed PUTs without buffering.
-        # The old ``put_object(Body=await file.read())`` pinned the entire
-        # video (up to ``max_video_size``, 95 MiB) per upload, an OOM line on
-        # the single Railway worker under a multi-file post.
+        # Hash in chunks, then stream via ``upload_fileobj``: buffering a
+        # whole video per upload would OOM the single worker.
         sha256 = _hash_uploadfile(file)
         extra_args = {"ContentType": file.content_type} if file.content_type else {}
-        # ``upload_fileobj`` is sync; ``to_thread`` keeps the event loop free
-        # so a slow upload doesn't starve siblings on the one worker.
+        # ``upload_fileobj`` is sync; ``to_thread`` keeps the loop free.
         await asyncio.to_thread(
             self.client.upload_fileobj,
             file.file,
@@ -288,10 +264,8 @@ class S3Storage:
         return UploadResult(url=self.public_url(key), sha256=sha256)
 
     async def upload_bytes(self, data: bytes, key: str, content_type: str) -> UploadResult:
-        # Caller already holds the bytes, so streaming buys nothing. The
-        # ``to_thread`` wrap still matters: the seeder mints hundreds of rows
-        # in a tight loop, and a blocking ``put_object`` per row would starve
-        # the loop.
+        # ``to_thread`` matters: the seeder loops hundreds of rows and a
+        # blocking ``put_object`` would starve the loop.
         sha256 = content_sha256(data)
         await asyncio.to_thread(
             self.client.put_object,
@@ -318,9 +292,8 @@ class S3Storage:
         return None
 
     def delete_many(self, keys: list[str]) -> None:
-        # S3 DeleteObjects accepts up to 1000 keys/call and does NOT raise
-        # on per-key failures — they're in the response Errors[] array.
-        # Aggregate across chunks and raise once.
+        # DeleteObjects takes up to 1000 keys and reports per-key failures in
+        # ``Errors[]`` without raising; aggregate and raise once.
         if not keys:
             return
         all_errors: dict[str, str] = {}
@@ -339,21 +312,15 @@ class S3Storage:
             raise StorageDeleteError(all_errors)
 
     def get_to_path(self, key: str, dest: Path) -> None:
-        """Stream the object at ``key`` to ``dest`` without buffering it in
-        memory: the staged archive guard is 4 GB, far past what a worker
-        process can hold, so a whole-object read is off the table for staged
-        zips, and this is the only way down from storage.
-        """
+        """Stream the object to ``dest``; staged zips (4 GB guard) cannot be buffered."""
         self.client.download_file(self.bucket, key, str(dest))
 
     def presign_staging_upload(
         self, key: str, *, max_bytes: int, content_type: str
     ) -> PresignedUpload:
-        """A POST policy, not a presigned PUT: only the POST form supports
-        ``content-length-range``, so S3 itself rejects an over-``max_bytes``
-        body instead of trusting the client. Conditions pin the exact key and
-        content type; 15 minutes covers a slow connection without leaving a
-        long-lived write grant in the wild. Local signing, no network call.
+        """A POST policy, not a presigned PUT: only POST supports
+        ``content-length-range``, so S3 rejects an oversize body itself.
+        Conditions pin the key and content type; the 15 minute expiry bounds the grant.
         """
         post = self.client.generate_presigned_post(
             Bucket=self.bucket,
@@ -369,19 +336,16 @@ class S3Storage:
         return PresignedUpload(url=post["url"], fields=dict(post["fields"]))
 
     def head_size(self, key: str) -> int | None:
-        """The object's size in bytes, or ``None`` when the key holds nothing.
-        Any error other than a miss propagates; callers must not read a
-        storage outage as an absent object.
+        """The object's size in bytes, or ``None`` on a miss.
+
+        Other errors propagate so an outage is not read as an absent object.
         """
         try:
             response = self.client.head_object(Bucket=self.bucket, Key=key)
         except ClientError as exc:
             status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
-            # 403 is also a miss here: without s3:ListBucket, S3 answers
-            # HeadObject on a nonexistent key with 403, not 404 (the runtime
-            # IAM user carries object-level permissions only). Every key we
-            # HEAD is one we minted under a writable prefix, so a forbidden
-            # answer can only mean the object does not exist.
+            # 403 is a miss too: without s3:ListBucket, S3 answers HEAD on a
+            # missing key with 403 (the runtime IAM user is object-level only).
             if status in (403, 404):
                 return None
             raise
@@ -401,43 +365,31 @@ def get_storage() -> Storage:
 
 
 def scrub_log(value: str) -> str:
-    """Strip CR/LF before a user-supplied value enters a log line.
+    """Strip CR/LF so a user-supplied value cannot forge log entries (``py/log-injection``).
 
-    A crafted URL or filename carrying embedded newlines could otherwise
-    forge extra log entries (``py/log-injection``). Single home for the
-    scrubber: every log interpolation of a user-influenced string goes
-    through this first (``sweep_keys`` below, the tweet-import router).
+    Every log interpolation of a user-influenced string goes through this.
     """
     return value.replace("\r", "").replace("\n", "")
 
 
 def content_sha256(data: bytes) -> str:
-    """The content fingerprint stored on a ``Media`` row, for a bytes payload.
-
-    One home for the digest so a caller that needs to know whether bytes are
-    already stored (the re-import upsert compares against ``Media.sha256``)
-    computes it the same way the upload does.
-    """
+    """The ``Media.sha256`` digest of a bytes payload (the re-import upsert compares against it)."""
     return hashlib.sha256(data).hexdigest()
 
 
 def sweep_keys(keys: list[str], *, context: str) -> None:
-    """Best-effort delete a list of storage keys; swallow + log every failure.
+    """Best-effort delete of storage keys; every failure is logged and swallowed.
 
-    The canonical statement of the commit-then-sweep ordering every delete
-    path follows: callers reach this AFTER the DB transaction has committed
-    (or rolled back), so a storage failure can't propagate and turn a settled
-    DB state into a retryable 500, and a still-live key can never be stranded
-    under a deleted row. A failed delete leaves an orphaned object, the
-    accepted residual risk, logged for a manual sweep.
+    Commit-then-sweep: call this AFTER the DB transaction settles, so a storage
+    failure cannot turn a committed state into a 500 and a live key is never
+    stranded under a deleted row. A failure leaves an orphan, logged for a
+    manual sweep.
 
-    ``context`` is a short caller phrase for the log, e.g.
-    ``f"event {geo.id} hard-delete"``.
+    ``context`` is a short log phrase, e.g. ``f"event {geo.id} hard-delete"``.
     """
     if not keys:
         return
-    # ``context`` can embed user-influenced strings (a detection source URL,
-    # an event title): scrub before it reaches the log.
+    # ``context`` can embed user-influenced strings (source URL, title).
     context = scrub_log(context)
     try:
         get_storage().delete_many(keys)
@@ -457,39 +409,23 @@ def sweep_keys(keys: list[str], *, context: str) -> None:
 
 
 def derivative_key(original_key: str, suffix: str) -> str:
-    """Build the sibling key for a hero / thumbnail derivative.
+    """Sibling key for a hero / thumbnail derivative, always ``.jpg``.
 
-    Always JPEG so the extension is forced regardless of source format —
-    see ``make_jpeg_derivative`` for why.
-
-    Examples
-    --------
-    >>> derivative_key("uploads/abc/xyz.jpg", "hero")
-    'uploads/abc/xyz_hero.jpg'
-    >>> derivative_key("uploads/abc/xyz.png", "thumb")
-    'uploads/abc/xyz_thumb.jpg'
-    >>> derivative_key("detected/geo-01/media/photo.webp", "hero")
-    'detected/geo-01/media/photo_hero.jpg'
-
-    The frontend mirrors this convention in ``mediaUrls()``: the two layers
-    must agree on the naming or nothing renders.
+    ``uploads/abc/xyz.png`` + ``thumb`` gives ``uploads/abc/xyz_thumb.jpg``.
+    Mirrored by `lib/mediaUrls.ts`; change both or nothing renders.
     """
-    # ``PurePosixPath`` because S3 keys are always forward-slash separated;
-    # ``Path`` on Windows would render the stem with backslashes and break
-    # the convention.
+    # ``PurePosixPath``: S3 keys use forward slashes on every platform.
     p = PurePosixPath(original_key)
     stem_path = p.with_suffix("")
     return f"{stem_path}_{suffix}.jpg"
 
 
 def validate_bytes(data: bytes, content_type: str) -> str:
-    """Type + size validation for a bytes-source upload; returns the media_type.
+    """Type + size validation for bytes-source media; returns the media_type.
 
-    The symmetric guard to :func:`validate_file` for media that never arrived as
-    a multipart ``UploadFile`` (a fetched / read-from-disk archive file). Without
-    it the bytes path would buffer + re-encode an unbounded image in memory on
-    the single worker — the OOM line the video path avoids — and accept any MIME.
-    Raises ``ValueError``; the caller maps it to its own error / skip.
+    The :func:`validate_file` twin for fetched or read-from-disk files; without
+    it an unbounded image would be buffered and re-encoded on the single worker.
+    Raises ``ValueError``.
     """
     media_type, max_size = _media_type_and_max_size(content_type)
     if len(data) > max_size:
@@ -498,9 +434,7 @@ def validate_bytes(data: bytes, content_type: str) -> str:
 
 
 class PreparedMedia(NamedTuple):
-    """An image / video whose CPU-bound strip + derivative work is already done,
-    so a caller can compute it once and upload the result to several keys (a
-    multi-coordinate thread shares one image across its coordinate rows)."""
+    """Media whose strip + derivative work is done, so one result can be uploaded to several keys."""
 
     cleaned: bytes
     hero: bytes | None
@@ -511,18 +445,14 @@ class PreparedMedia(NamedTuple):
 def prepare_media(
     data: bytes, content_type: str, *, produce_derivatives: bool = True
 ) -> PreparedMedia:
-    """Strip metadata + (optionally) build hero/thumb JPEGs. Sync, CPU-bound —
-    callers run it in a thread. Non-image types pass through unstripped.
+    """Strip metadata + (optionally) build hero/thumb JPEGs. Sync and CPU-bound, so run in a thread.
 
-    ``content_type`` is the type the result is stored under, and for an image it
-    is also the encoding it comes back in: the bytes may be any accepted image
-    format, and ``strip_metadata`` re-encodes them to the declared type. That
-    is how the ingest path normalises a machine-fetched photo, which declares
-    the one imported-photo type rather than reading a payload field
-    (``tweet_ingest.records.PHOTO_CONTENT_TYPE``).
+    ``content_type`` is the stored type and, for an image, the output encoding
+    (``strip_metadata`` re-encodes to it), which normalises machine-fetched
+    photos (``tweet_ingest.records.PHOTO_CONTENT_TYPE``). Non-images pass
+    through unstripped.
     """
-    # Local import keeps the storage module free of an eager Pillow load
-    # (libjpeg / libpng C extensions at process start).
+    # Local import avoids an eager Pillow load at process start.
     from app.services.evidence_processing import (
         HERO_MAX_DIM,
         THUMBNAIL_MAX_DIM,
@@ -531,10 +461,8 @@ def prepare_media(
     )
 
     if content_type not in ALLOWED_IMAGE_TYPES:
-        # Video / other: no strip, no derivatives. Unlike the multipart path
-        # this holds the whole file in memory — the caller already buffered it,
-        # and ``validate_bytes`` caps it at ``max_video_size``. (No video reaches
-        # this path today; the archive adapter ingests photos only.)
+        # Video / other: no strip, no derivatives (already buffered by the
+        # caller and capped by ``validate_bytes``).
         return PreparedMedia(data, None, None, content_type)
     cleaned = strip_metadata(data, content_type)
     if not produce_derivatives:
@@ -545,11 +473,10 @@ def prepare_media(
 
 
 async def upload_prepared_media(prepared: PreparedMedia, key: str) -> UploadResult:
-    """Upload an already-prepared media (cleaned + optional derivatives) to ``key``.
+    """Upload prepared media to ``key``; the sha256 is of the cleaned original.
 
-    The sha256 lands on the cleaned original (derivatives are regeneratable). A
-    mid-flight derivative-upload failure best-effort sweeps whatever landed
-    before re-raising, so the bucket never holds an original with no derivatives.
+    A mid-flight failure sweeps whatever landed before re-raising, so the
+    bucket never holds an original without its derivatives.
     """
     from app.services.evidence_processing import DERIVATIVE_CONTENT_TYPE
 
@@ -587,14 +514,11 @@ async def upload_bytes_with_optional_strip(
     *,
     produce_derivatives: bool = True,
 ) -> UploadResult:
-    """Validate + strip + upload media the caller already holds as bytes.
+    """Validate, strip and upload media held as bytes (fetched tweet images, archive files).
 
-    The bytes-source sibling of :func:`_upload_with_optional_strip`, for media
-    that never arrived as a multipart ``UploadFile`` — a tweet image fetched from
-    the X CDN, an archive file read from disk. Validates type + size
-    (:func:`validate_bytes`), strips EXIF/IPTC/XMP/ICC + builds JPEG hero/thumb
-    for images (``produce_derivatives``), plain-uploads video. The re-encode is
-    sync CPU-bound, so it runs in a thread.
+    Bytes-source sibling of :func:`_upload_with_optional_strip`. Images lose
+    EXIF/IPTC/XMP/ICC and get hero/thumb JPEGs (``produce_derivatives``); video
+    uploads as is. The re-encode runs in a thread.
     """
     validate_bytes(data, content_type)
     prepared = await asyncio.to_thread(
@@ -611,17 +535,12 @@ async def _upload_with_optional_strip(
 ) -> UploadResult:
     """Dispatch a multipart upload by content type.
 
-    * **Image** — buffer the body (bounded by ``max_image_size``) off the event
-      loop, then hand the bytes to :func:`upload_bytes_with_optional_strip`,
-      which strips metadata and (optionally) builds the hero/thumbnail JPEGs.
-      ``produce_derivatives=False`` for ``upload_proof_image``: inline proof
-      images render from the raw ``storage_url``, so hero/thumb JPEGs would be
-      unfetched objects retained 365 days under Object Lock.
-
-    * **Video** — no strip (needs ffmpeg / mp4-atom rewriting) and no
-      derivatives; stream-hash + ``upload_fileobj`` via ``upload``, memory
-      bounded at one chunk. Buffering a max-size (95 MiB) MP4 to strip it is the OOM line
-      a prior PR caught — which is why EXIF strip can't run on videos.
+    * **Image**: buffered (bounded by ``max_image_size``) off the event loop,
+      then :func:`upload_bytes_with_optional_strip`. ``produce_derivatives=False``
+      for proof images, which render from the raw URL (derivatives would be
+      unfetched objects locked 365 days under Object Lock).
+    * **Video**: streamed via ``upload`` with no strip (it needs ffmpeg and
+      buffering a 95 MiB MP4 would OOM the worker) and no derivatives.
     """
     if file.content_type in ALLOWED_IMAGE_TYPES:
         content_type = file.content_type or ""
@@ -644,47 +563,35 @@ async def upload_file(file: UploadFile, geolocation_id: UUID) -> UploadResult:
 
 
 def detected_media_key(geolocation_id: UUID, content_type: str) -> str:
-    """S3 key for a machine detection's media — a distinct ``detected/`` prefix
-    keeps it separable from human ``uploads/``. The extension derives from the
-    validated MIME (a safe short ASCII suffix), never an attacker filename.
+    """S3 key for a machine detection's media, under ``detected/`` to separate it from ``uploads/``.
 
-    A request the bot opens stores its footage under ``uploads/`` like a manual
-    request, since it is written through ``events.create_request`` and the row
-    is the analyst's own submission; ``detected/`` holds the detections."""
+    A bot-opened request stores footage under ``uploads/`` like a manual one."""
     ext = safe_storage_extension(content_type)
     return f"detected/{geolocation_id}/{uuid4()}{ext}"
 
 
 async def upload_proof_image(file: UploadFile, user_id: UUID) -> UploadResult:
-    """Inline image embedded in a Tiptap proof body.
+    """Inline image embedded in a Tiptap proof body, under a per-user prefix.
 
-    Per-user prefix, the convention from the editor-upload era, kept so
-    existing proof URLs and new ones live under one shape. Always an image
-    (evidence intake rejects everything else), so EXIF strip + buffered
-    upload always applies.
-
-    Skips derivatives: inline proof images render through Tiptap's
-    ``<img src=…>`` via the raw storage URL, so hero/thumb JPEGs would be
-    two unfetched objects per upload, locked 365 days under Object Lock.
+    Always an image (intake rejects the rest). Skips derivatives: the image
+    renders from the raw URL, so hero/thumb would be unfetched objects locked
+    365 days under Object Lock.
     """
     ext = safe_storage_extension(file.content_type)
     key = f"proof/{user_id}/{uuid4()}{ext}"
     return await _upload_with_optional_strip(file, key, produce_derivatives=False)
 
 
-# Every object under this prefix is one this codebase minted for a profile
-# picture. The column that points at it is server-set, so the prefix is what
-# tells a sweep "this key is ours to delete".
+# Objects under this prefix are profile pictures this codebase minted; it
+# marks a key as ours to delete.
 AVATAR_KEY_PREFIX = "avatars/"
 
 
 def avatar_key_of(url: str | None) -> str | None:
-    """The avatar object ``url`` addresses, or ``None`` when it addresses none.
+    """The avatar key ``url`` addresses, or ``None``.
 
-    Every caller that deletes a picture asks this first. A URL resolves to a
-    key only when it names our own bucket, and only a key under
-    ``avatars/`` is one this pipeline minted, so anything else is another
-    prefix's object and is left where it is.
+    Asked before any picture delete: only our own bucket and the ``avatars/``
+    prefix qualify, so other objects are left alone.
     """
     if not url:
         return None
@@ -695,34 +602,24 @@ def avatar_key_of(url: str | None) -> str | None:
 
 
 def avatar_key(user_id: UUID) -> str:
-    """Mint the storage key for one analyst's next profile picture.
-
-    Always ``.jpg``: :func:`render_avatar_jpeg` re-encodes every accepted
-    source format, so the key never has to describe what was uploaded.
-    """
+    """Storage key for an analyst's next profile picture, always ``.jpg`` (see :func:`render_avatar_jpeg`)."""
     return f"{AVATAR_KEY_PREFIX}{user_id}/{uuid4()}.jpg"
 
 
 def render_avatar_jpeg(data: bytes, content_type: str) -> bytes:
-    """Turn accepted image bytes into the single JPEG an avatar is stored as.
+    """Turn image bytes into the single JPEG an avatar is stored as.
 
-    EXIF/IPTC/XMP/ICC stripped, then resized so the longer edge fits
-    ``THUMBNAIL_MAX_DIM`` and re-encoded as JPEG. One object per avatar: the
-    picture renders at 44 px on the profile header and smaller everywhere
-    else, so hero / thumbnail siblings would be unfetched objects retained
-    365 days under Object Lock.
+    Metadata stripped, longer edge fit to ``THUMBNAIL_MAX_DIM``, re-encoded as
+    JPEG. One object only: avatars render at 44 px or smaller, so siblings
+    would be unfetched objects locked 365 days under Object Lock.
 
-    ``content_type`` must already be in :data:`ALLOWED_IMAGE_TYPES`; the
-    caller owns that check (:func:`upload_avatar_image` for the endpoint).
-    Anything else falls through the transforms unchanged, which is not what a
-    caller here wants.
+    ``content_type`` must be in :data:`ALLOWED_IMAGE_TYPES` (the caller
+    checks; anything else passes through the transforms unchanged).
 
-    Sync and CPU-bound; the async caller runs it in a thread. Raises
-    ``EvidenceProcessingError`` for an image that is not a readable JPEG, PNG
-    or WebP, or is over ``MAX_AVATAR_DECODED_PIXELS``.
+    Sync and CPU-bound. Raises ``EvidenceProcessingError`` for an unreadable
+    image or one over ``MAX_AVATAR_DECODED_PIXELS``.
     """
-    # Local import keeps the storage module free of an eager Pillow load, the
-    # same reason ``prepare_media`` defers it.
+    # Local import, as in ``prepare_media``.
     from app.services.evidence_processing import (
         MAX_AVATAR_DECODED_PIXELS,
         THUMBNAIL_MAX_DIM,
@@ -735,11 +632,9 @@ def render_avatar_jpeg(data: bytes, content_type: str) -> bytes:
 
 
 async def upload_avatar_image(file: UploadFile, user_id: UUID) -> UploadResult:
-    """Store one analyst's profile picture and return where it landed.
+    """Store one analyst's profile picture. Images only (nothing would resize a video).
 
-    Images only. A video content type is rejected on the MIME rather than
-    validated against the video size ceiling, because nothing downstream would
-    resize or strip it. Raises ``ValueError``; the router maps it to a 422.
+    Raises ``ValueError``; the router maps it to a 422.
     """
     content_type = file.content_type or ""
     if content_type not in ALLOWED_IMAGE_TYPES:
@@ -754,49 +649,35 @@ async def upload_avatar_image(file: UploadFile, user_id: UUID) -> UploadResult:
     return await get_storage().upload_bytes(data, avatar_key(user_id), "image/jpeg")
 
 
-# 255 chars is the common filesystem-name max (NTFS / ext4), above any
-# realistic phone-camera filename. A constant so routers and tests share
-# one source of truth.
+# 255: common filesystem-name max (NTFS / ext4), above any camera filename.
+# Mirrored by `lib/proofImages.ts` (``safe_original_filename``).
 ORIGINAL_FILENAME_MAX_LEN = 255
 
-# Unicode categories rejected in a stored filename:
-#   ``Cc`` — control characters (NUL, newline, tab, ESC, 0x7F).
-#   ``Cf`` — format characters: RTL/LTR overrides, bidi isolates,
-#            zero-width joiners, BOM. Attackers use these to disguise the
-#            extension (``image.j[U+202E]gpj`` renders as ``image.jpg`` but
-#            ends ``.exe``) or smuggle markers past log parsers.
-# Legitimate filenames never contain category-C codepoints. The category
-# check beats enumerating codepoints — new Unicode revisions add format
-# chars a fixed allow-list would miss.
+# Rejected in a stored filename: ``Cc`` (control chars) and ``Cf`` (format
+# chars: RTL overrides, zero-width joiners, BOM), used to disguise an
+# extension (``image.j[U+202E]gpj`` renders as ``image.jpg``) or smuggle
+# markers past log parsers. By category, since new Unicode revisions add
+# format chars a fixed list would miss.
 _BAD_UNICODE_CATEGORIES = frozenset({"Cc", "Cf"})
 
 
 def safe_original_filename(name: str | None) -> str | None:
-    """Sanitise ``file.filename`` before persisting on a row.
+    """Sanitise the attacker-controlled multipart ``filename`` before persisting.
 
-    The multipart ``filename`` is fully attacker-controlled — path
-    components (``../../etc/passwd``), NULs, newlines, control chars,
-    RTL-override codepoints, HTML-shaped strings. Postgres TEXT stores all
-    of it and it surfaces on the public ``MediaRead`` API, so any future
-    renderer inserting it into a tag attr / HTML body / URL has a
-    stored-XSS surface. Defence in depth on top of output-escaping.
+    It surfaces on the public ``MediaRead`` API, so a future renderer could
+    expose stored XSS; this is defence in depth beside output-escaping.
 
-    * **Strip directory components** via basename — both slash kinds, so a
-      Windows-style path doesn't sneak through on POSIX.
-    * **Reject every category-C codepoint** — see
-      ``_BAD_UNICODE_CATEGORIES``.
-    * **Cap at 255 chars** — see ``ORIGINAL_FILENAME_MAX_LEN``.
-    * Return ``None`` for the empty / all-stripped case so the column stays
-      NULL, not ``""``.
+    * Strip directory components (both slash kinds).
+    * Reject every ``_BAD_UNICODE_CATEGORIES`` codepoint.
+    * Cap at ``ORIGINAL_FILENAME_MAX_LEN``.
+    * Return ``None`` when empty so the column stays NULL, not ``""``.
 
-    HTML / URL chars (``< > & " '``) **pass through** — output-escaping is
-    their right defence; sanitising here would corrupt legitimate filenames
-    with ``&`` and clash with double-escape rules. Both layers are needed.
+    HTML / URL chars (``< > & " '``) pass through: output-escaping is their
+    defence, and stripping would corrupt names containing ``&``.
     """
     if not name:
         return None
-    # Backslash-aware split covers ``..\\..\\foo.jpg`` on any platform
-    # (``Path.name`` on POSIX wouldn't strip backslashes).
+    # Backslash-aware: ``Path.name`` on POSIX wouldn't strip ``..\\..\\foo.jpg``.
     name = name.replace("\\", "/").rsplit("/", 1)[-1].strip()
     if not name:
         return None

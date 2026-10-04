@@ -1,17 +1,11 @@
 """Pydantic shapes for ``GET /search``.
 
-Four groups: the two event views, collections, and analysts.
-
-Hits carry ``*_highlight`` fields with sentinel-delimited match fragments (see
-``services.search.HIGHLIGHT_START`` / ``HIGHLIGHT_STOP``) that the frontend
-turns into ``<mark>`` tags. No raw HTML crosses the wire — XSS-safe by
-construction. Field sets mirror the ``EventList`` card shape plus the
-highlights, so the result card reuses the same components.
-
-The geolocation + request groups are two views over the one ``events`` table
-(the located rows vs the ``requested`` ones), so both run through a single
-FTS query path in ``services.search``; the two hit shapes differ only in the
-fields each view surfaces (the located view adds coordinates).
+Four groups: the two event views, collections and analysts. Hits carry
+``*_highlight`` fields with sentinel-delimited match fragments
+(``services.search.HIGHLIGHT_START`` / ``HIGHLIGHT_STOP``) that the frontend
+turns into ``<mark>`` tags, so no raw HTML crosses the wire. Field sets mirror
+the ``EventList`` card plus highlights. The geolocation and request groups are
+two views over ``events`` sharing one FTS path in ``services.search``.
 """
 
 from __future__ import annotations
@@ -28,16 +22,13 @@ from app.schemas.media import MediaRead
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
 
-# The ``type=`` query values, echoed back on the response. Mirrors
-# ``services.search.ALLOWED_TYPES`` (kept a plain set there for the runtime
-# membership check); this Literal is the typed contract the OpenAPI spec ships.
+# The ``type=`` values, echoed on the response. Mirrors
+# ``services.search.ALLOWED_TYPES`` (a plain set there for the runtime check).
 SearchType = Literal["all", "event", "geolocation", "request", "collection", "user"]
 
 
 class SearchTotals(BaseModel):
-    """Per-group pre-LIMIT match counts, so the UI renders "12 geolocations, 4
-    requests, 2 collections, 1 analyst" without re-summing the (LIMIT-capped)
-    hit lists."""
+    """Per-group pre-LIMIT match counts, so the UI needn't re-sum the capped hit lists."""
 
     geolocations: int
     requests: int
@@ -48,24 +39,19 @@ class SearchTotals(BaseModel):
 class SearchEventHit(BaseModel):
     id: uuid.UUID
     title: str
-    # ts_headline output: title text with ``[[HL]]…[[/HL]]`` around matched
-    # fragments. Always present — the title field is always indexed.
+    # ts_headline output with ``[[HL]]…[[/HL]]`` around matches; always present.
     title_highlight: str
     lat: float
     lng: float
-    # Nullable (a machine detection often has no known date) but always
-    # serialised: ``services.search.search_geolocations`` sets the key on every hit.
+    # Nullable but always serialised (``services.search.search_geolocations``).
     event_date: date | None
-    # See ``EventRead.is_graphic``; the result card covers its thumbnail on it,
-    # so the flag travels with the hit rather than costing a detail fetch.
+    # See ``EventRead.is_graphic``; travels with the hit to avoid a detail fetch.
     is_graphic: bool
-    # ``detected`` rows surface in search marked, like everywhere else.
+    # ``detected`` rows surface marked, as everywhere else.
     status: EventStatus
     owner: AuthorRef
-    # The picked card thumbnail (at most one row), same rule as the request
-    # hit and the list card: first ``source`` media, else first ``proof``
-    # image (``services.thumbnails``). A list for wire stability; the card
-    # renders ``media[0]``.
+    # Picked card thumbnail (at most one row, ``services.thumbnails``). A list
+    # for wire stability; the card renders ``media[0]``.
     media: list[MediaRead]
     tags: list[TagRead]
 
@@ -76,17 +62,16 @@ class SearchRequestHit(BaseModel):
     id: uuid.UUID
     title: str
     title_highlight: str
-    # Mirrors the nullable column (required-nullable, key always serialised).
-    # A ``requested`` hit always carries one today (``ck_events_source_url_status``).
+    # Required-nullable; a ``requested`` hit always has one today
+    # (``ck_events_source_url_status``).
     source_url: str | None
-    # A requested-view hit is ``requested`` (or ``closed`` once withdrawn).
+    # ``requested``, or ``closed`` once withdrawn.
     status: EventStatus
     created_at: datetime
-    # Same cover gate as ``SearchEventHit.is_graphic``: a request carries the
-    # poster's footage, so its card needs the flag too.
+    # Same cover gate as ``SearchEventHit.is_graphic``.
     is_graphic: bool
     owner: AuthorRef
-    # Same picked-thumbnail shape as ``SearchEventHit.media``.
+    # Same shape as ``SearchEventHit.media``.
     media: list[MediaRead]
     tags: list[TagRead]
 
@@ -96,12 +81,11 @@ class SearchRequestHit(BaseModel):
 class SearchUserHit(BaseModel):
     id: uuid.UUID
     username: str
-    # Always present — username sits in the index unconditionally.
+    # Always present: username is always indexed.
     username_highlight: str
     bio: str | None
-    # Set only when the bio contributed a highlighted fragment; ``None`` for
-    # username-only matches so the UI hides the snippet block instead of
-    # rendering an un-highlighted bio.
+    # Set only when the bio contributed a fragment; ``None`` lets the UI hide
+    # the snippet block.
     bio_highlight: str | None
     avatar_url: str | None
 
@@ -109,28 +93,22 @@ class SearchUserHit(BaseModel):
 
 
 class SearchResponse(BaseModel):
-    """Grouped result set. Empty arrays for groups the caller didn't request via
-    ``type=`` — keeps the JSON shape stable so the frontend skips conditional access."""
+    """Grouped result set. Groups not requested via ``type=`` are empty arrays,
+    keeping the JSON shape stable."""
 
     geolocations: list[SearchEventHit]
     requests: list[SearchRequestHit]
-    # A collection hit is the collection itself, in the one shape every read
-    # surface renders (``CollectionRead``, mosaic and counts included), so a
-    # result renders as the card the profile prints rather than as a second
-    # kind of collection payload. No ``*_highlight`` field with it: the card
-    # prints the collection's own title and description, and marking a
-    # fragment of a two-line clamp would cut the mark as often as it showed
-    # it.
+    # A hit is the ``CollectionRead`` every surface renders, so a result is the
+    # profile's card. No ``*_highlight``: the card shows a two-line clamp, which
+    # a mark would often cut.
     collections: list[CollectionRead]
     users: list[SearchUserHit]
 
-    # Denormalised totals so the UI renders group counts ("12 geolocations, 4
-    # requests, 2 collections, 1 analyst") without re-summing the lists.
+    # Group totals, so the UI needn't re-sum the lists.
     total: SearchTotals
 
-    # Echoes the inputs so the frontend can confirm the response matches the
-    # current query state (the browser may have several requests in flight as
-    # the user types).
+    # Echoes the inputs so the frontend can match a response to the current
+    # query among in-flight requests.
     query: str
     type: SearchType
 
@@ -139,7 +117,7 @@ class SearchResponse(BaseModel):
 
 class AuthorSuggestions(BaseModel):
     """``GET /search/authors``: usernames for the author-filter typeahead
-    (prefix matches first, then alphabetical). The filter itself is an exact
-    match, so the picker is how a partial name becomes a real handle."""
+    (prefix matches first, then alphabetical). The filter is an exact match,
+    so this is how a partial name becomes a handle."""
 
     authors: list[str]

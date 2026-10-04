@@ -148,7 +148,7 @@ Each derived field fills on a signal in that text, or stays empty:
 
 **Retweet.** `extract.is_retweet` anchors the `RT @<handle>:` prefix at the start of the text, so text mentioning RT further in is kept. [`archive.py`](../backend/app/services/tweet_ingest/archive.py)'s `read_tweets` drops the entry before stitching, which costs no thread: a retweet is never anyone's reply parent.
 
-**Attribution.** A detection is owned by the existing Vidit account whose `x_handle` an admin linked ([`detection.linked_owner`](../backend/app/services/detection.py), the one map from a handle to an account), and no entry creates a user. The link binds to the invite code at mint time and copies onto the account at registration; `PATCH /admin/users/{id}/x-handle` (see [`api.md`](api.md)) repairs and backfills it, and self-serve linking is a later gate (see [issue #429](https://github.com/vidithq/vidit/issues/429)). A post quoting someone else's footage credits the importer, and contested attribution goes through the claim/dispute pipeline.
+**Attribution.** A detection is owned by the existing Vidit account whose `x_handle` an admin linked ([`detection.linked_owner`](../backend/app/services/detection.py), the one map from a handle to an account), and no entry creates a user. The link binds to the invite code at mint time and copies onto the account at registration; `PATCH /admin/users/{id}/x-handle` (see [`api.md`](api.md)) repairs and backfills it; an analyst cannot link a handle themselves. A post quoting someone else's footage credits the importer, and contested attribution goes through the claim/dispute pipeline.
 
 **Coverage is text-only.** On a 48.5k-tweet external OSINT corpus (853 analysts), reading coordinates from post text recovers about 86% of the geolocations at about 0% false positives. The remaining 14% carry the coordinate only inside the image, which would take vision over every backfilled media item and is out of scope. The import panel states the limit when a pasted post produces no detection.
 
@@ -516,4 +516,3 @@ The provenance leg is the thread's post IDs, not a URL and not the anchor alone.
 - [`data-model.md`](data-model.md#events) for the `events` table columns and CHECK constraints.
 - [`engineering.md`](engineering.md#scheduler-services) for the Railway services the bot and the import worker run as, and [`engineering.md`](engineering.md#x-webhook-operations) for the webhook runbook.
 - [`archival.md`](archival.md) for the archived copies an analyst records against an event's links.
-- [`conflicts.md`](conflicts.md) for the conflict referential the daily sync feeds.

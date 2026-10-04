@@ -5,34 +5,24 @@ import { TEXT_LINK } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
 
 /**
- * A locked URL field's value, rendered as the link it already is.
+ * A locked URL field's value, rendered as the link it is. The value is inherited
+ * (a request's source URL, an imported detection's provenance post) and
+ * non-editable, but a reviewer needs to open it and an `<input readOnly>` holds
+ * text, so it renders as an anchor in `LOCKED_FIELD`, the locked input's box.
  *
- * The value is inherited (a request's source URL, an imported detection's
- * provenance post) and stays non-editable, but it is still a URL a reviewer
- * needs to open, and an `<input readOnly>` holds text rather than markup. So
- * the field renders as an anchor instead, wearing `LOCKED_FIELD`, the same box
- * recipe the locked input wears, so it reads as the field it is rather than as
- * a link that wandered into the form.
+ * It shows the full URL and truncates rather than wraps, keeping the field one
+ * line. Accent orange since it is clickable; the focus ring is the border the
+ * default field turns on.
  *
- * The anchor carries the full URL, which is what the field displayed before:
- * reducing it to a host (as `SourceLabel` does on the detail surfaces, where
- * space is the constraint) would say strictly less than the field it replaces.
- * It truncates rather than wraps, so a long permalink keeps the field one line
- * high. Accent orange per the accent recipe, since it is clickable, and the
- * focus ring is the border the default field turns on focus, so a focused
- * locked link looks like a focused field.
- *
- * `trailing` is the adornment slot `<Input>` carries, in the same place and at
- * the same size: the value is frozen, but the field's own actions are not, and
- * the archive mark on a published event's source URL sits here. The link
- * truncates before the adornment rather than under it.
+ * `trailing` is `<Input>`'s adornment slot (the archive mark on a published
+ * event's source URL): the field's actions are live though the value is frozen.
+ * The link truncates before the adornment.
  */
 export function LockedUrl({
   href,
   trailing,
 }: {
   href: string;
-  /** Marks overlaid at the field's right edge, as on `<Input trailing>`. */
   trailing?: ReactNode;
 }) {
   const link = (

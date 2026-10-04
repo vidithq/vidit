@@ -47,7 +47,6 @@ describe("useCollectionSequence", () => {
     const { result } = renderHook(() => useCollectionSequence("c1"));
 
     await waitFor(() => expect(result.current.error).toBe("Gone."));
-    // A page that asked and was refused is not a page still reading.
     expect(result.current.loading).toBe(false);
     expect(result.current.items).toBeNull();
   });

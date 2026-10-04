@@ -1,33 +1,23 @@
 """Shared pagination vocabulary for the list endpoints.
 
-One row cap, one cursor format, one ``Link: rel="next"`` builder, so a list
-endpoint cannot invent a second pagination dialect. Routers own the query,
-this module owns how a page is bounded and how the caller reaches the next
-one.
+One row cap, one cursor format, one ``Link: rel="next"`` builder. Routers own
+the query; this module bounds a page and links to the next one.
 
-Two rules hold across every list endpoint:
+* **The cap is the server's.** Asking for more than :data:`MAX_PAGE_SIZE`
+  rows gets :data:`MAX_PAGE_SIZE`, never an error.
+* **Malformed is a 422.** A page size or page below 1, or an undecodable
+  cursor, is rejected before the query (a negative ``OFFSET`` would be a 500
+  from Postgres). A cursor that decodes cleanly is honoured whether or not
+  this server minted it; see :func:`decode_cursor`.
 
-* **The cap is the server's.** A caller asking for more than
-  :data:`MAX_PAGE_SIZE` rows gets :data:`MAX_PAGE_SIZE`, never an error:
-  over-asking is not malformed, it just doesn't buy anything.
-* **Malformed is a 422.** A page size below 1, a page below 1, a cursor that
-  does not decode to the shape its list pages on: all rejected before they
-  reach the query, where a negative ``OFFSET`` or a non-positive ``LIMIT``
-  would be a 500 from Postgres. A cursor that decodes cleanly is honoured
-  whether or not this server minted it; see :func:`decode_cursor`.
-
-The cursor is keyset, not offset. Most lists page on ``(created_at, id)`` under
-``ORDER BY created_at DESC, id DESC``: ``id`` is the tiebreaker that makes the
-ordering total, so rows inserted while a caller walks pages can neither
-duplicate a row onto the next page nor skip one, the way an ``OFFSET`` walk
-does. A list whose rows already carry a unique ordinal pages on that instead
-(:func:`encode_ordinal_cursor`), which needs no tiebreaker and no timestamp;
-one event's version history is the case, ordered on ``version_no``. A list read
-in the order its events happened pages on all four of
+The cursor is keyset, not offset, so rows inserted mid-walk neither duplicate
+nor skip. Most lists page on ``(created_at, id)`` under
+``ORDER BY created_at DESC, id DESC`` (``id`` makes the order total). A list
+with a unique ordinal pages on that (:func:`encode_ordinal_cursor`, a version
+history on ``version_no``). A collection's items page on
 ``event_date, event_time, created_at, id`` ascending
-(:func:`encode_chronological_cursor`); a collection's items are the case. The
-three forms are opaque on purpose (base64 of a compact JSON payload): the shape
-is this module's business, not a contract callers build values for.
+(:func:`encode_chronological_cursor`). Cursors are opaque (base64 of compact
+JSON); callers do not build them.
 """
 
 from __future__ import annotations
@@ -45,26 +35,17 @@ from sqlalchemy import tuple_
 from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.elements import ColumnElement
 
-# The hard ceiling on rows in one list response, whatever the caller asks for.
-# Reading the catalog past it costs a cursor walk (one round-trip per 100 rows)
-# instead of one wide GET.
+# Hard ceiling on rows in one list response.
 MAX_PAGE_SIZE = 100
 
-# The ceiling for the two referential lists (`GET /tags`, `GET /conflicts`).
-# They are server-managed vocabularies their pickers hydrate whole (the
-# conflicts referential alone is ~800 rows), so the row cap that fits a
-# catalog list would cut the picker's options instead of bounding a scrape.
-# Set above the referentials' own growth so the response stays bounded without
-# the product noticing.
+# Ceiling for the referential lists (`GET /tags`, `GET /conflicts`): pickers
+# hydrate them whole (conflicts alone is ~800 rows), so MAX_PAGE_SIZE would
+# cut their options.
 REFERENTIAL_MAX_ROWS = 2000
 
 
 def page_size(requested: int) -> int:
-    """Clamp a caller-supplied page size to :data:`MAX_PAGE_SIZE`.
-
-    The lower bound is the endpoint's ``Query(..., ge=1)``, so anything
-    reaching here is already a positive integer.
-    """
+    """Clamp a page size to :data:`MAX_PAGE_SIZE` (the endpoint's ``ge=1`` is the lower bound)."""
     return min(requested, MAX_PAGE_SIZE)
 
 
@@ -80,23 +61,16 @@ def _decode(cursor: str) -> Any:
 
 
 def _malformed_cursor() -> HTTPException:
-    """The one 422 every decoder below answers a cursor it cannot read with.
-
-    One message whichever way a cursor is wrong, the base64, the payload shape
-    or a value that does not convert: the caller's fix is the same in all
-    three, drop the cursor and read the list from its first page.
-    """
+    """The one 422 for any unreadable cursor (the fix is always to restart the list)."""
     return HTTPException(status_code=422, detail="cursor is malformed")
 
 
 def _decode_parts(cursor: str, count: int) -> list[str]:
     """Decode a cursor into exactly ``count`` strings, or raise the 422.
 
-    The shared half of the two list-shaped decoders: the base64 undo, the shape
-    check, and the refusal. The shape is checked before any caller converts a
-    part, so a payload that decodes to something other than ``count`` strings
-    (``["2026-01-01T00:00:00", 5]``) is rejected here rather than raising out
-    of ``uuid.UUID``.
+    The shape is checked before callers convert a part, so
+    ``["2026-01-01T00:00:00", 5]`` is rejected here rather than raising out of
+    ``uuid.UUID``.
     """
     try:
         decoded = _decode(cursor)
@@ -117,15 +91,11 @@ def encode_cursor(created_at: datetime, row_id: uuid.UUID) -> str:
 
 
 def decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
-    """Parse a cursor back into its ``(created_at, id)`` pair.
+    """Parse a cursor back into its ``(created_at, id)`` pair, 422 if malformed.
 
-    A malformed cursor is a 422: the alternative is feeding a half-parsed
-    value into the keyset predicate and answering 500.
-
-    Well-formed is the whole test: a caller who assembles a pair of their own
-    gets the rows that pair sorts before, which is the same answer a minted
-    cursor naming the same position would give. There is nothing to forge, the
-    encoding hides no authorisation, and every filter still applies.
+    Well-formed is the whole test: a hand-built pair gets the same rows a
+    minted cursor at that position would. The encoding carries no
+    authorisation and every filter still applies.
     """
     created_raw, id_raw = _decode_parts(cursor, 2)
     try:
@@ -135,12 +105,11 @@ def decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
 
 
 def encode_ordinal_cursor(value: int) -> str:
-    """Opaque cursor for a list ordered on a unique integer of its own.
+    """Opaque cursor for a list ordered on a unique integer.
 
-    One event's version history pages this way: ``version_no`` is unique per
-    event and taken under the event's row lock, so it totally orders the history
-    without a tiebreaker and without reading ``created_at``, a clock the
-    application sets and that therefore skews between instances.
+    ``version_no`` is unique per event and taken under the event's row lock,
+    so it orders the history without ``created_at`` (an app-set clock that
+    skews between instances).
     """
     return _encode(value)
 
@@ -148,8 +117,7 @@ def encode_ordinal_cursor(value: int) -> str:
 def decode_ordinal_cursor(cursor: str) -> int:
     """Parse an ordinal cursor back into its integer, 422 on anything else.
 
-    Booleans are rejected alongside the rest: ``True`` is an ``int`` in Python
-    and would silently page from position 1.
+    Booleans are rejected: ``True`` is an ``int`` and would page from 1.
     """
     try:
         decoded = _decode(cursor)
@@ -163,14 +131,11 @@ def decode_ordinal_cursor(cursor: str) -> int:
 def encode_chronological_cursor(
     event_date: date, event_time: time, created_at: datetime, row_id: uuid.UUID
 ) -> str:
-    """Opaque cursor for a list ordered by when its events happened.
+    """Opaque cursor for a list ordered by ``event_date, event_time, created_at, id``.
 
-    A collection's items page this way: the order is
-    ``event_date, event_time, created_at, id`` ascending, so the cursor names
-    all four. The caller passes the sort values it ordered by, the stand-ins
-    for a missing date or hour included
-    (``services/collections.chronological_key``), so the values that cut the
-    page are the values the next page's predicate compares against.
+    The caller passes the exact sort values, stand-ins for a missing date or
+    hour included (``services/collections.chronological_key``), so the next
+    page's predicate compares the values that cut this one.
     """
     return _encode(
         [event_date.isoformat(), event_time.isoformat(), created_at.isoformat(), str(row_id)]
@@ -178,10 +143,7 @@ def encode_chronological_cursor(
 
 
 def decode_chronological_cursor(cursor: str) -> tuple[date, time, datetime, uuid.UUID]:
-    """Parse a chronological cursor back into its four sort values, 422 on anything else.
-
-    Same contract as :func:`decode_cursor`, over four parts instead of two.
-    """
+    """Parse a chronological cursor into its four sort values, 422 on anything else."""
     date_raw, time_raw, created_raw, id_raw = _decode_parts(cursor, 4)
     try:
         return (
@@ -199,14 +161,10 @@ def keyset_after(
 ) -> ColumnElement[bool]:
     """Predicate for the rows after ``cursor`` under an ascending ORDER BY.
 
-    The ascending twin of :func:`keyset_before`, over as many columns as the
-    ordering takes. A row comparison for the same reason: Postgres evaluates
-    ``(a, b, …) > (:x, :y, …)`` directly, and the caller passes the very
-    expressions it ordered by, so the page cut cannot disagree with the sort
-    it was cut from. Every column must be non-NULL for every row, a row
-    comparison against NULL being unknown rather than true or false; a
-    nullable sort column reaches here wrapped in its stand-in
-    (``services/collections.chronological_key``).
+    The ascending twin of :func:`keyset_before`. Pass the very expressions the
+    query orders by. Every column must be non-NULL (a row comparison against
+    NULL is unknown), so a nullable sort column arrives wrapped in its
+    stand-in (``services/collections.chronological_key``).
     """
     return tuple_(*columns) > cursor
 
@@ -218,12 +176,9 @@ def keyset_before(
 ) -> ColumnElement[bool]:
     """Predicate for the rows after ``cursor`` under ``created_at DESC, id DESC``.
 
-    A row comparison, not ``created_at < :ts OR (created_at = :ts AND id < :id)``:
-    Postgres can evaluate ``(a, b) < (:x, :y)`` against a composite index on the
-    same pair directly. ``events`` carries that index
-    (``ix_events_created_at_id``); ``invite_codes`` does not, and reads its
-    pages off a sort of the whole table, which is the right trade for a table
-    only admins list and that grows one row per invite issued.
+    A row comparison lets Postgres use a composite index on the pair
+    (``events`` has ``ix_events_created_at_id``; ``invite_codes`` has none and
+    sorts the whole table, fine for an admin-only list).
     """
     return tuple_(created_at_col, id_col) < cursor
 
@@ -231,22 +186,16 @@ def keyset_before(
 def take_page[T](rows: list[T], size: int) -> tuple[list[T], bool]:
     """Split an over-fetched ``size + 1`` window into ``(page, has_next)``.
 
-    Fetching one row past the page is how the ``Link`` header stays honest:
-    the next page is known to hold at least one row, so a caller following the
-    cursor never lands on an empty page.
+    The extra row guarantees the next page is never empty.
     """
     return rows[:size], len(rows) > size
 
 
 def next_link(request: Request, cursor: str) -> str:
-    """``Link`` header value pointing at the next page of this exact query.
+    """``Link`` header value for the next page of this exact query.
 
-    Carries every filter the caller sent, with ``cursor`` replaced and the
-    offset ``page`` dropped: the two ways of walking a list must not travel
-    together in one URL.
-
-    Takes the encoded cursor rather than a row's keys, so a list ordered on
-    something other than ``(created_at, id)`` builds its header here too.
+    Keeps every caller filter, replaces ``cursor``, and drops offset ``page``
+    (the two walks must not share a URL). Mirrored by ``lib/pagination.ts``.
     """
     url = request.url.remove_query_params("page").include_query_params(cursor=cursor)
     return f'<{url}>; rel="next"'

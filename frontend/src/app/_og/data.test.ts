@@ -4,12 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ogImageDataUri, ogFetch } from "./data";
 
-// The image leg reads through the `undici` package's own `fetch` with the
-// guarded `Agent` as its dispatcher, so the module is mocked rather than the
-// global `fetch`: a dispatcher is only honoured by the undici that built it,
-// and on a serverless runtime the global `fetch` is a different one. The
-// `Agent` stub records its options, which is how the connection guard's
-// `lookup` is reached below.
+// The image leg reads through `undici`'s own `fetch` with the guarded `Agent` as dispatcher, so
+// the module is mocked, not the global `fetch` (a dispatcher is only honoured by the undici
+// that built it). The `Agent` stub records its options, reaching the guard's `lookup`.
 const undici = vi.hoisted(() => ({
   fetchMock: vi.fn(),
   agentOptions: [] as { connect: { lookup: LookupFn } }[],
@@ -43,14 +40,13 @@ const undiciFetchMock = undici.fetchMock;
 const fetchMock = vi.fn();
 const dnsLookupMock = vi.hoisted(() => vi.fn());
 
-// `node:dns` is CJS, so the named import resolves through the default export:
-// both carry the stub or the guard resolves for real.
+// `node:dns` is CJS: both import paths carry the stub or the guard resolves for real.
 vi.mock("node:dns", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:dns")>();
   return { ...actual, default: { ...actual, lookup: dnsLookupMock }, lookup: dnsLookupMock };
 });
 
-/** The rejection log the image leg writes; silenced so a run stays readable. */
+/** The rejection log the image leg writes; silenced. */
 const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
 beforeEach(() => {
@@ -181,10 +177,9 @@ describe("ogImageDataUri", () => {
   });
 
   it("reads through undici's own fetch, not the platform one", async () => {
-    // The dispatcher below carries the connection guard, and a dispatcher is
-    // only honoured by the undici that built it. On a runtime whose global
-    // `fetch` is a different undici, handing it this `Agent` throws and the
-    // card silently loses its picture.
+    // The dispatcher carries the connection guard and only the undici that built it honours it;
+    // on a runtime whose global `fetch` differs, handing it this `Agent` throws and the card
+    // loses its picture.
     imageResolveWith(response({ contentType: "image/png", chunks: [new Uint8Array([1])] }));
     await ogImageDataUri("https://cdn.example.com/a.png");
     expect(undiciFetchMock).toHaveBeenCalledTimes(1);
@@ -326,8 +321,8 @@ describe("the image connection guard's lookup", () => {
   }
 
   it("hands back an IPv4 address when the runtime asks for one", async () => {
-    // A serverless runtime without IPv6 egress cannot reach the `2a04:` entry,
-    // so answering with the first address costs the card its picture.
+    // A runtime without IPv6 egress can't reach the `2a04:` entry, so answering with the first
+    // address costs the card its picture.
     resolvesTo([v6, v4]);
     expect(await lookup({})).toEqual({ err: null, address: v4.address, family: 4 });
   });

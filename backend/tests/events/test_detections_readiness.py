@@ -1,10 +1,4 @@
-"""The readiness rule has one home, and this suite is what holds it there.
-
-``services.events.detection_ready_predicate`` is a SQL projection of the floor
-``services/events/batch._publish_detection`` enforces row by row. Two
-expressions of one rule can drift silently, so every shape in
-``_readiness_cases`` is put through both and the verdicts must match exactly,
-per row, not just in aggregate.
+"""``detection_ready_predicate`` (SQL) must match ``batch._publish_detection`` row by row.
 
 The third implementation, ``batchCompletionBlockers`` in
 ``frontend/src/lib/events.ts``, is held to the same table by
@@ -33,14 +27,7 @@ def _detection(db, author, overrides):
 
 
 def test_sql_predicate_and_publish_floor_agree_row_by_row(db, author, conflict, capture_source_tag):
-    """One rule, two expressions: the queue filter and the publish door must
-    admit exactly the same detections.
-
-    The SQL verdicts are collected first, then every detection is offered to
-    ``_publish_detection`` with the two judgment calls a review supplies (a
-    conflict and a capture source), so the only thing that can turn a row away
-    is the evidence floor itself.
-    """
+    """A review supplies the conflict and capture source, so only the evidence floor can refuse."""
     rows = {
         name: _detection(db, author, dict(overrides))
         for name, (overrides, _) in READINESS_CASES.items()
@@ -72,19 +59,12 @@ def test_sql_predicate_and_publish_floor_agree_row_by_row(db, author, conflict, 
             floor_ready.add(name)
 
     assert sql_ready == floor_ready
-    # Pinned to the table too, so a change that breaks both the same way still
-    # fails: agreement alone would be satisfied by two identically wrong rules.
+    # Agreement alone passes two identically wrong rules, so pin the table too.
     assert sql_ready == set(READY_CASE_NAMES)
 
 
 def test_incomplete_is_the_exact_complement(db, author):
-    """No detection falls out of both halves.
-
-    Every leg of the predicate is strictly true or false, never SQL NULL, so
-    ``NOT`` of it is the real complement. A NULL-valued leg (a bare comparison
-    against a nullable column) would drop rows from both the ready and the
-    incomplete queue, and an analyst would never see them again.
-    """
+    """A NULL predicate leg would drop rows from both queues; every leg must be true or false."""
     rows = [_detection(db, author, dict(overrides)) for overrides, _ in READINESS_CASES.values()]
     ids = [geo.id for geo in rows]
     ready = detection_ready_predicate()

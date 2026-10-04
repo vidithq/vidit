@@ -12,9 +12,8 @@ vi.mock("next/navigation", () => ({
 const useAuth = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => useAuth() }));
 
-// The read behind `?event=`: the page renders the event's own row on the
-// picker's first block, so it reads the event rather than only its id.
-/** The one-paragraph document the editor emits for a line of unmarked text. */
+// The `?event=` read: the picker's first block renders the event's own row.
+/** The one-paragraph document for a line of unmarked text. */
 function textDoc(text: string): Record<string, unknown> {
   return {
     type: "doc",
@@ -22,16 +21,13 @@ function textDoc(text: string): Record<string, unknown> {
   };
 }
 
-/** That document read back as text, for the stub's seeded value. */
+/** That document as text, for the stub's seed. */
 function docText(doc: Record<string, unknown> | null | undefined): string {
   const paragraph = (doc?.content as { content?: { text?: string }[] }[])?.[0];
   return paragraph?.content?.[0]?.text ?? "";
 }
-// The description is written in the Tiptap proof editor, which boots
-// ProseMirror and reads its content once at construction. What these lock in
-// is what the page does with the document, not how it is typed, so the editor
-// is a textarea that prints the document it was seeded with and emits the
-// one-paragraph document the real editor emits for unmarked text.
+// The Tiptap editor boots ProseMirror once, so it is stubbed as a textarea that prints its seeded document
+// and emits the one-paragraph document the real editor emits for unmarked text.
 vi.mock("@/components/editor/ProofEditor", () => ({
   default: ({
     initialContent,
@@ -66,9 +62,7 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
     searchPickableEvents(username, q),
 }));
 
-// The add block's list. The walk itself is `useCursorList`'s own test and the
-// picker's; here it only has to render without reaching the network, so the
-// page's own acts are what these assert.
+// The add block's list only has to render without the network (the walk is tested in `useCursorList`).
 const useCursorList = vi.fn();
 vi.mock("@/hooks/useCursorList", () => ({
   useCursorList: () => useCursorList(),
@@ -80,8 +74,7 @@ import NewCollectionPage from "./page";
 
 const USER = { id: "u1", username: "ana" };
 
-/** One of the analyst's own events, as the add block lists it and as the
- *  `?event=` read answers. */
+/** One of the analyst's own events, as listed and as the `?event=` read answers. */
 const EVENT = {
   id: "e1",
   title: "Strike on the rail junction",
@@ -96,10 +89,10 @@ const EVENT = {
   before_closed_status: null,
 };
 
-/** The same event as its own detail read, whose media is a list. */
+/** The same event as its detail read. */
 const EVENT_DETAIL = { ...EVENT, media: [] };
 
-/** What the add block lists, `useCursorList`'s own shape. */
+/** What the add block lists (`useCursorList`'s shape). */
 function mockBrowse(items: unknown[]) {
   useCursorList.mockReturnValue({
     items,
@@ -131,10 +124,7 @@ const created: Collection = {
   created_at: "2026-03-21T09:00:00Z",
 };
 
-/** Fill both required fields, which is what unlocks the submit.
- *
- *  Awaits the description first: the form loads its editor through
- *  `next/dynamic`, so the field lands a tick after the first paint. */
+/** Fill both required fields; awaits the description first (the editor loads through `next/dynamic`). */
 async function fillForm() {
   fireEvent.change(screen.getByLabelText("Title"), {
     target: { value: "March strikes" },
@@ -154,8 +144,7 @@ beforeEach(() => {
   useCursorList.mockReset();
   searchParams.delete("event");
   useAuth.mockReturnValue({ user: USER, loading: false });
-  // The hook's own contract: it reads nothing while the path is null, which
-  // is every render without `?event=`.
+  // The hook reads nothing while the path is null (every render without `?event=`).
   useApiResource.mockImplementation((path: string | null) => ({
     data: path === null ? null : EVENT_DETAIL,
     error: null,
@@ -173,9 +162,7 @@ describe("NewCollectionPage", () => {
 
     render(<NewCollectionPage />);
 
-    // `replace`, so the protected page does not sit in history behind the
-    // login form, and nothing of the form renders while the bounce is in
-    // flight.
+    // `replace`, so the protected page is not left in history behind the login form.
     expect(replace).toHaveBeenCalledWith("/login");
     expect(screen.queryByLabelText("Title")).not.toBeInTheDocument();
   });
@@ -198,7 +185,7 @@ describe("NewCollectionPage", () => {
     expect(
       screen.getByRole("heading", { name: "Add events" }),
     ).toBeInTheDocument();
-    // The create page has no collection to drop yet.
+    // Nothing to drop yet.
     expect(
       screen.queryByRole("heading", { name: "Drop this collection" }),
     ).not.toBeInTheDocument();
@@ -209,9 +196,7 @@ describe("NewCollectionPage", () => {
     await fillForm();
     fireEvent.click(screen.getByRole("button", { name: "Create collection" }));
 
-    // Both fields travel, trimmed, so the server stores neither padding nor a
-    // collection that says nothing about itself. Nothing was ticked, so the
-    // collection opens empty.
+    // Both fields travel trimmed; nothing ticked, so the collection opens empty.
     await waitFor(() =>
       expect(createCollection).toHaveBeenCalledWith(
         "March strikes",
@@ -229,8 +214,7 @@ describe("NewCollectionPage", () => {
     expect(
       screen.getByText("The collection opens with this event on it."),
     ).toBeInTheDocument();
-    // The event's own row, on the block that says what the collection will
-    // hold, read off `/events/{id}` rather than guessed from the id.
+    // The event's own row, read off `/events/{id}`.
     expect(useApiResource).toHaveBeenCalledWith("/events/e1");
     expect(
       screen.getByRole("button", {
@@ -240,9 +224,7 @@ describe("NewCollectionPage", () => {
     await fillForm();
     fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
 
-    // `?event=` puts the event on the picker's first block, so it rides the
-    // create like every other row the analyst adds, and one refusal takes the
-    // whole act with it. Then the reader lands back on the event.
+    // `?event=` rides the create like any added row (one refusal takes the whole act), then back to the event.
     await waitFor(() =>
       expect(createCollection).toHaveBeenCalledWith(
         "March strikes",

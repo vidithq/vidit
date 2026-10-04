@@ -3,11 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EventDetail, EventVersion } from "@/types";
 
-// The map canvas needs WebGL, which jsdom has none of.
+// The map canvas needs WebGL, absent in jsdom.
 vi.mock("@/components/map/Map", () => ({ default: () => <div data-testid="map" /> }));
 
-// A signed-out reader: the page chrome reads the viewer off the auth context,
-// and a version page offers no control whoever is looking.
+// A signed-out reader: a version page offers no control to anyone.
 const viewer: { id: string | null } = { id: null };
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: viewer.id ? { id: viewer.id } : null }),
@@ -24,7 +23,6 @@ vi.mock("next/navigation", () => ({
   notFound: () => notFound(),
 }));
 
-// Every read the page makes, answered by path.
 vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => ({
     data: path === null ? null : (resource(path) ?? null),
@@ -128,7 +126,7 @@ describe("EventVersionPage", () => {
     render(<EventVersionPage />);
     expect(screen.getByRole("heading", { name: "v2 title" })).toBeTruthy();
     expect(screen.getByText(/Version 2 of 3/)).toBeTruthy();
-    // The byline is the edit that produced version 2, filed on version 1.
+    // The edit that produced version 2, filed on version 1.
     expect(screen.getByText("bob")).toBeTruthy();
     expect(screen.getByText("View the current version").getAttribute("href")).toBe(
       "/events/e1"
@@ -140,7 +138,7 @@ describe("EventVersionPage", () => {
   it("says version 1 was published rather than edited", () => {
     segment = "v1";
     render(<EventVersionPage />);
-    // Version 1 carries the record's own author, since no edit produced it.
+    // Version 1 carries the record's own author.
     const banner = screen.getByText(/Version 1 of 3/);
     expect(banner.textContent).toContain("published by");
     expect(banner.textContent).toContain("ana");

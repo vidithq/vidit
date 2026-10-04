@@ -107,13 +107,7 @@ import { Input, Select } from "@/components/ui/Input";
 import { LinkListInput } from "@/components/ui/LinkListInput";
 import { safeHostname } from "@/lib/format";
 
-/**
- * Living style guide: every reusable primitive, its variants, and a one-line
- * note on where it's used. Dev reference, not linked in the nav. Grouped by what
- * you're building (tokens, controls, forms, content, containers, views) rather
- * than by an abstraction level, so related pieces sit together. Everything
- * follows the accent palette (switchable in Settings → Display).
- */
+/** Living style guide of every reusable primitive and variant, grouped by what you build. Dev reference, not in the nav. */
 
 // One showcased component: a labelled card with the live preview + a usage note.
 function Item({
@@ -357,7 +351,6 @@ export default function PalettePage() {
       subtitle="Reusable building blocks, grouped by what you're building: tokens → controls → forms → content → containers → views. Everything follows the accent color (Settings → Display)."
     >
       <div className="space-y-8">
-        {/* ============ TOKENS ============ */}
         {/* The raw class strings you compose with, not components. */}
         <section className="space-y-3">
           <SectionEyebrow title="Tokens" />
@@ -432,7 +425,6 @@ export default function PalettePage() {
           </Item>
         </section>
 
-        {/* ============ CONTROLS · buttons & pills ============ */}
         {/* The two tone systems (<Button> / <Pill>) and the pills' consumers. */}
         <section className="space-y-3">
           <SectionEyebrow title="Controls · buttons & pills" />
@@ -596,7 +588,6 @@ export default function PalettePage() {
           </Item>
         </section>
 
-        {/* ============ FORMS ============ */}
         {/* Everything you touch building a form. */}
         <section className="space-y-3">
           <SectionEyebrow title="Forms" />
@@ -790,7 +781,6 @@ export default function PalettePage() {
           </Item>
         </section>
 
-        {/* ============ CONTENT ============ */}
         {/* Small display pieces that fill rows, cards, and headers. */}
         <section className="space-y-3">
           <SectionEyebrow title="Content" />
@@ -1250,7 +1240,6 @@ export default function PalettePage() {
           </Item>
         </section>
 
-        {/* ============ CONTAINERS & states ============ */}
         {/* Boxes you drop content into, and the pre-data / empty states. */}
         <section className="space-y-3">
           <SectionEyebrow title="Containers & states" />
@@ -1336,7 +1325,6 @@ export default function PalettePage() {
           </Item>
         </section>
 
-        {/* ============ COMPOSED views ============ */}
         {/* Full assemblies of the pieces above; the closing list is what can't
             be mocked on a static page. */}
         <section className="space-y-3">

@@ -5,8 +5,7 @@ import { MapStateProvider } from "@/contexts/MapStateContext";
 import { ApiError } from "@/lib/api";
 import { eventDetail } from "@/test/eventDetail";
 
-// MapLibre touches `window` at module scope, so the canvas never loads under
-// jsdom. The stub offers one button per pin, which is how a test selects one.
+// MapLibre touches `window` at module scope; the stub offers one button per pin.
 vi.mock("next/dynamic", () => ({
   default: () =>
     function MapStub({ onPointClick }: { onPointClick?: (id: string) => void }) {
@@ -25,9 +24,7 @@ vi.mock("next/dynamic", () => ({
 
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: null }) }));
 
-// Every read waits for the test to settle it, in the order the test picks. The
-// filter taxonomies (`/tags`, `/conflicts`) are left pending: the panel is what
-// this file measures.
+// Each read waits for the test to settle it; the filter taxonomies stay pending (the panel is what is measured).
 interface Read {
   path: string;
   signal?: AbortSignal;

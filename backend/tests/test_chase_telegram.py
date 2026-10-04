@@ -1,9 +1,8 @@
 """Unit tests for the Telegram chaser (offline).
 
-Two surfaces: the SSRF URL guard (``urls.telegram_post_url`` admits nothing but a
-public t.me post) and the embed parser (``chase`` over synthetic HTML carrying
-the real ``tgme_*`` classes). Every fetch runs through an ``httpx.MockTransport``
-client, so no request leaves the box.
+Covers the SSRF URL guard (``urls.telegram_post_url`` admits only a public t.me
+post) and the embed parser (``chase`` over synthetic HTML with real ``tgme_*``
+classes). Fetches use an ``httpx.MockTransport`` client.
 """
 
 from __future__ import annotations
@@ -57,8 +56,7 @@ def test_post_url_rejects_everything_else(url: str) -> None:
 
 
 def test_disallowed_url_never_fetches() -> None:
-    """The guard runs before any socket: a non-post URL returns None without the
-    transport ever being touched."""
+    """A non-post URL returns None before the transport is touched."""
 
     def handler(_request: httpx.Request) -> httpx.Response:
         raise AssertionError("a disallowed URL must never be fetched")
@@ -92,8 +90,7 @@ def _raising_client(exc: httpx.HTTPError) -> httpx.Client:
 
 
 def _fetch(html_text: str, *, status: int = 200) -> ChasedPost | None:
-    """The post one chase of a canned embed yields, ``None`` when it yields
-    none. The outcome behind that ``None`` is its own handful of tests below."""
+    """The post one chase of a canned embed yields, or ``None``."""
     return _chase(html_text, status=status).post
 
 
@@ -121,8 +118,7 @@ _VIDEO_HTML = (
     "</div>"
 )
 
-# Video and photo both present + trusted: the video is the footage, the photo is
-# a poster, so only the video is taken.
+# Trusted video and photo: the photo is a poster, so only the video is taken.
 _VIDEO_AND_PHOTO_HTML = (
     '<div class="tgme_widget_message">'
     '<a class="tgme_widget_message_photo_wrap" '
@@ -132,8 +128,7 @@ _VIDEO_AND_PHOTO_HTML = (
     "</div>"
 )
 
-# Sensitive post: the embed ships the date and a withheld-media marker; the
-# poster photo tag must not be mistaken for footage.
+# Sensitive post: date and withheld-media marker; the poster photo is not footage.
 _SENSITIVE_HTML = (
     '<div class="tgme_widget_message">'
     '<a class="tgme_widget_message_photo_wrap" '
@@ -143,7 +138,7 @@ _SENSITIVE_HTML = (
     "</div>"
 )
 
-# The message renders, carries a date, but the media URL is a look-alike host.
+# Dated message whose media URL is a look-alike host.
 _UNTRUSTED_MEDIA_HTML = (
     '<div class="tgme_widget_message">'
     '<video src="https://evil-cdn-telegram.org/file/x.mp4"></video>'
@@ -151,7 +146,7 @@ _UNTRUSTED_MEDIA_HTML = (
     "</div>"
 )
 
-# telesco.pe is the other trusted Telegram media base.
+# telesco.pe is the other trusted media base.
 _TELESCO_HTML = (
     '<div class="tgme_widget_message">'
     '<video src="https://telesco.pe/file/video9.mp4"></video>'
@@ -159,8 +154,7 @@ _TELESCO_HTML = (
     "</div>"
 )
 
-# Standard embed chrome: the footer "VIEW IN TELEGRAM" link rides on normal posts
-# too, so it must NOT suppress real inlined media (video or photo).
+# The footer "VIEW IN TELEGRAM" link is on normal posts and must not suppress inlined media.
 _VIDEO_WITH_CHROME_HTML = (
     '<div class="tgme_widget_message">'
     '<video src="https://cdn4.cdn-telegram.org/file/video1.mp4"></video>'
@@ -177,8 +171,7 @@ _PHOTO_WITH_CHROME_HTML = (
     "</div>"
 )
 
-# A genuine withheld-media marker AND an inlined video: the video is real footage
-# and wins; the marker only suppresses the poster-photo path.
+# Withheld-media marker plus an inlined video: the video wins.
 _WITHHELD_MARKER_WITH_VIDEO_HTML = (
     '<div class="tgme_widget_message">'
     '<video src="https://cdn4.cdn-telegram.org/file/video1.mp4"></video>'
@@ -218,16 +211,12 @@ def test_telesco_pe_media_is_trusted() -> None:
 
 
 def test_view_in_telegram_chrome_does_not_withhold_video() -> None:
-    # "VIEW IN TELEGRAM" is standard footer chrome, not a withhold signal: a real
-    # inlined video alongside it is still captured.
     embed = _fetch(_VIDEO_WITH_CHROME_HTML)
     assert embed is not None
     assert [m.kind for m in embed.media] == ["video"]
 
 
 def test_view_in_telegram_chrome_does_not_withhold_photo() -> None:
-    # Same for a served wrapper photo: the footer link does not turn it into a
-    # withheld poster.
     embed = _fetch(_PHOTO_WITH_CHROME_HTML)
     assert embed is not None
     assert [(m.kind, m.remote_url) for m in embed.media] == [
@@ -236,8 +225,7 @@ def test_view_in_telegram_chrome_does_not_withhold_photo() -> None:
 
 
 def test_inlined_video_wins_over_withheld_marker() -> None:
-    # Even with a genuine withheld-media marker present, an inlined trusted video
-    # is real footage and is captured; the marker only suppresses the poster photo.
+    # The marker only suppresses the poster photo.
     embed = _fetch(_WITHHELD_MARKER_WITH_VIDEO_HTML)
     assert embed is not None
     assert [m.kind for m in embed.media] == ["video"]
@@ -267,14 +255,11 @@ def test_hostile_html_yields_none() -> None:
 
 
 def test_message_without_date_or_media_yields_none() -> None:
-    # A rendered post whose embed carries neither a date nor a trusted media: no
-    # useful signal, so nothing to attach.
     assert _fetch('<div class="tgme_widget_message"></div>') is None
 
 
 def test_non_200_yields_none() -> None:
-    """A refusal that is not throttling is answered once and for all: no footage,
-    and the outcome says the embed is not there to be had."""
+    """A refusal that is not throttling is final: ``not_accessible``, no retry."""
     for status in (404, 302):
         result = _chase(_PHOTO_HTML, status=status)
         assert result.post is None
@@ -282,9 +267,8 @@ def test_non_200_yields_none() -> None:
 
 
 def test_a_throttled_embed_is_retried_and_named_transient(retry_sleeps) -> None:
-    """Telegram refusing to serve right now is the one failure worth a second
-    attempt, and what comes back says so, since the detection it lands on tells the
-    analyst to import again later rather than that the source has no footage."""
+    """A 429 is retried and named ``transient_failure``, so the analyst is told to
+    import again later rather than that the source has no footage."""
     calls: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:

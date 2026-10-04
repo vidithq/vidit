@@ -1,11 +1,4 @@
-"""Shared client + row factory for the events test package.
-
-``client`` is the single ``TestClient`` every test in this package drives; the
-autouse fixture in ``conftest.py`` resets its cookies + the points cache between
-tests. ``_make_geo`` is the event-row factory used across the read /
-write / lifecycle suites, and the ``proof_*`` helpers build the minimal
-placeholder-proof multipart pieces the geolocate floor requires.
-"""
+"""Shared ``client``, the ``_make_geo`` row factory and the ``proof_*`` multipart helpers."""
 
 from __future__ import annotations
 
@@ -34,9 +27,7 @@ from tests._fixtures import TINY_JPEG
 
 client = TestClient(app)
 
-# ``/events/points`` requires a ``bbox``: the map serves a viewport, not the
-# catalog. Tests that are about something else pass the whole globe so their
-# assertions read the way they did when the parameter was optional.
+# ``/events/points`` requires a ``bbox``; tests not about it pass the whole globe.
 WORLD_BBOX = "-90,-180,90,180"
 
 
@@ -44,14 +35,11 @@ def _make_geo(
     db,
     *,
     author: User,
-    # ``lat=None`` (or ``lng=None``) models a row without a subject point: a
-    # detection may carry none (``ck_events_coords_status``), and the
-    # detections queue's readiness filter turns on exactly that.
+    # ``None`` models a detection without a subject point (``ck_events_coords_status``).
     lat: float | None = 48.5,
     lng: float | None = 34.5,
     title: str | None = None,
-    # The proof body. Left ``None``, the row takes the model's empty-doc
-    # default, which carries no image and so fails the proof-image floor.
+    # ``None`` takes the model's empty-doc default, which fails the proof-image floor.
     proof: dict[str, Any] | None = None,
     event_date: date | None = None,
     source_posted_at: datetime | None = None,
@@ -60,8 +48,8 @@ def _make_geo(
     conflicts: list[Conflict] | None = None,
     status: str | None = None,
     detected_from_url: str | None = None,
-    # None models a source-less machine detection; only valid with status
-    # ``detected`` (``ck_events_source_url_status``).
+    # ``None`` models a source-less detection; only valid with status ``detected``
+    # (``ck_events_source_url_status``).
     source_url: str | None = "https://example.com/source",
     secondary_source_urls: list[str] | None = None,
     with_media: bool = False,
@@ -84,9 +72,7 @@ def _make_geo(
         geo.status = status
     if proof is not None:
         geo.proof = proof
-    # Stamp per the lifecycle CHECKs (a geolocated row without geolocated_at,
-    # or a closed one without closed_at + before_closed_status, is rejected by
-    # Postgres), mirroring what every write path stamps.
+    # Stamp what the lifecycle CHECKs require, as every write path does.
     effective_status = status or STATUS_GEOLOCATED
     if effective_status == STATUS_GEOLOCATED:
         geo.geolocated_at = now
@@ -96,8 +82,7 @@ def _make_geo(
         geo.requested_at = now
     elif effective_status == STATUS_CLOSED:
         geo.closed_at = now
-        # Bare literal, not STATUS_REQUESTED: the column's type is the narrower
-        # ``BeforeClosedStatus`` and the constant is typed as ``EventStatus``.
+        # Bare literal: the column is typed ``BeforeClosedStatus``, the constant ``EventStatus``.
         geo.before_closed_status = "requested"
     if detected_from_url is not None:
         geo.detected_from_url = detected_from_url
@@ -124,10 +109,8 @@ def _make_geo(
     return geo
 
 
-# ── Placeholder-proof multipart pieces ────────────────────────────────────
-# The geolocate floor requires at least one proof image in the proof body;
-# tests thread these through the multipart form: a Tiptap doc whose image
-# node references ``placeholder://<filename>`` plus the matching file part.
+# Proof multipart pieces: a Tiptap doc whose image node references
+# ``placeholder://<filename>`` plus the matching file part.
 
 
 def proof_doc_with_placeholder(filename: str = "proof-1.jpg") -> dict[str, Any]:

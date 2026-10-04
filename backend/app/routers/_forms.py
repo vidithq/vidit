@@ -1,9 +1,7 @@
 """Multipart form-field parsers shared by the geolocation + request create routers.
 
-Both create endpoints take the same loose ``str`` form fields (a JSON ``proof``
-document, a JSON array of ``tag_ids``, and ISO dates / times) and parse them
-into clean Python types. Keeping the parsers here means the ``{status, message}``
-contract for malformed input lives in one place instead of being recopied per form.
+The ``{status, message}`` contract for malformed ``proof`` JSON, id arrays and
+ISO dates / times lives here once instead of per form.
 """
 
 import json
@@ -13,17 +11,14 @@ from typing import Any
 
 from fastapi import HTTPException
 
-# The date parser lives with the filter vocabulary in
-# ``services.event_filters`` (its heaviest consumer); re-exported here so the
-# multipart submit forms keep their one import site for form parsers.
+# The date parser lives in ``services.event_filters`` (its heaviest consumer);
+# re-exported so the submit forms keep one import site.
 from app.services.event_filters import (
     parse_optional_iso_date as parse_optional_iso_date,
 )
 
-# Sanity cap on a JSON-array form field (tag_ids / conflict_ids /
-# remove_media_ids): no legitimate submission attaches more than a handful of
-# tags or media, so this only bounds an attacker-sized array (an unbounded
-# list becomes an unbounded SQL IN clause downstream).
+# Cap on a JSON-array form field (tag_ids / conflict_ids / remove_media_ids):
+# bounds an attacker-sized array, which would become an unbounded SQL IN clause.
 MAX_ID_LIST_LENGTH = 100
 
 
@@ -45,12 +40,10 @@ def parse_optional_json_object(raw: str | None, *, field: str) -> dict[str, Any]
 def parse_json_id_list(raw: str | None, *, field: str, as_uuid: bool = False) -> list[Any]:
     """Parse a JSON-array form field. ``None`` / empty → ``[]``; 400 on garbage.
 
-    Capped at :data:`MAX_ID_LIST_LENGTH` elements (422 over that): the list
-    feeds a SQL ``IN`` clause downstream, so an uncapped array is an
-    uncapped query. With ``as_uuid``, each element is coerced to
-    :class:`uuid.UUID` (422 on a non-UUID element) for the id columns that
-    are actually UUID-typed (``tag_ids`` / ``conflict_ids``); callers whose
-    column is compared as a string (``remove_media_ids``) leave it off.
+    Capped at :data:`MAX_ID_LIST_LENGTH` (422 over it) since the list feeds a
+    SQL ``IN``. With ``as_uuid``, elements are coerced to :class:`uuid.UUID`
+    (422 on a non-UUID) for UUID-typed columns; ``remove_media_ids`` is compared
+    as a string and leaves it off.
     """
     if not raw:
         return []
@@ -75,13 +68,12 @@ def parse_json_id_list(raw: str | None, *, field: str, as_uuid: bool = False) ->
 
 
 def parse_optional_iso_time(raw: str | None, *, field: str) -> time | None:
-    """Parse an optional ISO-8601 (HH:MM[:SS]) time-of-day form field. Empty →
-    ``None``; 422 on garbage or on an offset-aware value.
+    """Parse an optional ISO-8601 (HH:MM[:SS]) time-of-day. Empty → ``None``;
+    422 on garbage or an offset-aware value.
 
-    The column stores a UTC wall-clock time-of-day (naive). A value carrying a
-    UTC offset can't be normalised to UTC without a date, so it's rejected rather
-    than silently stored with the offset dropped (the sibling
-    :func:`parse_iso_datetime` does normalise, because it has the date).
+    The column stores a naive UTC time of day. An offset can't be normalised
+    without a date, so it is rejected, not silently dropped (unlike
+    :func:`parse_iso_datetime`, which has the date).
     """
     if not raw:
         return None
@@ -100,12 +92,10 @@ def parse_optional_iso_time(raw: str | None, *, field: str) -> time | None:
 
 
 def parse_iso_datetime(raw: str, *, field: str) -> datetime:
-    """Parse a required ISO-8601 datetime form field into an aware UTC datetime; 422 on garbage.
+    """Parse a required ISO-8601 datetime into an aware UTC datetime; 422 on garbage.
 
-    The submit / edit forms post an ``<input type="datetime-local">`` value
-    (``YYYY-MM-DDTHH:MM``, no zone). Analyst-entered times follow the project's
-    UTC wall-clock convention, so a naive value gets ``tzinfo=UTC`` and an
-    already-aware value is normalised to UTC.
+    Forms post ``datetime-local`` values (``YYYY-MM-DDTHH:MM``, no zone), read
+    as UTC; an aware value is normalised to UTC.
     """
     try:
         parsed = datetime.fromisoformat(raw)
@@ -118,12 +108,10 @@ def parse_iso_datetime(raw: str, *, field: str) -> datetime:
 
 
 def parse_optional_iso_datetime(raw: str | None, *, field: str) -> datetime | None:
-    """Parse an optional ISO-8601 datetime form field. Empty → ``None``.
+    """Parse an optional ISO-8601 datetime. Empty → ``None``.
 
-    The optional twin of :func:`parse_iso_datetime`, for the writes whose row
-    may legitimately carry no value: a machine detection can be published
-    without a resolved source post time, so an edit of that row must be able to
-    leave the column NULL rather than invent an instant.
+    For writes whose row may carry no value (a detection published without a
+    resolved source post time), so an edit can leave the column NULL.
     """
     if not raw:
         return None

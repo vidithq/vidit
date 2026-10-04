@@ -51,8 +51,7 @@ const CURRENT: EventDetail = {
   archived_detected_from: null,
   proof: { type: "doc", content: [{ type: "image", attrs: { src: "https://m/c.jpg" } }] },
   created_at: "2026-06-01T00:00:00Z",
-  // Deliberately apart from `created_at`: the record was submitted at midnight
-  // and published nine hours later, and version 1 is the publication.
+  // Apart from `created_at`: submitted at midnight, published nine hours later; version 1 is the publication.
   geolocated_at: "2026-06-01T09:00:00Z",
   closed_at: null,
   media: [
@@ -70,8 +69,8 @@ const CURRENT: EventDetail = {
 
 const BOB = { id: "a2", username: "bob", avatar_url: null };
 
-/** A filed version: `version_no` is the version it holds, and the byline, date
- *  and note are the edit that superseded it. */
+/** A filed version: `version_no` is the version it holds; byline, date and note are the edit
+ *  that superseded it. */
 function row(
   versionNo: number,
   snapshot: Record<string, unknown>,
@@ -120,7 +119,6 @@ function snapshot(overrides: Record<string, unknown> = {}): Record<string, unkno
         original_filename: null,
       },
     ],
-    // The copies this version held, the set the current row still carries.
     archives: [
       {
         original_url: "https://t.me/channel/4242",
@@ -181,10 +179,8 @@ describe("snapshotToEventView", () => {
   });
 
   it("shows the evidence anchor as that version held it", () => {
-    // The anchor is versioned, so a version that rested on another source
-    // renders that source and that media, not the ones that replaced them. The
-    // media row itself is gone by then (an event carries one source media), so
-    // the snapshot's own fragment is what the page renders.
+    // The anchor is versioned: a version resting on another source renders that source and
+    // media (the media row is gone, so the snapshot's own fragment renders).
     const superseded = snapshotToEventView(
       CURRENT,
       row(
@@ -208,10 +204,8 @@ describe("snapshotToEventView", () => {
   });
 
   it("reads each version's anchor off its own snapshot across a history", () => {
-    // Two swaps, three anchors. Reading the anchor off the live row where a
-    // snapshot could be taken for silent would render today's footage on both
-    // older versions and hand `changedFields` the same value on either side of
-    // each swap, so neither swap would print.
+    // Two swaps, three anchors: reading the anchor off the live row would render today's footage
+    // on both older versions and hide each swap from `changedFields`.
     const v1Media = {
       id: "m0",
       role: "source",
@@ -245,23 +239,19 @@ describe("snapshotToEventView", () => {
     ]);
     expect(v1.thumbnail?.storage_url).toBe("https://m/first.mp4");
 
-    // Each swap is attributed to the edit that made it, and only to that one.
+    // Each swap is attributed only to the edit that made it.
     expect(changedFields(v2, v1)).toContain("Source URL");
     expect(changedFields(v2, v1)).toContain("Source media");
     expect(changedFields(CURRENT, v2)).toContain("Source URL");
-    // v2 already carries the live row's media, so the last edit moved the URL
-    // alone: the media label must not ride along with it.
+    // v2 already carries the live media, so the last edit moved the URL alone.
     expect(changedFields(CURRENT, v2)).not.toContain("Source media");
   });
 
   it("ratchets the graphic flag against the live row", () => {
-    // A version page renders the live media, so a flag raised after this
-    // version was filed still covers what the page shows: the gate can only
-    // tighten, never come off for an older version.
+    // A version page renders the live media, so the gate can only tighten for an older version.
     const flagged = { ...CURRENT, is_graphic: true };
     expect(snapshotToEventView(flagged, row(2, snapshot())).is_graphic).toBe(true);
-    // And a version filed while the flag was up keeps it on an unflagged row:
-    // that is the version's own fact.
+    // A version filed while the flag was up keeps it on an unflagged row.
     expect(
       snapshotToEventView(CURRENT, row(2, snapshot({ is_graphic: true }))).is_graphic
     ).toBe(true);
@@ -276,8 +266,7 @@ describe("snapshotToEventView", () => {
   });
 
   it("stands the live row's copies in for a version that files none", () => {
-    // A version filed before the copies were versioned says nothing about
-    // them, so it is not read as a record that had none.
+    // A snapshot filed before copies were versioned says nothing about them: not read as "had none".
     const legacy = { ...snapshot() };
     delete legacy.archives;
     const filed = snapshotToEventView(CURRENT, row(2, legacy));
@@ -289,8 +278,7 @@ describe("snapshotToEventView", () => {
   });
 
   it("pairs each mirror with the copy archived for that URL, not its position", () => {
-    // The version listed the two mirrors in the other order, so a positional
-    // copy would hand mirror 2's snapshot to mirror 1.
+    // Other mirror order: a positional copy would hand mirror 2's snapshot to mirror 1.
     expect(view.secondary_source_urls).toEqual([
       "https://t.me/mirror/2",
       "https://t.me/mirror/1",
@@ -339,8 +327,8 @@ describe("changedFields", () => {
   });
 
   it("names a corrected evidence anchor", () => {
-    // Both halves are versioned, and each is named on its own: correcting the
-    // link the record cites is not the same edit as replacing the footage.
+    // Both halves are versioned and named separately: correcting the cited link is not replacing
+    // the footage.
     const unchanged = {
       title: CURRENT.title,
       proof: CURRENT.proof,
@@ -350,8 +338,7 @@ describe("changedFields", () => {
       CURRENT,
       row(2, snapshot({ ...unchanged, source_url: "https://t.me/channel/1" }))
     );
-    // The copies move with it: a copy covers a link, so the one filed against
-    // the version's own source is not a copy of the source the record cites now.
+    // A copy covers a link: the one filed against the version's own source is not a copy of today's.
     expect(changedFields(CURRENT, otherLink)).toEqual(["Source URL", "Archived copies"]);
 
     const otherMedia = snapshotToEventView(
@@ -375,8 +362,8 @@ describe("changedFields", () => {
   });
 
   it("reads two spellings of one instant as the same moment", () => {
-    // The snapshot writes `+00:00` where the live row writes `Z`; a string
-    // comparison would report the source post time as edited on every version.
+    // The snapshot writes `+00:00` where the live row writes `Z`; string comparison would flag
+    // every version.
     expect(changedFields(CURRENT, previous)).not.toContain("Source posted");
   });
 
@@ -419,8 +406,7 @@ describe("changedFields", () => {
     );
     expect(changedFields(CURRENT, before)).toEqual(["Archived copies"]);
 
-    // Same copies in the other order is not an edit: the set is keyed by the
-    // link each copy covers, not by its position.
+    // Same copies in another order is not an edit: keyed by link, not position.
     const reordered = snapshotToEventView(
       CURRENT,
       row(
@@ -515,9 +501,8 @@ describe("eventVersions", () => {
     expect(versions[1].createdAt).toBe("2026-06-02T00:00:00Z");
     expect(versions[1].changed).toEqual(["Title"]);
 
-    // Version 1 was published, not edited: it carries the record's own author
-    // and the date it was published, and nothing preceded it to compare
-    // against.
+    // Version 1 was published, not edited: it carries the record's author and publication date,
+    // with nothing to compare against.
     expect(versions[2].editor).toEqual(CURRENT.owner);
     expect(versions[2].createdAt).toBe(CURRENT.geolocated_at);
     expect(versions[2].createdAt).not.toBe(CURRENT.created_at);
@@ -533,8 +518,7 @@ describe("eventVersions", () => {
   });
 
   it("holds the oldest row back while the walk has pages left", () => {
-    // Row 1 is the authorship of version 2, so version 2 is not whole until the
-    // page below it has been loaded.
+    // Row 1 is the authorship of version 2, which is not whole until the page below loads.
     const partial = eventVersions(CURRENT, [rows[0]], true);
     expect(partial.map((v) => v.number)).toEqual([3]);
     // Once the walk is exhausted the held-back row becomes a version of its own.
@@ -570,9 +554,8 @@ describe("eventVersion", () => {
   });
 
   it("states neither byline nor date when the producing row could not be read", () => {
-    // The content read landed and the one below it did not, so the version has
-    // its snapshot and nothing to say about the edit that made it. The
-    // record's own author and publication date belong to version 1 alone.
+    // Content landed but the one below did not: the snapshot stands, with nothing about the edit
+    // that made it (author and publication date belong to version 1 alone).
     const version = eventVersion(CURRENT, 2, { own: row(2, snapshot()) });
     expect(version.view?.title).toBe("v2 title");
     expect(version.editor).toBeNull();
@@ -581,8 +564,7 @@ describe("eventVersion", () => {
 });
 
 describe("hasVersionChanges", () => {
-  /** The form as it is seeded from `CURRENT`: every input holding what the row
-   *  holds, which is what an untouched edit page posts. */
+  /** The form seeded from `CURRENT`: what an untouched edit page posts. */
   const untouched = (
     overrides: Partial<EventVersionFormState> = {}
   ): EventVersionFormState => ({
@@ -617,8 +599,7 @@ describe("hasVersionChanges", () => {
     expect(
       hasVersionChanges(CURRENT, untouched({ sourceUrl: "https://t.me/channel/9" }))
     ).toBe(true);
-    // Blank keeps the stored source, the way an omitted field does server side,
-    // so it is not a correction to it.
+    // Blank keeps the stored source, as server side; not a correction.
     expect(hasVersionChanges(CURRENT, untouched({ sourceUrl: "" }))).toBe(false);
   });
 
@@ -628,10 +609,8 @@ describe("hasVersionChanges", () => {
   });
 
   it("reads an untouched lossy input as no change, seconds and all", () => {
-    // Both inputs hold less than their column does: the time input drops the
-    // seconds and the datetime input stops at the minute. A form still holding
-    // what the row seeded it with is untouched however much precision the row
-    // carries, so neither reads as an edit and neither is posted back.
+    // The time input drops seconds and the datetime input stops at the minute: a form still
+    // holding what the row seeded it with is untouched and not posted back.
     const precise: EventDetail = {
       ...CURRENT,
       source_posted_at: "2026-05-09T15:45:27Z",

@@ -26,33 +26,25 @@ import { Pill } from "@/components/ui/Pill";
 import { TEXT_LINK } from "@/components/ui/styles";
 import type { Concept } from "@/lib/fieldHelp";
 
-/**
- * The body's data shape: an `EventDetail` as-is. Every lifecycle state
- * (located, detected, requested, closed) shares this one shape: a coordless
- * `requested` row just carries a null `event_coords`, and the missing
- * detected-from / requested-by spots drop out with no extra branching.
- */
+/** The body's data shape: an `EventDetail` as-is. Every lifecycle state shares it: a coordless
+ * `requested` row carries a null `event_coords`, and the missing detected-from and requested-by
+ * spots drop out. */
 export type EventDetailBodyData = EventDetail;
 
 interface EventDetailBodyProps {
   geo: EventDetailBodyData;
   /**
-   * ``panel`` — map's 380px overlay: stacked ``thumbnail`` media, bare rows,
-   * no request-trace/author rows (the author sits in the panel header).
-   * ``page`` — full detail page: 2-up ``hero`` media grid, card-chrome rows
-   * plus request-trace + author rows, section headings.
+   * `panel`: map's 380px overlay: stacked `thumbnail` media, bare rows, no request-trace or author
+   * rows (the author is in the panel header). `page`: full detail page: 2-up `hero` media grid,
+   * card-chrome rows plus request-trace and author rows, section headings.
    */
   variant: "panel" | "page";
-  /** Rendered between the media block and the key-value rows — the
-   *  full page slots its Location map here. */
+  /** Rendered between the media block and the key-value rows (the full page slots its Location map here). */
   children?: ReactNode;
 }
 
-/**
- * Geolocation markup shared by the map's detail side-panel and
- * `events/[id]`. The `variant` prop owns the density differences so the
- * field set can't drift between the two surfaces.
- */
+/** Geolocation markup shared by the map's detail side-panel and `events/[id]`; `variant` owns the
+ * density differences so the field set can't drift. */
 export function EventDetailBody({ geo, variant, children }: EventDetailBodyProps) {
   const compact = variant === "panel";
   return (
@@ -93,9 +85,7 @@ function MediaBlock({ geo, compact }: { geo: EventDetailBodyData; compact: boole
 }
 
 function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boolean }) {
-  // Conflicts (their own referential) and curated capture-source tags get
-  // their own labelled rows so they read as structured facts, not free-form
-  // chips lost in one row.
+  // Conflicts and curated capture-source tags get labelled rows so they read as structured facts, not free-form chips.
   const captureTags = geo.tags.filter((t) => t.category === "capture_source");
   const freeTags = geo.tags.filter((t) => t.category === "free");
   const sourceClass = compact ? "" : "text-sm";
@@ -117,11 +107,9 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
       <DetailRow label="Status" concept="status" compact={compact}>
         <StatusBadge status={geo.status} />
       </DetailRow>
-      {/* The closer's free-text reason and the day they closed, kept publicly
-          visible on a closed row (transparency: why the request was withdrawn,
-          the detection rejected or the geolocation retracted, and when). Both
-          sit next to the Status badge, on every surface that renders a closed
-          row rather than on one page's own extras. */}
+      {/* The closer's free-text reason and closing day stay publicly visible on a closed row (why a
+          request was withdrawn, a detection rejected or a geolocation retracted), on every surface
+          that renders one. */}
       {geo.status === "closed" && geo.close_reason && (
         <DetailRow label="Reason" compact={compact} align="start">
           <span
@@ -140,10 +128,8 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
         compact={compact}
         value={geo.event_date ? formatDate(geo.event_date) : "Unknown"}
       />
-      {/* Time-of-day gets its own row, not folded into Event date: it can be
-          known without the day (an approximate hour from sun position or
-          shadows), so it must surface even when the date is "Unknown".
-          Shown only when set, matching the other optional rows. */}
+      {/* Time-of-day gets its own row: it can be known without the day (an hour from sun position or
+          shadows), so it must show even when the date is "Unknown". Only when set. */}
       {geo.event_time && (
         <DetailRow
           label="Event time"
@@ -180,9 +166,8 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
           )}
         </span>
       </DetailRow>
-      {/* Mirrors of the same media, directly under the primary they mirror.
-          Collapsed: they are corroboration, not the evidence anchor, so they
-          must not push the rest of the Details block down. */}
+      {/* Mirrors of the same media, under the primary. Collapsed: corroboration, not the evidence
+          anchor, so they don't push the Details block down. */}
       {geo.secondary_source_urls.length > 0 && (
         <SecondarySourcesRow
           urls={geo.secondary_source_urls}
@@ -190,12 +175,10 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
           compact={compact}
         />
       )}
-      {/* The post a machine import read this row from, distinct from Source
-          (the footage origin), never folded into it. The bot writes it on a
-          request it opened as well as on a detection, and the label follows
-          which one landed: `requested_by` is the stamp that says the row was
-          opened as a request, and it survives fulfilment, so the label does not
-          flip to "Detected from" the day someone geolocates it. */}
+      {/* The post a machine import read this row from, distinct from Source (the footage origin). The
+          bot writes it on requests as well as detections, and the label follows `requested_by`, the
+          stamp that survives fulfilment, so it doesn't flip to "Detected from" once someone geolocates
+          the row. */}
       {geo.detected_from_url && (
         <DetailRow
           label={geo.requested_by ? "Requested from" : "Detected from"}
@@ -203,16 +186,14 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
           compact={compact}
         >
           <span className="flex min-w-0 items-baseline justify-end">
-            {/* Same display nature as Source: SourceLabel reduces the URL to its
-                host, so the two provenance rows read alike rather than one
-                host-reduced, one truncated-full. */}
+            {/* Same display as Source: SourceLabel reduces the URL to its host, so the two provenance rows
+                read alike. */}
             <SourceLabel
               url={geo.detected_from_url}
               variant="link"
               className={sourceClass}
             />
-            {/* Archived on the same terms as the source: the analyst's post is
-                the provenance of the claim, and it rots the same way. */}
+            {/* Archived like the source: the analyst's post is the claim's provenance and rots the same way. */}
             <ArchivedCopies
               copy={geo.archived_detected_from}
               describes={DETECTED_FROM_DESCRIPTION}
@@ -233,10 +214,9 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
       )}
       {tagRow("Capture source", captureTags, "capture_source")}
       {tagRow("Tags", freeTags)}
-      {/* Compact panel omits requested-by + author rows: the author is in
-          the panel header, the trace belongs to the full page. Fulfilment is
-          a lifecycle move on this same row, so the trace is who opened the
-          request (``requested_by``), not a link to a separate request. */}
+      {/* Compact panel omits requested-by and author rows: the author is in the panel header, the trace
+          belongs to the full page. Fulfilment is a lifecycle move on this row, so the trace is who
+          opened the request (`requested_by`). */}
       {!compact && geo.requested_by && (
         <DetailRow label="Requested by" concept="requested_by" compact={compact}>
           <Link
@@ -256,9 +236,8 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
   );
 
   if (compact) {
-    // Same section structure as the page (the panel has no map, so Location is
-    // just the coordinates), so the side-panel reads like the full page, only
-    // denser. Two fragment siblings → the parent panel's `space-y` separates them.
+    // Same sections as the page (no map in the panel, so Location is the coordinates), only denser.
+    // Two fragment siblings: the parent's `space-y` separates them.
     return (
       <>
         <div className="space-y-2">
@@ -302,15 +281,10 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
 }
 
 /**
- * The Secondary sources row: a count that expands into the list. Rendered only
- * for a non-empty list (the caller guards), so the Details block gains nothing
- * on an event that declares no mirror. Each link is a `SourceLabel` trailed by
- * its `ArchivedCopies` mark, the same affordance the Source row above renders,
- * so the primary and its mirrors read alike. The row's own `?` explains that
- * mark once for the whole list.
- *
- * `archived` is index-aligned with `urls` (the payload's contract), so mirror
- * `i` takes record `i`.
+ * The Secondary sources row: a count that expands into the list. Rendered only for a non-empty
+ * list (the caller guards). Each link is a `SourceLabel` with its `ArchivedCopies` mark, like the
+ * Source row; the row's `?` explains the mark once. `archived` is index-aligned with `urls` (the
+ * payload's contract).
  */
 function SecondarySourcesRow({
   urls,
@@ -351,19 +325,16 @@ function SecondarySourcesRow({
         </button>
         {open &&
           urls.map((url, index) => (
-            // Index key: two mirrors may repeat a URL, and the archival record
-            // is paired by position anyway.
+            // Index key: two mirrors may repeat a URL, and archival records pair by position.
             <span key={index} className="flex min-w-0 items-baseline justify-end">
               <SourceLabel
                 url={url}
                 variant="link"
                 className={textSize}
               />
-              {/* Named per mirror rather than "the source": several archived
-                  copies can sit on one page, and each needs its own target
-                  announced. `mirrorDescription` owns that name, including the
-                  two cases a bare host cannot carry (mirrors sharing a host, a
-                  URL with no host to show). */}
+              {/* Named per mirror, not "the source": several archived copies can share a page, each needing its
+                  own target announced. `mirrorDescription` owns the name, including the cases a bare host can't
+                  carry (shared host, no host). */}
               <ArchivedCopies
                 copy={archived[index] ?? null}
                 describes={mirrorDescription(safeHostname(url), index, urls.length)}
@@ -376,10 +347,9 @@ function SecondarySourcesRow({
 }
 
 function ProofBlock({ geo, compact }: { geo: EventDetailBodyData; compact: boolean }) {
-  // A proof body carries pasted URLs, and a link whose text is the full URL is
-  // one unbreakable token: without an anywhere-break it ran past the frame and
-  // scrolled the whole page sideways on a phone. The one wrapper both the page
-  // and the map panel render through, so neither can regress alone.
+  // A proof body carries pasted URLs; a full-URL link text is one unbreakable token that scrolled the
+  // page sideways on a phone without an anywhere-break. One wrapper for both the page and the map
+  // panel, so neither regresses alone.
   const body = geo.proof ? (
     <div className="text-sm text-neutral-300 leading-relaxed [overflow-wrap:anywhere]">
       {renderProof(geo.proof, { gateImages: geo.is_graphic })}

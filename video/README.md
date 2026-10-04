@@ -1,680 +1,155 @@
 # Promo video pipeline
 
-A reproducible "promo as code" pipeline for the Vidit promo.
-Produces a 1920×1080 / 60fps MP4 with a brand intro, a real recording of
-the platform doing the full submit + request flow, captions overlaid on
-the recording, and a closing CTA.
+The promos are code. A Playwright script drives a real Chrome against a local Vidit instance and records frames; a Remotion composition wraps that recording in browser chrome, captions, a brand intro and a closing card. Every composition renders at 1920×1080, 60 fps.
 
-The middle of the video is a real Playwright-driven recording of a real
-Chrome instance against the local dev backend. The intro / outro /
-captions are Remotion compositions wrapping that recording in faked
-browser chrome. One render command produces the final MP4.
+Each capture script (`record-*.js`) opens with a header comment that holds its storyboard, its editorial rules and the reasons behind its constants. Read it before you re-shoot.
 
-## Prereqs
+## Prerequisites
 
-Local dev environment up, against a populated catalog:
+A local instance with a populated catalog:
 
 ```bash
-make init                       # one-shot bootstrap (install + db + migrate)
-make import-prod                # restore the latest production backup locally
-make dev                        # backend on :8000, frontend on :3000
+make init          # install, env files, database, migrations
+make import-prod   # restore the latest production backup locally
+make dev           # backend on :8000, frontend on :3000
 ```
 
-The catalog on camera comes from a production import (`make import-prod`)
-or from an archive import through `/submit`. Every take reads whatever the
-instance holds, so record against an instance you are willing to publish:
-the recordings show real handles, real media and real coordinates.
+The catalog on camera is whatever the instance holds, so record against an instance you are willing to publish: the recordings show real handles, real media and real coordinates.
 
-Takes that sign in need their account to exist on that instance already.
-`record-submit.js` and `record-v04.js` log in as `analyst@vidit.app`;
-`seed-requests.js` posts as `demo-analyst`, deliberately a different user,
-because an owner viewing their own request sees "Close this request" where
-the recording expects "Geolocate this". `record-v05.js` signs in to nothing
-and needs no account.
+Takes that sign in need their account to exist on the instance already:
 
-## Generate the promo (one command)
-
-From the repo root:
-
-```bash
-make promo
-```
-
-That runs: seed requests from the analyst's tweets → record the live
-Chrome flow → mux frames to MP4 → Remotion render the final composition.
-Output: `video/out/promo-final.mp4`.
-
-To run the steps by hand (useful when iterating on one of them):
-
-```bash
-cd video
-node seed-requests.js                                    # ~30s — fetches tweets, posts requests
-node record-submit.js                                    # ~60s — drives Chrome, records frames, encodes
-cp out/recording-submit.mp4 public/                      # Remotion needs it under public/
-npx remotion render src/index.ts Demo out/promo-final.mp4 --codec h264 --crf 16    # ~30s
-```
-
-For 4K (3840×2160), append `--scale 2` to the render command.
-
-## What lives where
-
-| Want to change… | File |
+| Script | Signs in as |
 |---|---|
-| Scene timings + caption text + outro feature list | `src/Demo.tsx` (`CAPTIONS` + `SCENES`) and `components/Outro.tsx` (`ALSO_IN_VIDIT`) |
-| Brand colours / wordmark / tagline | `src/components/Intro.tsx`, `Outro.tsx`, `Background.tsx`, `fonts.ts` |
-| Tweets used to seed the request list | `TWEETS` at top of `seed-requests.js` |
-| Tweet imported in the recording's geolocation submit | `TWEET_URL` at top of `record-submit.js` |
-| Request form's source URL + uploaded video source | `REQUEST_SOURCE_URL` + `REQUEST_TWEET_URL` + `REQUEST_SOURCE_POSTED_AT` in `record-submit.js` |
-| Conflict + capture source both scripts classify with | `CONFLICT_NAME` / `CAPTURE_SOURCE_NAME` at the top of `seed-requests.js` and `record-submit.js` (keep them equal) |
-| Cursor speed / scroll cadence | `glideAndClick` defaults + `slowScrollToY` durations in `record-submit.js` |
-| Faked browser chrome (URL bar, traffic lights) | `src/components/VideoChrome.tsx` |
+| `record-submit.js`, `record-v04.js` | `analyst@vidit.app` |
+| `seed-requests.js` | `analyst@vidit.app` (viewer) and `demo-analyst@vidit.app` (request author) |
+| `record-v05b.js` | `VIDIT_DEMO_EMAIL` / `VIDIT_DEMO_PASSWORD` |
+| `record-collections.js` | `PROMO_LOGIN_EMAIL` / `PROMO_LOGIN_PASSWORD` |
+| `record-v05.js` | nobody (logged out) |
 
-## How it works, in 30 seconds
+The request author differs from the viewer on purpose: an owner viewing their own request sees *Close this request* where the take expects *Geolocate this*, and the take fails on the missing control. No script in the repo creates these accounts; see [issue #505](https://github.com/vidithq/vidit/issues/505).
 
-1. **`seed-requests.js`** logs in as `demo-analyst`, wipes that user's old
-   requests, then imports a curated list of the real analyst's tweets,
-   downloads their video media via the backend's tweet proxy, and posts
-   them as requests (`POST /events/requests`, one source file each).
-   Idempotent.
+## Promos
 
-2. **`record-submit.js`** logs in as `analyst`, opens Chrome headlessly
-   with an injected DOM cursor overlay (the OS cursor isn't captured by
-   `page.screenshot()`, so we render our own SVG cursor), and drives the
-   page through the full flow: map cold open → sidebar tour → submit a
-   geolocation from a tweet on `/submit` → read a request on the requests
-   board → post a new request from a Telegram link on the same form →
-   publish. A polling
-   loop calls `page.screenshot()` at 60 fps in parallel and writes JPEG
-   frames to disk. `ffmpeg` muxes them into `out/recording-submit.mp4` at
-   2560×1440, at the fps the grabber actually sustained.
+| Composition | Command | Capture script | Writes to the instance | Outputs in `out/` |
+|---|---|---|---|---|
+| `Demo` | `make promo` | `seed-requests.js`, `record-submit.js` | yes: seeded requests, one geolocation, one request | `promo-master.mp4`, `promo-readme.mp4` |
+| `PromoV04` | `npm run record:v04`, `npm run render:v04` | `record-v04.js` | yes: archive import, one promoted detection | `promo-v04.mp4` |
+| `PromoV05` | `make promo-v05` | `record-v05.js` | no | `promo-v05-master.mp4`, `promo-v05-readme.mp4` |
+| `PromoV05B` | `make promo-v05b` | `record-v05b.js` | yes: archive import, one submitted draft | `promo-v05b-master.mp4`, `promo-v05b-readme.mp4` |
+| `PromoCollections` | `make promo-collections` | `record-collections.js` | yes: one event added to a collection | `promo-collections-master.mp4`, `promo-collections-readme.mp4` |
+| `FeatureImport` | `npm run render:feature-import` | none | no | `feature-import.mp4` |
 
-   One form serves both publishes: `/submit` opens on the *Single* path,
-   the recording picks *From an X post* to reveal the tweet-import
-   banner, and the two actions at the foot of the form are *Publish
-   geolocation* and *Publish request*. Classification is two referentials,
-   so the recording searches the conflict in its typeahead and clicks the
-   capture source among the curated chips.
+Run the `npm run` commands from `video/`. Every `make` target needs `make dev` running in another shell.
 
-3. **Remotion** composes intro / outro / captions around the recording
-   (loaded via `<OffthreadVideo>`) and renders the final MP4. All the
-   text and timings live in `src/Demo.tsx`.
+### `Demo`
 
-## Known brittleness
-
-- **The backend's `/events/import-from-tweet` endpoint depends on
-  live X scraping.** If X changes its HTML, the seeding falls back to
-  less-rich media (or to an image instead of the source video). The
-  `seed-requests.js` log lines call out when this happens (`video fetch
-  failed; falling back to images`).
-- **Tweet URLs are hardcoded** — 2 in `TWEETS` (seed-requests.js for the
-  seeded request list) + `TWEET_URL` (record-submit.js, the geolocation
-  the recording submits) + `REQUEST_TWEET_URL` (record-submit.js, only
-  used to source the video for the live request upload). Four
-  references total, three distinct tweets. If the original author
-  deletes them, swap in other geolocation tweets from any analyst
-  who's given permission. The duplicate-cleanup step (the one that
-  prevents stale "possibly related" warnings) and the
-  request-upload cache key both derive from these constants — no other
-  knobs to update.
-- **The pipeline assumes the local dev stack is running.** Backend at
-  `:8000` and frontend at `:3000`. No remote/headless mode — Playwright
-  drives the real Next.js frontend.
-- **A route rename anywhere else in the repo breaks the scripts.** They
-  call the live API and click real frontend paths, and no test suite
-  covers them, so a rename lands silently and every call 404s at the next
-  render. `video/check-routes.sh` greps both scripts for the spellings
-  that have already gone stale once; it runs in `make hygiene` and in
-  CI's hygiene job. Selectors are beyond a grep's reach, so a form
-  restructure still needs a capture run to catch.
-- **User setup.** The signed-in takes assume two accounts on the
-  instance. Without `analyst@vidit.app` the recording's login fails
-  outright. With `analyst` but no `demo-analyst`, requests get posted by
-  `analyst` itself, so viewing their own request in the recording shows
-  "Close this request" instead of "Geolocate this" and the take fails at
-  that step with a TimeoutError on the missing control.
-
-## Why this stack
-
-- **Why Remotion over a video editor:** every text change is a code
-  change, every timing tweak is a number in a TypeScript array, every
-  re-render is one command. The promo evolves with the product without
-  a manual editing pass.
-- **Why Playwright `page.screenshot()` instead of `recordVideo`:**
-  `recordVideo` is locked at 25 fps VP8 ~650 kbps and ignores
-  `deviceScaleFactor` (blurry on retina). A polling-loop screenshot
-  grabber respects DPR and gives true 2560×1440 frames at 30 fps.
-- **Why a DOM cursor overlay:** the OS cursor isn't part of the page
-  bitmap that `page.screenshot()` returns. Rendering our own SVG cursor
-  inside the page (tracked off the real Playwright mouse events) is
-  the cleanest way to make it appear in the recording.
-- **Why `slowScrollToY` instead of `scrollIntoView({ behavior: "smooth" })`:**
-  the browser's native smooth scroll runs at a fixed (fast) cadence
-  with no duration control; a custom ease-in-out over 1.5–2.5 s reads
-  like someone gently scrolling the trackpad. The implementation fires
-  the rAF loop in the page WITHOUT awaiting the resulting Promise — an
-  awaited `page.evaluate(asyncFn)` blocks the CDP session and tanks
-  the screenshot grabber from 30 fps to ~4 fps.
-
-## v0.4 promo (`PromoV04`)
-
-A second pipeline, sharing the capture technique above but recording one
-clip per beat instead of one continuous take, so the comp can pace beats
-independently and slot in real X screen captures.
+`make promo` runs `make mock-admin`, seeds requests, records the submit take, copies `out/recording-submit.mp4` into `public/`, and renders. To run the steps by hand:
 
 ```bash
-make import-prod     # a populated catalog for the map beats
-make dev-worker      # the import worker must run
 cd video
-npm run record:v04   # or: node record-v04.js demo,bot-embed
-npm run render:v04   # → out/promo-v04.mp4 (1920×1080, 60 fps)
+node seed-requests.js
+node record-submit.js
+cp out/recording-submit.mp4 public/
+npx remotion render src/index.ts Demo out/promo-4k.mp4 --codec h264 --crf 16 --scale 2
 ```
 
-The recorded takes import the maintainer's REAL X export ("Vidit
-stuff.zip" at the repo root, their published geolocation work), copied
-read-only to `out/real-archive.zip`, so every detection and event on camera
-carries real media. `gen-archive.js` (a synthetic real-shaped archive)
-stays for CI / reproducibility when the real export isn't available.
+| To change | Edit |
+|---|---|
+| Scene timings, caption text, outro feature list | `src/Demo.tsx` (`CAPTIONS`, `SCENES`), `src/components/Outro.tsx` (`ALSO_IN_VIDIT`) |
+| Brand colours, wordmark, tagline | `src/components/Intro.tsx`, `Outro.tsx`, `Background.tsx`, `src/fonts.ts` |
+| Posts that seed the request list | `TWEETS` in `seed-requests.js` |
+| Post imported in the submit take | `TWEET_URL` in `record-submit.js` |
+| Request source and uploaded video | `REQUEST_SOURCE_URL`, `REQUEST_TWEET_URL`, `REQUEST_SOURCE_POSTED_AT` in `record-submit.js` |
+| Conflict and capture source | `CONFLICT_NAME`, `CAPTURE_SOURCE_NAME` in `seed-requests.js` and `record-submit.js` (keep them equal) |
+| Faked browser chrome | `src/components/VideoChrome.tsx` |
 
-Per clip (all real UI, none of it staged on camera): `map.mp4` opens the
-anonymous map, dezooms to clusters and opens a real promoted geolocation
-(one detection from the real archive, promoted at setup and remembered in
-`out/hero.json`); `import.mp4` uploads the real archive through `/submit`
-and lands on the filled detections queue; `queue.mp4` is a steady queue
-shot; `promote.mp4` reviews a real detection, submits it and shows the
-published point; `bot-embed.mp4` records the official X embed (dark) of
-the analyst's real coordinate tweet as the bot beat's base plate. Timing
-marks from each take go to `public/clips/meta.json`;
-`gen-clips-manifest.js` compiles them into `src/clips-manifest.ts`, which
-`src/PromoV04.tsx` reads, so a re-record never needs hand-retimed
-sequences. The comp letterboxes every recording above a reserved caption
-band, so captions never overlap the demo.
+`seed-requests.js` imports each post in `TWEETS` as detections, reads the stored media from each detection's `storage_url`, posts one request per post, and deletes the detections. The import reads the caller's own posts only, so the seeding account's linked X handle must be the author of every seeded post. The script is idempotent.
 
-### Maintainer drop-in slots (real X footage)
+### `PromoV04`
 
-Two beats are meant to be REAL X screen recordings, captured manually:
+`record-v04.js` records `demo.mp4` (the in-app demo) and `bot-embed.mp4` (the bot beat's plate). It imports the maintainer's own X export, read from the path `REAL_ARCHIVE_SOURCE` names; `gen-archive.js` writes a synthetic archive of the same shape for runs without it. Record one clip with `node record-v04.js bot-embed`.
+
+Two beats take manual X screen recordings:
 
 | Slot file | Used by | Until it exists |
 |---|---|---|
-| `public/clips/bot-x-capture.mp4` | `PromoV04` bot beat (tweet → tag `@viditbot` → like → reply) | `BotBeat` renders its mock instead: an X-dark card of a geolocation tweet carrying the strict bot format inline, then the bot's in-thread reply with the real `compose_reply` copy. It draws the two avatars and the proof still from `public/clips/`, which are fetched assets rather than recorded ones |
-| `public/clips/x-export-capture.mp4` | `FeatureImport` opening (Settings → "Download an archive of your data") | a styled placeholder card renders instead |
+| `public/clips/bot-x-capture.mp4` | `PromoV04` bot beat | `BotBeat` renders a mock X card and the bot's reply |
+| `public/clips/x-export-capture.mp4` | `FeatureImport` opening | a placeholder card renders |
 
-Drop the file in, re-run `node gen-clips-manifest.js`, re-render. The
-capture is scaled and center-cropped into the same browser-chrome frame
-as the app clips; any aspect ratio works, 16:9 crops least.
+Drop the file in, run `node gen-clips-manifest.js`, and render again. Any aspect ratio works; 16:9 crops least.
 
-`FeatureImport` is the follow-up feature video on the archive import
-(scaffolded, not rendered for v0.4): `npm run render:feature-import`.
+### `PromoV05`
 
-## v0.5 promo A, the portfolio (`PromoV05`)
+Logged out, one unbroken take of an analyst's public profile. `verifyTarget` refuses to record unless `TARGET_EVENT` carries an archived copy of its source, source media, coordinates and a written proof, and appears in the profile's Recent submissions. To retarget, change `HANDLE`, `COVERAGE_CENTER`, `COVERAGE_ZOOM` and `TARGET_EVENT` in `record-v05.js`.
 
-An analyst's public profile as a portfolio: the brand intro, ONE unbroken
-take, the closing card. Recorded **logged out**.
+To give the target event an archived copy, record the snapshot as the owner through `POST /events/{id}/versions` with `source_snapshot_url` set (see [`docs/api.md`](../docs/api.md)). Look the capture up in the Wayback CDX API first (`https://web.archive.org/cdx/search/cdx?url=<source>&output=json&filter=statuscode:200`), and load the replay URL before you record it: the CDX index lists captures the replay layer does not serve.
 
-```bash
-make promo-v05       # record + render + both outputs
-```
+The intro shows the release from `src/build-version.ts`, which `gen-clips-manifest.js` writes on every render with the resolution order of [`frontend/next.config.mjs`](../frontend/next.config.mjs). Change one and change the other.
 
-Or step by step:
+### `PromoV05B`
+
+Signed in, one unbroken take of an archive import and a review pass, then the bot plate. Point it at a local instance only. By hand:
 
 ```bash
-cd video
-npm run record:v05   # → public/clips/portfolio.mp4 + its marks
-npm run render:v05   # → out/promo-v05.mp4 (1920×1080, 60 fps)
-```
-
-`make promo-v05` adds the two staged outputs: `out/promo-v05-master.mp4`
-(the same 1080p stream remuxed with `+faststart`, for S3) and
-`out/promo-v05-readme.mp4` (720p / 30 fps, for a GitHub attachment URL).
-
-### One take, no cuts
-
-The recorded part is a single continuous window of `portfolio.mp4`. Nothing
-in it is assembled: the page travels by scrolling, the camera travels by
-easing, and both page changes are in-page router pushes the take performs on
-camera (a submission card, then the sidebar's Map link). The only two
-transitions in the video are the crossfades into and out of the recorded
-part, where the world genuinely changes.
-
-That constraint moves the editing into the capture. `record-v05.js` is paced
-in real time, holds included, and its length IS the promo's recorded length,
-so a hold that runs long there runs long on screen. `PromoV05.tsx` has no
-windowing machinery left: it places three scenes and hangs captions off the
-take's marks.
-
-Two consequences worth knowing before you re-record:
-
-- A route compiling for the first time cannot be cut out, so the take runs a
-  silent warm-up pass over every route it will visit before it starts
-  recording.
-- Never navigate with `page.goto` inside the recorded pass. A reload blinks
-  the page white, and there is no cut available to hide it.
-
-The take walks the profile in the order the page itself reads: identity,
-Coverage, Insights, Recent submissions. Each block gets its own beat, its own
-hold and its own caption.
-
-| Beat | What is on camera | Caption |
-|---|---|---|
-| Intro | The wordmark, the release, and the tagline | |
-| 1 | The profile top, motionless and cursor-free: avatar, handle, bio, and the followers, following and member-since line, with the coverage map already in frame under them. | Your work, on one page. |
-| 2 | The coverage map, worked in place. The page does not scroll: the map opens fitted to the analyst's own points, then the camera eases into the densest worked area and holds there while the avatar and the handle stay on screen above it. | The ground you covered. |
-| 3 | The Insights card, read in two positions: the counters, the top conflicts and the capture sources, then the source-origin bar and the whole event-dates grid. The card is taller than the capture window, so the beat drifts once rather than trying to frame it whole. | What you covered, counted: conflicts, sources, dates. |
-| 4 | Recent submissions, the analyst's latest geolocations. | Every event you documented. |
-| 5 | One submission opens: the source clip's poster frame, then the eased scroll to the point map, the coordinates and the Details block, where the cursor settles on the archived copy beside the Source row and holds. | The source, and a copy that outlives it. |
-| 6 | The general map, pulling back so the analyst's points sit among everyone else's. | One archive, open to read without an account. |
-| Outro | The wordmark and vidit.app (`OutroV04`, shared with the v0.4 promo) | |
-
-The take's first scroll is the one onto the Insights card. Beats 1 and 2 share
-one page position, which is what the capture geometry below is chosen for.
-
-### Why the capture window is short and wide
-
-The take captures at 1040x560, not the 1280x720 the other pipelines use,
-because on a phone the product has to be readable. How big the page reads in
-the frame comes out to:
-
-    on-screen column width = comp body height x (page column width / capture height)
-
-The profile's content column caps at 848 CSS px whatever the window width, so
-a wider capture only buys dark gutters. A SHORT capture is what magnifies the
-page. At 1040x560 the comp shows the recording at 1.56x rather than shrinking
-it to 0.92x, the window covers 85% of the frame width instead of 61%, and the
-counters and the coverage split survive a 400 px downscale.
-
-The two dimensions are chosen, not rounded:
-
-- **1040 wide** keeps the desktop layout (above Tailwind's `lg`) with the
-  content column at its 848 px cap.
-- **560 tall** is measured against the opening shot, which holds the identity
-  block and the whole coverage map under it. The identity is one compact
-  header, so the map card starts around 156 CSS px down the page and still ends
-  inside the frame. The counters (followers, following, member since) are the
-  closing line of that block rather than a strip of their own, so they ride
-  under the bio instead of anchoring the shot: zero followers is the weakest
-  thing on the page.
-
-That geometry is what beats 1 and 2 are built on: the coverage beat moves the
-camera and not the page, so the analyst stays on screen while their map is
-worked, and the take spends no seconds scrolling 100 px. The profile's layout
-has moved that landing point twice already, so treat 560 as a landmark to
-re-check on each capture rather than a fixed number. If the identity block ever
-grows enough to push the map out of the opening frame, the take needs a travel
-between `identity` and `coverage` again.
-
-`CAPTURE` in `PromoV05.tsx` derives the browser body from those numbers, so
-the body always carries the take's aspect ratio and `objectFit: cover` has
-nothing to crop. Change the viewport in `record-v05.js` and change `CAPTURE`
-with it, or the recording gets squashed.
-
-Judge any change to this the way it will be watched: export a frame, scale it
-to 400 px wide, and check the counters and the coverage split's labels.
-
-### Where the intro's version comes from
-
-`gen-clips-manifest.js` writes `src/build-version.ts` on every render. It
-mirrors the resolution order in
-[`frontend/next.config.mjs`](../frontend/next.config.mjs), the one that bakes
-`NEXT_PUBLIC_BUILD_VERSION` for the app's version pill: an explicit env var
-first, then `git describe --tags --always --dirty`, then `dev`. Change one and
-change the other.
-
-The comp renders only the RELEASE part of it, so `v0.5.3-4-gf3ae76f` becomes
-`0.5`: a promo names the release, not the build. A version that is not
-tag-derived (a bare SHA, `dev`) has no release to name and the intro renders
-the plain wordmark.
-
-The release rides the wordmark's own entry spring rather than the tagline's
-later fade, so it is legible in frame 0, which is the poster a tweet shows
-before anyone presses play.
-
-### Two editorial rules the take enforces
-
-- **No session.** The owner view of a profile carries the account's email
-  address and owner-only chrome (Edit profile, the detections banner, Sign
-  out), none of which belongs in a promo. Recording anonymously is also the
-  honest form of the claim the last caption makes. The take signs in to
-  nothing, submits no form and writes nothing.
-- **Only the analyst's public page.** `HANDLE` at the top of `record-v05.js`
-  names the analyst who consented to being filmed. The take visits their
-  profile, one of their events, and the public map.
-
-Retarget it to another analyst by changing `HANDLE`, `COVERAGE_CENTER` and
-`COVERAGE_ZOOM`, and by pointing `TARGET_EVENT` at an event that passes
-`verifyTarget`.
-
-### The event the take opens
-
-`TARGET_EVENT` is checked before a frame is captured, and the script refuses
-to record if any of it stops holding:
-
-- `archived_source` is set. This is the copy of the SOURCE link, which is the
-  one beat 5 frames. An event can carry a copy of a secondary source or of
-  the post it was detected from and still show an empty glyph on the Source
-  row, so those two fields do not qualify it.
-- Source media, coordinates and a written proof, so the frame carries what
-  the caption claims.
-- It is in the Recent submissions the profile lists, since that is the card
-  the cursor clicks.
-
-To give an event its archived copy, capture the source yourself and record
-the snapshot as the owner through `POST /events/{id}/versions`, posting the
-event's current editable state with `source_snapshot_url` set (on a published
-event an archived copy is a version of its own, see `docs/api.md`). Look the
-capture up in Wayback's CDX API first (`https://web.archive.org/cdx/search/cdx?url=<source>&output=json&filter=statuscode:200`)
-and submit one through Save Page Now only if none exists. Save Page Now
-structurally refuses `x.com`, which is where most sources here live;
-`t.me` and `tiktok.com` capture fine. Load the replay URL before you record
-it: the CDX index lists captures that the replay layer will not serve, and a
-snapshot URL that does not resolve is worse than an empty glyph.
-
-## v0.5 promo B, import and review (`PromoV05B`)
-
-One unbroken take between the brand intro and the closing card: an archive
-import and a review pass, recorded **signed in** as the analyst who consented
-to appear. The comp plays the whole take as one window and crossfades only
-into and out of the recorded part. The one exception is the import wait,
-which the comp compresses without a cut: the segment between the privacy
-hold and the Done step plays at a higher rate between two normal-speed
-segments over the same source, each starting on the frame the previous one
-ended, so the progress steps tick through and the screen never jumps. The
-compression has a floor, `RAMP_MIN_RATE` at 1.5: under it the wait plays at
-life speed instead, so a fast import gives a slightly shorter film rather than
-a stretched wait.
-
-```bash
-make promo-v05b      # record + render + both outputs
-```
-
-Or step by step:
-
-```bash
-# 1. the fixture: a trimmed copy of the analyst's own export
+# 1. The fixture: a trimmed copy of the analyst's own export.
 backend/.venv/bin/python video/prep-review-take.py \
     --archive "<their export>.zip" --username MPGeoint \
     --creating --threads 14 --out video/out/x-archive-trimmed.zip
 
-# 2. the import worker, in another shell: the API enqueues the import and
-#    the worker runs it, so without this the take waits on a Done step that
-#    never arrives
+# 2. The import worker, in another shell.
 make dev-worker
 
-# 3. the take and the render
+# 3. The take and the render.
 cd video
-VIDIT_DEMO_PASSWORD=… npm run record:v05b   # → public/clips/import-review.mp4
-npm run render:v05b                          # → out/promo-v05b.mp4
+VIDIT_DEMO_PASSWORD=… npm run record:v05b
+npm run render:v05b
 ```
 
-The beats. Beats 1 to 6 are one continuous take, which ends on the queue
-handing over the next draft; the bot beat is a separate plate, and the closing
-card follows it:
+- Run `prep-review-take.py --report` before a shoot. It prints how many detections the export creates, updates and skips, since a re-import of an export the instance already holds creates nothing.
+- `POST /events/import-archive/presign` allows 10 calls an hour per account. Past that, the take stalls on *Uploading your archive*.
+- The bot plate is `public/clips/bot-embed.mp4`, recorded by `node record-v04.js bot-embed`. `PROMO_BOT_TWEET` overrides the default status in `BOT_EMBED_TWEET`. Without the plate, the take runs straight into the closing card.
 
-| # | Beat | What is on camera |
-|---|---|---|
-| 1 | Bulk import | The export guide on `/submit`, the mock open dialog, the staged file with its real name and byte size. |
-| 2 | Privacy | The live progress steps, held on `DMs, messages and account data never leave your device.` |
-| 3 | Idempotence | The finished run and its outcome line. |
-| 4 | The queue | The queue on `All`, where `Ready to review` and `Missing: …` badges sit side by side, then the readiness filter with the server's whole-queue counts, and the pager if the draft the pass opens is not on the first page. |
-| 5 | The review pass | `Detection n of m`, the footage, the coordinates and the source, then the conflict typeahead and the capture source. |
-| 6 | Submit | The proof, both submit clicks, and the next detection opening on its own, which is the last product frame in the film. |
-| 7 | @viditbot | The official X embed (dark) of the bot's own reply, conversation shown: the tag that asks for it above, `1 detection saved · ref …` under it. |
-| 8 | Closing card | `OutroV04`, shared with the other promos. |
+### `PromoCollections`
 
-### The bot beat is a plate, not part of the take
-
-Beat 7 leaves the product for X, which is where the work starts for most
-analysts, so it is the one change of world in the film and it dissolves in over
-the take's own fade-out. `BotBeat` plays it inside the same browser chrome the
-rest of the film uses.
-
-The picture is `public/clips/bot-embed.mp4`: the official X embed, dark theme,
-rendered by platform.twitter.com in a real browser and recorded as a plate. It
-films the BOT'S reply with the conversation shown, so both halves of the claim
-are on camera: the tag that asks for a detection above, and the bot's
-confirmation under it.
-
-How the plate is paced follows from what the status brings with it, and the
-recorder decides it from the rendered height rather than from a constant. A
-short exchange is drawn large enough to fill the frame and held still, which is
-what a tag and a one-line confirmation want. A status that drags a whole
-geolocation post along with it runs taller than the frame however it is drawn,
-and its two ends are too far apart to read at once, so the plate holds on the
-head, drifts down once, and holds on the foot.
-
-Record it with the v0.4 pipeline, which needs no instance and no session for
-this clip and leaves the detections queue untouched:
-
-```bash
-cd video
-node record-v04.js bot-embed          # → public/clips/bot-embed.mp4
-PROMO_BOT_TWEET=https://x.com/…/status/… node record-v04.js bot-embed
-```
-
-`BOT_EMBED_TWEET` in `record-v04.js` is the default status, and
-`PROMO_BOT_TWEET` overrides it for a shoot. Which status to film is checked on
-the frames rather than argued: X sometimes refuses to render an embed headless,
-which leaves a blank iframe, and how much of a thread the embed brings with it
-decides whether the plate ends up large and still or tall and drifting.
-`bot_mentions` records every exchange the bot has had, `reply_tweet_id` beside
-each mention, so the bot's own reply to a real tag is one query away.
-
-Without the plate on the machine the beat drops out and the take runs straight
-into the closing card, rather than the render failing.
-
-### What the take needs from the instance
-
-The review beat opens a real draft, so `pickReviewTarget` chooses one before a
-frame is recorded and refuses to film a beat it cannot finish. A draft is
-filmable when it clears `missingEventFields` except the two tags the take fills
-on camera, when its coordinates fall inside a conflict box (see the editorial
-rules below), when its proof carries at most `max_proof_images_per_event`
-images, and when its source media is bright enough to read on camera. The last
-two are what an archive of long threads and a database restored from production
-break most often: a proof of fifteen images arms the submit button and is
-refused by the server on the second click, and a media row that still points at
-the CDN answers 403 and films an empty player. `sourceLuma` probes each
-candidate with ffmpeg, which catches both the unreachable and the merely dark.
-
-The queue reads newest first, so the head of it is whatever the last import
-produced. The take therefore scans the first few pages of the Ready filter,
-takes the nearest draft that clears the floor, and clicks the pager on camera
-to reach it.
-
-One limit governs how often this take can run: `POST
-/events/import-archive/presign` is rate limited to 10 an hour per account. A
-shoot that re-records more often than that stalls on `Uploading your archive`
-with `Rate limit exceeded` in the panel, and the take waits out its Done step
-for nothing.
-
-### This take writes to the instance
-
-Unlike promo A, which is a read-only logged-out take, this one signs in,
-imports an archive and submits one draft. Point it at a local instance.
-`record-v05b.js` opens with the editorial rules it enforces; the two that
-constrain the shoot most:
-
-- **One analyst's archive only.** The account it signs into and the export it
-  imports belong to the same analyst, the one who consented. No post is ever
-  attributed to an account other than its author.
-- **The conflict is not guessed.** The review beat fills a conflict, which is
-  a claim about someone else's work. `conflictQueryFor` maps a few coordinate
-  boxes to a conflict by name, and a draft whose coordinates fall outside them
-  is not filmed at all rather than tagged with the nearest plausible war. The
-  capture source stays `Unknown`, which asserts nothing.
-
-### The import beat films an idempotent re-import, on purpose
-
-Since v0.5.2 an import matches the drafts it already produced and updates them
-in place (`_disposition` in `services/detection.py`). On an instance that
-already holds the analyst's whole export, a re-import therefore creates
-nothing, and the panel says so: `Everything in that archive is already up to
-date (N geolocations)`.
-
-That is what beat 3 films, and the caption says exactly that. The tempting fix
-is to caption it as a haul anyway; the honest fixes are to delete the drafts
-first so the import genuinely re-creates them, or to import an export the
-instance has never seen. Run `prep-review-take.py --report` before a shoot: it
-replays the disposition rule against the database and prints how many
-detections the export would create, update and skip, so the storyboard is
-written against what the import will actually do.
-
-`prep-review-take.py` reads the export with the backend's own ingest modules,
-never writes to the database, and produces one file: the trimmed zip. Trimming
-is what the import panel itself recommends, and it keeps a 2 GB export inside
-a single take.
-
-## Collections promo (`PromoCollections`)
-
-One collection read end to end and then written to: the brand intro, ONE
-unbroken take, the closing card. Recorded **signed in as the collection's
-owner**, because the edit page is a beat and only the owner reaches it.
-
-```bash
-make promo-collections   # record + render + both outputs
-```
-
-Or step by step:
-
-```bash
-cd video
-npm run record:collections   # -> public/clips/collections.mp4 + its marks
-npm run render:collections   # -> out/promo-collections.mp4 (1920x1080, 60 fps)
-```
-
-`make promo-collections` adds the two staged outputs the other promos take:
-`out/promo-collections-master.mp4` (the same 1080p stream remuxed with
-`+faststart`, for S3) and `out/promo-collections-readme.mp4` (720p / 30 fps, for
-a GitHub attachment URL).
-
-### The take signs in, and it writes
-
-The take mints cookies through `POST /auth/login` before the browser opens, the
-way `record-v04.js` signs in for its fixture account, so no login form is ever
-on camera. It reads the account from `PROMO_LOGIN_EMAIL` and
-`PROMO_LOGIN_PASSWORD`, which default to the local dev fixture
-`mpgeoint@gmail.com` / `vidit-dev-preview`. Nothing prints them and no frame
-shows them.
-
-The edit beat **writes**: it puts one event on the collection and saves, so the
-collection ends a geolocation longer than it started. Undo it after the render,
-with the same credentials, so the next run finds the collection as this one did:
+Signed in as the collection's owner, one unbroken take of a collection read and then edited. The take reads the account from `PROMO_LOGIN_EMAIL` and `PROMO_LOGIN_PASSWORD`; set both for a shoot. It prints the event id it added. Remove that event after the render so the next run finds the collection unchanged:
 
 ```bash
 curl -X DELETE "$API/collections/$COLLECTION/events/$EVENT" \
   -b cookies.txt -H "X-CSRF-Token: $CSRF"
 ```
 
-The take prints the event id it added when it finishes. `verifyTarget` refuses
-to record while that event is still held, since the picker answers a held row
-with a disabled check and the add beat has nothing to click.
+`verifyTarget` lists every precondition it checks. To retarget, change `HANDLE`, `TARGET_COLLECTION`, `ADD_QUERY` and `QUERY` in `record-collections.js`; `PROMO_COLLECTION`, `PROMO_ADD_QUERY` and `PROMO_QUERY` override the last three for a shoot.
 
-### One take, no cuts
+## Outputs
 
-The recorded part is a single continuous window of `collections.mp4`. Every
-page change is an in-page push the take performs on camera: the collection card
-on the profile, the Edit control in the collection's header, the save's own
-return, the owner's handle in the byline, and the shelf's `Show more` link. The
-only two transitions in the video are the crossfades into and out of the
-recorded part.
+Each `make` target stages two files off one render:
 
-The take is paced in real time, holds included, and its length IS the promo's
-recorded length, so re-pace it in `record-collections.js` rather than in the
-composition. It is cut to run 40 to 50 seconds: holds sit between 0.8 and 1.5
-seconds and scrolls run at `SCROLL_MS`, the shortest eased travel that still
-reads as motion at 60 fps. The same two rules the other unbroken takes run on
-apply: a silent warm-up pass visits every route before the first frame, and
-nothing inside the recorded pass navigates with `page.goto`.
-
-| Beat | What is on camera | Caption |
+| File | Shape | Destination |
 |---|---|---|
-| Intro | The wordmark, the release, and the tagline | |
-| 1 | The profile's Collections section, scrolled onto and held: the analyst's named sets as a grid of mosaic cards, then one card under the cursor with its title, count and date span. | Collections |
-| 2 | The collection's own page as it opens, whole in one frame: the title, the owner's byline, the `Collection` pill, the Description card, and the player under them at step 1. | Every geolocation of one operation, in the order it happened |
-| 3 | Two presses of the player's next control, each flying the map to the next item, dimming the step behind it, swapping the panel beside it and counting `N of 12`. | Step through them on the map |
-| 4 | The Edit control in the page's header, then the edit page: Details, `Events in this collection`, a query typed into the Add events search, the add control clicked on the first result, the scroll to Save, the save, and the collection coming back with 13 events. | Add events with a search |
-| 5 | Back on the profile through the byline, then the whole shelf in search under the Author filter the `Show more` link carries. | Every collection an analyst publishes |
-| 6 | One query typed into the field, narrowing the shelf without leaving the Collections scope. | Search reaches collections too |
-| Outro | The wordmark and vidit.app (`OutroV04`, shared with the other promos) | |
+| `*-master.mp4` | the 60 fps render, `+faststart` | S3, played by the landing page's `<video>` |
+| `*-readme.mp4` | 1280×720, 30 fps, CRF 26, `+faststart` | a GitHub user-attachment URL for the README |
 
-### Why the capture window is 1392x830
+`make promo` renders `Demo` at `--scale 2` and downscales the master to 2560×1440. The other targets remux the 1080p render without re-encoding.
 
-It is the browser body the composition draws the take in, at the CSS size that
-body actually occupies in a 1920x1080 frame. `PromoCollections.tsx` derives the
-body from the frame minus the chrome header, the top margin and the caption
-band: 830 px tall, and 1392 wide at the take's aspect. Recording at exactly
-that means the render draws the picture at scale 1 instead of magnifying a
-smaller window into it, which is what read soft.
+### Swap the README embed
 
-The pair is a fixed point: `BODY_WIDTH` returns 1392 for a 1392x830 capture, so
-the viewport and the geometry agree without either being tuned to the other.
-Move the caption band or the chrome header and re-derive both.
+1. Drag the new `out/*-readme.mp4` into any GitHub draft comment.
+2. Copy the `https://github.com/user-attachments/assets/<uuid>` URL it generates.
+3. Replace the URL in the *Demo* section of the root [`README.md`](../README.md). Keep it alone on its own line: that is what triggers GitHub's inline player.
 
-At DPR 2 the encode holds 2784x1660 device px behind those 1392x830 CSS px, so
-the only resampling left anywhere in the chain is a 2:1 downscale. The take's
-own mux runs at CRF 13, passed to `createRecorder`, because the intermediate is
-the ceiling on the promo: the final render at CRF 14 can only lose what the mux
-already threw away. The harness default of 16 suits a take the composition
-draws smaller than it was captured, where the downscale hides what the encode
-rounded off.
-
-1392 keeps the desktop layout. The content column caps at `max-w-4xl` whatever
-the window width, and no collection, profile or search surface carries an `xl`
-breakpoint, so the layout at 1392 is the layout at 1040 with wider gutters. 830
-clears the player's `calc(100dvh - 4.5rem)` cap on its 32rem block with room to
-spare, so the player films at the height it was designed at and the whole
-collection page fits one frame with nothing scrolled for.
-
-### This promo stands on a flat ground
-
-`PromoCollections` paints `#0a0a0a` and nothing else, where the other promos
-use the shared `<Background>` and its two radial blooms. The take is a bright
-product page filling most of the frame, and a bloom behind it reads as a smear
-around the window rather than as depth. `<Intro>` and `<OutroV04>` take a
-`flat` prop here, which drops the orange bloom behind the wordmark's V: that
-bloom is the one radial either of them paints. Both default to the bloom, so
-the other promos are unchanged.
-
-### What the take needs from the instance
-
-`verifyTarget` checks all of it before a frame is captured and refuses to
-record otherwise:
-
-- The signed-in account owns `TARGET_COLLECTION`. The header's Edit control,
-  the edit page behind it and the save are owner-only, so any other session
-  films the page's refusal.
-- `TARGET_COLLECTION` carries a description, since the Description card is a
-  beat.
-- Its sequence is longer than `STEPS`, and every item in it carries
-  coordinates, since the map is half of the stepping beat.
-- Every item in it carries source media, since the panel beside the map opens
-  on the Source media block and an item without one films `No media available`
-  on whichever step lands on it.
-- `ADD_QUERY` reaches at least one of the analyst's own collectable events, and
-  the first result is not already on the collection, so the picker answers it
-  with the add control the beat clicks rather than a disabled check.
-- The analyst has more than four collections, because the profile grid holds
-  four and only grows the `Show more` link past that. Without the link the take
-  has no way into search.
-- `QUERY` reaches at least one collection under the scope the last beat arrives
-  in, so the closing caption does not run over an empty group. Search reads a
-  collection's title and description and not the places its events sit in, so
-  pick words the analyst wrote on the set rather than a city every item on the
-  map carries.
-
-Retarget it by changing `HANDLE`, `TARGET_COLLECTION`, `ADD_QUERY` and `QUERY`
-at the top of `record-collections.js`; `PROMO_COLLECTION`, `PROMO_ADD_QUERY`
-and `PROMO_QUERY` override the last three for a shoot.
 ## Shared capture harness
 
-`capture-lib.js` holds everything the takes have in common: the DOM cursor
-overlay, the chrome the recordings must not show (the version pill, the
-Next.js dev indicator), the motion vocabulary (`glideAndClick`,
-`slowScrollToY` / `slowScrollToLocator` / `slowScrollPanel`, `easeCamera`,
-`dragPan`, `smoothScrollIntoView`, `glideClickStretchedCard`), the mock
-macOS open dialog the import takes drive (`injectFinder` / `closeFinder`) and
-`createRecorder`, the frame grabber and encoder. A recorder script owns only
-its storyboard: which pages it visits, what it clicks, and the marks it
-stamps.
+`capture-lib.js` holds what the takes share: the DOM cursor overlay, the chrome the recordings hide (the version pill, the Next.js dev indicator), the motion helpers (`glideAndClick`, `slowScrollToY`, `slowScrollToLocator`, `slowScrollPanel`, `easeCamera`, `dragPan`, `smoothScrollIntoView`, `glideClickStretchedCard`), the mock macOS open dialog (`injectFinder`, `closeFinder`), and `createRecorder`, the frame grabber and encoder. A capture script owns only its storyboard: the pages it visits, what it clicks, and the marks it stamps.
 
-`window.__viditMap` is a single global set by whichever `<Map>` mounted last,
-so `easeCamera` drives the profile coverage map on `/profile/<username>` and
-the main map on `/map` with no per-page wiring. It exists in dev builds only.
+`window.__viditMap` is set by whichever `<Map>` mounted last, so `easeCamera` drives the profile coverage map and the main map with no per-page wiring. It exists in dev builds only.
+
+Two choices shape the harness:
+
+- **A polling `page.screenshot()` grabber instead of Playwright's `recordVideo`.** `recordVideo` caps at 25 fps VP8 and ignores `deviceScaleFactor`. The grabber respects the device pixel ratio and records 2560×1440 frames at up to 60 fps.
+- **A DOM cursor overlay.** The OS cursor is not part of the page bitmap that `page.screenshot()` returns, so the harness renders an SVG cursor in the page, driven by the Playwright mouse events.
+
+## Known brittleness
+
+- **Hardcoded posts.** `TWEETS`, `TWEET_URL` and `REQUEST_TWEET_URL` name real posts. If the author deletes one, swap in a post from an analyst who gave permission; the cleanup step and the upload cache key derive from these constants.
+- **Live X reads.** `POST /events/import-from-tweet` reads X. When X changes shape, the seeding falls back to an image and logs `video fetch failed; falling back to an image`.
+- **Route renames.** The scripts call the live API and click real frontend paths, and no test suite covers them. `check-routes.sh` greps every capture script for retired route spellings; it runs in `make hygiene` and in CI's `hygiene` job. A selector change still needs a capture run to catch.

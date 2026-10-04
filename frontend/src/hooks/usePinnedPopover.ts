@@ -8,23 +8,14 @@ import {
   type CSSProperties,
 } from "react";
 
-/**
- * The pin + dismiss + placement machinery behind an anchored popover
- * (`FieldHelp`): shown from JS hover state on the anchor (not a CSS
- * `group-hover`, so a surrounding `.group` can't trigger it), pinned on click
- * (touch devices don't hover), closed by outside-click, Escape, scroll, resize,
- * or pointer-leave.
+/** Pin, dismiss and placement for an anchored popover (`FieldHelp`): shown from JS hover state
+ * (not CSS `group-hover`, which a surrounding `.group` could trigger), pinned on click (touch
+ * doesn't hover), closed by outside-click, Escape, scroll, resize or pointer-leave.
  *
- * The popover is meant to render in a portal with `position: fixed`
- * (`popoverStyle`) so an `overflow` ancestor (e.g. the map detail side panel)
- * can never clip it: the placement effect measures the rendered popover, then
- * places it under the anchor, flips it above when it would overflow the
- * bottom, and clamps left/right against its real width. Hidden until measured,
- * so it never flashes at 0,0.
- *
- * Callers spread `wrapperProps` / `anchorProps` / `popoverProps` on their own
- * markup and keep full control of icon, content, and classes.
- */
+ * Renders in a portal with `position: fixed` (`popoverStyle`) so an `overflow` ancestor can't
+ * clip it: the placement effect measures it, places it under the anchor, flips above on bottom
+ * overflow, clamps left/right, and keeps it hidden until measured. Callers spread
+ * `wrapperProps` / `anchorProps` / `popoverProps` on their own markup. */
 export function usePinnedPopover() {
   const [pinned, setPinned] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -36,9 +27,7 @@ export function usePinnedPopover() {
 
   const open = pinned || hovered;
 
-  // The one dismissal: the effect below runs it for outside-click / Escape /
-  // scroll / resize, and a caller runs it for its own reasons (a menu item that
-  // acts and closes).
+  // The one dismissal, used by the effect below and by callers (a menu item that acts and closes).
   const close = useCallback(() => {
     setPinned(false);
     setHovered(false);
@@ -50,16 +39,14 @@ export function usePinnedPopover() {
       closeTimer.current = null;
     }
   };
-  // A short grace period so the pointer can cross the gap from the anchor to
-  // the popover (portaled, not a DOM child, so there's no shared hover region)
-  // without it vanishing mid-move; the popover's own mouseenter cancels it.
+  // Grace period so the pointer can cross from the anchor to the portaled popover (no shared
+  // hover region); the popover's mouseenter cancels it.
   const scheduleClose = () => {
     cancelClose();
     closeTimer.current = setTimeout(() => setHovered(false), 80);
   };
 
-  // Place the portaled popover, clamped into the viewport on every edge.
-  // ``useEffect`` (not layout) keeps it SSR-safe.
+  // Place the popover, clamped into the viewport. `useEffect` keeps it SSR-safe.
   useEffect(() => {
     if (!open) {
       setCoords(null);
@@ -78,10 +65,8 @@ export function usePinnedPopover() {
     setCoords({ top, left });
   }, [open]);
 
-  // While open: dismiss on outside click (the portaled popover counts as
-  // inside), Escape, scroll, or resize. Keyed on ``open`` so a hover-only
-  // popover is dismissable too (e.g. a stray touch that set hover without a
-  // pin).
+  // While open: dismiss on outside click (the popover counts as inside), Escape, scroll or
+  // resize. Keyed on `open` so a hover-only popover dismisses too.
   useEffect(() => {
     if (!open) return;
     const onPointer = (e: MouseEvent) => {
@@ -105,7 +90,6 @@ export function usePinnedPopover() {
 
   useEffect(() => () => cancelClose(), []);
 
-  // Hidden until the placement effect has measured + positioned it.
   const popoverStyle: CSSProperties = {
     position: "fixed",
     top: coords?.top ?? 0,
@@ -119,10 +103,8 @@ export function usePinnedPopover() {
     close,
     wrapperProps: {
       ref: wrapperRef,
-      // Hover lives on the wrapper (just the anchor, the popover is portaled
-      // out). Leaving un-pins so a desktop click-then-move-away dismisses
-      // naturally; touch never fires mouseleave, so a tapped pin stays until
-      // an outside tap.
+      // Hover lives on the wrapper (the popover is portaled out). Leaving un-pins; touch never
+      // fires mouseleave, so a tapped pin stays until an outside tap.
       onMouseEnter: () => {
         cancelClose();
         setHovered(true);
@@ -137,8 +119,7 @@ export function usePinnedPopover() {
       onFocus: () => setHovered(true),
       onBlur: () => setHovered(false),
       onClick: (e: React.MouseEvent) => {
-        // The anchor often sits inside a clickable card / label, so do not let
-        // the click bubble to the parent.
+        // The anchor often sits in a clickable card or label: don't bubble the click.
         e.preventDefault();
         e.stopPropagation();
         setPinned((p) => !p);

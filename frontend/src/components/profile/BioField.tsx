@@ -6,17 +6,9 @@ import { CharCounter } from "@/components/ui/CharCounter";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { BIO_MAX_LEN, type ProfileEditState } from "./useProfileEdit";
 
-/**
- * The bio as an editable field: textarea plus remaining-characters counter,
- * and nothing at all in view mode.
- *
- * Reading the bio is not a section of the page. It is one line of the identity
- * block under the handle (`ProfileIdentity`), which is what keeps the top of a
- * profile compact and puts the analyst's work above their framing of it.
- * Writing it still needs a labelled field with a counter against
- * `BIO_MAX_LEN`, so edit mode gives it a card, next to the linked-accounts
- * inputs it is saved with.
- */
+/** The bio as an editable field: textarea plus remaining-characters counter against
+ * `BIO_MAX_LEN`, nothing in view mode (reading it is one line of the identity block,
+ * `ProfileIdentity`). */
 export function BioField({ edit }: { edit: ProfileEditState }) {
   if (!edit.editing) return null;
 

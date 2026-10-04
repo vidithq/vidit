@@ -1,9 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-// The Tiptap editor loads via next/dynamic(ssr:false) + ProseMirror, which
-// needs DOM APIs jsdom lacks. Stub the dynamic loader so we can assert the
-// section header (heading, ? help) without booting it.
+// Stub the `next/dynamic` Tiptap loader (jsdom lacks the DOM APIs ProseMirror
+// needs) to assert the section header.
 vi.mock("next/dynamic", () => ({
   default: () => function ProofEditorStub() {
     return null;
@@ -30,8 +29,6 @@ describe("ProofEditorPanel", () => {
 
   it("flags the heading red when missing, same as the section's outline", () => {
     render(<ProofEditorPanel {...base} invalid />);
-    // The section card already gets FORM_INVALID_FIELD's outline; the
-    // heading now turns red too, matching every other required field.
     expect(screen.getByRole("heading", { name: /Proof/ })).toHaveClass(
       FORM_INVALID_LABEL
     );

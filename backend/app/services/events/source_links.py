@@ -1,11 +1,4 @@
-"""An event's secondary source links: normalized, paired, written as rows.
-
-Every write path runs the submitted mirrors through
-:func:`normalize_secondary_source_urls`, pairs them with the archived copies
-posted beside them through :func:`pair_secondary_snapshots`, and writes them as
-ordered :class:`EventSourceLink` rows. The ingest prefill takes the truncating
-variant, :func:`truncate_secondary_source_urls`.
-"""
+"""An event's secondary source links: normalized, paired, written as rows."""
 
 from __future__ import annotations
 
@@ -17,13 +10,7 @@ from .errors import TooManySourceLinksError
 
 
 def _clean_secondary_source_urls(urls: list[str], source_url: str | None) -> list[str]:
-    """Strip, drop blanks, drop duplicates and drop the primary, order-preserving.
-
-    The shared body of :func:`normalize_secondary_source_urls` (the write forms)
-    and :func:`truncate_secondary_source_urls` (the ingest prefill); the two
-    differ only in what they do past the cap. Dropping an entry equal to
-    ``source_url`` keeps the primary anchor from being listed twice.
-    """
+    """Strip, drop blanks, duplicates and the primary, keeping order."""
     primary = (source_url or "").strip()
     cleaned: list[str] = []
     seen: set[str] = set()
@@ -37,13 +24,10 @@ def _clean_secondary_source_urls(urls: list[str], source_url: str | None) -> lis
 
 
 def normalize_secondary_source_urls(urls: list[str], source_url: str | None) -> list[str]:
-    """The submitted secondary source links, normalized: the one home every write
-    path runs before the rows are written.
+    """Normalize the submitted secondary links before the rows are written.
 
     Raises :class:`TooManySourceLinksError` past
-    :data:`MAX_SECONDARY_SOURCE_LINKS`. Rejecting rather than truncating is the
-    point: an analyst who pasted eleven mirrors should be told, not have the
-    eleventh silently dropped.
+    :data:`MAX_SECONDARY_SOURCE_LINKS` rather than silently dropping the excess.
     """
     cleaned = _clean_secondary_source_urls(urls, source_url)
     if len(cleaned) > MAX_SECONDARY_SOURCE_LINKS:
@@ -54,28 +38,16 @@ def normalize_secondary_source_urls(urls: list[str], source_url: str | None) -> 
 
 
 def truncate_secondary_source_urls(urls: list[str], source_url: str | None) -> list[str]:
-    """The machine-path variant: same normalization, over-cap links dropped.
-
-    A tweet that links twelve mirrors is not an error the ingest can report to
-    anyone, so the prefill keeps the first ten and the owner adds the rest by
-    hand if they matter.
-    """
+    """Ingest variant: same normalization, over-cap links dropped (no one to report to)."""
     return _clean_secondary_source_urls(urls, source_url)[:MAX_SECONDARY_SOURCE_LINKS]
 
 
 def pair_secondary_snapshots(urls: list[str], snapshots: list[str]) -> dict[str, str]:
-    """Map each submitted mirror to the archived copy posted beside it.
+    """Map each mirror to the archived copy posted at the same index.
 
-    The forms post two aligned repeated fields, ``secondary_source_urls`` and
-    ``secondary_snapshot_urls``, one entry each per row, blank where the analyst
-    archived nothing. Position is how they arrive and the link is how they are
-    stored, so the pairing happens here, on the raw lists, before
-    :func:`normalize_secondary_source_urls` drops the blank, duplicate and
-    primary-equal rows that would shift every later index.
-
-    A short or absent snapshot list pairs what it covers and leaves the rest
-    unarchived, so a client that posts no copies posts nothing extra. The first
-    entry wins on a repeated mirror, matching the one the normalization keeps.
+    Pair on the raw lists, before :func:`normalize_secondary_source_urls` drops
+    rows and shifts indexes. A short snapshot list pairs what it covers. The
+    first entry wins on a repeated mirror.
     """
     paired: dict[str, str] = {}
     for url, snapshot in zip(urls, snapshots, strict=False):
@@ -86,17 +58,15 @@ def pair_secondary_snapshots(urls: list[str], snapshots: list[str]) -> dict[str,
 
 
 def build_source_link_rows(urls: list[str]) -> list[EventSourceLink]:
-    """The ordered child rows for an event's secondary links: one home so
-    ``position`` is always the list index."""
+    """Child rows with ``position`` set to the list index."""
     return [EventSourceLink(position=index, url=url) for index, url in enumerate(urls)]
 
 
 def replace_source_links(db: Session, geo: Event, urls: list[str]) -> None:
-    """Swap an existing event's secondary links for ``urls``.
+    """Swap an event's secondary links for ``urls``.
 
-    The deletes are FLUSHED before the replacements insert: SQLAlchemy emits a
-    mapper's inserts ahead of its deletes, so a reused ``position`` would
-    otherwise collide on the composite PK mid-flush.
+    Flush the deletes first: SQLAlchemy inserts before deleting, so a reused
+    ``position`` would collide on the composite PK.
     """
     geo.source_links.clear()
     db.flush()

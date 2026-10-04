@@ -78,14 +78,12 @@ describe("DetailsFields", () => {
     render(
       <DetailsFields {...baseProps} sourceUrlLocked sourceUrl="https://t.me/c/1" />
     );
-    // The request's source is not the fulfiller's to retype: no editable field
-    // is offered for it at all (the value renders as a link, covered below).
+    // No editable field for the request's source; the value renders as a link.
     expect(screen.queryByPlaceholderText(SOURCE_PLACEHOLDER)).toBeNull();
     expect(screen.getByText("from request")).toBeInTheDocument();
   });
 
-  // A locked field is non-editable, never unreachable: the URL it holds is the
-  // link, the way a stored source URL is a link everywhere else in the app.
+  // A locked field is non-editable, never unreachable: the URL is its link.
   describe("locked URL fields render their value as a link", () => {
     it("turns a locked source URL into a link, without an editable field", () => {
       render(
@@ -95,12 +93,10 @@ describe("DetailsFields", () => {
       expect(link).toHaveAttribute("href", "https://t.me/c/1");
       expect(link).toHaveAttribute("target", "_blank");
       expect(link).toHaveAttribute("rel", "noopener noreferrer");
-      // The value left the input entirely, so there is nothing to retype.
       expect(screen.queryByPlaceholderText(SOURCE_PLACEHOLDER)).toBeNull();
       expect(screen.getByText("from request")).toBeInTheDocument();
-      // It still reads as the locked field it replaces: the same box recipe,
-      // minus the forbidden cursor, which is false of a link. The one token
-      // that must NOT survive is the muted text colour: clickable is accent.
+      // Same box recipe as the locked input, minus the forbidden cursor. The muted
+      // text colour must not survive: clickable is accent.
       for (const token of LOCKED_FIELD.split(" ").filter((t) => t !== MUTED)) {
         expect(link.className).toContain(token);
       }
@@ -129,9 +125,7 @@ describe("DetailsFields", () => {
     });
 
     it("archives the provenance link where the write path takes the paste", () => {
-      // Locked names the link, not its archived copy: the post rots like any
-      // other source, so the field carries the same mark and the same line as
-      // the Source URL above it.
+      // Same mark and line as the Source URL above.
       const setter = vi.fn();
       render(
         <DetailsFields
@@ -151,8 +145,7 @@ describe("DetailsFields", () => {
     });
 
     it("leaves the provenance link bare where nothing would take the paste", () => {
-      // The submit form's own write declares no field for it, so offering the
-      // mark there would open a line whose value goes nowhere.
+      // The submit write declares no field for it, so no mark.
       render(
         <DetailsFields
           {...baseProps}
@@ -195,16 +188,13 @@ describe("DetailsFields", () => {
         sourceUrlInvalid
       />
     );
-    // Every invalid field's own label turns red, matching the outline already
-    // applied to its input (via `Input`'s `invalid` prop): the same
-    // treatment, not just one or the other.
+    // Each invalid field's label turns red with its outline.
     expect(screen.getByText("Source posted (UTC)").closest("label")).toHaveClass(
       FORM_INVALID_LABEL
     );
     expect(screen.getByText("Source URL").closest("label")).toHaveClass(
       FORM_INVALID_LABEL
     );
-    // Event date and time are never required, so they never get flagged.
     expect(screen.getByText("Event date").closest("label")).not.toHaveClass(
       FORM_INVALID_LABEL
     );
@@ -219,7 +209,6 @@ describe("DetailsFields", () => {
     expect(
       screen.getByRole("button", { name: "What are secondary sources?" })
     ).toBeInTheDocument();
-    // No rows until one is added: an optional field starts out of the way.
     expect(screen.queryByLabelText("Secondary source 1")).toBeNull();
     expect(
       screen.getByRole("button", { name: "Add secondary source" })
@@ -241,12 +230,10 @@ describe("DetailsFields", () => {
     );
   });
 
-  // ── the archival affordance, inside the field holding the link ────────
 
   it("archives from a mark in the source URL field, with no block under it", () => {
     render(<DetailsFields {...baseProps} sourceUrl="https://t.me/c/1" />);
-    // Nothing under the field until it is asked for: no label, no optional
-    // marker, no sentence, no paste field.
+    // Nothing under the field until asked for.
     expect(screen.queryByPlaceholderText(SNAPSHOT_PLACEHOLDER)).toBeNull();
     expect(screen.queryByText("Archived copy")).toBeNull();
     expect(screen.queryByText("optional")).toBeNull();
@@ -258,8 +245,7 @@ describe("DetailsFields", () => {
   it("leaves the door inert until the source URL is a usable one", () => {
     render(<DetailsFields {...baseProps} sourceUrl="t.me/c/1" />);
     fireEvent.click(screen.getByRole("button", { name: "Archive the source" }));
-    // The one state on a form where a control is grey: a dead door is worse
-    // than an inert one, and the name says what to do first.
+    // Grey on a form only here; the name says what to do first.
     expect(screen.queryByRole("link", { name: /Wayback Machine/ })).toBeNull();
     expect(
       screen.getByRole("button", { name: "Fill in the source to archive it" })
@@ -269,15 +255,12 @@ describe("DetailsFields", () => {
   it("prefills one provider page with the source URL as typed", () => {
     render(<DetailsFields {...baseProps} sourceUrl="https://t.me/c/1?x=2 " />);
     fireEvent.click(screen.getByRole("button", { name: "Archive the source" }));
-    // Wayback carries the link as a path, where the scheme separator stays
-    // readable.
     expect(
       screen.getByRole("link", {
         name: "Open the Wayback Machine for the source",
       })
     ).toHaveAttribute("href", "https://web.archive.org/save/https://t.me/c/1?x=2");
-    // Exactly one provider page. The other hosts are still accepted, and the
-    // field's own placeholder says so rather than opening a page for each.
+    // Exactly one provider page; other hosts are still accepted.
     expect(screen.getAllByRole("link")).toHaveLength(1);
     expect(screen.getByPlaceholderText(SNAPSHOT_PLACEHOLDER)).toBeInTheDocument();
   });
@@ -285,12 +268,10 @@ describe("DetailsFields", () => {
   it("prefills a fragment-bearing source URL, fragment and all", () => {
     render(<DetailsFields {...baseProps} sourceUrl="https://t.me/c/1#note" />);
     fireEvent.click(screen.getByRole("button", { name: "Archive the source" }));
-    // `encodeURI` leaves `#` alone, so the fragment rides along and the browser
-    // reads it as the fragment of the web.archive.org URL: what Save Page Now
-    // captures is the link without it. That is by design. The server compares a
-    // snapshot against the link on host, path and query
-    // (`source_archive._normalised_target`) and ignores the fragment on both
-    // sides, so the copy still files against the source it was taken for.
+    // `encodeURI` leaves `#`, so the fragment is the web.archive.org URL's and Save
+    // Page Now captures the link without it. By design: the server compares
+    // snapshots on host, path and query and ignores the fragment
+    // (`source_archive._normalised_target`).
     expect(
       screen.getByRole("link", {
         name: "Open the Wayback Machine for the source",
@@ -299,8 +280,7 @@ describe("DetailsFields", () => {
   });
 
   it("opens the paste line by itself on a value already staged", () => {
-    // A snapshot the form is holding has to be visible: one nothing displays is
-    // one nobody can correct.
+    // A held snapshot must be visible.
     render(
       <DetailsFields {...baseProps} sourceSnapshotUrl="https://archive.ph/abcde" />
     );
@@ -358,8 +338,7 @@ describe("DetailsFields", () => {
     expect(
       screen.getByRole("link", { name: "archive.today copy of the source" })
     ).toHaveAttribute("href", "https://archive.ph/abcde");
-    // One link holds one copy, so the second mark is how a wrong paste is
-    // corrected rather than a competing copy.
+    // The second mark replaces a wrong paste.
     fireEvent.click(
       screen.getByRole("button", {
         name: "Replace the archived copy of the source",
@@ -376,7 +355,6 @@ describe("DetailsFields", () => {
     ).toBeInTheDocument();
   });
 
-  // ── the same affordance on every mirror ───────────────────────────────
 
   it("gives every secondary source its own mark and its own paste line", () => {
     const setSecondarySnapshotUrls = vi.fn();
@@ -388,8 +366,7 @@ describe("DetailsFields", () => {
         setSecondarySnapshotUrls={setSecondarySnapshotUrls}
       />
     );
-    // Named for the mirror each covers, so two rows on one host stay tellable
-    // apart in the accessible names.
+    // Named per mirror, so two rows on one host stay distinct.
     expect(
       screen.getByRole("button", { name: "Archive mirror 1, t.me" })
     ).toBeInTheDocument();
@@ -473,8 +450,6 @@ describe("DetailsFields", () => {
   });
 
   it("locks the graphic switch on an already-flagged event", () => {
-    // The flag ratchets on the backend, so the edit form reads it rather than
-    // offering a change the geolocate write would discard.
     const setIsGraphic = vi.fn();
     render(
       <DetailsFields

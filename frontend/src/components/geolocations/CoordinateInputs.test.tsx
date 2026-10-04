@@ -10,8 +10,10 @@ const baseProps = {
   setLng: () => {},
 };
 
-/** Fire a paste carrying `text` and report whether the component took it over
- *  (a recognised pair) or let it land as ordinary text. */
+/**
+ * Fire a paste carrying `text`; true if the component took it over (a recognised
+ *  pair) rather than letting it land as text.
+ */
 function paste(target: Element, text: string): boolean {
   const event = createEvent.paste(target, {
     clipboardData: { getData: () => text },
@@ -34,7 +36,6 @@ describe("CoordinateInputs", () => {
 
     setLat.mockClear();
     setLng.mockClear();
-    // The longitude field is just as likely to receive the whole pair.
     paste(
       screen.getByLabelText("Longitude"),
       "https://www.google.com/maps/@48.015883,37.802411,17z"
@@ -67,9 +68,8 @@ describe("CoordinateInputs", () => {
     ).toBeInTheDocument();
   });
 
-  // The pair rides inside the longitude field, so both controls are icon-only:
-  // the name comes from the label, not from text that would take width from the
-  // field they sit in.
+  // Both controls are icon-only, named from the label, so they take no width from
+  // the field.
   it("names the map link on the control itself, beside the fields", () => {
     render(<CoordinateInputs {...baseProps} lat="48.015883" lng="37.802411" />);
     const link = screen.getByRole("link", { name: "View on Maps" });
@@ -77,22 +77,19 @@ describe("CoordinateInputs", () => {
     expect(link).toHaveAttribute("title", "View on Maps");
   });
 
-  // Greyed rather than gone: the cell keeps one width, so typing the second
-  // half of a coordinate does not shift the row it sits in.
+  // Greyed, not gone: the cell keeps one width.
   it.each([
     ["half-typed", "48.01", ""],
     ["out of bounds", "91", "37.8"],
   ])("greys both while the pair is %s", (_case, lat, lng) => {
     render(<CoordinateInputs {...baseProps} lat={lat} lng={lng} />);
-    // Not a link at all: there is nowhere to navigate without a point, so the
-    // map control is a disabled button naming what is missing.
+    // Not a link: without a point the map control is a disabled button.
     expect(screen.queryByRole("link", { name: "View on Maps" })).toBeNull();
     expect(
       screen.getByRole("button", {
         name: "No map link until the coordinate pair is complete",
       })
     ).toBeDisabled();
-    // The copy refuses too, rather than writing an empty clipboard.
     expect(
       screen.getByRole("button", { name: "Copy coordinates" })
     ).toBeDisabled();

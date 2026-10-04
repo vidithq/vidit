@@ -1,17 +1,12 @@
 """Server-side validation for Tiptap (ProseMirror) JSON documents.
 
-Tiptap stores rich text as a tree of typed nodes. If an attacker bypasses
-the editor and POSTs raw JSON, malicious content (javascript: URLs in
-images, tracking-pixel image hosts, off-domain link marks) could be stored
-and rendered to other viewers.
-
-`sanitize_tiptap_doc` walks the tree against an allowlist of node types,
-marks, and attributes; anything outside is dropped. URL-bearing attrs are
-constrained:
-  - image.src: relative paths or the configured CloudFront/CDN host (or any
-    https:// when no CDN is configured, e.g. local dev).
-  - link.href (mark): http(s)://… only.
+An attacker can bypass the editor and POST raw JSON (javascript: URLs,
+tracking-pixel image hosts, off-domain links), so `sanitize_tiptap_doc` walks
+the tree against an allowlist of nodes, marks, and attrs and drops the rest.
 Depth and node-count caps bound recursion and storage cost.
+
+The allowlists and URL predicates mirror the front end
+(`lib/proof.tsx`, `ProofEditor.tsx`); a security fix to either side needs the other.
 """
 
 from typing import Any
@@ -20,15 +15,12 @@ from urllib.parse import urlparse
 from app.config import settings
 from app.services.storage import LOCAL_STORAGE_URL_PREFIX
 
-# Image src scheme the editor uses for a not-yet-uploaded proof image: the
-# node references the file riding in the same multipart request
-# (``placeholder://<filename>``). Evidence intake resolves each placeholder to
-# an uploaded S3 URL before the doc is stored, so a persisted doc never
-# carries one (an unresolved placeholder is a 400 at intake).
+# Src scheme for a not-yet-uploaded proof image (``placeholder://<filename>``,
+# the file rides in the same multipart request). Intake resolves it before
+# storing, so no persisted doc carries one. Mirrored by `lib/proofImages.ts`.
 PROOF_PLACEHOLDER_PREFIX = "placeholder://"
 
-# Tiptap StarterKit nodes (+ Image extension wired in
-# frontend/src/components/editor/ProofEditor.tsx).
+# Tiptap StarterKit nodes + Image (see `ProofEditor.tsx`).
 _ALLOWED_NODES: dict[str, set[str]] = {
     "doc": set(),
     "paragraph": set(),
@@ -44,12 +36,10 @@ _ALLOWED_NODES: dict[str, set[str]] = {
     "image": {"src", "alt", "title"},
 }
 
-# Tiptap StarterKit marks + link (with href validation in _sanitize_mark).
+# StarterKit marks + link (href checked in _sanitize_mark).
 _ALLOWED_MARKS: set[str] = {"bold", "italic", "strike", "code", "link"}
 
-# DoS guards. Generous for legitimate analyses (a long writeup with ~20
-# images and bullet lists is well under both), tight against pathological
-# payloads.
+# DoS guards: a long writeup with ~20 images is well under both.
 _MAX_DEPTH = 32
 _MAX_NODES = 5_000
 
@@ -57,37 +47,27 @@ _MAX_NODES = 5_000
 def _safe_image_src(value: Any, *, allow_placeholders: bool = False) -> str | None:
     """Image src must be relative or point at the configured media host.
 
-    Host resolution by deployment:
     - ``cloudfront_domain`` set (prod): only that host's https URLs pass.
-    - no CDN + ``storage_backend == "s3"``: only the bucket endpoint
-      (``{bucket}.s3.{region}.amazonaws.com``) passes. A bare-S3 deploy must
-      NOT fall through to "any https", or a persisted
-      ``<image src="https://attacker/pixel.gif">`` would exfiltrate every
-      viewer's IP/UA, defeating the anti-tracking-pixel guarantee.
-    - no CDN + ``storage_backend == "local"`` (dev): the ``http://localhost``
-      local-storage prefix passes, and any other https is a dev convenience.
+    - no CDN + ``s3``: only the bucket endpoint passes. Falling through to
+      "any https" would let a stored tracking pixel exfiltrate every viewer's
+      IP/UA.
+    - no CDN + ``local`` (dev): the local-storage prefix and any other https
+      pass.
 
-    ``allow_placeholders`` additionally admits ``placeholder://<filename>``
-    srcs, intake-time only, never persisted (see ``PROOF_PLACEHOLDER_PREFIX``).
-
-    This decides where an image may live, not whose it is. Whether a stored
-    image belongs to the event whose body carries it is an intake question, and
-    ``services/evidence_intake._reject_foreign_proof_srcs`` answers it.
+    ``allow_placeholders`` also admits ``placeholder://<filename>`` (intake
+    only). Ownership of a stored image is an intake question
+    (``evidence_intake._reject_foreign_proof_srcs``). Mirrored by
+    ``isSafeImageSrc`` (`lib/proof.tsx`).
     """
     if not isinstance(value, str):
         return None
     if allow_placeholders and value.startswith(PROOF_PLACEHOLDER_PREFIX):
-        # A bare prefix names no file; intake could never match it, so drop
-        # the node here rather than 400 the whole submission later.
+        # A bare prefix names no file; drop the node rather than 400 at intake.
         return value if len(value) > len(PROOF_PLACEHOLDER_PREFIX) else None
-    # Reject protocol-relative URLs BEFORE the relative-path early-return
-    # below: the browser resolves ``//attacker.example/pixel.gif`` against the
-    # page scheme, so a persisted one would exfiltrate every viewer's
-    # IP / UA / Referer, defeating the anti-tracking-pixel guarantee. Normalise
-    # the value the way a browser will first (WHATWG): strip ASCII tab/CR/LF
-    # from anywhere in the URL and treat a backslash as a slash, so ``/\evil``,
-    # ``/<TAB>/evil`` and ``//evil`` all reduce to the network path ``//evil``
-    # and no alternate spelling can slip past the check.
+    # Reject protocol-relative URLs before the relative-path return below
+    # (``//attacker.example/pixel.gif`` would exfiltrate viewers' IP/UA).
+    # Normalise like a browser (WHATWG): strip tab/CR/LF, backslash to slash,
+    # so ``/\evil`` and ``/<TAB>/evil`` reduce to ``//evil``.
     normalized = value.replace("\t", "").replace("\r", "").replace("\n", "").replace("\\", "/")
     if normalized[:2] == "//":
         return None
@@ -108,9 +88,7 @@ def _safe_image_src(value: Any, *, allow_placeholders: bool = False) -> str | No
     if cdn:
         return value if host == cdn else None
     if settings.storage_backend == "s3":
-        # No CloudFront in front of the bucket: pin to the S3 endpoint the
-        # storage layer actually mints URLs for (see
-        # ``storage.S3Storage.public_url``). Anything else is a foreign host.
+        # Pin to the endpoint ``storage.S3Storage.public_url`` mints.
         s3_host = f"{settings.s3_bucket}.s3.{settings.aws_region}.amazonaws.com".lower()
         return value if host == s3_host else None
     return value
@@ -120,14 +98,9 @@ def safe_link_href(value: Any) -> str | None:
     """The value if it is an explicit ``http(s)://`` URL, else ``None``.
 
     Rejects ``javascript:``, ``data:``, ``mailto:``, and schemeless paths.
-    The one home for the link allowlist: the Tiptap sanitiser applies it at
-    write time and source archival applies it again before handing a stored
-    link to an archiving service.
-
-    A value ``urlparse`` refuses outright (``http://[::1``, an unterminated
-    IPv6 literal) is rejected rather than raised: callers run it over content
-    they did not author, and a malformed href is a link to drop, not a request
-    to fail.
+    The one link allowlist: applied at write time and again by source
+    archival. A value ``urlparse`` refuses (``http://[::1``) returns ``None``
+    instead of raising. Mirrored by ``isSafeLinkHref`` (`lib/proof.tsx`).
     """
     if not isinstance(value, str):
         return None
@@ -145,16 +118,10 @@ def safe_link_href(value: Any) -> str | None:
 def normalised_host(value: str) -> str | None:
     """The comparable host of a stored link: lower case, no leading ``www.``.
 
-    The one home for reading a host off a URL the app stored. Two callers, and
-    both need the same folding: source archival compares a pasted snapshot
-    against the link it claims to archive (:func:`source_archive._normalised_target`),
-    and the profile stats tally an analyst's events by where the footage came
-    from (:func:`services.user_stats.get_user_stats`). ``tiktok.com`` and
-    ``www.tiktok.com`` are one source, so folding the prefix is what keeps them
-    one row on both surfaces.
-
-    Returns ``None`` for a value with no host to read, malformed input
-    included: callers run it over content they did not author.
+    Shared by :func:`source_archive._normalised_target` and
+    :func:`services.user_stats.get_user_stats`, so ``tiktok.com`` and
+    ``www.tiktok.com`` are one source. Returns ``None`` when no host reads,
+    malformed input included.
     """
     try:
         parsed = urlparse(value)
@@ -164,12 +131,7 @@ def normalised_host(value: str) -> str | None:
 
 
 def extract_image_srcs(doc: Any) -> list[str]:
-    """Collect image src URLs from a Tiptap document (sanitized or not).
-
-    Evidence intake uses it to match ``placeholder://`` srcs to uploaded
-    files, enforce the proof-image floor, and diff kept vs dropped proof
-    media on edit. Returns srcs in tree order, deduped.
-    """
+    """Image srcs of a Tiptap document (sanitized or not), in tree order, deduped."""
     seen: set[str] = set()
     srcs: list[str] = []
 
@@ -193,14 +155,10 @@ def extract_image_srcs(doc: Any) -> list[str]:
 
 
 def extract_link_hrefs(doc: Any) -> list[str]:
-    """Collect link-mark hrefs from a Tiptap document (sanitized or not).
+    """Link-mark hrefs of a Tiptap document (sanitized or not), in tree order, deduped.
 
-    Source archival uses it to enqueue every link a proof body carries, so a
-    cited post outlives its deletion the same way the event's own source does.
-    Only ``http(s)`` hrefs come back (the same allowlist
-    :func:`safe_link_href` applies at write time, re-applied here because a
-    row persisted before a rule tightened is still readable). Returns hrefs in
-    tree order, deduped.
+    Only ``http(s)`` hrefs come back: :func:`safe_link_href` is re-applied
+    because a row stored before a rule tightened is still readable.
     """
     seen: set[str] = set()
     hrefs: list[str] = []
@@ -234,14 +192,13 @@ def sanitize_tiptap_doc(
 ) -> dict[str, Any]:
     """Validate a Tiptap document against the allowlist.
 
-    Drops unknown nodes/marks/attrs. Strips images with unsafe src and
-    link marks with unsafe href. Raises ValueError if the root isn't a
-    `type='doc'` object, or if the tree exceeds depth/size caps.
+    Drops unknown nodes/marks/attrs and images or links with an unsafe URL.
+    Raises ValueError if the root isn't a `type='doc'` object or the tree
+    exceeds the caps.
 
-    ``allow_images=False`` drops every image node, for a caller that has no way
-    to resolve image srcs. ``allow_placeholders=True`` admits the
-    ``placeholder://`` srcs the create paths (geolocation and request) resolve at
-    intake (see ``PROOF_PLACEHOLDER_PREFIX``); no persisted doc keeps one.
+    ``allow_images=False`` drops every image node. ``allow_placeholders=True``
+    admits ``placeholder://`` srcs for the create paths (see
+    ``PROOF_PLACEHOLDER_PREFIX``).
     """
     if not isinstance(doc, dict) or doc.get("type") != "doc":
         raise ValueError("Tiptap document must be a JSON object with type='doc'")
@@ -268,20 +225,12 @@ def sanitize_tiptap_doc_or_raise(
 ) -> dict[str, Any]:
     """Sanitise a document, raising ``error`` where the sanitiser raises ``ValueError``.
 
-    The one home for the step every service takes around
-    :func:`sanitize_tiptap_doc`: a router maps a typed service error to a
-    status by its ``code`` (``routers/_errors.raise_typed_error``), so a
-    ValueError has to become one before it leaves the service. Two callers
-    take it, and both answer 400: ``services/events/rules._sanitize_proof`` with
-    :class:`services.events.InvalidProofError` for an event's proof body, and
-    ``services/collections._checked_description`` with
-    :class:`services.collections.InvalidDescriptionError` for a collection's
-    description.
-
-    The error class is a parameter rather than a name this module imports:
-    each service owns its own error vocabulary, and the sanitiser stays
-    something both can call without either importing the other. The message
-    travels unchanged, so the rule the document broke is what the caller reads.
+    Routers map typed service errors by ``code``
+    (``routers/_errors.raise_typed_error``), so the ValueError must become one
+    first. Callers: ``services/events/rules._sanitize_proof`` and
+    ``services/collections._checked_description``. ``error`` is a parameter so
+    each service owns its vocabulary without importing the other; the message
+    passes through unchanged.
     """
     try:
         return sanitize_tiptap_doc(
@@ -292,13 +241,9 @@ def sanitize_tiptap_doc_or_raise(
 
 
 def tiptap_doc_from_text(text: str) -> dict[str, Any]:
-    """Build a minimal Tiptap proof document from plain text.
+    """One paragraph per non-blank line; empty input yields an empty doc.
 
-    One paragraph node per non-blank line; blank lines drop out. Used by the
-    machine-detection write path to wrap a tweet / thread's cleaned text
-    (from ``clean_proof_text``) into the JSONB proof shape every row carries.
-    Empty or all-blank input yields an empty document
-    (``{"type": "doc", "content": []}``).
+    Wraps machine-detected text (``clean_proof_text``) into the proof shape.
     """
     paragraphs = [line for line in text.split("\n") if line.strip()]
     if not paragraphs:
@@ -315,23 +260,15 @@ def tiptap_doc_from_text(text: str) -> dict[str, Any]:
 def tiptap_doc_text(doc: Any) -> str:
     """The plain-text projection of a Tiptap document.
 
-    The one home for reading a rich-text body as text. Four surfaces need the
-    same string and must not spell it three ways: the full-text search index
-    (``collections.description_text``, which the GIN index and
-    ``services/search._collection_tsvector`` both read), the two-line clamp a
-    card prints, the share card's description, and the length cap
-    ``services/collections`` measures a description against.
+    The one reader of a rich-text body as text: the search index
+    (``collections.description_text``, ``services/search._collection_tsvector``),
+    the card clamp, the share card, and the length cap in ``services/collections``.
 
-    The rule: concatenate the text of every text node, and start a new line at
-    every block boundary. A paragraph, a heading, a list item and a code block
-    each end their line; a ``hardBreak`` ends one inside its paragraph. Blank
-    lines drop out, every line is stripped, and the lines join
-    with a single ``\\n``, so the result carries no leading, trailing or
-    doubled whitespace. A node with no text of its own (an image, a horizontal
-    rule) contributes nothing.
+    Text nodes concatenate and every block boundary starts a new line
+    (``hardBreak`` ends one inside a paragraph). Blank lines drop out, lines
+    are stripped and joined with ``\\n``. Textless nodes contribute nothing.
 
-    ``lib/proof.tsx::tiptapDocText`` mirrors it on the front end; see
-    ``AGENTS.md`` for why the pair has to move together.
+    Mirrored by ``lib/proof.tsx::tiptapDocText``; change both.
     """
     lines: list[str] = []
     current: list[str] = []
@@ -358,9 +295,7 @@ def tiptap_doc_text(doc: Any) -> str:
         if isinstance(content, list):
             for child in content:
                 walk(child)
-        # Every block but the root ends its line here. A container whose
-        # children already ended theirs (a list, a blockquote) flushes an empty
-        # buffer, which adds nothing.
+        # Every block but the root ends its line; containers flush an empty buffer.
         if node_type != "doc":
             flush()
 
@@ -463,7 +398,7 @@ def _sanitize_attrs(
         if node_type == "image" and key == "src":
             safe = _safe_image_src(value, allow_placeholders=allow_placeholders)
             if safe is None:
-                return None  # unsafe image — drop the node entirely
+                return None  # unsafe image: drop the node
             cleaned[key] = safe
         elif node_type == "heading" and key == "level":
             if isinstance(value, int) and 1 <= value <= 6:

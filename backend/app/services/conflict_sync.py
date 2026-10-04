@@ -1,26 +1,19 @@
 """Daily sync of the conflicts referential from Wikipedia's ongoing list.
 
-The source is the community-curated page "List of ongoing armed conflicts":
-its presence boundary (a conflict is on the page iff editors judge it
-ongoing) is exactly the product's ``ongoing`` flag, so syncing it
-externalises both the list and the "is it still ongoing" judgement.
+A conflict is on the community-curated page "List of ongoing armed
+conflicts" iff editors judge it ongoing, which is the product's ``ongoing`` flag.
 
-Identity is the Wikidata QID resolved from each row's article link, NOT the
-displayed name: the page renames conflicts constantly (measured over
-2023-2026: ~24 of 35 months had at least one name change, almost all
-editorial renames of the same conflict), and the QID survives every rename.
-A rename therefore updates ``conflicts.name`` in place; events keep their
-association and the map filter never fragments.
+Identity is the Wikidata QID resolved from each row's article link, not the
+displayed name: the page renames conflicts often and the QID survives. A
+rename updates ``conflicts.name`` in place, so events keep their association.
 
-Disappearance from the page is ambiguous (really ended, renamed, or slid
-below the tier threshold), so rows are deactivated only after
-``GRACE_PERIOD_DAYS`` of consecutive absence, and never deleted. Rows the
-sync has never seen (``last_seen_at IS NULL``: the manual ``Other``, unseen
-seed rows) are never touched.
+Disappearance is ambiguous (ended, renamed, or below the tier threshold), so
+rows are deactivated only after ``GRACE_PERIOD_DAYS`` of absence and never
+deleted. Rows never seen (``last_seen_at IS NULL``: the manual ``Other``,
+unseen seed rows) are never touched.
 
-Parsing is strict: if the page structure stops matching (tier tables
-missing, implausible row counts), the sync raises and writes nothing,
-leaving the referential as it was.
+Parsing is strict: if the page structure stops matching, the sync raises and
+writes nothing.
 """
 
 import logging
@@ -41,28 +34,23 @@ _PAGE_TITLE = "List of ongoing armed conflicts"
 _HTTP_TIMEOUT_S = 30.0
 _USER_AGENT = "vidit-conflict-sync/1.0 (https://vidit.app)"
 
-# Tier tables to ingest, matched against the heading immediately preceding
-# each wikitable, mapped to the ``ConflictTier`` value stored on the row.
-# The skirmishes tier (<100 deaths/year) is deliberately excluded: it is
-# high-churn editorial noise at the product's granularity.
+# Heading preceding each wikitable -> stored ``ConflictTier``. The skirmishes
+# tier (<100 deaths/year) is excluded as high-churn noise.
 _TIER_BY_HEADING = {"major wars": "major", "minor wars": "minor", "conflicts": "conflict"}
 
-# Absence tolerated before a row flips ``ongoing=false``. Absorbs editorial
-# churn: transient renames, vandalism reverts, tier flapping around the
-# death-toll thresholds.
+# Absence tolerated before ``ongoing=false``; absorbs transient renames,
+# vandalism reverts and tier flapping.
 GRACE_PERIOD_DAYS = 14
 
-# Parse sanity bounds on the top-level row count across the ingested tiers.
-# The page has held ~36 for years; outside these bounds the structure has
-# likely changed and writing would corrupt the referential.
+# Sanity bounds on the row count (the page has held ~36); outside them the
+# structure likely changed.
 _MIN_EXPECTED = 15
 _MAX_EXPECTED = 80
 
 # MediaWiki caps ``titles`` batches at 50 for anonymous clients.
 _QID_BATCH_SIZE = 50
 
-# ``conflicts.name`` is VARCHAR(200); names are truncated to fit before any
-# write so an over-long page title can't raise a raw DataError.
+# ``conflicts.name`` is VARCHAR(200); truncate before writing to avoid a DataError.
 _NAME_MAX_LENGTH = 200
 
 
@@ -90,8 +78,7 @@ def _get(client: httpx.Client, params: dict) -> dict:
         data = resp.json()
     except httpx.HTTPError as exc:
         raise ConflictSyncError(f"MediaWiki API request failed: {exc}") from exc
-    # MediaWiki reports maxlag / rate-limit / bad-request failures as an
-    # HTTP 200 whose body carries an ``error`` object.
+    # MediaWiki reports maxlag / rate-limit failures as HTTP 200 with an ``error`` body.
     if isinstance(data, dict) and "error" in data:
         error = data["error"] if isinstance(data["error"], dict) else {}
         raise ConflictSyncError(
@@ -110,12 +97,7 @@ def _fetch_page_html(client: httpx.Client) -> str:
 
 
 def _link_depth(a, cell) -> int:
-    """List-nesting depth of a link within its table cell.
-
-    The conflict column nests sub-conflicts in inner ``<ul>``s (the treelist
-    template); the top-level conflict of a row is the first link at the
-    cell's minimal depth.
-    """
+    """List-nesting depth of a link in its cell (sub-conflicts nest in inner lists)."""
     depth = 0
     node = a.parent
     while node is not None and node is not cell:
@@ -141,11 +123,10 @@ def _parse_start_year(cell) -> int | None:
 
 
 def extract_page_entries(html: str) -> list[PageEntry]:
-    """Top-level conflicts of the ingested tier tables, with tier and year.
+    """Top-level conflicts of the ingested tier tables.
 
-    Titles (the link ``title`` attribute, i.e. the article name) rather than
-    display text: the article is what resolves to a QID. Order preserved,
-    duplicates dropped (first tier wins).
+    Uses the link ``title`` (article name), which resolves to a QID. Order
+    preserved, duplicates dropped (first tier wins).
     """
     soup = BeautifulSoup(html, "html.parser")
     entries: list[PageEntry] = []
@@ -157,8 +138,7 @@ def extract_page_entries(html: str) -> list[PageEntry]:
         tier = next((t for h, t in _TIER_BY_HEADING.items() if heading_text.startswith(h)), None)
         if tier is None:
             continue
-        # Scoped lookup: stop at the next heading, so a tier heading whose
-        # own table is missing can't silently claim the next tier's table.
+        # Stop at the next heading so a missing table can't claim the next tier's.
         node = heading.find_next(["table", "h2", "h3"])
         while (
             node is not None
@@ -181,8 +161,7 @@ def extract_page_entries(html: str) -> list[PageEntry]:
             if len(cells) < 2:
                 continue
             cell = cells[1]
-            # ``str()``: bs4 types attribute values as ``str | AttributeValueList``
-            # (multi-valued attributes); ``title`` is always a plain string.
+            # ``str()``: bs4 types attributes as ``str | AttributeValueList``.
             links = [
                 (_link_depth(a, cell), str(a["title"]))
                 for a in cell.find_all("a")
@@ -194,8 +173,7 @@ def extract_page_entries(html: str) -> list[PageEntry]:
                 continue
             min_depth = min(d for d, _ in links)
             title = next(t for d, t in links if d == min_depth)
-            # A transient link to a disambiguation page is an editorial
-            # accident, not a conflict; the grace period covers the gap.
+            # A disambiguation link is an editorial accident; the grace period covers it.
             if title.endswith("(disambiguation)") or title in seen_titles:
                 continue
             seen_titles.add(title)
@@ -230,8 +208,7 @@ def resolve_qids(client: httpx.Client, titles: list[str]) -> dict[str, str]:
             },
         )
         query = data.get("query", {})
-        # The API normalises and redirects titles; walk the mappings back so
-        # the returned dict is keyed by the titles the caller passed in.
+        # Walk normalisations and redirects back to the caller's titles.
         forward: dict[str, str] = {}
         for step in ("normalized", "redirects"):
             for entry in query.get(step, []):
@@ -260,21 +237,19 @@ def sync_conflicts(
 ) -> SyncResult:
     """Run one sync pass: upsert by QID, then grace-period deactivation.
 
-    Per page entry: a row already carrying the QID is refreshed (renamed in
-    place if the page renamed it); a QID-less row with the exact same name
-    is adopted (claims migrated manual rows and seed rows on first sight);
-    otherwise a new ``source='sync'`` row is inserted. A name collision
-    against a row with a DIFFERENT QID is skipped and reported rather than
-    guessed at. Commits once at the end; any raise leaves the DB untouched.
+    A row with the QID is refreshed (renamed in place); a QID-less row with
+    the same name is adopted (manual and seed rows); otherwise a
+    ``source='sync'`` row is inserted. A name collision with a different QID
+    is skipped and reported. Commits once at the end; any raise leaves the DB
+    untouched.
     """
     now = now or datetime.now(UTC)
 
     def run(c: httpx.Client) -> SyncResult:
         entries = extract_page_entries(_fetch_page_html(c))
         qid_by_title = resolve_qids(c, [e.title for e in entries])
-        # A silently failed pageprops resolution must never age rows toward
-        # deactivation: if too few entries resolved, abort before any write
-        # (in particular before the grace-period sweep below).
+        # A failed QID resolution must not age rows toward deactivation: abort
+        # before any write, including the grace-period sweep.
         resolved = sum(1 for e in entries if e.title in qid_by_title)
         if resolved < _MIN_EXPECTED:
             raise ConflictSyncError(
@@ -283,9 +258,8 @@ def sync_conflicts(
             )
         result = SyncResult(seen=len(entries))
 
-        # Two titles can redirect to one article (mid-rename, merged
-        # entries): dedupe by resolved QID, first entry wins, so the second
-        # title doesn't read as a spurious rename of the same row.
+        # Two titles can redirect to one article: dedupe by QID, first wins,
+        # so the second doesn't read as a spurious rename.
         seen_qids: set[str] = set()
         deduped: list[PageEntry] = []
         for entry in entries:
@@ -297,8 +271,6 @@ def sync_conflicts(
             deduped.append(entry)
 
         for entry in deduped:
-            # Truncate to the column width so an over-long page title can't
-            # raise a raw DataError mid-commit.
             title = entry.title[:_NAME_MAX_LENGTH]
             qid = qid_by_title.get(entry.title)
             if qid is None:
@@ -308,8 +280,7 @@ def sync_conflicts(
             if row is None:
                 by_name = db.query(Conflict).filter(Conflict.name == title).first()
                 if by_name is not None and by_name.wikidata_id is None:
-                    # Same name, no QID yet: an operator/seed row for the
-                    # same conflict. Adopt it instead of forking a duplicate.
+                    # Same name, no QID: an operator/seed row. Adopt, don't duplicate.
                     by_name.wikidata_id = qid
                     row = by_name
                     result.adopted += 1
@@ -333,21 +304,17 @@ def sync_conflicts(
                 else:
                     row.name = title
                     result.renamed += 1
-            # First sighting of a seed row is an activation, not a
-            # reactivation: only count rows the sync had seen before.
+            # First sighting of a seed row is not a reactivation.
             if not row.ongoing and row.last_seen_at is not None:
                 result.reactivated += 1
             row.ongoing = True
             row.last_seen_at = now
-            # Tier follows the page (rows move buckets as death tolls shift).
             row.tier = entry.tier
-            # Start year only fills a gap: Wikidata seed years are more
-            # precise than the page's, so never clobber an existing one.
+            # Fill a gap only: seed years are more precise than the page's.
             if row.start_year is None:
                 row.start_year = entry.start_year
 
-        # Grace-period deactivation: only rows the sync has seen before
-        # (``last_seen_at`` set) can expire; manual/unseen rows are immune.
+        # Only rows with ``last_seen_at`` set can expire; manual/unseen rows are immune.
         cutoff = now - timedelta(days=GRACE_PERIOD_DAYS)
         expired = (
             db.query(Conflict)

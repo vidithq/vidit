@@ -1,29 +1,10 @@
-"""End-to-end tests for the requested view (ex ``/requests``).
+"""End-to-end tests for the requested view.
 
-Since the request + geolocation merge, the requested view is served by the
-events surface: a request is an ``Event`` with ``status='requested'`` (an open
-call to geolocate, with one source media and optionally an approximate
-coordinate guess), and it stays visible as ``closed`` (with
-``before_closed_status='requested'``) once the poster withdraws it. Fulfilment
-is a lifecycle move in place via ``POST /events/{id}/geolocate`` (any authed
-user; ownership transfers to the fulfiller while ``requested_by`` keeps the
-poster). Local storage backend so file uploads exercise the real path.
-
-What we lock in:
-
-* Soft-delete invariant, every public read filters ``deleted_at IS NULL``.
-* ``GET /events?view=requested`` scoping + status / tag / author filters.
-* ``POST /events/requests`` rejects blank title / source_url / a missing
-  file; auth required; the row is born ``requested`` + stamped.
-* ``POST /events/{id}/close`` owner-only; requires a reason; rejects
-  already-terminal states; stamps ``closed_at`` + ``before_closed_status``.
-* ``POST /events/{id}/geolocate`` fulfils a requested event in place:
-  it transitions to ``geolocated``, transfers ``owner_id`` to the
-  fulfiller, credits them in ``event_geolocators``, and keeps
-  ``requested_by`` as the original poster.
-* ``POST /events/{id}/request`` corrects an open request in place: owner-only,
-  ``requested``-only, no version filed, the source floor held, and the
-  provenance of a bot-opened row left where the import stamped it.
+A request is an ``Event`` with ``status='requested'``; a withdrawn one stays visible
+as ``closed`` with ``before_closed_status='requested'``. ``POST
+/events/{id}/geolocate`` fulfils it in place: ownership moves to the fulfiller and
+``requested_by`` keeps the poster. Local storage backend so uploads exercise the real
+path.
 """
 
 from __future__ import annotations
@@ -65,22 +46,10 @@ from tests.events._helpers import (
     proof_form_field,
 )
 
-# ``db`` / ``author`` / ``second_user`` / ``free_tag`` / ``conflict`` /
-# ``capture_source_tag``, the autouse cookie-and-cache reset, and the shared
-# ``client`` all come from the package ``conftest`` + ``_helpers``. The
-# author / second_user teardown there is a superset that also clears credit
-# rows and ``requested_by_id`` rows, which the request flows need.
-
 _LIST = "/api/v1/events?view=requested"
 
 
-# ── Fixtures ──────────────────────────────────────────────────────────────
-
-
-# The geolocate transition (fulfilment) requires one conflict + one
-# capture_source tag, same floor as a direct create. The 200-expecting
-# fulfilment tests below thread the tags through this helper (the conflict
-# rides in ``conflict_ids``).
+# Fulfilment needs the conflict + capture_source floor, same as a direct create.
 def _required_tag_ids(*tags: Tag) -> str:
     return json.dumps([str(t.id) for t in tags])
 
@@ -96,10 +65,7 @@ def _make_request(
     tags: list[Tag] | None = None,
     with_media: bool = True,
 ) -> Event:
-    """A request row: a ``requested`` (or withdrawn ``closed``) ``Event`` with
-    no location and ``requested_by_id`` set to the poster, mirroring the
-    create path (stamps included, the CHECKs demand them).
-    """
+    """Mirrors the create path, stamps included (the CHECKs demand them)."""
     now = datetime.now(UTC)
     request = Event(
         owner_id=author.id,
@@ -135,9 +101,6 @@ def _make_request(
     return request
 
 
-# ── GET /events?view=requested, list ─────────────────────────────────────
-
-
 def test_list_returns_seeded_request(db, author):
     request = _make_request(db, author=author)
     response = client.get(_LIST)
@@ -167,9 +130,7 @@ def test_list_filters_by_status(db, author):
 
 
 def test_list_includes_withdrawn_but_not_rejected_closed(db, author):
-    """The requested view keeps a withdrawn request visible but routes a
-    rejected detection (``closed`` off ``detected``) to the located view,
-    ``before_closed_status`` is the split."""
+    """``before_closed_status`` splits a withdrawn request from a rejected detection."""
     withdrawn = _make_request(db, author=author, status=STATUS_CLOSED)
     rejected = _make_geo(db, author=author, status=STATUS_CLOSED)
     rejected.before_closed_status = "detected"
@@ -181,9 +142,7 @@ def test_list_includes_withdrawn_but_not_rejected_closed(db, author):
 
 
 def test_list_excludes_located_events(db, author):
-    """A ``geolocated`` event (a fulfilled request, or a direct submit) is
-    served by the located view and must never surface in the requested one,
-    even though it shares the table."""
+    """A fulfilled request never surfaces in the requested view."""
     requested = _make_request(db, author=author)
     located = _make_geo(db, author=author, status=STATUS_GEOLOCATED)
 
@@ -208,9 +167,7 @@ def test_list_filters_by_tag(db, author, free_tag):
 
 
 def test_list_filters_by_author_exact(db, author):
-    """Exact case-insensitive match, same semantics as every author surface
-    (see services/event_filters.apply_author_filter): a fragment matches
-    nothing."""
+    """Exact case-insensitive match; a fragment matches nothing."""
     request = _make_request(db, author=author)
     response = client.get(f"{_LIST}&author={author.username.upper()}")
     assert response.status_code == 200
@@ -229,14 +186,10 @@ def test_list_honours_limit(db, author):
 
 
 def test_list_rejects_unusable_limit(author):
-    """Below 1 and non-numeric are malformed (422); over the cap is not, it is
-    clamped to the cap (see ``test_pagination``)."""
+    """Below 1 and non-numeric are 422; over the cap clamps."""
     for bad in ("0", "-1", "abc"):
         response = client.get(f"{_LIST}&limit={bad}")
         assert response.status_code == 422, f"expected 422 for limit={bad!r}"
-
-
-# ── GET /events/{id}, requested detail ───────────────────────────────────
 
 
 def test_detail_returns_full_shape(db, author, free_tag):
@@ -260,9 +213,6 @@ def test_detail_404_for_soft_deleted(db, author):
     request = _make_request(db, author=author, deleted=True)
     response = client.get(f"/api/v1/events/{request.id}")
     assert response.status_code == 404
-
-
-# ── POST /events/requests, auth + validation + happy path ────────────────
 
 
 def test_create_requires_authentication():
@@ -330,8 +280,7 @@ def test_create_rejects_invalid_proof_json(author):
 
 
 def test_create_rejects_over_length_title(author):
-    """A title past the 255-char column width 422s at the Form boundary,
-    not at ``db.flush()`` after the file has already hit S3."""
+    """A title past 255 chars 422s at the Form boundary, before any upload."""
     response = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
@@ -346,7 +295,6 @@ def test_create_rejects_over_length_title(author):
 
 
 def test_create_rejects_over_length_source_url(author):
-    """source_url past the 2000-char API bound 422s at the Form boundary."""
     response = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
@@ -361,8 +309,7 @@ def test_create_rejects_over_length_source_url(author):
 
 
 def test_create_rejects_unsanitisable_proof(author):
-    """Valid JSON that isn't a Tiptap ``doc`` is rejected with the typed
-    ``invalid_proof`` envelope, before any upload."""
+    """Valid JSON that is not a Tiptap ``doc`` gets ``invalid_proof`` before any upload."""
     response = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
@@ -379,7 +326,6 @@ def test_create_rejects_unsanitisable_proof(author):
 
 
 def test_create_rejects_half_typed_coordinate_guess(author):
-    """A lone half of the optional (lat, lng) guess is a client bug, 400."""
     response = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
@@ -431,8 +377,7 @@ def test_create_happy_path(db, author, free_tag):
 
 
 def test_create_accepts_coordinate_guess(db, author):
-    """A request may carry an approximate (lat, lng) guess, stored and
-    round-tripped, without promoting the row out of ``requested``."""
+    """The guess round-trips without promoting the row out of ``requested``."""
     response = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
@@ -457,8 +402,7 @@ def test_create_accepts_coordinate_guess(db, author):
 
 
 def test_create_event_date_optional_source_required(db, author):
-    """event_date is optional on a request (omitted → null); source_posted_at is
-    required (a post always has a time) and round-trips on the read model."""
+    """``event_date`` is optional; ``source_posted_at`` is required."""
     with_dates = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
@@ -496,11 +440,7 @@ def test_create_event_date_optional_source_required(db, author):
 
 
 def test_create_request_keeps_proof_image(db, author, tmp_path, monkeypatch):
-    """A request MAY carry proof images (work started but not finished): a
-    ``placeholder://`` src resolves from ``proof_files`` to a real URL and a
-    ``Media(role='proof')`` row lands alongside the source, exactly like a
-    geolocation. There is no proof-image floor, so the imageless requests in the
-    other tests still succeed."""
+    """A request may carry proof images; there is no proof-image floor."""
     from app.services import storage as storage_module
 
     monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
@@ -535,8 +475,7 @@ def test_create_request_keeps_proof_image(db, author, tmp_path, monkeypatch):
 
 
 def test_create_request_event_time_without_event_date(db, author):
-    """A request accepts an event time with no event date: an approximate
-    hour-of-day (sun position / shadows) is knowable before the day is."""
+    """An hour-of-day is knowable before the day is."""
     response = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
@@ -560,10 +499,8 @@ def test_create_request_event_time_without_event_date(db, author):
 
 
 def test_create_request_blank_proof_stores_empty_doc(db, author):
-    """A request with no proof body stores the canonical empty doc, never NULL.
-    ``events.proof`` is NOT NULL and ``create_request`` omits an explicit
-    ``proof=``, so the model default has to fire and the intake must leave it in
-    place (it only overwrites ``proof`` when a doc came in). No proof media lands."""
+    """The model default must fire: ``events.proof`` is NOT NULL and ``create_request``
+    omits ``proof=``."""
     response = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
@@ -588,10 +525,7 @@ def test_create_request_blank_proof_stores_empty_doc(db, author):
 
 
 def test_create_request_drops_unsafe_proof_image_src(db, author):
-    """Images are allowed on a request now, but the sanitiser still runs: an
-    unsafe src (a protocol-relative URL, an exfiltration vector) is dropped, not
-    stored. Replaces the old strip-everything coverage now that safe images
-    persist, keeping the request path guarded like the geolocation one."""
+    """The sanitiser still drops an unsafe src (protocol-relative URL) on a request."""
     unsafe_doc = {
         "type": "doc",
         "content": [
@@ -622,7 +556,6 @@ def test_create_request_drops_unsafe_proof_image_src(db, author):
 
 
 def test_create_rejects_invalid_event_date(author):
-    """Garbage ``event_date`` → 422 before any S3 round-trip."""
     response = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
@@ -639,15 +572,9 @@ def test_create_rejects_invalid_event_date(author):
 
 
 def test_create_populates_sha256_on_media(db, author):
-    """SHA-256 hash of the uploaded bytes lands on the row + read API.
-
-    Independent recomputation should match, that's the whole pitch:
-    given the API response, an auditor can prove the bytes on S3 still
-    match what the analyst submitted.
-    """
-    # The EXIF strip re-encodes, so the post-strip sha256 isn't known ahead of
-    # time; assert API-response hash == row hash (internal consistency).
-    # End-to-end auditor-replay needs a real S3 fetch, out of scope here.
+    """The API hash equals the row hash, so an auditor can recompute it from the bytes."""
+    # The EXIF strip re-encodes, so the post-strip hash is not known ahead; assert API
+    # hash == row hash.
     payload = TINY_JPEG
 
     response = client.post(
@@ -666,7 +593,6 @@ def test_create_populates_sha256_on_media(db, author):
     media = body["media"][0]
     assert isinstance(media["sha256"], str)
     assert len(media["sha256"]) == 64
-    # Load-bearing assertion: API response hash matches the row hash.
     row = db.query(Media).filter(Media.id == uuid.UUID(media["id"])).one()
     assert row.sha256 == media["sha256"]
     assert row.role == "source"
@@ -676,9 +602,6 @@ def test_create_populates_sha256_on_media(db, author):
     db.query(Media).filter(Media.event_id == request_id).delete(synchronize_session=False)
     db.query(Event).filter(Event.id == request_id).delete(synchronize_session=False)
     db.commit()
-
-
-# ── POST /events/{id}/close (withdraw) ────────────────────────────────────
 
 
 def test_close_owner_only(db, author, second_user):
@@ -717,7 +640,6 @@ def test_close_transitions_to_closed(db, author):
 
 
 def test_close_rejected_on_terminal_state(db, author):
-    """An already-closed request can't be re-closed (terminal state), 409."""
     request = _make_request(db, author=author, status=STATUS_CLOSED)
     response = client.post(
         f"/api/v1/events/{request.id}/close",
@@ -728,16 +650,9 @@ def test_close_rejected_on_terminal_state(db, author):
     assert response.json()["detail"]["code"] == "invalid_state"
 
 
-# ── POST /events/{id}/geolocate, fulfilment in place ─────────────────────
-# Since the merge, fulfilling a request is not a row copy: the requested event
-# is transitioned in place by the geolocate endpoint. Any authed user may
-# answer an open request; ``owner_id`` transfers to the fulfiller (who is also
-# credited in ``event_geolocators``) while ``requested_by`` keeps the poster.
-
-
 def _geolocate_fulfilment(client, request_id, fulfiller, conflict, *tags, **overrides):
-    """POST the geolocate form that fulfils a requested event. The request
-    already carries a source media, so only the proof image is new."""
+    """POST the geolocate form that fulfils a requested event; only the proof image is
+    new."""
     data = {
         "title": "Fulfilled from a request",
         "lat": "48.5",
@@ -761,9 +676,7 @@ def _geolocate_fulfilment(client, request_id, fulfiller, conflict, *tags, **over
 def test_geolocate_fulfils_requested_and_transfers_ownership(
     db, author, second_user, conflict, capture_source_tag
 ):
-    """The end-to-end promise: another analyst answers an open request, the row
-    transitions to ``geolocated`` in place, ``owner_id`` moves to the fulfiller
-    (credited as a geolocator), and ``requested_by`` keeps the original poster."""
+    """The poster stays on ``requested_by``; ``owner_id`` moves to the fulfiller."""
     request = _make_request(db, author=author)
     request_id = request.id
 
@@ -773,7 +686,6 @@ def test_geolocate_fulfils_requested_and_transfers_ownership(
     assert body["id"] == str(request_id)
     assert body["status"] == "geolocated"
     assert body["event_coords"] == {"lat": 48.5, "lng": 34.5}
-    # Ownership transferred to the fulfiller; the poster stays on requested_by.
     assert body["owner"]["username"] == second_user.username
     assert body["requested_by"]["username"] == author.username
     assert [g["username"] for g in body["geolocators"]] == [second_user.username]
@@ -791,9 +703,7 @@ def test_geolocate_fulfils_requested_and_transfers_ownership(
 def test_geolocate_keeps_requesters_source_url(
     db, author, second_user, conflict, capture_source_tag
 ):
-    """A fulfiller cannot rewrite the requester's evidence anchor: geolocate()
-    ignores the form ``source_url`` on a requested fulfilment and keeps the
-    request's."""
+    """``geolocate()`` keeps the request's ``source_url`` and ignores the form's."""
     request = _make_request(db, author=author, source_url="https://requester.example/evidence")
     request_id = request.id
 
@@ -816,8 +726,6 @@ def test_geolocate_keeps_requesters_source_url(
 def test_geolocate_fulfilled_event_leaves_requested_view(
     db, author, second_user, conflict, capture_source_tag
 ):
-    """Once fulfilled the row is ``geolocated``, so it drops off the requested
-    surface and appears on the located view instead."""
     request = _make_request(db, author=author)
     request_id = request.id
 
@@ -825,7 +733,6 @@ def test_geolocate_fulfilled_event_leaves_requested_view(
         _geolocate_fulfilment(client, request_id, second_user, conflict, capture_source_tag)
     ).status_code == 200
 
-    # Gone from the requested-view list; present on the located one.
     assert all(row["id"] != str(request_id) for row in client.get(_LIST).json())
     located = client.get(f"/api/v1/events/{request_id}")
     assert located.status_code == 200
@@ -837,9 +744,7 @@ def test_geolocate_fulfilled_event_leaves_requested_view(
 def test_geolocate_fulfilment_reuses_existing_media(
     db, author, second_user, conflict, capture_source_tag
 ):
-    """Fulfilment keeps the request's source media on the same row (no
-    transfer / churn): the one source survives the transition; the proof image
-    lands alongside it as a ``proof`` row."""
+    """The source media stays on the same row; the proof lands beside it."""
     request = _make_request(db, author=author)
     request_id = request.id
     media_id = db.query(Media.id).filter(Media.event_id == request_id).scalar()
@@ -857,8 +762,7 @@ def test_geolocate_fulfilment_reuses_existing_media(
 def test_geolocate_rejects_second_source_on_top_of_kept_one(
     db, author, second_user, conflict, capture_source_tag
 ):
-    """An event carries a single source media: adding a file while keeping the
-    request's existing one is rejected before any upload."""
+    """One source media per event: a second file is rejected before upload."""
     request = _make_request(db, author=author)
     response = client.post(
         f"/api/v1/events/{request.id}/geolocate",
@@ -883,9 +787,8 @@ def test_geolocate_rejects_second_source_on_top_of_kept_one(
 def test_geolocate_fulfilment_honors_analyst_title_and_tags(
     db, author, second_user, free_tag, conflict, capture_source_tag
 ):
-    """The fulfilling analyst CAN refine the title and tags, they know more than
-    the poster did (place name resolved, conflict tag added). The refined values
-    land on the row; the required conflict + capture_source floor is enforced."""
+    """The fulfiller may refine title and tags; the conflict + capture_source floor still
+    holds."""
     request = _make_request(db, author=author, title="Original request title", tags=[free_tag])
     request_id = request.id
 
@@ -907,8 +810,7 @@ def test_geolocate_fulfilment_honors_analyst_title_and_tags(
 
 
 def test_geolocate_fulfilment_blocked_without_required_tags(db, author, second_user):
-    """The floor still applies to fulfilment: a requested row without the
-    conflict + capture_source tags 400s (the request itself may be tagless)."""
+    """The floor applies to fulfilment although the request itself may be tagless."""
     request = _make_request(db, author=author)
     response = client.post(
         f"/api/v1/events/{request.id}/geolocate",
@@ -931,9 +833,7 @@ def test_geolocate_fulfilment_blocked_without_required_tags(db, author, second_u
 def test_geolocate_fulfilment_rejected_when_closed(
     db, author, second_user, conflict, capture_source_tag
 ):
-    """A withdrawn (``closed``) request is terminal, not answerable, geolocate
-    409s with the invalid_state code (only ``requested`` / ``detected``
-    transition)."""
+    """A withdrawn request is terminal: geolocate 409s with ``invalid_state``."""
     request = _make_request(db, author=author, status=STATUS_CLOSED)
     response = _geolocate_fulfilment(client, request.id, second_user, conflict, capture_source_tag)
     assert response.status_code == 409
@@ -945,19 +845,8 @@ def test_geolocate_fulfilment_404_for_unknown(author, conflict, capture_source_t
     assert response.status_code == 404
 
 
-# ── POST /events/{id}/request, the owner's edit ──────────────────────────
-#
-# The owner's correction of an open request, overwriting it in place: a request
-# is a question rather than a vouched claim, so the edit files no version. What
-# these lock in is that boundary (owner-only, ``requested``-only, no version
-# row), that the edit reaches the fields the create form writes, and that the two
-# things a request carries across its life, the requester's evidence anchor and
-# the provenance of a bot-opened row, survive it.
-
-
 def _edit_request(client, request_id, editor, **overrides):
-    """POST the edit form. The defaults move every field the create form writes,
-    so a test asserting on one of them overrides only that one."""
+    """Defaults move every field the create form writes; override one per test."""
     data = {
         "title": "Edited title",
         "source_url": "https://example.com/post",
@@ -973,8 +862,7 @@ def _edit_request(client, request_id, editor, **overrides):
 
 
 def test_edit_request_overwrites_in_place_without_a_version(db, author, free_tag):
-    """The owner's edit moves title, source, dates, mirrors, tags and proof, and
-    the row stays version 1 with no ``event_versions`` row behind it."""
+    """The edit files no ``event_versions`` row; the version stays 1."""
     request = _make_request(db, author=author, source_url="https://example.com/first")
     request_id = request.id
 
@@ -1011,8 +899,7 @@ def test_edit_request_overwrites_in_place_without_a_version(db, author, free_tag
 
 
 def test_edit_request_moves_the_coordinate_guess(db, author):
-    """The approximate guess is editable like every other field, and an edit
-    that posts neither half clears it (the row stays legal without one)."""
+    """An edit posting neither half clears the guess."""
     request = _make_request(db, author=author)
     request_id = request.id
 
@@ -1029,8 +916,7 @@ def test_edit_request_moves_the_coordinate_guess(db, author):
 
 
 def test_edit_request_keeps_the_source_instant_the_bot_could_not_read(db, author):
-    """``source_posted_at`` is optional here: a bot-opened request whose source
-    date was unreadable is editable without inventing an instant."""
+    """A bot-opened request with an unreadable source date stays editable."""
     request = _make_request(db, author=author)
     request_id = request.id
     db.query(Event).filter(Event.id == request_id).update({"source_posted_at": None})
@@ -1042,9 +928,8 @@ def test_edit_request_keeps_the_source_instant_the_bot_could_not_read(db, author
 
 
 def test_edit_request_accepts_the_stored_instant_verbatim(db, author):
-    """The form posts the row's own value back when the analyst never touched the
-    field, so what the read model serves has to be what this write takes: a full
-    UTC instant, seconds and zone included, not the minute the input holds."""
+    """The form posts the row's value back, so the write must accept a full UTC instant
+    (seconds and zone), not minute precision."""
     request = _make_request(db, author=author)
     response = _edit_request(client, request.id, author, source_posted_at="2026-05-01T12:00:27Z")
     assert response.status_code == 200, response.text
@@ -1052,8 +937,7 @@ def test_edit_request_accepts_the_stored_instant_verbatim(db, author):
 
 
 def test_edit_request_swaps_the_source_media(db, author):
-    """The footage moves on the same removal + upload pair the published writes
-    take, and the row is left on exactly one source media."""
+    """Same removal + upload pair as the published writes; one source media remains."""
     request = _make_request(db, author=author)
     request_id = request.id
     stored = db.query(Media).filter(Media.event_id == request_id).one()
@@ -1080,9 +964,8 @@ def test_edit_request_swaps_the_source_media(db, author):
 
 
 def test_edit_request_sweeps_the_replaced_media(db, author, monkeypatch):
-    """The swap above leaves the dropped file orphaned on S3 unless the commit is
-    followed by a sweep, and no version renders it: the old keys, derivatives
-    included, go to ``sweep_keys``."""
+    """The dropped file's keys, derivatives included, go to ``sweep_keys`` so S3 is not
+    orphaned."""
     request = _make_request(db, author=author)
     request_id = request.id
     stored = db.query(Media).filter(Media.event_id == request_id).one()
@@ -1109,9 +992,8 @@ def test_edit_request_sweeps_the_replaced_media(db, author, monkeypatch):
 
 
 def test_edit_request_keeps_a_stored_source_instant_the_form_omits(db, author):
-    """Omitted means keep, the rule ``save_version`` holds to: the form posts the
-    whole state and an empty datetime input is indistinguishable from an absent
-    field, so an edit that never went near the instant must not clear it."""
+    """Omitted means keep: an empty datetime input is indistinguishable from an absent
+    field (the ``save_version`` rule)."""
     request = _make_request(db, author=author)
     request_id = request.id
     stored = request.source_posted_at
@@ -1124,9 +1006,7 @@ def test_edit_request_keeps_a_stored_source_instant_the_form_omits(db, author):
 
 
 def test_edit_request_clears_the_event_date(db, author):
-    """``event_date`` is the optional field the edit does clear: footage that
-    never established a date reads as Unknown rather than keeping a guess the
-    owner has withdrawn."""
+    """``event_date`` is the one optional field an edit clears."""
     request = _make_request(db, author=author)
     request_id = request.id
     dated = _edit_request(client, request_id, author, event_date="2026-05-02")
@@ -1142,9 +1022,7 @@ def test_edit_request_clears_the_event_date(db, author):
 
 
 def test_edit_request_cannot_unset_the_graphic_flag(db, author):
-    """``is_graphic`` ratchets here as it does on ``geolocate`` and
-    ``save_version``: the form raises it and never lowers it, so an unchecked
-    box leaves a flagged request flagged. Only
+    """``is_graphic`` only ratchets up, as on ``geolocate`` and ``save_version``; only
     ``PATCH /admin/events/{id}/moderation`` clears it."""
     request = _make_request(db, author=author)
     request_id = request.id
@@ -1160,8 +1038,7 @@ def test_edit_request_cannot_unset_the_graphic_flag(db, author):
 
 
 def test_edit_request_keeps_the_requested_at_stamp(db, author):
-    """The edit overwrites the question, not its history: ``requested_at`` is
-    when the call went out, and the requests board orders on it."""
+    """The edit keeps ``requested_at``, the requests board ordering key."""
     request = _make_request(db, author=author)
     request_id = request.id
     opened_at = request.requested_at
@@ -1176,23 +1053,16 @@ def test_edit_request_keeps_the_requested_at_stamp(db, author):
 
 
 async def test_edit_request_loses_the_race_to_a_fulfilment(db, author):
-    """A ``geolocate`` that commits between the router's live-row resolution and
-    the service's locked re-read takes the row out of ``requested``: the edit
-    reads the post-lock status and refuses (409), rather than writing into a
-    published record. Service-level, the way the fulfilment lock is exercised:
-    the stale row the router resolved is handed straight to ``update_request``
-    while a second session holds the committed fulfilment.
-
-    The owner answers their own request here (a second tab), so the row stays
-    theirs and the refusal turns on the status alone; a fulfilment by anyone
-    else moves ``owner_id`` too, and the same edit is refused one gate earlier,
-    by ``ensure_owner``.
-    """
+    """A geolocate committing between the router's row resolution and the service's
+    locked re-read makes the edit refuse (409) on the post-lock status. Service-level:
+    the stale row goes straight to ``update_request`` while a second session holds the
+    committed fulfilment. The owner answers their own request so the refusal turns on
+    status alone (anyone else is refused earlier by ``ensure_owner``)."""
     request = _make_request(db, author=author)
     request_id = request.id
 
-    # The competing fulfilment, committed from its own session: the row this
-    # test's session still holds is now stale.
+    # The competing fulfilment commits from its own session; this session's row is now
+    # stale.
     winner = SessionLocal()
     try:
         fulfilled = winner.query(Event).filter(Event.id == request_id).one()
@@ -1229,8 +1099,7 @@ async def test_edit_request_loses_the_race_to_a_fulfilment(db, author):
 
 
 def test_edit_request_refuses_to_leave_the_row_without_footage(db, author):
-    """A request is an unfinished geolocation, so the source floor holds on the
-    edit: dropping the footage without a replacement is refused."""
+    """Dropping the footage without a replacement is refused (the source floor)."""
     request = _make_request(db, author=author)
     request_id = request.id
     stored = db.query(Media).filter(Media.event_id == request_id).one()
@@ -1246,8 +1115,7 @@ def test_edit_request_refuses_to_leave_the_row_without_footage(db, author):
 
 
 def test_edit_request_owner_only(db, author, second_user):
-    """An open request is answerable by anyone and editable by nobody but its
-    owner: the fulfilment is the door a second analyst comes through."""
+    """Anyone can fulfil an open request; only its owner can edit it."""
     request = _make_request(db, author=author)
     response = _edit_request(client, request.id, second_user)
     assert response.status_code == 403
@@ -1263,9 +1131,7 @@ def test_edit_request_requires_authentication(db, author):
 
 
 def test_edit_request_rejects_a_row_that_left_requested(db, author):
-    """Only an open request takes this write: a fulfilled row is corrected as a
-    version, a detection through the geolocate, and a withdrawn one is
-    terminal."""
+    """Only an open request takes this write."""
     for status in (STATUS_GEOLOCATED, "detected", STATUS_CLOSED):
         geo = _make_geo(db, author=author, status=status, with_media=True)
         response = _edit_request(client, geo.id, author)
@@ -1287,8 +1153,7 @@ def test_edit_request_rejects_blank_title(db, author):
 def test_fulfilment_keeps_the_edited_source_url(
     db, author, second_user, conflict, capture_source_tag
 ):
-    """The requester's evidence anchor is the one the edit stored: a fulfiller
-    still cannot rewrite it, and what they inherit is the corrected value."""
+    """A fulfiller cannot rewrite the evidence anchor and inherits the corrected value."""
     request = _make_request(db, author=author, source_url="https://example.com/wrong")
     request_id = request.id
 
@@ -1308,9 +1173,7 @@ def test_fulfilment_keeps_the_edited_source_url(
 
 
 def test_edit_request_keeps_the_provenance_of_a_bot_opened_row(db, author):
-    """A request the bot opened is its owner's to correct, and the five import
-    columns are not the owner's to move: the edit leaves them where the import
-    stamped them."""
+    """The edit leaves the five import columns where the import stamped them."""
     request = _make_request(db, author=author)
     request_id = request.id
     provenance = ImportProvenance(

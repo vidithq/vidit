@@ -1,22 +1,14 @@
 """Persist machine detections: a ``Resolution``'s detections become ``detected`` rows.
 
-:func:`persist_detections` is the one write path, and every entry runs it over
-what ``tweet_ingest.resolve_threads`` handed back: the bot over the thread it
-acquired, :func:`import_pasted_post` over the post an analyst pasted,
-:func:`backfill_from_archive` over every stitched self-thread of an export. It
-turns each ``Detection`` into an ``Event`` row owned by the importer, with media
-through the evidence pipeline and idempotency on ``(the thread's post ids OR
-source_url, coordinate)``. The ``Detection`` never reaches the ORM, which is
-what keeps the engine pure.
+:func:`persist_detections` is the one write path for every entry (the bot,
+:func:`import_pasted_post`, :func:`backfill_from_archive`) over what
+``tweet_ingest.resolve_threads`` returns. Each ``Detection`` becomes an ``Event`` owned by the
+importer, with media through the evidence pipeline and idempotency on ``(the thread's post ids
+OR source_url, coordinate)``. The ``Detection`` never reaches the ORM, which keeps the engine
+pure.
 
-A detection that matches a row the owner already holds resolves through
-:func:`_row_disposition`: an open ``detected`` row is overwritten in place with
-the newer parse, and every other shape is left alone.
-
-:func:`open_request` is the second write path, for the engine's second exit: a
-``RequestDraft`` becomes a ``requested`` row through ``events.create_request``,
-the same verb a person's request goes through. Only the bot's request branch
-calls it.
+:func:`open_request` is the second write path: a ``RequestDraft`` becomes a ``requested`` row
+through ``events.create_request``. Only the bot's request branch calls it.
 """
 
 from __future__ import annotations
@@ -95,19 +87,15 @@ from app.services.tweet_ingest import (
 
 logger = logging.getLogger(__name__)
 
-# How a caller hands the write path the bytes for one piece of media: maps a
-# ``ParsedMedia`` to ``(bytes, content_type)``, or ``None`` to skip it (missing
-# archive file, untrusted host, fetch failure). The archive backfill reads
-# ``tweets_media/`` from disk; the bot fetches the X CDN.
+# Hands the write path the bytes for one media: ``(bytes, content_type)``, or ``None`` to skip
+# (missing archive file, untrusted host, fetch failure).
 MediaFetcher = Callable[[ParsedMedia], Awaitable[tuple[bytes, str] | None]]
 
-# A media reference → its prepared bytes (or None to skip). Cached per thread so
-# a multi-coordinate thread doesn't fetch / strip / derive identical media once
-# per coordinate.
+# Media reference to prepared bytes (``None`` skips), cached per thread so a multi-coordinate
+# thread prepares identical media once.
 _MediaCache = dict[str, PreparedMedia | None]
 
-# Coordinate-equality tolerance for idempotency — matches the dedup rounding in
-# ``extract_coords`` so the same coordinate doesn't re-detect as a new pair.
+# Coordinate-equality tolerance, matching the dedup rounding in ``extract_coords``.
 _COORD_PLACES = 6
 
 
@@ -115,46 +103,33 @@ _COORD_PLACES = 6
 class Outcome:
     """What one import pass did, row by row.
 
-    The three verdicts carry event ids, in the order the engine produced them,
-    so an entry that answers a single post (the paste, the bot's reply) can
-    point its caller at the detection it landed on, and an entry that counts a whole
-    export reads ``len()``. Ids rather than ORM rows: an export resolves
-    thousands of detections in one pass, no caller reads a column off these, and
-    holding the mapped objects for the whole pass would keep every one of them
-    out of the session's weak identity map until the pass ends.
+    Verdicts carry event ids in engine order, not ORM rows: an export resolves thousands of
+    detections, and holding the mapped objects would pin them out of the weak identity map.
     """
 
     created: list[uuid.UUID] = field(default_factory=list)
-    # An open detection overwritten with a newer parse.
     updated: list[uuid.UUID] = field(default_factory=list)
     # A matched row the import must not touch, or one already up to date.
     skipped: list[uuid.UUID] = field(default_factory=list)
     failed: int = 0  # a detection raised mid-persist and was skipped
-    # What review has to answer on the rows this pass wrote, counted over the
-    # created and updated rows alone: the engine's warnings and the write path's
-    # both. A pass that wrote nothing reports none, since there is no detection to
-    # go and look at. One home, so the bot's reply, the archive's outcome email
-    # and the paste's response read the same numbers.
+    # Review warnings on the rows written (created and updated only), from the engine and the
+    # write path. One home, so the bot reply, archive email and paste response agree.
     warnings: dict[str, int] = field(default_factory=dict)
-    # How many threads the engine refused under each code, as the resolution
-    # counted them.
+    # Threads the engine refused, per code.
     refusals: dict[str, int] = field(default_factory=dict)
 
     @property
     def reason(self) -> str | None:
         """The one refusal to name back to the analyst, or ``None``.
 
-        Set exactly when the pass wrote no row and refused for a single
-        reason, which is every refusal a one-thread entry can have (the bot's
-        failure reply, the paste's response). An export refusing several
-        threads reads :attr:`refusals` instead, so the two never disagree.
+        Set exactly when the pass wrote no row and refused for a single reason. An export
+        refusing several threads reads :attr:`refusals`.
         """
         if self.created or self.updated or self.skipped:
             return None
         return sole_refusal(self.refusals)
 
 
-# What a re-import may do with one detection.
 Verdict = Literal["skip", "create", "upsert"]
 
 
@@ -163,28 +138,17 @@ def _media_type(content_type: str) -> str:
 
 
 def _row_disposition(row: Event) -> Verdict:
-    """What a re-import may do with one matched row. One branch per case.
+    """What a re-import may do with one matched row.
 
-    The whole matrix, in the order it is decided:
-
-    1. An admin removal (``deleted_at``) stays removed. A re-import used to
-       resurrect it, which handed anyone whose export still holds the post a
-       way to undo a takedown.
-    2. A withheld row (``hidden_at``) is frozen for its owner too, whatever its
-       status: the rule ``routers/events/_common.resolve_live_event`` states
-       for every analyst-facing verb, applied here as well.
+    1. An admin removal (``deleted_at``) stays removed, so a re-import cannot undo a takedown.
+    2. A withheld row (``hidden_at``) is frozen for its owner too
+       (``routers/events/_common.resolve_live_event``).
     3. Published work (``geolocated``) is never touched by a machine.
-    4. An open detection is machine-authored working state that no
-       analyst-facing path can edit in place (every field write is welded to
-       the ``geolocated`` promotion), so a newer parse overwrites it.
-    5. A ``closed`` row was judged and thrown out, whichever state it left. A
-       rejected detection stays rejected so nobody rejects the same post twice,
-       a withdrawn request is not the import's to reopen, and a retraction
-       (``closed`` off ``geolocated``) is published work its author took back,
-       so rule 3 keeps holding after the retraction: no machine writes to a row
-       a person published.
-    6. Anything else live (a ``requested`` event matched through its source
-       URL) belongs to a human flow: leave it alone.
+    4. An open detection is machine-authored and no analyst path edits it in place, so a newer
+       parse overwrites it.
+    5. A ``closed`` row (rejected, withdrawn or retracted) is not the import's to reopen.
+    6. Anything else live (a ``requested`` event matched through its source URL) belongs to a
+       human flow.
     """
     if row.deleted_at is not None:
         return "skip"
@@ -200,15 +164,10 @@ def _row_disposition(row: Event) -> Verdict:
 def _match_legs(
     *, tweet_id: int | None, thread_tweet_ids: Sequence[int], source_url: str | None
 ) -> list[ColumnElement[bool]]:
-    """The OR legs a row is recognised by: the provenance, then the source.
+    """The OR legs a row is recognised by (provenance, then source).
 
-    One home for "is this post, or this source, already on a row of mine", read
-    by :func:`_disposition` for a detection and by :func:`_existing_row_for` for
-    a request. The rationale for each leg is in :func:`_disposition`; what this
-    function owns is that both readers ask the same question.
-
-    Empty when the incoming work declares neither a post id, a thread, nor a
-    source: nothing an existing row could be recognised by.
+    Shared by :func:`_disposition` and :func:`_existing_row_for`. Empty when the work declares
+    no post id, thread or source.
     """
     legs: list[ColumnElement[bool]] = []
     if tweet_id is not None:
@@ -228,44 +187,21 @@ def _match_legs(
 
 
 def _disposition(db: Session, owner: User, detection: Detection) -> tuple[Verdict, Event | None]:
-    """Verdict for one detection, with the row it applies to when there is one.
+    """Verdict for one detection, with the row it applies to (only ``create`` has none).
 
-    Scoped to ``owner``: a detection only dedups against the backfiller's own
-    rows. Among those, looks at every row the detection's provenance or its
-    ``source_url`` matches, whatever state that row is in, and matches the
-    coordinate to ``_COORD_PLACES``. Each match is read by
-    :func:`_row_disposition`; a single ``skip`` among them wins, since a row the
-    import must not touch already holds the pair. No match at all creates.
+    Scoped to ``owner``. Matches every row the detection's provenance or ``source_url`` hits,
+    in any state, on the coordinate to ``_COORD_PLACES``. Each match is read by
+    :func:`_row_disposition`, and a single ``skip`` wins. No match creates.
 
-    The provenance leg is the thread's post ids, not a URL and not the anchor
-    alone. Not a URL, because one post spells the same URL several ways
-    (``x.com`` or ``twitter.com``, the handle in any case, the handle-less
-    ``/i/web/status/`` form). Not the anchor alone, because the entries anchor
-    differently on one self-thread: an export stitches A→B→C whole and anchors on
-    A, while a bot tag or a paste on C anchors on the head of what the
-    acquisition read, B for a post carrying content of its own and higher for a
-    bare tag that climbs, so one geolocation imported through two entries would
-    land as two detections. The rows
-    whose thread shares a post with the incoming one are the match, an array
-    overlap, which holds whichever entry ran first. The anchor equality stays for
-    the rows written before the array existed.
+    The provenance leg is the thread's post ids, not a URL (one post spells its URL several
+    ways) and not the anchor alone (entries anchor differently on one self-thread, so one
+    geolocation through two entries would land twice). It is an array overlap, which holds
+    whichever entry ran first. The anchor equality stays for rows written before the array.
 
-    The ``source_url`` leg catches the delete-and-repost duplicate: the analyst
-    posts the same geolocation twice (a typo fix, an X repost), the bot is
-    tagged on both, and the two provenance posts differ while the footage source
-    and coordinate are identical. A source-less detection keeps the provenance-only
-    match: NULL declares nothing, so it can't collide.
-
-    That leg reads the history as well as the live column. The owner of a
-    published row can correct its evidence anchor, and the version filed by that
-    edit is what still carries the URL the row was imported under; matching the
-    live column alone would let a re-import of a hand-submitted post that has
-    since been corrected land as a fresh ``detected`` duplicate of the row it
-    already produced. A redacted version's snapshot is blank, so it names no URL
-    and matches nothing.
-
-    A ``skip`` carries the row that earned it, so a caller answering one post
-    can still name the row its detection landed on. Only ``create`` has no row.
+    The ``source_url`` leg catches delete-and-repost duplicates (same footage and coordinate,
+    different provenance posts). A source-less detection matches on provenance only. The leg
+    reads version history too, since correcting an evidence anchor files a version that still
+    carries the imported URL. A redacted snapshot is blank and matches nothing.
     """
     legs = _match_legs(
         tweet_id=detection.detected_from_tweet_id,
@@ -273,8 +209,7 @@ def _disposition(db: Session, owner: User, detection: Detection) -> tuple[Verdic
         source_url=detection.source_url,
     )
     if not legs:
-        # No post id and no source: the detection declares nothing an existing
-        # row could be recognised by, so it can only be new.
+        # Nothing to recognise an existing row by: it can only be new.
         return "create", None
     rows = (
         db.query(Event)
@@ -282,16 +217,14 @@ def _disposition(db: Session, owner: User, detection: Detection) -> tuple[Verdic
             Event.owner_id == owner.id,
             or_(*legs),
         )
-        # Deterministic pick when several detections hold the pair: the oldest one.
+        # Deterministic pick: the oldest.
         .order_by(Event.created_at, Event.id)
         .all()
     )
     open_row: Event | None = None
     for row in rows:
-        # A ``detected`` row may legitimately carry no coordinate (the model
-        # permits it), and can't match a coordinate-bearing detection anyway, so
-        # skip it rather than let ``to_shape(None)`` raise and abort the whole
-        # re-import for this owner.
+        # A ``detected`` row may have no coordinate; skip it rather than let
+        # ``to_shape(None)`` abort the whole re-import.
         if row.event_coords is None:
             continue
         if not _same_coordinate(row, detection):
@@ -306,7 +239,6 @@ def _disposition(db: Session, owner: User, detection: Detection) -> tuple[Verdic
 
 
 def _same_coordinate(row: Event, detection: Detection) -> bool:
-    """Whether ``row`` sits on the detection's coordinate, to ``_COORD_PLACES``."""
     lat, lng = _projected(row)
     return round(lat, _COORD_PLACES) == round(detection.coordinate.lat, _COORD_PLACES) and round(
         lng, _COORD_PLACES
@@ -316,12 +248,10 @@ def _same_coordinate(row: Event, detection: Detection) -> bool:
 async def _prepared_media(
     parsed: ParsedMedia, fetch_media: MediaFetcher, cache: _MediaCache
 ) -> PreparedMedia | None:
-    """Fetch + validate + strip/derive one media, memoised in ``cache``.
+    """Fetch, validate and prepare one media, memoised in ``cache``; ``None`` skips it.
 
-    Returns the prepared bytes, or ``None`` to skip (missing file, invalid
-    type/size, or undecodable image) — a detection persists media-incomplete
-    rather than failing. The strip + derivative work is the expensive part; the
-    cache amortises it across a thread's coordinate rows, which share media.
+    Unusable media (missing file, bad type or size, undecodable) skips rather than failing the
+    detection.
     """
     if parsed.remote_url in cache:
         return cache[parsed.remote_url]
@@ -333,10 +263,8 @@ async def _prepared_media(
             validate_bytes(data, content_type)
             prepared = await asyncio.to_thread(prepare_media, data, content_type)
         except ValueError:
-            # ValueError is the unusable-media surface: validate_bytes (bad
-            # type / size) + EvidenceProcessingError (undecodable image) both
-            # subclass it. A broader catch would swallow real bugs as a silent
-            # media skip across a whole archive.
+            # validate_bytes and EvidenceProcessingError both subclass ValueError; a broader
+            # catch would hide real bugs as silent media skips.
             logger.warning("Skipping unusable detection media %s", parsed.remote_url)
             prepared = None
     cache[parsed.remote_url] = prepared
@@ -345,12 +273,10 @@ async def _prepared_media(
 
 @dataclass(frozen=True)
 class _ResolvedMedia:
-    """One piece of a detection's media, fetched and prepared, not yet stored.
+    """One media fetched and prepared, not yet stored.
 
-    Resolving before touching the row is what lets the upsert answer "are these
-    the bytes already on the event?" without uploading anything: ``sha256`` is
-    the same digest :func:`storage.upload_prepared_media` would persist on the
-    ``Media`` row, so the comparison is a string compare.
+    ``sha256`` matches what :func:`storage.upload_prepared_media` persists, so the upsert
+    compares bytes without uploading.
     """
 
     role: MediaRole
@@ -360,14 +286,10 @@ class _ResolvedMedia:
 
 @dataclass(frozen=True)
 class _DetectionMedia:
-    """What one detection's media resolved to, and whether any of it went missing.
+    """A detection's resolved media; ``complete`` is False when declared media failed to fetch.
 
-    ``complete`` is False when the post declares media the fetch could not
-    turn into bytes: a source slot nothing filled, or a proof image that came
-    back short. The create path stores ``items`` either way, since a detection
-    persists media-incomplete rather than failing. The upsert reads
-    ``complete``, because a short list there is indistinguishable from "the
-    post lost its media" and would delete what the row already holds.
+    The create path stores ``items`` regardless. The upsert reads ``complete``, because a short
+    list is indistinguishable from "the post lost its media" and would delete what the row holds.
     """
 
     items: list[_ResolvedMedia]
@@ -377,15 +299,11 @@ class _DetectionMedia:
 async def _resolve_media(
     detection: Detection, fetch_media: MediaFetcher, media_cache: _MediaCache
 ) -> _DetectionMedia:
-    """The media a detection wants stored, in the order the row should hold it.
+    """The media a detection wants stored, in row order, marked incomplete if any went missing.
 
-    The footage in the source slot, capped at one
-    (``uq_media_source_per_event``): the first source media that fetches and
-    prepares cleanly. Then the analyst's annotation (role=proof), several per
-    event, no cap. Anything that fetches short or prepares badly drops out and
-    the result is marked incomplete: a detection persists media-incomplete
-    rather than failing, and a re-import reads the mark before it replaces
-    anything.
+    Source slot first: the first source media that prepares cleanly (cap one,
+    ``uq_media_source_per_event``). Then proof images, no cap. A re-import reads the incomplete
+    mark before replacing anything.
     """
     resolved: list[_ResolvedMedia] = []
     source_filled = False
@@ -396,14 +314,11 @@ async def _resolve_media(
         resolved.append(_ResolvedMedia("source", prepared, content_sha256(prepared.cleaned)))
         source_filled = True
         break
-    # A declared source whose every candidate came back short: the slot the post
-    # asks for is empty, so the resolution is short of what the post carries.
+    # A declared source whose every candidate failed leaves the slot empty.
     missing = bool(detection.source_media) and not source_filled
     for parsed in detection.proof_media:
-        # Invariant: every proof row is referenced by the proof doc, and only
-        # image nodes go into it, so a non-image proof media would be an
-        # orphaned, unreadable blob. Skip it rather than persist bytes the read
-        # can never surface. Not a miss: nothing could ever store it.
+        # The proof doc holds image nodes only, so a non-image proof media would be an
+        # unreadable orphan. Not a miss: nothing could ever store it.
         if parsed.kind != "image":
             continue
         prepared = await _prepared_media(parsed, fetch_media, media_cache)
@@ -419,15 +334,12 @@ async def _store_media(
 ) -> list[str]:
     """Upload ``resolved`` and add the ``Media`` rows; returns the proof image URLs.
 
-    Appends every landed key to ``uploaded_keys`` so a caller whose transaction
-    fails can sweep what it stranded.
+    Appends landed keys to ``uploaded_keys`` so a failed transaction can sweep them.
     """
     storage = get_storage()
     proof_image_urls: list[str] = []
     for item in resolved:
-        # Each event owns its own S3 objects (own key) so a per-event
-        # hard-delete sweep can't orphan a sibling's media: the cache shares
-        # the prepared bytes, not the keys.
+        # Each event owns its S3 objects so a hard-delete sweep can't orphan a sibling's media.
         result = await upload_prepared_media(
             item.prepared, detected_media_key(geo.id, item.prepared.content_type)
         )
@@ -451,11 +363,9 @@ async def _store_media(
 
 
 def _proof_doc(detection: Detection, proof_image_urls: list[str]) -> dict[str, Any]:
-    """The row's proof document: the post's cleaned text, then its proof images.
+    """The row's proof document: cleaned post text, then proof images as image nodes.
 
-    Proof images travel inside the proof JSON as image nodes (that is how the
-    read surfaces them, unlike source media in ``media``), so the document and
-    the ``role=proof`` rows are written from one place and cannot drift.
+    One writer for the document and the ``role=proof`` rows, so they cannot drift.
     """
     doc = tiptap_doc_from_text(detection.proof_text)
     if proof_image_urls:
@@ -466,7 +376,6 @@ def _proof_doc(detection: Detection, proof_image_urls: list[str]) -> dict[str, A
 
 
 def _proof_image_nodes(doc: dict[str, Any]) -> list[dict[str, Any]]:
-    """The image nodes a stored proof document carries, in document order."""
     return [
         node
         for node in doc.get("content", [])
@@ -492,10 +401,8 @@ async def _persist_one(
             event_coords=from_shape(
                 Point(detection.coordinate.lng, detection.coordinate.lat), srid=4326
             ),
-            # The declared footage source (the quoted tweet or an off-platform
-            # link), distinct from the ``detected_from_url`` provenance link.
-            # NULL when the tweet declared none: a detection is partial
-            # by definition; the geolocate promotion requires the source.
+            # The declared footage source, distinct from the ``detected_from_url`` provenance.
+            # NULL when none declared: the geolocate promotion requires it.
             source_url=detection.source_url,
             proof=_proof_doc(detection, []),
             event_date=detection.event_date,
@@ -503,10 +410,8 @@ async def _persist_one(
             status=STATUS_DETECTED,
             detected_at=datetime.now(UTC),
         )
-        # Provenance, written once and through the one home both write paths
-        # read: the post and thread the detection came from, when it was posted,
-        # and the entry that read it. A re-import through another entry moves
-        # none of it (see :func:`_apply_import_fields`).
+        # Provenance, written once through the home both write paths read (see
+        # :func:`_apply_import_fields`).
         stamp_provenance(
             geo,
             ImportProvenance(
@@ -517,8 +422,7 @@ async def _persist_one(
                 post_at=detection.detected_post_at,
             ),
         )
-        # The mirrors the post also linked. Already normalized + capped by the
-        # resolution, so no second pass here.
+        # Already normalized and capped by the resolution.
         geo.source_links = build_source_link_rows(detection.secondary_source_urls)
         db.add(geo)
         db.flush()  # populate geo.id for media keys + the Media FK
@@ -528,28 +432,21 @@ async def _persist_one(
             geo.proof = _proof_doc(detection, proof_image_urls)  # reassign flags the JSONB dirty
         db.commit()
     except Exception:
-        # Explicit rollback before the sweep so an autoflush in a downstream
-        # handler can't resurrect the half-added Media rows.
+        # Roll back before the sweep so an autoflush can't resurrect the half-added Media rows.
         db.rollback()
         sweep_keys(uploaded_keys, context=f"detection persist {detection.detected_from_url}")
         raise
-    # No post-commit refresh: a refresh failure here would misclassify an
-    # already-durable row as failed. The geo's attributes lazy-load from the
-    # still-open session on access.
-    #
-    # No source archival here: a detected row is unpublished working state and
-    # Save Page Now is public and timestamped. The links are enqueued when the
-    # analyst publishes the detection (``events.geolocate``).
+    # No post-commit refresh: a failure would misclassify a durable row as failed.
+    # No source archival: a detected row is unpublished and Save Page Now is public. Links are
+    # enqueued on publish (``events.geolocate``).
     return geo
 
 
 def _media_unchanged(stored: list[Media], resolved: list[_ResolvedMedia]) -> bool:
-    """Whether the row already holds exactly the media the detection resolved to.
+    """Whether the row holds exactly the media the detection resolved to.
 
-    Compared by ``(role, sha256)`` as a multiset: the S3 keys carry a fresh
-    ``uuid4`` per upload, so identity is the content, never the URL. A row
-    predating the ``sha256`` column compares unequal and is replaced, which is
-    the safe direction.
+    Compared by ``(role, sha256)`` as a multiset, since S3 keys carry a fresh ``uuid4`` per
+    upload. A row predating ``sha256`` compares unequal and is replaced (the safe direction).
     """
     if len(stored) != len(resolved):
         return False
@@ -559,18 +456,12 @@ def _media_unchanged(stored: list[Media], resolved: list[_ResolvedMedia]) -> boo
 
 
 def _apply_import_fields(db: Session, row: Event, detection: Detection) -> tuple[bool, bool]:
-    """Write the scalar state the import owns onto ``row``.
+    """Write the scalar state the import owns onto ``row``; returns ``(changed, source_url_changed)``.
 
-    Returns ``(changed, source_url_changed)``. Every field is compared before it
-    is assigned, so a re-import of an unchanged post dirties no attribute and
-    SQLAlchemy emits no UPDATE, which is what keeps ``updated_at`` still.
-    ``id``, ``owner_id``, ``created_at``, ``detected_at``, ``status`` and the
-    four provenance columns (``detected_from_tweet_id``, ``detected_from_url``,
-    ``detected_thread_tweet_ids``, ``detected_via``) are not the import's to
-    move: the row keeps its identity, its place in the queue, the thread it was
-    read from and the entry that first read it. A bot tag over a detection the
-    archive created therefore updates the detection and still reads ``archive``,
-    which is what happened.
+    Each field is compared before assignment, so an unchanged re-import emits no UPDATE and
+    ``updated_at`` stays still. ``id``, ``owner_id``, ``created_at``, ``detected_at``,
+    ``status`` and the four provenance columns are not the import's to move (a bot tag over an
+    archive detection still reads ``archive``).
     """
     changed = False
     if _projected(row) != (detection.coordinate.lat, detection.coordinate.lng):
@@ -613,41 +504,29 @@ async def _upsert_one(
 ) -> bool:
     """Overwrite an open detection's import-owned state; ``True`` when anything moved.
 
-    What the import owns it rewrites: the title, the coordinate, the event
-    date, the source URL and its mirrors, both post instants, the proof
-    document and the media. What the row is keeps: its id, its owner, when it
-    was created and detected, the post it was detected from, and the archived
-    copies an analyst recorded against links it still carries
-    (:func:`source_archive.reconcile_source_archive` re-files or drops only the
-    copy filed as the source when the source URL moves).
+    Rewrites title, coordinate, event date, source URL and mirrors, both post instants, proof
+    document and media. Keeps id, owner, created and detected times, provenance, and archived
+    copies an analyst recorded (:func:`source_archive.reconcile_source_archive` re-files or
+    drops only the source copy when the source URL moves).
 
-    Commit-then-sweep, the discipline every delete path follows
-    (:func:`storage.sweep_keys`): media the upsert replaced is dropped from S3
-    only once the transaction that dropped its rows has landed, and media the
-    upsert uploaded is swept when that transaction fails instead.
+    Commit-then-sweep (:func:`storage.sweep_keys`): replaced media leaves S3 only after the
+    transaction lands, and fresh uploads are swept if it fails.
 
-    Media the fetch could not resolve leaves the row's media untouched. A CDN
-    that answers nothing for a minute produces the same empty resolution as a
-    post whose media is gone, and the two must not read alike: replacing on the
-    short list would delete the stored rows and sweep their objects for a
-    failure that clears on its own.
+    Media the fetch could not resolve leaves stored media untouched: a CDN outage looks like a
+    post whose media is gone, and replacing would delete rows for a failure that clears itself.
     """
     media_resolution = await _resolve_media(detection, fetch_media, media_cache)
     resolved = media_resolution.items
-    # Re-read the row under a lock and re-run the matrix on it, the same guard
-    # ``events.geolocate`` takes: the disposition was decided on an unlocked
-    # read, and the owner may have published, rejected or been taken down
-    # since. Nothing to do then, which reads as "the import left it alone".
+    # Re-read under a lock and re-run the matrix, as ``events.geolocate`` does: the owner may
+    # have published, rejected or been taken down since the unlocked read.
     db.query(Event).filter(Event.id == row.id).populate_existing().with_for_update().one()
     if _row_disposition(row) != "upsert":
         db.rollback()  # drop the lock; a scan of unchanged rows must not hoard them
         return False
     stored = list(row.media)
     if stored and not media_resolution.complete:
-        # Keep what the row holds: the fetch came back short of what the post
-        # declares, so there is nothing here that could tell an outage from a
-        # deletion. The other fields still update, and a pass that moves
-        # nothing else counts the row skipped.
+        # The fetch came back short, so an outage is indistinguishable from a deletion: keep
+        # the stored media.
         logger.warning(
             "Keeping stored media on %s: the re-import resolved none of %s",
             row.id,
@@ -657,9 +536,8 @@ async def _upsert_one(
     else:
         reuse_media = _media_unchanged(stored, resolved)
         if reuse_media:
-            # Defence for the one shape the equality above cannot see: proof
-            # rows whose image nodes are missing from the document. Rewriting
-            # the text around them would strand the rows, so replace instead.
+            # Proof rows whose image nodes are missing from the document: replace them rather
+            # than strand them.
             image_nodes = _proof_image_nodes(row.proof)
             reuse_media = len(image_nodes) == sum(1 for item in resolved if item.role == "proof")
     uploaded_keys: list[str] = []
@@ -667,8 +545,7 @@ async def _upsert_one(
     try:
         changed, source_url_changed = _apply_import_fields(db, row, detection)
         if source_url_changed:
-            # Before the new proof lands, matching ``events.geolocate``: the
-            # reconcile reads the links the row carries at that moment.
+            # Before the new proof lands, matching ``events.geolocate``.
             reconcile_source_archive(db, event=row)
         if reuse_media:
             proof_image_urls = [str(node["attrs"]["src"]) for node in _proof_image_nodes(row.proof)]
@@ -676,9 +553,8 @@ async def _upsert_one(
             replaced_keys = collect_media_keys(stored)
             for media in stored:
                 db.delete(media)
-            # Flush the deletes first: SQLAlchemy emits a mapper's inserts ahead
-            # of its deletes, and a replacement source media would collide on
-            # ``uq_media_source_per_event`` mid-flush.
+            # Flush deletes first: inserts run before deletes, and a replacement source media
+            # would collide on ``uq_media_source_per_event``.
             db.flush()
             proof_image_urls = await _store_media(db, row, resolved, uploaded_keys)
             changed = True
@@ -687,10 +563,7 @@ async def _upsert_one(
             row.proof = doc
             changed = True
         if not changed:
-            # Nothing dirtied, so nothing to commit: the row keeps its
-            # ``updated_at`` and the bucket keeps its objects. Roll back anyway,
-            # to drop the row lock the re-read took; a re-import of an unchanged
-            # export would otherwise hold one per row for the whole scan.
+            # Nothing dirtied. Roll back to drop the row lock the re-read took.
             db.rollback()
             return False
         db.commit()
@@ -702,10 +575,8 @@ async def _upsert_one(
     return True
 
 
-# How many ids one ``IN (...)`` list carries. An export writes thousands of rows
-# in a pass, and a single bind list that long is what makes a planner give up on
-# the index and what some drivers refuse outright. Chunking keeps the two
-# post-pass queries flat in the number of rows the pass wrote.
+# Ids per ``IN (...)`` list: a bind list of thousands defeats the planner's index use and some
+# drivers refuse it.
 _ID_CHUNK = 500
 
 
@@ -715,11 +586,7 @@ def _id_chunks(ids: list[uuid.UUID]) -> Iterator[list[uuid.UUID]]:
 
 
 def _rows_without_footage(db: Session, ids: list[uuid.UUID]) -> set[uuid.UUID]:
-    """The rows carrying no ``role=source`` media.
-
-    Read off the durable rows rather than off what the fetch resolved, so the
-    warning says what the analyst will actually find on the detection.
-    """
+    """The rows carrying no ``role=source`` media, read off the durable rows."""
     stored: set[uuid.UUID] = set()
     for chunk in _id_chunks(ids):
         stored.update(
@@ -734,10 +601,8 @@ def _rows_without_footage(db: Session, ids: list[uuid.UUID]) -> set[uuid.UUID]:
 def _rows_with_duplicate_media(db: Session, ids: list[uuid.UUID]) -> set[uuid.UUID]:
     """The rows whose media already exists on an event outside this pass.
 
-    Exact ``Media.sha256`` equality; perceptual near-duplicate matching is a
-    separate feature. The pass's own rows are excluded from the comparison, so a
-    thread's several coordinate detections, which share one media, never flag each
-    other.
+    Exact ``Media.sha256`` equality. The pass's own rows are excluded so a thread's coordinate
+    detections, which share one media, never flag each other.
     """
     mine: list[tuple[uuid.UUID, str]] = []
     for chunk in _id_chunks(ids):
@@ -752,9 +617,8 @@ def _rows_with_duplicate_media(db: Session, ids: list[uuid.UUID]) -> set[uuid.UU
         return set()
     own = set(ids)
     shas = sorted({sha for _event_id, sha in mine})
-    # The pass's own rows are dropped in Python rather than through a ``NOT IN``
-    # over every id it wrote: that exclusion list is the whole pass, which is the
-    # bind list the chunking exists to avoid.
+    # Drop the pass's own rows in Python: a ``NOT IN`` over every id is the bind list the
+    # chunking avoids.
     elsewhere: set[str] = set()
     for start in range(0, len(shas), _ID_CHUNK):
         for sha, event_id in db.query(Media.sha256, Media.event_id).filter(
@@ -768,10 +632,7 @@ def _rows_with_duplicate_media(db: Session, ids: list[uuid.UUID]) -> set[uuid.UU
 def _engine_warnings(persisted: list[tuple[uuid.UUID, Detection]]) -> dict[str, int]:
     """The engine's warnings, counted over the detections that produced a row.
 
-    ``Resolution.warnings`` counts every detection the engine read. The rows the
-    pass wrote are the denominator the analyst can act on: a re-import that
-    overwrote nothing leaves no detection to go and look at, so it must not report
-    a source to pick or a coordinate to split.
+    A re-import that overwrote nothing must not report a source to pick or a coordinate to split.
     """
     counts: dict[str, int] = {}
     for _event_id, detection in persisted:
@@ -781,12 +642,7 @@ def _engine_warnings(persisted: list[tuple[uuid.UUID, Detection]]) -> dict[str, 
 
 
 class _WarningSubject(Protocol):
-    """What :func:`_write_warnings` reads off the engine work behind one row.
-
-    Both engine exits carry all three as plain fields. The protocol is what lets
-    one function answer for both, instead of each write path composing codes
-    itself.
-    """
+    """What :func:`_write_warnings` reads off the engine work behind one row."""
 
     @property
     def warnings(self) -> list[str]: ...
@@ -803,28 +659,11 @@ def _write_warnings(
 ) -> dict[str, int]:
     """The warnings only the write path can raise, counted per row it wrote.
 
-    The engine says what it could not settle from the post; these say what the
-    row ended up with: no footage was stored from the declared source (a
-    link-only source, a media-less or restricted source post, or a fetch that
-    came back short), the source's post date came back unknown, and the row's
-    media is already on Vidit. Review is the repair for all of them, so they
-    read as warnings beside the engine's and are counted the same way.
-
-    Both write paths read it: :func:`persist_detections` over the rows a pass
-    wrote, :func:`open_request` over the one row a request wrote. A request's
-    source slot is filled by construction, so the footage leg never fires there
-    and the date and duplicate legs are what it reads.
-
-    A footage-less row whose chase failed on an upstream that would not answer
-    (``subject.source_fetch_failed``, the retry schedule already spent) raises
-    ``SOURCE_FETCH_FAILED`` instead: the footage may well exist, so importing the
-    post again later is a repair, which it is not for a source that simply
-    carries none. A request row is never footage-less by construction, so this
-    leg is reachable only through ``Detection``.
-
-    The footage and date warnings are dropped on a row whose engine work already
-    carries ``SOURCE_MISSING`` or ``SOURCE_AMBIGUOUS``: an empty source slot
-    already says why there is neither footage nor date.
+    No footage stored from the declared source (``SOURCE_FETCH_FAILED`` when the upstream would
+    not answer, else ``SOURCE_FOOTAGE_MISSING``), source post date unknown, and media already on
+    Vidit. The footage and date warnings are dropped on a row whose engine work carries
+    ``SOURCE_MISSING`` or ``SOURCE_AMBIGUOUS``. Both write paths read it; a request row is never
+    footage-less, so the footage legs are reachable only through ``Detection``.
     """
     counts: dict[str, int] = {}
     if not persisted:
@@ -857,58 +696,34 @@ async def persist_detections(
     fetch_media: MediaFetcher,
     on_progress: Callable[[int, int], None] | None = None,
 ) -> Outcome:
-    """Persist each of the resolution's detections as a ``detected`` ``Event``
-    owned by ``owner``.
+    """Persist each of the resolution's detections as a ``detected`` ``Event`` owned by ``owner``.
 
-    The one write path, and every entry runs it over what
-    ``tweet_ingest.resolve_threads`` handed back: the bot and the paste over the
-    single thread they acquired, the archive over every stitched self-thread of
-    an export. ``owner`` is the importer, the account whose verified handle the
-    posts belong to; every row is attributed to it.
+    The one write path for every entry (bot, paste, archive). ``owner`` is the importer, the
+    account whose verified handle the posts belong to. ``via`` stamps every created row
+    (``events.detected_via``); an upsert leaves it alone.
 
-    ``via`` names the entry, and every row this pass creates is stamped with it
-    (``events.detected_via``). An upsert leaves it where it was: it says which
-    entry first read the post, not which one last touched the row.
+    A detection is matched on its provenance (the thread's post ids) or its ``source_url``,
+    plus the coordinate, across states, then dispatched by :func:`_row_disposition`. A second
+    pass over the same export writes nothing and counts as ``skipped``.
 
-    A detection is matched on its provenance (the thread's post ids) or its
-    ``source_url``, plus the coordinate, across states, then dispatched by the
-    disposition matrix (see :func:`_row_disposition`): an open detection
-    takes the newer parse in place, every other match is left untouched, and only
-    an unmatched detection creates a row. A second pass over the same export
-    therefore writes nothing at all and counts as ``skipped``, not ``updated``,
-    and so does the same thread arriving through another entry.
+    Each detection commits in its own transaction: a raise is caught, counted in
+    ``outcome.failed``, rolled back, and the loop moves on, so one failure neither loses the
+    others nor strands S3 objects. A detection may carry no media.
 
-    Each detection commits in its own transaction so one failure neither loses the
-    others nor strands S3 objects: a raise is caught, counted in
-    ``outcome.failed``, rolled back, and the loop moves on. A detection may carry no
-    media, since a ``detected`` row can be media-incomplete until its owner
-    completes it before validating.
-
-    The outcome carries the created, updated and skipped ids, the warnings
-    review has to answer on the rows the pass wrote, and the resolution's one
-    count per refusal code. A caller that resolved a single thread reads
-    ``outcome.reason`` for the one code to name back.
-
-    ``on_progress(done, total)`` fires after every handled detection (skips and
-    failures included: the analyst-facing meaning is "position in the scan").
-    The resolution is already complete, so the total is exact from the first
-    call. Called between per-row transactions, so a callback that commits on the
-    same session never splits one.
+    ``on_progress(done, total)`` fires after every handled detection (skips and failures
+    included), between per-row transactions, so a callback that commits on the same session
+    never splits one.
     """
     detections = resolution.detections
     outcome = Outcome(refusals=resolution.refusals)
-    # The id of every row this pass wrote, with the detection it was written from,
-    # so the write path's own warnings can be read off both at the end.
+    # Every row written, with its detection, for the write-path warnings.
     persisted: list[tuple[uuid.UUID, Detection]] = []
-    # Media cache scoped to the current thread: the engine emits a thread's
-    # coordinate detections contiguously sharing one ``detected_from_url`` + media,
-    # so resetting on a URL change bounds the cached bytes to one thread.
+    # Cache scoped to the current thread: a thread's detections are contiguous and share media.
     cache_url: str | None = None
     media_cache: _MediaCache = {}
     total = len(detections)
     if on_progress is not None:
-        # Announce the exact total up front (0 / N), so even a detection-less
-        # archive stamps it and the caller's display leaves the estimate.
+        # Announce the exact total up front (0 / N).
         on_progress(0, total)
     for index, detection in enumerate(detections, start=1):
         if detection.detected_from_url != cache_url:
@@ -959,29 +774,17 @@ async def persist_detections(
         for code, count in counts.items():
             outcome.warnings[code] = outcome.warnings.get(code, 0) + count
     if outcome.created or outcome.updated:
-        # A ``detected`` row is public from the moment it lands, so ``/points``
-        # must not keep serving a map without it for the cache's TTL. Once for
-        # the whole pass, not per row: an export writes thousands, and the cache
-        # is process-local and cheap to drop. Every human write invalidates the
-        # same way (``services/events``, ``routers/admin``, ``routers/events``).
+        # A ``detected`` row is public on landing, so drop the ``/points`` cache, once per pass.
         points_cache.invalidate()
     return outcome
 
 
 def _existing_row_for(db: Session, owner: User, draft: RequestDraft) -> Event | None:
-    """The row ``owner`` already holds for the draft's post or its source.
+    """The row ``owner`` already holds for the draft's post or source, oldest first.
 
-    The same legs a detection matches on (:func:`_match_legs`), minus the
-    coordinate, which a request has none of. Any match at all blocks the
-    request, a soft-deleted one aside: the analyst already holds something for
-    that post or that footage, and a request is not the machine's to open
-    beside it. Oldest first, so a repeat mention names the same row every time.
-
-    Soft-deleted rows are excluded, unlike the detections' own match
-    (:func:`_row_disposition`, where a ``deleted_at`` row is exactly what must
-    stay deleted): nothing here would be written onto the matched row, so a
-    takedown that also fenced the owner off from ever mirroring that footage
-    again would be a silent second penalty rather than a protection.
+    Same legs as detections (:func:`_match_legs`) minus the coordinate. Soft-deleted rows are
+    excluded, unlike :func:`_row_disposition`: nothing is written onto the match, so a takedown
+    must not also fence the owner off from mirroring that footage again.
     """
     legs = _match_legs(
         tweet_id=draft.detected_from_tweet_id,
@@ -998,13 +801,10 @@ def _existing_row_for(db: Session, owner: User, draft: RequestDraft) -> Event | 
 
 @dataclass
 class RequestOutcome:
-    """What one request draft did: a row written, a row already held, or neither.
+    """A row written, a row already held, or neither.
 
-    At most one of ``created`` / ``existing`` carries an id, and ``refusal``
-    carries a ``REFUSAL_MESSAGES`` code instead when neither does and the
-    machine can say why. ``warnings`` is what review has to answer on a row that
-    landed, worded by the same ``WARNING_MESSAGES`` table every other surface
-    reads.
+    At most one of ``created`` / ``existing`` is set. ``refusal`` is a ``REFUSAL_MESSAGES`` code
+    when neither is and the machine can say why. ``warnings`` use ``WARNING_MESSAGES``.
     """
 
     created: uuid.UUID | None = None
@@ -1022,49 +822,25 @@ async def open_request(
 ) -> RequestOutcome | None:
     """Write one :class:`RequestDraft` as a ``requested`` row owned by ``owner``.
 
-    The second write path, beside :func:`persist_detections`, and the bot's
-    request branch is its one caller. The row is born the way a person's
-    request is born, through ``events.create_request``: ``owner_id`` and
-    ``requested_by_id`` are both the linked owner, ``requested_at`` is stamped,
-    the source is the original the mirror post pointed at, and the footage the
-    thread carried is its one ``role=source`` media. What the machine adds is
-    the provenance (:class:`events.ImportProvenance`, ``detected_via='bot'``),
-    so a second mention of the same post recognises the row.
+    The bot's request branch is the one caller. The row is born through
+    ``events.create_request`` like a person's request, plus provenance (``detected_via='bot'``)
+    so a second mention recognises it. The footage is the draft's ordered candidates; the first
+    that fetches fills the source slot, passed as an ``UploadFile`` so the evidence intake
+    validates it like an upload.
 
-    What a re-tag does depends on what it carries. A coordinate-less re-tag, of
-    the same post or of a repost of it, lands on the row through
-    :func:`_existing_row_for` and moves nothing: the tag is answered with
-    silence, the verdict every dedup earns. A coordinate-bearing tag on the same
-    source is a geolocation, so it takes the detections' path and lands a
-    ``detected`` row beside the open request: :func:`_row_disposition` leaves a
-    ``requested`` row alone, because it belongs to a human flow and no machine
-    writes into one. The request stays its owner's to withdraw.
+    A coordinate-less re-tag lands on the existing row through :func:`_existing_row_for` and
+    moves nothing. A coordinate-bearing tag on the same source takes the detections' path and
+    lands a ``detected`` row beside the open request (:func:`_row_disposition` leaves a
+    ``requested`` row alone).
 
-    The row that lands carries the warnings a request can earn, read entirely off
-    :func:`_write_warnings`, the same pass the detections run: ``SOURCE_DATE_UNKNOWN``
-    when the chase served no date, and ``DUPLICATE_MEDIA`` off the same
-    comparison. The engine contributes none of its own: a request is born with a
-    source and the footage filling its source slot, so neither
-    ``SOURCE_FETCH_FAILED`` nor ``SOURCE_FOOTAGE_MISSING`` ever reaches the
-    analyst, even when the chase came back with nothing to take, since the
-    analyst's own copy backs the slot instead.
+    Warnings come entirely from :func:`_write_warnings`. The engine adds none, and the footage
+    warnings never apply since the slot is filled by construction.
 
-    The footage is the draft's ordered candidates, and the first that fetches
-    fills the slot: the source's media, then the analyst's own video. The bytes
-    go to ``events.create_request`` as an ``UploadFile``, so the evidence intake
-    validates and prepares them exactly as it does a person's upload.
+    ``None`` means nothing was written and there is nothing to name (no candidate fetched, or
+    the write raised): the caller degrades to the refusal reply, and a re-tag retries. An intake
+    that refused the file returns ``refusal=FOOTAGE_UNUSABLE`` instead.
 
-    ``None`` means "nothing was written, nothing was held and there is nothing
-    to name": no candidate fetched, or the write raised. The caller degrades to
-    the refusal a coordinate-less thread has always earned, and a re-tag
-    retries. An intake that refused the file is named instead, through
-    ``refusal`` carrying ``FOOTAGE_UNUSABLE``: a clip over the video size cap is
-    not a post with no coordinate, and telling the analyst so is what points them
-    at opening the request by hand instead, since no row exists yet for them to
-    open at review.
-
-    The map is not invalidated: a ``requested`` row carries no coordinate, so
-    ``/points`` never served it.
+    The map cache is not invalidated: a ``requested`` row has no coordinate.
     """
     existing = _existing_row_for(db, owner, draft)
     if existing is not None:
@@ -1109,11 +885,8 @@ async def open_request(
             ),
         )
     except EvidenceIntakeError:
-        # The intake refused the file or the proof (a clip over the size cap,
-        # bytes nothing could read, a proof that would not sanitise). Roll back
-        # what ``create_request`` staged before it raised, the event row and its
-        # source-link rows, since the caller's next act is the ledger commit and
-        # a half-built row must not ride it.
+        # Roll back what ``create_request`` staged (event row, source links) so it does not
+        # ride the caller's ledger commit.
         logger.warning(
             "The request drafted from %s was refused by the evidence intake",
             draft.detected_from_url,
@@ -1122,38 +895,21 @@ async def open_request(
         db.rollback()
         return RequestOutcome(refusal=FOOTAGE_UNUSABLE)
     except Exception:
-        # The net :func:`persist_detections` puts around every row it writes: a
-        # storage or database failure here is transient, and burning the mention
-        # as ``failed`` would cost the analyst both the row and the answer. Log,
-        # roll back, and let the caller degrade to the refusal reply, which a
-        # re-tag retries.
+        # Transient storage or database failure: log, roll back, and let the caller degrade to
+        # the refusal reply (a re-tag retries).
         logger.exception("The request drafted from %s failed to write", draft.detected_from_url)
         db.rollback()
         return None
-    # The engine drafts a request with no warnings of its own (a request is
-    # always born with a source and the footage filling its slot), so the write
-    # path is the whole answer here: the same function the detections run,
-    # which is also where the duplicate comparison lives. Mirroring is exactly
-    # how the same clip reaches Vidit twice, so the code a detection raises for
-    # it is the code a request raises for it, computed by one function rather
-    # than two.
+    # The engine drafts a request with no warnings, so the write path is the whole answer.
     warnings = list(_write_warnings(db, [(row.id, draft)]))
     return RequestOutcome(created=row.id, warnings=warnings)
 
 
 def linked_owner(db: Session, handle: str) -> User | None:
-    """The live Vidit account whose ``x_handle`` is ``handle``, or ``None``.
+    """The live Vidit account whose ``x_handle`` is ``handle`` (case-insensitive), or ``None``.
 
-    The one map from an X handle to the account a machine import may attribute
-    to, read by the bot on each mention's author and by :func:`import_pasted_post`
-    on the pasted post's author. Case-insensitive: ``users.x_handle`` is stored
-    lowercase (``schemas/admin.normalize_x_handle``) and X spells a screen name
-    however its owner typed it.
-
-    An import never mints users: attribution requires an existing account whose
-    handle was linked (invite-bound at registration, or the admin PATCH). A
-    soft-deleted or deactivated account does not count, since its work is hidden
-    or suspended, so new detections and billed replies must not land under it.
+    ``users.x_handle`` is stored lowercase. An import never mints users, and a soft-deleted or
+    deactivated account does not count: its work is hidden or suspended.
     """
     return (
         db.query(User)
@@ -1167,12 +923,7 @@ def linked_owner(db: Session, handle: str) -> User | None:
 
 
 class NotYourPost(RuntimeError):
-    """The pasted post is not the caller's own.
-
-    Raised by :func:`import_pasted_post` when the caller has no linked
-    ``x_handle`` or when the post's author is a different handle. Carries the
-    stable ``code`` the router turns into its 400.
-    """
+    """The pasted post is not the caller's own; ``code`` is what the router turns into its 400."""
 
     code = "not_your_post"
 
@@ -1184,25 +935,16 @@ async def import_pasted_post(
     url: str,
     client: httpx.Client | None = None,
 ) -> Outcome:
-    """The paste entry: acquire the post at ``url``, then resolve and persist.
+    """Acquire the post at ``url``, then resolve and persist (the paste entry).
 
-    Own posts only, the bot's rule: the post's author must resolve to ``owner``
-    through :func:`linked_owner`, the same map the bot reads on a mention's
-    author, else :class:`NotYourPost`. Someone else's footage goes through the
-    plain submit form with a ``source_url``. The handle is checked before the
-    fetch when the account has none, so an unlinked caller never spends the
-    shared syndication budget.
+    Own posts only: the author must resolve to ``owner`` through :func:`linked_owner`, else
+    :class:`NotYourPost`. The post is read alone and its author checked before the rest of the
+    acquisition (parents leg, chase), so a linked account pasting a stranger's post cannot drive
+    syndication reads of third-party posts on the shared budget. An unlinked caller is refused
+    before any fetch.
 
-    The pasted post is read alone and its author checked before the rest of the
-    acquisition runs: the parents leg (one hop, or the climb above a bare tag)
-    and the chase each fetch posts the pasted URL only points at, so a linked
-    account pasting a stranger's post would otherwise drive syndication reads of
-    third-party posts on the shared budget.
-
-    Raises what the acquisition raises (``InvalidTweetUrl`` on a URL that names
-    no post, ``TweetNotAccessible`` when X serves nothing, ``TweetFetchFailed``
-    / ``TweetUpstreamBusy`` on an unusable upstream). The optional ``client`` is
-    for tests (an ``httpx.Client`` on a ``MockTransport``).
+    Raises what the acquisition raises (``InvalidTweetUrl``, ``TweetNotAccessible``,
+    ``TweetFetchFailed``, ``TweetUpstreamBusy``). ``client`` is for tests.
     """
     linked = owner.x_handle
     if linked is None:
@@ -1210,15 +952,11 @@ async def import_pasted_post(
             "Link your X account to your Vidit profile first: the import only reads "
             "posts from the handle linked to your account."
         )
-    # The acquisition is blocking network I/O; a thread keeps the event loop
-    # serving siblings while X answers.
+    # Blocking network I/O: run it in a thread.
     post = await asyncio.to_thread(read_pasted_post, url, client=client)
     author = post.handle
     matched = linked_owner(db, author)
-    # Compared by id, not by object identity: the caller's ``owner`` and the row
-    # the handle maps to are the same account whether or not they are the same
-    # instance, and an identity test would refuse a valid paste the day the two
-    # arrive from different sessions or an expired one.
+    # Compare by id: ``owner`` and the matched row can be different instances of one account.
     if matched is None or matched.id != owner.id:
         raise NotYourPost(
             f"That post is by @{author}. The import only reads posts from @{linked}, "
@@ -1242,26 +980,13 @@ async def backfill_from_archive(
     chase: bool = False,
     on_progress: Callable[[int, int], None] | None = None,
 ) -> Outcome:
-    """Run a full archive backfill: read → stitch → resolve → persist.
+    """Read, stitch, resolve and persist an X export under ``archive_dir``.
 
-    Reads ``owner``'s X export under ``archive_dir`` (``tweets.js`` +
-    ``tweets_media/``), rebuilds self-threads, resolves them all, then hands the
-    resolution to :func:`persist_detections`, the same write path the bot and the
-    paste run. Rows are owned by ``owner``, the account whose verified handle
-    the archive belongs to, and a thread the engine refuses is counted in
-    ``outcome.refusals`` under the same code the bot names back.
-
-    ``chase`` runs the one chase step over each stitched thread, the same step
-    the live acquisition runs over the thread it read. Off, the read is pure disk and a
+    ``chase`` runs the chase step over each stitched thread. Off, the read is pure disk and a
     footage link is stored as a link, with no date and no media.
 
-    Precondition: ``owner.x_handle`` is set. The handle is what every provenance
-    permalink is written from and what the own-status exclusion compares a link
-    against, so an import running under a Vidit username would fabricate links
-    to an account that may belong to someone else. Every account carries a
-    linked handle (bound at invite mint, admin-edited after), and the worker's
-    owner gate answers a job whose owner somehow has none
-    (``archive_jobs.process``); this raise is the backstop behind it.
+    Requires ``owner.x_handle``: every provenance permalink and the own-status exclusion are
+    written from it (``archive_jobs.process`` gates the worker; this raise is the backstop).
     """
     handle = owner.x_handle
     if handle is None:

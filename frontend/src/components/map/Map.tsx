@@ -48,57 +48,40 @@ import {
   ringRadius,
 } from "./stack";
 
-// CARTO basemap pair, matched light / dark tiles. maplibre paint can't read CSS
-// variables, so the base tiles swap here off the theme rather than in the CSS
-// neutral remap that flips the rest of the UI (see globals.css).
+// CARTO basemap pair. maplibre paint can't read CSS variables, so tiles swap off the theme here.
 const BASEMAP_STYLE = {
   dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
   light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
 } as const;
 
-// The hover ring over a co-located stack: dot geometry plus the grace margin
-// (px) the pointer may roam around the ring before it collapses.
+// Hover ring: dot geometry and the grace margin (px) the pointer may roam before it collapses.
 const SPIDER_DOT_PX = 12;
 const SPIDER_GRACE_PX = 18;
-// How long the dots take to merge back into the center on close: the CSS
-// transition runs 150 ms and the timer carries 10 ms of slack so the ring
-// only unmounts after the dots have visibly landed.
+// The CSS transition runs 150 ms; 10 ms of slack so the ring unmounts after the dots land.
 const SPIDER_MERGE_MS = 160;
-// Hover-intent delay before a pin's preview card shows (and before its
-// detail fetch fires), so sweeping the pointer across a dense field neither
-// flashes previews nor sprays requests.
+// Hover-intent delay before a preview shows and its detail fetch fires, so sweeping a dense
+// field flashes nothing and sends no requests.
 const PREVIEW_INTENT_MS = 150;
-// The preview detail cache is bounded: past this many entries the oldest is
-// evicted, so a long session sweeping thousands of pins stays flat.
+// The oldest entry is evicted past this size.
 const PREVIEW_CACHE_MAX = 50;
 
-// The layer ids, written once. One registration covers both point layers, so
-// the selected pin behaves like any other for hover, cursor and click.
+// Layer ids. One registration covers both point layers.
 const CLUSTER_LAYER = "clusters";
 const STACK_LAYER = "stacks-circle";
 const POINT_LAYERS = ["points-selected", "points-circle"];
 
-// Every layer a tap can target: the layer-scoped handlers below take a hit on
-// any of them, and the padded re-test for a coarse pointer queries exactly
-// these. A query hands its matches back topmost first, whatever order this
-// list carries.
+// Every layer a tap can target (a query returns matches topmost first whatever the order here).
 const TAP_TARGET_LAYERS = [CLUSTER_LAYER, STACK_LAYER, ...POINT_LAYERS];
 
-// Crossfade band around the clustering ceiling, derived from
-// CLUSTER_MAX_ZOOM (single source: change the ceiling and the band follows).
-// Supercluster serves raw points from one integer zoom past the ceiling, so
-// the band brackets that boundary.
+// Crossfade band around the clustering ceiling, derived from CLUSTER_MAX_ZOOM.
+// Supercluster serves raw points from one integer zoom past it.
 const POINTS_ZOOM = CLUSTER_MAX_ZOOM + 1;
 const FADE_OUT_START = CLUSTER_MAX_ZOOM + 0.5;
 const FADE_IN_END = CLUSTER_MAX_ZOOM + 1.25;
-// A cluster click that resolves past the ceiling overshoots the band so the
-// revealed pins land at full opacity.
+// A cluster click past the ceiling overshoots the band so revealed pins land at full opacity.
 const CLUSTER_OVERSHOOT_ZOOM = CLUSTER_MAX_ZOOM + 1.3;
 
-/** Named view over the compact MapPoint tuple from /events/points:
- *  [id, lat, lng, event_date, added_date, detected]. The map only
- *  needs these four fields; naming them here keeps every use site
- *  self-verifying instead of destructuring blind tuple positions. */
+/** Named view over the compact MapPoint tuple from /events/points. */
 function mapPointFields(p: MapPoint): {
   id: string;
   lat: number;
@@ -109,7 +92,6 @@ function mapPointFields(p: MapPoint): {
   return { id, lat, lng, detected };
 }
 
-/** One event in an open hover ring. */
 interface SpiderPoint {
   id: string;
   detected: 0 | 1;
@@ -117,11 +99,8 @@ interface SpiderPoint {
   lat: number;
 }
 
-/** An open hover ring: the stacked events plus their shared screen anchor.
- *  `key` identifies the stack (sorted ids), so re-hovering the same stack
- *  never resets an already-open ring. `clusterId` is set when the stack was
- *  an unexpandable cluster, so the map can hide that cluster circle while
- *  the ring is out. */
+/** An open hover ring. `key` (sorted ids) keeps re-hovering the same stack from resetting it;
+ * `clusterId` is set for an unexpandable cluster so its circle hides while the ring is out. */
 interface SpiderStack {
   key: string;
   center: { x: number; y: number };
@@ -129,8 +108,7 @@ interface SpiderStack {
   clusterId: number | null;
 }
 
-/** A hovered pin (a normal unclustered pin or a ring dot): its event id and
- *  the pin center in map-container px, anchoring the preview card. */
+/** A hovered pin: event id and pin center in map-container px. */
 interface PreviewTarget {
   id: string;
   x: number;
@@ -178,22 +156,16 @@ function StackInteractions({
 }) {
   const { current: map } = useMap();
 
-  // The last pin the layer-scoped mousemove armed a preview for. A ref (not
-  // a closure local) so the spider-open effect below can reset it: the latch
-  // must track the parent's preview, which clears on click and spider open.
+  // Last pin the layer mousemove armed a preview for. A ref so the spider-open effect can reset it.
   const hoveredPinIdRef = useRef<string | null>(null);
 
-  // Set by the layer-scoped click handlers, read and reset by the canvas tap
-  // below: it says "a layer already took this click", so the slop re-test only
-  // runs on a tap that hit bare canvas.
+  // Set when a layer handler took this click; the canvas tap re-test runs only on bare canvas.
   const handledRef = useRef(false);
 
   useEffect(() => {
     if (!map) return;
 
-    // The unclustered stack badge carries its members inline
-    // (`stack_members`, JSON, written at geojson build time): hovering or
-    // tapping it opens the ring over exactly those events.
+    // The unclustered stack badge carries its members inline (`stack_members` JSON); hover or tap opens the ring.
     const openFromStackFeature = (feature: Feature | undefined): boolean => {
       if (!feature || feature.geometry?.type !== "Point") return false;
       const raw = feature.properties?.stack_members;
@@ -222,11 +194,9 @@ function StackInteractions({
       return true;
     };
 
-    // A cluster is a stack when it can never expand: supercluster reports an
-    // expansion zoom past the clustering ceiling exactly when the cluster
-    // splits only because clustering stops, and its leaves all share one
-    // coordinate. Returns the expansion zoom so the click path can still
-    // ease into an ordinary cluster.
+    // A cluster is a stack when it can never expand: supercluster reports an expansion zoom past
+    // the ceiling and its leaves share one coordinate. Returns that zoom so the click path can
+    // still ease into an ordinary cluster.
     const coincidentLeaves = async (
       clusterId: number
     ): Promise<{ zoom: number; points: SpiderPoint[] | null }> => {
@@ -240,20 +210,16 @@ function StackInteractions({
       return { zoom, points: points.length > 1 ? points : null };
     };
 
-    // coincidentLeaves resolves async: by the time it settles, the camera
-    // may have started moving or the pointer may have left the cluster, and
-    // opening then would anchor a ring to a stale position (the movestart
-    // close listener only registers after the ring opens, so it would miss
-    // it). The generation counter, bumped on every enter, on cluster
-    // mouseleave, and on movestart, invalidates any pending open.
+    // coincidentLeaves resolves async: the camera may have moved or the pointer left by then, and
+    // the movestart close listener registers only after the ring opens. A generation counter,
+    // bumped on enter, cluster mouseleave and movestart, invalidates a pending open.
     let clusterHoverGen = 0;
     const invalidateClusterHover = () => {
       clusterHoverGen++;
     };
 
     const handleClusterEnter = (e: MapLayerMouseEvent) => {
-      // While the camera animates, features pass under a still pointer; a
-      // ring opened mid-move would anchor to a stale position.
+      // A ring opened mid-move would anchor to a stale position.
       if (map.isMoving()) return;
       const feature = e.features?.[0];
       if (!feature || feature.geometry.type !== "Point") return;
@@ -265,8 +231,7 @@ function StackInteractions({
         .then(({ points }) => {
           if (gen !== clusterHoverGen || map.isMoving()) return;
           if (points) {
-            // Project only now: a camera move that completed during the
-            // resolution would otherwise misanchor the ring.
+            // Project only now: a move completed during resolution would misanchor the ring.
             const center = map.project(coordinates);
             onSpiderOpen({
               key: stackKey(points),
@@ -279,9 +244,7 @@ function StackInteractions({
         .catch(() => {});
     };
 
-    // Shared by the layer-scoped click and the slop re-test, so it raises no
-    // flag of its own: only a click a layer actually took may set it, and the
-    // slop path is what reads it.
+    // Shared by the layer click and the slop re-test, so it raises no flag: only a click a layer took may set it.
     const clickCluster = async (feature: Feature | undefined) => {
       if (!feature || feature.geometry.type !== "Point") return;
       const coordinates = feature.geometry.coordinates as [number, number];
@@ -291,7 +254,6 @@ function StackInteractions({
       try {
         const { zoom, points } = await coincidentLeaves(clusterId);
         if (points) {
-          // The tap fallback for touch (no hover): open the same ring.
           const center = map.project(coordinates);
           onSpiderOpen({
             key: stackKey(points),
@@ -301,9 +263,7 @@ function StackInteractions({
           });
           return;
         }
-        // A cluster that only splits at the ceiling would land exactly on
-        // the crossfade's low point: overshoot past the band so the
-        // revealed pins arrive at full opacity.
+        // A cluster splitting only at the ceiling lands on the crossfade low point: overshoot past the band.
         map.easeTo({
           center: coordinates,
           zoom: zoom > CLUSTER_MAX_ZOOM ? CLUSTER_OVERSHOOT_ZOOM : zoom,
@@ -318,25 +278,20 @@ function StackInteractions({
     };
 
     const handleStackEnter = (e: MapLayerMouseEvent) => {
-      // While the camera animates, features pass under a still pointer; a
-      // ring opened mid-move would anchor to a stale position.
+      // A ring opened mid-move would anchor to a stale position.
       if (map.isMoving()) return;
       openFromStackFeature(e.features?.[0]);
     };
 
-    // Tap fallback for touch (no hover): the badge opens the same ring.
     const handleStackClick = (e: MapLayerMouseEvent) => {
       handledRef.current = true;
       openFromStackFeature(e.features?.[0]);
     };
 
-    // Shared with the slop re-test, so it raises no flag of its own either.
     const clickPoint = (feature: Feature | undefined) => {
       const id = feature?.properties?.id;
       if (typeof id !== "string") return;
-      // The parent clears the preview on click; the latch must follow, or
-      // re-hovering the same pin would hit the equality no-op below and
-      // never re-arm the preview.
+      // The latch must follow the parent's preview clear, or re-hovering the same pin hits the equality no-op.
       hoveredPinIdRef.current = null;
       onPointClick?.(id);
     };
@@ -345,10 +300,8 @@ function StackInteractions({
       clickPoint(e.features?.[0]);
     };
 
-    // The tap targets present on the style, resolved on first use and kept.
-    // Not resolved here at registration: the `<Layer>` children add them from
-    // their own effects, which run after this one, so the list would be empty.
-    // Filtered because `queryRenderedFeatures` throws on an unknown layer id.
+    // Tap targets present on the style, resolved on first use: the `<Layer>` children add them from
+    // effects that run after this one. Filtered because `queryRenderedFeatures` throws on an unknown id.
     let tapLayers: string[] = [];
     const layersForTap = () => {
       if (tapLayers.length === 0) {
@@ -357,16 +310,11 @@ function StackInteractions({
       return tapLayers;
     };
 
-    // A finger that misses every pin: re-test the tap over a TAP_SLOP_PX box
-    // and take the nearest feature in it, so a 6px circle answers a thumb.
-    // Coarse pointers only (registered below), and only past the exact hit
-    // test: the layer-scoped handlers run first on this same click and raise
-    // the flag when one of them took it, so no second query asks.
+    // A finger that misses every pin: re-test over a TAP_SLOP_PX box and take the nearest feature.
+    // Coarse pointers only, and only when no layer handler took the click.
     const handleCanvasTap = (e: MapMouseEvent) => {
-      // Read and clear before anything else, so the flag is down on every exit
-      // path below: a value left standing would swallow the next canvas tap.
-      // Only `handleClusterClick`, `handleStackClick` and `handlePointClick`
-      // raise it, never the helpers they share with this path.
+      // Read and clear first so the flag is down on every exit path; a stale value would swallow the
+      // next canvas tap. Only the three layer click handlers raise it.
       const handled = handledRef.current;
       handledRef.current = false;
       if (handled) return;
@@ -383,9 +331,7 @@ function StackInteractions({
         (coordinates) => map.project(coordinates)
       );
       if (!target) return;
-      // Same three destinations as the layer-scoped handlers, picked off the
-      // feature instead of the layer it came from: a cluster zooms (or fans
-      // out when it cannot split), a stack badge fans out, a pin selects.
+      // Same destinations as the layer handlers: a cluster zooms (or fans out), a stack fans out, a pin selects.
       if (target.properties?.cluster_id !== undefined) {
         void clickCluster(target);
         return;
@@ -394,10 +340,8 @@ function StackInteractions({
       clickPoint(target);
     };
 
-    // Generic pin hover: any single unclustered circle under the cursor
-    // anchors the preview card. Layer-scoped mousemove only fires over the
-    // layers' features, and the id comparison keeps it a no-op until the
-    // hovered pin actually changes.
+    // Any single unclustered circle under the cursor anchors the preview; the id comparison keeps
+    // it a no-op until the hovered pin changes.
     const clearPinHover = () => {
       if (hoveredPinIdRef.current !== null) {
         hoveredPinIdRef.current = null;
@@ -405,8 +349,7 @@ function StackInteractions({
       }
     };
     const handlePointMove = (e: MapLayerMouseEvent) => {
-      // While the map pans or zooms, pins travel under a still pointer; a
-      // preview armed mid-move would anchor to a stale position.
+      // A preview armed mid-move would anchor to a stale position.
       if (map.isMoving()) {
         clearPinHover();
         return;
@@ -441,8 +384,7 @@ function StackInteractions({
     map.on("movestart", clearPinHover);
     map.on("mouseleave", CLUSTER_LAYER, invalidateClusterHover);
     map.on("movestart", invalidateClusterHover);
-    // Registered last, so every layer-scoped click handler above runs first on
-    // the same click and can report that it took the tap.
+    // Registered last so every layer click handler runs first and can report it took the tap.
     if (isCoarsePointer()) map.on("click", handleCanvasTap);
     map.on("mouseenter", CLUSTER_LAYER, pointerOn);
     map.on("mouseleave", CLUSTER_LAYER, pointerOff);
@@ -462,8 +404,6 @@ function StackInteractions({
       map.off("movestart", clearPinHover);
       map.off("mouseleave", CLUSTER_LAYER, invalidateClusterHover);
       map.off("movestart", invalidateClusterHover);
-      // Unconditional: removing a handler that was never registered is a no-op,
-      // and it saves carrying the pointer read across the effect.
       map.off("click", handleCanvasTap);
       map.off("mouseenter", CLUSTER_LAYER, pointerOn);
       map.off("mouseleave", CLUSTER_LAYER, pointerOff);
@@ -474,16 +414,13 @@ function StackInteractions({
     };
   }, [map, onPointClick, onSpiderOpen, onPinHover]);
 
-  // Opening a ring also clears the parent's preview: reset the hover latch
-  // with it so a pin hovered right after the ring closes re-arms.
+  // Opening a ring clears the parent's preview: reset the hover latch with it.
   useEffect(() => {
     if (spider) hoveredPinIdRef.current = null;
   }, [spider]);
 
-  // Collapse the open ring when the map moves under it or the pointer roams
-  // past the grace zone. The ring overlay swallows pointer events over its
-  // own square, so a canvas mousemove already means "outside the overlay";
-  // the distance check keeps a symmetric grace margin around it.
+  // Collapse the open ring when the map moves or the pointer leaves the grace zone. The overlay
+  // swallows pointer events over its own square, so a canvas mousemove means outside it.
   useEffect(() => {
     if (!map || !spider) return;
     const radius =
@@ -505,12 +442,9 @@ function StackInteractions({
   return null;
 }
 
-/** The one hover preview for map pins (normal pins and ring dots share it):
- *  title, status badge, the fixed media slot (`MediaThumb`: the source-media
- *  thumbnail, or its "no media" box), date and author. Anchored at the pin
- *  center in map-container px, and clamped after measuring so the card is
- *  always fully inside the map area: it flips left of the pin when the right
- *  side lacks room, and shifts vertically along the edges. */
+/** Hover preview for map pins (normal pins and ring dots). Anchored at the pin center in
+ * map-container px and clamped after measuring so it stays inside the map: flips left when the
+ * right lacks room, shifts vertically at the edges. */
 function PinPreviewCard({
   entry,
   error,
@@ -543,12 +477,10 @@ function PinPreviewCard({
     setPos({ left, top });
   }, [x, y, entry, error]);
 
-  // The backend-picked card thumbnail (source media, else proof image):
-  // one pick rule, homed in the backend's services/thumbnails.
+  // Backend-picked card thumbnail (source media, else proof image): the rule lives in services/thumbnails.
   const media = entry?.thumbnail ?? undefined;
   return (
-    // Above the detail / filter overlays (z-1000): a preview near a panel
-    // edge must stay fully readable, and it is transient hover chrome.
+    // Above the detail and filter overlays (z-1000) so a preview near a panel edge stays readable.
     <div
       ref={ref}
       className="absolute z-[1100] w-64 pointer-events-none"
@@ -587,12 +519,9 @@ function PinPreviewCard({
   );
 }
 
-/** The fanned-out ring over a co-located stack: one DOM dot per event around
- *  the shared center, each hoverable (the shared `PinPreviewCard`) and
- *  clickable (opens the event exactly like a normal pin). While the ring is
- *  out, the map hides the stack it split from; on close the dots travel back
- *  to the center before the circle reappears (`collapsing`). Map markers are
- *  part of the bespoke map surface. */
+/** Fanned-out ring over a co-located stack: one hoverable, clickable DOM dot per event. The map
+ * hides the stack while the ring is out; on close the dots return to the center (`collapsing`)
+ * before the circle reappears. */
 function SpiderRing({
   spider,
   selectedId,
@@ -605,7 +534,6 @@ function SpiderRing({
   spider: SpiderStack;
   selectedId?: string | null;
   colors: { base: string; detected: string; stroke: string };
-  /** True while the ring merges back into the center before unmounting. */
   collapsing: boolean;
   onSelect: (id: string) => void;
   onClose: () => void;
@@ -614,21 +542,16 @@ function SpiderRing({
   const [expanded, setExpanded] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  // Two-frame mount so the dots travel from the shared center out to the
-  // ring instead of popping in place; `collapsing` runs the same transition
-  // back to the center before the parent unmounts the ring. The component
-  // remounts per stack (the parent keys it on `spider.key`).
+  // Two-frame mount so dots travel out instead of popping in; `collapsing` runs it back before
+  // unmount. Remounts per stack (keyed on `spider.key`).
   useEffect(() => {
     const raf = requestAnimationFrame(() => setExpanded(true));
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // A tap fires one compatibility `mousemove` and then nothing: no pointer
-  // stays behind to travel, so none of the three ways the ring closes on a
-  // mouse (leaving the overlay, roaming past the grace radius, a wheel) ever
-  // fires. On a coarse pointer a tap anywhere off the ring closes it instead.
-  // `pointerdown`, so the tap that closes the ring is also the tap the map
-  // handles underneath. The opening tap is over before this mounts.
+  // A tap fires one compatibility `mousemove` and no pointer stays to travel, so none of the mouse
+  // close paths fire. On a coarse pointer a tap off the ring closes it, on `pointerdown` so the
+  // map handles the same tap underneath.
   useEffect(() => {
     if (!isCoarsePointer()) return;
     const handleOutside = (e: PointerEvent) => {
@@ -642,9 +565,7 @@ function SpiderRing({
 
   const out = expanded && !collapsing;
   const n = spider.points.length;
-  // A pathological stack overflows past the dot cap: the ring fans out the
-  // first SPIDER_MAX_DOTS - 1 events and fills the last slot with a "+N"
-  // marker (the count badge underneath already carries the true total).
+  // Past SPIDER_MAX_DOTS the last slot is a "+N" marker (the count badge carries the true total).
   const capped = n > SPIDER_MAX_DOTS;
   const shown = capped ? spider.points.slice(0, SPIDER_MAX_DOTS - 1) : spider.points;
   const slots = capped ? SPIDER_MAX_DOTS : n;
@@ -663,9 +584,7 @@ function SpiderRing({
         height: 2 * half,
       }}
       onMouseLeave={onClose}
-      // The overlay sits above the canvas, so a wheel over it would
-      // otherwise silently eat the zoom gesture: collapse and let the next
-      // wheel reach the map.
+      // The overlay sits above the canvas and would eat the zoom gesture: collapse so the next wheel reaches the map.
       onWheel={onClose}
     >
       {shown.map((p, i) => {
@@ -677,8 +596,7 @@ function SpiderRing({
             type="button"
             aria-label={`Co-located event ${i + 1} of ${n}`}
             onMouseEnter={() => {
-              // At mount every dot still sits under the pointer at the
-              // shared center; only a fanned-out dot is a hover target.
+              // At mount every dot sits under the pointer; only a fanned-out dot is a hover target.
               if (!out) return;
               onPinHover({
                 id: p.id,
@@ -688,15 +606,9 @@ function SpiderRing({
             }}
             onMouseLeave={() => onPinHover(null)}
             onClick={() => onSelect(p.id)}
-            // The dot stays SPIDER_DOT_PX wide; on a coarse pointer the
-            // pseudo-element grows the hit area around it to a 32px square
-            // (12px plus 10px each side), which is what a fingertip needs and
-            // what the circle alone never gave. Adjacent boxes overlap on a
-            // tight ring, and the dot drawn last takes the tap: still one
-            // member of the stack the finger aimed at, where a 12px target was
-            // a miss. Gated on `pointer-coarse:` so a mouse keeps the 12px
-            // target it can hit exactly, and the box never steals a hover from
-            // the neighbouring dot.
+            // The dot stays SPIDER_DOT_PX wide; on a coarse pointer the pseudo-element grows the hit area to
+            // 32px (12px plus 10px each side) for a fingertip. Gated on `pointer-coarse:` so a mouse keeps
+            // its exact 12px target and no box steals a neighbour's hover.
             className="absolute rounded-full cursor-pointer transition-transform duration-150 ease-out before:absolute pointer-coarse:before:-inset-2.5 before:content-['']"
             style={{
               left: half - SPIDER_DOT_PX / 2,
@@ -738,30 +650,20 @@ function SpiderRing({
     </div>
   );
 }
-// Zoom floor: at 1.8 the globe stays fully visible once with a small margin,
-// while lower values shrink it into empty void (2.1 already clips the poles
-// on a laptop viewport).
+// Zoom floor: at 1.8 the globe stays fully visible with a small margin (2.1 clips the poles on a laptop).
 const MIN_ZOOM = 1.8;
 
-// Ceiling for a `fitBounds` camera. A box that encloses a single point (or a
-// handful of neighbours) has no scale of its own, so the fit would run to
-// street level; this keeps it at a regional read, where the surrounding
-// geography still says where the work is.
+// Ceiling for a `fitBounds` camera: a single-point box has no scale of its own, so cap at a regional read.
 const FIT_MAX_ZOOM = 9;
-// Breathing room (px) between the fitted box and the canvas edge, so an
-// extreme point doesn't sit under the map's own controls.
+// Padding (px) so an extreme point doesn't sit under the map controls.
 const FIT_PADDING = 32;
 
-// How far in a `flyTo` lands when the camera is wider than that, and how long
-// the flight takes. The zoom is the `fitBounds` ceiling, so a camera framed on
-// a whole sequence and a camera flown to one of its items read at the same
-// scale; a reader who zoomed in past it keeps their own zoom.
+// `flyTo` landing zoom (the `fitBounds` ceiling, so a sequence frame and one item read at the same
+// scale) and flight duration. A reader zoomed in past it keeps their zoom.
 const FLY_ZOOM = FIT_MAX_ZOOM;
 const FLY_MS = 900;
 
-// What a pin named in `dimmedIds` paints at. Low enough to step behind the
-// pins around it, high enough to stay on the map: the reader's walked steps
-// are still part of the sequence being read.
+// Opacity of a pin in `dimmedIds`: behind its neighbours, still on the map.
 const DIMMED_OPACITY = 0.35;
 
 interface MapProps {
@@ -771,53 +673,30 @@ interface MapProps {
   className?: string;
   center?: { lat: number; lng: number };
   zoom?: number;
-  /** Frame the camera on this box instead of reading `center` / `zoom`. For a
-   *  view derived from its own content (the per-analyst profile map) rather
-   *  than from a remembered camera: MapLibre solves the zoom against the real
-   *  container, so no caller re-derives the mercator maths. Applied on mount
-   *  and whenever the box changes. Unlike a request box, `east` may run past
-   *  180 for a box crossing the antimeridian, which is how MapLibre reads it. */
+  /** Frame the camera on this box instead of `center`/`zoom`, for views derived from their own
+   * content (profile map). Applied on mount and on change. `east` may exceed 180 for a box
+   * crossing the antimeridian, as MapLibre reads it. */
   fitBounds?: MapBounds;
-  /** Flies the camera to this point whenever it changes. The first value is
-   *  where the caller already framed the camera (`fitBounds` on the whole
-   *  set), so it moves nothing; every later one is a step the reader took.
-   *  Null while the current item carries no coordinates, which leaves the
-   *  camera where it is rather than flying it somewhere arbitrary. */
+  /** Flies the camera here on change. The first value is the caller's own frame and moves nothing.
+   * Null leaves the camera where it is. */
   flyTo?: { lat: number; lng: number } | null;
-  /** Ids drawn at reduced strength: the steps the reader has already walked
-   *  past. A dimmed pin keeps its colour, its stack and its click, so the set
-   *  still reads as one sequence. The selected pin is never dimmed. */
+  /** Ids drawn at reduced strength (steps already walked past). A dimmed pin keeps its colour,
+   * stack and click; the selected pin is never dimmed. */
   dimmedIds?: ReadonlySet<string>;
-  // Reports pan/zoom on every move-end so the parent can persist it across
-  // navigation. State preservation only: the map stays uncontrolled internally.
+  // Reports pan/zoom on every move-end so the parent can persist it; the map stays uncontrolled.
   onViewChange?: (view: { latitude: number; longitude: number; zoom: number }) => void;
-  // Reports the visible rectangle as soon as the map instance exists and on
-  // every move-end, so the parent can fetch the points for the region actually
-  // on screen (`/events/points` requires a bbox). Separate from onViewChange:
-  // that one persists the camera and deliberately skips the layout move-end,
-  // while the first bounds are exactly what the initial fetch needs.
+  // Reports the visible rectangle once the map exists and on every move-end (`/events/points`
+  // requires a bbox). Separate from onViewChange, which skips the layout move-end.
   onBoundsChange?: (bounds: MapBounds) => void;
-  /** Marks a map that sits inside a scrolling article rather than owning the
-   *  screen (the event page's location box, the profile map). MapLibre's
-   *  one-finger `dragPan` otherwise swallows any swipe that starts on the
-   *  canvas, which on a phone is a third of the screen the reader cannot
-   *  scroll past. `cooperativeGestures` hands the one-finger swipe back to the
-   *  page: MapLibre drops the canvas to `touch-action: pan-x pan-y`, so the
-   *  page scrolls, and the map takes two fingers to pan and Command or Ctrl
-   *  plus the wheel to zoom, telling the reader so on the blocked gesture.
-   *  `/map` leaves it unset, since there the map IS the page. */
+  /** Marks a map inside a scrolling article (event page, profile map). `cooperativeGestures` hands
+   * the one-finger swipe back to the page (two fingers pan, Command or Ctrl plus wheel zooms).
+   * `/map` leaves it unset: there the map is the page. */
   embedded?: boolean;
 }
 
-/** Reports the visible rectangle to the parent, which fetches the points for
- *  it (`/events/points` requires a bbox): once as soon as the map instance
- *  exists, then on every move-end.
- *
- *  Deliberately not hung off the style's `load` event. The camera is fully
- *  determined by `initialViewState` from the first frame, and MapLibre answers
- *  `getBounds()` right away, so waiting for `load` would tie the catalog fetch
- *  to the basemap CDN: a blocked or slow tile host would leave the map with no
- *  pins at all, where it used to leave it with pins on an empty canvas. */
+/** Reports the visible rectangle to the parent (`/events/points` requires a bbox): once the map
+ * exists, then on every move-end. Not hung off the style `load` event: `getBounds()` answers right
+ * away, and waiting for `load` would tie the catalog fetch to the basemap CDN. */
 function BoundsReporter({
   onBoundsChange,
 }: {
@@ -826,8 +705,7 @@ function BoundsReporter({
   const { current: map } = useMap();
   useEffect(() => {
     if (!map || !onBoundsChange) return;
-    // MapLibre hands the rectangle out as LngLat objects, unwrapped past the
-    // antimeridian; flatten it and let `lib/viewport` normalise.
+    // LngLat objects, unwrapped past the antimeridian: flatten and let `lib/viewport` normalise.
     const report = () => {
       const b = map.getBounds();
       onBoundsChange({
@@ -846,9 +724,7 @@ function BoundsReporter({
   return null;
 }
 
-/** Frames the camera on a bounds box. A child of `<MapGL>` because the map
- *  instance only exists inside it; the effect keys on the four numbers, not
- *  the array, so a re-render with an equal box doesn't re-fit. */
+/** Frames the camera on a bounds box. Keys on the four numbers, so an equal box doesn't re-fit. */
 function FitBoundsCamera({ bounds }: { bounds: MapBounds }) {
   const { current: map } = useMap();
   const { west, south, east, north } = bounds;
@@ -867,19 +743,10 @@ function FitBoundsCamera({ bounds }: { bounds: MapBounds }) {
   return null;
 }
 
-/** Flies the camera to a point whenever that point changes, which is how the
- *  collection page follows a step.
- *
- *  The first target is skipped: the reader opens framed on the whole sequence
- *  (`fitBounds`), and flying away from that frame on mount would take the
- *  shape of the set off the screen before the reader has seen it. `flyTo`
- *  carries no `essential` flag, so a reader who asked their system for reduced
- *  motion gets the same camera without the flight.
- *
- *  Mounted for the life of the map, including while the target is null, so the
- *  latch is spent once on the frame the caller set up. Mounting it only on a
- *  target would rebuild the latch after every item without coordinates, and
- *  the step after such an item would keep the camera where it was. */
+/** Flies the camera to a point whenever it changes (the collection page follows a step). The
+ * first target is skipped: the reader opens framed on the whole sequence. No `essential` flag,
+ * so reduced motion gets the camera without the flight. Mounted for the map's life even while
+ * the target is null, so the latch is spent once on the caller's frame. */
 function FlyToCamera({ target }: { target: { lat: number; lng: number } | null }) {
   const { current: map } = useMap();
   const framed = useRef(false);
@@ -903,10 +770,8 @@ function FlyToCamera({ target }: { target: { lat: number; lng: number } | null }
   return null;
 }
 
-// Dev-only camera handle for the promo-recording pipeline (video/): exposes
-// the maplibre instance so a Playwright take can drive smooth easeTo camera
-// moves instead of synthetic wheel events. The production gate is at the render
-// site below, so the component never mounts there in the first place.
+// Dev-only camera handle for the promo-recording pipeline (video/): exposes the maplibre instance
+// for Playwright easeTo moves. Gated at the render site, so never mounted in production.
 function DevMapHandle() {
   const { current: map } = useMap();
   useEffect(() => {
@@ -935,42 +800,29 @@ export default function Map({
   embedded = false,
 }: MapProps) {
   const [mounted, setMounted] = useState(false);
-  // MapLibre needs WebGL, which Tor Browser disables or gates; without
-  // this the user gets a black canvas. Detect on mount to swap a message in.
+  // MapLibre needs WebGL, which Tor Browser gates; detect on mount to show a message, not a black canvas.
   const [webglMissing, setWebglMissing] = useState(false);
-  // Skip the first onMoveEnd MapLibre fires during initial layout: it
-  // carries the values we just seeded, so reporting it back is no-op noise.
+  // Skip the first onMoveEnd (initial layout): it carries the values just seeded.
   const firstMoveEndRef = useRef(true);
-  // Marker colours follow the user's accent palette: submitted points + the
-  // density ramp use the accent hue, machine detections a lighter shade of the
-  // same hue (distinct by lightness, not a separate colour).
+  // Marker colours follow the accent palette; detections use a lighter shade of the same hue.
   const marker = paletteMapColors(usePalette());
   const DETECTED = marker.detected;
   const theme = useTheme();
-  // Halo around the selected point: white reads on the dark basemap, but
-  // vanishes on light Positron, so flip it to a dark ring in light mode.
+  // Halo around the selected point: white on the dark basemap, a dark ring on light Positron.
   const SELECTED_STROKE = theme === "light" ? "#1a1a1a" : "#ffffff";
 
-  // The open hover ring over a co-located stack. Closing is two-phase:
-  // `spiderClosing` runs the dots back to the center (the visual re-merge),
-  // then the timer unmounts the ring and the hidden map circle reappears in
-  // its place.
+  // Open hover ring. Closing is two-phase: `spiderClosing` runs the dots back to the center, then
+  // the timer unmounts the ring and the hidden circle reappears.
   const [spider, setSpider] = useState<SpiderStack | null>(null);
   const [spiderClosing, setSpiderClosing] = useState(false);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // The rule for the ceiling crossfade: the opacity dip applies only while a
-  // zoom is in flight. A static ramp would leave every cluster or pin dimmed
-  // indefinitely whenever the camera comes to rest inside the band (e.g.
-  // z14.8); at rest each layer holds its full opacity, and MapLibre's
-  // default paint transition eases the zoomend snap.
+  // The ceiling crossfade dip applies only while a zoom is in flight; a static ramp would dim
+  // layers that come to rest inside the band (e.g. z14.8).
   const [zoomInFlight, setZoomInFlight] = useState(false);
 
-  // The hovered pin's preview: target set on hover, card shown (and its
-  // detail fetched) only after the intent delay elapses, so a sweep across a
-  // dense field fires zero requests. The bounded cache holds settled details
-  // and in-flight promises, so a re-hover during a flight reuses it instead
-  // of refiring.
+  // Hovered pin preview: shown, and its detail fetched, only after the intent delay. The bounded
+  // cache holds settled details and in-flight promises so a re-hover reuses them.
   const [preview, setPreview] = useState<PreviewTarget | null>(null);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewEntry, setPreviewEntry] = useState<EventDetail | null>(null);
@@ -982,14 +834,9 @@ export default function Map({
   >(new globalThis.Map());
 
   const hoverPin = useCallback((raw: PreviewTarget | null) => {
-    // A tap fires one compatibility `mousemove` over the pin before its
-    // click, which is enough to arm the intent timer; the card would then
-    // open on top of the pin the finger just selected, and fetch its detail
-    // twice. A coarse pointer therefore arms no preview at all: only the
-    // clearing half of this call runs, so every caller stays as it is. The
-    // read lives here because this is the single choke point every preview
-    // goes through, the layer `mousemove` and a ring dot's `onMouseEnter`
-    // alike.
+    // A tap fires one compatibility `mousemove` before its click, which would arm the timer, open
+    // the card over the selected pin and fetch twice. A coarse pointer arms no preview: only the
+    // clearing half runs. This is the single choke point for the layer `mousemove` and ring dot `onMouseEnter`.
     const target = raw && isCoarsePointer() ? null : raw;
     if (previewTimerRef.current) {
       clearTimeout(previewTimerRef.current);
@@ -1062,8 +909,7 @@ export default function Map({
       setSpiderClosing(false);
       // The ring replaces any plain pin preview under the cursor.
       hoverPin(null);
-      // Re-hovering the same stack keeps the open ring (and its fan-out
-      // animation) instead of restarting it.
+      // Re-hovering the same stack keeps the open ring and its animation.
       setSpider((cur) => (cur && cur.key === stack.key ? cur : stack));
     },
     [clearCloseTimer, hoverPin]
@@ -1080,8 +926,7 @@ export default function Map({
   }, [hoverPin]);
   const handlePinClick = useCallback(
     (id: string) => {
-      // Opening the side panel is the likeliest edit path (geolocate,
-      // status): drop the cached preview so the next hover refetches.
+      // Opening the side panel likely precedes an edit: drop the cached preview so the next hover refetches.
       detailCacheRef.current.delete(id);
       hoverPin(null);
       onPointClick?.(id);
@@ -1110,10 +955,8 @@ export default function Map({
     setMounted(true);
   }, []);
 
-  // While a ring is out, the stack it split from disappears underneath it:
-  // the cluster circle (and its count) by `cluster_id`, the unclustered
-  // circles by their event ids. The dots visually replace them; on close the
-  // filters relax as the ring unmounts, so the circles re-merge in place.
+  // While a ring is out its stack is hidden underneath: the cluster circle by `cluster_id`,
+  // unclustered circles by event id. On close the filters relax so circles re-merge.
   const clusterFilter = useMemo<FilterSpecification>(() => {
     const base: unknown = ["has", "point_count"];
     if (spider?.clusterId == null) return base as FilterSpecification;
@@ -1154,11 +997,9 @@ export default function Map({
     return base as FilterSpecification;
   }, [spiderHiddenIds]);
 
-  // Group co-located points (~1 m epsilon grid with neighbor-cell merging,
-  // `groupStacks`): every member stays in the source so cluster counts
-  // remain true, but past the clustering ceiling only the group's first
-  // point renders, as the counted stack badge (`stack_rep` + inline
-  // members). A stack of 3 must never masquerade as one plain pin.
+  // Group co-located points (~1 m epsilon grid, `groupStacks`): all stay in the source so cluster
+  // counts stay true, but past the ceiling only the first renders, as the counted stack badge.
+  // A stack of 3 must never look like one pin.
   const geojson = useMemo<FeatureCollection>(() => {
     const features: Feature[] = [];
     for (const stack of groupStacks(points, mapPointFields)) {
@@ -1175,13 +1016,10 @@ export default function Map({
           properties: {
             id,
             selected: id === selectedId ? 1 : 0,
-            // 1 for a step the reader already walked past: the paint below
-            // takes it down to `DIMMED_OPACITY`. Always written, so the
+            // 1 for a step already walked past (paint takes it to `DIMMED_OPACITY`). Always written so the
             // expression reads a property that exists on every feature.
             dimmed: dimmedIds?.has(id) ? 1 : 0,
-            // 1 for a machine detection: the marker paint colours it amber
-            // so a detected point reads distinct from a submitted one at a
-            // glance.
+            // 1 for a machine detection: painted amber.
             detected,
             stack_count: stackCount,
             ...(stackCount > 1 && i === 0
@@ -1202,22 +1040,16 @@ export default function Map({
     return { type: "FeatureCollection", features };
   }, [points, selectedId, dimmedIds]);
 
-  // A pin the reader has stepped past gives up its strength and nothing else.
-  // Applied per opacity value rather than around the whole paint: a `zoom`
-  // expression is only legal as the input of a top-level `step` or
-  // `interpolate`, so the ceiling crossfade stays on the outside and this
-  // rides each of its stops. Returns the value untouched wherever no caller
-  // asked for a dim, so every other map keeps the exact paint it had.
+  // A walked-past pin loses strength only. Applied per opacity value because a `zoom` expression is
+  // legal only as input of a top-level `step`/`interpolate`: the crossfade stays outside and this
+  // rides each stop. No-op where nothing is dimmed.
   const withDim = (opacity: number): number | ExpressionSpecification =>
     dimmedIds === undefined
       ? opacity
       : ["case", ["==", ["get", "dimmed"], 1], DIMMED_OPACITY, opacity];
 
-  // A points swap (timeline scrub, filter refetch, selection change)
-  // rebuilds the source: supercluster reassigns cluster ids, so an open
-  // ring could hide the wrong cluster while its own circle reappears
-  // underneath, and its dots could reference filtered-out events. Reset the
-  // overlay and the preview outright.
+  // A points swap rebuilds the source and supercluster reassigns cluster ids: an open ring could
+  // hide the wrong cluster and reference filtered-out events. Reset the overlay and preview.
   useEffect(() => {
     clearCloseTimer();
     setSpider(null);
@@ -1255,13 +1087,9 @@ export default function Map({
         zoom: Math.max(zoom ?? 5, MIN_ZOOM),
       }}
       minZoom={MIN_ZOOM}
-      // No symbol fade hold. MapLibre keeps an outgoing tile alive for
-      // fadeDuration (default 300 ms) when it carries symbol buckets: the
-      // tile's circles stop rendering immediately while its labels linger,
-      // fading, so every cluster recompute left count labels floating
-      // without their circles. Zero means labels and circles swap on the
-      // same frame; the ceiling handoff still eases via the zoom-based
-      // crossfade below. Costs the basemap its place-label fade-in.
+      // No symbol fade hold: MapLibre keeps an outgoing tile with symbol buckets alive for fadeDuration
+      // (300 ms), so its circles vanish while labels linger. Zero swaps both on the same frame; the
+      // ceiling handoff still eases via the zoom crossfade. Costs the basemap its place-label fade-in.
       fadeDuration={0}
       onMoveEnd={(evt) => {
         if (firstMoveEndRef.current) {
@@ -1314,11 +1142,8 @@ export default function Map({
               1000, marker.rampMid,
               10000, marker.rampHigh,
             ],
-            // Ease the clustering-ceiling handoff: clusters thin out while
-            // approaching the ceiling instead of vanishing at full opacity
-            // (their unclustered replacements fade in from the same level).
-            // Zoom-interpolated paint, so the GPU does the fade; applied
-            // only while a zoom is in flight (see `zoomInFlight`).
+            // Ease the ceiling handoff: clusters thin out approaching it, replacements fade in from the same
+            // level. Zoom-interpolated, only while a zoom is in flight (`zoomInFlight`).
             "circle-opacity": zoomInFlight
               ? [
                   "interpolate", ["linear"], ["zoom"],
@@ -1353,9 +1178,7 @@ export default function Map({
               1000, 13,
               10000, 15,
             ],
-            // Skip symbol placement + its collision fade: a count must
-            // appear and disappear with its circle, never linger alone
-            // after the circle went (circles have no placement fade).
+            // Skip symbol placement and its collision fade: a count must appear and vanish with its circle.
             "text-allow-overlap": true,
             "text-ignore-placement": true,
           }}
@@ -1381,9 +1204,7 @@ export default function Map({
             "circle-color": ["case", ["==", ["get", "detected"], 1], DETECTED, marker.base],
             "circle-stroke-color": SELECTED_STROKE,
             "circle-stroke-width": 2,
-            // Deliberately no crossfade dip: the selected pin keeps full
-            // prominence through the ceiling handoff, so the selection
-            // never washes out mid-zoom.
+            // No crossfade dip: the selected pin keeps full prominence through the handoff.
             "circle-opacity": 1,
           }}
         />
@@ -1398,11 +1219,8 @@ export default function Map({
             "circle-color": ["case", ["==", ["get", "detected"], 1], DETECTED, marker.base],
             "circle-stroke-color": ["case", ["==", ["get", "detected"], 1], DETECTED, marker.base],
             "circle-stroke-width": 1,
-            // The ceiling crossfade's other half: pins released by a
-            // dissolving cluster materialize from its hand-off opacity. The
-            // brief dip also touches always-visible lone pins right at the
-            // boundary, which keeps the transition wave uniform; it only
-            // applies while a zoom is in flight (see `zoomInFlight`).
+            // The crossfade's other half: pins released by a dissolving cluster fade in from its hand-off
+            // opacity (only while a zoom is in flight, see `zoomInFlight`).
             "circle-opacity": zoomInFlight
               ? [
                   "interpolate", ["linear"], ["zoom"],
@@ -1414,12 +1232,8 @@ export default function Map({
           }}
         />
 
-        {/* Unclustered co-located stack: one counted badge, visually the
-            same object as the small cluster it resolved from (same colour,
-            radius, opacity, count text), so crossing the clustering ceiling
-            never reads as a colour or shape change; only the hover behavior
-            differs (a stack fans out, a cluster zooms). The selected halo
-            moves onto the badge when it holds the selected event. */}
+        {/* Stack badge: styled like the small cluster it resolved from so crossing the ceiling shows no
+            change; a stack fans out, a cluster zooms. The selected halo moves onto it. */}
         <Layer
           id="stacks-circle"
           type="circle"
@@ -1427,10 +1241,8 @@ export default function Map({
           paint={{
             "circle-radius": 12,
             "circle-color": marker.base,
-            // Stack members always cluster together below the ceiling, so a
-            // badge only ever exists past it: fading in from the cluster's
-            // hand-off opacity completes the crossfade started above (only
-            // while a zoom is in flight, see `zoomInFlight`).
+            // A badge exists only past the ceiling: fading in from the cluster hand-off opacity completes the
+            // crossfade (only while a zoom is in flight).
             "circle-opacity": zoomInFlight
               ? [
                   "interpolate", ["linear"], ["zoom"],

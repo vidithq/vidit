@@ -1,15 +1,7 @@
 """Endpoint + worker tests for the ``import-archive`` job pipeline.
 
-The upload is presigned direct-to-storage: ``POST /import-archive/presign``
-mints the key, the client POSTs the zip to the returned URL (the dev upload
-endpoint against ``LocalStorage``, standing in for S3's POST policy), and the
-JSON ``POST /import-archive`` verifies the staged object and returns a
-``queued`` job (202); the worker (``services/archive_jobs``) claims it and
-drives the real backfill (extract guard → read_tweets → stitch →
-resolve_threads → persist_detections). Tests drain the queue inline with
-``run_once``, so the whole
-seam runs synchronously. The happy-path tweet carries a coordinate but no
-media, so a ``detected`` row lands with zero S3 work.
+Tests drain the queue inline with ``run_once``. The happy-path tweet carries a
+coordinate but no media, so a ``detected`` row lands with zero S3 work.
 """
 
 from __future__ import annotations
@@ -50,11 +42,7 @@ def _clean_jobs(db):
 
 @pytest.fixture(autouse=True)
 def _linked_handle(db, author):
-    """The caller with their X account linked, which every import assumes.
-
-    The backfill writes each provenance permalink from the owner's handle and
-    compares own-status links against it, so it refuses to run under a Vidit
-    username; a job whose owner has none lands ``failed``, pinned below."""
+    """Every import needs a linked X handle (see the no-linked-handle test below)."""
     author.x_handle = f"arch{uuid.uuid4().hex[:8]}"
     db.commit()
     return author
@@ -82,9 +70,7 @@ def _presign(author) -> dict:
 
 
 def _upload(author, presign: dict, zip_bytes: bytes):
-    """POST the zip to the presigned target, as the browser would (fields
-    first, then the file). The URL is absolute (the browser needs it); the
-    TestClient takes its path."""
+    """POST the zip as the browser would; the TestClient takes the URL's path."""
     path = presign["upload"]["url"].removeprefix("http://localhost:8000")
     return client.post(
         path,
@@ -103,7 +89,6 @@ def _enqueue(author, upload_key: str, post_estimate: int | None = 3):
 
 
 def _post(author, zip_bytes: bytes):
-    """The whole two-step client flow: presign → direct upload → JSON enqueue."""
     presign = _presign(author)
     uploaded = _upload(author, presign, zip_bytes)
     assert uploaded.status_code == 204, uploaded.text
@@ -115,7 +100,6 @@ def _drain(db) -> int:
 
 
 def _import(author, db, zip_bytes: bytes) -> dict:
-    """Enqueue + drain + return the terminal job payload, as the panel sees it."""
     accepted = _post(author, zip_bytes)
     assert accepted.status_code == 202, accepted.text
     job_id = accepted.json()["id"]
@@ -129,17 +113,12 @@ def _counts(job: dict) -> dict:
     return {k: job[k] for k in ("created", "updated", "skipped", "failed")}
 
 
-# ── The endpoints: presign + upload + enqueue + poll ───────────────────────
-
-
 def test_presign_mints_owner_bound_key_and_upload_target(author):
     presign = _presign(author)
     key = presign["upload_key"]
     assert key.startswith(f"{archive_jobs.STAGING_PREFIX}{author.id}/")
     assert key.endswith(".zip")
     assert archive_jobs.parse_staging_key(key) is not None
-    # The upload half carries the URL + the form fields the browser must POST
-    # ahead of the file; against LocalStorage the fields pin the same key.
     assert presign["upload"]["url"]
     assert presign["upload"]["fields"]["key"] == key
     assert presign["upload"]["fields"]["Content-Type"] == "application/zip"
@@ -150,8 +129,7 @@ def test_presign_requires_auth():
 
 
 def test_presign_is_rate_limited(author):
-    # conftest's autouse fixture disables the limiter; re-enable it for the
-    # wiring check (10/hour on presign: the 11th call in the window is a 429).
+    # conftest disables the limiter; re-enable it (10/hour on presign).
     limiter = app.state.limiter
     limiter.reset()
     limiter.enabled = True
@@ -180,7 +158,6 @@ def test_enqueue_returns_queued_job_for_staged_upload(db, author):
 
     job = db.get(ArchiveImportJob, uuid.UUID(body["id"]))
     assert job is not None and job.owner_id == author.id
-    # The staged object is where the job row points.
     assert stored_bytes(job.zip_key)
 
 
@@ -194,8 +171,7 @@ def test_job_poll_is_owner_only(db, author, second_user):
 
 
 def test_enqueue_rejects_reused_upload_key(db, author):
-    # One key backs one job: a retry or replay of the same key would race the
-    # first job's terminal-state delete and end in a spurious failure email.
+    # A replayed key would race the first job's terminal delete and email a spurious failure.
     presign = _presign(author)
     zip_bytes = _zip_bytes({"tweets.js": _TWEETS})
     assert _upload(author, presign, zip_bytes).status_code == 204
@@ -231,8 +207,6 @@ def test_enqueue_rejects_oversized_staged_object(author, monkeypatch):
 
 
 def test_enqueue_rejects_foreign_and_malformed_keys(author, second_user):
-    # Someone else's staged object: minted + uploaded by second_user, enqueued
-    # by author.
     presign = _presign(second_user)
     assert _upload(second_user, presign, _zip_bytes({"tweets.js": _TWEETS})).status_code == 204
     resp = _enqueue(author, presign["upload_key"])
@@ -253,9 +227,6 @@ def test_dev_upload_rejects_non_staging_key(author):
     assert resp.status_code == 400
 
 
-# ── The worker: backfill + terminal states + email ──────────────────────────
-
-
 def test_import_creates_detected_rows_owned_by_caller(db, author, sent_emails):
     job = _import(author, db, _zip_bytes({"tweets.js": _TWEETS, "account.js": b"private"}))
     assert job["status"] == "done"
@@ -266,7 +237,6 @@ def test_import_creates_detected_rows_owned_by_caller(db, author, sent_emails):
     assert rows[0].status == "detected"
     assert rows[0].detected_from_url  # provenance link set
 
-    # The owner got the completion email; the staged zip is gone.
     assert [e.subject for e in sent_emails] == ["Your X archive import is done"]
     assert author.email == sent_emails[0].to
     row = db.get(ArchiveImportJob, uuid.UUID(job["id"]))
@@ -277,18 +247,12 @@ def test_import_creates_detected_rows_owned_by_caller(db, author, sent_emails):
 def test_reimport_is_idempotent(db, author, sent_emails):
     zip_bytes = _zip_bytes({"tweets.js": _TWEETS})
     assert _counts(_import(author, db, zip_bytes))["created"] == 1
-    # Same archive again: the pair already lives, so nothing new is created.
     second = _import(author, db, zip_bytes)
     assert _counts(second) == {"created": 0, "updated": 0, "skipped": 1, "failed": 0}
 
 
 def test_reimport_respects_a_detection_the_analyst_rejected(db, author, sent_emails):
-    """The full owner-facing loop, both halves through their real endpoints:
-    import once, reject the resulting detection with the real
-    ``POST /{id}/close``, then re-run the same archive. The rejection stands:
-    the re-import skips the pair instead of putting it back in the queue, so
-    nobody rejects the same post twice.
-    """
+    """A rejection stands: the re-import skips the pair instead of requeueing it."""
     zip_bytes = _zip_bytes({"tweets.js": _TWEETS})
     first = _import(author, db, zip_bytes)
     assert _counts(first) == {"created": 1, "updated": 0, "skipped": 0, "failed": 0}
@@ -309,8 +273,6 @@ def test_reimport_respects_a_detection_the_analyst_rejected(db, author, sent_ema
 
     db.expire_all()
     rows = db.query(Event).filter(Event.owner_id == author.id).all()
-    # One row, exactly as the close left it: visible, closed,
-    # dismissed-as-detected. The re-import didn't touch it and didn't add one.
     assert len(rows) == 1
     assert rows[0].id == detected.id
     assert rows[0].status == STATUS_CLOSED
@@ -318,9 +280,7 @@ def test_reimport_respects_a_detection_the_analyst_rejected(db, author, sent_ema
 
 
 def test_malformed_staged_zip_fails_in_the_worker(db, author, sent_emails):
-    """Zip-shape validation moved off the enqueue (the endpoint never opens
-    the staged object): a non-zip upload lands as a ``failed`` job + the
-    failure email, not a synchronous 4xx."""
+    """Enqueue never opens the staged object, so a non-zip lands as a ``failed`` job, not a 4xx."""
     accepted = _post(author, b"not a zip at all")
     assert accepted.status_code == 202
     assert _drain(db) == 1
@@ -333,9 +293,7 @@ def test_malformed_staged_zip_fails_in_the_worker(db, author, sent_emails):
 
 
 def test_worker_fails_job_whose_staged_object_vanished(db, author, sent_emails):
-    """The claim-time guard: an object deleted (or never re-verifiable)
-    between enqueue and claim fails the job cleanly instead of raising out
-    of the download."""
+    """An object deleted between enqueue and claim fails the job instead of raising."""
     accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
     job = db.get(ArchiveImportJob, uuid.UUID(accepted.json()["id"]))
     get_storage().delete_many([job.zip_key])
@@ -348,11 +306,7 @@ def test_worker_fails_job_whose_staged_object_vanished(db, author, sent_emails):
 
 
 def test_worker_fails_a_job_whose_owner_was_deactivated(db, author, sent_emails):
-    """The archive twin of the bot's ``no_account`` rule: a suspended account
-    accrues no detections. The bot reads ``detection.linked_owner`` (live and
-    active) and the paste goes through ``get_current_user``; the worker gate is
-    the third spelling of the same requirement, and a job queued before the
-    suspension lands ``failed`` rather than importing under it."""
+    """Third spelling of the bot's ``no_account`` rule: a job queued before suspension fails."""
     accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
     author.is_active = False
     db.commit()
@@ -366,10 +320,7 @@ def test_worker_fails_a_job_whose_owner_was_deactivated(db, author, sent_emails)
 
 
 def test_worker_fails_a_job_whose_owner_has_no_linked_handle(db, author, sent_emails):
-    """No fallback onto the Vidit username: the handle is what every provenance
-    permalink is written from and what the own-status exclusion reads, so an
-    import under a username would fabricate links to an account that may be
-    someone else's, and would credit a stranger's status as footage."""
+    """No fallback to the Vidit username: provenance permalinks are written from the handle."""
     accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
     author.x_handle = None
     db.commit()
@@ -396,15 +347,12 @@ def test_failed_run_lands_failed_and_notifies(db, author, sent_emails, monkeypat
     assert job.status == "failed"
     assert "RuntimeError" in (job.error or "")
     assert [e.subject for e in sent_emails] == ["Your X archive import failed"]
-    # Failed jobs release their staged zip too.
     with pytest.raises(FileNotFoundError):
         stored_bytes(job.zip_key)
 
 
 def test_worker_reclaims_stale_running_job_and_caps_attempts(db, author, sent_emails):
-    """A worker death leaves ``running``: past the stale window the job is
-    claimable again, and once the attempt budget is spent it lands ``failed``
-    instead of looping forever (the poison-pill guard)."""
+    """A stale ``running`` job is reclaimed; spent attempts fail it (poison-pill guard)."""
     accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
     job = db.get(ArchiveImportJob, uuid.UUID(accepted.json()["id"]))
 
@@ -420,7 +368,6 @@ def test_worker_reclaims_stale_running_job_and_caps_attempts(db, author, sent_em
     assert claimed is not None and claimed.id == job.id
     assert claimed.attempts == 2
 
-    # Burn the budget: a job stuck at MAX_ATTEMPTS is failed, not re-claimed.
     claimed.status = "running"
     claimed.started_at = stale
     claimed.attempts = archive_jobs.MAX_ATTEMPTS
@@ -433,9 +380,7 @@ def test_worker_reclaims_stale_running_job_and_caps_attempts(db, author, sent_em
 
 
 def test_worker_heartbeat_restamps_started_at(db, author, sent_emails, monkeypatch):
-    """While a job runs, the worker re-stamps ``started_at`` so a legitimately
-    long import never crosses the stale-reclaim window (and a second worker
-    can't double-run it)."""
+    """The heartbeat keeps a long import inside the stale window."""
     from datetime import timedelta
 
     monkeypatch.setattr(archive_jobs, "HEARTBEAT_INTERVAL", timedelta(milliseconds=10))
@@ -465,9 +410,6 @@ def test_worker_heartbeat_restamps_started_at(db, author, sent_emails, monkeypat
 
 
 def test_job_carries_estimate_and_live_progress(db, author, sent_emails):
-    """The enqueue stamps the zip-metadata post estimate; the worker stamps
-    the exact scan position (done / total) as rows land, so the upload
-    page's poll can render live progress."""
     accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
     body = accepted.json()
     assert body["post_estimate"] >= 1
@@ -478,6 +420,5 @@ def test_job_carries_estimate_and_live_progress(db, author, sent_emails):
         f"/api/v1/events/import-archive/{body['id']}", headers=login_as(client, author)
     ).json()
     assert polled["status"] == "done"
-    # One geo tweet: the scan is 1 / 1 at the end.
     assert polled["progress_done"] == 1
     assert polled["progress_total"] == 1

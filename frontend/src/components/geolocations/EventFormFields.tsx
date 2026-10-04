@@ -19,12 +19,9 @@ import { toDatetimeLocalUTC } from "@/lib/format";
 import type { EventDetail } from "@/types";
 
 /**
- * The part of a write's payload that comes straight off the state, posted the
- * same way by all four: the source's archive paste, the mirrors and theirs, the
- * dates, the graphic-content declaration, the proof body with its inline
- * images, and the taxonomy selection. What a caller adds around it is what its
- * endpoint takes differently: the title, the coordinate, the source media, and
- * on an edit the two lossy fields that go back at the row's own precision.
+ * The payload fields every write posts identically, straight off the state. A
+ * caller adds what its endpoint takes differently: the title, coordinate,
+ * source media, and on an edit the two lossy fields.
  */
 export interface EventSharedFields {
   source_snapshot_url: string;
@@ -41,18 +38,13 @@ export interface EventSharedFields {
 }
 
 /**
- * The editable state behind the field block: every value the four write paths
- * post, the staged source media, the taxonomy selection, and the
- * incomplete-form feedback the fields outline themselves from. Built by
- * [`useEventForm`](#useEventForm) and handed whole to
- * [`EventFormFields`](#EventFormFields), so a caller never wires a field one
- * at a time.
+ * The editable state behind the field block, built by `useEventForm` and handed
+ * whole to `EventFormFields`.
  */
 export interface EventFormState {
   title: string;
   setTitle: Dispatch<SetStateAction<string>>;
-  /** The subject point. Required to publish a geolocation, an optional guess on
-   *  a request. Strings: the raw input values, parsed at post time. */
+  /** The subject point, as raw input strings parsed at post time. */
   lat: string;
   setLat: Dispatch<SetStateAction<string>>;
   lng: string;
@@ -64,9 +56,8 @@ export interface EventFormState {
   setCaptureLng: Dispatch<SetStateAction<string>>;
   sourceUrl: string;
   setSourceUrl: Dispatch<SetStateAction<string>>;
-  /** A snapshot pasted here replaces whatever copy the link carries, so it
-   *  starts empty on every surface and the stored copy shows beside it: the
-   *  value is what to write, not what is stored. */
+  /** What to write, not what is stored: starts empty on every surface. A paste
+   *  replaces the link's stored copy. */
   sourceSnapshotUrl: string;
   setSourceSnapshotUrl: Dispatch<SetStateAction<string>>;
   secondarySourceUrls: string[];
@@ -84,15 +75,11 @@ export interface EventFormState {
   setIsGraphic: Dispatch<SetStateAction<boolean>>;
   proof: Record<string, unknown> | null;
   setProof: Dispatch<SetStateAction<Record<string, unknown> | null>>;
-  /** Inline proof images the editor holds locally, uploaded as `proof_files[]`
-   *  at post. Covers only newly-added images: a row's existing ones are already
-   *  stored URLs in the doc. */
+  /** New inline proof images, uploaded as `proof_files[]` at post. */
   proofFiles: File[];
   setProofFiles: Dispatch<SetStateAction<File[]>>;
-  /** Ids of stored source media marked for removal, applied at post. */
   removedIds: Set<string>;
   setRemovedIds: Dispatch<SetStateAction<Set<string>>>;
-  /** Source media staged for upload. */
   newFiles: File[];
   setNewFiles: Dispatch<SetStateAction<File[]>>;
   taxonomy: TaxonomyState;
@@ -100,14 +87,11 @@ export interface EventFormState {
   setSelectedTagIds: Dispatch<SetStateAction<string[]>>;
   selectedConflictIds: string[];
   setSelectedConflictIds: Dispatch<SetStateAction<string[]>>;
-  /** What the two lossy inputs were seeded with. `<input type="time">` drops
-   *  the seconds and `<input type="datetime-local">` stops at the minute, so a
-   *  value still equal to its seed is a field nobody touched: posting the
-   *  truncation back would take the seconds off a stored record on an edit that
-   *  never went near it. Both are `""` on a fresh submit, where there is no
-   *  stored value to preserve. */
+  /** What the two lossy inputs were seeded with (time drops seconds,
+   *  datetime-local stops at the minute): a value equal to its seed is
+   *  untouched, and posting the truncation would cut seconds off a stored
+   *  record. Both `""` on a fresh submit. */
   seeded: { eventTime: string; sourcePostedAt: string };
-  /** The payload fields every write posts identically (`EventSharedFields`). */
   shared: () => EventSharedFields;
   missingFields: MissingField[];
   invalidKeys: Set<MissingFieldKey>;
@@ -119,18 +103,14 @@ export interface EventFormState {
 /**
  * Seed one form's state from the row it edits, or empty for a fresh submit.
  *
- * The seeds are `useState` initialisers, so they apply at mount: the three edit
- * surfaces mount only after their row has loaded, which is also what gives the
- * Tiptap editor its `initialContent` on first paint. The submit form mounts
- * before a request it is fulfilling has loaded, so it seeds empty and drives
- * the setters from its own load effect.
+ * Seeds are `useState` initialisers, so they apply at mount. The edit surfaces
+ * mount after their row loaded (which gives Tiptap its `initialContent`); the
+ * submit form seeds empty and drives the setters from its own load effect.
  */
 export function useEventForm(row?: EventDetail | null): EventFormState {
   const seed = row ?? null;
 
   const [title, setTitle] = useState(seed?.title ?? "");
-  // Optional on every surface but the published edit, so the string inputs
-  // start empty (not `String(null)`) when the row carries no point.
   const [lat, setLat] = useState(
     seed?.event_coords ? String(seed.event_coords.lat) : ""
   );
@@ -156,16 +136,12 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
   const seededSourcePostedAt = toDatetimeLocalUTC(seed?.source_posted_at ?? null);
   const [eventTime, setEventTime] = useState(seededEventTime);
   const [sourcePostedAt, setSourcePostedAt] = useState(seededSourcePostedAt);
-  // Off on a fresh submit: flagging is the deliberate act, and the backend
-  // column defaults to FALSE too.
   const [isGraphic, setIsGraphic] = useState(seed?.is_graphic ?? false);
   const [proof, setProof] = useState<Record<string, unknown> | null>(
     seed?.proof ?? null
   );
   const [proofFiles, setProofFiles] = useState<File[]>([]);
 
-  // Media is staged and applied at post: a stored row can be marked for
-  // removal, new files queued for upload.
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [newFiles, setNewFiles] = useState<File[]>([]);
 
@@ -238,48 +214,31 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
 }
 
 interface EventFormFieldsProps {
-  /** The state this block reads and writes, from `useEventForm`. */
   form: EventFormState;
-  /** The stored row behind the form: the event being edited, the request being
-   *  corrected, or the request being fulfilled. `null` on a fresh submit.
-   *  Supplies the persisted source media and every archived copy the link
-   *  fields show beside the link it covers. */
+  /** The stored row behind the form (edited event, corrected or fulfilled
+   *  request). `null` on a fresh submit. */
   row?: EventDetail | null;
-  /** The source media comes from `row` and cannot be changed here: a request
-   *  fulfilment inherits the requester's footage. */
+  /** A request fulfilment inherits the requester's footage. */
   mediaLocked?: boolean;
-  /** The source URL is inherited the same way, and shows a "from request"
-   *  hint instead of an input. */
+  /** Inherited the same way; shows a "from request" hint instead of an input. */
   sourceUrlLocked?: boolean;
-  /** Whether this surface's floor holds the source instant. The request edit
-   *  is the one that saves without it, so it is the one that says false. */
+  /** False on the request edit, which saves without the source instant. */
   sourcePostedAtRequired?: boolean;
-  /** Show `row`'s provenance link, read-only. The two owner edit surfaces do;
-   *  the submit form writes a record of its own and leaves it out. */
+  /** Show `row`'s provenance link, read-only. */
   showProvenance?: boolean;
-  /** The paste line for that provenance link, wired on the one write that
-   *  declares `detected_from_snapshot_url`. Without the setter the locked field
-   *  renders bare. */
+  /** Without the setter the locked field renders bare. */
   detectedFromSnapshotUrl?: string;
   setDetectedFromSnapshotUrl?: (v: string) => void;
 }
 
 /**
- * The field block every event write fills in, in the one order it reads in:
- * title, source media, location, details (source link and its mirrors, their
- * archived copies, the dates, the graphic-content declaration), classification,
- * proof.
+ * The field block every event write fills in, in reading order: title, source
+ * media, location, details, classification, proof.
  *
- * Four write paths compose it and none keeps a copy of a field: the submit form
- * (a fresh geolocation, a request, or a fulfilment of someone else's request),
- * the owner edit of an open request, and the owner edit of a detection or a
- * published geolocation. They differ in what they post and what floor they
- * enforce, never in what the analyst fills in, so the labels, the help text and
- * the red outlines are one thing here rather than three that drift.
- *
- * What is genuinely per-surface stays with the caller: the readiness tick-list
- * and the duplicate probe on the submit form, the version note and the confirm
- * step on the published edit, and each surface's own actions.
+ * The submit form, the open-request edit and the detection / published edit
+ * compose it and keep no copy of a field, so labels, help and red outlines stay
+ * one thing. Per-surface pieces (readiness list, duplicate probe, version note,
+ * confirm step) stay with the caller.
  */
 export function EventFormFields({
   form,
@@ -295,15 +254,12 @@ export function EventFormFields({
 
   return (
     <>
-      {/* Title leads, mirroring the detail page where it's the heading. */}
       <TitleField
         value={form.title}
         onChange={form.setTitle}
         invalid={invalidKeys.has("title")}
       />
 
-      {/* Source media is its own block; the subject coordinate gets the
-          Location block below. */}
       <SourceMediaField
         existing={row?.media ?? []}
         removedIds={form.removedIds}
@@ -322,10 +278,9 @@ export function EventFormFields({
             : (i) => form.setNewFiles((prev) => prev.filter((_, idx) => idx !== i))
         }
         locked={mediaLocked}
-        // The age gate covers every persisted tile of a flagged row, inherited
-        // or not: the bot opens requests, so an owner can meet footage on this
-        // form they have never seen. It reaches the stored media alone; a
-        // staged file is the analyst's own pick and shows uncovered.
+        // The age gate covers every persisted tile of a flagged row (the bot
+        // opens requests, so an owner can meet unseen footage). Staged files
+        // show uncovered.
         isGraphic={row?.is_graphic ?? false}
         invalid={invalidKeys.has("source_media")}
       />
@@ -362,9 +317,7 @@ export function EventFormFields({
         sourcePostedAtRequired={sourcePostedAtRequired}
         isGraphic={form.isGraphic}
         setIsGraphic={form.setIsGraphic}
-        // The stored value, not the live one: the flag ratchets on the backend,
-        // so a row that arrived flagged cannot be unflagged here. A fresh
-        // submit leaves it false, since nothing is set yet.
+        // The stored value: the flag ratchets on the backend.
         graphicLocked={row?.is_graphic ?? false}
         sourceUrlLocked={sourceUrlLocked}
         detectedFromUrl={showProvenance ? row?.detected_from_url : undefined}
@@ -385,9 +338,7 @@ export function EventFormFields({
         captureSourceInvalid={invalidKeys.has("capture_source_tag")}
       />
 
-      {/* One proof editor, images allowed: a geolocation needs an image, a
-          request may attach them (work started but not finished) or stay
-          imageless. The image floor binds at the geolocate. */}
+      {/* The image floor binds at the geolocate; a request may stay imageless. */}
       <ProofEditorPanel
         proof={form.proof}
         onChange={form.setProof}

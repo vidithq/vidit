@@ -6,16 +6,13 @@ import { FIELD_HELP } from "@/lib/fieldHelp";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { EventDetail } from "@/types";
 
-// The body writes nothing, so who is looking changes none of it: the owner's
-// own view is asserted below through the same render every reader gets.
+// The body writes nothing, so who is looking changes none of it: the owner's view is asserted through the same render.
 const OWNER_ID = "u1";
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: { id: OWNER_ID } }),
 }));
 
-// The media gallery's alt text, which is the event title. Named because the
-// detail rows carry archive marks of their own, so a media assertion has to
-// say which image it means.
+// The media gallery's alt text is the event title. Named because the detail rows carry archive marks of their own.
 const TITLE = "Strike on ammunition depot";
 
 function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
@@ -95,15 +92,13 @@ describe("EventDetailBody", () => {
     const geo = geoFixture();
     render(<EventDetailBody geo={geo} variant="panel" />);
     const img = screen.getByRole("img", { name: geo.title });
-    // Derive the expected URL from the same helper the component uses,
-    // decoded so the assertion survives next/image's loader encoding.
+    // Derive the expected URL from the component's helper, decoded to survive next/image's loader encoding.
     expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain(
       displayUrlsFor(geo.media[0]).thumbnail
     );
     expect(screen.queryByText("Request")).not.toBeInTheDocument();
     expect(screen.queryByText("Author")).not.toBeInTheDocument();
-    // Not just the row label — the author's username must not appear
-    // anywhere in the panel body (it lives in the panel header).
+    // The author's username must appear nowhere in the panel body (it lives in the panel header).
     expect(screen.queryByText("ana")).not.toBeInTheDocument();
     // The panel carries the same section headings as the page (denser).
     expect(screen.getByText("Source media")).toBeInTheDocument();
@@ -196,8 +191,7 @@ describe("EventDetailBody", () => {
         geo={geoFixture({
           status: "detected",
           detected_from_url: "https://x.com/ana/status/123",
-          // A detection is nobody's request: the two provenance stamps never
-          // sit on one row outside a fixture.
+          // A detection is nobody's request: the two provenance stamps never share a row outside a fixture.
           requested_by: null,
         })}
         variant="page"
@@ -206,8 +200,7 @@ describe("EventDetailBody", () => {
     expect(screen.getByText("Status")).toBeInTheDocument();
     expect(screen.getByText("Detected")).toBeInTheDocument();
     expect(screen.getByText("Detected from")).toBeInTheDocument();
-    // Detected from renders via SourceLabel — host display, full URL as href,
-    // the same nature as the Source row.
+    // Detected from renders via SourceLabel: host display, full URL as href, like the Source row.
     expect(screen.getByRole("link", { name: "x.com" })).toHaveAttribute(
       "href",
       "https://x.com/ana/status/123"
@@ -271,8 +264,7 @@ describe("EventDetailBody", () => {
         variant="panel"
       />
     );
-    // A clip plays in `VideoPlayer`, so the tile is the player's controller
-    // rather than a bare native element with `controls`.
+    // A clip plays in `VideoPlayer`, so the tile is the player's controller, not a bare native element.
     expect(container.querySelector("media-controller")).not.toBeNull();
     expect(container.querySelector("video[controls]")).toBeNull();
     // The image sibling still renders through next/image.
@@ -308,17 +300,15 @@ describe("EventDetailBody", () => {
       screen.getByText("Duplicate of an existing request.")
     ).toBeInTheDocument();
     expect(screen.getByText("5 Jun 2026")).toBeInTheDocument();
-    // The badge is the state, the Reason is why: neither the badge nor the
-    // Closed row carries hover text of its own, and the `status` concept's `?`
-    // on the row names every dismissal shape.
+    // The badge is the state, the Reason is why: neither carries hover text, and the `status`
+    // concept's `?` names every dismissal shape.
     for (const node of screen.getAllByText("Closed")) {
       expect(node.closest("[title]")).toBeNull();
     }
   });
 
-  // A retraction is the one closed shape that carries a full published record
-  // behind it, and the page has to say the claim was taken back rather than
-  // render as if it still stood.
+  // A retraction is the one closed shape with a full published record behind it: the page must say
+  // the claim was taken back.
   it("marks a retracted geolocation as closed, with the reason and the day", () => {
     render(
       <EventDetailBody
@@ -365,8 +355,7 @@ describe("EventDetailBody", () => {
   });
 
   it("shows a dash on the Source posted row when the instant is unknown", () => {
-    // A machine detection whose source is an undated footage link
-    // (or has no source at all) leaves source_posted_at null.
+    // A machine detection whose source is an undated footage link (or has none) leaves source_posted_at null.
     render(
       <EventDetailBody
         geo={geoFixture({ source_posted_at: null })}
@@ -378,8 +367,7 @@ describe("EventDetailBody", () => {
   });
 
   it("shows the muted 'To confirm' label on the Source row when no source is declared", () => {
-    // A machine detection is partial by definition: its tweet may
-    // declare no source at all.
+    // A machine detection is partial by definition: its tweet may declare no source.
     render(
       <EventDetailBody
         geo={geoFixture({ status: "detected", source_url: null })}
@@ -434,8 +422,7 @@ describe("EventDetailBody", () => {
         variant="page"
       />
     );
-    // Named per service and per target, since every mark on the page looks
-    // alike and a screen reader has nothing else to tell them apart by.
+    // Named per service and target: every mark looks alike and a screen reader has nothing else to tell them apart.
     expect(
       screen.getByRole("link", { name: "Wayback Machine copy of the source" })
     ).toHaveAttribute("href", "https://web.archive.org/web/2026/t.me/channel/12345");
@@ -443,9 +430,8 @@ describe("EventDetailBody", () => {
     expect(screen.getByRole("link", { name: "t.me" })).toBeInTheDocument();
   });
 
-  // Every unarchived link row states the absence and offers nothing, the
-  // event's own owner included: recording a copy is an edit, filed through the
-  // edit form, so no detail surface writes one.
+  // Every unarchived link row states the absence and offers nothing, the owner included: recording
+  // a copy is an edit through the edit form.
   it("states a missing copy on every link row, offering no action to anyone", () => {
     render(
       <EventDetailBody
@@ -513,9 +499,8 @@ describe("EventDetailBody", () => {
     // Same new-tab affordance as the primary Source row.
     expect(link).toHaveAttribute("target", "_blank");
     expect(screen.getByRole("link", { name: "www.youtube.com" })).toBeInTheDocument();
-    // The archive marks carry no `?` of their own: ten mirrors must not carry
-    // ten copies of one sentence, so the row's own Secondary sources tooltip
-    // explains the mark for the whole list.
+    // The archive marks carry no `?` of their own: the row's Secondary sources tooltip explains the
+    // mark once for the list.
     expect(
       screen.getByRole("button", {
         name: FIELD_HELP.secondary_source_urls.label,
@@ -531,8 +516,7 @@ describe("EventDetailBody", () => {
             "https://x.com/user/status/9",
             "https://www.youtube.com/watch?v=abc",
           ],
-          // Only the second mirror has a copy: the alignment is by position, so
-          // a copy must not slide onto the neighbouring mirror.
+          // Only the second mirror has a copy: alignment is by position, so a copy must not slide onto its neighbour.
           archived_secondary_sources: [
             null,
             {
@@ -546,9 +530,8 @@ describe("EventDetailBody", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /2 more sources/ }));
 
-    // Named per target, so the archived affordances on this page stay tellable
-    // apart by their accessible name. The position leads, since a host is not
-    // an identity: two mirrors of one channel would otherwise share a name.
+    // Named per target so the archived affordances stay tellable apart. Position leads, since a host
+    // isn't an identity (two mirrors of one channel would share a name).
     const archived = screen.getByRole("link", {
       name: "Wayback Machine copy of mirror 2, www.youtube.com",
     });
@@ -596,8 +579,7 @@ describe("EventDetailBody", () => {
         variant="page"
       />
     );
-    // Named apart from the source: the provenance link is the analyst's own
-    // post, not the footage origin, and both rows carry the same mark.
+    // Named apart from the source: the provenance link is the analyst's post, not the footage origin, and both rows carry the same mark.
     expect(
       screen.getByRole("link", {
         name: "Wayback Machine copy of the post it was detected from",
@@ -606,8 +588,8 @@ describe("EventDetailBody", () => {
   });
 
   it("the map panel carries the copy on every link row it shows", () => {
-    // The panel renders the same rows as the page, so a regression that drops
-    // the affordance from one surface only would pass the page tests alone.
+    // The panel renders the same rows as the page, so a regression dropping the affordance from one
+    // surface alone would pass the page tests.
     render(
       <EventDetailBody
         geo={geoFixture({
@@ -694,8 +676,7 @@ describe("EventDetailBody", () => {
     ).toBeInTheDocument();
     unmount();
 
-    // A stored value the URL parser gives no host for still announces
-    // something a reader can act on.
+    // A stored value the URL parser gives no host for still announces something a reader can act on.
     render(
       <EventDetailBody
         geo={geoFixture({

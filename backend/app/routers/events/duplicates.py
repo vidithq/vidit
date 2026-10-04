@@ -1,4 +1,4 @@
-"""``GET /possible-duplicates`` — the submit-form duplicate probe (host + proximity legs)."""
+"""``GET /possible-duplicates``: the submit-form duplicate probe (host + proximity legs)."""
 
 import re
 from datetime import date
@@ -27,51 +27,38 @@ from app.services.event_filters import visible_events
 
 router = APIRouter()
 
-# Possible-duplicate probe support — see `list_possible_duplicates`.
+# See `list_possible_duplicates`.
 #
-# Real DNS hostnames are letters / digits / dots / hyphens. Anything else
-# is either malformed or a SQL-LIKE meta-character (`%`, `_`, `\`) that
-# pollutes the match (`kashmir_news.com` matching `kashmir1news.com` via
-# the `_` wildcard) or widens the attack surface. Failing the pattern
-# drops the host leg — benign, since "no host match" == "no source URL".
+# Real hostnames are letters / digits / dots / hyphens. Anything else is
+# malformed or a LIKE meta-character (`%`, `_`, `\`) that pollutes the match
+# (`_` matching any char). Failing the pattern drops the host leg.
 #
-# Two structural constraints on top of the character class:
-# - Leading char must be alphanumeric. Else ``urlparse('http://./x')
-#   .hostname == '.'`` passes and ILIKE-substring-matches every URL with
-#   a dot.
-# - At least one inner dot. Rejects single-label hosts (`co`, `me`,
-#   `localhost`); a two-char host makes the ILIKE leg unbounded (`'%co%'`
-#   matches every `.com` / `.co.uk`). Real sources (Twitter, Telegram,
-#   etc.) all carry a dot, so this only bites localhost dev — the host
-#   leg drops there, the date leg still fires.
+# Two constraints on top of the character class:
+# - Leading char alphanumeric, else ``urlparse('http://./x').hostname == '.'``
+#   would ILIKE-match every URL with a dot.
+# - At least one inner dot, else a short host (`co`) makes the ILIKE leg
+#   unbounded. Only bites localhost dev; the date leg still fires.
 _HOST_SAFE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)+$")
 
-# Hard cap on candidates returned. The submit form renders all of
-# them inline; ten is enough to surface real duplicates without
-# turning the warning into a wall.
+# Cap on candidates; enough to surface duplicates without a wall of warnings.
 _POSSIBLE_DUPLICATES_LIMIT = 10
 
-# Radius for the proximity leg. A strike footprint is usually <200m but
-# witnesses post coords off by a block or two — 500m catches "same event,
-# slightly different pin" without inviting "two unrelated events in one village".
+# Radius for the proximity leg: witnesses post coords off by a block or two, so
+# 500m catches the same event without merging unrelated ones.
 _POSSIBLE_DUPLICATES_RADIUS_M = 500.0
 
 
 def _extract_host(source_url: str) -> str | None:
     """Best-effort host extraction tolerating partial URLs.
 
-    The submit form is mid-typing when this fires, so accept both
-    `https://twitter.com/x/status/1` and scheme-stripped `twitter.com/x`.
-    Returns the lowercased host minus a leading `www.` (so the substring
-    match ignores those cosmetic variants), or ``None`` when the value
-    can't parse into a host safe to inject as an ILIKE pattern (see
-    ``_HOST_SAFE_PATTERN``).
+    The form is mid-typing, so this accepts scheme-stripped input. Returns the
+    lowercased host minus a leading `www.`, or ``None`` when it is not safe to
+    inject as an ILIKE pattern (``_HOST_SAFE_PATTERN``).
     """
     parsed = urlparse(source_url)
     host = parsed.hostname
     if host is None:
-        # No scheme → urlparse puts the value in ``path``; retry with a
-        # stub scheme to coax the host out.
+        # No scheme: urlparse puts the value in ``path``; retry with a stub scheme.
         host = urlparse(f"http://{source_url}").hostname
     if host is None:
         return None
@@ -97,23 +84,18 @@ def list_possible_duplicates(
 ):
     """Soft-warning probe used by the submit form.
 
-    Returns geolocations that *might* be the same event as the one being
-    submitted. Never blocks the submit — the analyst inspects the list and
-    either keeps typing or recognises a row and abandons their version.
+    Returns geolocations that might be the same event as the one being
+    submitted; never blocks the submit.
 
-    Match rule: within ~500m of the proposed (lat, lng) AND (same source
-    host OR same event_date). Coordinate-less rows never match (the
-    proximity predicate skips NULL points by construction). Authenticated-only
-    so the cheap proximity probe isn't exposed to anonymous scraping
-    (sidestepping the bbox-required hardening on /points).
+    Match rule: within ~500m of (lat, lng) AND (same source host OR same
+    event_date). Coordinate-less rows never match. Authenticated-only so the
+    proximity probe isn't exposed to anonymous scraping.
 
-    Tolerates partial / malformed input — a half-typed source URL disables
-    the host leg, an unparseable date disables the date leg. If neither is
-    usable the response is `[]` (no candidates, no error), so the frontend
-    can call this eagerly while the user types.
+    A half-typed source URL disables the host leg and an unparseable date the
+    date leg; with neither usable the response is `[]`, so the frontend can
+    call this eagerly.
 
-    No caching — the input space (every coordinate) is unbounded so the hit
-    rate is ~0, and a 500ms-debounced probe doesn't need it.
+    Not cached: the input space is unbounded, so the hit rate is ~0.
     """
     host: str | None = _extract_host(source_url) if source_url else None
 
@@ -125,15 +107,12 @@ def list_possible_duplicates(
             parsed_date = None
 
     if host is None and parsed_date is None:
-        # Neither match leg available → no candidates, and skip a useless
-        # trip to PostGIS.
+        # No match leg available: skip the PostGIS trip.
         return []
 
-    # Cast to Geography on the fly so ST_DWithin measures in metres along
-    # the geoid, not degrees. The functional cast defeats the GIST index on
-    # `event_coords` (geometry), so this seqscans today, fine at current
-    # volume. Add a functional index on `(event_coords::geography)` if this
-    # shows up in slow-query logs.
+    # Geography cast so ST_DWithin measures metres, not degrees. It defeats the
+    # GIST index on `event_coords`, so this seqscans; add a functional index on
+    # `(event_coords::geography)` if it shows in slow-query logs.
     point_geog = cast(
         func.ST_SetSRID(func.ST_MakePoint(lng, lat), 4326),
         Geography,
@@ -141,30 +120,20 @@ def list_possible_duplicates(
     geo_geog = cast(Event.event_coords, Geography)
     distance_m = func.ST_Distance(geo_geog, point_geog).label("distance_m")
 
-    # Explicit annotation: the host leg appends a ``BinaryExpression``
-    # (``ilike``) and the date leg a ``ColumnElement[bool]`` (equality).
-    # mypy infers the narrower type from the first ``append`` and rejects
-    # the second; widening to the ``ColumnElement[bool]`` supertype fixes it.
+    # Annotated because mypy would infer the narrower type from the first append.
     match_clauses: list[ColumnElement[bool]] = []
     if host is not None:
-        # ILIKE substring on the stored source URL: Postgres has no URL
-        # parser, so matching the host directly would mean a derived
-        # column — overkill for a soft warning. The host is already
-        # whitelist-validated to LIKE-safe chars in `_extract_host`, so
-        # no escape pass is needed.
+        # ILIKE substring on the source URL (no URL parser in Postgres). The
+        # host is whitelisted to LIKE-safe chars in `_extract_host`.
         match_clauses.append(Event.source_url.ilike(f"%{host}%"))
-        # The same host leg over the secondary links (an EXISTS on the child
-        # table): the analyst may be pasting the mirror an existing event
-        # recorded as a secondary source while its primary anchor points at a
-        # different network, and that is still the same event.
+        # Same leg over the secondary links: the analyst may paste a mirror an
+        # existing event recorded as secondary.
         match_clauses.append(Event.source_links.any(EventSourceLink.url.ilike(f"%{host}%")))
     if parsed_date is not None:
         match_clauses.append(Event.event_date == parsed_date)
 
-    # ``match_clauses`` is non-empty by construction — the early-return
-    # above (both `host` and `parsed_date` None) keeps `or_(*match_clauses)`
-    # from collapsing to SQL ``FALSE``. A refactor dropping that
-    # early-return must reintroduce the empty-check here.
+    # ``match_clauses`` is non-empty because of the early return above, which
+    # keeps ``or_`` from collapsing to ``FALSE``; keep that guard.
 
     rows = (
         db.query(
@@ -175,11 +144,9 @@ def list_possible_duplicates(
         )
         .options(joinedload(Event.owner))
         .filter(*visible_events())
-        # Located rows only: a duplicate is a real placed event, not a
-        # ``requested`` guess or a dismissed ``closed`` row. The coords CHECK no
-        # longer forbids coordinates off ``geolocated`` (a request may carry an
-        # approximate guess), so the proximity predicate alone would now surface
-        # those; filter on status like ``search._search_events`` does.
+        # Located rows only: a request may carry an approximate guess, so
+        # proximity alone would surface it; filter on status like
+        # ``search._search_events``.
         .filter(Event.status.in_((STATUS_GEOLOCATED, STATUS_DETECTED)))
         .filter(func.ST_DWithin(geo_geog, point_geog, _POSSIBLE_DUPLICATES_RADIUS_M))
         .filter(or_(*match_clauses))

@@ -27,8 +27,8 @@ describe("normalizeBounds", () => {
   });
 
   it("widens a viewport that straddles the antimeridian", () => {
-    // The endpoint models no west > east box, so the whole range is the
-    // only correct answer: dropping half the viewport is not.
+    // The endpoint models no west > east box: the whole range is correct, dropping half the
+    // viewport is not.
     expect(normalizeBounds({ south: 0, west: 170, north: 10, east: 190 })).toEqual({
       south: 0,
       west: -180,
@@ -47,8 +47,7 @@ describe("normalizeBounds", () => {
   });
 
   it("falls back to the full range when a value is not finite", () => {
-    // `getBounds()` before the map has a size answers NaN, which would
-    // serialise as "NaN,..." and 422 the fetch.
+    // `getBounds()` before the map has a size answers NaN, which would 422 the fetch.
     expect(normalizeBounds({ south: NaN, west: 30, north: NaN, east: 40 })).toEqual({
       south: -90,
       west: 30,
@@ -137,8 +136,8 @@ describe("toBboxParam", () => {
     expect(a).toBe(b);
   });
 
-  // The framing box `pointsBounds` returns for a set straddling the
-  // antimeridian is unwrapped (`east` past 180), which `parse_bbox` rejects.
+  // `pointsBounds` for a set straddling the antimeridian is unwrapped (`east` past 180), which
+  // `parse_bbox` rejects.
   it("widens an unwrapped crossing box to the full longitude range", () => {
     expect(toBboxParam({ south: 64, west: 179, north: 65, east: 181 })).toBe(
       "64,-180,65,180"
@@ -146,10 +145,9 @@ describe("toBboxParam", () => {
   });
 });
 
-// Pins the contract `services/event_filters.parse_bbox` enforces, not the
-// literal: four numbers, `south,west,north,east` order, in range, and wide
-// enough that no coordinate on the planet falls outside it. The profile's
-// coverage map sends exactly this value.
+// Pins the `services/event_filters.parse_bbox` contract, not the literal: four numbers in
+// `south,west,north,east` order, in range, covering the planet. The profile's coverage map
+// sends this value.
 describe("WORLD_BOUNDS", () => {
   it("serialises to a box parse_bbox accepts that leaves no coordinate out", () => {
     const parts = toBboxParam(WORLD_BOUNDS).split(",").map(Number);

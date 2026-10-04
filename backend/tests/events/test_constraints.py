@@ -1,17 +1,8 @@
 """DB-level CHECK constraints on ``events``, reached through the ORM and the API.
 
-The event model refactor (migration ``h0j2l4n6p8r0``) pins several invariants
-at the database, not only in the app-layer ``Literal`` / service checks:
-``ck_events_status_valid``, ``ck_events_coords_status``,
-``ck_events_before_closed_status``, and the per-state stamp CHECKs
-(``ck_events_closed_stamp`` / ``ck_events_geolocated_stamp``); the source
-contract (migration ``i1k3m5o7q9s1``) adds ``ck_events_source_url_status``
-(``requested`` / ``geolocated`` imply a source URL). Mirrors
-``test_social.py::test_check_constraint_blocks_self_follow`` (the existing
-direct-``IntegrityError`` idiom in this suite): construct a row that violates
-one CHECK, assert the commit raises, and roll back so the fixture teardown
-sees a clean session. Shared fixtures live in ``conftest.py``; ``client`` /
-``_make_geo`` in ``_helpers.py``.
+Each test builds a row that violates one CHECK and asserts the commit raises (the
+idiom of ``test_social.py::test_check_constraint_blocks_self_follow``), rolling back
+so teardown sees a clean session.
 """
 
 from __future__ import annotations
@@ -37,9 +28,7 @@ from tests.events._helpers import _make_geo, client, proof_file_part, proof_form
 
 
 def _bare_event(db, *, author, **overrides) -> Event:
-    """The minimal columns every ``events`` row needs regardless of status
-    (the NOT NULL floor), so a test can isolate exactly one CHECK at a time
-    without also tripping an unrelated NOT NULL."""
+    """The NOT NULL floor, so a test isolates one CHECK at a time."""
     fields = {
         "owner_id": author.id,
         "title": "Constraint probe",
@@ -50,14 +39,9 @@ def _bare_event(db, *, author, **overrides) -> Event:
     return Event(**fields)
 
 
-# ── ck_events_status_valid ────────────────────────────────────────────────
-
-
 def test_status_check_rejects_value_outside_the_domain(db, author):
-    """A ``status`` string outside ``requested`` / ``detected`` / ``geolocated``
-    / ``closed`` is rejected by Postgres, not only by the app-layer
-    ``EventStatus`` Literal: a bad write from any future code path (a typo, a
-    half-finished migration) can't silently land."""
+    """A status outside the four values is rejected by Postgres, not only by the
+    ``EventStatus`` Literal."""
     bad = _bare_event(db, author=author, status="archived")
     db.add(bad)
     with pytest.raises(IntegrityError, match="ck_events_status_valid"):
@@ -65,14 +49,8 @@ def test_status_check_rejects_value_outside_the_domain(db, author):
     db.rollback()
 
 
-# ── ck_events_coords_status ───────────────────────────────────────────────
-
-
 def test_coords_status_check_rejects_geolocated_without_coords(db, author):
-    """A ``geolocated`` row always has a subject coordinate; inserting one with
-    ``event_coords IS NULL`` is rejected. The other states are free (a
-    ``requested`` guess is optional either way), so this CHECK is the one
-    direction that's actually enforced."""
+    """A ``geolocated`` row needs a subject coordinate; the other states are free."""
     bad = _bare_event(
         db,
         author=author,
@@ -87,9 +65,7 @@ def test_coords_status_check_rejects_geolocated_without_coords(db, author):
 
 
 def test_coords_status_check_allows_requested_without_coords(db, author):
-    """The sibling positive case: ``requested`` with no coordinate at all is
-    valid (an open call with no guess yet): the CHECK only binds
-    ``geolocated``, not the other three states."""
+    """``requested`` with no coordinate is valid: the CHECK binds only ``geolocated``."""
     ok = _bare_event(
         db,
         author=author,
@@ -98,18 +74,14 @@ def test_coords_status_check_allows_requested_without_coords(db, author):
         event_coords=None,
     )
     db.add(ok)
-    db.commit()  # must not raise
+    db.commit()
     db.delete(ok)
     db.commit()
 
 
-# ── ck_events_source_url_status ───────────────────────────────────────────
-
-
 def test_source_url_status_check_rejects_geolocated_without_source_url(db, author):
-    """A ``geolocated`` row always carries its footage source; inserting one
-    with ``source_url IS NULL`` is rejected at the database, the backstop
-    behind the app-layer promotion gate in ``services/events.geolocate``."""
+    """A ``geolocated`` row needs a ``source_url``: the backstop behind the promotion
+    gate in ``services/events.geolocate``."""
     bad = _bare_event(
         db,
         author=author,
@@ -125,8 +97,7 @@ def test_source_url_status_check_rejects_geolocated_without_source_url(db, autho
 
 
 def test_source_url_status_check_rejects_requested_without_source_url(db, author):
-    """Same for ``requested``: a request is a call to geolocate someone's
-    footage, so the source URL is on the row from the start."""
+    """Same for ``requested``."""
     bad = _bare_event(
         db,
         author=author,
@@ -141,9 +112,8 @@ def test_source_url_status_check_rejects_requested_without_source_url(db, author
 
 
 def test_source_url_status_check_allows_detected_without_source_url(db, author):
-    """The positive case the contract exists for: a machine detection
-    whose imported tweet declared no source persists with a NULL ``source_url``
-    (and a NULL ``source_posted_at``), partial by definition."""
+    """A machine detection whose tweet declared no source persists with NULL
+    ``source_url`` and ``source_posted_at``."""
     ok = _bare_event(
         db,
         author=author,
@@ -153,18 +123,13 @@ def test_source_url_status_check_allows_detected_without_source_url(db, author):
         source_posted_at=None,
     )
     db.add(ok)
-    db.commit()  # must not raise
+    db.commit()
     db.delete(ok)
     db.commit()
 
 
-# ── ck_events_before_closed_status ────────────────────────────────────────
-
-
 def test_before_closed_status_check_rejects_value_outside_the_domain(db, author):
-    """``before_closed_status`` on a ``closed`` row names one of the three live
-    states it left; anything else is a value no transition can produce, and
-    Postgres refuses the write."""
+    """``before_closed_status`` on a closed row must name one of the three live states."""
     bad = _bare_event(
         db,
         author=author,
@@ -180,9 +145,8 @@ def test_before_closed_status_check_rejects_value_outside_the_domain(db, author)
 
 
 def test_before_closed_status_check_admits_a_retraction(db, author):
-    """A retracted row is ``closed`` off ``geolocated`` and keeps the
-    coordinate and the publication stamp it was published with, so the coords,
-    source-URL and geolocated-at CHECKs all still hold on it."""
+    """A retracted row keeps its coordinate and publication stamp, so all the CHECKs
+    still hold."""
     ok = _bare_event(
         db,
         author=author,
@@ -193,17 +157,14 @@ def test_before_closed_status_check_admits_a_retraction(db, author):
         event_coords=from_shape(Point(34.5, 48.5), srid=4326),
     )
     db.add(ok)
-    db.commit()  # must not raise
+    db.commit()
     db.delete(ok)
     db.commit()
 
 
 def test_before_closed_status_check_rejects_null_on_closed_row(db, author):
-    """A ``closed`` row must remember the state it held before:
-    ``ck_events_before_closed_status`` rejects a NULL discriminator on a closed
-    row, so a withdrawn request stays distinguishable from a rejected detection.
-    This is the strengthened CHECK, an earlier version let the NULL through and
-    silently contradicted ``docs/data-model.md``."""
+    """A closed row needs a ``before_closed_status``, so a withdrawn request stays
+    distinguishable from a rejected detection."""
     bad = _bare_event(
         db,
         author=author,
@@ -218,9 +179,7 @@ def test_before_closed_status_check_rejects_null_on_closed_row(db, author):
 
 
 def test_before_closed_status_check_rejects_value_on_non_closed_row(db, author):
-    """The other half of the iff: a live (non-``closed``) row must carry a NULL
-    discriminator. A ``requested`` row that somehow holds a
-    ``before_closed_status`` is a stale leftover, and Postgres refuses it."""
+    """A live row must carry a NULL ``before_closed_status``."""
     bad = _bare_event(
         db,
         author=author,
@@ -233,13 +192,8 @@ def test_before_closed_status_check_rejects_value_on_non_closed_row(db, author):
     db.rollback()
 
 
-# ── ck_events_closed_stamp / ck_events_geolocated_stamp ───────────────────
-
-
 def test_closed_stamp_check_rejects_closed_without_closed_at(db, author):
-    """A ``closed`` row must carry ``closed_at``; an app path that forgets to
-    stamp it is rejected at write time instead of storing a silently
-    incomplete row."""
+    """A closed row must carry ``closed_at``."""
     bad = _bare_event(
         db,
         author=author,
@@ -254,8 +208,7 @@ def test_closed_stamp_check_rejects_closed_without_closed_at(db, author):
 
 
 def test_geolocated_stamp_check_rejects_geolocated_without_geolocated_at(db, author):
-    """Sibling of the closed-stamp CHECK: a ``geolocated`` row must carry
-    ``geolocated_at``."""
+    """A geolocated row must carry ``geolocated_at``."""
     bad = _bare_event(
         db,
         author=author,
@@ -269,22 +222,11 @@ def test_geolocated_stamp_check_rejects_geolocated_without_geolocated_at(db, aut
     db.rollback()
 
 
-# ── The coordinate CHECK, reached through the geolocate API ──────────────
-# The DB-level CHECK above is the backstop; the app layer enforces the same
-# rule earlier (before any S3 upload) via required Form fields, so a caller
-# never gets the chance to trip the CHECK through the real endpoint. Both
-# layers land on the same outward behaviour: no way to geolocate a row with
-# no subject coordinate.
-
-
 def test_geolocate_rejects_missing_coordinates_at_the_form_boundary(
     db, author, conflict, capture_source_tag
 ):
-    """``lat`` / ``lng`` are required ``Form(...)`` fields on the geolocate
-    endpoint (mirroring create): omitting them 422s before the service (and
-    the CHECK) is ever reached, the same invariant
-    ``ck_events_coords_status`` protects at the database, enforced earlier at
-    the API boundary."""
+    """``lat`` / ``lng`` are required Form fields, so omitting them 422s before the
+    service or the CHECK is reached."""
     geo = _make_geo(db, author=author, status=STATUS_DETECTED, with_media=True)
     response = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
@@ -303,21 +245,13 @@ def test_geolocate_rejects_missing_coordinates_at_the_form_boundary(
     assert response.status_code == 422
 
 
-# ── Reverse credit read: "a user's geolocations" ─────────────────────────
-# docs/data-model.md documents ``ix_event_geolocators_user_created_at``
-# explicitly for this reverse direction, but no router queries by
-# ``EventGeolocator.user_id`` today (``GET /users/{username}/events`` reads
-# ``Event.owner_id``, not the credit table; see data-model.md: "stays on
-# owner_id until it re-homes onto event_geolocators"). No HTTP surface exists
-# yet to test end to end, so this locks in the query shape the index is FOR,
-# directly against the ORM, so a future router wiring it up has a correctness
-# check already in place.
+# No router queries ``EventGeolocator.user_id`` yet, so this pins the query shape the
+# index serves directly against the ORM.
 
 
 def test_event_geolocators_reverse_query_by_user(db, author, second_user):
-    """The reverse "a user's geolocations" read: every ``EventGeolocator`` row
-    for one user, across however many events they've vouched, newest first
-    (the shape ``ix_event_geolocators_user_created_at`` backs)."""
+    """Every ``EventGeolocator`` row for one user, newest first (the shape
+    ``ix_event_geolocators_user_created_at`` backs)."""
     older = _make_geo(db, author=author)
     newer = _make_geo(db, author=author)
     unrelated = _make_geo(db, author=author)  # second_user never geolocated this one

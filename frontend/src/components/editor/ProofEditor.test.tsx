@@ -1,10 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-// Tiptap's useEditor boots ProseMirror, which needs DOM APIs jsdom lacks. We
-// only assert the toolbar wiring, so stub the editor: truthy (so the component
-// renders past `if (!editor) return null`) with the `isActive` it calls at
-// render time for button styling.
+// Tiptap's useEditor boots ProseMirror, which needs DOM APIs jsdom lacks. Only toolbar wiring is
+// asserted, so stub the editor: truthy, with the `isActive` it calls at render.
 vi.mock("@tiptap/react", () => ({
   useEditor: () => ({ isActive: () => false }),
   EditorContent: () => null,
@@ -16,8 +14,7 @@ import ProofEditor, { isProofLinkUri, resolveProofDoc } from "./ProofEditor";
 
 describe("ProofEditor", () => {
   it("offers the proof-image control by default (upload-at-publish)", () => {
-    // The image is held locally (blob preview + retained File) and uploaded
-    // only at publish via `proof_files[]`, so the control is live.
+    // The image is held locally and uploaded only at publish via `proof_files[]`, so the control is live.
     render(<ProofEditor onChange={() => {}} />);
     const control = screen.getByText("+ Image");
     expect(control).toBeInTheDocument();
@@ -25,10 +22,8 @@ describe("ProofEditor", () => {
   });
 
   it("drops the image control, and nothing else, under allowImages={false}", () => {
-    // A collection's description is written here and stored with
-    // `allow_images=False`, so offering the control would stage a file the
-    // server drops on arrival. The marks and the list controls stay: one
-    // editor serves both surfaces.
+    // A collection's description is stored with `allow_images=False`, so offering the control would
+    // stage a file the server drops. Marks and list controls stay: one editor serves both.
     render(<ProofEditor onChange={() => {}} allowImages={false} />);
     expect(screen.queryByText("+ Image")).not.toBeInTheDocument();
     for (const label of ["B", "I", "H3", "List"]) {
@@ -50,9 +45,7 @@ describe("ProofEditor", () => {
 
 describe("link URI allowlist", () => {
   // The editor may only mint what survives publication: both sanitisers
-  // (`services/sanitize.py::safe_link_href`, `lib/proof.tsx::isSafeLinkHref`)
-  // take absolute http(s) only, so anything else would be a link the analyst
-  // sees and the reader never gets.
+  // (`services/sanitize.py::safe_link_href`, `lib/proof.tsx::isSafeLinkHref`) take absolute http(s) only.
   it("accepts absolute http(s) URLs", () => {
     expect(isProofLinkUri("https://x.com/user/status/1")).toBe(true);
     expect(isProofLinkUri("http://localhost:8000/p")).toBe(true);

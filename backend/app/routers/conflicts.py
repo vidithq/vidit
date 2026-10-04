@@ -26,23 +26,19 @@ def list_conflicts(
 ):
     """Return the conflicts referential, ongoing first then by name.
 
-    The default returns every row: the submit picker needs the full
-    referential up front (ongoing conflicts plus the ended ones behind its
-    "include ended" toggle) so an analyst geolocating archival footage can
-    tag it. The referential is server-managed (Wikipedia sync + Wikidata
-    seed + operator rows); there is no create endpoint.
+    The default returns every row: the submit picker needs the whole
+    referential (ended conflicts behind its toggle) so analysts can tag
+    archival footage. It is server-managed (Wikipedia sync, Wikidata seed,
+    operator rows); there is no create endpoint.
 
-    ``used=true`` flips to the map-filter view: only conflicts carried by at
-    least one live event, so the filter UI never surfaces a chip that matches
-    zero results. Mirrors the orphan filter on ``GET /tags``.
+    ``used=true`` is the map-filter view: only conflicts on at least one live
+    event. Mirrors the orphan filter on ``GET /tags``.
 
-    Bounded by ``REFERENTIAL_MAX_ROWS``, not by the 100-row list cap: the
-    submit picker filters the whole referential client-side, so a page of it
-    would be a page of missing options. The daily sync's sanity band bounds
-    one parse pass, not the table: rows accumulate across passes (an ended
-    conflict is kept, and the Wikidata seed and operator rows add their own),
-    so the ceiling is what bounds the response. A response landing on it is
-    logged, since the payload carries no way to say it was cut.
+    Bounded by ``REFERENTIAL_MAX_ROWS``, not the 100-row list cap: the picker
+    filters the whole referential client-side. The daily sync's sanity band
+    bounds one parse pass, not the table (rows accumulate across passes), so
+    the ceiling bounds the response. A response landing on it is logged because
+    the payload can't say it was cut.
     """
     query = db.query(Conflict)
     if used:

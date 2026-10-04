@@ -1,7 +1,7 @@
 """The ``/collections`` endpoints: one analyst's curated sets of their own events.
 
-Every rule lives in ``services/collections``; this module resolves the row,
-hands the verb its arguments, and turns a typed service error into its status.
+Rules live in ``services/collections``; this module resolves the row, hands
+the verb its arguments and maps a typed service error to its status.
 """
 
 import uuid
@@ -44,7 +44,7 @@ def _raise_collection_error(exc: collections_service.CollectionError) -> NoRetur
 
 
 def _resolve(db: Session, collection_id: uuid.UUID, viewer: User | None) -> Collection:
-    """Resolve a readable collection or answer 404, the service's own branch."""
+    """Resolve a readable collection or 404."""
     try:
         return collections_service.resolve_collection(
             db, collection_id=collection_id, viewer=viewer
@@ -61,13 +61,11 @@ def create_collection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CollectionRead:
-    """Open a collection under a title and a description, holding ``event_ids``.
+    """Open a collection under a title and description, holding ``event_ids``.
 
-    The ids are optional: without them the collection starts empty. With them
-    the create and the shelving are one act, under the refusals
-    ``PUT /collections/{id}/events/{event_id}`` states, so a foreign or
-    ineligible id fails the create whole rather than landing a collection
-    holding part of what was asked for.
+    Ids are optional. With them the create and the shelving are one act under
+    the refusals of ``PUT /collections/{id}/events/{event_id}``: a foreign or
+    ineligible id fails the whole create.
     """
     try:
         collection = collections_service.create_collection(
@@ -82,9 +80,7 @@ def create_collection(
     return collections_service.build_collection_read(db, collection)
 
 
-# Defined ahead of the ``/{collection_id}`` reads below, the order
-# ``routers/events/item.py`` states for the report it serves: the extra path
-# segment means the catch-all cannot shadow it.
+# Ahead of the ``/{collection_id}`` reads (see ``routers/events/item.py``).
 @router.post(
     "/{collection_id}/report",
     response_model=ContentReportRead,
@@ -101,14 +97,9 @@ def report_collection(
 ) -> ContentReport:
     """Report a collection for moderation.
 
-    The same gesture, the same body and the same per-IP limit as reporting an
-    event: open to anonymous viewers, since the reader who notices a shelf
-    misrepresenting what it holds rarely holds an account here. A signed-in
-    reporter is recorded on the row; an anonymous one leaves
-    ``reporter_user_id`` NULL.
-
-    An unknown, withheld or orphaned collection answers 404: all three are
-    invisible to the caller, so all three read the same.
+    Same gesture, body and per-IP limit as an event report: open to anonymous
+    viewers (``reporter_user_id`` NULL), a signed-in reporter is recorded. An
+    unknown, withheld or orphaned collection answers 404.
     """
     try:
         return reports_service.create_collection_report(
@@ -134,10 +125,7 @@ def get_collection(
     current_user: User | None = Depends(get_current_user_optional),
 ) -> CollectionRead:
     """One collection's header: owner, title, item count and date range.
-
-    Public, like the events it points at. A withheld collection reads as 404
-    for everyone but an admin.
-    """
+    Public; a withheld collection is a 404 for everyone but an admin."""
     collection = _resolve(db, collection_id, current_user)
     return collections_service.build_collection_read(db, collection)
 
@@ -151,11 +139,10 @@ def update_collection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CollectionRead:
-    """Write your collection's title and description. Owner only; 403 for anyone else.
+    """Write your collection's title and description (owner only, else 403).
 
-    Both fields travel together, so one request states what the collection is.
-    A description the rules refuse is a 400 (``invalid_description``), the
-    status the create answers.
+    Both travel together. A refused description is a 400
+    (``invalid_description``), as on create.
     """
     collection = _resolve(db, collection_id, current_user)
     try:
@@ -179,7 +166,7 @@ def delete_collection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Drop your collection. Owner only. Every event it held stays as it is."""
+    """Drop your collection (owner only). Its events stay."""
     collection = _resolve(db, collection_id, current_user)
     collections_service.delete_collection(db, collection=collection, user=current_user)
 
@@ -196,19 +183,16 @@ def list_collection_events(
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
 ):
-    """The collection's items, in the order the events happened.
+    """The collection's items in the order the events happened.
 
-    Ordered by ``event_date``, then ``event_time``, then ``created_at``, then
-    ``id``, ascending, with an item missing its date or its hour sorting after
-    the ones that carry them. Capped at 100 rows however large ``limit`` is; a
-    caller reading further follows the ``cursor`` in the ``Link: rel="next"``
-    header, which goes out exactly when the next page holds a row.
+    Ordered ascending by ``event_date``, ``event_time``, ``created_at``, ``id``;
+    a missing date or hour sorts last. Capped at 100 rows; follow the
+    ``Link: rel="next"`` cursor, sent exactly when the next page holds a row.
     """
     collection = _resolve(db, collection_id, current_user)
     size = page_size(limit)
 
-    # One row past the page: its presence is what decides whether a
-    # ``Link: rel="next"`` goes out at all.
+    # One row past the page decides whether a ``Link: rel="next"`` goes out.
     window = collections_service.list_items(
         db,
         collection_id=collection.id,
@@ -236,9 +220,9 @@ def add_event_to_collection(
 ) -> None:
     """Put one of your events on one of your collections.
 
-    Idempotent: adding an event already on the collection returns 204 and
-    writes no second row. 403 when either the collection or the event belongs
-    to someone else, 409 when the event's state is not one a collection shows.
+    Idempotent (204, no second row). 403 when the collection or the event
+    belongs to someone else, 409 when the event's state is not one a collection
+    shows.
     """
     collection = _resolve(db, collection_id, current_user)
     try:
@@ -258,11 +242,8 @@ def remove_event_from_collection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Take one event off your collection. Owner only.
-
-    Idempotent: removing an event the collection does not hold returns 204.
-    The event itself is untouched.
-    """
+    """Take one event off your collection (owner only). Idempotent (204); the
+    event is untouched."""
     collection = _resolve(db, collection_id, current_user)
     collections_service.remove_event(
         db, collection=collection, event_id=event_id, user=current_user

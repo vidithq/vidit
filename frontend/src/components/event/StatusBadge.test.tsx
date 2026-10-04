@@ -16,8 +16,7 @@ describe("StatusBadge", () => {
   });
 
   it("is a label and nothing else, carrying no hover text of its own", () => {
-    // What a status means is the `status` concept, read by the `?` on the
-    // Status row and on the status filter, so the badge never explains itself.
+    // What a status means is the `status` concept (the `?` on the Status row and filter), so the badge never explains itself.
     const { container } = render(<StatusBadge status="geolocated" />);
     expect(container.querySelector("[title]")).toBeNull();
   });

@@ -10,9 +10,9 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from app.observability import request_id
 
 REQUEST_ID_HEADER = "X-Request-ID"
-# An incoming id is echoed and logged, so it must be short and hold nothing a
-# header or a log line could be split on. It needs a letter or digit so that
-# ``-``, the mark of a record outside a request, cannot pose as one.
+# An incoming id is echoed and logged, so it must be short and free of anything
+# a header or log line splits on. It needs an alphanumeric so ``-`` (the mark
+# of a record outside a request) can't pose as an id.
 _SAFE_REQUEST_ID = re.compile(r"(?=.*[A-Za-z0-9])[A-Za-z0-9._-]{1,64}")
 
 
@@ -37,6 +37,6 @@ class RequestIdMiddleware:
         token = request_id.set(rid)
         sentry_sdk.set_tag("request_id", rid)
         await self.app(scope, receive, send_with_request_id)
-        # Reset only when the app returns: after an exception the server logs
-        # the traceback in this same context, and that record needs the id.
+        # Reset only on return: after an exception the server logs the traceback
+        # in this context and that record needs the id.
         request_id.reset(token)

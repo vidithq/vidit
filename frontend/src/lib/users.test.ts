@@ -21,8 +21,8 @@ describe("resolveLinkHref", () => {
   });
 
   it("links nothing for a URL on a host the platform does not own", () => {
-    // The button carries the platform's brand mark, so a host the platform
-    // does not own would send a reader somewhere else under X's own logo.
+    // The button wears the platform's brand mark, so a foreign host would send readers elsewhere
+    // under X's logo.
     expect(resolveLinkHref("x", "https://nitter.net/LoLManya")).toBeNull();
     expect(resolveLinkHref("x", "https://x.com.evil.example/LoLManya")).toBeNull();
     expect(resolveLinkHref("github", "https://gitlab.com/torvalds")).toBeNull();
@@ -62,8 +62,7 @@ describe("resolveLinkHref", () => {
 
 describe("displayLinkValue", () => {
   it("reduces an X or GitHub profile URL to the handle", () => {
-    // The icon already says which platform it is, so the host is the one part
-    // of the value that carries nothing.
+    // The icon names the platform, so the host carries nothing.
     expect(displayLinkValue("x", "https://x.com/LoLManya")).toBe("@LoLManya");
     expect(displayLinkValue("github", "https://github.com/torvalds")).toBe(
       "@torvalds"
@@ -87,8 +86,7 @@ describe("displayLinkValue", () => {
   });
 
   it("prints a value that names no account as stored", () => {
-    // The text and the href run off one parse, so anything the row declines to
-    // link is also anything it declines to call a handle.
+    // Text and href share one parse: what the row won't link it won't call a handle.
     expect(displayLinkValue("x", "https://nitter.net/LoLManya")).toBe(
       "https://nitter.net/LoLManya"
     );

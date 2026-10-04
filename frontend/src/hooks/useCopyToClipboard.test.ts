@@ -3,9 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useCopyToClipboard } from "./useCopyToClipboard";
 
-// The hook's whole job is the flash window and its timer, so the clock is fake
-// and the clipboard is a stub: what is under test is when `copied` flips back,
-// not whether a real browser wrote anything.
+// The clock is fake and the clipboard a stub: under test is when `copied` flips back.
 const writeText = vi.fn<(text: string) => Promise<void>>();
 
 beforeEach(() => {
@@ -50,8 +48,7 @@ describe("useCopyToClipboard", () => {
     await act(async () => {
       await result.current.copy("second");
     });
-    // The first copy's reset would have fired here; it was cleared, so the
-    // second copy gets a full window rather than a 500 ms one.
+    // The first copy's reset was cleared, so the second gets a full window, not 500 ms.
     act(() => {
       vi.advanceTimersByTime(1000);
     });
@@ -69,8 +66,7 @@ describe("useCopyToClipboard", () => {
     await act(async () => {
       await result.current.copy("value");
     });
-    // The reset is pending; unmount has to drop it, or it fires setState on an
-    // unmounted hook.
+    // A pending reset must be dropped on unmount, or it sets state on an unmounted hook.
     expect(vi.getTimerCount()).toBe(1);
 
     unmount();

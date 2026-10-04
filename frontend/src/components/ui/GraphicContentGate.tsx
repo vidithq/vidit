@@ -9,32 +9,24 @@ import { WARNING_CALLOUT } from "@/components/ui/styles";
 
 /**
  * The age gate over media an author flagged as graphic (`events.is_graphic`).
- * Wraps the media it covers: the children render blurred and inert behind an
- * interstitial that names what is underneath and asks the reader to confirm
- * they are 18 or older. Confirming once reveals every gated instance for the
- * rest of the browser session.
+ * The children render blurred and inert behind an interstitial asking the reader
+ * to confirm they are 18 or older. Confirming once reveals every gated instance
+ * for the rest of the browser session.
  *
- * Two variants, one component:
+ * - `full`: the detail surfaces (`MediaGallery`, the map side panel), with room
+ *   for the whole sentence.
+ * - `compact`: card-sized slots (`MediaThumb`, the map pin preview, a proof
+ *   body's inline images), where the overlay is one labelled control.
  *
- * - `full`: the detail surfaces (`MediaGallery` on the event page and the map
- *   side panel), where there is room for the whole sentence.
- * - `compact`: the card-sized slots (`MediaThumb` on every catalogue card and
- *   the map pin preview, a proof body's inline images), where the tile is
- *   ~63px tall and the overlay is one labelled control filling it.
- *
- * The acknowledgement lives in `sessionStorage`, so it survives a reload and
- * dies with the tab. A `storage` event does not fire in the tab that wrote the
- * key, so same-tab instances would not learn about each other through it: the
- * subscriber set below is what makes one confirmation unblur every mounted
- * gate at once. `memoryAck` covers a browser that refuses storage entirely
- * (Safari's private mode throws on write), where the reveal then lasts as long
- * as the page.
+ * The acknowledgement lives in `sessionStorage` (survives a reload, dies with
+ * the tab). A `storage` event does not fire in the writing tab, so the
+ * subscriber set below unblurs every mounted gate at once. `memoryAck` covers a
+ * browser that refuses storage (Safari private mode throws on write).
  */
 
 const ACK_KEY = "vidit_graphic_ack";
 
-// The reveal state when `sessionStorage` is unreachable. Never consulted while
-// storage works, so clearing the key is a full reset.
+// Used only when `sessionStorage` is unreachable.
 let memoryAck = false;
 
 const listeners = new Set<() => void>();
@@ -48,8 +40,7 @@ function isAcknowledged(): boolean {
   }
 }
 
-// Nothing is revealed in the server render: the reader has not answered yet,
-// and the blurred markup is what must reach the browser for hydration to match.
+// The server render stays blurred so hydration matches.
 function serverSnapshot(): boolean {
   return false;
 }
@@ -66,10 +57,9 @@ function acknowledge(): void {
   try {
     window.sessionStorage.setItem(ACK_KEY, "1");
   } catch {
-    // Storage refused (private mode, blocked cookies): the in-memory flag above
-    // still carries the reveal for this page.
+    // Storage refused: the in-memory flag carries the reveal.
   }
-  // Copied first: a listener may unsubscribe while the set is being walked.
+  // Copied: a listener may unsubscribe during the walk.
   for (const notify of [...listeners]) notify();
 }
 
@@ -77,7 +67,6 @@ export function GraphicContentGate({
   children,
   variant = "full",
 }: {
-  /** The media the gate covers. */
   children: ReactNode;
   variant?: "full" | "compact";
 }) {
@@ -86,17 +75,13 @@ export function GraphicContentGate({
   if (revealed) return <>{children}</>;
 
   const compact = variant === "compact";
-  // `compact` hosts are fixed-ratio slots whose child sizes itself against
-  // them (`MediaThumb`'s `h-full` picture), so the two wrappers the gate adds
-  // must pass that height straight through instead of collapsing to auto.
+  // `compact` hosts are fixed-ratio slots whose child sizes against them, so the
+  // gate's wrappers must pass the height through.
   return (
     <div className={cn("relative overflow-hidden rounded-lg", compact && "size-full")}>
-      {/* Blurred and inert: the covered media stays in the layout (the block
-          keeps its size) but takes no clicks and no tab stops, so a reader
-          cannot open the lightbox behind the gate. `inert` is what removes the
-          tab stops: `pointer-events-none` only stops the pointer, and a
-          focusable child (`MediaLightbox`'s trigger) was still reachable with
-          Tab and openable with Enter, at full size and ungated. */}
+      {/* Blurred and inert: the media keeps its layout but takes no clicks. `inert`
+          (not `pointer-events-none`) also removes tab stops, so Tab and Enter
+          cannot open the `MediaLightbox` trigger behind the gate. */}
       <div
         inert
         aria-hidden="true"
@@ -108,14 +93,9 @@ export function GraphicContentGate({
         {children}
       </div>
       {compact ? (
-        // One control filling the tile: at card size there is no room for a
-        // sentence plus a separate button.
-        //
-        // `z-20` is the lift every interactive child of an `EntityCard` gets
-        // (see `AuthorLink`, `relative z-20`): the card's stretched link is
-        // `absolute inset-0 z-10`, so without it a click on this control hit
-        // the link and navigated to the event instead of revealing the media.
-        // Outside a card there is nothing to outrank and it changes nothing.
+        // One control filling the tile (no room for a sentence plus a button).
+        // `z-20` outranks an `EntityCard`'s stretched link (`z-10`), which would
+        // otherwise take the click and navigate.
         <Button
           variant="ghost"
           onClick={acknowledge}

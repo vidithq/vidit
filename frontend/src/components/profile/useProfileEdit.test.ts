@@ -21,8 +21,7 @@ vi.mock("@/lib/users", () => ({
 
 const pickedFile = () => new File(["bytes"], "me.jpg", { type: "image/jpeg" });
 
-// The preview is read off the file asynchronously (FileReader), so a test that
-// asserts on it has to let the microtask land first.
+// The preview is read asynchronously (FileReader): let the microtask land before asserting.
 const flushPreview = async (result: { current: ProfileEditState }) => {
   await waitFor(() =>
     expect(
@@ -72,8 +71,7 @@ describe("useProfileEdit", () => {
     expect(result.current.editing).toBe(true);
     expect(result.current.draftBio).toBe("OSINT analyst.");
     expect(result.current.draftLinks).toEqual({ x: "@ana" });
-    // The stored picture is not a draft: nothing is staged until a file is
-    // picked, and every surface reads the stored URL through `avatarPreview`.
+    // Nothing is staged until a file is picked; every surface reads the stored URL through `avatarPreview`.
     expect(result.current.draftAvatarFile).toBeNull();
     expect(result.current.removeAvatar).toBe(false);
     expect(result.current.avatarPreview).toEqual({
@@ -105,8 +103,7 @@ describe("useProfileEdit", () => {
     const { result, refreshAuth, refetchProfile } = setup();
     act(() => result.current.startEditing());
     act(() => result.current.setDraftBio("new bio"));
-    // Clearing every platform but X must null the others explicitly —
-    // the backend treats external_links as wholesale-replace.
+    // Clearing every platform but X must null the others: the backend replaces external_links wholesale.
     act(() => result.current.setDraftLinks({ x: "@new" }));
     await act(async () => {
       await result.current.saveEdits();
@@ -130,15 +127,13 @@ describe("useProfileEdit", () => {
     const { result } = setup();
     act(() => result.current.startEditing());
     act(() => result.current.setDraftAvatarFile(file));
-    // A staged pick is the shown state from the moment it is picked, before
-    // its bytes are read: what Save uploads has to be what the picker shows.
+    // A staged pick is the shown state from the moment it is picked, before its bytes are read.
     expect(result.current.avatarPreview).toEqual({
       kind: "staged",
       file,
       url: null,
     });
-    // A `data:` URL, not a `blob:` one: nothing to revoke, so Strict Mode's
-    // extra cleanup pass cannot kill the painted preview.
+    // A `data:` URL, not `blob:`: nothing to revoke, so Strict Mode's extra cleanup can't kill the preview.
     await flushPreview(result);
     expect(result.current.avatarPreview).toEqual({
       kind: "staged",
@@ -199,8 +194,7 @@ describe("useProfileEdit", () => {
     );
     expect(result.current.editing).toBe(true);
     expect(result.current.saving).toBe(false);
-    // Re-read on failure: part of the save may have landed, and the form
-    // must show what is persisted rather than a draft the server took.
+    // Re-read on failure: part of the save may have landed.
     expect(refetchProfile).toHaveBeenCalledTimes(1);
   });
 
@@ -221,8 +215,7 @@ describe("useProfileEdit", () => {
     );
     expect(result.current.editing).toBe(true);
     expect(result.current.draftAvatarFile).toBe(file);
-    // The bio PATCH landed before the avatar call threw; re-read so the
-    // form reflects it.
+    // The bio PATCH landed before the avatar call threw; re-read so the form reflects it.
     expect(refetchProfile).toHaveBeenCalledTimes(1);
   });
 
@@ -231,8 +224,7 @@ describe("useProfileEdit", () => {
     const { result } = setup();
     act(() => result.current.startEditing());
     act(() => result.current.setDraftAvatarFile(pickedFile()));
-    // X on a staged tile means "not that one after all", so the stored picture
-    // comes back and nothing is marked for deletion.
+    // X on a staged tile un-stages it: the stored picture returns and nothing is marked for deletion.
     act(() => result.current.removeShownAvatar());
     expect(result.current.draftAvatarFile).toBeNull();
     expect(result.current.removeAvatar).toBe(false);
@@ -256,8 +248,7 @@ describe("useProfileEdit", () => {
     await act(async () => {
       await result.current.saveEdits();
     });
-    // Nothing stored, nothing to delete: the call would 200 and change
-    // nothing, so it is not made.
+    // Nothing stored, nothing to delete: the call is not made.
     expect(deleteMyAvatar).not.toHaveBeenCalled();
   });
 
@@ -272,8 +263,7 @@ describe("useProfileEdit", () => {
     await act(async () => {
       await result.current.saveEdits();
     });
-    // `profile` still carries the old URL until the refetch lands, so reading
-    // it here is what would flash the replaced picture in the header.
+    // `profile` still carries the old URL until the refetch lands; reading it would flash the replaced picture.
     expect(result.current.editing).toBe(false);
     expect(result.current.avatarPreview).toEqual({
       kind: "stored",

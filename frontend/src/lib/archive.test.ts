@@ -34,10 +34,8 @@ describe("stripArchive", () => {
   });
 
   it("never emits deleted_tweets_media (its path contains tweets_media/)", async () => {
-    // The media of deleted posts is outside the allowlist, and its directory
-    // name literally contains `tweets_media/`. A rebased entry from it would
-    // reach the backend under a legitimate name, so the backend's own
-    // allowlist could no longer tell the two apart.
+    // Deleted posts' media is outside the allowlist, but its directory name contains
+    // `tweets_media/`: a rebased entry would reach the backend under a legitimate name.
     const file = zipFile({
       "data/tweets.js": strToU8("window.YTD.tweets.part0 = []"),
       "data/tweets_media/1-a.jpg": new Uint8Array([1]),
@@ -80,8 +78,8 @@ describe("stripArchive", () => {
       entries[`data/tweets_media/${i}-a.jpg`] = new Uint8Array(1024).fill(i);
     }
     const file = zipFile(entries);
-    // Every byte the strip reads goes through slice(), so counting the calls
-    // shows whether the copy walked all nine kept entries before failing.
+    // Every byte read goes through slice(), so counting calls shows whether the copy walked all
+    // nine entries before failing.
     const rawSlice = file.slice.bind(file);
     let reads = 0;
     file.slice = (start?: number, end?: number, contentType?: string) => {
@@ -90,9 +88,8 @@ describe("stripArchive", () => {
     };
 
     await expect(stripArchive(file, 1)).rejects.toHaveProperty("code", "archive_too_large");
-    // Signature, EOCD tail, central directory, then the first entry's local
-    // header and its data: the other eight entries are never touched (copying
-    // them all would take upwards of twenty reads).
+    // Signature, EOCD tail, central directory, then the first entry's header and data; the other
+    // eight are never touched.
     expect(reads).toBeLessThan(8);
   });
 
@@ -102,8 +99,8 @@ describe("stripArchive", () => {
       "data/tweets_media/1-a.jpg": new Uint8Array([1, 2, 3]),
     });
     const { file: stripped } = await stripArchive(file);
-    // The boundary the presigned policy enforces: at the cap is fine, over it
-    // is not, and the running check must not shift that by a byte.
+    // The presigned policy's boundary: at the cap passes, over fails, and the running check
+    // mustn't shift it by a byte.
     await expect(stripArchive(file, stripped.size)).resolves.toBeTruthy();
     await expect(stripArchive(file, stripped.size - 1)).rejects.toHaveProperty(
       "code",
@@ -112,9 +109,8 @@ describe("stripArchive", () => {
   });
 
   it("mirrors the backend staged-zip guard", () => {
-    // Must equal MAX_UPLOAD_BYTES in services/tweet_ingest/archive_zip.py:
-    // a smaller value here refuses uploads S3 would accept, a larger one
-    // hands the analyst an unretryable storage reject.
+    // Must equal MAX_UPLOAD_BYTES in services/tweet_ingest/archive_zip.py: smaller refuses uploads
+    // S3 accepts, larger hands the analyst an unretryable reject.
     expect(MAX_UPLOAD_BYTES).toBe(4 * 1024 ** 3);
     // And the copy the analyst reads quotes that same constant.
     expect(MAX_UPLOAD_LABEL).toBe("4 GB");

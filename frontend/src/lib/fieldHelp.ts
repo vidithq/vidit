@@ -1,12 +1,7 @@
 /**
- * Canonical concept registry for the `?` help affordance (see `FieldHelp`).
- *
- * **One home for every concept.** Each entry pairs the explanation (`text`,
- * shown in the tooltip) with its accessible `label` (the trigger's aria-label).
- * Every `?` across the app (submit forms, geolocation + request detail pages,
- * the map panel) renders `<FieldHelp concept="…" />` and reads from here, so a
- * concept reads identically wherever it appears and changing it is a one-line
- * edit. The wording mirrors the field descriptions in `docs/data-model.md`.
+ * Canonical concept registry for the `?` help affordance (see `FieldHelp`): each entry pairs
+ * the tooltip `text` with the trigger's aria `label`, so a concept reads identically
+ * everywhere. The wording mirrors the field descriptions in `docs/data-model.md`.
  */
 export const FIELD_HELP = {
   title: {
@@ -73,7 +68,6 @@ export const FIELD_HELP = {
     text: "The analyst who owns this entry on Vidit: the geolocation's submitter, or the analyst who opened it while it is a request. Not necessarily whoever filmed or posted the source.",
     label: "Who is the author?",
   },
-  // Section-level concepts (the `?` next to a section heading).
   section_location: {
     text: "The footage being located, and the coordinates of the subject it shows. A request has just the footage; whoever picks it up adds the coordinates.",
     label: "What goes in Location?",
@@ -94,22 +88,19 @@ export const FIELD_HELP = {
     text: "Your annotated cross-reference between the source media and satellite imagery, showing how the location was matched so others can audit it. On a request it's the partial reasoning so far, since the match isn't finished yet.",
     label: "What goes in Proof?",
   },
-  // Detections queue: the filter over the page.
   detection_queue_filter: {
     text: "Ready: the import left the detection with every piece of evidence a publish needs, so a review adds the conflict and the capture source, then publishes it. Incomplete: the import left a required piece missing (the source URL, the coordinates, the source media, or a proof image), so it needs a manual pass on the form before it can be published.",
     label: "What does this filter select?",
   },
-  // What a version note is for.
   version_note: {
     text: "Optional. One line on what you changed and why, kept with the version this edit replaces so a reader can follow the correction.",
     label: "What is the version note?",
   },
-  // Detection submit action, spelled out here.
   action_submit: {
     text: "Submits this detection: your edits are saved and it becomes Geolocated (a person stands behind it). It becomes public, and from then on every change you make is kept as a new version, the source link and the source media included. Give it a full read first, then click Submit twice to confirm.",
     label: "What does Submit do?",
   },
 } as const;
 
-/** A concept key — the single argument every `<FieldHelp>` takes. */
+/** A concept key: the single argument every `<FieldHelp>` takes. */
 export type Concept = keyof typeof FIELD_HELP;

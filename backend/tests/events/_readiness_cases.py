@@ -1,10 +1,7 @@
-"""The mixed detection set the detections-queue readiness suites share.
+"""Detection shapes with one expected readiness verdict each.
 
-One table of shapes, one expected verdict each, used by the SQL-vs-floor
-agreement test (``test_detections_readiness.py``) and by the endpoint suite
-(``test_detections.py``), so the filter and the queue can never be measured
-against two different notions of "ready". The frontend mirror of the same
-table lives in ``frontend/src/lib/events.test.ts``.
+Shared by ``test_detections_readiness.py`` and ``test_detections.py``. The frontend
+mirror of this table is ``frontend/src/lib/events.test.ts``.
 """
 
 from __future__ import annotations
@@ -19,8 +16,7 @@ PROOF_WITH_IMAGE: dict[str, Any] = {
     ],
 }
 
-# An image nested two levels down: the Python floor walks ``content`` to any
-# depth, and the SQL leg is a recursive descent, so both must find it.
+# Nested two levels down: the Python floor and the SQL recursive descent must both find it.
 PROOF_IMAGE_NESTED: dict[str, Any] = {
     "type": "doc",
     "content": [
@@ -41,10 +37,8 @@ PROOF_TEXT_ONLY: dict[str, Any] = {
     "content": [{"type": "paragraph", "content": [{"type": "text", "text": "No imagery."}]}],
 }
 
-# An image node carrying no ``src``. The sanitiser lets one through (it only
-# drops an image whose ``src`` is *unsafe*), so a persisted doc can hold it,
-# and it is the shape the three implementations most easily disagree on: a
-# node-type-only test calls it an image, a src-carrying test does not.
+# The sanitiser only drops an *unsafe* ``src``, so a persisted doc can hold a src-less image.
+# The three implementations most easily disagree on it.
 PROOF_IMAGE_WITHOUT_SRC: dict[str, Any] = {
     "type": "doc",
     "content": [{"type": "image"}],

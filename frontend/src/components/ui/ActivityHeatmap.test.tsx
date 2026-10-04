@@ -4,11 +4,9 @@ import { describe, expect, it } from "vitest";
 import { ActivityHeatmap } from "./ActivityHeatmap";
 
 /**
- * The grid paints whatever span the backend derived, so its own contract is
- * how that span becomes rows: every calendar year the span touches gets a row
- * of twelve, the months with no event are drawn rather than skipped, and the
- * readout names a month on demand. The degenerate spans are the other half: a
- * single month keeps the grid, and no dated event at all gets a sentence.
+ * Every year the span touches gets a row of twelve, empty months are drawn, and
+ * the readout names a month on demand. A single month keeps the grid; no dated
+ * event gets a sentence.
  */
 describe("<ActivityHeatmap>", () => {
   it("draws one row per calendar year the span touches, twelve cells each", () => {
@@ -24,7 +22,6 @@ describe("<ActivityHeatmap>", () => {
 
     expect(screen.getByText("2024")).toBeInTheDocument();
     expect(screen.getByText("2025")).toBeInTheDocument();
-    // Two years of twelve months, whatever part of them the span covers.
     expect(container.querySelectorAll("[title]")).toHaveLength(24);
   });
 
@@ -38,7 +35,6 @@ describe("<ActivityHeatmap>", () => {
       />
     );
 
-    // An empty month is a cell that says zero, not an absent one.
     expect(screen.getByTitle("Feb 2025 · 0 events")).toBeInTheDocument();
   });
 
@@ -52,10 +48,8 @@ describe("<ActivityHeatmap>", () => {
       />
     );
 
-    // A chart is the one inert accent on the site: a lit month takes the ramp
-    // step its count earns, and an empty month encodes nothing, so it keeps
-    // the absence paint. The legend under the grid is a copy of the cells it
-    // explains rather than an ornament.
+    // A lit month takes the ramp step its count earns; an empty month keeps the
+    // absence paint; the legend copies the cells.
     const painted = container.querySelectorAll("[class*='bg-orange']");
     const inGrid = [...painted].filter((el) => el.closest("[title]") === el);
     expect(inGrid.length).toBeGreaterThan(0);
@@ -80,7 +74,7 @@ describe("<ActivityHeatmap>", () => {
 
     expect(screen.getByText("Covering 2024 to 2025")).toBeInTheDocument();
 
-    // A tap, not only a hover: at 375 px there is no pointer to hover with.
+    // A tap, not only a hover.
     fireEvent.click(screen.getByTitle("Nov 2024 · 3 events"));
     expect(await screen.findByText("Nov 2024 · 3 events")).toBeInTheDocument();
   });
@@ -90,8 +84,7 @@ describe("<ActivityHeatmap>", () => {
       <ActivityHeatmap buckets={[{ period: "2024-05", count: 12 }]} />
     );
 
-    // One row, and the line under the grid names the year it covers without
-    // reading as a second row label.
+    // The line names the year without reading as a second row label.
     expect(screen.getByText("2024")).toBeInTheDocument();
     expect(screen.getByText("Covering 2024")).toBeInTheDocument();
     expect(container.querySelectorAll("[title]")).toHaveLength(12);

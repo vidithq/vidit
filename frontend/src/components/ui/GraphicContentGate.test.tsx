@@ -6,8 +6,7 @@ import { GraphicContentGate } from "./GraphicContentGate";
 const REVEAL = "Show graphic content (18 or older)";
 
 afterEach(() => {
-  // The acknowledgement lives in sessionStorage for the whole browser session;
-  // reset it so one test's confirmation can't leak into the next.
+  // Reset the sessionStorage acknowledgement between tests.
   window.sessionStorage.clear();
 });
 
@@ -20,12 +19,11 @@ describe("GraphicContentGate", () => {
     );
 
     const covered = screen.getByAltText("A street corner").parentElement;
-    // Blurred, inert, and out of the accessibility tree: the picture is still
-    // in the layout, but nothing under the gate can be read or clicked.
+    // Blurred, inert and out of the accessibility tree.
     expect(covered).toHaveClass("blur-xl", "pointer-events-none");
     expect(covered).toHaveAttribute("aria-hidden", "true");
-    // `inert` and not only `pointer-events-none`: a keyboard reader must not
-    // be able to Tab into the covered media and open the lightbox with Enter.
+    // `inert`, not only `pointer-events-none`: Tab and Enter must not reach the
+    // covered media.
     expect(covered).toHaveAttribute("inert");
     expect(screen.getByRole("button", { name: REVEAL })).toBeInTheDocument();
   });
@@ -42,8 +40,7 @@ describe("GraphicContentGate", () => {
       </>,
     );
 
-    // sessionStorage fires no `storage` event in the tab that wrote it, so both
-    // gates only unblur together because the primitive keeps its own
+    // No `storage` event fires in the writing tab; the primitive keeps its own
     // subscribers.
     expect(screen.getAllByRole("button", { name: REVEAL })).toHaveLength(2);
     fireEvent.click(screen.getAllByRole("button", { name: REVEAL })[0]);
@@ -51,7 +48,6 @@ describe("GraphicContentGate", () => {
     expect(screen.queryByRole("button", { name: REVEAL })).toBeNull();
     expect(screen.getByAltText("First").parentElement).not.toHaveClass("blur-xl");
     expect(screen.getByAltText("Second").parentElement).not.toHaveClass("blur-xl");
-    // The wrapper is gone with the gate, so the media is back in the tab order.
     expect(screen.getByAltText("First").closest("[inert]")).toBeNull();
     expect(screen.getByAltText("Second").closest("[inert]")).toBeNull();
   });

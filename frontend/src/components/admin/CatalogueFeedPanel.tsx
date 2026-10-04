@@ -15,14 +15,11 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 const RECENT_LIMIT = 10;
 
 /**
- * The newest rows of the public catalogue, as an admin-side pulse check.
- *
- * It reads the public list endpoint with no admin scope of its own: the
- * `located` view (pinned here, not left to the server default the on-screen
- * copy would then misdescribe), so machine detections appear and open
- * `requested` calls do not, and nothing withheld from a public read can show
- * up. Refresh re-reads the list after an action taken in the panels below,
- * which otherwise leaves a deleted or withheld row on screen until a reload.
+ * The newest rows of the public catalogue, an admin pulse check. It reads the public list endpoint
+ * with no admin scope: the `located` view is pinned (so on-screen copy never misdescribes a server
+ * default), showing machine detections but not open `requested` calls, and nothing withheld from
+ * a public read can appear. Refresh re-reads after an action in the panels below, which otherwise
+ * leaves a deleted or withheld row on screen until reload.
  */
 export function CatalogueFeedPanel() {
   const { data, error, loading, refetch } = useApiResource<EventListItem[]>(

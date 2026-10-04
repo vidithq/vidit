@@ -1,11 +1,7 @@
 """Secondary source links: the ordered mirrors beside the primary ``source_url``.
 
-The repeated ``secondary_source_urls`` multipart field on the three write paths
-(create, request, geolocate), the normalization every one of them shares (blanks
-and duplicates stripped, the primary dropped, the cap enforced as a 400), the
-ordered read, the geolocate replacement, the hard-delete cascade, and the
-duplicate probe's leg over the child table. Shared fixtures live in
-`conftest.py`; `client` / `_make_geo` / the proof helpers in `_helpers.py`.
+Covers the ``secondary_source_urls`` field on create, request and geolocate, and the
+shared normalization, ordered read, hard-delete cascade and duplicate probe.
 """
 
 from __future__ import annotations
@@ -59,7 +55,6 @@ def _create_files():
 
 
 def _create(author, conflict, capture_source_tag, **overrides):
-    """POST the direct-create form with the evidence floor met."""
     return client.post(
         "/api/v1/events",
         headers=login_as(client, author),
@@ -72,12 +67,7 @@ def _create(author, conflict, capture_source_tag, **overrides):
     )
 
 
-# ── POST /events: the field lands, ordered ────────────────────────────────
-
-
 def test_create_stores_and_returns_links_in_order(db, author, conflict, capture_source_tag):
-    """The submitted order is the stored order and the read order: the child
-    rows' ``position`` is the list index, and the relationship orders by it."""
     response = _create(
         author,
         conflict,
@@ -95,7 +85,7 @@ def test_create_stores_and_returns_links_in_order(db, author, conflict, capture_
 
 
 def test_create_without_links_serialises_an_empty_list(db, author, conflict, capture_source_tag):
-    """Required-nullable-style: the key is always present, never omitted."""
+    """The key is always present, never omitted."""
     response = _create(author, conflict, capture_source_tag)
     assert response.status_code == 201
     assert response.json()["secondary_source_urls"] == []
@@ -108,12 +98,7 @@ def test_detail_read_returns_the_links_in_order(db, author):
     assert response.json()["secondary_source_urls"] == [_MIRROR_A, _MIRROR_B]
 
 
-# ── Normalization (one home, shared by all three write paths) ─────────────
-
-
 def test_create_strips_blanks_and_duplicates(db, author, conflict, capture_source_tag):
-    """Blank entries vanish and a repeat keeps only its first position, so a
-    form that submitted empty rows doesn't store empty links."""
     response = _create(
         author,
         conflict,
@@ -125,7 +110,6 @@ def test_create_strips_blanks_and_duplicates(db, author, conflict, capture_sourc
 
 
 def test_create_drops_an_entry_equal_to_the_primary(db, author, conflict, capture_source_tag):
-    """The primary anchor is not one of its own mirrors."""
     response = _create(
         author,
         conflict,
@@ -137,8 +121,7 @@ def test_create_drops_an_entry_equal_to_the_primary(db, author, conflict, captur
 
 
 def test_create_rejects_more_links_than_the_cap(author, conflict, capture_source_tag):
-    """Past the cap the submission is refused, not silently truncated: an
-    analyst who pasted eleven mirrors should be told which rule bit."""
+    """Past the cap the submission is refused, not silently truncated."""
     response = _create(
         author,
         conflict,
@@ -152,8 +135,7 @@ def test_create_rejects_more_links_than_the_cap(author, conflict, capture_source
 
 
 def test_create_counts_the_cap_after_normalization(author, conflict, capture_source_tag):
-    """Blanks and duplicates the client sent must not push a legitimate
-    submission over the cap."""
+    """Blanks and duplicates must not push a legitimate submission over the cap."""
     submitted = [f"https://mirror.example/{index}" for index in range(MAX_SECONDARY_SOURCE_LINKS)]
     response = _create(
         author,
@@ -166,8 +148,7 @@ def test_create_counts_the_cap_after_normalization(author, conflict, capture_sou
 
 
 def test_create_rejects_an_over_length_link(author, conflict, capture_source_tag):
-    """The ceiling rides on the ITEM, not the list: one over-long URL is
-    rejected at the boundary, before the files reach storage."""
+    """The length ceiling is per item, rejected before the files reach storage."""
     response = _create(
         author,
         conflict,
@@ -175,9 +156,6 @@ def test_create_rejects_an_over_length_link(author, conflict, capture_source_tag
         secondary_source_urls=["https://mirror.example/" + "x" * SOURCE_URL_MAX_LENGTH],
     )
     assert response.status_code == 422
-
-
-# ── POST /events/requests ─────────────────────────────────────────────────
 
 
 def test_request_stores_the_links(db, author):
@@ -214,9 +192,6 @@ def test_request_rejects_more_links_than_the_cap(author):
     assert response.json()["detail"]["code"] == "too_many_source_links"
 
 
-# ── POST /events/{id}/geolocate: replacement, no requester protection ─────
-
-
 def _geolocate_form(conflict, capture_source_tag, **overrides):
     form = {
         "title": "Edited title",
@@ -234,9 +209,7 @@ def _geolocate_form(conflict, capture_source_tag, **overrides):
 
 
 def test_geolocate_replaces_the_stored_links(db, author, conflict, capture_source_tag):
-    """Wholesale replacement: the submitted list wins, positions are renumbered
-    from zero, and the dropped rows are gone (the deletes flush before the
-    replacement inserts, so a reused ``position`` can't collide on the PK)."""
+    """Deletes flush before inserts so a reused ``position`` cannot collide on the PK."""
     geo = _make_geo(
         db,
         author=author,
@@ -267,8 +240,7 @@ def test_geolocate_replaces_the_stored_links(db, author, conflict, capture_sourc
 def test_geolocate_clears_the_links_when_none_are_submitted(
     db, author, conflict, capture_source_tag
 ):
-    """An empty field is a real value here (the mirrors were wrong), not a
-    "leave them alone" signal."""
+    """An empty field is a real value, not a "leave them alone" signal."""
     geo = _make_geo(
         db,
         author=author,
@@ -291,9 +263,7 @@ def test_geolocate_clears_the_links_when_none_are_submitted(
 def test_fulfiller_replaces_a_requesters_links(
     db, author, second_user, conflict, capture_source_tag
 ):
-    """Unlike ``source_url`` (frozen as the requester's evidence anchor), the
-    mirrors carry no requester protection: the fulfiller's list wins while the
-    primary stays the requester's."""
+    """Unlike ``source_url``, the mirrors carry no requester protection."""
     geo = _make_geo(
         db,
         author=author,
@@ -322,9 +292,7 @@ def test_fulfiller_replaces_a_requesters_links(
 def test_fulfiller_mirror_equal_to_the_requesters_primary_is_dropped(
     db, author, second_user, conflict, capture_source_tag
 ):
-    """The primary the mirrors are normalized against is the KEPT anchor, not the
-    fulfiller's submitted ``source_url``: on a `requested` row the requester's
-    primary stays, so a fulfiller who lists it among the mirrors has it dropped."""
+    """Mirrors are normalized against the KEPT anchor, not the submitted ``source_url``."""
     geo = _make_geo(
         db,
         author=author,
@@ -374,12 +342,8 @@ def test_geolocate_rejects_more_links_than_the_cap(db, author, conflict, capture
     assert response.json()["detail"]["code"] == "too_many_source_links"
 
 
-# ── Ingest prefill: the truncating variant ────────────────────────────────
-
-
 def test_truncate_keeps_the_first_ten_in_order():
-    """The machine path can't report a cap breach to anyone, so it drops the
-    over-cap links instead of raising: the first ten survive, in order."""
+    """The machine path cannot report a cap breach, so it drops the overflow instead of raising."""
     submitted = [
         f"https://mirror.example/{index}" for index in range(MAX_SECONDARY_SOURCE_LINKS + 2)
     ]
@@ -390,8 +354,7 @@ def test_truncate_keeps_the_first_ten_in_order():
 
 
 def test_truncate_cleans_before_it_caps():
-    """Blanks, duplicates and the primary are stripped FIRST, so the junk a
-    tweet carried doesn't spend slots a real mirror needed."""
+    """Blanks, duplicates and the primary are stripped FIRST so junk spends no slots."""
     submitted = [
         f"https://mirror.example/{index}" for index in range(MAX_SECONDARY_SOURCE_LINKS + 2)
     ]
@@ -401,12 +364,7 @@ def test_truncate_cleans_before_it_caps():
     )
 
 
-# ── Cascade ───────────────────────────────────────────────────────────────
-
-
 def test_hard_delete_cascades_to_the_links(db, author):
-    """The ``event_id`` FK cascade drops the child rows, so the admin hard
-    delete can't strand orphan links."""
     geo = _make_geo(db, author=author, secondary_source_urls=[_MIRROR_A, _MIRROR_B])
     geo_id = geo.id
     db.delete(geo)
@@ -415,13 +373,8 @@ def test_hard_delete_cascades_to_the_links(db, author):
     assert db.query(EventSourceLink).filter(EventSourceLink.event_id == geo_id).count() == 0
 
 
-# ── Duplicate probe: the child-table leg ──────────────────────────────────
-
-
 def test_possible_duplicates_matches_a_secondary_link_host(db, author):
-    """The analyst pastes the mirror; the existing event recorded it as a
-    SECONDARY link while its primary anchor points at another network. Same
-    event, so the probe must surface it."""
+    """The existing event holds the pasted mirror as a SECONDARY link under another primary host."""
     geo = Event(
         owner_id=author.id,
         title=f"Geo {uuid.uuid4().hex[:8]}",

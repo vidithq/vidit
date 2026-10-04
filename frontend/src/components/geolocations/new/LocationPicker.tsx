@@ -11,20 +11,16 @@ interface LocationPickerProps {
   setLat: (v: string) => void;
   lng: string;
   setLng: (v: string) => void;
-  /** Flag the coordinate inputs as a missing required field (red outline). */
   invalid?: boolean;
-  /** The optional camera position (where the footage was shot from), distinct
-   *  from the subject coordinates above. Both halves or neither. */
+  /** The optional camera position. Both halves or neither. */
   captureLat: string;
   setCaptureLat: (v: string) => void;
   captureLng: string;
   setCaptureLng: (v: string) => void;
 }
 
-/** The "Location" section: the subject coordinates (where the footage was
- *  filmed) and the optional camera position (where it was shot from). Source
- *  media is its own block (`SourceMediaField`). Shared by the submit + edit
- *  forms. */
+/** The "Location" section: the subject coordinates and the optional camera
+ *  position, shared by the submit and edit forms. */
 export function LocationPicker({
   lat,
   setLat,
@@ -57,9 +53,6 @@ export function LocationPicker({
         />
       </div>
 
-      {/* The camera position (where the footage was shot from) kept apart
-          from the subject point above. Optional and always independent of the
-          lifecycle. */}
       <div className="space-y-1.5">
         <span className={`${LABEL_TEXT} inline-flex items-center gap-1`}>
           Camera position <FieldHelp concept="capture_source_coords" />

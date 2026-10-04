@@ -2,24 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/**
- * Copy text to the clipboard and flash a "copied" flag for `resetMs`.
- *
- * The one home for the copy gesture's behaviour (write, flash, reset), so the
- * share rows on an event, the profile share control and the admin invite codes
- * can't drift on the reset window or leak a timer. Callers keep their own
- * markup and read `copied` to swap icon / label.
- *
- * A failed write resolves `false` instead of throwing: the Clipboard API is
- * unavailable on insecure contexts (plain http, some embedded webviews), and
- * every call site's fallback is the same (the value stays on screen or in the
- * address bar), so no call site has to carry a try/catch.
- */
+/** Copy text and flash `copied` for `resetMs`: the one home for the gesture so call sites
+ * can't drift on the reset window or leak a timer. A failed write (Clipboard API unavailable
+ * on insecure contexts) resolves `false` instead of throwing; every fallback is the same, so
+ * no call site needs a try/catch. */
 export function useCopyToClipboard(resetMs = 1500) {
   const [copied, setCopied] = useState(false);
-  // Held so a second copy inside the window replaces the pending reset instead
-  // of queueing a duplicate (which would clear the flag early), and so unmount
-  // drops it.
+  // A second copy inside the window replaces the pending reset (a duplicate would clear the
+  // flag early); unmount drops it.
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {

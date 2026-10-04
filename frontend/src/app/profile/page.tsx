@@ -5,10 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageLoading } from "@/components/ui/PageShell";
 
-/**
- * Redirects to the canonical /profile/[username] for the current user, so
- * every "view profile" link uses one shape whether it's yours or not.
- */
+/** Redirects to the canonical /profile/[username] for the current user. */
 export default function ProfileRedirect() {
   const router = useRouter();
   const { user, loading } = useAuth();

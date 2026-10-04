@@ -6,14 +6,10 @@ import { formatMonth } from "@/lib/format";
 import type { components } from "@/lib/api-types";
 import { ACCENT_RAMP, CHART_NEUTRAL } from "./styles";
 
-/** One month of the grid, aliased from the generated schema rather than
- *  restated (the single-source rule: enum and payload types come from the
- *  OpenAPI spec). `period` is the backend's zero-filled bucket key
- *  (`YYYY-MM`); it keys the cell and names it in the readout. */
+/** One month of the grid. `period` is the backend's zero-filled `YYYY-MM` key. */
 export type ActivityBucket = components["schemas"]["ActivityBucket"];
 
-// The twelve column labels, derived rather than listed so the month names come
-// from the same formatter and locale as the readout below the grid.
+// Same formatter and locale as the readout below the grid.
 const MONTH_LABELS = Array.from({ length: 12 }, (_, i) =>
   new Date(Date.UTC(2000, i, 1)).toLocaleDateString("en-GB", {
     month: "short",
@@ -21,31 +17,23 @@ const MONTH_LABELS = Array.from({ length: 12 }, (_, i) =>
   })
 );
 
-// The four strongest ramp steps carry the four intensity levels. The faintest
-// step is left out: against an empty cell it reads as noise rather than as a
-// count.
+// The faintest ramp step is left out: against an empty cell it reads as noise.
 const LEVELS = ACCENT_RAMP.slice(0, 4);
 
 /**
  * A contribution grid at month resolution: one row per calendar year, twelve
- * month cells wide, intensity carrying the count.
+ * cells wide, intensity carrying the count.
  *
- * Months, not days. An analyst publishes tens of events a year, so a daily
- * grid would be blank almost everywhere; a month cell over the whole span the
- * caller supplies is dense enough to show the seasons and the gaps. Every
- * month of every year in the span renders, so a quiet stretch reads as empty
- * rather than as missing, and the year labels say exactly which years are on
- * screen.
+ * Months, not days: an analyst publishes tens of events a year, so a daily grid
+ * would be blank. Every month of every year in the span renders, so a quiet
+ * stretch reads as empty, not missing.
  *
  * Hover or tap a month and the line under the grid names it and its count;
- * with nothing picked that line states the span. The readout is one line
- * rather than a tooltip per cell because at 375 px there is no hover to summon
- * a tooltip with. The cells are plain paint, not controls: the grid is a
- * reading, and a lit month answers to a pointer without taking a focus stop.
+ * otherwise it states the span. One line, not a tooltip per cell, since a phone
+ * has no hover. Cells are paint, not controls.
  *
- * One span has no grid to draw and gets a sentence: no dated event at all. A
- * span of a single month keeps the grid, because the eleven empty cells beside
- * the lit one are what say *which* month it was.
+ * No dated event at all gets a sentence. A single-month span keeps the grid: the
+ * empty cells beside the lit one say which month it was.
  */
 export function ActivityHeatmap({ buckets }: { buckets: ActivityBucket[] }) {
   const [readout, setReadout] = useState<string | null>(null);
@@ -59,9 +47,8 @@ export function ActivityHeatmap({ buckets }: { buckets: ActivityBucket[] }) {
   const firstYear = Number(buckets[0].period.slice(0, 4));
   const lastYear = Number(buckets[buckets.length - 1].period.slice(0, 4));
   const years = Array.from({ length: lastYear - firstYear + 1 }, (_, i) => firstYear + i);
-  // "Covering", not a bare year: the line sits under the year labels, and on a
-  // one-year grid a lone "2024" there reads as a second row that lost its
-  // cells.
+  // "Covering", not a bare year: a lone "2024" under the labels reads as a row
+  // that lost its cells.
   const span =
     firstYear === lastYear
       ? `Covering ${firstYear}`
@@ -70,9 +57,7 @@ export function ActivityHeatmap({ buckets }: { buckets: ActivityBucket[] }) {
   return (
     <div>
       <div className="grid grid-cols-[auto_repeat(12,minmax(0,1fr))] items-center gap-[3px]">
-        {/* The header names the columns for a sighted reader; every cell
-            carries its own month and count for everyone else, so repeating
-            the row to a screen reader would only double the grid. */}
+        {/* Cells carry their own month and count, so the header is sighted-only. */}
         <span aria-hidden="true" />
         {MONTH_LABELS.map((label) => (
           <span
@@ -80,8 +65,7 @@ export function ActivityHeatmap({ buckets }: { buckets: ActivityBucket[] }) {
             aria-hidden="true"
             className="text-center text-[10px] leading-none text-neutral-500"
           >
-            {/* One letter at phone width, where a three-letter label is wider
-                than its own column. */}
+            {/* One letter at phone width, where three letters overflow the column. */}
             <span className="sm:hidden">{label.slice(0, 1)}</span>
             <span className="hidden sm:inline">{label}</span>
           </span>
@@ -107,9 +91,8 @@ export function ActivityHeatmap({ buckets }: { buckets: ActivityBucket[] }) {
                   />
                 );
               }
-              // Level 1 to 4 off the month's share of the busiest month, read
-              // off the ramp, which runs strongest-first: the busiest month
-              // takes index 0 and the quietest the last step held.
+              // Level 1 to 4 by share of the busiest month; the ramp runs
+              // strongest-first.
               const paint = LEVELS[LEVELS.length - Math.ceil((count / max) * LEVELS.length)];
               return (
                 <div

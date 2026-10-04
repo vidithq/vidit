@@ -1,21 +1,15 @@
 /**
- * Client-side accent-palette preference: one axis, independent of the light /
- * dark theme ([`theme.ts`](./theme.ts)). Both share the same browser-local
- * plumbing ([`attributePreference.ts`](./attributePreference.ts)): a
- * `localStorage` value mirrored onto `<html data-*>`.
+ * Accent-palette preference, independent of the theme ([`theme.ts`](./theme.ts)); both use
+ * [`attributePreference.ts`](./attributePreference.ts).
  *
  * The accent reaches the screen two ways, kept in step from here:
- *  - UI chrome: a `data-palette` attribute on <html> remaps the Tailwind
- *    `orange-*` scale (see `globals.css`), re-colouring every accent utility
- *    across the app without touching a single component.
- *  - Map markers: maplibre paint expressions can't read CSS variables, so
- *    `Map.tsx` reads the hex values below through `usePalette`.
+ *  - UI chrome: `data-palette` on <html> remaps the Tailwind `orange-*` scale (see
+ *    `globals.css`).
+ *  - Map markers: maplibre paint expressions can't read CSS variables, so `Map.tsx` reads the
+ *    hex values below through `usePalette`.
  *
- * Orange is the historical accent and stays the default; the other entries are
- * Tailwind's own scales at the same shade stops, so the UI keeps its
- * tinted-on-dark recipe whatever hue is picked. `detected` is the same hue a
- * shade lighter (the `300` stop): a machine `detected` point reads as the same
- * family as a submitted one but stays distinct by lightness.
+ * Other entries are Tailwind's scales at the same shade stops. `detected` is the `300` stop:
+ * same family as a submitted point, distinct by lightness.
  */
 
 import { createAttributePreference } from "./attributePreference";
@@ -27,10 +21,8 @@ export interface PaletteOption {
   label: string;
   /** Representative swatch (the 500 shade) for the settings picker. */
   swatch: string;
-  /**
-   * Map-marker colours: submitted point (`base`) + the density ramp's two
-   * darker stops, plus the lighter `detected` shade for machine points.
-   */
+  /** Map-marker colours: submitted point, the density ramp's two darker stops, and the
+   *  lighter `detected` shade. */
   map: { base: string; rampMid: string; rampHigh: string; detected: string };
 }
 
@@ -110,7 +102,6 @@ const pref = createAttributePreference<PaletteId>({
 
 /** The stored accent palette, or the default when absent / invalid. */
 export const getPalette = pref.get;
-/** Persist the accent palette, reflect it on <html>, and notify readers. */
 export const setPalette = pref.set;
 
 export function paletteMapColors(id: PaletteId): PaletteOption["map"] {

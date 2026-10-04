@@ -21,10 +21,7 @@ import { useMapState } from "@/contexts/MapStateContext";
 const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
 
 export default function HomePage() {
-  // State that must survive navigation lives in MapStateContext; local
-  // state below is for cheaply re-fetched data (points, tags, detail).
-  // The page reads only filter values (for the points URL); the setters
-  // live with FilterPanel, which shares the same context.
+  // Navigation-surviving state lives in MapStateContext; the page reads only filter values (setters live with FilterPanel).
   const {
     viewState,
     setViewState,
@@ -36,17 +33,14 @@ export default function HomePage() {
 
   const [points, setPoints] = useState<MapPoint[]>([]);
   const [loading, setLoading] = useState(false);
-  // The `?bbox=` currently loaded. `/events/points` serves one viewport, so
-  // there is nothing to fetch until the map reports its first bounds.
+  // The `?bbox=` loaded; `/events/points` serves one viewport, so nothing fetches until the first bounds.
   const [bbox, setBbox] = useState<string | null>(null);
-  // The padded region those points cover. A viewport still inside it needs no
-  // request, which is what keeps small pans free.
+  // The padded region those points cover; a viewport inside it needs no request.
   const coveredRef = useRef<MapBounds | null>(null);
   const boundsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { data: tagsData } = useApiResource<Tag[]>("/tags");
   const tags = tagsData ?? [];
-  // Only conflicts carried by >=1 live event: the filter offers what the map
-  // can actually show, not the whole ~800-row referential.
+  // Only conflicts carried by at least one live event, not the whole referential.
   const { data: conflictsData } = useApiResource<Conflict[]>("/conflicts?used=true");
   const conflicts = conflictsData ?? [];
   // Keyed on the selection in context, so returning to the map re-reads it.
@@ -62,18 +56,14 @@ export default function HomePage() {
     abortRef.current = controller;
 
     const params = new URLSearchParams();
-    // Required: the endpoint 422s without it, and the viewport is what bounds
-    // the payload instead of the catalog's size.
+    // Required: the endpoint 422s without it, and the viewport bounds the payload.
     params.set("bbox", bbox);
-    // Append each chip independently. The backend applies OR within a
-    // bucket and AND across buckets (`routers/events::_apply_filters`).
+    // OR within a bucket, AND across buckets (`routers/events::_apply_filters`).
     filters.conflicts.forEach((c) => params.append("conflict", c));
     filters.captureSources.forEach((s) => params.append("capture_source", s));
     filters.tags.forEach((t) => params.append("tag", t));
     filters.mediaTypes.forEach((m) => params.append("media", m));
-    // The commit-style Author section only applies gated values, but the
-    // context could carry a stale one; the shared gate (same source as the
-    // section's commit) keeps an ineligible value from 422ing the fetch.
+    // The shared gate keeps a stale ineligible Author value from 422ing the fetch.
     const cleanAuthor = filters.author.trim();
     if (AUTHOR_FILTER_RE.test(cleanAuthor)) params.set("author", cleanAuthor);
 
@@ -83,23 +73,14 @@ export default function HomePage() {
     })
       .then(setPoints)
       .catch(() => {
-        // Coverage is claimed at request time, so a real failure (429, 5xx,
-        // offline) would otherwise leave the region marked as loaded and the
-        // map showing the previous region's pins forever. Dropping the claim
-        // makes the next move-end retry. Same abort guard as the spinner: a
-        // superseded request must not wipe the coverage its replacement set.
+        // Coverage is claimed at request time: drop the claim on a real failure so the next move-end retries. Skip when superseded.
         if (abortRef.current === controller) coveredRef.current = null;
       })
       .finally(() => {
-        // A superseded request must not clear the spinner the one that
-        // replaced it just raised: panning aborts often enough for that to
-        // read as a finished load while points are still coming.
+        // A superseded request must not clear the spinner its replacement raised.
         if (abortRef.current === controller) setLoading(false);
       });
-    // Per-bucket deps, not the whole `filters` object: the status pick and the
-    // date windows are applied client-side, so a status chip must not fire a
-    // refetch. A patch keeps the untouched buckets' array identities, so these
-    // only change when a server-side bucket actually does.
+    // Per-bucket deps: status and date windows are client-side, so a status chip must not refetch.
   }, [
     bbox,
     filters.conflicts,
@@ -113,10 +94,7 @@ export default function HomePage() {
     fetchPoints();
   }, [fetchPoints]);
 
-  // Every move-end (and the map's first paint) offers a viewport. Debounced,
-  // so a drag across several regions or a wheel zoom settles into one
-  // request; then a containment check against the padded region already
-  // loaded drops the pans that need no new points at all.
+  // Debounced so a drag or wheel zoom settles into one request; a containment check drops pans that need no new points.
   const handleBoundsChange = useCallback((next: MapBounds) => {
     const apply = () => {
       const covered = coveredRef.current;
@@ -126,9 +104,7 @@ export default function HomePage() {
       setBbox(toBboxParam(padded));
     };
     if (boundsTimerRef.current) clearTimeout(boundsTimerRef.current);
-    // The first viewport is the page's initial load, not a camera move:
-    // waiting out the debounce there would only leave the map empty for
-    // as long.
+    // The first viewport is the initial load: no debounce.
     if (coveredRef.current === null) {
       apply();
       return;
@@ -146,11 +122,7 @@ export default function HomePage() {
     []
   );
 
-  // Apply the status chips and both timeline windows client-side: each point
-  // carries its detected flag (`POINT_DETECTED_FLAG`) and its event and added
-  // dates, so chip clicks, scrubbing and playback filter the in-memory set
-  // instantly with no /points refetch. A point must match the status pick
-  // (any-of, empty = all) and fall inside both windows.
+  // Status chips and both timeline windows filter client-side (`POINT_DETECTED_FLAG`, event and added dates): any-of status, empty = all.
   const visiblePoints = useMemo(() => {
     const statusFiltered = filterPointsByStatus(points, filters.statuses);
     const { eventFrom, eventTo, addedFrom, addedTo } = dateWindows;
@@ -162,10 +134,7 @@ export default function HomePage() {
     const subLo = lo(addedFrom);
     const subHi = hi(addedTo);
     return statusFiltered.filter((p) => {
-      // A missing/unparseable date must not silently drop the point (NaN fails
-      // every comparison): treat that dimension as unconstrained, matching the
-      // histogram, which skips undated points rather than hiding them.
-      // event_date is optional, so null is a live case, not just a safeguard.
+      // A missing or unparseable date (event_date is optional) is unconstrained, like the histogram, so the point is not dropped.
       const ev = p[3] ? Date.parse(`${p[3]}T00:00:00Z`) : NaN;
       const sub = p[4] ? Date.parse(`${p[4]}T00:00:00Z`) : NaN;
       const evOk = Number.isNaN(ev) || (ev >= evLo && ev <= evHi);
@@ -197,9 +166,7 @@ export default function HomePage() {
 
       {selectedId && (
         <DetailSidePanel
-          // Keyed by event: the panel stays mounted across pin switches, so a
-          // remount is what guarantees every piece of per-event state inside it
-          // (the report form, the action row's optimistic flags) starts clean.
+          // Keyed by event so per-event state (report form, optimistic flags) starts clean.
           key={selectedId}
           resource={detail}
           onClose={() => setSelectedId(null)}

@@ -111,8 +111,7 @@ describe("parsePastedCoordinates", () => {
   });
 
   it("reads the URL forms only out of a paste that is itself a URL", () => {
-    // The two map patterns match mid-string, so anything but a URL paste must
-    // not reach them: prose keeps landing as prose.
+    // The map patterns match mid-string, so only a URL paste may reach them.
     expect(
       parsePastedCoordinates("shot from @48.015883,37.802411 looking north")
     ).toBeNull();

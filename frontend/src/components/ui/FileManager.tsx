@@ -8,42 +8,35 @@ import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { MediaOverlay } from "@/components/ui/MediaLightbox";
 
 export interface FileManagerItem {
-  /** Stable React key. */
   key: string;
-  /** The item's visual. In `grid` it fills a uniform thumbnail tile (a media
-   *  image); in `stack` it IS the tile (a caller-defined file card). The only
-   *  per-type concern. */
+  /** In `grid` it fills a uniform thumbnail tile; in `stack` it is the tile (a
+   *  caller-defined file card). */
   content: ReactNode;
-  /** Remove handler; omit for a non-removable item (e.g. a locked grid). */
+  /** Omit for a non-removable item. */
   onRemove?: () => void;
   removeLabel?: string;
-  /** Enlarged / playable rendering shown in a lightbox when the tile itself
-   *  (not the remove button) is clicked. Omit for a non-viewable item (e.g.
-   *  the archive import's file card), which then renders inert, as before. */
+  /** Enlarged rendering shown in a lightbox when the tile is clicked. Omit for
+   *  an inert item (the archive import's file card). */
   viewContent?: ReactNode;
   viewLabel?: string;
-  /** Extra controls for the open lightbox (a download for a persisted row),
-   *  placed beside its close button. */
+  /** Extra lightbox controls (a download), beside its close button. */
   viewActions?: ReactNode;
-  /** Cover this item with `GraphicContentGate`, for media on an event flagged
-   *  `is_graphic`. The gate wraps the whole tile, view trigger included, so the
-   *  lightbox is unreachable (pointer and keyboard) until the reader confirms. */
+  /** Cover the tile with `GraphicContentGate` (event flagged `is_graphic`). The
+   *  gate wraps the view trigger too, so the lightbox is unreachable until the
+   *  reader confirms. */
   gated?: boolean;
 }
 
 interface FileManagerProps {
   items: FileManagerItem[];
-  /** Stage picked files. Omit for read-only (no drop zone, no remove). */
+  /** Omit for read-only (no drop zone, no remove). */
   onAddFiles?: (files: File[]) => void;
-  /** `accept` for the file input. */
   accept: string;
-  /** Allow picking several at once (also keeps the drop zone shown once staged). */
+  /** Also keeps the drop zone shown once staged. */
   multiple?: boolean;
-  /** Drop-zone label + optional hint line. */
   addLabel: string;
   addHint?: string;
-  /** `grid` = uniform thumbnail tiles (media); `stack` = caller-defined file
-   *  cards in a column (documents). */
+  /** `grid`: thumbnail tiles (media). `stack`: file cards in a column. */
   layout?: "grid" | "stack";
 }
 
@@ -65,11 +58,9 @@ export function FileManager({
 }: FileManagerProps) {
   const grid = layout === "grid";
 
-  // Which item (by key) is showing its enlarged/playable rendering, if any.
-  // Lives here (not with the caller) so the remove button and the view tile
-  // stay two plain sibling elements: the remove button paints on top (later
-  // in DOM order, same stacking context) and never opens the lightbox, no
-  // `stopPropagation` needed to keep the two clicks unambiguous.
+  // Held here so the remove button and the view tile stay sibling elements: the
+  // remove button paints on top and never opens the lightbox, with no
+  // `stopPropagation`.
   const [viewingKey, setViewingKey] = useState<string | null>(null);
   const viewingItem = items.find((it) => it.key === viewingKey && it.viewContent);
 
@@ -86,17 +77,14 @@ export function FileManager({
       onClick={onClick}
       aria-label={label}
       title={label}
-      // `ICON_TAP_STEP`, the phone floor every small icon control takes: the
-      // resting 24px circle sits in a tile corner, where a near miss opens the
-      // lightbox under it instead of removing the file.
+      // The 24px circle sits in a tile corner, where a near miss opens the
+      // lightbox, hence the phone floor.
       className={`absolute top-1 right-1 flex ${ICON_TAP_STEP} sm:size-6 items-center justify-center rounded-full bg-neutral-950/80 text-neutral-300 transition-colors hover:bg-neutral-950 hover:text-red-400`}
     >
       <X size={13} />
     </button>
   );
 
-  // A viewable tile's content sits behind a full-size transparent button so a
-  // click opens the lightbox; a non-viewable tile renders its content as-is.
   const tileBody = (it: FileManagerItem) => {
     const body = it.viewContent ? (
       <button
@@ -110,10 +98,8 @@ export function FileManager({
     ) : (
       it.content
     );
-    // Outside the view trigger, never inside it: the gate's reveal control is
-    // itself a button, and nesting one in the other is invalid markup whose
-    // click would land on the wrong control. Wrapping the trigger is also what
-    // lets `inert` take it out of the tab order while the gate stands.
+    // Outside the trigger: the reveal control is a button, and nesting is
+    // invalid. Wrapping also lets `inert` drop the trigger from the tab order.
     return it.gated ? (
       <GraphicContentGate variant="compact">{body}</GraphicContentGate>
     ) : (
@@ -121,9 +107,6 @@ export function FileManager({
     );
   };
 
-  // The overlay shell is the shared <MediaOverlay>, so a staged file in this
-  // picker and a persisted one on a detail page open into the same viewer.
-  // Only the enlarged rendering is the caller's (`viewContent`).
   const lightbox = viewingItem ? (
     <MediaOverlay
       label={viewingItem.viewLabel ?? "View"}
@@ -143,8 +126,7 @@ export function FileManager({
         if (dropped.length > 0) onAddFiles(multiple ? dropped : dropped.slice(0, 1));
       }}
       className={
-        // Clickable ⇒ orange (design rule). Background stays neutral so it reads
-        // as a drop zone, not a button.
+        // Clickable is orange; the neutral background reads as a drop zone.
         grid
           ? "flex aspect-video cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed border-orange-500/40 bg-neutral-950 text-orange-400 transition-colors hover:border-orange-500/60 hover:text-orange-300"
           : "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-orange-500/40 bg-neutral-950 px-4 py-10 text-center text-orange-400 transition-colors hover:border-orange-500/60 hover:text-orange-300"
@@ -163,8 +145,7 @@ export function FileManager({
     </label>
   ) : null;
 
-  // The drop zone stays while multiple are allowed; for a single-file picker it
-  // gives way to the staged item.
+  // A single-file picker gives way to the staged item.
   const showDropzone = !!onAddFiles && (multiple || items.length === 0);
 
   if (grid) {
@@ -185,7 +166,6 @@ export function FileManager({
     );
   }
 
-  // Stack: the caller's own item tiles in a column; full-width drop zone.
   return (
     <div className="space-y-3">
       {items.map((it) => (

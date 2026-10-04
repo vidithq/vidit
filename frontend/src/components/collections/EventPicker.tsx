@@ -22,23 +22,13 @@ import { useCursorList } from "@/hooks/useCursorList";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import type { EventListItem } from "@/types";
 
-/** How long the field waits before a typed query is sent, the debounce the
- *  search page uses on the same endpoint. */
+/** Debounce before a typed query is sent, as on the search page. */
 const DEBOUNCE_MS = 300;
 
-/** The rows a collection holds, in the order its page reads them: by when the
- *  events happened, earliest first. A row with no date sits at the end, since
- *  there is nothing to place it against. The server orders a stored collection
- *  this way (`services/collections.chronological_key`), so the pending list and
- *  the collection it becomes read alike.
- *
- *  Two rows sharing a date fall back to their id, the server's last key, which
- *  is what makes the order total: without it two same-day rows sit in whichever
- *  order they were picked in, and the collection reorders them on save. The
- *  server's middle keys, `event_time` then `created_at`, are not on the card
- *  shape either half of the picker reads (`EventList`, `SearchEventHit`), so
- *  two rows sharing a date and differing in time can still swap places between
- *  this list and the saved collection. */
+/** The rows in the order the collection's page reads them: event date, earliest
+ *  first, undated last, then id. Mirrors `services/collections.chronological_key`,
+ *  except its middle keys (`event_time`, `created_at`), which are not on the
+ *  card shapes the picker reads, so same-date rows can swap places on save. */
 function chronological(events: PickableEvent[]): PickableEvent[] {
   return [...events].sort(
     (a, b) =>
@@ -48,52 +38,29 @@ function chronological(events: PickableEvent[]): PickableEvent[] {
 }
 
 /**
- * The events a collection is being written to hold, and the search that adds
- * to them.
+ * The events a collection is being written to hold, and the search that adds to
+ * them. Both the create and the edit page use it.
  *
- * Both collection writes carry it, opening one and editing one, so the set a
- * collection holds is chosen where its title and description are written
- * rather than one event at a time afterwards. The two pages read the same:
- * nothing here knows which of them it is standing on.
+ * **Two cards.** *Events in this collection* is what the collection holds if
+ * saved now (the rows the page opened on, a `?event=` arrival, and everything
+ * added since), in the collection page's order. *Add events* is the way in, at
+ * most `PICKER_ROW_LIMIT` rows: the analyst's most recent eligible events, or
+ * the first matches once something is typed. Neither card writes anything; the
+ * page's submit does.
  *
- * **Two cards, and the first one is the answer.** *Events in this collection*
- * is what the collection will hold if the analyst saves now: the rows the edit
- * page opened on, the one event a `?event=` create arrived with, and everything
- * added since, under the count line and the order the collection's own page
- * takes. *Add events* is the way in, and it is deliberately short: at most
- * `PICKER_ROW_LIMIT` rows, the most recent of the analyst's own eligible events
- * with nothing typed and the first matches once something is. Neither card
- * writes anything: both move rows in and out of the pending list the form
- * holds, and the page's own submit is what reaches the server.
+ * **A row is `<CollectionItemCard>`** with its `action` slot: a red cross
+ * removes it from the first card; an accent plus adds it on the second. A row
+ * already held shows a disabled check instead of dropping out of the results.
  *
- * **A row is `<CollectionItemCard>`**, the row every collection surface
- * renders, here in its plain mode: the title links to the event and the card's
- * own control fills the `action` slot, the same icon-button shape on both
- * cards. On the first card that control is the red cross that takes the row
- * off, the one control that lets an item leave a collection anywhere on the
- * site. On the second it is an accent plus icon that adds the row, and a row
- * already on the first card shows a disabled check icon instead of dropping
- * out of the results: the analyst searched for that event, and answering with
- * nothing says less than answering with the row and the reason it cannot be
- * added twice.
+ * **Two sources, one row.** With nothing typed, the add card reads the
+ * analyst's catalogue through `GET /events` (`view=located`, `author=`, the two
+ * collectable statuses), whose cursor tells it more exists. A typed query goes
+ * to `GET /search` (`type=event`, `author=`), which answers the pre-cap count.
+ * Either way a row is a `PickableEvent` (`lib/collections.ts`).
  *
- * **Two sources, one row.** With nothing typed the add card reads the
- * analyst's catalogue newest first through `GET /events` (`view=located`,
- * `author=`, scoped to the two statuses a collection may hold), the
- * cursor-paged endpoint, whose cursor is how the card knows more stands behind
- * the rows it shows. A typed query goes to `GET /search` (`type=event`,
- * `author=`), the endpoint that reads words, which answers the pre-cap match
- * count beside its rows. Either way a row is a `PickableEvent`
- * ([`lib/collections.ts`](../../lib/collections.ts)), and either way the line
- * under the rows says how many there are and that narrowing the words is how to
- * reach them.
- *
- * The two halves serve different sets in one respect, and the line under the
- * rows says so: search answers out of its located group, which requires
- * coordinates, while the browse list serves every collectable event. A
- * collection may hold an event with no coordinates, so the browse list is the
- * only way to one. `GET /events` reads no words, so there is no one endpoint
- * to put both halves on.
+ * Search answers out of its located group, which requires coordinates, while
+ * browse serves every collectable event, so browse is the only way to an event
+ * without coordinates. No single endpoint serves both halves.
  */
 export function EventPicker({
   username,
@@ -101,10 +68,9 @@ export function EventPicker({
   onAdd,
   onRemove,
 }: {
-  /** Whose events the add card lists: the signed-in analyst, since a
-   *  collection holds its owner's own work and nothing else. */
+  /** Whose events the add card lists: the signed-in analyst (a collection
+   *  holds its owner's own work only). */
   username: string;
-  /** What the collection will hold, held by the form that submits it. */
   events: PickableEvent[];
   onAdd: (event: PickableEvent) => void;
   onRemove: (eventId: string) => void;
@@ -118,10 +84,7 @@ export function EventPicker({
   );
   const browse = useCursorList<EventListItem>(buildPath);
 
-  // The one answer the typed half holds, carrying the query it belongs to:
-  // the words move while a request is in flight, and the rows of the query
-  // before them are not the rows of this one, so the card shows an answer
-  // only while its query is still the one in the field.
+  // Carries its query: shown only while that query is still in the field.
   const [answer, setAnswer] = useState<{
     query: string;
     items: PickableEvent[];
@@ -129,9 +92,7 @@ export function EventPicker({
     error: string | null;
   } | null>(null);
 
-  // The debounce the search page keeps on the same endpoint. The in-flight
-  // guard rides the effect's cleanup, which runs the moment the field moves
-  // on, so an answer to a query the reader has left never lands.
+  // The cleanup flips `live`, so an answer to an abandoned query never lands.
   useDebouncedEffect(
     () => {
       if (!typed) return;
@@ -168,15 +129,9 @@ export function EventPicker({
   ).slice(0, PICKER_ROW_LIMIT);
   const error = searching ? (found?.error ?? null) : browse.error;
   const loading = searching ? found === null : browse.loading;
-  // What the card is not showing. A search states the figure, since the
-  // endpoint answers the pre-cap count; a browse only knows there is another
-  // page, which is enough to say that the search is the way past these rows.
-  //
-  // A search also says what it cannot reach at all: `/search` serves its
-  // located group, which requires coordinates, while the browse list serves
-  // every collectable event of the analyst's. So an event carrying no
-  // coordinates answers no query here, and clearing the field is the only way
-  // to it.
+  // What the card is not showing. A search states the pre-cap count; a browse
+  // only knows another page exists. A search also cannot reach events without
+  // coordinates (see the component note).
   const capped =
     found !== null && found.total > results.length
       ? `Showing ${results.length} of ${found.total} matches. Refine the search to reach the rest. `
@@ -241,10 +196,7 @@ export function EventPicker({
           icon={<Search size={14} />}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          // The field sits inside the collection form, where Enter submits.
-          // Typing words and pressing Enter has to search, not write the
-          // collection the analyst is still choosing the events for: the rows
-          // arrive on the debounce, so the key has nothing left to do.
+          // The field sits in the collection form, where Enter would submit.
           onKeyDown={(e) => {
             if (e.key === "Enter") e.preventDefault();
           }}

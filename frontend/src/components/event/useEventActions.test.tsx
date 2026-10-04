@@ -8,9 +8,8 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
-// The signed-in reader, fixed. Who they are *to the row* is what the harness
-// varies: `viewer="visitor"` hands them a row somebody else owns, which is what
-// an open request looks like to the analyst who might answer it.
+// The signed-in reader, fixed. `viewer="visitor"` hands them a row somebody else owns (what an open
+// request looks like to the analyst who might answer it).
 const AUTHOR = { id: "u1", username: "ana" };
 const SOMEONE_ELSE = { id: "u2", username: "bo" };
 vi.mock("@/contexts/AuthContext", () => ({
@@ -83,8 +82,7 @@ function Harness({
   );
 }
 
-/** The close control the row is showing, as its accessible name, or `null`.
- *  Every owner verb is a button in the row, so there is nothing to open first. */
+/** The close control the row is showing, as its accessible name, or `null`. */
 function closeControl(): string | null {
   for (const name of [
     "Close this request",
@@ -97,15 +95,14 @@ function closeControl(): string | null {
   return null;
 }
 
-/** No surface offers a destructive verb: an owner takes a row back, an admin
- *  removes it. Matched loosely so a delete control under any wording fails. */
+/** No surface offers a destructive verb (an owner takes a row back, an admin removes it). Matched
+ * loosely so a delete control under any wording fails. */
 function hasDeleteControl(): boolean {
   return screen.queryByRole("button", { name: /delete/i }) !== null;
 }
 
 describe("owner management: correcting, taking back, and never destroying", () => {
-  // Every owner verb is a control in the row: the author's own actions are the
-  // ones they reach for most, and a disclosure over them costs a click per use.
+  // Every owner verb is a control in the row, with no disclosure to open first.
   it("offers the published correction on the event surface as a visible icon", () => {
     render(<Harness status="geolocated" surface="event" />);
     expect(screen.getByRole("link", { name: "Edit this geolocation" })).toHaveAttribute(
@@ -122,9 +119,8 @@ describe("owner management: correcting, taking back, and never destroying", () =
     }
   );
 
-  // The owner's other edit, on the row in the other state: an open request is
-  // overwritten rather than versioned, so the label promises no version, and
-  // both detail surfaces carry it since both serve requests.
+  // The owner's other edit, on a request: overwritten rather than versioned, so the label promises
+  // no version; both detail surfaces carry it.
   it.each<ActionSurface>(["event", "request"])(
     "offers the request edit on the %s surface as a visible icon",
     (surface) => {
@@ -133,8 +129,7 @@ describe("owner management: correcting, taking back, and never destroying", () =
         "href",
         "/events/e1/edit"
       );
-      // The two edits never stand together: no row is both requested and
-      // published.
+      // The two edits never stand together: no row is both requested and published.
       expect(screen.queryByRole("link", { name: "Edit this geolocation" })).toBeNull();
     }
   );
@@ -147,9 +142,7 @@ describe("owner management: correcting, taking back, and never destroying", () =
     }
   );
 
-  // Anyone may answer an open request; only the analyst who asked rewrites the
-  // question. A visitor therefore gets the geolocate and nothing of the owner
-  // tier, on either surface that serves requests.
+  // Anyone may answer an open request; only the asker rewrites it. A visitor gets geolocate and no owner tier.
   it.each<ActionSurface>(["event", "request"])(
     "shows a visitor no request edit on the %s surface",
     (surface) => {
@@ -159,8 +152,7 @@ describe("owner management: correcting, taking back, and never destroying", () =
     }
   );
 
-  // One verb closes all three live states, and the noun names the row it
-  // closes, so a reader learns one word rather than three.
+  // One verb closes all three live states; the noun names the row.
   it.each<[EventStatus, string]>([
     ["requested", "Close this request"],
     ["detected", "Close this detection"],
@@ -178,8 +170,7 @@ describe("owner management: correcting, taking back, and never destroying", () =
     }
   );
 
-  // Closing is terminal and there is no owner un-close, so the verb goes once
-  // it has been taken.
+  // Closing is terminal with no owner un-close, so the verb goes once taken.
   it.each<ActionSurface>(["event", "request"])(
     "offers nothing to close on a closed row (%s surface)",
     (surface) => {
@@ -200,14 +191,12 @@ describe("owner management: correcting, taking back, and never destroying", () =
     }
   );
 
-  // The reason is what makes a closed row readable as a decision rather than a
-  // disappearance, so the panel that captures it opens named for the row.
+  // The reason makes a closed row a decision, not a disappearance, so its panel opens named for the row.
   it("opens the close panel named for the row it closes", () => {
     render(<Harness status="geolocated" surface="event" />);
     fireEvent.click(screen.getByRole("button", { name: "Close this geolocation" }));
     expect(screen.getByLabelText("Close reason")).toBeInTheDocument();
-    // The panel's own submit repeats the label, so the reader confirms the row
-    // they picked rather than a bare "Close".
+    // The panel's submit repeats the label, so the reader confirms the row they picked.
     expect(screen.getAllByRole("button", { name: "Close this geolocation" })).toHaveLength(2);
   });
 
@@ -218,8 +207,7 @@ describe("owner management: correcting, taking back, and never destroying", () =
 });
 
 describe("utilities are the detail pages' tier", () => {
-  // Passing an event on and flagging it are reads, so the pages that show a
-  // record to read carry them.
+  // Sharing and flagging are reads, so the pages that show a record carry them.
   it.each<ActionSurface>(["event", "request"])(
     "carries the X share and the report flag on the %s surface",
     (surface) => {
@@ -229,9 +217,8 @@ describe("utilities are the detail pages' tier", () => {
     }
   );
 
-  // The form is where a record is rewritten, so sharing or reporting it there
-  // would act on something other than what is on screen; the map panel is a
-  // preview of a page one click away, which is where its actions live.
+  // The form rewrites a record, so sharing or reporting there would act on something other than what
+  // is on screen; the map panel previews a page whose actions live there.
   it.each<ActionSurface>(["edit", "panel"])(
     "carries none on the %s surface, and no row at all",
     (surface) => {
@@ -239,17 +226,14 @@ describe("utilities are the detail pages' tier", () => {
       expect(screen.queryByRole("button", { name: "Share on X" })).toBeNull();
       expect(screen.queryByRole("button", { name: "Report" })).toBeNull();
       expect(closeControl()).toBeNull();
-      // Not merely empty: an empty wrapper is still a flex item, and a host
-      // adds its own controls (the form's queue position, Skip, Close) to
-      // that cluster.
+      // Not merely empty: an empty wrapper is still a flex item, and a host adds its own controls to that cluster.
       expect(container).toBeEmptyDOMElement();
     }
   );
 
-  // The history is a read like the two beside it, public like the record: a
-  // corrected record is auditable only where any reader can walk the
-  // corrections. It is on the event page and nowhere else, because that is the
-  // one surface serving the record whose versions it lists.
+  // The history is a public read, like the record: a corrected record is auditable only where any
+  // reader can walk the corrections. Event page only, the one surface serving the record whose
+  // versions it lists.
   it("opens the version history from the event surface of a published row", () => {
     render(<Harness status="geolocated" surface="event" />);
     expect(screen.getByRole("link", { name: "Version history" })).toHaveAttribute(
@@ -258,8 +242,7 @@ describe("utilities are the detail pages' tier", () => {
     );
   });
 
-  // A retraction keeps the record it took back, and the history is the part of
-  // it a reader most needs after one.
+  // A retraction keeps the record it took back, so the history is what a reader most needs after one.
   it("keeps the version history on a retracted row", () => {
     render(<Harness status="closed" surface="event" beforeClosedStatus="geolocated" />);
     expect(screen.getByRole("link", { name: "Version history" })).toHaveAttribute(
@@ -286,8 +269,7 @@ describe("utilities are the detail pages' tier", () => {
     }
   );
 
-  // The link is in the address bar the reader is already looking at; the
-  // coordinates, which are not, keep their own copy control.
+  // The link is in the address bar already; the coordinates, which aren't, keep their copy control.
   it("offers no copy-link control anywhere", () => {
     for (const surface of ["event", "request"] as const) {
       const { unmount } = render(

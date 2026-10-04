@@ -1,8 +1,5 @@
-"""In-memory TTL+LRU cache for expensive query results.
-
-Thread-safe, suitable for single-process deployments.
-For multi-process/multi-instance, replace with Redis.
-"""
+"""In-memory TTL+LRU cache. Thread-safe, for single-process deployments (use
+Redis across processes)."""
 
 import threading
 import time
@@ -11,12 +8,8 @@ from typing import Any
 
 
 class TTLCache:
-    """TTL cache with LRU eviction and a hard size cap.
-
-    The size cap is a defensive measure against cache-key flooding
-    (e.g. an attacker crafting many distinct values for a free-form
-    filter param like `author=...`).
-    """
+    """TTL cache with LRU eviction and a hard size cap, a defence against
+    cache-key flooding (many distinct values of a free-form filter like `author`)."""
 
     def __init__(self, default_ttl: int = 60, max_size: int = 512):
         self._store: OrderedDict[str, tuple[float, Any]] = OrderedDict()
@@ -46,7 +39,7 @@ class TTLCache:
                 self._store.popitem(last=False)
 
     def invalidate(self, prefix: str = "") -> None:
-        """Remove all entries, or only those whose key starts with prefix."""
+        """Remove all entries, or those whose key starts with prefix."""
         with self._lock:
             if not prefix:
                 self._store.clear()

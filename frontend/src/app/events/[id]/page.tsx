@@ -18,11 +18,7 @@ export default function EventPage() {
     error,
     refetch,
   } = useApiResource<EventDetail>(eventId ? `/events/${eventId}` : null);
-  // A geolocated event is finished work, so it carries no flow action: the
-  // cluster is the utilities tier plus, for its author, the edit that files a
-  // version and the close that retracts it. The retraction rewrites the row's
-  // status and reason, so the page refetches on it. Called before the early
-  // returns, as every hook here must be.
+  // Geolocated events carry only the utilities tier plus, for the author, edit and close (which refetch). Called before early returns.
   const { actions, panels } = useEventActions({
     event: geo,
     surface: "event",
@@ -42,8 +38,7 @@ export default function EventPage() {
       subtitle={
         <span className="flex flex-wrap items-center gap-2">
           <AuthorByline author={geo.owner} avatar />
-          {/* Which version the page is showing, next to who filed it: an event
-              nobody has corrected is version 1 and says nothing. */}
+          {/* Version 1 says nothing. */}
           {geo.version_no > 1 && (
             <Pill tone="neutral" title={`Version ${geo.version_no}`}>
               v{geo.version_no}

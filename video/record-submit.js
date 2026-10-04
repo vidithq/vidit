@@ -4,13 +4,20 @@
 // fps cap, IGNORES deviceScaleFactor → blurry on retina.
 //
 // Why not CDP Page.startScreencast: only emits frames when the renderer
-// paints — idle waits (waiting for network, waiting for animations to
+// paints: idle waits (waiting for network, waiting for animations to
 // "settle") produce no frames, so a 14s script becomes a 3s clip with
 // awful pacing. A tight polling loop on page.screenshot() respects DPR
 // and gives us deterministic, smooth output at the cost of some CPU.
 //
 // Why not ffmpeg avfoundation: it needs macOS Screen Recording
 // permission on the parent process; CLI tools are silently denied.
+//
+// Why `slowScrollToY` instead of `scrollIntoView({ behavior: "smooth" })`:
+// native smooth scroll runs at a fixed cadence with no duration control,
+// while a custom ease-in-out over 1.5 to 2.5 s reads like a trackpad
+// scroll. The rAF loop fires in the page without awaiting its Promise: an
+// awaited `page.evaluate(asyncFn)` blocks the CDP session and drops the
+// grabber from 30 fps to about 4 fps.
 
 const { chromium } = require("playwright");
 const crypto = require("crypto");

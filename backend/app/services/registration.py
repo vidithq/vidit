@@ -3,18 +3,11 @@
 ``POST /auth/register`` stages identity in ``pending_registrations`` and
 emails a confirmation link. ``POST /auth/confirm-registration`` consumes
 the token, creates the real ``users`` row, marks the invite consumed, and
-logs the analyst in.
+logs the analyst in. No ``users`` row exists until the address is proven.
 
-Pre-creation because the previous soft-verify flow let anyone create a
-``users`` row with a typoed or unowned email: that row pinned the address,
-became the recovery channel for an account the typist couldn't access, and
-read as an "unverified analyst" forever. Pre-creation refuses the row until
-the user proves they control the address.
-
-Errors deliberately distinguish "address has a live pending verification"
-from "address already belongs to a (live or soft-deleted) user":
-registration requires an invite, so the enumeration-oracle risk is bounded.
-Revisit when self-registration opens to anonymous traffic.
+Errors distinguish "live pending verification" from "already a (live or
+soft-deleted) user": registration requires an invite, so the enumeration
+risk is bounded.
 """
 
 from __future__ import annotations
@@ -44,16 +37,12 @@ from app.services.auth import (
 
 logger = logging.getLogger(__name__)
 
-CONFIRMATION_TOKEN_MINUTES = 60 * 24  # 24h — matches old verification TTL.
+CONFIRMATION_TOKEN_MINUTES = 60 * 24  # 24h
 _TOKEN_BYTES = 32
 
 
 class RegistrationError(Exception):
-    """Base for friendly errors raised back to the user.
-
-    Carries a ``code`` so the router maps to an HTTP status without
-    string-matching exception text.
-    """
+    """Friendly error; ``code`` lets the router map to an HTTP status."""
 
     code: str = "registration_error"
 
@@ -62,10 +51,8 @@ class InvalidInviteError(RegistrationError):
     code = "invalid_invite"
 
 
-# The user-facing wording per non-``active`` invite status. Confirm-time
-# rejection names the actual reason (the holder waited out the expiry, an
-# admin pulled the code, a sibling pending row took the single use), so the
-# analyst knows whether to ask for a fresh invite or just re-register.
+# Confirm-time rejection names the actual reason so the analyst knows
+# whether to ask for a fresh invite or just re-register.
 _INVITE_REJECTION: dict[InviteCodeStatus, str] = {
     "revoked": "Invite code has been revoked.",
     "expired": "Invite code has expired.",
@@ -106,12 +93,7 @@ class PendingMint:
 
 
 def _delete_expired(db: Session) -> int:
-    """Drop every pending row whose TTL has passed.
-
-    Called inline by the create path so a recently-expired row doesn't pin
-    its address until the next admin reaper click. Returns the rows
-    deleted (for tests / logs).
-    """
+    """Drop expired pending rows so they don't pin an address. Returns the count."""
     now = datetime.now(UTC)
     return (
         db.query(PendingRegistration)
@@ -123,11 +105,9 @@ def _delete_expired(db: Session) -> int:
 
 _PENDING_EMAIL_CONSTRAINT = "uq_pending_registrations_email"
 _PENDING_USERNAME_CONSTRAINT = "uq_pending_registrations_username"
-# Postgres auto-names the inline UNIQUE constraints on ``users`` as
-# ``users_email_key`` / ``users_username_key``. Match exact names, not
-# substrings: ``str(IntegrityError)`` includes the parametrised
-# ``INSERT INTO users (..., username, ...)`` SQL, so a substring scan for
-# ``username`` matches even when the violation was on the email key.
+# Postgres auto-names the inline ``users`` UNIQUE constraints. Match exact
+# names, not substrings: ``str(IntegrityError)`` includes the INSERT SQL, so
+# a ``username`` substring matches even on an email violation.
 _USERS_EMAIL_CONSTRAINT = "users_email_key"
 _USERS_USERNAME_CONSTRAINT = "users_username_key"
 
@@ -140,22 +120,16 @@ _ALL_KNOWN_CONSTRAINTS = (
 
 
 def _integrity_error_constraint(exc: IntegrityError) -> str | None:
-    """Best-effort extraction of the violated constraint name.
+    """Best-effort violated constraint name, or ``None`` if unknown.
 
-    psycopg embeds it on ``exc.orig.diag.constraint_name``. When that's
-    unavailable (older drivers, non-postgres, diag-stripping variants),
-    fall back to scanning *driver text only* — NOT ``str(exc)``, which
-    includes the parametrised SQL column list and would match every column
-    name as a substring. Unknown → ``None`` so the caller picks a safe
-    default instead of mis-attributing.
+    Reads psycopg's ``diag.constraint_name``, else scans the driver text
+    only, never ``str(exc)`` (see the constraint-name comment above).
     """
     orig = getattr(exc, "orig", None)
     diag = getattr(orig, "diag", None)
     name = getattr(diag, "constraint_name", None)
     if name:
         return str(name)
-    # Scan the driver's own message (str(orig)), never str(exc) — see
-    # docstring.
     text = str(orig) if orig is not None else ""
     for candidate in _ALL_KNOWN_CONSTRAINTS:
         if candidate in text:
@@ -177,26 +151,18 @@ def create_pending_registration(
 ) -> PendingMint:
     """Stage a registration. Returns the raw token to email.
 
-    Lookup ordering matters: surface "invalid invite" before any uniqueness
-    check so a probe with an unknown invite can't enumerate valid emails /
-    usernames. Once the invite passes, real-user and pending-row collisions
-    raise distinct errors — invite gating keeps this from being a free
-    enumeration oracle.
+    The invite is checked before any uniqueness check so a probe with an
+    unknown invite can't enumerate emails or usernames.
 
-    The SELECT-based uniqueness checks are friendly-error scaffolding only;
-    real race protection is the UNIQUE constraints on
-    ``users``/``pending_registrations`` — two concurrent registers under
-    READ COMMITTED both pass the SELECTs, one wins the INSERT, the loser is
-    caught by the ``IntegrityError`` branch below.
+    The SELECT checks only give friendly errors; the UNIQUE constraints are
+    the race protection (the loser of two concurrent registers hits the
+    ``IntegrityError`` branch).
 
-    Caller commits; doing it here would split the email-send from the row
-    insert under the router's ``BackgroundTasks`` pattern. We DO commit the
-    expired-row sweep so the subsequent INSERT doesn't see the stale row
-    under READ COMMITTED.
+    Caller commits, so the email send and the row insert stay together. The
+    expired-row sweep is committed here so the INSERT doesn't see a stale row.
 
-    Timing-oracle caveat: the "invalid invite" branch returns after a
-    single indexed lookup, measurably faster than the others. Acceptable
-    while invite gating is the bottleneck; revisit when registration opens.
+    The "invalid invite" branch returns measurably faster than the others
+    (timing oracle), accepted while invites gate registration.
     """
     invite = validate_invite_code(db, invite_code)
     if invite is None:
@@ -205,9 +171,7 @@ def create_pending_registration(
     _delete_expired(db)
     db.commit()
 
-    # Real-user uniqueness — covers live and soft-deleted users; a
-    # soft-deleted account keeps its address bound (only hard-delete
-    # releases it).
+    # Covers soft-deleted users too: only hard-delete releases an address.
     if db.query(User).filter(User.email == email).first() is not None:
         raise EmailAlreadyRegisteredError(
             "An account with this email already exists. Sign in or reset your password."
@@ -215,8 +179,6 @@ def create_pending_registration(
     if db.query(User).filter(User.username == username).first() is not None:
         raise UsernameAlreadyTakenError("That username is taken.")
 
-    # Pending-row uniqueness — distinguishes "check your inbox" from
-    # "create a new account".
     if db.query(PendingRegistration).filter(PendingRegistration.email == email).first() is not None:
         raise EmailPendingError(
             "A confirmation is already in flight for this address. "
@@ -244,18 +206,15 @@ def create_pending_registration(
     try:
         db.flush()
     except IntegrityError as exc:
-        # Two concurrent /register calls slipped past the SELECTs above and
-        # both hit the unique constraint. Map the failing constraint
-        # (psycopg diag) back to the matching error so the loser isn't told
-        # their email is "in flight" when it was their username.
+        # Concurrent register: map the failing constraint to the matching
+        # error so a username clash isn't reported as an email one.
         db.rollback()
         if _is_username_constraint(_integrity_error_constraint(exc)):
             raise UsernamePendingError(
                 "That username is being claimed in another registration. "
                 "Pick a different one, or wait for the other request to expire."
             ) from exc
-        # Email OR unknown → "in flight": the safer default, since an
-        # unrecognised constraint shouldn't invent a username clash.
+        # Email or unknown: default to email rather than invent a username clash.
         raise EmailPendingError(
             "A confirmation is already in flight for this address. "
             "Check your inbox, or request a new link."
@@ -269,14 +228,11 @@ def resend_pending_registration(
     *,
     email: str,
 ) -> PendingMint | None:
-    """Re-mint + return a new token for an outstanding pending row.
+    """Mint a new token for an outstanding pending row.
 
-    Returns ``None`` if no live pending exists — the router always 204s
-    either way, so the caller can't enumerate addresses by response shape.
-
-    Re-minting (vs reusing the original token) kills a stolen or
-    shoulder-surfed link from the first email the moment the user clicks
-    "resend".
+    Returns ``None`` if none is live; the router answers 204 either way so
+    responses don't enumerate addresses. Re-minting invalidates the first
+    email's link.
     """
     _delete_expired(db)
     db.commit()
@@ -294,31 +250,24 @@ def resend_pending_registration(
 def confirm_pending_registration(db: Session, raw_token: str) -> User:
     """Consume the token, create the user, mark the invite consumed.
 
-    *Single-use guard:* the pending row is claimed atomically with
-    ``DELETE ... WHERE token_hash = ? AND expires_at >= now() RETURNING *``.
-    Two concurrent confirms can both pass an ORM-level "row exists?" check
-    under READ COMMITTED; only the DELETE-with-RETURNING enforces
-    single-use — the loser sees zero rows and the same opaque
-    ``InvalidOrExpiredTokenError``. Mirrors ``auth_tokens.consume`` (PR #41).
+    The pending row is claimed with ``DELETE ... RETURNING``: concurrent
+    confirms can both pass a "row exists?" check under READ COMMITTED, so
+    only the DELETE enforces single use (the loser sees zero rows). Mirrors
+    ``auth_tokens.consume``.
 
-    Uniqueness on ``users.email`` / ``.username`` is re-checked by SELECT
-    (friendly path) and the DB UNIQUE constraint (race backstop): the
-    ``IntegrityError`` branch around ``db.flush()`` catches a colliding
-    insert between SELECT and INSERT (e.g. an admin manually creating a row)
-    and maps it to a 409 instead of a 500.
+    User uniqueness is re-checked by SELECT (friendly error) with the UNIQUE
+    constraint as backstop; the ``IntegrityError`` branch maps a collision to
+    a 409 instead of a 500.
 
-    Invite consumption is atomic via ``consume_invite_code``'s
-    ``UPDATE ... WHERE used_at IS NULL RETURNING``: a code redeemed by a
-    concurrent confirm returns False, and we roll back the unflushed user
-    insert and raise ``InvalidInviteError``.
+    Invite consumption is atomic (``consume_invite_code``); a concurrent
+    redemption returns False and the user insert is rolled back.
 
-    Returns the freshly-created ``User``. Caller commits.
+    Caller commits.
     """
     if not raw_token:
         raise InvalidOrExpiredTokenError("Invalid or expired confirmation link.")
 
     now = datetime.now(UTC)
-    # Atomic claim: one and only one caller wins this row.
     stmt = (
         delete(PendingRegistration)
         .where(
@@ -339,12 +288,9 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
 
     _, claimed_email, claimed_username, claimed_password_hash, claimed_invite_id = claimed
 
-    # Re-check collisions in this transaction — the narrow window where
-    # another path created a colliding user between create-pending and
-    # confirm. The DB UNIQUE is the backstop (caught below); this is the
-    # friendly-error scaffolding.
+    # Another path may have created a colliding user since create-pending.
     if db.query(User).filter(User.email == claimed_email).first() is not None:
-        db.commit()  # persist the DELETE so the dead pending doesn't keep failing.
+        db.commit()  # persist the DELETE so the dead pending row stops failing.
         raise EmailAlreadyRegisteredError(
             "An account with this email already exists. Sign in or reset your password."
         )
@@ -352,23 +298,15 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
         db.commit()
         raise UsernameAlreadyTakenError("That username is taken.")
 
-    # Re-validate the invite at confirm time: between create and confirm
-    # the admin could have revoked it, or another holder of the same code
-    # consumed it (pasted into two browsers; re-issued to two analysts).
-    # All four branches commit the DELETE so the dead pending row releases
-    # its address — recovery is "re-register with a fresh invite", not
-    # "wait 24h". The SELECT-to-``consume_invite_code`` window is closed by
-    # the latter; this check just avoids fanning out the user insert
-    # needlessly.
+    # The invite may have been revoked or consumed since create. Each
+    # rejection commits the DELETE so the address is released at once.
     invite = db.query(InviteCode).filter(InviteCode.id == claimed_invite_id).first()
     if invite is None:
         db.commit()
         raise InvalidInviteError("Invite code is no longer valid.")
     status = invite_code_status(invite)
     if status != "active":
-        # ``exhausted`` here means a sibling pending row (the same code pasted
-        # into two browsers, or re-issued to two analysts) consumed the single
-        # use first.
+        # ``exhausted``: a sibling pending row took the single use.
         db.commit()
         raise InvalidInviteError(_INVITE_REJECTION[status])
 
@@ -383,25 +321,20 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
     try:
         db.flush()
     except IntegrityError as exc:
-        # Lost the race against another colliding user insert. Rollback also
-        # restores the claimed pending row, but the email/username is now
-        # genuinely taken, so a retry hits the same UNIQUE (or the SELECT
-        # above) with the same friendly error; the pending row ages out via
-        # the reaper.
+        # Rollback restores the pending row; a retry hits the same error and
+        # the row ages out via the reaper.
         db.rollback()
         if _is_username_constraint(_integrity_error_constraint(exc)):
             raise UsernameAlreadyTakenError("That username is taken.") from exc
-        # Email OR unknown → "already registered": safer than inventing a
-        # username clash that didn't happen.
+        # Email or unknown: default to email rather than invent a username clash.
         raise EmailAlreadyRegisteredError(
             "An account with this email already exists. Sign in or reset your password."
         ) from exc
 
     if invite.x_handle is not None:
-        # The invite binds an X handle: copy it onto the fresh account (the
-        # bot-attribution link). Fail-soft either way the handle got taken
-        # between mint and redemption: registration must still succeed, and
-        # the admin x-handle endpoint is the repair path.
+        # Copy the invite's X handle (bot-attribution link). Fail-soft if the
+        # handle was taken since mint: registration still succeeds and the
+        # admin x-handle endpoint repairs it.
         if db.query(User).filter(User.x_handle == invite.x_handle).first() is not None:
             logger.warning(
                 "Invite %s bound x_handle %s but a user already carries it; "
@@ -413,9 +346,7 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
         else:
             user.x_handle = invite.x_handle
             try:
-                # Savepoint so a lost race against the users_x_handle_key
-                # UNIQUE (two invites can bind the same handle) discards only
-                # the link, not the freshly-inserted account.
+                # Savepoint: a lost race on ``users_x_handle_key`` discards only the link.
                 with db.begin_nested():
                     db.flush()
             except IntegrityError:
@@ -429,13 +360,8 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
                 user.x_handle = None
 
     if not consume_invite_code(db, invite, user.id):
-        # We checked ``used_at IS NULL`` above; reaching here means a
-        # concurrent confirm won the microseconds-wide window before this
-        # atomic UPDATE. Roll back to discard the just-flushed user (can't
-        # commit against a code someone else redeemed); the rollback restores
-        # the pending row, so the next click re-enters, hits the already
-        # redeemed branch, commits the DELETE, and frees the address with a
-        # clean error.
+        # A concurrent confirm won the race. Roll back the flushed user; the
+        # restored pending row hits the "exhausted" branch on the next click.
         db.rollback()
         raise InvalidInviteError("Invite code has already been used.")
 

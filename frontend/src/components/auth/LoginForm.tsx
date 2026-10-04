@@ -23,8 +23,7 @@ interface Props {
 export default function LoginForm({ onSuccess }: Props) {
   const { login } = useAuth();
   const params = useSearchParams();
-  // Set by /reset-password on success — surfaces a one-time confirmation that
-  // the new password is live.
+  // Set by /reset-password on success: shows a one-time confirmation that the new password is live.
   const justReset = params.get("reset") === "ok";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

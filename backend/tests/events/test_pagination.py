@@ -1,11 +1,4 @@
-"""The list-endpoint pagination contract: the row cap, the cursor walk, the 422s.
-
-Behavioural, not unit: each test drives the HTTP surface, because the contract
-is what a caller observes (a page of at most 100 rows, a ``Link: rel="next"``
-that walks the rest, a 422 for anything malformed) rather than how the query is
-built. Shared fixtures live in ``conftest.py``; ``client`` / ``_make_geo`` in
-``_helpers.py``.
-"""
+"""The list-endpoint pagination contract: the row cap, the cursor walk, the 422s."""
 
 from __future__ import annotations
 
@@ -26,11 +19,7 @@ _DETECTIONS = "/api/v1/events/detections"
 
 
 def _next_path(response) -> str | None:
-    """The next-page path from a ``Link: <url>; rel="next"`` header, or None.
-
-    Returned as a path so the walk feeds it straight back into the TestClient,
-    which is what a caller following the header does.
-    """
+    """The next-page path from the ``Link: rel="next"`` header, or None."""
     header = response.headers.get("Link")
     if header is None:
         return None
@@ -51,13 +40,9 @@ def _walk(first_path: str, headers: dict[str, str] | None = None) -> list[list[s
         rows = body["items"] if isinstance(body, dict) else body
         pages.append([row["id"] for row in rows])
         path = _next_path(response)
-        # A cursor walk over a fixed set terminates; a bug that keeps handing
-        # the same cursor back would otherwise hang the suite.
+        # A cursor bug that returns the same cursor forever would hang the suite.
         assert len(pages) <= 50, "cursor walk did not terminate"
     return pages
-
-
-# ── The cap ───────────────────────────────────────────────────────────────
 
 
 def test_list_caps_at_100_however_many_are_asked_for(db, author):
@@ -74,9 +59,6 @@ def test_detections_caps_at_100_however_many_are_asked_for(author):
     response = client.get(f"{_DETECTIONS}?per_page=500", headers=login_as(client, author))
     assert response.status_code == 200
     assert response.json()["per_page"] == MAX_PAGE_SIZE
-
-
-# ── The cursor ────────────────────────────────────────────────────────────
 
 
 def test_list_cursor_walks_the_whole_set_without_gaps_or_duplicates(db, author):
@@ -112,13 +94,8 @@ def test_list_cursor_keeps_the_filters_it_was_minted_under(db, author, second_us
 def test_list_cursor_holds_across_a_row_landing_mid_walk(db, author):
     """The keyset walk is immune to the insert that shifts an OFFSET walk.
 
-    A row inserted between two pages is newer than the cursor, so it belongs
-    to a page already served: it must not push an unread row out of sight.
-
-    The four rows get explicit, minute-apart ``created_at`` values: rows
-    created back to back can share a timestamp, and then the exact-order
-    assertion below would be pinning the ``id`` tiebreaker's arbitrary
-    outcome rather than the contract.
+    Rows get explicit minute-apart ``created_at`` values: back-to-back rows can
+    share a timestamp, which would pin the ``id`` tiebreaker, not the contract.
     """
     base = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
     first_batch = []
@@ -129,7 +106,6 @@ def test_list_cursor_holds_across_a_row_landing_mid_walk(db, author):
     db.commit()
 
     page1 = client.get(f"{_LIST}?limit=2&author={author.username}")
-    # Lands at the head of the ordering: newer than every row above.
     late = _make_geo(db, author=author)
     late.created_at = base + timedelta(hours=1)
     db.commit()
@@ -172,9 +148,6 @@ def test_detections_offset_pager_walks_the_whole_queue(db, author):
     assert set(walked) == created
 
 
-# ── Malformed input ───────────────────────────────────────────────────────
-
-
 def test_list_rejects_malformed_paging_params(author):
     for query in ("limit=abc", "limit=0", "limit=-1", "limit=1.5"):
         response = client.get(f"{_LIST}?{query}")
@@ -187,13 +160,7 @@ def _encode(payload: object) -> str:
 
 
 def test_list_rejects_a_malformed_cursor(author):
-    """Every way a cursor can fail to be a ``[created_at, id]`` pair of strings.
-
-    The non-string members matter: a pair whose halves are not strings used to
-    reach ``datetime.fromisoformat`` / ``uuid.UUID`` and raise out of the
-    handler as an uncaught ``AttributeError``, a 500 on an unauthenticated
-    path.
-    """
+    """A cursor that is not a ``[created_at, id]`` pair of strings is a 422, not a 500."""
     malformed = [
         "garbage",
         "!!!",
@@ -216,12 +183,9 @@ def test_list_rejects_a_malformed_cursor(author):
 
 
 def test_list_accepts_a_well_formed_cursor_it_did_not_mint(db, author):
-    """Deliberate: well-formed is the whole test, minted-by-us is not.
+    """A well-formed cursor the server did not mint is accepted.
 
-    A cursor names a position in ``created_at DESC, id DESC``. A caller who
-    assembles one reads the rows that position sorts before, which is what a
-    minted cursor naming the same position returns; the encoding carries no
-    authorisation and every filter still applies.
+    It carries no authorisation and every filter still applies.
     """
     for _ in range(3):
         _make_geo(db, author=author)

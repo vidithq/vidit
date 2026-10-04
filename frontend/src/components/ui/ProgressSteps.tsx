@@ -2,26 +2,21 @@ import { Check, Loader2, X } from "lucide-react";
 
 import { ACCENT_SURFACE } from "./styles";
 
-// Same disc shape as the numbered guide list in ImportArchivePanel; kept
-// inline on both sides because styles.ts is colour-only by contract and the
-// two lists are unrelated widgets that merely share the shape.
+// Same disc shape as the guide list in ImportArchivePanel, kept inline on both
+// sides because styles.ts is colour-only.
 const NUMBER_DISC =
   "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold";
 
-/** One step of a live multi-step operation. */
 export interface ProgressStep {
   label: string;
-  /** Live one-liner under the label while the step is active or failed
-   *  (a count, real byte numbers, a failure hint). */
+  /** One-liner under the label while the step is active or failed. */
   detail?: string;
-  /** 0..1 fills a determinate bar under the active step. Only pass it when a
-   *  real ratio exists; a step without one shows no bar (pair with `spinner`). */
+  /** 0..1 fills a determinate bar. Pass it only for a real ratio (otherwise use
+   *  `spinner`). */
   progress?: number;
-  /** Discreet spinner next to the active label, for a step that is genuinely
-   *  in flight but has no measurable ratio (queued, a server-side parse). */
+  /** For an in-flight step with no measurable ratio. */
   spinner?: boolean;
-  /** Keep the detail line visible after the step completes (a privacy
-   *  guarantee, a final count), not just while it is active. */
+  /** Keep the detail visible after the step completes. */
   keepDetail?: boolean;
 }
 
@@ -29,16 +24,13 @@ const clampPct = (fraction: number) => Math.min(100, Math.max(0, Math.round(frac
 
 /**
  * Vertical stepper for a live multi-step operation (the archive import):
- * completed steps get a check, the active step a highlighted disc plus a
- * determinate bar when a real `progress` ratio exists (a `spinner` otherwise),
- * pending steps stay muted. `active` is the running step's index; pass
- * `steps.length` when every step is complete. `failed` turns the active step
- * into the red failure marker (pair it with the form's error banner for the
- * message) and hides the bar.
+ * completed steps get a check, the active step a highlighted disc plus a bar
+ * (when `progress` exists) or `spinner`, pending steps stay muted. `active` is
+ * the running step's index (`steps.length` when all are complete). `failed`
+ * turns the active step red and hides the bar.
  *
- * Step state reaches assistive tech three ways: `aria-current="step"` on the
- * active item, a visually hidden state suffix per step, and one polite status
- * region announcing the active step as it changes.
+ * Assistive tech gets `aria-current="step"`, a hidden state suffix per step, and
+ * one polite status region.
  */
 export function ProgressSteps({
   steps,
@@ -65,10 +57,8 @@ export function ProgressSteps({
         const state =
           i < active ? "done" : i === active ? (failed ? "failed" : "active") : "pending";
         return (
-          // Positional key on purpose: steps never reorder, and labels are
-          // not required to be unique.
+          // Positional key: steps never reorder and labels may repeat.
           <li key={i} className="flex gap-3" aria-current={state === "active" ? "step" : undefined}>
-            {/* Marker column: the status disc + the connector to the next row. */}
             <div className="flex flex-col items-center">
               <span
                 className={`${NUMBER_DISC} ${

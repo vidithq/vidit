@@ -43,8 +43,6 @@ async def test_local_storage_upload_writes_file_and_returns_url(tmp_path: Path):
     assert written.read_bytes() == b"fake-image-bytes"
     assert result.url == f"{LOCAL_STORAGE_URL_PREFIX}/uploads/abc/evidence.jpg"
     assert backend.public_url("uploads/abc/evidence.jpg") == result.url
-    # SHA-256 of the exact bytes that landed on disk — verifiable
-    # by anyone with the same file.
     assert result.sha256 == hashlib.sha256(b"fake-image-bytes").hexdigest()
 
 
@@ -61,11 +59,8 @@ async def test_local_storage_upload_bytes_writes_payload(tmp_path: Path):
 
 
 async def test_upload_file_helper_routes_through_local(tmp_path: Path):
-    """``upload_file`` dispatches through the EXIF-strip pipeline for
-    images, so the file that lands on disk is the *re-encoded* copy,
-    not the raw bytes the client uploaded. We verify the hash matches
-    what landed (not the input), which is the audit-relevant contract.
-    """
+    """Images go through the EXIF-strip pipeline, so the stored file is the re-encoded
+    copy and the hash is of what landed, not of the input."""
     import hashlib
 
     from tests._fixtures import TINY_JPEG
@@ -79,21 +74,14 @@ async def test_upload_file_helper_routes_through_local(tmp_path: Path):
     assert result.url.endswith(".jpg")
     relative = result.url.removeprefix(f"{LOCAL_STORAGE_URL_PREFIX}/")
     on_disk = (tmp_path / relative).read_bytes()
-    # Re-encoded (EXIF-stripped) JPEG is different from input bytes.
     assert on_disk != TINY_JPEG
-    # The hash matches what physically landed — auditor-replayable.
     assert result.sha256 == hashlib.sha256(on_disk).hexdigest()
 
 
 async def test_upload_file_writes_hero_and_thumbnail_derivatives(tmp_path: Path):
-    """The image upload path lands three sibling objects: original,
-    hero (max-dim 1280), thumbnail (max-dim 400). All three must
-    physically exist on the storage backend after a successful upload.
-    The structural-naming convention ``..._hero.jpg`` / ``..._thumb.jpg``
-    is the source of truth shared with the frontend ``mediaUrls``
-    helper, so a regression here breaks every detail-page / map-popup
-    image render in the app.
-    """
+    """An image upload lands three objects: original, hero (max-dim 1280) and thumbnail
+    (max-dim 400). The ``_hero.jpg`` / ``_thumb.jpg`` naming is shared with the
+    frontend ``mediaUrls``."""
     from io import BytesIO as _BytesIO
 
     from PIL import Image as PILImage
@@ -108,8 +96,7 @@ async def test_upload_file_writes_hero_and_thumbnail_derivatives(tmp_path: Path)
     original_relative = result.url.removeprefix(f"{LOCAL_STORAGE_URL_PREFIX}/")
     assert (tmp_path / original_relative).exists(), "original missing on disk"
 
-    # Derivatives carry through on the result so the row-creation
-    # cleanup path can sweep them on rollback.
+    # Derivative keys ride the result so a rollback can sweep them.
     assert len(result.derivative_keys) == 2
     hero_key = derivative_key(original_relative, "hero")
     thumb_key = derivative_key(original_relative, "thumb")
@@ -123,32 +110,19 @@ async def test_upload_file_writes_hero_and_thumbnail_derivatives(tmp_path: Path)
 
 
 async def test_upload_file_derives_extension_from_content_type_not_filename(tmp_path: Path):
-    """The S3 key extension must come from the validated MIME type, NOT
-    from the attacker-controlled ``file.filename``. A hostile filename
-    can carry a 2000-char suffix, an RTL-override that disguises the
-    apparent ext, or an extension that lies about the content type.
-    """
+    """The S3 key extension comes from the validated MIME type, not the
+    attacker-controlled ``file.filename`` (long suffix, RTL override, lying extension)."""
     geo_id = uuid4()
-    # Hostile filename: extension '.html' on a video/mp4 payload. The
-    # validated content type wins.
+    # '.html' on a video/mp4 payload: the content type wins.
     file = _upload_file("evil.html", b"fake-mp4-bytes", "video/mp4")
 
     result = await upload_file(file, geo_id)
 
-    # ``.mp4`` is the canonical suffix for ``video/mp4``; this alone
-    # proves the attacker-supplied ``.html`` didn't land in the key
-    # (the assertion is exhaustive — UUID4 hex never contains ``html``).
     assert result.url.endswith(".mp4")
 
 
 async def test_upload_file_skips_derivatives_for_video(tmp_path: Path):
-    """Videos must not produce JPEG derivatives (first-frame extract
-    is a separate slice). ``derivative_keys`` empty for video uploads
-    so the caller doesn't sweep non-existent sibling keys on rollback.
-    """
-    # Minimal MP4 byte stream — the upload path only needs the
-    # content-type to dispatch (the LocalStorage backend doesn't
-    # actually decode the stream).
+    """Videos produce no JPEG derivatives, so a rollback sweeps no missing sibling keys."""
     geo_id = uuid4()
     file = _upload_file("clip.mp4", b"fake-mp4-bytes", "video/mp4")
 
@@ -157,10 +131,7 @@ async def test_upload_file_skips_derivatives_for_video(tmp_path: Path):
 
 
 def test_derivative_key_appends_suffix_and_forces_jpeg_extension():
-    """The frontend mirrors this convention literally via string
-    substitution in ``mediaUrls.ts``. Any change here must be
-    matched there or the rendered ``<img src=...>`` 404s.
-    """
+    """Mirrored by the frontend ``mediaUrls.ts``; change both."""
     assert derivative_key("uploads/abc/xyz.jpg", "hero") == "uploads/abc/xyz_hero.jpg"
     assert derivative_key("uploads/abc/xyz.png", "thumb") == "uploads/abc/xyz_thumb.jpg"
     assert (
@@ -181,34 +152,23 @@ def test_derivative_key_preserves_dot_bearing_stems():
 
 
 def test_derivative_key_handles_extensionless_keys():
-    """An S3 key without an extension shouldn't crash — the
-    backend never produces these today but the helper should still
-    be total. ``Path.with_suffix("")`` is a no-op so the suffix is
-    appended cleanly and the ``.jpg`` extension is forced as usual.
-    """
+    """An extensionless key does not crash: ``.jpg`` is appended."""
     assert derivative_key("uploads/abc/photo", "hero") == "uploads/abc/photo_hero.jpg"
 
 
 async def test_upload_file_sweeps_partial_triple_on_mid_flight_failure(tmp_path: Path, monkeypatch):
-    """If the hero or thumb upload fails after the original landed,
-    the original (and any uploaded derivative) is best-effort swept
-    before the exception propagates — so the bucket never holds an
-    indexable original with no thumbnails (or vice versa). Locks in
-    the storage-layer mid-flight cleanup contract.
-    """
+    """A hero or thumb failure after the original landed sweeps the original and any
+    derivative before the exception propagates (best effort), so the bucket never
+    holds a partial triple."""
     from tests._fixtures import TINY_JPEG
 
-    # Monkeypatch at the class level — ``get_storage`` constructs a
-    # fresh backend on each call, so binding a flaky method to one
-    # instance wouldn't propagate to the call inside
-    # ``_upload_with_optional_strip``.
+    # Patch the class: ``get_storage`` builds a fresh backend per call.
     real_upload_bytes = LocalStorage.upload_bytes
     call_count = {"n": 0}
 
     async def flaky_upload_bytes(self, data, key, content_type):
         call_count["n"] += 1
-        # First call = original (landed). Second call = hero (fail).
-        # Without the mid-flight sweep the original would orphan.
+        # Call 1 is the original, call 2 the hero (fails).
         if call_count["n"] == 2:
             raise RuntimeError("simulated hero PUT failure")
         return await real_upload_bytes(self, data, key, content_type)
@@ -220,7 +180,6 @@ async def test_upload_file_sweeps_partial_triple_on_mid_flight_failure(tmp_path:
     with pytest.raises(RuntimeError, match="simulated hero PUT failure"):
         await upload_file(file, geo_id)
 
-    # Original was uploaded then swept — must not be on disk.
     geo_dir = tmp_path / "uploads" / str(geo_id)
     leftovers = list(geo_dir.iterdir()) if geo_dir.exists() else []
     assert leftovers == [], (
@@ -229,12 +188,8 @@ async def test_upload_file_sweeps_partial_triple_on_mid_flight_failure(tmp_path:
 
 
 async def test_upload_proof_image_skips_derivatives(tmp_path: Path):
-    """Proof images route through ``upload_proof_image`` which
-    sets ``produce_derivatives=False`` — inline proof rendering uses
-    the raw storage URL via Tiptap, never the derivative path, so
-    producing the JPEGs would write objects nothing ever fetches.
-    Locks in that single-upload contract.
-    """
+    """``upload_proof_image`` sets ``produce_derivatives=False``: proofs render the
+    raw URL, so derivatives would be objects nothing fetches."""
     from app.services.storage import upload_proof_image
     from tests._fixtures import TINY_JPEG
 
@@ -245,7 +200,6 @@ async def test_upload_proof_image_skips_derivatives(tmp_path: Path):
     assert result.derivative_keys == ()
     relative = result.url.removeprefix(f"{LOCAL_STORAGE_URL_PREFIX}/")
     assert (tmp_path / relative).exists()
-    # Sibling _hero / _thumb keys NOT written.
     hero = tmp_path / derivative_key(relative, "hero")
     thumb = tmp_path / derivative_key(relative, "thumb")
     assert not hero.exists()
@@ -309,17 +263,52 @@ def test_local_storage_delete_many_keeps_nonempty_parent_dirs(tmp_path: Path):
 
     backend.delete_many(["proof/u/a.jpg"])
 
-    # b.jpg still there → parent dirs stay
+    # The parent dir stays while a sibling remains.
     assert (tmp_path / "proof" / "u" / "b.jpg").exists()
     assert (tmp_path / "proof" / "u").exists()
+
+
+@pytest.mark.parametrize("key", ["../outside.jpg", "proof/../../outside.jpg", "/etc/passwd"])
+def test_local_storage_path_rejects_escaping_keys(tmp_path: Path, key: str):
+    backend = LocalStorage(tmp_path / "root")
+    with pytest.raises(ValueError, match="escapes the root"):
+        backend._path(key)
+
+
+@pytest.mark.parametrize("key", ["../outside.jpg", "/etc/passwd"])
+def test_local_storage_head_size_returns_none_for_escaping_keys(tmp_path: Path, key: str):
+    backend = LocalStorage(tmp_path / "root")
+    (tmp_path / "outside.jpg").write_bytes(b"secret")
+    assert backend.head_size(key) is None
+
+
+def test_local_storage_head_size_reads_valid_key(tmp_path: Path):
+    backend = LocalStorage(tmp_path)
+    (tmp_path / "proof" / "u").mkdir(parents=True)
+    (tmp_path / "proof" / "u" / "a.jpg").write_bytes(b"abc")
+    assert backend.head_size("proof/u/a.jpg") == 3
+    assert backend.head_size("proof/u/missing.jpg") is None
+
+
+def test_local_storage_delete_many_skips_escaping_keys(tmp_path: Path):
+    backend = LocalStorage(tmp_path / "root")
+    outside = tmp_path / "outside.jpg"
+    outside.write_bytes(b"keep")
+    (tmp_path / "root" / "proof").mkdir()
+    (tmp_path / "root" / "proof" / "a.jpg").write_bytes(b"a")
+
+    backend.delete_many(["../outside.jpg", str(outside), "proof/a.jpg"])
+
+    assert outside.read_bytes() == b"keep"
+    assert not (tmp_path / "root" / "proof").exists()
+    assert (tmp_path / "root").exists()
 
 
 # ── sweep_keys ────────────────────────────────────────────────────────────
 
 
 def test_sweep_keys_empty_list_short_circuits(tmp_path: Path, monkeypatch):
-    """Empty input must not even resolve ``get_storage()`` — callers reach
-    sweep_keys on cleanup paths that should be a no-op when nothing landed."""
+    """Empty input does not resolve ``get_storage()`` (cleanup paths call it when nothing landed)."""
     called = False
 
     def _fail_if_called() -> object:
@@ -344,9 +333,7 @@ def test_sweep_keys_happy_path_deletes_files(tmp_path: Path):
 
 
 def test_sweep_keys_swallows_storage_delete_error_and_logs(tmp_path: Path, monkeypatch, caplog):
-    """Per-key failures (StorageDeleteError) must not propagate — the caller
-    already committed the DB side and a thrown sweep would turn settled state
-    into a client-visible 500."""
+    """A ``StorageDeleteError`` must not propagate: the DB side is committed, so a throw would be a 500."""
 
     def _raise_partial(self, keys: list[str]) -> None:
         raise StorageDeleteError({"a.jpg": "AccessDenied: blocked"})
@@ -363,8 +350,7 @@ def test_sweep_keys_swallows_storage_delete_error_and_logs(tmp_path: Path, monke
 
 
 def test_sweep_keys_swallows_unexpected_error_and_logs(tmp_path: Path, monkeypatch, caplog):
-    """Transport-level failures (network blip, auth) come up as something
-    other than StorageDeleteError. sweep_keys must still swallow + log."""
+    """Transport failures (not ``StorageDeleteError``) are also swallowed and logged."""
 
     def _raise_runtime(self, keys: list[str]) -> None:
         raise RuntimeError("connection reset")
@@ -391,7 +377,7 @@ def test_main_app_registers_local_storage_mount():
 
 
 def test_safe_original_filename_none_and_empty():
-    """Empty / whitespace input → ``None`` (column stays NULL)."""
+    """Empty or whitespace input gives ``None`` (column stays NULL)."""
     from app.services.storage import safe_original_filename
 
     assert safe_original_filename(None) is None
@@ -400,14 +386,8 @@ def test_safe_original_filename_none_and_empty():
 
 
 def test_safe_original_filename_strips_path_components():
-    """Path traversal / Windows-style paths must be stripped to basename.
-
-    The multipart filename field is attacker-controlled; an attacker
-    can submit ``../../etc/passwd`` or ``..\\..\\windows\\system32``
-    and the value lands on a public column. Strip to basename so the
-    column never holds path-shaped strings that downstream renderers
-    might interpret as URLs.
-    """
+    """Traversal and Windows-style paths are stripped to the basename: the multipart
+    filename is attacker-controlled and lands on a public column."""
     from app.services.storage import safe_original_filename
 
     assert safe_original_filename("../../etc/passwd") == "passwd"
@@ -417,15 +397,9 @@ def test_safe_original_filename_strips_path_components():
 
 
 def test_safe_original_filename_rejects_control_and_format_codepoints():
-    """Category-C codepoints (``Cc`` control + ``Cf`` format) → ``None``.
-
-    Catches everything a legitimate filename never contains: NUL,
-    newline, tab, ESC, U+202E (RTL override), U+200E (LTR mark),
-    U+200B–D (zero-width joiners), U+2066–9 (bidi isolates), U+FEFF
-    (BOM). The general ``unicodedata.category`` check is the
-    primary defence — an earlier iteration enumerated specific
-    codepoints and missed ZWJ / BOM / isolates.
-    """
+    """``Cc`` control and ``Cf`` format codepoints (NUL, newline, RTL override,
+    zero-width joiners, bidi isolates, BOM) give ``None``; the category check is
+    the defence, not an enumerated list."""
     from app.services.storage import safe_original_filename
 
     # Cc — control characters.
@@ -442,12 +416,7 @@ def test_safe_original_filename_rejects_control_and_format_codepoints():
 
 
 def test_safe_original_filename_caps_length():
-    """Values past 255 chars are truncated.
-
-    255 is the common filesystem-name max (NTFS / ext4) and well
-    above any real phone-camera filename. A 1 KB filename has no
-    legitimate use case.
-    """
+    """Values past 255 chars (the NTFS / ext4 name max) are truncated."""
     from app.services.storage import ORIGINAL_FILENAME_MAX_LEN, safe_original_filename
 
     long_name = "a" * 500 + ".jpg"
@@ -457,37 +426,18 @@ def test_safe_original_filename_caps_length():
 
 
 def test_safe_original_filename_passes_through_html_shaped_strings():
-    """HTML-shaped chars (without slashes) stay as-is — escaping is
-    the renderer's job.
-
-    Sanitising at insert would conflict with output-time escaping and
-    silently corrupt legitimate filenames containing ``&`` etc. The
-    insert-time defence is path-stripping + control-char rejection
-    + length cap. Render-time defence is HTML-escape at the consumer.
-    Both are needed; neither replaces the other.
-
-    Note: a filename like ``<script>alert(1)</script>.jpg`` *would*
-    get path-stripped at the ``/`` inside ``</script>`` — that's
-    intentional; the multipart filename rarely contains a literal
-    slash, and when it does we treat it as a path traversal attempt.
-    The HTML-still-an-attack case is covered by render-time escaping.
-    """
+    """HTML-shaped chars without slashes pass through: escaping is the renderer's job,
+    and insert-time sanitising would corrupt names containing ``&``."""
     from app.services.storage import safe_original_filename
 
-    # No slashes → straight pass-through. The renderer is responsible
-    # for HTML-escaping at output time.
     assert safe_original_filename("<img src=x>.jpg") == "<img src=x>.jpg"
     assert safe_original_filename("AT&T-logo.png") == "AT&T-logo.png"
     assert safe_original_filename('quote"name.png') == 'quote"name.png'
 
 
 def test_safe_original_filename_path_strip_overrides_html_chars():
-    """``</script>`` contains a ``/`` so the basename becomes the
-    fragment after the slash — this is the correct, defensive behaviour.
-
-    Locks in the (slightly surprising) interaction: a filename that's
-    *both* path-shaped and HTML-shaped gets path-stripped first.
-    """
+    """A name that is both path-shaped and HTML-shaped is path-stripped first
+    (``</script>`` keeps only the fragment after the slash)."""
     from app.services.storage import safe_original_filename
 
     assert safe_original_filename("<script>alert(1)</script>.jpg") == "script>.jpg"

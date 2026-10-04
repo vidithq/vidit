@@ -3,11 +3,10 @@ import { cn } from "@/lib/cn";
 import { FieldHelp } from "./FieldHelp";
 import type { Concept } from "@/lib/fieldHelp";
 
-// Label/value definition rows shared by the geolocation detail body (page +
-// dense map-panel `compact` variant) and the request detail page.
-//
-// Pass a text-ish value via `value` (wrapped in the value span) or a raw node
-// (a `StatusBadge`, a `SourceLabel`) via `children`, which is rendered as-is.
+// Label/value definition rows shared by the geolocation detail body (page and
+// dense map-panel `compact` variant) and the request detail page. Pass a
+// text-ish `value`, or a raw node (a `StatusBadge`, a `SourceLabel`) as
+// `children`, rendered as-is.
 
 export function DetailCard({
   children,
@@ -46,18 +45,13 @@ export function DetailRow({
   className?: string;
 }) {
   // Label left, value right, on one line at every width. At 320px the content
-  // column is about 200px, which a source host or a close reason outgrows on
-  // its own: `*:min-w-0` lifts the automatic flex floor off both halves, so a
-  // value that carries `truncate` cuts itself to the room it has instead of
-  // holding the row open, and one that wraps on its own (the close reason is
-  // `whitespace-pre-wrap`, a tag list is a wrapping flex row) takes the lines
-  // it needs beside the label. `gap-x-4` is the channel between the two, and
-  // the only one: a value child adds no margin of its own, or the gutter
-  // doubles. The label never shrinks, so it stays one line at every width.
+  // column (about 200px) is outgrown by a source host or close reason, so
+  // `*:min-w-0` lifts the flex floor: a `truncate` value cuts to the room it has,
+  // and a wrapping one takes the lines it needs beside the label. `gap-x-4` is
+  // the only channel (a value child adds no margin). The label never shrinks.
   //
-  // No `flex-wrap`: it would drop a truncating value onto a line of its own
-  // before `truncate` ever engaged, which is a different row from the one the
-  // desktop map panel is laid out as.
+  // No `flex-wrap`: it would drop a truncating value to its own line before
+  // `truncate` engaged.
   const rowClass = cn(
     "flex justify-between gap-x-4 *:min-w-0",
     align === "center" && "items-center",

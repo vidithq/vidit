@@ -1,9 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The two surfaces jsdom can't mount: the map canvas needs WebGL and the Tiptap
-// editor needs DOM APIs it lacks. Both keep a marker, since "the review is the
-// whole edit form, proof editor included" is one of the things this covers.
+// jsdom cannot mount the map canvas (WebGL) or the Tiptap editor (DOM APIs); both keep a marker.
 vi.mock("@/components/map/Map", () => ({
   default: () => <div data-testid="map" />,
 }));
@@ -19,8 +17,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(queryParam ? "queue=1" : ""),
 }));
 
-// Who is signed in: the row's owner, except where a test signs in someone else
-// to reach the refusal the page shows a visitor.
+// Signed in as the row's owner, except where a test signs in someone else to reach the refusal.
 const { auth, OWNER, VISITOR } = vi.hoisted(() => {
   const OWNER = { id: "u1", username: "ana" };
   const VISITOR = { id: "u2", username: "bo" };
@@ -39,8 +36,7 @@ vi.mock("@/contexts/DetectionsContext", () => ({
   useDetectionsCount: () => ({ count: 2, refresh: vi.fn() }),
 }));
 
-// Every read the surface makes, answered by path: the row itself, the queue it
-// is being reviewed in, and the taxonomy the Classification block offers.
+// Every read the surface makes, by path: the row, the review queue, the taxonomy.
 vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => ({
     data: path === null ? null : resource(path),
@@ -140,17 +136,13 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   };
 }
 
-/**
- * A published geolocation the owner is correcting: the same row past its
- * confirmation, already carrying the curated picks a publication required.
- */
+/** A published geolocation the owner is correcting, with the curated picks a publication required. */
 function publishedFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   return detectionFixture({
     status: "geolocated",
     version_no: 1,
     geolocated_at: "2026-06-02T11:00:00Z",
-    // Both carry seconds, the precision a real source post time has and the two
-    // form inputs do not: an untouched save must not post the truncation back.
+    // Both carry seconds, which the form inputs lack: an untouched save must not post the truncation back.
     source_posted_at: "2026-05-30T14:32:27Z",
     event_time: "14:32:27",
     tags: CURATED_TAGS,
@@ -159,11 +151,7 @@ function publishedFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   });
 }
 
-/**
- * An open request its owner is correcting: born without a coordinate, carrying
- * the footage the poster attached and none of the curated picks a publication
- * requires.
- */
+/** An open request its owner is correcting: no coordinate, footage attached, no curated picks. */
 function requestFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   return detectionFixture({
     status: "requested",
@@ -178,7 +166,7 @@ function requestFixture(overrides: Partial<EventDetail> = {}): EventDetail {
 /** The row `/events/d1` serves, set per test. */
 let row: EventDetail;
 
-/** The queue this detection is being walked through: itself, then two more. */
+/** The queue being walked: this detection, then two more. */
 let queueItems: EventDetail[] = [];
 
 function resource(path: string) {
@@ -198,8 +186,7 @@ function fillTheFloor() {
   fireEvent.click(screen.getByRole("button", { name: "Drone" }));
 }
 
-/** Fill the floor, then submit: the first click arms the button in place, the
- *  second one writes. */
+/** Fill the floor, then submit (the first click arms, the second writes). */
 async function submitDetection() {
   fillTheFloor();
   fireEvent.click(screen.getByRole("button", { name: "Submit" }));
@@ -243,14 +230,12 @@ describe("the detection edit surface", () => {
     ).toBeInTheDocument();
     // No description line under the title: the fields say what they are.
     expect(screen.queryByText(/Submitting publishes the event/)).toBeNull();
-    // The flow action stands alone at the foot: no Cancel, and no Close
-    // beside it.
+    // The flow action stands alone at the foot: no Cancel, no Close.
     const submit = screen.getByRole("button", { name: "Submit" });
     expect(submit).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Cancel" })).toBeNull();
 
-    // Close is a plain button up in the action area, ahead of the fields, and
-    // never a menu entry behind a ⋯ disclosure.
+    // Close is a plain button in the action area, not behind a disclosure.
     const close = screen.getByRole("button", { name: "Close" });
     expect(
       close.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING
@@ -305,8 +290,7 @@ describe("a review pass over the queue", () => {
     render(<EditEventPage />);
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     expect(geolocateMock).not.toHaveBeenCalled();
-    // A real address per detection: a reload keeps the place, and Back steps back
-    // one detection.
+    // A real address per detection: a reload keeps the place and Back steps one detection.
     expect(push).toHaveBeenCalledWith("/events/d2/edit?queue=1");
   });
 
@@ -338,8 +322,7 @@ describe("a review pass over the queue", () => {
       detectionFixture({ id: "d2", title: "Second" }),
     ];
     render(<EditEventPage />);
-    // A row deep in the queue opens at its own position and walks on from
-    // there, rather than restarting the pass at the head.
+    // A deep row opens at its own position rather than restarting at the head.
     expect(screen.getByText("Detection 2 of 3")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     expect(push).toHaveBeenCalledWith("/events/d2/edit?queue=1");
@@ -356,16 +339,14 @@ describe("a review pass over the queue", () => {
   it("drops the position for a detection the queue no longer holds", () => {
     queueItems = [detectionFixture({ id: "d9", title: "Someone else's turn" })];
     render(<EditEventPage />);
-    // Published or closed in another tab: the flag is stale, so the page is
-    // a plain edit again rather than claiming a position it doesn't have.
+    // Published or closed in another tab: the flag is stale, so the page is a plain edit again.
     expect(screen.queryByText(/Detection \d+ of/)).toBeNull();
     expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
   });
 });
 
 describe("the submit confirm", () => {
-  /** Render the form, fill the floor, and take the first click, which arms
-   *  the button. */
+  /** Render the form, fill the floor, and take the first (arming) click. */
   function armSubmit() {
     render(<EditEventPage />);
     fillTheFloor();
@@ -377,8 +358,7 @@ describe("the submit confirm", () => {
   it("arms the one button in place instead of swapping the row", () => {
     const button = armSubmit();
 
-    // Same element, renamed: no confirm pair appears beside it and nothing is
-    // inserted before it, so the second click lands where the first one did.
+    // Same element, renamed: nothing is inserted before it, so the second click lands where the first did.
     expect(button).toHaveAccessibleName("Confirm submit");
     expect(screen.getByRole("button", { name: "Confirm submit" })).toBe(button);
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
@@ -387,8 +367,7 @@ describe("the submit confirm", () => {
 
   it("announces the armed state and what the next click costs", () => {
     armSubmit();
-    // A live region beside the button, not a renamed control: the reader hears
-    // the state and what it costs, in the shape every copy control uses.
+    // A live region beside the button, not a renamed control, like every copy control.
     const announcement = screen.getByText(
       "Click again to submit. Submitting publishes the event; later changes become versions."
     );
@@ -443,15 +422,13 @@ describe("editing a published geolocation", () => {
   it("opens the correction form instead of refusing the edit", () => {
     render(<EditEventPage />);
 
-    // The old gate turned every non-`detected` row away here; a published row
-    // now reaches the form, under its own title and its own action.
+    // A published row reaches the form under its own title and action.
     expect(
       screen.getByRole("heading", { name: "Edit geolocation" })
     ).toBeInTheDocument();
     expect(screen.queryByText(/no longer be edited/)).toBeNull();
     expect(screen.getByRole("button", { name: "Save version 2" })).toBeInTheDocument();
-    // Neither verb belongs to this form on a published row: it is not
-    // skippable, and its close is on the detail page rather than mid-edit.
+    // Neither verb belongs here: the row is not skippable and its close is on the detail page.
     expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
   });
@@ -459,14 +436,11 @@ describe("editing a published geolocation", () => {
   it("offers the evidence anchor for correction, seeded from the row", () => {
     render(<EditEventPage />);
 
-    // The import picks the wrong media out of a multi-media post often enough
-    // that both halves stay editable after publication; the version this save
-    // files is what keeps the old ones readable.
+    // The import often picks the wrong media, so both halves stay editable after publication; the filed version keeps the old ones.
     expect(screen.getByRole("textbox", { name: /Source URL/ })).toHaveValue(
       "https://t.me/channel/12345"
     );
-    // The stored media offers its Remove, which is what opens the picker: an
-    // event carries one source media, so a swap is a removal then an upload.
+    // Remove opens the picker: an event carries one source media, so a swap is a removal then an upload.
     expect(
       screen.getByRole("button", { name: "Remove media" })
     ).toBeInTheDocument();
@@ -478,8 +452,7 @@ describe("editing a published geolocation", () => {
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
       target: { value: "Corrected title" },
     });
-    // No arming step: a version adds a version, which is the ordinary way a
-    // published event changes.
+    // No arming step: a version is the ordinary way a published event changes.
     fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
     expect(geolocateMock).not.toHaveBeenCalled();
@@ -489,10 +462,7 @@ describe("editing a published geolocation", () => {
   it("keeps the seconds of an untouched source post time and event time", async () => {
     render(<EditEventPage />);
 
-    // Both inputs hold less than their column does, so a save that never went
-    // near them must not post the truncation back: the instant is omitted, which
-    // the endpoint reads as "keep what the row holds", and the time goes back at
-    // the row's own precision, since an absent one clears it.
+    // Untouched inputs must not post the truncation back: the instant is omitted (keep the row's), the time goes back at its own precision.
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), {
       target: { value: "Corrected title" },
     });
@@ -532,8 +502,7 @@ describe("editing a published geolocation", () => {
     const [id, input] = saveVersionMock.mock.calls[0];
     expect(id).toBe("d1");
     expect(input.note).toBe("Coordinates were off by a block.");
-    // The anchor rides along, since this endpoint declares it: the untouched
-    // form posts the source the row holds and stages no media swap.
+    // The anchor rides along (the endpoint declares it): an untouched form posts the held source, no media swap.
     expect(input.source_url).toBe("https://t.me/channel/12345");
     expect(input.files).toEqual([]);
     expect(input.remove_media_ids).toEqual([]);
@@ -556,9 +525,7 @@ describe("editing a published geolocation", () => {
   it("refuses a save that would change nothing, without a request", async () => {
     render(<EditEventPage />);
 
-    // The form posts the whole editable state, so an untouched save would
-    // otherwise mint a version whose changed-field list is empty. The note is
-    // not a versioned field, so it does not lift the refusal on its own.
+    // The form posts the whole editable state, so an untouched save would mint a version with no changed fields; the note alone does not lift the refusal.
     fireEvent.change(screen.getByRole("textbox", { name: "Version note" }), {
       target: { value: "Read it again." },
     });
@@ -582,8 +549,7 @@ describe("editing a published geolocation", () => {
     render(<EditEventPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
-    // The notice names the miss and nothing is written; the server enforces
-    // the same floor, this just spares the round trip.
+    // The notice names the miss and writes nothing; the server enforces the same floor.
     const notice = await screen.findByRole("alert");
     expect(notice).toHaveTextContent("Conflict");
     expect(saveVersionMock).not.toHaveBeenCalled();
@@ -605,8 +571,7 @@ describe("editing an open request", () => {
     expect(
       screen.getByRole("button", { name: "Save request" })
     ).toBeInTheDocument();
-    // Neither published verb belongs here: a request files no version, and it
-    // is answered through the submit form rather than confirmed on this one.
+    // A request files no version and is answered through the submit form, so neither published verb applies.
     expect(screen.queryByRole("button", { name: /Save version/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
   });
@@ -620,8 +585,7 @@ describe("editing an open request", () => {
     expect(screen.getByRole("textbox", { name: /Source URL/ })).toHaveValue(
       "https://t.me/channel/12345"
     );
-    // The footage is swappable here as on the published edit: its Remove is
-    // what opens the picker.
+    // Footage is swappable as on the published edit: Remove opens the picker.
     expect(
       screen.getByRole("button", { name: "Remove media" })
     ).toBeInTheDocument();
@@ -647,9 +611,7 @@ describe("editing an open request", () => {
   });
 
   it("saves a request the bot opened with no source instant", async () => {
-    // The bot opens a request whose source date it could not read, so the
-    // instant is not part of this form's floor: the save goes through with the
-    // field empty rather than pushing the owner into inventing one.
+    // The bot may open a request with no readable source date, so the instant is not in the floor.
     row = requestFixture({ source_posted_at: null });
     render(<EditEventPage />);
 
@@ -659,9 +621,7 @@ describe("editing an open request", () => {
   });
 
   it("covers the footage of a flagged request behind the age gate", () => {
-    // The bot opens requests, so the owner can meet footage here they have
-    // never seen: a flagged row's stored media is covered on the form exactly
-    // as it is on the pages that read it.
+    // The owner can meet footage here they have never seen: a flagged row's media is covered as on other pages.
     row = requestFixture({ is_graphic: true });
     render(<EditEventPage />);
 
@@ -674,8 +634,7 @@ describe("editing an open request", () => {
     auth.user = VISITOR;
     render(<EditEventPage />);
 
-    // The write is owner-only (403 server-side), and the way out names the
-    // surface a request actually reads on.
+    // Owner-only (403 server-side); the way out names the surface a request reads on.
     expect(screen.queryByRole("button", { name: "Save request" })).toBeNull();
     expect(screen.getByRole("link", { name: "View this request" })).toHaveAttribute(
       "href",

@@ -1,16 +1,9 @@
 """The standard event filter set, shared by every surface that lists events.
 
-`/events`, `/events/points` and `/search` all accept the same filter
-vocabulary (status / conflict / capture source / tag / dates / author /
-media). Single-sourcing the predicates here keeps the surfaces from
-drifting; the anti-injection author pattern lives here for the same reason
-(it is a security boundary).
-
-The bbox / media / status validators raise ``HTTPException(422)`` directly:
-they are the input boundary for query parameters, kept next to the
-predicates so a filter and its validation can't separate. Date parsing lives
-here too (:func:`parse_optional_iso_date`); ``routers._forms`` re-exports it
-for the multipart submit forms, keeping the import edge routers → services.
+`/events`, `/events/points` and `/search` accept the same filter vocabulary, single-sourced here
+so the surfaces cannot drift. The bbox, media and status validators raise ``HTTPException(422)``
+directly: they are the input boundary for query parameters. Date parsing lives here too
+(:func:`parse_optional_iso_date`); ``routers._forms`` re-exports it for the multipart forms.
 """
 
 import math
@@ -38,15 +31,11 @@ from app.models.user import User
 def visible_events() -> tuple[ColumnElement[bool], ColumnElement[bool]]:
     """The public-visibility predicate pair: not soft-deleted, not withheld.
 
-    The single home for what "publicly visible" means on an event. Every
-    surface that lists, counts or resolves an event for a public reader
-    spreads this into its filter (``*visible_events()``), so a third
-    visibility axis added later lands here instead of at every call site.
-
-    Two deliberate non-callers: the event detail read, which hands a
-    withheld row to an admin (:func:`routers.events.item.get_event`); and
-    :func:`services.reports.set_event_moderation`, which has to reach a
-    withheld row to lift the takedown.
+    Every surface that lists, counts or resolves an event for a public reader spreads this
+    (``*visible_events()``). Two deliberate non-callers: the event detail read, which hands a
+    withheld row to an admin (:func:`routers.events.item.get_event`), and
+    :func:`services.reports.set_event_moderation`, which must reach a withheld row to lift the
+    takedown.
     """
     return Event.deleted_at.is_(None), Event.hidden_at.is_(None)
 
@@ -54,43 +43,25 @@ def visible_events() -> tuple[ColumnElement[bool], ColumnElement[bool]]:
 def published_events() -> ColumnElement[bool]:
     """The predicate for work an analyst has published: ``geolocated`` alone.
 
-    The single home for what counts as one analyst's own published output,
-    as opposed to what is merely visible. ``visible_events`` answers "may a
-    reader see this row"; this answers "did this analyst stand behind it".
-    The public profile feed (:func:`routers.users.get_user_geolocations`)
-    filters on both, so its count and its rows agree, and the profile
-    payload's ``geolocations_count``
-    (:func:`routers.users.get_user_profile`) counts through it too, so the
-    profile's share card headlines the size of the set the feed serves. The
-    follow feed (:func:`services.social.get_timeline`) filters on it as well, so
-    one analyst's rows read the same whether a reader reaches them through the
-    profile or through a follow.
+    ``visible_events`` answers "may a reader see this row"; this answers "did this analyst
+    stand behind it". The profile feed (:func:`routers.users.get_user_geolocations`), the
+    profile's ``geolocations_count`` and the follow feed (:func:`services.social.get_timeline`)
+    all filter on it, so counts and rows agree.
 
-    Why the other three states are out:
+    The other states are out:
 
-    * ``detected`` is machine output (archive import or the bot) the analyst
-      has not vouched for. Attributing it to them as a submission credits
-      them with a claim they never made.
-    * ``closed`` off ``detected`` is a detection the analyst threw out. Listing a
-      rejected row as their work inverts the decision they took.
-    * ``closed`` off ``geolocated`` is published work the analyst retracted.
-      A retraction is the analyst saying the claim no longer stands, so it
-      leaves this set the moment it is taken back, and with it the profile
-      feed, the follow feed, the counts and the read views. What it does not leave is the
-      record: the page, its version history, its credits and its archives all
-      stay, marked as withdrawn with the reason.
-    * ``requested`` is an open call for help, an ask rather than an answer.
-      It carries no vouched location, anyone may fulfil it, and it lives on
-      its own read view (see :data:`VIEWS`). ``closed`` off ``requested`` is
-      a withdrawn ask, out for both reasons.
+    * ``detected`` is machine output the analyst has not vouched for.
+    * ``closed`` off ``detected`` is a detection the analyst threw out.
+    * ``closed`` off ``geolocated`` is published work the analyst retracted. It leaves every
+      count and feed at once; the page, its version history, credits and archives stay,
+      marked as withdrawn with the reason.
+    * ``requested`` is an open call for help with no vouched location, on its own read view
+      (see :data:`VIEWS`). ``closed`` off ``requested`` is a withdrawn ask.
 
-    Deliberate non-callers: the ``located`` catalog view, which shows detections
-    beside vouched rows on purpose (:func:`view_predicate`); the profile
-    coverage map, which plots both and splits the count; and
-    :func:`services.user_stats.get_user_stats`, which reports ``geolocated``
-    and ``detected`` as their own tallies and sums them into ``total_events``,
-    the one place a reader still gets the analyst's documented work as a
-    single number.
+    Deliberate non-callers: the ``located`` catalog view, which shows detections beside vouched
+    rows (:func:`view_predicate`); the profile coverage map, which plots both and splits the
+    count; and :func:`services.user_stats.get_user_stats`, which reports ``geolocated`` and
+    ``detected`` as their own tallies and sums them into ``total_events``.
     """
     return Event.status == STATUS_GEOLOCATED
 
@@ -98,19 +69,13 @@ def published_events() -> ColumnElement[bool]:
 def collectable_events() -> ColumnElement[bool]:
     """The predicate for an event a collection may hold: visible, and worked.
 
-    The single home for what a collection lists and counts. Every collection
-    read goes through it, the item page, the item count, the first and last
-    date of the range, the card mosaic, and the eligibility check the add
-    verb runs, so a row that later closes, is taken down or is soft-deleted
-    drops out of all five at once without a write to ``collection_events``.
+    Every collection read goes through it (item page, count, date range, card mosaic, the add
+    verb's eligibility check), so a row that closes, is taken down or is soft-deleted drops out
+    of all of them without a write to ``collection_events``.
 
-    It is :func:`visible_events` plus the two worked statuses, ``geolocated``
-    and ``detected``, folded into one predicate because the membership join
-    applies all three together. ``requested`` is out because a collection
-    curates answers rather than asks, and ``closed`` is out because a
-    rejected detection and a retracted geolocation are both decisions the
-    owner took against the row: keeping either on a curated shelf would go on
-    presenting it as work that stands.
+    It is :func:`visible_events` plus ``geolocated`` and ``detected``. ``requested`` is out
+    because a collection curates answers, and ``closed`` is out because a rejected detection
+    or a retracted geolocation is a decision the owner took against the row.
     """
     return and_(
         *visible_events(),
@@ -121,26 +86,18 @@ def collectable_events() -> ColumnElement[bool]:
 def parse_optional_iso_date(raw: str | None, *, field: str) -> date | None:
     """Parse an optional ISO-8601 (YYYY-MM-DD) date. Empty → ``None``; 422 on garbage.
 
-    The one home for date parsing on the request boundary: the list-filter
-    query params below and the multipart submit forms (via the
-    ``routers._forms`` re-export) both land here, so neither the accepted
-    shapes nor the 422 text can drift between them. Forwarding a raw string
-    into a SQLAlchemy comparison instead would let Postgres raise
-    ``InvalidDatetimeFormat`` as a 500, which an anonymous-reachable endpoint
-    turns into scraper-driven Sentry noise.
+    The one home for date parsing on the request boundary (list-filter params and multipart
+    forms). A raw string forwarded into a SQLAlchemy comparison would make Postgres raise
+    ``InvalidDatetimeFormat`` as a 500, which an anonymous endpoint turns into scraper-driven
+    Sentry noise.
 
-    A full ISO-8601 datetime is tolerated and truncated to its date: a saved
-    URL or an older client may send ``2026-05-01T12:00:00Z``, and 422-ing a
-    URL that used to work buys nothing. ``date.fromisoformat`` rejects a
-    trailing time component, so the ``[:10]`` is what implements that
-    tolerance, and it is limited to a ``T`` or space separated tail:
-    ``2026-05-01junk`` and ``2026-05-0199`` still 422 rather than parsing as
-    2026-05-01.
+    A full ISO-8601 datetime is truncated to its date (``[:10]``, since ``fromisoformat``
+    rejects a time tail), but only after a ``T`` or space separator: ``2026-05-01junk`` and
+    ``2026-05-0199`` still 422.
     """
     if not raw:
         return None
-    # Anything glued to the date without an ISO separator is garbage, so parse
-    # the whole string and let it fail; only a separated tail gets truncated.
+    # Anything glued to the date without a separator is garbage: parse it whole and let it fail.
     candidate = raw[:10] if len(raw) > 10 and raw[10] in "T " else raw
     try:
         return date.fromisoformat(candidate)
@@ -150,51 +107,36 @@ def parse_optional_iso_date(raw: str | None, *, field: str) -> date | None:
         ) from exc
 
 
-# Reject junk at the input boundary: restrict ``?author=`` (and the suggestion
-# query it is picked from) to the characters a real username carries, killing
-# ``%`` / ``\`` LIKE vectors before any SQL builder. Used as a
-# ``Query(pattern=...)`` guard at every endpoint that accepts either param.
+# Restrict ``?author=`` (and the suggestion query) to real username characters, keeping ``%`` /
+# ``\`` LIKE vectors out before any SQL builder. Used as a ``Query(pattern=...)`` guard.
+# Hand-kept FE mirror: ``lib/search.ts::AUTHOR_FILTER_RE``.
 AUTHOR_FILTER_PATTERN = r"^[A-Za-z0-9_-]{1,50}$"
 
-# Accepted ``media`` filter values (the ``Media.media_type`` domain). Reject
-# anything else at the boundary so a typo returns 422 instead of silently
-# matching nothing — parameterized, so never an injection risk.
+# Accepted ``media`` filter values (the ``Media.media_type`` domain); a typo returns 422.
 MEDIA_TYPES = frozenset({"image", "video"})
 
-# Accepted ``status`` filter values (the ``Event.status`` lifecycle domain).
-# Same boundary contract as ``MEDIA_TYPES``: a typo returns 422 instead of
-# silently matching nothing. The predicate only narrows within the caller's
-# view, so a value the view can't contain returns empty, not an error.
-# Hand-kept FE mirror: ``STATUS_FILTER_OPTIONS`` in
-# ``frontend/src/components/filters/EventFilterSections.tsx`` offers the
-# subset the filtered read views serve (geolocated / detected); change the
-# two together (see AGENTS.md).
+# Accepted ``status`` filter values (the ``Event.status`` domain); a typo returns 422. The
+# predicate only narrows within the caller's view, so a value the view can't contain returns
+# empty. Hand-kept FE mirror: ``STATUS_FILTER_OPTIONS`` in
+# ``frontend/src/components/filters/EventFilterSections.tsx`` offers the geolocated / detected
+# subset; change the two together (see AGENTS.md).
 STATUSES = frozenset({STATUS_REQUESTED, STATUS_DETECTED, STATUS_GEOLOCATED, STATUS_CLOSED})
 
-# The two read views over the one table. ``located`` is the catalog: vouched +
-# machine rows, keeping a rejected detection visible (``closed`` off
-# ``detected``). ``requested`` is the open-call queue (ex ``/requests``),
-# keeping a withdrawn request visible the same way. Neither serves a retraction
-# (``closed`` off ``geolocated``), which is reachable by its URL alone: see
-# :func:`view_predicate`.
+# The two read views over the one table. ``located`` is the catalog (vouched and machine rows,
+# plus a rejected detection). ``requested`` is the open-call queue (plus a withdrawn request).
+# Neither serves a retraction, which is reachable by its URL alone: see :func:`view_predicate`.
 VIEWS = frozenset({"located", "requested"})
 
 
 def owner_username_matches(author: str) -> ColumnElement[bool]:
     """The ``?author=`` predicate on a joined :class:`User` row.
 
-    Exact, not substring: the filter means "this analyst's work", and the
-    surfaces pick the value from real usernames (the author typeahead, the
-    profile's links into search: every Insights tile and "Show more"), so
-    ``?author=ana`` must not sweep in every handle containing "ana". Callers
-    gate ``author`` through :data:`AUTHOR_FILTER_PATTERN` (a
-    ``Query(pattern=...)``).
+    Exact, not substring: ``?author=ana`` must not sweep in every handle containing "ana".
+    Callers gate ``author`` through :data:`AUTHOR_FILTER_PATTERN`.
 
-    A predicate rather than a whole query leg because two surfaces own
-    different joins to the same user: the event groups reach the owner off
-    ``Event.owner`` (:func:`apply_author_filter`), the collections group off
-    ``Collection.owner`` (``services/search.search_collections``). One home for
-    what "this analyst" means, so the two cannot end up matching differently.
+    A predicate rather than a query leg because the event groups reach the owner off
+    ``Event.owner`` and the collections group off ``Collection.owner``
+    (``services/search.search_collections``); one home keeps them matching alike.
     """
     return func.lower(User.username) == author.lower()
 
@@ -207,13 +149,10 @@ def apply_author_filter(query: SAQuery, author: str) -> SAQuery:
 def view_predicate(view: str):
     """The status predicate for a read view (see ``VIEWS``).
 
-    Each view keeps the closed rows that left its own cohort, so a decision
-    stays legible where it was taken: a rejected detection in ``located``, a
-    withdrawn request in ``requested``. A retraction (``closed`` off
-    ``geolocated``) is in neither. It is a claim its author took back, so
-    leaving it in the catalog would keep offering it as one; the page stays
-    readable at its URL for anyone holding a link or a citation, which is what
-    makes the retraction visible to the readers who acted on the claim.
+    Each view keeps the closed rows that left its own cohort, so a decision stays legible where
+    it was taken. A retraction (``closed`` off ``geolocated``) is in neither: the catalog would
+    keep offering a withdrawn claim, while the page stays readable at its URL for anyone who
+    cited it.
     """
     if view == "requested":
         return or_(
@@ -253,15 +192,12 @@ def validate_status_filter(status: list[str] | None) -> None:
 def parse_bbox(bbox: str) -> tuple[float, float, float, float]:
     """Parse ``south,west,north,east`` into validated floats.
 
-    Raises ``HTTPException(422)`` on malformed input rather than falling back
-    to an unfiltered query: on a map endpoint a swallowed typo returns every
-    point on Earth. Empty is the right fail-safe; unbounded is not.
+    Raises ``HTTPException(422)`` on malformed input instead of falling back to an unfiltered
+    query: on a map endpoint a swallowed typo returns every point on Earth.
 
-    Validation: four comma-separated floats, lat in [-90, 90], lng in
-    [-180, 180], south <= north, west <= east. Antimeridian-crossing boxes
-    (west > east) aren't modelled and are rejected; a client whose viewport
-    straddles the antimeridian widens to the full longitude range instead
-    (``frontend/src/lib/viewport.ts``).
+    Lat in [-90, 90], lng in [-180, 180], south <= north, west <= east. Antimeridian-crossing
+    boxes (west > east) are rejected; a client straddling it widens to the full longitude range.
+    Hand-kept FE mirror: ``frontend/src/lib/viewport.ts``.
     """
     parts = bbox.split(",")
     if len(parts) != 4:
@@ -287,22 +223,17 @@ def parse_bbox(bbox: str) -> tuple[float, float, float, float]:
     return south, west, north, east
 
 
-# Server-side grid, in degrees, that ``/events/points`` snaps a requested box
-# onto before it keys its cache. Client viewports arrive at ~11 m precision, so
-# raw boxes are near-unique per caller: keyed on them the cache misses on almost
-# every request, and one caller cycling a low decimal evicts every other entry
-# from the LRU. 0.05 deg is ~5.5 km at the equator, so neighbouring viewports
-# collapse onto one entry while the payload stays viewport-sized.
+# Server-side grid, in degrees, that ``/events/points`` snaps a requested box onto before keying
+# its cache. Client viewports arrive at ~11 m precision, so raw boxes are near-unique and would
+# miss the cache and let one caller evict every other entry. 0.05 deg is ~5.5 km at the equator.
 POINTS_CACHE_GRID = 0.05
 
 
 def snap_bbox(bounds: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
     """Grow a parsed box outward onto :data:`POINTS_CACHE_GRID`.
 
-    Outward only: the snapped box contains the one asked for, so a payload
-    computed for it always covers the caller's viewport. Callers key their
-    cache and build their predicate off the same snapped tuple, so a cached
-    payload is always the one its key describes.
+    Outward only, so the payload always covers the caller's viewport. Callers key the cache and
+    build the predicate off the same snapped tuple.
     """
     south, west, north, east = bounds
     return (
@@ -314,7 +245,7 @@ def snap_bbox(bounds: tuple[float, float, float, float]) -> tuple[float, float, 
 
 
 def _snap_down(value: float) -> float:
-    """Largest grid line at or below ``value`` (rounded off binary float dust)."""
+    """Largest grid line at or below ``value`` (rounded off float dust)."""
     return round(math.floor(value / POINTS_CACHE_GRID) * POINTS_CACHE_GRID, 6)
 
 
@@ -326,9 +257,8 @@ def _snap_up(value: float) -> float:
 def bbox_predicate(bounds: tuple[float, float, float, float]):
     """PostGIS containment predicate for a bbox already through :func:`parse_bbox`.
 
-    Split from :func:`apply_filters` so a caller that parses the bbox itself
-    (``/events/points`` parses once, for its cache key) applies the same
-    envelope instead of re-deriving it.
+    Split from :func:`apply_filters` for callers that parse the bbox themselves (``/events/points``
+    parses once, for its cache key).
     """
     south, west, north, east = bounds
     return ST_Within(
@@ -355,27 +285,18 @@ def apply_filters(
 ) -> SAQuery:
     """Apply the standard event filter set to a query.
 
-    Shared by `/events`, `/events/points` and the `/search` event groups so
-    the surfaces can't drift. The visibility filters live here so every public
-    read excludes both the soft-deleted rows (`deleted_at`) and the rows a
-    takedown withholds (`hidden_at`); the admin path bypasses this helper.
+    The visibility filters live here, so every public read excludes soft-deleted and withheld
+    rows; the admin path bypasses this helper.
 
-    ``view`` scopes to one of the two lifecycle views (see ``VIEWS``);
-    ``status`` narrows within the view (any-match within the list, e.g.
-    ``?status=closed`` on the requested queue, ``?status=detected`` on the
-    located catalog). Status-scoping rather than a bare coordinate predicate:
-    a ``requested`` event may carry an approximate guess now, and it must not
-    leak into the located catalog because of it. Callers gate values through
-    :func:`validate_status_filter`.
+    ``view`` scopes to one of the two views (see ``VIEWS``); ``status`` narrows within it
+    (any-match). Status-scoping rather than a coordinate predicate, since a ``requested`` event
+    may carry an approximate guess and must not leak into the located catalog. Callers gate
+    values through :func:`validate_status_filter`.
 
-    Filter semantics: ``conflict``, ``capture_source`` and ``tag`` each take
-    a list of names. Within a list, **any-match (OR)**; across the lists,
-    **all-match (AND)**. ``conflict`` matches the ``conflicts`` referential
-    (its own join, so a same-named free tag can't poison it);
-    ``capture_source`` pins the matched tag's category to its bucket for the
-    same reason; ``tag`` matches any tag category so a caller can filter by
-    a name without knowing its bucket (back-compat with the pre-multi-select
-    API).
+    ``conflict``, ``capture_source`` and ``tag`` take lists of names: any-match (OR) within a
+    list, all-match (AND) across lists. ``conflict`` matches the ``conflicts`` referential (its
+    own join, so a same-named free tag can't poison it); ``capture_source`` pins the tag's
+    category for the same reason; ``tag`` matches any category.
     """
     query = query.filter(*visible_events(), view_predicate(view))
 
@@ -383,8 +304,7 @@ def apply_filters(
         query = query.filter(Event.status.in_(status))
 
     if conflict:
-        # ``.conflicts.any(...)`` lowers to EXISTS so a second relationship
-        # filter doesn't row-multiply the way a plain JOIN would.
+        # ``.any(...)`` lowers to EXISTS, so it doesn't row-multiply like a JOIN.
         query = query.filter(Event.conflicts.any(Conflict.name.in_(conflict)))
     if capture_source:
         query = query.filter(
@@ -393,8 +313,7 @@ def apply_filters(
     if tag:
         query = query.filter(Event.tags.any(Tag.name.in_(tag)))
 
-    # Parse dates up front so a typo returns a clean 422 instead of
-    # cascading into Postgres' ``InvalidDatetimeFormat`` as a 500.
+    # Parse dates up front so a typo is a 422, not a Postgres ``InvalidDatetimeFormat`` 500.
     parsed_event_from = parse_optional_iso_date(event_date_from, field="event_date_from")
     parsed_event_to = parse_optional_iso_date(event_date_to, field="event_date_to")
     parsed_submitted_from = parse_optional_iso_date(submitted_from, field="submitted_from")
@@ -408,17 +327,14 @@ def apply_filters(
     if parsed_submitted_from:
         query = query.filter(Event.created_at >= parsed_submitted_from)
     if parsed_submitted_to:
-        # End-of-day inclusive: +1 day with ``<`` (open right interval)
-        # is safer than a midnight time string, which would drift around
-        # DST boundaries under tz-aware comparison.
+        # End-of-day inclusive: ``< date + 1 day`` avoids midnight strings drifting around DST.
         query = query.filter(Event.created_at < parsed_submitted_to + timedelta(days=1))
 
     if author:
         query = apply_author_filter(query, author)
 
     if media:
-        # ``.media.any(...)`` → EXISTS, so an event with several attachments
-        # isn't row-multiplied. Values are ``Media.media_type`` (image / video).
+        # EXISTS, so an event with several attachments isn't row-multiplied.
         query = query.filter(Event.media.any(Media.media_type.in_(media)))
 
     if bbox:
@@ -429,10 +345,9 @@ def apply_filters(
 
 @dataclass(frozen=True)
 class EventFilters:
-    """The filter set as one value, for surfaces that thread it through
-    layers (search router → service → the two event groups). ``apply`` is
-    :func:`apply_filters` with these fields; ``active`` says whether any
-    filter narrows the view (search uses it to flip into browse mode on an
+    """The filter set as one value, threaded through layers (search router, service, event groups).
+
+    ``active`` says whether any filter narrows the view (search flips into browse mode on an
     empty query)."""
 
     status: list[str] | None = None
@@ -461,8 +376,6 @@ class EventFilters:
     def active_beyond_author(self) -> bool:
         """True when a filter other than ``author`` narrows the view.
 
-        ``author`` names an analyst, every other filter names a property of an
-        event. The collections group of search reads this to tell the two
-        apart: it can honour "this analyst's collections", and it empties on
-        any filter it cannot answer (``services/search.search_all``)."""
+        The collections group of search reads this: it can honour "this analyst's collections"
+        but empties on any filter it cannot answer (``services/search.search_all``)."""
         return any(getattr(self, f.name) for f in fields(self) if f.name != "author")

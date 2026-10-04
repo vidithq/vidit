@@ -1,9 +1,7 @@
 """Wikipedia ongoing-conflicts sync: parsing, QID identity, grace period.
 
-The page HTML and the pageprops responses are synthetic (built to the real
-page's structure: tier tables whose conflict cells nest sub-conflicts in
-treelist ``<ul>``s) and served through ``httpx.MockTransport``, so no test
-touches the network.
+The page HTML and pageprops responses are synthetic (the real structure: tier
+tables whose cells nest sub-conflicts in treelist ``<ul>``s) on ``httpx.MockTransport``.
 """
 
 import uuid
@@ -21,8 +19,7 @@ from app.services.conflict_sync import (
     sync_conflicts,
 )
 
-# 20 synthetic conflicts across the three ingested tiers (the sanity floor
-# is 15), each mapped to a deterministic fake QID.
+# 20 synthetic conflicts across the three ingested tiers (sanity floor 15), each with a fake QID.
 _NAMES = [f"Test conflict {i:02d}" for i in range(20)]
 _QID_BY_NAME = {name: f"Q900{i:03d}" for i, name in enumerate(_NAMES)}
 
@@ -103,8 +100,7 @@ def test_extract_page_entries_top_level_only():
     entries = extract_page_entries(_page_html())
     # Sub-conflicts and the skirmishes tier excluded.
     assert [e.title for e in entries] == _NAMES
-    # Tier follows the bucket the fixture placed each name in, start year
-    # comes from the row's first cell (every fixture row says 2020).
+    # Start year comes from the row's first cell (2020 in every fixture row).
     third = len(_NAMES) // 3
     expected_tiers = (
         ["major"] * third + ["minor"] * third + ["conflict"] * (len(_NAMES) - 2 * third)
@@ -119,8 +115,7 @@ def test_extract_raises_on_missing_tier():
 
 
 def test_extract_raises_when_tier_heading_has_no_table_of_its_own():
-    # "Major wars" carries no table; the next tier's table follows directly.
-    # The scoped lookup must not let the tableless heading claim it.
+    # "Major wars" has no table; it must not claim the next tier's table.
     third = len(_NAMES) // 3
     html = (
         "<h2>Major wars</h2>"
@@ -146,8 +141,6 @@ def test_sync_creates_rows_keyed_by_qid(db):
     assert row.ongoing is True
     assert row.source == "sync"
     assert row.last_seen_at is not None
-    # First bucket of the fixture is the major-wars table; every fixture
-    # row's start cell says 2020.
     assert row.tier == "major"
     assert row.start_year == 2020
     last = db.query(Conflict).filter(Conflict.wikidata_id == _QID_BY_NAME[_NAMES[-1]]).one()
@@ -167,8 +160,7 @@ def test_sync_updates_tier_but_never_clobbers_start_year(db):
     db.add(seeded)
     db.commit()
 
-    # Rotate the name to the end of the list: it lands in the conflicts
-    # bucket, as if the death toll slid below the minor-wars threshold.
+    # Move the name to the last (lowest) tier bucket.
     rotated = [*_NAMES[1:], _NAMES[0]]
     with _mock_client(_page_html(names=rotated), _QID_BY_NAME) as client:
         sync_conflicts(db, client=client)
@@ -264,8 +256,7 @@ def test_sync_within_grace_keeps_row_ongoing(db):
 
 @pytest.mark.usefixtures("_clean_test_conflicts")
 def test_sync_aborts_on_api_error_body(db):
-    """An HTTP 200 whose JSON body carries an ``error`` key (maxlag, rate
-    limit) must abort the run and write nothing."""
+    """An HTTP 200 with an ``error`` key in the body (maxlag, rate limit) aborts and writes nothing."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -286,9 +277,8 @@ def test_sync_aborts_on_api_error_body(db):
 
 @pytest.mark.usefixtures("_clean_test_conflicts")
 def test_sync_aborts_before_deactivation_when_qid_resolution_fails(db):
-    """The page parses fine but pageprops resolves zero QIDs: the run must
-    raise before the grace-period sweep, so a stale ongoing row is never
-    aged toward deactivation by a silently failed resolution."""
+    """Zero resolved QIDs raise before the grace-period sweep, so a failed
+    resolution never ages a stale row toward deactivation."""
     stale = Conflict(
         name=_NAMES[0],
         wikidata_id=_QID_BY_NAME[_NAMES[0]],
@@ -300,7 +290,6 @@ def test_sync_aborts_before_deactivation_when_qid_resolution_fails(db):
     db.commit()
     stale_id = stale.id
 
-    # No QID mapping resolves: pageprops comes back empty for every title.
     with (
         _mock_client(_page_html(), {}) as client,
         pytest.raises(ConflictSyncError, match="resolved"),

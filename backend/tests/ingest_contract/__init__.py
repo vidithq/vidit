@@ -1,28 +1,19 @@
 """Contract test framework for the tweet-ingest core.
 
-Exercises the one engine (``resolve_threads``, and the archive backfill that
-persists what it reads) against a fixed catalogue of geolocation-tweet
-typologies, all fixtures fully
-synthetic: invented handles, invented text, invented numeric ids, and media
-URLs in the ``https://pbs.twimg.com/media/FAKE....jpg`` /
-``https://video.twimg.com/....mp4`` shape. No real tweet content lives here.
-
-Layout
-------
+Runs ``resolve_threads`` (and the archive backfill that persists what it reads) against a
+fixed catalogue of geolocation-tweet typologies. Fixtures are fully synthetic: invented
+handles, text, ids, and ``pbs.twimg.com`` / ``video.twimg.com`` shaped media URLs.
 
 ``fixtures/<typology>/body.json``
-    The syndication body of the geolocation tweet (or, for ``self_thread``, the
-    raw X-export tweet entries, since a self-thread only exists in an archive).
+    The syndication body of the geolocation tweet (for ``self_thread``, the raw X-export
+    tweet entries, since a self-thread only exists in an archive).
 ``fixtures/<typology>/expected.json``
-    The fields the brick must produce for that typology: rounded coordinates,
-    ``source_url`` / ``source_posted_at``, title, the media roles by kind, and
-    ``event_date``.
+    The fields the engine must produce: rounded coordinates, ``source_url`` /
+    ``source_posted_at``, title, media roles by kind, ``event_date``.
 ``fixtures/<typology>/chased_<id>.json``
-    Present when the typology's source is chased via syndication (an X status
-    link). The syndication body of that source tweet.
+    The syndication body of the source tweet chased via an X status link, when the
+    typology has one.
 
-``loader`` turns a fixture into a ``TweetRecord`` (unit path) or into raw
-archive tweet entries + on-disk media bytes (archive path). ``test_resolve_contract``
-runs the parametrized unit check; ``test_archive_contract`` runs the consolidated
-archive backfill against the test database.
+``loader`` turns a fixture into a ``TweetRecord`` (unit path) or raw archive entries plus
+on-disk media bytes (archive path).
 """

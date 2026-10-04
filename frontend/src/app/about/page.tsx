@@ -20,10 +20,7 @@ import { Card } from "@/components/ui/Card";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { LinkRow } from "@/components/ui/LinkRow";
 
-// Same openGraph + twitter shape as the landing so a shared link reads as
-// Vidit, not a bare title. The shared `opengraph-image.tsx` /
-// `twitter-image.tsx` at the app root supply the image without per-page
-// binary assets.
+// Same openGraph + twitter shape as the landing; the root image files supply the image.
 export const metadata: Metadata = {
   title: "About Vidit",
   description:
@@ -64,9 +61,7 @@ const COMMITMENTS = [
   },
 ];
 
-// Lucide dropped the brand-mark icons (Github, X, Discord), so this panel
-// only uses lucide for channels it still covers; GitHub is a footer link
-// instead of pulling in a brand-icon dependency here.
+// Lucide dropped brand icons; GitHub is a footer link instead.
 const CONTACT = [
   {
     icon: AtSign,
@@ -91,10 +86,7 @@ const CONTACT = [
   },
 ];
 
-// The in-product guides, gathered here since About is their hub: the rail
-// carries no per-guide entry, and the bot guide's external readers arrive
-// from the bot's X bio and replies. Getting started leads: it teaches the
-// whole loop, and the other two go deeper into one part of it.
+// Guides hub (the rail has no per-guide entry); Getting started leads since it teaches the whole loop.
 const GUIDES = [
   {
     icon: Compass,
@@ -116,7 +108,6 @@ const GUIDES = [
   },
 ];
 
-// The two published legal pages.
 const LEGAL = [
   {
     icon: Scale,

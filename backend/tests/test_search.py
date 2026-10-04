@@ -1,19 +1,8 @@
 """End-to-end tests for ``GET /search``.
 
-Scope: the search surface — three FTS-backed result groups (geolocations,
-requests, users), the highlight-marker contract, the ``type`` filter,
-soft-delete invariants, auth, and the empty-query short-circuit.
-
-Since the request + geolocation merge the "requests" group is a view over the
-one ``geolocations`` table: a request is a ``requested`` row (no location). The
-located view (``geolocations`` group) filters ``location IS NOT NULL``; the
-requested view filters ``status = 'requested'``, so the two never overlap.
-
-We seed fresh rows per test with unique-suffix titles / usernames so
-matches are bounded to this test's data: the dev DB carries the imported
-seed, and an FTS query like "Donetsk" would otherwise pull in
-arbitrary neighbours. Suffix lookups also make the assertions
-deterministic without coupling to insertion order.
+The "requests" group is a view over the events table (``status = 'requested'``, no
+location); the located view filters ``location IS NOT NULL``, so the two never overlap.
+Each test seeds rows with a unique token so matches stay bounded to its own data.
 """
 
 from __future__ import annotations
@@ -40,9 +29,6 @@ from tests.conftest import login_as
 client = TestClient(app)
 
 
-# ── Fixtures ──────────────────────────────────────────────────────────────
-
-
 @pytest.fixture(autouse=True)
 def _clear_cookies():
     client.cookies.clear()
@@ -61,12 +47,7 @@ def db():
 
 @pytest.fixture
 def caller(db):
-    """Authenticated request originator for the search endpoint.
-
-    The endpoint is anonymous; most tests still call it signed-in so the
-    seeded rows have an owner. Unique username so it doesn't accidentally
-    show up as a result.
-    """
+    """Owner of the seeded rows; the unique username keeps it out of results."""
     user = User(
         username=f"caller{uuid.uuid4().hex[:8]}",
         email=f"caller-{uuid.uuid4().hex}@example.com",
@@ -82,20 +63,12 @@ def caller(db):
 
 
 def _unique_token() -> str:
-    """Highly unique alphanumeric token usable in titles / bios.
-
-    We embed it in seeded text and query for it so the assertions
-    aren't contaminated by other rows in the dev DB (imported archives,
-    other tests' leftovers).
-    """
+    """A token unique enough to isolate a test from other rows in the dev DB."""
     return f"vidqterm{uuid.uuid4().hex[:10]}"
 
 
-# ── Empty + validation ────────────────────────────────────────────────────
-
-
 def test_search_is_anonymous():
-    """Search is part of the public read surface — no session required."""
+    """No session required."""
     response = client.get("/api/v1/search?q=anything")
     assert response.status_code == 200
 
@@ -134,9 +107,6 @@ def test_limit_outside_range_returns_422(caller):
     assert response.status_code == 422
 
 
-# ── Geolocations ──────────────────────────────────────────────────────────
-
-
 def test_search_matches_geolocation_by_title(db, caller):
     token = _unique_token()
     geo = Event(
@@ -158,10 +128,7 @@ def test_search_matches_geolocation_by_title(db, caller):
             media_type="image",
         )
     )
-    # With a source row present the proof row must stay off the hit: the
-    # thumbnail pick prefers ``source`` (``services.thumbnails``), the same
-    # contract as the list card. The proof image only steps in when the
-    # event has no source media (covered below).
+    # The thumbnail pick prefers ``source`` (``services.thumbnails``), so proof stays off the hit.
     db.add(
         Media(
             event_id=geo.id,
@@ -183,16 +150,11 @@ def test_search_matches_geolocation_by_title(db, caller):
         hit = body["geolocations"][0]
         assert hit["id"] == str(geo_id)
         assert token in hit["title"]
-        # The highlight wraps the matched token with the agreed sentinels;
-        # the frontend will turn those into <mark> elements.
         assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["title_highlight"]
-        # Regression: the located group must carry the picked thumbnail like
-        # the list view does (the search cards render the same thumbnail),
-        # and with a source row present the pick is the source, never proof.
+        # Regression: the located group carries the picked thumbnail, as the list view does.
         assert [m["media_type"] for m in hit["media"]] == ["image"]
         assert all(m["role"] == "source" for m in hit["media"])
-        # The card covers its thumbnail on this flag, so it has to reach the
-        # hit; an unflagged event reads false rather than omitting the key.
+        # An unflagged event reads false rather than omitting the key.
         assert hit["is_graphic"] is False
     finally:
         db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
@@ -200,9 +162,7 @@ def test_search_matches_geolocation_by_title(db, caller):
 
 
 def test_search_proof_only_event_surfaces_proof_image_thumbnail(db, caller):
-    """An event with no source media but a proof image (archive imports, bot
-    detections) surfaces the proof image as its card thumbnail; a proof VIDEO is
-    never picked, so the video-only sibling ships an empty media list."""
+    """With no source media a proof image is the thumbnail; a proof video is never picked."""
     token = _unique_token()
     proof_only = Event(
         owner_id=caller.id,
@@ -232,8 +192,7 @@ def test_search_proof_only_event_surfaces_proof_image_thumbnail(db, caller):
             media_type="image",
         )
     )
-    # Defensive: a proof video should not exist (the proof document embeds
-    # images only) but must never be picked if one does.
+    # Defensive: a proof video should not exist but must never be picked.
     db.add(
         Media(
             event_id=video_only.id,
@@ -260,12 +219,7 @@ def test_search_proof_only_event_surfaces_proof_image_thumbnail(db, caller):
 
 
 def test_search_does_not_match_geolocation_by_source_url(db, caller):
-    """``source_url`` is intentionally not in the FTS index — Postgres'
-    simple parser tokenizes URLs as host/path units, so a URL-fragment
-    query would only match the whole-path token anyway. Locked in as a
-    regression guard: a future contributor adding the URL column to
-    the index expression will surface here and need to read the
-    migration's rationale block."""
+    """``source_url`` is intentionally not in the FTS index (see the migration's rationale)."""
     token = _unique_token()
     geo = Event(
         owner_id=caller.id,
@@ -319,13 +273,8 @@ def test_search_excludes_soft_deleted_geolocations(db, caller):
         db.commit()
 
 
-# ── Requests ──────────────────────────────────────────────────────────────
-
-
 def test_search_matches_request_by_title(db, caller):
     token = _unique_token()
-    # A request is a ``requested`` event: no location (the requested-view search
-    # filter is ``status = 'requested'``).
     request = Event(
         owner_id=caller.id,
         title=f"Request {token} — please geolocate",
@@ -365,9 +314,7 @@ def test_search_matches_request_by_title(db, caller):
 
 
 def test_search_hits_carry_the_graphic_flag(db, caller):
-    """Both result groups report the flag, so a search card covers flagged
-    footage the way every other card does instead of painting it on a reader
-    who was only scrolling past."""
+    """Both result groups report the graphic flag."""
     token = _unique_token()
     geo = Event(
         owner_id=caller.id,
@@ -430,13 +377,8 @@ def test_search_excludes_soft_deleted_requests(db, caller):
         db.commit()
 
 
-# ── Users ─────────────────────────────────────────────────────────────────
-
-
 def test_search_matches_user_by_username(db, caller):
-    # Username == the token directly. Postgres' simple parser does
-    # exact-token matching, not substring, so ``f"u{token}"`` would
-    # become a single token Postgres can't subdivide.
+    # Postgres' simple parser matches whole tokens, so the username is the bare token.
     token = _unique_token()
     user = User(
         username=token,
@@ -457,8 +399,6 @@ def test_search_matches_user_by_username(db, caller):
         hit = body["users"][0]
         assert hit["id"] == str(user_id)
         assert token in hit["username_highlight"]
-        # No bio set, so the bio_highlight should be None — the UI uses
-        # this to decide whether to render the snippet block.
         assert hit["bio_highlight"] is None
     finally:
         db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
@@ -489,7 +429,6 @@ def test_search_matches_user_by_bio_with_highlighted_snippet(db, caller):
         hits = response.json()["users"]
         assert any(h["id"] == str(user_id) for h in hits)
         hit = next(h for h in hits if h["id"] == str(user_id))
-        # Bio matched, so the snippet field MUST carry the sentinels.
         assert hit["bio_highlight"] is not None
         assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["bio_highlight"]
     finally:
@@ -519,17 +458,11 @@ def test_search_excludes_soft_deleted_users(db, caller):
         db.commit()
 
 
-# ── Collections ───────────────────────────────────────────────────────────
-
-
 @pytest.fixture
 def seed_collection(db, caller):
     """Open a collection, optionally with one showable event on it.
 
-    The item's own title carries no test token, so a collection test measures
-    the collections group alone and never pulls its own item into the
-    geolocations group beside it. Both rows are dropped afterwards; the
-    membership goes with the collection through the cascade.
+    The item's title carries no test token, so it stays out of the geolocations group.
     """
     made: list[tuple[uuid.UUID, uuid.UUID | None]] = []
 
@@ -563,8 +496,7 @@ def seed_collection(db, caller):
 
 
 def test_search_matches_collection_by_title(caller, seed_collection):
-    """A title hit comes back as the card every collection surface renders:
-    the read payload whole, counts and mosaic included."""
+    """A title hit returns the full collection card payload."""
     token = _unique_token()
     collection_id = seed_collection(f"Sites around {token}", "What this one holds.")
     response = client.get(
@@ -582,8 +514,7 @@ def test_search_matches_collection_by_title(caller, seed_collection):
 
 
 def test_search_matches_collection_by_description(caller, seed_collection):
-    """The document is the title and the description's plain-text projection,
-    so a word only the description carries finds the collection."""
+    """The index covers the description's plain-text projection."""
     token = _unique_token()
     collection_id = seed_collection("A plain name", f"Everything about {token}.")
     response = client.get(f"/api/v1/search?q={token}&type=collection")
@@ -591,9 +522,7 @@ def test_search_matches_collection_by_description(caller, seed_collection):
 
 
 def test_search_matches_a_word_the_description_only_bolds(db, caller, seed_collection):
-    """The index reads the projection, not the document, so a word carried by
-    a marked run is as findable as any other. Indexing the JSONB itself would
-    put the node names and the braces in the same document as the words."""
+    """The index reads the projection, not the JSONB, so marked runs are findable."""
     token = _unique_token()
     collection_id = seed_collection("A plain name", "Placeholder.")
     collection = db.query(Collection).filter(Collection.id == collection_id).one()
@@ -614,8 +543,7 @@ def test_search_matches_a_word_the_description_only_bolds(db, caller, seed_colle
 
 
 def test_search_excludes_hidden_collections(caller, seed_collection):
-    """A withheld collection is out of search, as it is out of every read but
-    an admin's by id."""
+    """A withheld collection is out of search."""
     token = _unique_token()
     seed_collection(f"Withheld {token}", "Taken down.", hidden=True)
     response = client.get(f"/api/v1/search?q={token}&type=collection")
@@ -624,8 +552,7 @@ def test_search_excludes_hidden_collections(caller, seed_collection):
 
 
 def test_search_excludes_empty_collections(caller, seed_collection):
-    """A collection with nothing showable on it stays out, the rule a visitor
-    reading a profile already gets: a card that opens on an empty shelf."""
+    """A collection with nothing showable on it stays out, as on a profile."""
     token = _unique_token()
     seed_collection(f"Nothing on it {token}", "Still scaffolding.", empty=True)
     response = client.get(f"/api/v1/search?q={token}&type=collection")
@@ -633,8 +560,7 @@ def test_search_excludes_empty_collections(caller, seed_collection):
 
 
 def test_search_type_collection_returns_only_that_group(db, caller, seed_collection):
-    """``type=collection`` answers with the collections group and empty arrays
-    for the rest, the stable shape every other scope keeps."""
+    """Other groups stay empty arrays: the response shape is stable."""
     token = _unique_token()
     collection_id = seed_collection(f"Shelf {token}", "One shelf.")
     geo = _seed_geo(db, caller, f"Geo {token}")
@@ -652,8 +578,7 @@ def test_search_type_collection_returns_only_that_group(db, caller, seed_collect
 
 
 def test_author_filter_narrows_collections_to_that_owner(db, caller, other_author, seed_collection):
-    """``author`` names an analyst, which a collection carries: the group is
-    scoped to that owner rather than emptied."""
+    """``author`` scopes the collections group to that owner rather than emptying it."""
     token = _unique_token()
     mine = seed_collection(f"Mine {token}", "Owned by the caller.")
     seed_collection(f"Theirs {token}", "Owned by somebody else.", owner=other_author)
@@ -664,9 +589,7 @@ def test_author_filter_narrows_collections_to_that_owner(db, caller, other_autho
 
 
 def test_event_filter_empties_the_collections_group(caller, seed_collection):
-    """Every filter but ``author`` is a predicate on an event, which a
-    collection does not carry, so it empties the group rather than reading as
-    if it applied."""
+    """Every filter but ``author`` is an event predicate, so it empties the group."""
     token = _unique_token()
     seed_collection(f"Shelf {token}", "One shelf.")
     response = client.get(f"/api/v1/search?q={token}&status=geolocated")
@@ -675,8 +598,7 @@ def test_event_filter_empties_the_collections_group(caller, seed_collection):
 
 
 def test_browse_lists_the_authors_collections_newest_first(caller, seed_collection):
-    """An empty query plus ``author`` browses that analyst's shelf, newest
-    first: the entry point the profile's Collections "Show more" opens."""
+    """Empty query plus ``author`` browses that analyst's collections (the profile "Show more")."""
     token = _unique_token()
     older = seed_collection(f"Older {token}", "Shelved first.")
     newer = seed_collection(f"Newer {token}", "Shelved second.")
@@ -685,13 +607,11 @@ def test_browse_lists_the_authors_collections_newest_first(caller, seed_collecti
     body = response.json()
     assert [hit["id"] for hit in body["collections"]] == [str(newer), str(older)]
     assert body["total"]["collections"] == 2
-    # The full card, as the typed path serves it.
     assert body["collections"][0]["event_count"] == 1
 
 
 def test_browse_excludes_hidden_and_empty_collections(caller, seed_collection):
-    """Browse reads the same visibility and non-empty predicates the typed
-    path does, so it never hands over a card a profile would drop."""
+    """Browse applies the same visibility and non-empty predicates as a typed query."""
     token = _unique_token()
     shown = seed_collection(f"Shown {token}", "Holds something.")
     seed_collection(f"Withheld {token}", "Taken down.", hidden=True)
@@ -703,9 +623,7 @@ def test_browse_excludes_hidden_and_empty_collections(caller, seed_collection):
 
 
 def test_browse_without_an_author_leaves_the_group_empty(caller, seed_collection):
-    """ "Every collection there is" is a listing rather than a search, so an
-    empty query with no author still answers with nothing. A filter that is
-    not ``author`` empties the group as it does under a typed query."""
+    """An empty query with no author (or a non-author filter) answers with nothing."""
     token = _unique_token()
     seed_collection(f"Shelf {token}", "One shelf.")
     assert client.get("/api/v1/search?type=collection").json()["collections"] == []
@@ -717,8 +635,7 @@ def test_browse_without_an_author_leaves_the_group_empty(caller, seed_collection
 
 
 def test_typed_query_still_narrows_within_an_author(caller, seed_collection):
-    """Typing narrows within the browse: the text predicate applies alongside
-    ``author`` rather than being replaced by it."""
+    """The text predicate applies alongside ``author``."""
     token = _unique_token()
     wanted = seed_collection(f"Kupiansk {token}", "The eastern approach.")
     seed_collection(f"Kherson {token}", "The river bank.")
@@ -731,9 +648,7 @@ def test_typed_query_still_narrows_within_an_author(caller, seed_collection):
 
 
 def test_collection_fts_query_uses_the_gin_index(db):
-    """The ORM-built collection tsvector must stay expression-tree-equal to
-    the migration's GIN index expression, the same pin the events one takes:
-    a drift is silent, and shows only as a sequential scan."""
+    """The ORM tsvector must match the migration's GIN index expression, or it silently seq-scans."""
     from sqlalchemy import func as safunc
     from sqlalchemy import text as satext
 
@@ -750,13 +665,8 @@ def test_collection_fts_query_uses_the_gin_index(db):
     assert "ix_collections_search_fts" in plan, plan
 
 
-# ── Grouped (type=all) ────────────────────────────────────────────────────
-
-
 def test_search_type_all_returns_every_group(db, caller, seed_collection):
     token = _unique_token()
-    # Plant one matching row per entity so we can prove all four
-    # branches fire on type=all without depending on pre-existing dev-DB rows.
     geo = Event(
         owner_id=caller.id,
         title=f"Geo {token} unique-token row",
@@ -799,8 +709,6 @@ def test_search_type_all_returns_every_group(db, caller, seed_collection):
         )
         assert response.status_code == 200
         body = response.json()
-        # Each group has exactly the one row we planted — the unique
-        # token isolates us from any neighbour rows in the dev DB.
         assert [h["id"] for h in body["geolocations"]] == [str(geo_id)]
         assert [h["id"] for h in body["requests"]] == [str(request_id)]
         assert [h["id"] for h in body["users"]] == [str(user_id)]
@@ -821,9 +729,7 @@ def test_search_type_all_returns_every_group(db, caller, seed_collection):
 
 
 def test_search_type_filter_scopes_to_one_group(db, caller):
-    """``type=geolocation`` returns geo hits and empty arrays for the
-    other groups — the JSON shape stays stable so the frontend doesn't
-    have to gate on key presence."""
+    """Other groups stay empty arrays so the frontend need not gate on key presence."""
     token = _unique_token()
     geo = Event(
         owner_id=caller.id,
@@ -861,8 +767,6 @@ def test_search_type_filter_scopes_to_one_group(db, caller):
         )
         body = response.json()
         assert [h["id"] for h in body["geolocations"]] == [str(geo_id)]
-        # Other groups stay empty arrays — the shape doesn't depend on
-        # the filter.
         assert body["requests"] == []
         assert body["users"] == []
     finally:
@@ -872,9 +776,7 @@ def test_search_type_filter_scopes_to_one_group(db, caller):
 
 
 def test_search_limit_caps_per_group(db, caller):
-    """Plant 4 matching requests, ask for limit=2, expect 2 back —
-    proves the LIMIT clause makes it through the rank-then-hydrate
-    pipeline."""
+    """The limit survives the rank-then-hydrate pipeline."""
     token = _unique_token()
     requests = []
     for i in range(4):
@@ -908,9 +810,7 @@ def test_search_limit_caps_per_group(db, caller):
         assert response.status_code == 200
         body = response.json()
         assert len(body["requests"]) == 2
-        # ``total`` is the pre-LIMIT count from ``COUNT(*) OVER ()`` so
-        # it must reflect all 4 matches, not just the 2 we returned.
-        # Locks in the fix for the "total is len(arrays)" review finding.
+        # ``total`` is the pre-LIMIT count, not len(array).
         assert body["total"]["requests"] == 4
     finally:
         for bid in request_ids:
@@ -918,30 +818,16 @@ def test_search_limit_caps_per_group(db, caller):
         db.commit()
 
 
-# ── Sentinel-collision regression (review finding #1) ─────────────────────
-
-
 def test_search_strips_planted_sentinel_bytes_from_bio(db, caller):
-    """A hostile user could plant the highlight-sentinel bytes (STX /
-    ETX) in their own ``bio`` via a raw-bytes PATCH and corrupt the
-    highlight string's even/odd parity for everyone reading their
-    content. Defence: the SQL wraps every ``ts_headline`` document arg
-    in ``translate(col, chr(2) || chr(3), '')`` so the stripped
-    document never carries planted markers into the response.
+    """A bio planting STX/ETX must not break the highlight's marker parity.
 
-    A bio containing STX + ETX, searched for a word that actually
-    matches the bio, must return a highlight string where every STX
-    has a matching ETX and vice-versa.
+    The SQL wraps every ``ts_headline`` document in ``translate(col, chr(2) || chr(3), '')``.
     """
     token = _unique_token()
     user = User(
         username=f"u{uuid.uuid4().hex[:8]}",
         email=f"hl-{uuid.uuid4().hex}@example.com",
         password_hash=hash_password("p"),
-        # Planted sentinels surrounding text; the searchable token is
-        # outside the planted run so the match doesn't depend on the
-        # stripped bytes. Without the strip, ts_headline would echo
-        # these bytes verbatim and break the frontend split's parity.
         bio=f"hostile \x02fake-start\x03 prefix then real {token} match",
     )
     db.add(user)
@@ -956,14 +842,9 @@ def test_search_strips_planted_sentinel_bytes_from_bio(db, caller):
         hit = next(h for h in response.json()["users"] if h["id"] == str(user_id))
         bio_hl = hit["bio_highlight"]
         assert bio_hl is not None
-        # Equal STX and ETX counts → every opening marker has a closing
-        # marker → the frontend split's even/odd parity holds.
         assert bio_hl.count(HIGHLIGHT_START) == bio_hl.count(HIGHLIGHT_STOP)
-        # The token IS wrapped by sentinels in the headline output.
         assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in bio_hl
-        # The analyst's words ("fake-start") survive in the bio snippet
-        # — we strip only the abusive markers around them, not user
-        # content, so the row's text isn't censored.
+        # Only the marker bytes are stripped, not the user's words.
         assert "fake-start" in bio_hl
     finally:
         db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
@@ -971,9 +852,7 @@ def test_search_strips_planted_sentinel_bytes_from_bio(db, caller):
 
 
 def test_search_strips_planted_sentinel_bytes_from_title(db, caller):
-    """Same defence applied to geolocation / request titles. Plant the
-    sentinel bytes in a geo's title, search by an adjacent word, and
-    expect the response to have balanced sentinel parity."""
+    """The same sentinel stripping applies to geolocation and request titles."""
     token = _unique_token()
     geo = Event(
         owner_id=caller.id,
@@ -1000,12 +879,6 @@ def test_search_strips_planted_sentinel_bytes_from_title(db, caller):
     finally:
         db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
         db.commit()
-
-
-# ── Author filter ─────────────────────────────────────────────────────────
-# ``?author=<username>`` scopes the event groups to one owner (the profile's
-# "Show more" entry point); with an empty ``q`` it browses that author's
-# whole view, newest first, plain titles as their own highlight.
 
 
 @pytest.fixture
@@ -1049,8 +922,7 @@ def test_author_filter_scopes_event_groups_and_empties_users(db, caller, other_a
         body = response.json()
         assert [h["id"] for h in body["geolocations"]] == [str(mine)]
         assert body["total"]["geolocations"] == 1
-        # The users group empties under an author scope, even on type=all:
-        # the caller's username would otherwise match itself.
+        # Otherwise the caller's username would match itself.
         assert body["users"] == []
         assert body["total"]["users"] == 0
     finally:
@@ -1069,8 +941,7 @@ def test_author_with_empty_query_browses_the_authors_view(db, caller, other_auth
         title=f"Where is {token}",
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
-        # A request always carries the footage it asks about
-        # (``ck_events_source_url_status``).
+        # ``ck_events_source_url_status`` requires it on a request.
         source_url="https://example.com/request-footage",
         source_posted_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         event_date=date(2026, 5, 1),
@@ -1083,10 +954,9 @@ def test_author_with_empty_query_browses_the_authors_view(db, caller, other_auth
         assert response.status_code == 200
         body = response.json()
         geo_ids = [h["id"] for h in body["geolocations"]]
-        # Browse mode: the author's located view, newest first, noise excluded.
         assert geo_ids.index(str(newer)) < geo_ids.index(str(older))
         assert str(noise) not in geo_ids
-        # No FTS predicate, so the plain title stands in for the highlight.
+        # Without an FTS predicate the plain title is the highlight.
         newest = next(h for h in body["geolocations"] if h["id"] == str(newer))
         assert newest["title_highlight"] == newest["title"]
         assert HIGHLIGHT_START not in newest["title_highlight"]
@@ -1112,12 +982,6 @@ def test_author_rejects_malformed_username():
     assert response.status_code == 422
 
 
-# ── The shared filter set ─────────────────────────────────────────────────
-# /search composes the same predicates as /events and /events/points
-# (services/event_filters). A spot-check per family, not the full matrix:
-# the predicate internals are pinned by the /events read suite.
-
-
 def test_conflict_filter_scopes_search(db, caller):
     from app.models.conflict import Conflict
 
@@ -1135,7 +999,6 @@ def test_conflict_filter_scopes_search(db, caller):
         assert response.status_code == 200
         body = response.json()
         assert [h["id"] for h in body["geolocations"]] == [str(tagged)]
-        # Any active event filter empties the users group, not just author.
         assert body["users"] == [] and body["total"]["users"] == 0
     finally:
         db.query(Event).filter(Event.id.in_([tagged, untagged])).delete(synchronize_session=False)
@@ -1153,7 +1016,7 @@ def test_event_date_filter_scopes_search_and_browses(db, caller):
         response = client.get(f"/api/v1/search?q={token}&event_date_from=2026-01-01")
         ids = [h["id"] for h in response.json()["geolocations"]]
         assert str(inside) in ids and str(outside) not in ids
-        # Browse mode: the date window alone is an active filter (no q).
+        # The date window alone is an active filter in browse mode.
         response = client.get(f"/api/v1/search?author={caller.username}&event_date_from=2026-01-01")
         ids = [h["id"] for h in response.json()["geolocations"]]
         assert str(inside) in ids and str(outside) not in ids
@@ -1163,8 +1026,7 @@ def test_event_date_filter_scopes_search_and_browses(db, caller):
 
 
 def test_status_filter_scopes_search(db, caller):
-    """`?status=` narrows the event groups server-side (the search page's
-    Status chips); an unknown value 422s at the boundary."""
+    """`?status=` narrows the event groups; an unknown value 422s."""
     token = _unique_token()
     located = _seed_geo(db, caller, f"Located {token}")
     detected = _seed_geo(db, caller, f"Detected {token}")
@@ -1177,7 +1039,6 @@ def test_status_filter_scopes_search(db, caller):
         assert response.status_code == 200
         body = response.json()
         assert [h["id"] for h in body["geolocations"]] == [str(detected)]
-        # Any active event filter empties the users group.
         assert body["users"] == [] and body["total"]["users"] == 0
 
         response = client.get(f"/api/v1/search?q={token}&status=hallucinated")
@@ -1198,8 +1059,7 @@ def test_garbage_media_filter_returns_422(caller):
 
 
 def test_type_event_returns_both_event_groups_without_users(db, caller):
-    """``type=event`` is the unified reader chip: both event groups, no
-    analyst hits even when the query matches a username."""
+    """Both event groups and no analysts, even when the query matches a username."""
     token = _unique_token()
     geo = _seed_geo(db, caller, f"Event-type {token}")
     try:
@@ -1215,15 +1075,9 @@ def test_type_event_returns_both_event_groups_without_users(db, caller):
         db.commit()
 
 
-# ── Author typeahead ──────────────────────────────────────────────────────
-
-
 def test_author_suggestions_substring_prefix_first(db, caller, other_author):
-    """The picker matches a substring but surfaces prefix matches first; the
-    filter itself stays exact, so this is how a fragment becomes a handle.
-    Only analysts owning >=1 live event are suggested: that is all the filter
-    can match, and it keeps the anonymous endpoint from doubling as an
-    account-enumeration oracle."""
+    """Substring match, prefix matches first. Only analysts owning a live event are suggested,
+    which keeps the anonymous endpoint from being an account-enumeration oracle."""
     geo = _seed_geo(db, caller, f"Suggestable {_unique_token()}")
     try:
         fragment = caller.username[:6]  # "caller" prefix shared by the fixture pool
@@ -1232,12 +1086,10 @@ def test_author_suggestions_substring_prefix_first(db, caller, other_author):
         authors = response.json()["authors"]
         assert caller.username in authors
         assert other_author.username not in authors
-        # A mid-string fragment still matches (substring, not prefix-only).
         mid = caller.username[2:8]
         response = client.get(f"/api/v1/search/authors?q={mid}")
         assert caller.username in response.json()["authors"]
-        # An account with no live event is never suggested, even on an exact
-        # username probe (the enumeration guard).
+        # The enumeration guard holds even on an exact username probe.
         response = client.get(f"/api/v1/search/authors?q={other_author.username}")
         assert response.json()["authors"] == []
     finally:
@@ -1283,9 +1135,7 @@ def test_author_filter_is_exact_on_search(db, caller):
 
 
 def test_browse_mode_strips_planted_sentinel_bytes_from_title(db, caller):
-    """Browse mode (no FTS, plain title as its own highlight) still strips
-    planted STX/ETX bytes, same guarantee as the ts_headline branch: a
-    crafted title must not render fake <mark>s on the anonymous surface."""
+    """Browse mode (plain title as highlight) strips planted STX/ETX like the ts_headline branch."""
     token = _unique_token()
     geo = _seed_geo(db, caller, f"Planted {HIGHLIGHT_START}fake{HIGHLIGHT_STOP} {token}")
     try:
@@ -1300,21 +1150,15 @@ def test_browse_mode_strips_planted_sentinel_bytes_from_title(db, caller):
 
 
 def test_fts_query_uses_the_gin_index(db):
-    """The ORM-built tsvector expression must stay expression-tree-equal to
-    the migration's GIN index expression, or the whole anonymous search
-    surface silently degrades to sequential scans. Pin it with EXPLAIN."""
+    """The ORM tsvector must match the migration's GIN index expression, or search seq-scans."""
     from sqlalchemy import func as safunc
     from sqlalchemy import text as satext
 
     from app.services import search as search_service
 
     tsquery = safunc.plainto_tsquery(search_service._TS_CONFIG, "depot")
-    # ONLY the FTS predicate, nothing else: with other filter legs in the
-    # WHERE, a near-empty table (CI) lets the planner satisfy the query via
-    # some other index at trivial cost. Alone, no btree can serve a
-    # ``@@`` match, so with seq scans discouraged the plan uses the GIN iff
-    # the expression still matches the index tree; a drift shows as a forced
-    # Seq Scan. Matchability, not costing. Session-scoped toggle, reset below.
+    # Only the FTS predicate: other WHERE legs let the planner pick another index on a
+    # near-empty CI table. With seq scans discouraged, the GIN is used iff the expression matches.
     stmt = db.query(Event.id).filter(search_service._geo_tsvector().op("@@")(tsquery))
     compiled = stmt.statement.compile(db.get_bind(), compile_kwargs={"literal_binds": True})
     db.execute(satext("SET enable_seqscan = off"))

@@ -42,8 +42,7 @@ describe("the review entry", () => {
   it("opens the first detection of the queue on its own URL", async () => {
     queue([detectionFixture("d7"), detectionFixture("d8")]);
     render(<DetectionReviewPage />);
-    // The pass lives on the edit route from here: one address per detection, this
-    // page replaced in history so Back lands on the queue.
+    // The pass lives on the edit route; this page is replaced in history so Back lands on the queue.
     await waitFor(() =>
       expect(replace).toHaveBeenCalledWith("/events/d7/edit?queue=1")
     );
@@ -64,10 +63,7 @@ describe("the review entry's trace", () => {
     render(<DetectionReviewPage />);
     await waitFor(() => expect(replace).toHaveBeenCalled());
 
-    // The next navigation recorded is the one this page's redirect caused, and
-    // it must find nothing to record: a doorway left in the chain sends the
-    // back arrow through its own redirect and straight back to the detection the
-    // reader is trying to leave.
+    // This page's redirect must record nothing in the back-stack, or Back would redirect again.
     recordNavigation("/profile/ana/detections/review");
     expect(window.sessionStorage.getItem("vidit:nav-stack")).toBeNull();
 

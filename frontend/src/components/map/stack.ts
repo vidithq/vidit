@@ -1,40 +1,28 @@
 import type { Feature } from "geojson";
 
-// Co-located stack helpers for the map. Several events can carry the same
-// (or near-identical) coordinates: repeated strikes on one site, re-imported
-// posts. Their cluster never expands (identical points cannot uncluster at
-// any zoom) and, once past the clustering ceiling, their circles render on
-// top of each other. Map.tsx uses these helpers to recognize such a stack
-// and fan it out into the hover ring (see `SpiderRing` there).
+// Co-located stack helpers. Events sharing near-identical coordinates never uncluster, and past
+// the ceiling their circles overlap; Map.tsx recognizes the stack and fans it into the hover ring
+// (`SpiderRing`).
 
-/** Clustering stops past this zoom (`clusterMaxZoom` on the points source).
- *  Supercluster reports an expansion zoom beyond it exactly when a cluster
- *  splits only because clustering stops, not because its points separate. */
+/** Clustering stops past this zoom (`clusterMaxZoom` on the points source): supercluster reports
+ * an expansion zoom beyond it exactly when a cluster splits only because clustering stops. */
 export const CLUSTER_MAX_ZOOM = 14;
 
-/** Coordinate span (in degrees) under which points read as one stack: about
- *  1 m, identical coordinates plus GPS-precision noise. Points farther apart
- *  separate visually once zoomed past CLUSTER_MAX_ZOOM, so zooming stays the
- *  interaction for them. Mirrors the `groupStacks` grouping grid. */
+/** Coordinate span (degrees) under which points read as one stack: about 1 m. Farther points
+ * separate once zoomed past CLUSTER_MAX_ZOOM. Mirrors the `groupStacks` grouping grid. */
 export const STACK_EPSILON = 1e-5;
 
-/** The most dots a fan-out ring renders. A pathological stack (hundreds of
- *  events on one coordinate) would otherwise grow the ring into an overlay
- *  swallowing wheel and pointer over a large map area; past the cap the ring
- *  shows the first `SPIDER_MAX_DOTS - 1` events plus a "+N" overflow slot. */
+/** Most dots a fan-out ring renders, so a huge stack can't grow an overlay swallowing pointer
+ * events; the rest become a "+N" slot. */
 export const SPIDER_MAX_DOTS = 24;
 
-/** Grid cell key for grouping co-located points: integer indices on the
- *  STACK_EPSILON grid. Integer indices (not `toFixed`) so the origin never
- *  splits a stack: -0 stringifies as "0", where "-0.00000" !== "0.00000". */
+/** Grid cell key: integer indices on the STACK_EPSILON grid (not `toFixed`, so -0 never splits a stack). */
 export function stackCellKey(lat: number, lng: number): string {
   return `${Math.round(lat / STACK_EPSILON)},${Math.round(lng / STACK_EPSILON)}`;
 }
 
-/** Group items into co-located stacks: bucket onto the STACK_EPSILON grid,
- *  then union neighbor cells whose members sit within STACK_EPSILON of each
- *  other, so a stack straddling a grid line still reads as one (two points
- *  within the epsilon can never land more than one cell apart). */
+/** Group items into co-located stacks: bucket onto the grid, then union neighbor cells whose
+ * members sit within STACK_EPSILON, so a stack straddling a grid line stays one. */
 export function groupStacks<T>(
   items: readonly T[],
   coord: (item: T) => { lat: number; lng: number }
@@ -53,8 +41,7 @@ export function groupStacks<T>(
     else cells.set(key, { latCell, lngCell, items: [item] });
   }
 
-  // Union-find over cells, merging only neighbor cells that actually hold a
-  // pair within the epsilon (adjacency alone is not co-location).
+  // Union-find over cells, merging only neighbors that hold a pair within the epsilon.
   const parent = new Map<string, string>();
   for (const key of cells.keys()) parent.set(key, key);
   const find = (key: string): string => {
@@ -74,8 +61,7 @@ export function groupStacks<T>(
         );
       });
     });
-  // Forward half of the 8-neighborhood; the other half is the same pair
-  // visited from the neighbor's side.
+  // Forward half of the 8-neighborhood; the other half is the same pair from the neighbor's side.
   const forward = [
     [0, 1],
     [1, -1],
@@ -103,17 +89,14 @@ export function groupStacks<T>(
   return [...groups.values()];
 }
 
-/** Ring radius (px) for `n` fanned-out circles: small and subtle, growing
- *  only as far as needed so the dots never overlap on the circumference,
- *  and capped at the SPIDER_MAX_DOTS slot count (larger stacks overflow
- *  into the "+N" slot instead of growing the ring). */
+/** Ring radius (px) for `n` dots: grows only as needed to avoid overlap, capped at the
+ * SPIDER_MAX_DOTS slot count. */
 export function ringRadius(n: number): number {
   const slots = Math.min(n, SPIDER_MAX_DOTS);
   return Math.max(18, Math.ceil((slots * 16) / (2 * Math.PI)));
 }
 
-/** Evenly spaced px offsets around the shared center for `n` fanned-out
- *  circles, first at the top, clockwise. */
+/** Evenly spaced px offsets around the center, first at the top, clockwise. */
 export function ringOffsets(n: number): { dx: number; dy: number }[] {
   const r = ringRadius(n);
   return Array.from({ length: n }, (_, i) => {
@@ -122,18 +105,12 @@ export function ringOffsets(n: number): { dx: number; dy: number }[] {
   });
 }
 
-/** Hit slop (px) around a tap on the map canvas. A finger lands wider and
- *  less precisely than a cursor, and the pins it aims at are 6 to 12px
- *  circles: a tap that hits bare canvas is re-tested over a box this wide on
- *  each side before it counts as a miss. Applied on coarse pointers only, so
- *  a mouse keeps exact hit testing. */
+/** Hit slop (px) around a tap on the canvas: pins are 6 to 12px circles, so a tap on bare canvas
+ * is re-tested over a box this wide. Coarse pointers only. */
 export const TAP_SLOP_PX = 12;
 
-/** The feature a slop-padded tap targets: the one whose projected center sits
- *  closest to the tap, so a finger between two pins takes the nearer one.
- *  Non-Point features and ties go to render order (`queryRenderedFeatures`
- *  returns topmost first). Pure: the caller passes the projection, which is
- *  the map's own. */
+/** The feature a slop-padded tap targets: nearest projected center; non-Point features and ties go
+ * to render order (`queryRenderedFeatures` returns topmost first). Pure: the caller passes the projection. */
 export function nearestFeature(
   features: readonly Feature[],
   point: { x: number; y: number },
@@ -141,12 +118,10 @@ export function nearestFeature(
 ): Feature | null {
   const points = features.filter((f) => f.geometry?.type === "Point");
   if (points.length === 0) return null;
-  // The common answer on a sparse map: one candidate in the box, so it wins
-  // without projecting anything.
+  // One candidate in the box wins without projecting.
   if (points.length === 1) return points[0];
   let best: Feature | null = null;
-  // Squared distances order exactly as distances do, so the square root that
-  // `Math.hypot` takes per candidate buys nothing here.
+  // Squared distances order like distances; skip the square root.
   let bestSquared = Infinity;
   for (const feature of points) {
     const [lng, lat] = (feature.geometry as GeoJSON.Point).coordinates;
@@ -160,8 +135,7 @@ export function nearestFeature(
   return best;
 }
 
-/** True when the group's Point features (2 or more) all sit within
- *  STACK_EPSILON of the first: no zoom level can separate them. */
+/** True when the group's Point features (2 or more) all sit within STACK_EPSILON of the first. */
 export function isCoincidentStack(features: ReadonlyArray<Feature>): boolean {
   const coords = features
     .filter((f) => f.geometry?.type === "Point")

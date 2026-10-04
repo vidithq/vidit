@@ -1,22 +1,19 @@
 """Tweets-only intake guard for an uploaded X "Download your data" archive.
 
-The upload is a whole ``.zip``; we extract ONLY the copy-allowlisted entries
-(``tweets.js`` + ``tweets_media/``) into a clean directory and drop everything
-else (DMs, email, phone, account data, ``deleted-*``). A copy-allowlist fails
-safe where a delete-denylist would leak whatever new file a future export adds.
+Only the copy-allowlisted entries (``tweets.js`` + ``tweets_media/``) are
+extracted; everything else (DMs, email, phone, account data) is dropped. A
+copy-allowlist fails safe where a denylist would leak a future export's new file.
 
 The zip is attacker-controlled, so extraction is hardened:
 
-* zip-slip: only the basenames of allowlisted members are used, so no member can
-  write outside ``dest_dir``.
-* zip-bomb: a per-file and a running total uncompressed-size cap abort the
-  extraction, enforced against the bytes actually read (a lying ``file_size``
-  can't get past it).
+* zip-slip: only basenames of allowlisted members are used.
+* zip-bomb: per-file and running-total size caps, enforced on the bytes
+  actually read (a lying ``file_size`` cannot pass).
 
-The real export nests its files under ``data/`` (and may sit inside a top-level
-folder); ``tweets.js`` is located wherever it is and its media rebased beside it,
-so the result is the flat ``archive_dir`` that ``archive.read_tweets`` expects.
-``note-tweet.js`` (long-form bodies) is a deferred follow-up, not yet read.
+``tweets.js`` is located under any prefix (``data/``, a top folder) and its media
+rebased beside it, giving the flat ``archive_dir`` ``archive.read_tweets`` expects.
+Mirrored in the browser by ``frontend/src/lib/archive.ts`` (keep-allowlist,
+root discovery, ``MAX_UPLOAD_BYTES``); change both.
 """
 
 from __future__ import annotations
@@ -26,7 +23,7 @@ from pathlib import Path, PurePosixPath
 
 
 class ArchiveIntakeError(Exception):
-    """Base: the uploaded archive can't be safely turned into a backfill dir."""
+    """The uploaded archive cannot be safely turned into a backfill dir."""
 
     code = "archive_invalid"
 
@@ -43,43 +40,33 @@ class ArchiveTooLargeError(ArchiveIntakeError):
     code = "archive_too_large"
 
 
-# The allowlisted contents: the post history and its inline images.
 _TWEETS_FILE = "tweets.js"
 _MEDIA_DIR = "tweets_media"
 
-# Sanity guard on the staged (compressed) zip, not a product limit: the
-# presigned POST policy enforces it at upload, and the enqueue + worker
-# re-check it before reading the staged object. The product limits are the
-# per-media caps at assemble time (``settings.max_image_size`` /
-# ``settings.max_video_size``). Sits under S3's 5 GB single-part POST
-# ceiling, so the policy stays expressible in one form post. The browser
-# strip mirrors the value (``frontend/src/lib/archive.ts``) to fail an
-# over-cap archive before the upload leg.
+# Sanity guard on the compressed zip, not a product limit (those are the
+# per-media caps at assemble time). Enforced by the presigned POST policy and
+# re-checked at enqueue and in the worker. Under S3's 5 GB single-part POST
+# ceiling. Mirrored by ``frontend/src/lib/archive.ts``.
 MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024
 
-# Uncompressed-size caps: anti-zip-bomb only, sized far above any legitimate
-# export so they never bind a real archive. The total bounds the disk one
-# extraction can touch; the per-file bound stops one declared-huge member.
+# Anti-zip-bomb caps, far above any real export: total bounds disk use,
+# per-file stops one huge member.
 MAX_TOTAL_UNCOMPRESSED_BYTES = 8 * 1024 * 1024 * 1024
 MAX_FILE_UNCOMPRESSED_BYTES = 200 * 1024 * 1024
 
-# Anti-inode-exhaustion cap: a real X export has at most a few thousand media
-# files, so this only bounds an attacker archive packing millions of distinct,
-# empty ``tweets_media/*`` entries, each of which passes every byte cap above
-# but still costs one inode when written to disk.
+# Anti-inode-exhaustion: real exports have a few thousand media files; an
+# attacker could pack millions of empty entries that pass every byte cap.
 MAX_ENTRY_COUNT = 100_000
 
 _CHUNK = 1024 * 1024
 
 
 def extract_allowlisted(zip_path: Path, dest_dir: Path) -> None:
-    """Extract the allowlisted archive entries into ``dest_dir``.
+    """Extract the allowlisted entries into ``dest_dir`` as a flat ``tweets.js`` +
+    ``tweets_media/`` for :func:`app.services.tweet_ingest.archive.read_tweets`.
 
-    Populates ``dest_dir`` with a flat ``tweets.js`` + ``tweets_media/`` that
-    :func:`app.services.tweet_ingest.archive.read_tweets` reads, regardless of the
-    ``data/`` (or top-folder) prefix the export uses. Everything outside the
-    allowlist is ignored. Raises a typed :class:`ArchiveIntakeError` on a
-    malformed zip, a missing ``tweets.js``, or a size-cap breach.
+    Raises :class:`ArchiveIntakeError` on a malformed zip, a missing
+    ``tweets.js``, or a size-cap breach.
     """
     try:
         zf = zipfile.ZipFile(zip_path)
@@ -94,15 +81,13 @@ def extract_allowlisted(zip_path: Path, dest_dir: Path) -> None:
         if tweets_member is None:
             raise NoTweetsFileError("Archive has no tweets.js")
 
-        # Prefix the export nests under (``data/``, ``""``, or a top folder).
         root = tweets_member[: -len(_TWEETS_FILE)]
         media_prefix = f"{root}{_MEDIA_DIR}/"
 
         media_dir = dest_dir / _MEDIA_DIR
         media_dir.mkdir(parents=True, exist_ok=True)
 
-        # ``tweets.js`` to the dest root, each media file to ``tweets_media/`` by
-        # basename only (so a crafted path can't escape dest_dir).
+        # Basename only, so a crafted path cannot escape dest_dir.
         plan: list[tuple[str, Path, bool]] = [(tweets_member, dest_dir / _TWEETS_FILE, False)]
         for name in names:
             if name.startswith(media_prefix):
@@ -110,12 +95,10 @@ def extract_allowlisted(zip_path: Path, dest_dir: Path) -> None:
                 if base:
                     plan.append((name, media_dir / base, True))
 
-        # A media member over the per-file cap is SKIPPED, not fatal: real
-        # exports carry the occasional long video (a 229 MB mp4 killed a
-        # 3790-post import), and downstream media intake enforces its own
-        # per-type caps anyway. The per-file cap stays fatal for tweets.js,
-        # and the total budget stays fatal for everyone (zip-bomb guard);
-        # skipped reads still count toward it.
+        # An oversized media member is skipped, not fatal: real exports carry
+        # long videos (a 229 MB mp4 once killed a 3790-post import) and media
+        # intake enforces its own caps. The per-file cap stays fatal for
+        # tweets.js and the total budget for all; skipped reads count toward it.
         total = 0
         for name, target, skippable in plan:
             total += _extract_member(
@@ -124,7 +107,7 @@ def extract_allowlisted(zip_path: Path, dest_dir: Path) -> None:
 
 
 def _find_tweets_member(names: list[str]) -> str | None:
-    """The member that is ``tweets.js`` under any prefix; the shortest path wins."""
+    """The ``tweets.js`` member under any prefix; the shortest path wins."""
     candidates = [n for n in names if n == _TWEETS_FILE or n.endswith(f"/{_TWEETS_FILE}")]
     return min(candidates, key=len) if candidates else None
 
@@ -139,11 +122,10 @@ def _extract_member(
 ) -> int:
     """Copy one member to ``target`` under the size caps; return bytes read.
 
-    Caps are checked against the bytes actually read, so a member whose declared
-    ``file_size`` understates its true size still trips the limit mid-copy.
-    With ``skip_oversized``, a member over the per-file cap is dropped (any
-    partial ``target`` removed) instead of raising; the total budget still
-    raises either way.
+    Caps apply to the bytes actually read, so an understated ``file_size`` still
+    trips mid-copy. With ``skip_oversized``, a member over the per-file cap is
+    dropped (partial ``target`` removed) instead of raising; the total budget
+    always raises.
     """
     if zf.getinfo(name).file_size > MAX_FILE_UNCOMPRESSED_BYTES:
         if skip_oversized:

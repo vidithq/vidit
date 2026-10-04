@@ -1,20 +1,16 @@
 """Paid X API v2 client: the bot's mentions read and reply write.
 
-The only consumer is the bot pipeline (``services/bot``): everything else on
-the platform reads X through the free syndication path
-(``tweet_ingest.syndication``). Kept deliberately minimal (two calls, no
-SDK) because every call is billed per resource on X's pay-per-use plan:
+Only the bot pipeline (``services/bot``) uses it; everything else reads X
+through the free ``tweet_ingest.syndication`` path. Two calls, no SDK, because
+each is billed per resource:
 
-* ``GET /2/users/:id/mentions`` — $ per post read. Incremental via
-  ``since_id`` so a run only pays for mentions it has never seen.
-* ``POST /2/tweets`` — $ per reply, and ~13x the price when the text carries
-  a URL (X bills link posts higher). The reply composer must therefore never
-  include a URL or auto-linkable domain; the clickable link lives in the bot
-  bio.
+* ``GET /2/users/:id/mentions``: billed per post read. ``since_id`` keeps runs
+  incremental.
+* ``POST /2/tweets``: billed per reply, ~13x more when the text carries a URL.
+  The reply composer must never include a URL or auto-linkable domain.
 
-Reading mentions works app-only (bearer token). Posting requires user
-context, wired as OAuth 1.0a signing (consumer key/secret + the bot
-account's access token/secret) — static credentials, no refresh flow.
+Reads use the app-only bearer token. Posting uses OAuth 1.0a user context
+(static credentials, no refresh flow).
 """
 
 from __future__ import annotations
@@ -35,38 +31,29 @@ logger = logging.getLogger(__name__)
 _API_BASE = "https://api.x.com/2"
 _HTTP_TIMEOUT_S = 15.0
 _USER_AGENT = "vidit-bot/1.0"
-# One mentions pull is bounded: 100 mentions per page, pages capped so a
-# runaway backlog (or an API pagination bug) can't loop a paid call forever.
-# The timeline pages newest-first, so a backlog past the cap drops its OLDEST
-# overflow — and once this pass records the newest mentions, the caller's
-# ``since_id`` advances past the dropped ones for good. Needs 1000+ new
-# mentions in one pass; logged below when it happens.
+# The page cap stops a runaway backlog from looping a paid call. The timeline
+# pages newest-first, so past the cap the OLDEST mentions are dropped for good
+# once the caller's ``since_id`` advances (needs 1000+ new mentions; logged).
 _MENTIONS_PAGE_SIZE = 100
 _MENTIONS_MAX_PAGES = 10
 
 
 class XApiError(RuntimeError):
-    """The paid X API call failed — transport, auth, or unexpected schema."""
+    """The paid X API call failed: transport, auth, or unexpected schema."""
 
 
 @dataclass(frozen=True)
 class Mention:
-    """One tweet mentioning the bot: the shared shape both the mentions
-    timeline (poll) and the Account Activity webhook payload reduce to."""
+    """One tweet mentioning the bot, as read from the timeline or the webhook."""
 
     tweet_id: str
     author_id: str
     author_handle: str  # normalized: lowercase, no leading @
     text: str
-    # Who the tagged tweet replies to, when it is a reply. The failure-reply
-    # loop guard reads it: a tag on the bot's own reply must not earn another
-    # reply.
+    # Loop guard: a tag on the bot's own reply must not earn another reply.
     in_reply_to_user_id: str | None = None
-    # The post the tagged tweet replies to, when it is a reply. The tag rule
-    # reads it (``bot._tag_is_inherited``): a reply carries X's own run of
-    # inherited mentions, so the parent is what says whether the author typed
-    # the tag or X did. ``None`` means the tweet is not a reply, and every
-    # mention in it is typed.
+    # Read by ``bot._tag_is_inherited``: X inserts inherited mentions into
+    # replies. ``None`` means not a reply, so every mention is typed.
     in_reply_to_status_id: str | None = None
 
 
@@ -82,11 +69,8 @@ def _json_request(
 ) -> dict[str, object]:
     """Run one X API call and return its JSON object body.
 
-    The shared shell of every call this module makes: reuse the caller's
-    ``httpx.Client`` when there is one (the tests inject a mock transport
-    that way) or open a short-lived one, then fold every failure mode
-    (transport, unexpected status, unparseable or non-object body) into
-    :class:`XApiError` so no httpx type leaks past this module.
+    Reuses the caller's ``httpx.Client`` (tests inject a mock transport) and
+    folds every failure into :class:`XApiError` so no httpx type leaks.
     """
     try:
         if client is None:
@@ -131,13 +115,10 @@ def _get(
 
 
 def _replied_to_id(tweet: dict[str, object]) -> str | None:
-    """The id of the post ``tweet`` replies to, or ``None`` when it replies to
-    none.
+    """The id of the post ``tweet`` replies to, or ``None``.
 
-    The v2 timeline carries the edge in ``referenced_tweets``, one entry per
-    relation, and only the ``replied_to`` entry is the parent (``quoted`` and
-    ``retweeted`` sit in the same list). The field costs nothing extra: it rides
-    the ``tweet.fields`` of the one billed mentions read.
+    Only the ``replied_to`` entry of ``referenced_tweets`` is the parent
+    (``quoted`` and ``retweeted`` share the list).
     """
     referenced = tweet.get("referenced_tweets")
     if not isinstance(referenced, list):
@@ -160,12 +141,9 @@ def fetch_mentions(
 ) -> list[Mention]:
     """Every mention of the bot account newer than ``since_id``, oldest first.
 
-    Paginates until the API stops returning a ``next_token`` (capped at
-    ``_MENTIONS_MAX_PAGES``). ``expansions=author_id`` resolves each mention's
-    author handle in the same call, so no extra (billed) user lookup is
-    needed. Oldest-first ordering lets the caller advance its cursor safely: a
-    failure mid-batch never leaves a newer mention processed before an older
-    one was recorded.
+    Paginates up to ``_MENTIONS_MAX_PAGES``. ``expansions=author_id`` avoids a
+    billed user lookup. Oldest-first lets the caller advance its cursor safely
+    after a mid-batch failure.
     """
     url = f"{_API_BASE}/users/{user_id}/mentions"
     mentions: list[Mention] = []
@@ -201,10 +179,8 @@ def fetch_mentions(
                 tweet_id = tweet.get("id")
                 author_id = tweet.get("author_id")
                 text = tweet.get("text")
-                # A dropped mention leaves no ledger trace and the caller's
-                # cursor will pass it, so schema surprises are logged loudly
-                # rather than lost silently. Non-numeric ids would also break
-                # the sort below and the caller's cursor cast.
+                # A dropped mention leaves no ledger trace, so log schema
+                # surprises. Non-numeric ids would break the sort and cursor cast.
                 if (
                     not isinstance(tweet_id, str)
                     or not tweet_id.isdigit()
@@ -247,15 +223,14 @@ def fetch_mentions(
     return mentions
 
 
-# ── OAuth 1.0a (HMAC-SHA1) — the reply write's user context ───────────────
+# OAuth 1.0a (HMAC-SHA1): the reply write's user context.
 
 
 @dataclass(frozen=True)
 class OAuth1Credentials:
     """The bot account's OAuth 1.0a user context: four static credentials.
 
-    ``repr`` prints none of them, so a log line that formats the object
-    exposes no credential.
+    ``repr`` prints none of them, so logging the object leaks nothing.
     """
 
     consumer_key: str = field(repr=False)
@@ -279,9 +254,8 @@ def oauth1_signature(
 ) -> str:
     """RFC 5849 HMAC-SHA1 signature over ``method``, ``url`` and ``params``.
 
-    ``params`` is every oauth_* protocol parameter plus any query / form
-    parameters (a JSON body is excluded from the base string by the spec,
-    which is why the v2 reply write signs only its oauth_* params).
+    ``params`` is every oauth_* parameter plus query / form parameters. A JSON
+    body is excluded by the spec, so the v2 reply write signs only oauth_*.
     """
     encoded = sorted((_percent_encode(k), _percent_encode(v)) for k, v in params.items())
     param_string = "&".join(f"{k}={v}" for k, v in encoded)
@@ -322,9 +296,7 @@ def _post_user_context(
     credentials: OAuth1Credentials,
     client: httpx.Client | None,
 ) -> dict[str, object]:
-    """POST ``payload`` as JSON under OAuth 1.0a user context; return the
-    parsed body. A JSON body stays out of the signature base string (RFC
-    5849), so only the oauth_* params are signed."""
+    """POST ``payload`` as JSON under OAuth 1.0a user context (RFC 5849: body unsigned)."""
     return _json_request(
         "POST",
         url,
@@ -345,11 +317,9 @@ def post_reply(
     credentials: OAuth1Credentials,
     client: httpx.Client | None = None,
 ) -> str:
-    """Post ``text`` as a reply to ``in_reply_to_tweet_id``; return the new
-    tweet's id.
+    """Post ``text`` as a reply to ``in_reply_to_tweet_id``; return the new tweet's id.
 
-    The caller owns the linkless-text invariant (see module docstring); this
-    function posts what it is given.
+    The caller owns the linkless-text invariant (see module docstring).
     """
     body = _post_user_context(
         f"{_API_BASE}/tweets",

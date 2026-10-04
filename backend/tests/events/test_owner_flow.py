@@ -1,14 +1,4 @@
-"""Owner mutation lifecycle for events.
-
-The machine-`detected` owner flow: `POST .../geolocate` (writes the owner's
-edits and flips the row to `geolocated`) and `POST .../close` (the owner
-rejects the detection; the row stays visible with
-``before_closed_status='detected'`` and is re-importable). Close is owner-only
-and runs in every live state; geolocate accepts `detected` (owner-only) or
-`requested` (anyone). The owner holds no destructive verb at all, covered here
-too. Shared fixtures live in `conftest.py`; `client` / `_make_geo` / the proof
-helpers in `_helpers.py`.
-"""
+"""Owner flow: `POST .../geolocate` and `POST .../close`, plus the absence of an owner delete."""
 
 from __future__ import annotations
 
@@ -25,13 +15,9 @@ from tests.events._helpers import (
     proof_form_field,
 )
 
-# ── Destroying a row is admin-only ────────────────────────────────────────
-
 
 def test_owner_has_no_delete_verb(db, author):
-    """The owner's way out of their own row is ``close``, which keeps the
-    record readable. Destruction is an admin act, so the path serves no
-    ``DELETE`` at all and the row survives the attempt."""
+    """The path serves no ``DELETE``: the owner closes a row, an admin destroys it."""
     geo = _make_geo(db, author=author)
     geo_id = geo.id
     response = client.delete(f"/api/v1/events/{geo_id}", headers=login_as(client, author))
@@ -41,8 +27,6 @@ def test_owner_has_no_delete_verb(db, author):
 
 
 def test_admin_hard_delete_still_removes_the_row(db, author, admin_user):
-    """The one destructive path that remains (mode and audit trail are covered
-    in ``test_admin.py``)."""
     geo = _make_geo(db, author=author)
     geo_id = geo.id
     response = client.delete(
@@ -52,15 +36,6 @@ def test_admin_hard_delete_still_removes_the_row(db, author, admin_user):
     assert response.status_code == 200
     db.expire_all()
     assert db.query(Event).filter(Event.id == geo_id).first() is None
-
-
-# ── Owner flow: POST .../geolocate / POST .../close ────────────────────────
-# Close is owner-only and runs in every live state; only an already ``closed``
-# row is past it. Geolocate writes the owner's edits AND flips a ``detected``
-# (owner-only) or ``requested`` (anyone) row to ``geolocated`` in one step (the
-# create-time evidence floor is enforced there). The detected → geolocated
-# freeze and the close-then-re-import recreate seam (test_detection.py) are what
-# these lock in.
 
 
 def _detected(db, author, **kwargs):
@@ -75,16 +50,8 @@ def _detected(db, author, **kwargs):
     )
 
 
-# ── POST /events/{id}/geolocate: write the form + freeze ──────────────────
-
-
 def _geolocate_form(**overrides):
-    """A complete geolocate form (it posts the whole state, like create).
-
-    Override per test; ``tag_ids`` / ``remove_media_ids`` are JSON. Carries no
-    tags and no proof image by default, so a bare form fails the floor unless
-    ``_floor_form`` (+ ``_floor_files``) is used.
-    """
+    """A bare form: no tags and no proof image, so it fails the floor without ``_floor_form``."""
     form = {
         "title": "Edited title",
         "lat": "50.0",
@@ -98,8 +65,7 @@ def _geolocate_form(**overrides):
 
 
 def _floor_form(conflict, capture_source_tag, **overrides):
-    """A geolocate form that meets the conflict + tag + proof-image floor. Pair with a
-    ``with_media=True`` row (and ``files=_floor_files()``) to clear it all."""
+    """A form that meets the floor; pair with a ``with_media=True`` row and ``_floor_files()``."""
     return _geolocate_form(
         tag_ids=json.dumps([str(capture_source_tag.id)]),
         conflict_ids=json.dumps([str(conflict.id)]),
@@ -148,7 +114,6 @@ def test_geolocate_returns_403_when_not_owner(db, author, second_user):
 
 
 def test_geolocate_rejects_geolocated_row(db, author):
-    """A ``geolocated`` row is frozen, geolocate 409s with the invalid_state code."""
     geo = _make_geo(db, author=author)  # default status = geolocated
     response = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
@@ -160,7 +125,6 @@ def test_geolocate_rejects_geolocated_row(db, author):
 
 
 def test_geolocate_writes_fields_and_freezes(db, author, conflict, capture_source_tag):
-    """Geolocate writes the whole form and flips the row to ``geolocated``."""
     geo = _detected(db, author, with_media=True)
     response = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
@@ -187,8 +151,7 @@ def test_geolocate_writes_fields_and_freezes(db, author, conflict, capture_sourc
     assert body["source_posted_at"].startswith("2026-06-30T07:45")
     assert {t["id"] for t in body["tags"]} == {str(capture_source_tag.id)}
     assert {c["id"] for c in body["conflicts"]} == {str(conflict.id)}
-    # Geolocate freezes it: a detected row becomes geolocated, stamped, and
-    # the owner lands in the durable credit table.
+    # The owner lands in the durable credit table.
     assert body["status"] == "geolocated"
     assert [g["username"] for g in body["geolocators"]] == [author.username]
 
@@ -201,8 +164,7 @@ def test_geolocate_writes_fields_and_freezes(db, author, conflict, capture_sourc
 
 
 def test_geolocate_accepts_missing_event_date(db, author, conflict, capture_source_tag):
-    """``event_date`` omitted → the row geolocates with a null date (reads as
-    Unknown): the footage doesn't always establish when the event happened."""
+    """A null date reads as Unknown: footage does not always establish when it happened."""
     geo = _detected(db, author, with_media=True)
     form = _floor_form(conflict, capture_source_tag)
     del form["event_date"]
@@ -259,8 +221,7 @@ def test_geolocate_source_posted_at_round_trips(db, author, conflict, capture_so
 
 
 def test_geolocate_rejects_out_of_range_coordinate(db, author):
-    """Coordinate validation runs before the floor, so a bad coord 400s even on a
-    bare form."""
+    """Coordinate validation runs before the floor, so a bare form still 400s."""
     geo = _detected(db, author)
     response = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
@@ -272,8 +233,6 @@ def test_geolocate_rejects_out_of_range_coordinate(db, author):
 
 
 def test_geolocate_blocked_without_media(db, author, conflict, capture_source_tag):
-    """The evidence floor is enforced at the transition: no source media
-    (kept + new) 400s."""
     geo = _detected(db, author, with_media=False)
     response = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
@@ -286,8 +245,6 @@ def test_geolocate_blocked_without_media(db, author, conflict, capture_source_ta
 
 
 def test_geolocate_blocked_without_proof_image(db, author, conflict, capture_source_tag):
-    """A proof body with no inline image fails the floor: a vouched location
-    needs a visual argument."""
     geo = _detected(db, author, with_media=True)
     response = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
@@ -302,8 +259,7 @@ def test_geolocate_blocked_without_proof_image(db, author, conflict, capture_sou
 
 
 def test_geolocate_blocked_without_required_tags(db, author):
-    """A detected row is born tagless; the transition enforces the conflict +
-    capture_source floor the machine path skipped."""
+    """A detected row is born tagless; geolocate enforces the floor the machine path skipped."""
     geo = _detected(db, author, with_media=True)
     response = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
@@ -329,7 +285,6 @@ def test_geolocate_blocked_with_partial_tags(db, author, conflict):
 
 
 def test_geolocate_freezes_against_resubmit(db, author, conflict, capture_source_tag):
-    """After the transition the row is ``geolocated``; a follow-up geolocate 409s."""
     geo = _detected(db, author, with_media=True)
     ok = client.post(
         f"/api/v1/events/{geo.id}/geolocate",
@@ -363,9 +318,6 @@ def test_geolocate_invalidates_points_cache(db, author, conflict, capture_source
     assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").headers.get("x-cache") == "MISS"
 
 
-# ── POST /events/{id}/close (reject a detection) ───────────────────────────
-
-
 def _close(geo_id, user, reason="Not the claimed location"):
     return client.post(
         f"/api/v1/events/{geo_id}/close",
@@ -393,9 +345,7 @@ def test_close_returns_403_when_not_owner(db, author, second_user):
 
 
 def test_close_retracts_a_published_row(db, author):
-    """Closing a ``geolocated`` row is a public retraction: it stamps
-    ``before_closed_status='geolocated'`` and keeps the id, the coordinate and
-    the reason, so the page still reads as the record of a claim taken back."""
+    """The closed page keeps the id, coordinate and reason as the record of a retracted claim."""
     geo = _make_geo(db, author=author)
     geo_id = geo.id
     response = _close(geo_id, author, reason="Wrong village, corrected elsewhere")
@@ -414,8 +364,6 @@ def test_close_retracts_a_published_row(db, author):
 
 
 def test_retraction_leaves_the_read_views_and_the_map(db, author):
-    """A retracted claim stops being offered: it leaves the located catalog,
-    the requested queue and the map. Only its own URL still serves it."""
     geo = _make_geo(db, author=author)
     geo_id = geo.id
     assert str(geo_id) in {r["id"] for r in client.get("/api/v1/events").json()}
@@ -433,8 +381,7 @@ def test_retraction_leaves_the_read_views_and_the_map(db, author):
 
 
 def test_retraction_leaves_the_published_feed_and_count(db, author):
-    """``published_events`` is what the profile feed and its headline count
-    read, so a retraction drops out of both at once."""
+    """``published_events`` backs both the profile feed and its count."""
     geo = _make_geo(db, author=author)
 
     def feed():
@@ -452,7 +399,6 @@ def test_retraction_leaves_the_published_feed_and_count(db, author):
 
 
 def test_close_rejects_an_already_closed_row(db, author):
-    """``closed`` is terminal: there is no owner un-close and no second close."""
     geo = _make_geo(db, author=author)
     assert _close(geo.id, author).status_code == 200
     response = _close(geo.id, author)
@@ -461,8 +407,6 @@ def test_close_rejects_an_already_closed_row(db, author):
 
 
 def test_retracted_row_cannot_be_edited(db, author, conflict, capture_source_tag):
-    """A correction supersedes a live claim; a retracted row has none to
-    supersede, so the version path stays shut on it."""
     geo = _make_geo(db, author=author)
     assert _close(geo.id, author).status_code == 200
     response = client.post(
@@ -475,10 +419,7 @@ def test_retracted_row_cannot_be_edited(db, author, conflict, capture_source_tag
 
 
 def test_close_keeps_detected_row_visible(db, author):
-    """Closing a detection records the rejection instead of hiding the row:
-    the event stays publicly readable with ``before_closed_status='detected'``
-    and the reason attached (re-import recreates a fresh pair, covered in
-    test_detection.py)."""
+    """A rejected detection stays publicly readable instead of being hidden."""
     geo = _detected(db, author)
     geo_id = geo.id
     response = _close(geo_id, author, reason="Bot misread the coordinates")
@@ -492,8 +433,6 @@ def test_close_keeps_detected_row_visible(db, author):
     db.expire_all()
     row = db.query(Event).filter(Event.id == geo_id).one()
     assert row.deleted_at is None  # visible, not soft-deleted
-    # Still readable on the public detail surface, and routed to the located
-    # view's closed cohort (not the requested queue).
     detail = client.get(f"/api/v1/events/{geo_id}")
     assert detail.status_code == 200
     assert detail.json()["status"] == STATUS_CLOSED
@@ -504,8 +443,7 @@ def test_close_keeps_detected_row_visible(db, author):
 
 
 def test_closed_detection_leaves_the_map(db, author):
-    """A rejected detection comes off ``/points``, the map shows live
-    confidence, the list keeps the audit trail."""
+    """The map shows live confidence only; the list keeps the audit trail."""
     geo = _detected(db, author)
     points = {row[0] for row in client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").json()}
     assert str(geo.id) in points

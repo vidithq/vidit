@@ -1,9 +1,4 @@
-"""Tests for the X Account Activity webhook: CRC, signature, queue, drain.
-
-Same house style as ``test_bot``: every X surface is mocked (syndication via
-``MockTransport``, the write side captured), the DB and the queue + drain are
-real. The endpoint tests drive the FastAPI app through ``TestClient``.
-"""
+"""Tests for the X Account Activity webhook: CRC, signature, queue, drain."""
 
 from __future__ import annotations
 
@@ -39,7 +34,6 @@ BARE2_ID = "1940000000000000003"
 SOURCE_ID = "1940000000000000042"
 
 BODIES = {
-    # A strict-format mention: T: / C: / S: markers plus a proof line.
     COORD_ID: {
         "id_str": COORD_ID,
         "created_at": "2026-07-18T10:00:00.000Z",
@@ -216,8 +210,7 @@ def _cleanup():
 
 
 def test_crc_challenge_pinned_vector():
-    # Known vector: HMAC-SHA256("test-consumer-secret", "test-crc-token"),
-    # base64, sha256= prefix, pinned so the responder can't drift silently.
+    # Pinned vector: HMAC-SHA256("test-consumer-secret", "test-crc-token").
     resp = client.get(WEBHOOK_PATH, params={"crc_token": "test-crc-token"})
     assert resp.status_code == 200
     assert resp.json() == {"response_token": "sha256=1Fg22hsV/J0MPCeiX/iZqLqDkZ0S28yOOMIljrsAX9M="}
@@ -230,10 +223,8 @@ def test_crc_challenge_without_credentials_is_503(monkeypatch):
 
 
 def test_crc_challenge_rejects_json_shaped_token():
-    # The signing-oracle gate: the CRC answer is the same HMAC construction
-    # the POST verifier checks over the raw body, so the responder must never
-    # sign anything that could BE a webhook body. A JSON body can't fit the
-    # URL-safe charset.
+    # The CRC answer uses the same HMAC as the POST verifier, so it must
+    # never sign anything that could be a webhook body (JSON fails the charset).
     body = json.dumps({"for_user_id": BOT_USER_ID, "tweet_create_events": []})
     resp = client.get(WEBHOOK_PATH, params={"crc_token": body})
     assert resp.status_code == 400
@@ -267,10 +258,8 @@ def test_post_with_missing_signature_is_401(db):
 
 
 def test_post_with_non_ascii_signature_is_401(db):
-    # A non-ASCII header value must mismatch cleanly (bytes comparison), not
-    # 500 out of compare_digest. Sent as latin-1 bytes: the client refuses a
-    # non-ASCII str, but the wire allows the bytes and the server decodes
-    # them as latin-1 into a non-ASCII str.
+    # Must mismatch cleanly, not 500 out of compare_digest. Sent as latin-1
+    # bytes because the client refuses a non-ASCII str.
     body = json.dumps({"for_user_id": BOT_USER_ID}).encode()
     resp = client.post(
         WEBHOOK_PATH,
@@ -297,15 +286,10 @@ def test_post_with_oversized_body_is_413(db):
 
 
 def test_post_with_chunked_oversized_body_is_413(db):
-    """A ``Transfer-Encoding: chunked`` delivery (no ``Content-Length``) must
-    still 413 once it crosses ``MAX_BODY_BYTES``. Sent as a generator so
-    httpx/the ASGI transport streams it chunk by chunk with no announced
-    length, the exact shape a header-only check would miss.
+    """A chunked body with no ``Content-Length`` still 413s past ``MAX_BODY_BYTES``.
 
-    The body-size middleware pins the webhook's own ``MAX_BODY_BYTES`` cap on
-    this path, so the streaming 413 fires there (its ``Request body too large``
-    detail), before the route ever runs. The pre-signature memory bound is the
-    512 KiB webhook cap, not the ~120 MiB upload ceiling."""
+    The body-size middleware enforces the webhook's 512 KiB cap before the
+    route runs, not the ~120 MiB upload ceiling."""
     from app.routers import webhooks as webhooks_module
 
     total = webhooks_module.MAX_BODY_BYTES + 1
@@ -333,8 +317,7 @@ def test_post_with_chunked_oversized_body_is_413(db):
 
 
 def test_post_without_bot_user_id_is_503(db, monkeypatch):
-    # An empty x_bot_user_id would silently drop every delivery (no
-    # for_user_id ever matches); it must be loud like the missing secret.
+    # An empty id would silently drop every delivery; it must be loud.
     monkeypatch.setattr(settings, "x_bot_user_id", "")
     resp = _post_payload(
         {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(COORD_ID)]}
@@ -360,8 +343,7 @@ def test_extended_tweet_full_text_wins_over_truncated_text(db):
 
 
 def test_tag_only_in_extended_entities_is_kept(db):
-    # On a truncated tweet the tag can live past the truncation point: only
-    # extended_tweet.entities carries it. The top-level entities miss the bot.
+    # On a truncated tweet only extended_tweet.entities carries the bot tag.
     event = _tweet_create_event(
         COORD_ID,
         text="@viditbot archive 55.751200, 37.6…",
@@ -406,17 +388,14 @@ def test_bot_authored_event_is_skipped(db):
 
 
 def test_non_mention_event_is_skipped(db):
-    # The subscription also delivers the account's timeline activity; only
-    # events whose entities carry the bot's user id are mentions.
+    # Timeline activity is also delivered; only the bot's entities are mentions.
     event = _tweet_create_event(COORD_ID, mentions_bot=False)
     resp = _post_payload({"for_user_id": BOT_USER_ID, "tweet_create_events": [event]})
     assert resp.json() == {"queued": 0}
 
 
 def test_reply_carries_both_reply_edges(db):
-    # Who the reply answers, for the failure-reply loop guard, and which post it
-    # answers, for the tag rule: an inherited @ViditBot is settled by reading
-    # the parent, so the queued payload has to name it.
+    # The queued payload names the parent post and author (loop guard, tag rule).
     event = _tweet_create_event(
         BARE_ID,
         in_reply_to_user_id_str=BOT_USER_ID,
@@ -562,8 +541,7 @@ async def test_drain_exception_requeues_the_claimed_row(db, monkeypatch):
 
 
 async def test_gesture_budget_spans_drain_passes(db, linked_owner, monkeypatch):
-    # The caps are wall-clock (seeded from the ledger's trailing hour), not
-    # per drain pass: a second pass minutes later must not mint fresh budget.
+    # Caps are wall-clock (trailing hour of the ledger), not per drain pass.
     monkeypatch.setattr(settings, "bot_max_replies_per_hour", 1)
 
     _post_payload(

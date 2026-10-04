@@ -10,34 +10,23 @@ import { MediaLightbox } from "@/components/ui/MediaLightbox";
 import { FLOATING_CONTROL, HOVER_REVEAL } from "@/components/ui/styles";
 
 /**
- * One image inside a rendered proof body, enlargeable in the shared
- * `MediaLightbox`. A geolocation's proof is a source-media to satellite
- * cross-reference, so the images are the evidence: at body width they are
- * thumbnails, and the claim can only be checked at full size.
+ * One image inside a rendered proof body, enlargeable in the shared `MediaLightbox`. Proof images
+ * are the evidence: thumbnails at body width, checkable only at full size. The whole image is the
+ * zoom target; on hover it floats the gallery tiles' action cluster (download, expand), revealed
+ * by `HOVER_REVEAL` (always visible on touch).
  *
- * The whole image stays the zoom target; on hover it also floats the same
- * action cluster the gallery tiles carry (download, expand), so an analyst can
- * save a proof frame without leaving the page and can see there is something to
- * click. `HOVER_REVEAL` keeps the cluster out of the reading surface at rest,
- * and permanently visible on touch, where nothing can trigger a hover.
+ * Its own client component because the renderer (`lib/proof.tsx`) is server-safe markup: the open
+ * state here keeps a proof body a server render with one interactive leaf.
  *
- * Its own client component because the renderer (`lib/proof.tsx`) is plain
- * server-safe markup consumed from server surfaces. Keeping the open state
- * here means a proof body stays a server render with one interactive leaf, not
- * a whole page pushed to the client.
+ * Plain `<img>` on purpose: a proof image has unknown natural dimensions from an arbitrary
+ * allowlisted host, which `next/image` cannot size. Lazy and no-referrer hints cover the load
+ * discipline. `src` is validated by the caller. The `span` + `inline-block` wrappers keep the
+ * hover cluster's positioning context on the picture alone; the node is block level in the
+ * document (`renderBlock` in [`lib/proof.tsx`](../../lib/proof.tsx) is the only place it renders),
+ * so it never nests in a paragraph.
  *
- * Plain `<img>` on purpose, matching the rest of the renderer: a proof image
- * has unknown natural dimensions from an arbitrary allowlisted host, which
- * `next/image` cannot size. The lazy + no-referrer hints cover the load
- * discipline `next/image` would add. `src` is validated by the caller. The
- * wrappers are `span` + `inline-block` to keep the hover cluster's positioning
- * context the picture itself and nothing wider; the node is block level in the
- * document (`renderBlock` in [`lib/proof.tsx`](../../lib/proof.tsx) is the only
- * place it renders), so it never nests inside a paragraph.
- *
- * The viewer portals itself out to `document.body`
- * ([`MediaLightbox`](../ui/MediaLightbox.tsx)), so a proof body sitting inside
- * a transformed or scrolling ancestor still enlarges over the whole viewport.
+ * The viewer portals to `document.body` ([`MediaLightbox`](../ui/MediaLightbox.tsx)), so a
+ * transformed or scrolling ancestor can't clip it.
  */
 export function ProofImage({
   src,
@@ -48,9 +37,8 @@ export function ProofImage({
   src: string;
   alt: string;
   title?: string;
-  /** The event's `is_graphic` flag, threaded here by `renderProof`. A proof
-   *  body shows the same footage the source media does, so it takes the same
-   *  age confirmation. */
+  /** The event's `is_graphic` flag, threaded by `renderProof`: a proof body shows the same footage
+   * as the source media, so it takes the same age confirmation. */
   isGraphic?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -73,9 +61,8 @@ export function ProofImage({
           className="my-3 max-w-full h-auto rounded-sm border border-neutral-800"
         />
       </button>
-      {/* Clears the image's own `my-3`, so the cluster sits inside the frame
-          rather than over the gap above it. A proof image has no Media row, so
-          it downloads by URL under the URL's basename. */}
+      {/* Clears the image's own `my-3`, so the cluster sits inside the frame. A proof image has no Media
+          row, so it downloads by URL under the URL's basename. */}
       <span
         className={`absolute right-2 top-5 z-10 flex items-center gap-1 ${HOVER_REVEAL}`}
       >
@@ -96,14 +83,11 @@ export function ProofImage({
 
   return (
     <span className="group relative inline-block">
-      {/* The full interstitial rather than the compact one: a proof image runs
-          the width of the body, so the whole sentence fits. The gate's own
-          wrapper is `relative` too, so the hover cluster keeps positioning
-          against the picture either way. */}
+      {/* The full interstitial: a proof image runs the body's width, so the whole sentence fits. The
+          gate's wrapper is `relative` too, so the hover cluster still positions against the picture. */}
       {isGraphic ? <GraphicContentGate>{figure}</GraphicContentGate> : figure}
-      {/* Outside the gate: the viewer only opens from a click the gate blocks,
-          and the lightbox portals itself to `document.body`, so it never sits
-          under the blur filter. */}
+      {/* Outside the gate: the viewer opens only from a click the gate blocks, and it portals to
+          `document.body`, clear of the blur filter. */}
       {open && (
         <MediaLightbox
           source={{ src, kind: "image" }}

@@ -38,9 +38,8 @@ function submission(id: string): RecentSubmission {
 
 describe("RecentSubmissions", () => {
   it("gates the heading copy on the rows, not on the profile count", () => {
-    // The count and the feed arrive on separate requests, so a feed read that
-    // failed leaves rows empty under a non-zero count. Keying the copy off the
-    // count would promise "latest geolocations" above an empty list.
+    // Count and feed arrive on separate requests: a failed feed leaves rows empty under a non-zero
+    // count, and keying the copy off the count would promise "latest geolocations" above an empty list.
     render(
       <RecentSubmissions
         profile={profileFixture({ geolocations_count: 47 })}
@@ -53,8 +52,7 @@ describe("RecentSubmissions", () => {
     expect(screen.queryByText(/latest geolocations/)).not.toBeInTheDocument();
     // Nothing to expand into, so no "Show more" either.
     expect(screen.queryByRole("link", { name: "Show more" })).not.toBeInTheDocument();
-    // And the heading says it once: a visitor gets no second sentence under
-    // it repeating that the block is empty.
+    // The heading says it once; no second sentence repeats that the block is empty.
     expect(screen.queryByText("Nothing yet.")).not.toBeInTheDocument();
   });
 
@@ -70,8 +68,7 @@ describe("RecentSubmissions", () => {
   });
 
   it("expands into the same published set the block shows", () => {
-    // Search's located group otherwise widens to machine detections, so the
-    // status filter travels with the link.
+    // Search's located group otherwise widens to machine detections, so the status filter travels with the link.
     render(
       <RecentSubmissions
         profile={profileFixture({ geolocations_count: 47 })}

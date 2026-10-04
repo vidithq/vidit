@@ -1,8 +1,7 @@
 """The typed failures of the event lifecycle, each with a stable ``code``.
 
-A leaf module: every other module in the package raises from here, and this one
-imports nothing from its siblings. The router maps each ``code`` to an HTTP
-status in ``routers/events/_common.py`` (``_EVENT_ERROR_STATUS``).
+Leaf module: imports no sibling. The router maps each ``code`` to a status in
+``_EVENT_ERROR_STATUS`` (``routers/events/_common.py``).
 """
 
 from __future__ import annotations
@@ -11,35 +10,21 @@ from app.services.evidence_intake import EvidenceIntakeError
 
 
 class EventError(EvidenceIntakeError):
-    """Base for event-specific friendly errors.
-
-    Subclass of :class:`EvidenceIntakeError` so the router catches one base
-    for both shared file/media failures and the event-specific rules
-    below. Carries a ``code`` the router maps to an HTTP status without
-    string-matching exception text.
-    """
+    """Base for event errors; the router catches one base for these and intake failures."""
 
     code: str = "event_error"
 
 
 class InvalidCoordinatesError(EventError):
-    """Coordinates were supplied but fall outside the valid lat / lng ranges.
-
-    About malformed input, not absent input: a transition that needs
-    coordinates the row does not carry raises
-    :class:`CoordinatesRequiredError` instead. Maps to 400.
-    """
+    """Coordinates fall outside the valid ranges (absent ones raise
+    :class:`CoordinatesRequiredError`). Maps to 400."""
 
     code = "invalid_coordinates"
 
 
 class CoordinatesRequiredError(EventError):
-    """The transition requires coordinates and the row carries none.
-
-    A machine detection may be born without a point (the import found
-    no location in the thread), so the requirement bites at the promotion, the
-    same shape as :class:`SourceUrlRequiredError`. Maps to 400.
-    """
+    """The transition requires coordinates and the row has none (a detection may
+    be born without a point). Maps to 400."""
 
     code = "coordinates_required"
 
@@ -57,65 +42,41 @@ class ProofImageRequiredError(EventError):
 
 
 class SourceUrlRequiredError(EventError):
-    """The geolocate promotion requires a source URL.
-
-    A machine detection may be born without one (the imported tweet
-    declared no source), so the requirement bites at the transition: a
-    ``geolocated`` row always carries its footage source (the same invariant
-    ``ck_events_source_url_status`` pins at the DB). Maps to 400.
-    """
+    """The geolocate promotion requires a source URL, as ``ck_events_source_url_status``
+    pins in the DB (a detection may be born without one). Maps to 400."""
 
     code = "source_url_required"
 
 
 class TooManySourceLinksError(EventError):
-    """More secondary source links than :data:`MAX_SECONDARY_SOURCE_LINKS`.
-
-    Counted after normalization, so blanks and duplicates the client sent don't
-    push a legitimate submission over the cap. Maps to 400.
-    """
+    """More than :data:`MAX_SECONDARY_SOURCE_LINKS` links, counted after
+    normalization. Maps to 400."""
 
     code = "too_many_source_links"
 
 
 class EventNotFoundError(EventError):
-    """The targeted row is gone (hard-deleted, or soft-deleted by an admin).
+    """The targeted row is gone (hard- or soft-deleted).
 
-    Only the batch completion raises it: the single-row paths resolve the event
-    in the router, which owns their 404. In a batch it is one row's outcome, not
-    the call's, so it travels as a typed per-row code and never reaches the
-    envelope. The 404 it carries in ``_EVENT_ERROR_STATUS`` is defensive, there
-    so a future single-row caller of the same helper gets the right status
-    instead of a 500.
+    Only the batch completion raises it, as one row's per-row code. The 404 in
+    ``_EVENT_ERROR_STATUS`` is defensive, for a future single-row caller.
     """
 
     code = "event_not_found"
 
 
 class EventStateError(EventError):
-    """The event's lifecycle state forbids the requested transition.
-
-    Raised when a geolocate targets a row that isn't ``requested`` /
-    ``detected`` (a ``geolocated`` row is past that transition, ``closed`` is
-    terminal), when a close targets an already ``closed`` row, when a
-    :func:`save_version` targets a row that is not ``geolocated`` (there is no version to
-    supersede before publication, and a retracted row is not corrected), or when
-    an :func:`update_request` targets a row that is no longer ``requested`` (a
-    fulfilled or withdrawn request is not edited in place). Maps to
-    409: the request is well-formed but conflicts with the row's current state.
+    """The event's state forbids the transition: geolocate on a row that is not
+    ``requested`` / ``detected``, close on a ``closed`` row, :func:`save_version`
+    on a row that is not ``geolocated``, :func:`update_request` on a row that is
+    no longer ``requested``. Maps to 409.
     """
 
     code = "invalid_state"
 
 
 class NothingChangedError(EventError):
-    """The edit would file a version carrying the state the live row carries.
-
-    A version spends a number in a public address space and prints a row in the
-    history, so an edit that moves no versioned field is refused rather than
-    recorded: the record must not claim a correction that did not happen. The
-    note is not a versioned field, so a note on its own does not lift this.
-    Maps to 409, like the other "the row's state forbids this" verdicts.
-    """
+    """The edit moves no versioned field, so it would file a version identical to
+    the live row. A note alone does not lift this. Maps to 409."""
 
     code = "nothing_changed"

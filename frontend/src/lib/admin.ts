@@ -13,12 +13,8 @@ export interface CreateInviteCodeBody {
   x_handle?: string | null;
 }
 
-/** `GET /admin/invite-codes` for one page of the table.
- *
- *  A path rather than a fetch: the response is capped like every other list,
- *  so the console reads the table through `useCursorList`, which builds each
- *  request from the `Link: rel="next"` cursor of the page before.
- */
+/** `GET /admin/invite-codes` for one page; a path because the console reads it through
+ *  `useCursorList`. */
 export function inviteCodesPath(cursor: string | null): string {
   return `/admin/invite-codes${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`;
 }
@@ -72,8 +68,7 @@ export interface AdminEventDeleteResponse {
   title: string;
   mode: "soft" | "hard";
   deleted_at: string | null;
-  /** Every file swept, source and proof roles alike (`proof_images` folded
-   *  into `media`, so there's no separate proof-image tally). */
+  /** Every file swept, source and proof roles alike. */
   media_count: number;
 }
 
@@ -85,8 +80,7 @@ export function deleteEvent(
   return apiFetch<AdminEventDeleteResponse>(path, { method: "DELETE" });
 }
 
-/** ``media_count`` is every file swept, source and proof roles alike
- *  (`proof_images` is folded into `media`, so there's no separate tally). */
+/** `media_count` is every file swept, source and proof roles alike. */
 export type AdminUserDeleteResponse =
   components["schemas"]["AdminUserDeleteResponse"];
 
@@ -112,11 +106,8 @@ export function purgeDetectedEvents(
   );
 }
 
-// ── Moderation ────────────────────────────────────────────────────────
-
-/** One page of the report queue: open reports first, newest first within each
- *  group. Offset-paged (not cursor-paged) because that leading open/resolved
- *  flag is not a column a keyset cursor can walk. */
+/** One page of the report queue: open first, newest first. Offset-paged since the
+ *  open/resolved flag isn't a keyset column. */
 export type ContentReportList = components["schemas"]["ContentReportList"];
 
 /** The three verdicts that close a report. A report is resolved once: a second
@@ -138,8 +129,7 @@ export function resolveReport(
   );
 }
 
-/** The moderation state of one event after the PATCH. `hidden_at` rather than
- *  a boolean, so the response also says when the takedown landed. */
+/** Moderation state after the PATCH; `hidden_at` also says when the takedown landed. */
 export type AdminEventModeration =
   components["schemas"]["AdminEventModerationRead"];
 
@@ -155,8 +145,6 @@ export function setEventModeration(
   });
 }
 
-// ── Detection quality stats ───────────────────────────────────────────
-
 /** Machine-extraction quality signal (admin-only). Definitions live on the
  *  backend `AdminDetectionStatsRead` schema. */
 export type DetectionStats = components["schemas"]["AdminDetectionStatsRead"];
@@ -164,8 +152,6 @@ export type DetectionStats = components["schemas"]["AdminDetectionStatsRead"];
 export function getDetectionStats(): Promise<DetectionStats> {
   return apiFetch<DetectionStats>("/admin/detection-stats");
 }
-
-// ── Maintenance ───────────────────────────────────────────────────────
 
 /** One shape for every maintenance action; the UI renders only the keys present
  *  in the response. */

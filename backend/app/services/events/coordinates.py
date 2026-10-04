@@ -1,9 +1,4 @@
-"""Coordinate bounds and the optional PostGIS point the write forms build.
-
-:func:`validate_coordinates` is the one bounds check every human write runs
-(``frontend/src/lib/coordinates.ts`` mirrors it), and :func:`_optional_point`
-turns a both-or-neither form pair into a point or ``None``.
-"""
+"""Coordinate bounds and the optional PostGIS point the write forms build."""
 
 from __future__ import annotations
 
@@ -14,8 +9,7 @@ from .errors import InvalidCoordinatesError
 
 
 def validate_coordinates(lat: float, lng: float) -> None:
-    """Reject out-of-range coordinates: the single bounds check shared by the
-    human create + geolocate paths."""
+    """Reject out-of-range coordinates. Mirrored by `frontend/src/lib/coordinates.ts`."""
     if not -90 <= lat <= 90:
         raise InvalidCoordinatesError("Latitude must be between -90 and 90")
     if not -180 <= lng <= 180:
@@ -23,11 +17,7 @@ def validate_coordinates(lat: float, lng: float) -> None:
 
 
 def _optional_point(lat: float | None, lng: float | None, *, field: str):
-    """Validate + build an optional PostGIS point from a half-typed form pair.
-
-    A lone half of the pair is a client bug, not a droppable value, so reject it
-    rather than silently storing nothing.
-    """
+    """Build an optional point from a both-or-neither pair; a lone half is rejected."""
     if lat is None and lng is None:
         return None
     if lat is None or lng is None:

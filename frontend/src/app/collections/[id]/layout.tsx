@@ -15,7 +15,7 @@ import { ogFetch } from "../../_og/data";
 // card. That page is behind the auth wall and is never the URL anyone shares.
 // `/collections/new` is a sibling of `[id]`, so it inherits nothing from here.
 
-/** Title budget, under what X truncates in a card headline. */
+/** Title budget, under what X truncates. */
 const TITLE_MAX = 90;
 
 /** Description budget, under the ~200 characters X and Discord render. */
@@ -29,17 +29,13 @@ export async function generateMetadata({
   const { id } = await params;
   const read = await ogFetch<Collection>(`/collections/${encodeURIComponent(id)}`);
 
-  // An upstream that failed rather than answered gets no tags at all: the page
-  // inherits the site-wide title, description and card, which is the only
-  // honest thing to say when we could not read the row. Naming it "not found"
-  // here would freeze that answer into every crawler that saw it.
+  // A failed upstream gets no tags (site-wide defaults inherit): "not found" would freeze into crawlers.
   if (read.status === "failed") return {};
 
   if (read.status === "missing") {
     const title = "Collection not found on Vidit";
     const description = "This link points at nothing in the catalog.";
-    // Same tag shape as the found path, so an unfurl of a dead link is a
-    // complete preview rather than a title with nothing under it.
+    // Same tag shape as the found path, so a dead link still unfurls completely.
     return {
       title,
       description,
@@ -50,10 +46,7 @@ export async function generateMetadata({
 
   const collection = read.data;
   const title = ogTruncate(collection.title, TITLE_MAX);
-  // The readings first, in the phrasing every collection surface prints them
-  // in (`collectionMetaSegments`), then what the owner says the collection
-  // holds, then the byline. The description is read as its plain-text
-  // projection: a meta tag carries no marks.
+  // Meta segments in the shared phrasing, then the description as plain text (meta tags carry no marks), then the byline.
   const description = ogTruncate(
     [
       ...collectionMetaSegments(collection),
@@ -77,8 +70,7 @@ export async function generateMetadata({
       publishedTime: collection.created_at,
     },
     twitter: {
-      // The generated card is 1200×630, so it wants the large-image treatment
-      // rather than the square thumbnail `summary` gives.
+      // 1200×630 card needs the large-image treatment.
       card: "summary_large_image",
       title,
       description,

@@ -9,16 +9,14 @@ import { ICON_TAP_STEP } from "@/components/ui/Button";
 import { FIELD_TEXT } from "@/components/ui/Input";
 
 interface TimelineScrubberProps {
-  /** Filtered point set (post conflict/tag/author, pre-window). Drives the
-   *  activity histogram and its axis; the page applies the window. */
+  /** Filtered point set (post conflict/tag/author, pre-window); drives the histogram and axis. */
   points: MapPoint[];
   /** Which date each point is bucketed/filtered on: 3 = event_date,
    *  4 = submitted (created_at) date. */
   dateIndex: 3 | 4;
   /** Short label for accessibility ("Event date" / "Added"). */
   label: string;
-  /** The active window, owned by the parent (one pair per timeline). Empty
-   *  string at an edge = open (snaps to the data's min/max). */
+  /** The active window, owned by the parent. An empty string at an edge is open (snaps to data min/max). */
   start: string;
   setStart: (v: string) => void;
   end: string;
@@ -27,22 +25,19 @@ interface TimelineScrubberProps {
   setPlaying: (v: boolean | ((prev: boolean) => boolean)) => void;
 }
 
-/** ISO ``YYYY-MM-DD`` ↔ ms at UTC midnight. ISO strings sort chronologically
- *  as plain strings, but we need numbers for positioning. */
+/** ISO `YYYY-MM-DD` to ms at UTC midnight (strings sort chronologically; positioning needs numbers). */
 const toMs = (iso: string) => new Date(`${iso}T00:00:00Z`).getTime();
 const msToIso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
 const BIN_COUNT = 48;
 const DAY_MS = 86_400_000;
-// One bin advances per tick while playing — ~14s for a full left-to-right sweep.
+// One bin advances per tick while playing: about 14 s for a full sweep.
 const PLAY_INTERVAL_MS = 280;
 
 /**
- * Reusable date-timeline filter. The histogram axis spans the data's full
- * range on the chosen date field; two orange handles (and the inline date
- * inputs) select the active window, filtered client-side so dragging and
- * playback never refetch. Play sweeps the window's end across the axis.
+ * Reusable date-timeline filter. Two handles (and the date inputs) select a window, filtered
+ * client-side so dragging and playback never refetch. Play sweeps the window's end across the axis.
  */
 export function TimelineScrubber({
   points,
@@ -58,7 +53,6 @@ export function TimelineScrubber({
   const trackRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef<null | "start" | "end">(null);
 
-  // Axis spans the data's own min/max on the chosen date field.
   const { dataMin, dataMax } = useMemo(() => {
     let lo: string | null = null;
     let hi: string | null = null;
@@ -71,7 +65,7 @@ export function TimelineScrubber({
     return { dataMin: lo, dataMax: hi };
   }, [points, dateIndex]);
 
-  // Effective window — an empty handle snaps to the axis edge.
+  // An empty handle snaps to the axis edge.
   const winStart = start || dataMin || "";
   const winEnd = end || dataMax || "";
 
@@ -104,8 +98,7 @@ export function TimelineScrubber({
 
   const isWindowed = startFrac > 0.001 || endFrac < 0.999;
 
-  // Keep the latest `end` readable inside the play interval without
-  // re-subscribing the timer on every advance.
+  // Latest `end` readable inside the play interval without re-subscribing the timer.
   const endRef = useRef(end);
   useEffect(() => {
     endRef.current = end;
@@ -113,15 +106,13 @@ export function TimelineScrubber({
 
   useEffect(() => {
     if (!playing || span <= 0) return;
-    // Advance by whole days (min one) so a narrow span doesn't emit the same
-    // ISO day twice and stall the sweep. Anchor the start at the value it had
-    // when play began; the sweep only grows the end.
+    // Advance by whole days (min one) so a narrow span can't repeat an ISO day and stall. Anchor the
+    // start at its value when play began.
     const step = Math.max(DAY_MS, Math.round(span / BIN_COUNT / DAY_MS) * DAY_MS);
     const anchorMs = winStart ? toMs(winStart) : axisMinMs;
     const id = setInterval(() => {
       const curEnd = endRef.current ? toMs(endRef.current) : axisMaxMs;
-      // Clamp so the last frame shows the full range; loop back only once the
-      // end has actually reached the axis max (the prior tick clamped to it).
+      // Clamp so the last frame shows the full range; loop only once the end reached the axis max.
       if (curEnd >= axisMaxMs) {
         setEnd(msToIso(Math.min(axisMaxMs, anchorMs + step)));
       } else {
@@ -129,8 +120,7 @@ export function TimelineScrubber({
       }
     }, PLAY_INTERVAL_MS);
     return () => clearInterval(id);
-    // Re-subscribes if the window start or axis changes; harmless — a drag
-    // pauses play first, so these stay put during a sweep.
+    // Re-subscribes if the start or axis changes; harmless, since a drag pauses play first.
   }, [playing, span, axisMaxMs, axisMinMs, winStart, setEnd]);
 
   const setHandle = (clientX: number, which: "start" | "end") => {
@@ -143,10 +133,8 @@ export function TimelineScrubber({
     else setEnd(iso < winStart ? winStart : iso);
   };
 
-  // Capture the pointer on the *track* — a stable element that never moves —
-  // not the handle, whose `left` shifts mid-drag and can drop the capture,
-  // stranding draggingRef set so the window then chases a plain hover. The
-  // flag is cleared on up / cancel / lost-capture, so a drag stays a drag.
+  // Capture on the stable *track*, not the handle: its `left` shifts mid-drag and can drop the
+  // capture, leaving draggingRef set so the window chases a hover. Cleared on up, cancel, lost-capture.
   const beginDrag = (e: React.PointerEvent<HTMLDivElement>, which: "start" | "end") => {
     e.preventDefault();
     draggingRef.current = which;
@@ -165,9 +153,8 @@ export function TimelineScrubber({
     }
   };
 
-  // Keyboard control for the handles (they advertise role="slider"): arrows
-  // nudge a day, PageUp/Down a bin, Home/End jump to the bound. Mirrors the
-  // drag clamp so a handle never crosses its neighbour, and pauses playback.
+  // Keyboard control (role="slider"): arrows nudge a day, PageUp/Down a bin, Home/End jump. Mirrors
+  // the drag clamp and pauses playback.
   const nudgeHandle = (which: "start" | "end", deltaMs: number) => {
     const lo = winStart ? toMs(winStart) : axisMinMs;
     const hi = winEnd ? toMs(winEnd) : axisMaxMs;
@@ -201,8 +188,7 @@ export function TimelineScrubber({
     nudgeHandle(which, delta);
   };
 
-  // Typed edits drive the same window as the handles (ISO strings compare
-  // chronologically, so the string clamp keeps start ≤ end).
+  // Typed edits drive the same window (the string clamp keeps start <= end).
   const onStartInput = (v: string) => setStart(v && winEnd && v > winEnd ? winEnd : v);
   const onEndInput = (v: string) => setEnd(v && winStart && v < winStart ? winStart : v);
 
@@ -219,10 +205,9 @@ export function TimelineScrubber({
     </>
   );
 
-  // `FIELD_TEXT` first, then the scrubber's own denser desktop size: `cn`
-  // resolves the two `sm:` sizes caller-last, so the pair reads as 16px below
-  // `sm` (the floor every editable field takes, `Input.tsx`) and 11px above it,
-  // where these two dates share a 240px panel row with the play control.
+  // `FIELD_TEXT` first, then the denser desktop size: `cn` resolves the two `sm:` sizes caller-last,
+  // so 16px below `sm` (the editable-field floor, `Input.tsx`) and 11px above, where two dates
+  // share a 240px row.
   const inputClass = cn(
     "flex-1 min-w-0 px-1 py-1 bg-neutral-800 border border-neutral-700 rounded-sm",
     "text-neutral-300 focus:outline-hidden focus:border-orange-500",
@@ -242,8 +227,8 @@ export function TimelineScrubber({
           draggingRef.current = null;
         }}
       >
-        {/* Activity bars — neutral; data isn't interactive. The selected window
-            reads brighter, the rest dim. Orange is reserved for the controls. */}
+        {/* Activity bars, neutral (data isn't interactive); the selected window reads brighter. Orange is
+            reserved for controls. */}
         <div className="absolute inset-0 flex items-end gap-px">
           {bins.map((count, i) => {
             const center = axisMinMs + ((i + 0.5) / BIN_COUNT) * span;
@@ -294,7 +279,6 @@ export function TimelineScrubber({
         )}
       </div>
 
-      {/* Play + window dates, inline. The inputs both show and edit the window. */}
       <div className="flex items-center gap-1.5 mt-2">
         <button
           onClick={() => setPlaying((p) => !p)}

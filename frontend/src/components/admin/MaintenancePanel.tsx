@@ -12,11 +12,8 @@ import { useMutation } from "@/hooks/useMutation";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Button } from "@/components/ui/Button";
 
-/**
- * One Maintenance row: the button plus the counts its last run returned.
- * Every action renders through this, so a third one costs a list entry rather
- * than another copy of the button + result markup.
- */
+/** One Maintenance row: the button plus the counts its last run returned. Every action renders
+ * through this, so a new one costs a list entry. */
 function MaintenanceRow({
   label,
   busyLabel,
@@ -64,8 +61,7 @@ export function MaintenancePanel() {
     onSuccess: setDigestResult,
   });
 
-  // The actions share one error slot, cleared when any of them fires (each
-  // run resets the others).
+  // The actions share one error slot, cleared when any fires.
   const mutations = [reapAuth, reapPending, sendDigests];
   const error = reapAuth.error ?? reapPending.error ?? sendDigests.error;
   const running = mutations.some((m) => m.loading);
@@ -76,9 +72,8 @@ export function MaintenancePanel() {
   };
 
   return (
-    // Deliberately lighter than the `<Card as="section">` the real admin
-    // actions use (translucent background, bordered header), so dev tooling
-    // reads as a separate register on the admin page.
+    // Lighter than the real admin actions' `<Card as="section">` (translucent, bordered header), so
+    // dev tooling reads as a separate register.
     <section className="border border-neutral-800 rounded-lg bg-neutral-900/50">
       <header className="px-4 py-3 border-b border-neutral-800">
         <SectionEyebrow title="Maintenance" margin="none" />

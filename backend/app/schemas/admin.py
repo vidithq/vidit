@@ -5,15 +5,14 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-# The X handle alphabet: letters, digits, underscore, 15 chars max. Matched
-# after normalization (leading ``@`` stripped, lowercased).
+# X handle alphabet (letters, digits, underscore, 15 max), matched after
+# normalization.
 X_HANDLE_PATTERN = re.compile(r"^[a-z0-9_]{1,15}$")
 
 
 def normalize_x_handle(v: str | None) -> str | None:
-    """Shared validator for every ``x_handle`` intake (invite mint, admin
-    link): strip a single leading ``@``, lowercase, then enforce the X handle
-    alphabet. Raises ``ValueError`` (Pydantic 422) on mismatch."""
+    """Shared validator for every ``x_handle`` intake: strip one leading ``@``,
+    lowercase, enforce the alphabet. ``ValueError`` (a 422) on mismatch."""
     if v is None:
         return None
     cleaned = v.strip().removeprefix("@").lower()
@@ -28,12 +27,10 @@ InviteCodeStatus = Literal["active", "exhausted", "revoked", "expired"]
 class AdminInviteCodeCreate(BaseModel):
     """Body for `POST /admin/invite-codes`.
 
-    Every code is single-use, so each one maps to exactly one analyst and the
-    audit trail (`used_by`, `used_at`) is unambiguous.
-
-    ``x_handle`` optionally binds the code to an X handle: redemption copies
-    it onto the new account (the bot-attribution link). Same normalization
-    and alphabet as `PATCH /admin/users/{id}/x-handle`.
+    Every code is single-use, so the audit trail (`used_by`, `used_at`) is
+    unambiguous. ``x_handle`` optionally binds the code to an X handle that
+    redemption copies onto the new account (same normalization as
+    `PATCH /admin/users/{id}/x-handle`).
     """
 
     expires_in_days: int | None = Field(default=None, ge=1, le=365)
@@ -48,10 +45,8 @@ class AdminInviteCodeCreate(BaseModel):
 class AdminInviteRedeemerRead(BaseModel):
     """Onboarding snapshot of the account a code was redeemed by.
 
-    Nested in `AdminInviteCodeRead` so the admin onboarding table renders
-    activity and hosts the per-user actions (X handle, delete, purge
-    detected) without a second request per row. Carries the same acting
-    fields as `AdminUserRead` plus read-side counters.
+    Nested in `AdminInviteCodeRead` so the onboarding table needs no request
+    per row. Same acting fields as `AdminUserRead` plus counters.
     """
 
     user_id: uuid.UUID
@@ -59,29 +54,26 @@ class AdminInviteRedeemerRead(BaseModel):
     email: str | None
     is_admin: bool
     x_handle: str | None
-    # ``done`` archive-import jobs (a queued / failed upload is not an import).
+    # ``done`` archive-import jobs only.
     archives_imported: int
-    # Sum of ``bot_mentions.events_created`` for the account's X handle: how
-    # many detections the bot minted for them, ever. Historical by design: a
-    # detection deleted later still counted as bot activity.
+    # Sum of ``bot_mentions.events_created`` for the account's X handle.
+    # Historical: a later-deleted detection still counted.
     bot_detection_count: int
-    # Live detections they own right now. The purge endpoint sweeps
-    # soft-deleted detections too, so it may remove more than this counter shows.
+    # Live detections they own. The purge endpoint also sweeps soft-deleted
+    # ones, so it may remove more.
     detected_count: int
     # Live ``geolocated`` events they own.
     geolocated_count: int
-    # Most recent authenticated request (``users.last_seen_at``, refreshed once
-    # per throttle window), falling back to the newest ``login`` auth event for
-    # a row that predates that column. NULL when the account carries neither.
+    # Most recent authenticated request (``users.last_seen_at``), falling back
+    # to the newest ``login`` auth event on rows predating it; NULL if neither.
     last_seen_at: datetime | None
 
 
 class AdminInviteCodeRead(BaseModel):
     """Response shape for the admin invite-code list + create endpoints.
 
-    ``status`` is computed at read time from the columns, never persisted, so it
-    reflects current reality (an expired code stops showing active the moment
-    ``expires_at`` passes, no bookkeeping job needed).
+    ``status`` is computed at read time, never persisted, so an expired code
+    stops showing active the moment ``expires_at`` passes.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -91,10 +83,9 @@ class AdminInviteCodeRead(BaseModel):
     expires_at: datetime | None
     created_at: datetime
     status: InviteCodeStatus
-    # The X handle the code binds, copied onto the account at redemption.
+    # The X handle the code binds.
     x_handle: str | None
-    # The account that redeemed the code, with its onboarding stats. NULL
-    # while the code is unredeemed, and again once that account is erased.
+    # NULL while unredeemed, and once that account is erased.
     redeemer: AdminInviteRedeemerRead | None
     used_at: datetime | None
 
@@ -102,20 +93,16 @@ class AdminInviteCodeRead(BaseModel):
 class AdminMeResponse(BaseModel):
     """Tiny response for the frontend route guard.
 
-    Separate from `UserRead` on purpose: a public ``is_admin`` field on
-    `/auth/me` would leak the admin role to the public schema (and to anyone
-    scraping the OpenAPI spec). The guard only needs a 200/403 signal.
+    Separate from `UserRead` so ``is_admin`` doesn't leak to the public schema
+    or the OpenAPI spec.
     """
 
     is_admin: bool
 
 
 class AdminUserRead(BaseModel):
-    """User shape returned by the admin search endpoint.
-
-    Carries the bit the admin acts on (the bot-attribution `x_handle`) plus
-    `email` (NULL on legacy credential-less rows), which the public
-    `UserProfile` omits.
+    """User shape returned by the admin search endpoint: the bot-attribution
+    `x_handle` plus `email` (NULL on legacy rows), which `UserProfile` omits.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -129,40 +116,30 @@ class AdminUserRead(BaseModel):
 
 
 class AdminUserDeleteResponse(BaseModel):
-    """Response for `DELETE /admin/users/{id}`.
-
-    Carries the cascade summary so the admin sees what was swept — a sanity
-    check and a copy-pasteable record of an irreversible action.
-    """
+    """Response for `DELETE /admin/users/{id}`, with the cascade summary as a
+    record of an irreversible action."""
 
     user_id: uuid.UUID
     username: str
     mode: Literal["soft", "hard"]
     deleted_at: datetime | None = None
-    # A request is a ``requested`` event since the merge, so a single event
-    # cascade covers both located and requested rows: one count, no separate
-    # request tally.
+    # One event cascade covers located and requested rows.
     cascaded_geolocations: int = 0
-    # Storage objects swept across those events: every media file, source and
-    # proof roles alike, hero / thumb derivatives included. Runs higher than
-    # the media-row count an event delete reports for the same footage.
+    # Storage objects swept across those events (source and proof, derivatives
+    # included), so higher than an event delete's media-row count.
     media_count: int = 0
 
 
 class AdminEventDeleteResponse(BaseModel):
-    """Response for `DELETE /admin/events/{id}`.
-
-    Confirms what happened (which row, soft vs hard, what was swept) without a
-    client re-query.
-    """
+    """Response for `DELETE /admin/events/{id}`: which row, soft vs hard, what
+    was swept."""
 
     geolocation_id: uuid.UUID
     title: str
     mode: Literal["soft", "hard"]
     deleted_at: datetime | None = None
-    # Media rows dropped, source and proof roles alike. Rows, not storage
-    # objects: the sweep also removes each row's hero / thumb derivatives,
-    # which this count does not include.
+    # Media rows dropped (source and proof). Excludes the hero / thumb
+    # derivatives the sweep also removes.
     media_count: int = 0
 
 
@@ -170,11 +147,8 @@ class AdminCollectionHideResponse(BaseModel):
     """Response for ``PATCH /admin/collections/{id}/moderation`` and its
     takedown alias ``DELETE /admin/collections/{id}``.
 
-    Names the collection whose takedown moved and where it landed, so the
-    panel states the outcome without a re-query. ``hidden_at`` is the stamp
-    the collection now carries: the original one on a collection that was
-    already withheld, and ``None`` once it is restored. Both verbs are
-    idempotent.
+    ``hidden_at`` is the stamp now carried (the original on an already
+    withheld collection, ``None`` once restored). Both verbs are idempotent.
     """
 
     collection_id: uuid.UUID
@@ -185,11 +159,8 @@ class AdminCollectionHideResponse(BaseModel):
 class AdminCollectionModerationUpdate(BaseModel):
     """Body for ``PATCH /admin/collections/{id}/moderation``.
 
-    One axis, because a collection carries one: ``hidden`` withholds it from
-    every public read or restores it. The event's counterpart
-    (:class:`AdminEventModerationUpdate`) carries a second, ``is_graphic``,
-    which is a column on the event; a collection holds no footage of its own,
-    so there is nothing here to declare.
+    One axis, ``hidden``: a collection holds no footage, so it has no
+    ``is_graphic`` like :class:`AdminEventModerationUpdate`.
     """
 
     hidden: bool
@@ -198,10 +169,9 @@ class AdminCollectionModerationUpdate(BaseModel):
 class AdminEventModerationUpdate(BaseModel):
     """Body for ``PATCH /admin/events/{id}/moderation``.
 
-    Two independent axes, both optional: ``is_graphic`` overrides the author's
-    graphic declaration, ``hidden`` withholds the event from every public read
-    or restores it. ``None`` leaves that axis exactly as it is, so a client can
-    move one without knowing the other.
+    Two independent optional axes: ``is_graphic`` overrides the author's
+    declaration, ``hidden`` withholds or restores the event. ``None`` leaves
+    that axis as is.
     """
 
     is_graphic: bool | None = None
@@ -211,10 +181,8 @@ class AdminEventModerationUpdate(BaseModel):
 class AdminEventModerationRead(BaseModel):
     """The moderation state of one event after the PATCH.
 
-    Deliberately narrow: the endpoint moves two fields, and answering with the
-    full ``EventRead`` would make an admin toggle pay for every eager load the
-    detail read needs. ``hidden_at`` (not a boolean) so the response also says
-    when the takedown landed.
+    Narrow on purpose: the full ``EventRead`` would make a toggle pay for the
+    detail read's eager loads. ``hidden_at`` says when the takedown landed.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -225,27 +193,22 @@ class AdminEventModerationRead(BaseModel):
 
 
 class AdminPurgeDetectedResponse(BaseModel):
-    """Response for `DELETE /admin/users/{id}/detected-events`.
-
-    The broken-archive repair: every detection the user owns is
-    hard-deleted (rows + S3 media), the account itself untouched. The counts
-    are the copy-pasteable record of what was swept.
-    """
+    """Response for `DELETE /admin/users/{id}/detected-events`: the
+    broken-archive repair. Every detection the user owns is hard-deleted (rows
+    + S3 media); the account is untouched."""
 
     user_id: uuid.UUID
     username: str
     deleted_events: int = 0
-    # Storage objects swept: every media file, source and proof roles alike,
-    # hero / thumb derivatives included.
+    # Storage objects swept (source and proof, derivatives included).
     media_count: int = 0
 
 
 class UserXHandleUpdate(BaseModel):
     """Body for `PATCH /admin/users/{id}/x-handle`.
 
-    ``None`` clears the link. A non-null value is normalized (a single leading
-    ``@`` stripped, lowercased) and must match the X handle alphabet
-    (``^[a-z0-9_]{1,15}$``); anything else is rejected with 422.
+    ``None`` clears the link; a value is normalized and must match
+    ``^[a-z0-9_]{1,15}$`` (else 422).
     """
 
     x_handle: str | None
@@ -257,17 +220,13 @@ class UserXHandleUpdate(BaseModel):
 
 
 class AdminMaintenanceResponse(BaseModel):
-    """Single shape for every Maintenance-panel action.
-
-    Every key is optional so one schema serves all of them; the UI renders
-    only the keys present in the response.
-    """
+    """Single shape for every Maintenance-panel action; keys are optional and
+    the UI renders those present."""
 
     expired: int | None = None
     old_consumed: int | None = None
     pending_registrations_deleted: int | None = None
-    # Completion digest: analysts written to, the detections those messages
-    # covered, and the sends the provider rejected.
+    # Completion digest: analysts written to, detections covered, sends rejected.
     analysts_notified: int | None = None
     detections_pending: int | None = None
     digest_send_failures: int | None = None
@@ -277,35 +236,26 @@ class AdminDetectionStatsRead(BaseModel):
     """Quality signal on the machine-extraction pipeline (admin-only).
 
     A machine detection is a row imported from X and never a request:
-    ``detected_from_url`` set (the archive backfill / the bot) and
-    ``requested_at`` NULL. A human submit always carries NULL in the first
-    column. A request the bot opened carries both, so the second column is what
-    keeps it out of the cohort for its whole life: the stamp is never cleared,
-    including after a fulfiller geolocates the row.
+    ``detected_from_url`` set and ``requested_at`` NULL. The second column
+    keeps a bot-opened request out of the cohort for life, since the stamp is
+    never cleared, even after a fulfiller geolocates it.
 
-    Reject-rate: of every machine detection, the fraction dismissed before it
-    was published, whichever door they left through. A machine detection counts
-    as a reject if either an owner closed it straight out of ``detected``
-    (``status = 'closed'`` with ``before_closed_status = 'detected'``) or an
-    admin soft-deleted it while it was still ``detected``
-    (``deleted_at IS NOT NULL`` with ``status = 'detected'``). A detection the
-    owner vouched (promoted to ``geolocated``) is not a reject, even once
-    soft-deleted (it was vouched before removal); a detection still awaiting
-    review is not a reject yet. Both shapes are ones
-    ``services/detection._row_disposition`` refuses to re-import, since each
-    records a judgment a re-import must not undo. ``reject_rate`` is
-    ``machine_rejected / machine_total`` as a 0..1 ratio, 0 when there are no
-    machine detections. Counted over all machine rows, soft-deleted or not: the
-    metric measures what the pipeline produced.
+    Reject-rate: the fraction of machine detections dismissed before
+    publication, either closed by an owner straight out of ``detected``
+    (``status = 'closed'``, ``before_closed_status = 'detected'``) or
+    soft-deleted by an admin while ``detected`` (``deleted_at IS NOT NULL``,
+    ``status = 'detected'``). A vouched (``geolocated``) detection is not a
+    reject even if soft-deleted later; one awaiting review is not a reject yet.
+    Both reject shapes are ones ``services/detection._row_disposition`` refuses
+    to re-import. ``reject_rate`` is ``machine_rejected / machine_total`` (0..1,
+    0 when there are none), counted over all machine rows, soft-deleted or not.
 
-    One counting edge the metric accepts, favouring over-counting dismissals
-    over under-counting them: an account-departure cascade soft-delete counts
-    that account's pending detections as rejects.
+    One accepted edge, favouring over-counting: an account-departure cascade
+    soft-delete counts that account's pending detections as rejects.
 
-    The ``pending_*`` counts profile the live ``detected`` queue (awaiting
-    review, ``deleted_at IS NULL``, machine rows only): how many detections are
-    missing a piece the geolocate floor will demand, so a low-quality
-    extraction run is visible before an analyst opens the queue.
+    The ``pending_*`` counts profile the live ``detected`` queue (machine rows,
+    ``deleted_at IS NULL``): how many miss a piece the geolocate floor demands,
+    so a poor extraction run shows before an analyst opens the queue.
     """
 
     machine_total: int

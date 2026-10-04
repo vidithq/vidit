@@ -2,28 +2,20 @@ import { Zip, type ZipInputFile } from "fflate";
 
 import { ApiError } from "./api";
 
-// Allowlisted archive contents, mirroring the backend intake guard
-// (`services/tweet_ingest/archive_zip.py`).
+// Allowlisted contents; mirrors `services/tweet_ingest/archive_zip.py`.
 const TWEETS_FILE = "tweets.js";
 const MEDIA_DIR = "tweets_media/";
 
-/** Staged-zip size guard, mirroring `MAX_UPLOAD_BYTES` in the same backend
- *  intake guard. The presigned POST policy pins it as the S3
- *  `content-length-range`, so an over-cap body is rejected by storage with a
- *  400 the upload leg can't retry past; checking it here turns that into a
- *  named failure before a multi-GB upload starts. Change both sides together. */
+/** Mirrors `MAX_UPLOAD_BYTES` in `services/tweet_ingest/archive_zip.py`; change both. The
+ *  presigned POST pins it as S3 `content-length-range`, so an over-cap body gets an
+ *  unretryable 400; checking here fails before a multi-GB upload starts. */
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024;
 
-/** `MAX_UPLOAD_BYTES` as the figure user-facing copy quotes, derived from the
- *  constant so raising the guard can't leave a stale number in a message. */
+/** `MAX_UPLOAD_BYTES` for user-facing copy, derived so it can't go stale. */
 export const MAX_UPLOAD_LABEL = `${MAX_UPLOAD_BYTES / 1024 ** 3} GB`;
 
-/** The stripped archive is still over the upload cap. Carries the backend's
- *  `archive_too_large` code so the page maps it to one message, and so the
- *  storage-side rejection of the same condition reads identically. The import
- *  panel maps that code to its own copy, so this text is what non-panel
- *  callers (and a bare `errorMessage` fallback) surface, not what the import
- *  UI displays; the two are worded alike on purpose. */
+/** The stripped archive is still over the cap. Carries `archive_too_large`; the import panel
+ *  maps the code to its own copy, so this text serves other callers. */
 export const archiveTooLarge = () =>
   new ApiError(
     `That archive is over the ${MAX_UPLOAD_LABEL} safety limit, even after stripping. Get in touch and we'll find a way to import it.`,
@@ -31,15 +23,12 @@ export const archiveTooLarge = () =>
     "archive_too_large"
   );
 
-/** Rough bytes per `tweets.js` record across real exports (JSON envelope +
- *  text + entities). Feeds only the cosmetic pre-import post estimate the
- *  enqueue carries; the worker's parse stamps the exact totals. */
+/** Rough bytes per `tweets.js` record; feeds only the cosmetic post estimate. */
 const BYTES_PER_TWEET_ESTIMATE = 1500;
 
 export interface StrippedArchive {
   file: File;
-  /** Cosmetic volume hint for the queued-job display: `tweets.js` bytes over
-   *  the per-record average, never below 1. */
+  /** Cosmetic volume hint: `tweets.js` bytes over the per-record average, at least 1. */
   postEstimate: number;
 }
 
@@ -49,7 +38,6 @@ const anchoredTweetsMatch = (name: string) =>
 const malformed = () =>
   new ApiError("That file isn't a valid .zip archive.", 0, "archive_malformed");
 
-// One central-directory record, resolved to what the copy needs.
 interface CdEntry {
   name: string;
   method: number;
@@ -62,11 +50,8 @@ interface CdEntry {
 const sliceBytes = async (file: File, start: number, end: number) =>
   new Uint8Array(await file.slice(start, end).arrayBuffer());
 
-/**
- * Parse the end-of-central-directory record (and its zip64 variant when the
- * classic record overflows) into the central directory's offset and size.
- * The EOCD sits in the last 22..65557 bytes (its comment is bounded).
- */
+/** Parse the end-of-central-directory record (zip64 variant when the classic one
+ *  overflows). The EOCD sits in the last 22..65557 bytes. */
 async function readCentralDirectory(file: File): Promise<CdEntry[]> {
   const tailLen = Math.min(file.size, 65557 + 20);
   const tailStart = file.size - tailLen;
@@ -84,8 +69,7 @@ async function readCentralDirectory(file: File): Promise<CdEntry[]> {
   let cdSize = dv.getUint32(eocd + 12, true);
   let cdOffset = dv.getUint32(eocd + 16, true);
   if (count === 0xffff || cdSize === 0xffffffff || cdOffset === 0xffffffff) {
-    // zip64: the locator sits right before the EOCD, pointing at the zip64
-    // EOCD record.
+    // zip64: the locator sits right before the EOCD, pointing at the zip64 record.
     const locAt = eocd - 20;
     if (locAt < 0 || dv.getUint32(locAt, true) !== 0x07064b50) throw malformed();
     const z64At = Number(dv.getBigUint64(locAt + 8, true));
@@ -113,8 +97,8 @@ async function readCentralDirectory(file: File): Promise<CdEntry[]> {
     const commentLen = cv.getUint16(at + 32, true);
     let headerOffset: number = cv.getUint32(at + 42, true);
     const name = decoder.decode(cd.subarray(at + 46, at + 46 + nameLen));
-    // zip64 extra field (0x0001) carries the 64-bit values for whichever of
-    // these overflowed, in this fixed order.
+    // The zip64 extra field (0x0001) carries the 64-bit values for whichever overflowed, in this
+    // fixed order.
     if (csize === 0xffffffff || usize === 0xffffffff || headerOffset === 0xffffffff) {
       let ex = at + 46 + nameLen;
       const exEnd = ex + extraLen;
@@ -145,41 +129,24 @@ async function readCentralDirectory(file: File): Promise<CdEntry[]> {
   return entries;
 }
 
-/**
- * Strip an X "Download your data" zip to only the entries we read (`tweets.js`
- * and `tweets_media/`) and re-zip them, in the browser, before upload.
+/** Strip an X data export to the entries we read (`tweets.js`, `tweets_media/`) and re-zip
+ *  them in the browser before upload: DMs, email and account data never leave the device.
+ *  The server runs the same allowlist as defense in depth.
  *
- * The sensitive rest of the export (DMs, email, phone, account data) never
- * leaves the device, and the upload shrinks to a fraction of the original. The
- * server still runs the same copy-allowlist as defence in depth; this is the
- * privacy + size win on top.
+ *  RAW COPY over the central directory, deliberately: the buffered strip peaked at ~3.3x the
+ *  archive and crashed the tab on a 770 MB export, and fflate's streaming Unzip fails
+ *  ("unexpected EOF") on some large data-descriptor entries. This reads the directory via
+ *  random-access slices and copies each kept entry's compressed bytes verbatim (sizes and
+ *  CRCs from the directory): no inflate, flat memory (4 MB slices plus the output).
  *
- * RAW COPY over the central directory, deliberately. Two earlier shapes
- * failed on real exports: the buffered strip (arrayBuffer + unzip + zip)
- * peaked at ~3.3x the archive size and crashed the tab on a 770 MB export,
- * and fflate's streaming Unzip chokes ("unexpected EOF") on some large
- * data-descriptor entries that python's zipfile reads fine. So this walks
- * the zip's own central directory via random-access slices and copies each
- * kept entry's COMPRESSED bytes verbatim into the output (sizes and CRCs
- * come from the directory): no inflate, no re-deflate, no CRC pass, flat
- * memory (4 MB slices plus the output), and data descriptors are irrelevant
- * because nothing parses the local data stream.
+ *  Matches are anchored like the backend: `tweets.js` by whole path segment (not
+ *  `deleted-tweets.js`), media by the `tweets_media/` directory beside it (not
+ *  `deleted_tweets_media/` or a second nested export). Media is rebased by basename under
+ *  `tweets_media/`. Throws an `ApiError` with the backend's codes (`archive_malformed`,
+ *  `archive_no_tweets`, `archive_too_large`).
  *
- * Sensitive entries (DMs, account data, …) are never read at all; only
- * their directory records are. Both matches are anchored the way the backend
- * anchors them: `tweets.js` by whole path segment, so `deleted-tweets.js` is
- * not picked up, and media by the `tweets_media/` directory sitting beside
- * that `tweets.js`, so `deleted_tweets_media/` and a second nested export are
- * not either. Kept media is rebased by basename under `tweets_media/`, the
- * flat shape the backend expects. Throws an `ApiError` carrying the same `code` the
- * backend would (`archive_malformed` / `archive_no_tweets` /
- * `archive_too_large`) so the page maps it to one message.
- *
- * `maxBytes` is the upload cap the output is checked against as it is written,
- * so an over-cap export aborts mid-copy rather than after a full re-zip; it
- * defaults to the mirrored backend guard and exists so tests can drive the
- * over-cap path without a multi-GB fixture.
- */
+ *  `maxBytes` is checked as the output is written so an over-cap export aborts mid-copy;
+ *  tests override it to avoid a multi-GB fixture. */
 export async function stripArchive(
   file: File,
   maxBytes: number = MAX_UPLOAD_BYTES
@@ -208,20 +175,13 @@ export async function stripArchive(
     );
   }
 
-  // The prefix the export nests under (`data/`, `""`, or a top folder),
-  // derived from the chosen `tweets.js` exactly as the backend derives it.
-  // The media match is anchored on it: a substring match would also keep
-  // `data/deleted_tweets_media/1.jpg` (the media of deleted posts, whose path
-  // literally contains `tweets_media/`) and any second nested export, and
-  // rebasing those under `tweets_media/` puts them past the backend's own
-  // allowlist, which only ever sees the rebased names.
+  // The prefix the export nests under, derived from `tweets.js` as the backend does. Anchoring
+  // on it keeps out `data/deleted_tweets_media/` and a second nested export, which the
+  // backend's allowlist would only see after rebasing.
   const root = tweetsEntry.name.slice(0, -TWEETS_FILE.length);
   const mediaPrefix = `${root}${MEDIA_DIR}`;
-  // Basename dedup: the output is flat, so two members of the one kept media
-  // directory sharing a basename (a nested subdirectory, or a zip carrying the
-  // same name twice) would otherwise be written twice under one output name.
-  // The backend resolves that collision by overwriting; the re-zip has no such
-  // resolution, so the first member of a name wins here.
+  // Basename dedup: the output is flat and the backend resolves a collision by overwriting,
+  // so here the first member of a name wins.
   const seenMedia = new Set<string>();
   const kept: { entry: CdEntry; outName: string }[] = [{ entry: tweetsEntry, outName: TWEETS_FILE }];
   for (const entry of entries) {
@@ -233,9 +193,8 @@ export async function stripArchive(
   }
 
   const outChunks: Uint8Array[] = [];
-  // Running total of everything the re-zip has emitted. The copy loop checks it
-  // after each pushed chunk, so a far-over export fails within one chunk of the
-  // cap instead of materializing multi-GB of stripped zip in the tab first.
+  // Running total checked after each chunk, so an over-cap export fails within a chunk
+  // instead of materializing multi-GB.
   let outBytes = 0;
   let zipDone: (() => void) | null = null;
   let zipFail: ((e: unknown) => void) | null = null;
@@ -256,25 +215,21 @@ export async function stripArchive(
   });
 
   const CHUNK = 4 * 1024 * 1024;
-  // Stop the copy the moment the output crosses the cap: the upload leg would
-  // refuse the result anyway, and re-zipping the rest costs the analyst a long
-  // wait and the tab the memory to hold it. Strictly over, so a result landing
-  // exactly on the cap still passes.
+  // Stop once the output crosses the cap (strictly over, so landing exactly on it passes):
+  // the upload would refuse it anyway.
   const failIfOverCap = () => {
     if (outBytes > maxBytes) throw archiveTooLarge();
   };
   try {
     for (const { entry, outName } of kept) {
-      // The local header repeats name/extra with its own lengths; read them
-      // to find where the entry's data actually starts.
+      // The local header repeats name/extra with its own lengths; read them to find the data start.
       const lh = await sliceBytes(file, entry.headerOffset, entry.headerOffset + 30);
       const lv = new DataView(lh.buffer, lh.byteOffset, lh.byteLength);
       if (lv.getUint32(0, true) !== 0x04034b50) throw malformed();
       const dataStart =
         entry.headerOffset + 30 + lv.getUint16(26, true) + lv.getUint16(28, true);
 
-      // Raw pre-compressed pass-through: fflate writes exactly the bytes we
-      // push under the method/size/crc we declare.
+      // Raw pass-through: fflate writes exactly the bytes we push under the declared method/size/crc.
       const raw: ZipInputFile = {
         filename: outName,
         size: entry.usize,
@@ -303,11 +258,8 @@ export async function stripArchive(
     throw malformed();
   }
 
-  // Fail here rather than at the storage POST: the presigned policy answers
-  // an over-cap body with a 400 that no retry can clear, so the analyst gets
-  // the reason instead of an upload that cannot succeed. The copy loop has
-  // already caught the body; this covers the central directory `out.end()`
-  // appends, which can be what tips a result sitting on the cap over it.
+  // Fail here, not at the storage POST (an unretryable 400). The copy loop caught the body;
+  // this covers the central directory `out.end()` appends.
   failIfOverCap();
 
   return {

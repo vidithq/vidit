@@ -3,8 +3,8 @@ import { FieldHelp } from "./FieldHelp";
 import { FORM_INVALID_LABEL } from "./form-styles";
 import type { Concept } from "@/lib/fieldHelp";
 
-// Form-section heading: the `<header><h2>` + section `FieldHelp` (+ an optional
-// `trailing` slot for a per-section badge like a locked hint).
+// Form-section heading: `<header><h2>` + section `FieldHelp`, with an optional
+// `trailing` badge slot.
 export function SectionHeading({
   title,
   concept,
@@ -14,14 +14,12 @@ export function SectionHeading({
   title: string;
   concept: Concept;
   trailing?: ReactNode;
-  /** Flag the heading red: the section is a single-field block
-   *  (`SourceMediaField`, `ProofEditorPanel`) missing at submit. */
+  /** Red: a single-field section missing at submit. */
   invalid?: boolean;
 }) {
   return (
-    // `trailing` renders as the heading's sibling, not its child: a badge or a
-    // guide link inside the <h2> would join its accessible name ("Proof
-    // Methodology guide"). The flex row keeps them on one line.
+    // `trailing` is a sibling of the <h2>, not a child: inside it, a badge or
+    // link would join the heading's accessible name.
     <header className="flex items-center gap-1.5">
       <h2
         className={`text-sm font-medium text-neutral-200 inline-flex items-center gap-1.5${

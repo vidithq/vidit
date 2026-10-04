@@ -1,12 +1,11 @@
 /**
- * The one muted line a media box says when it has nothing to show: an empty
- * media set (`MediaGallery`) or a clip the browser refused (`VideoPlayer`).
+ * The one muted line a media box says when it has nothing to show: an empty media
+ * set (`MediaGallery`) or a clip the browser refused (`VideoPlayer`). Fills its
+ * box, so it centres as the tile or inside one. `compact` matches the panel's
+ * tighter type.
  *
- * Fills its box, so it centers whether it *is* the tile or sits inside one.
- * `compact` matches the panel variant's tighter type scale.
- *
- * Its own module rather than a `MediaGallery` export: the gallery renders the
- * player, so a shared notice living in either one would close an import cycle.
+ * Its own module: the gallery renders the player, so a shared notice in either
+ * would close an import cycle.
  */
 export function TileNotice({
   compact = false,
