@@ -86,7 +86,7 @@ An amend + force-push to fix a missing sign-off often re-triggers only the DCO c
 ## Doc-sync rule
 
 - **New work?** Open an issue in `vidithq/vidit`, set its type (Feature, Debt, Task, Bug), and add it to the [GitHub Project](https://github.com/orgs/vidithq/projects/1) with Priority, Version, and Area set.
-- **Item shipped?** Put `Closes #N` in the PR description so the merge closes the issue. Add an entry to [`CHANGELOG.md`](CHANGELOG.md) under `## Unreleased`: one line, ending with the PR link, and no file lists (the PR carries them).
+- **Item shipped?** Put `Closes #N` in the PR description so the merge closes the issue. Add an entry to [`CHANGELOG.md`](CHANGELOG.md) under `## Unreleased`, in its Keep a Changelog group: one line that states the outcome for a user, operator or contributor in plain words, followed by the PR link in parentheses. Leave out file paths and mechanism details; the PR carries them.
 - **Item descoped?** Set its Version to Unscheduled. Rejected → close the issue as not planned.
 
 Touched a published surface → sync the matching doc. The checklist in [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) maps each surface to its doc.
