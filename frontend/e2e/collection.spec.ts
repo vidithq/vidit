@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-import { COLLECTION, COLLECTION_ID } from "./support/fixtures";
+import {
+  COLLECTED_EVENT,
+  COLLECTION,
+  COLLECTION_ID,
+} from "./support/fixtures";
 import { grantSession, mockApi } from "./support/mockApi";
 import {
   expectControlInsideViewport,
@@ -57,6 +61,15 @@ test.describe("collection page", () => {
     // Where the owner goes to put more of their work on it: their own
     // catalogue, since an event joins a collection from its own page. It sits
     // in the Events header, the other row on this page that wraps.
+    //
+    // The player sits above that header, and its panel holds a one-line
+    // loading box until the first step's event answers, then grows by the
+    // whole event. Measured before that, the scroll lands the link in view and
+    // the panel then pushes it below the fold, so the wait is on the event's
+    // own heading in the panel, the one level-2 heading carrying its title.
+    await expect(
+      page.getByRole("heading", { level: 2, name: COLLECTED_EVENT.title }),
+    ).toBeVisible();
     await expectControlInsideViewport(
       page,
       page.getByRole("link", { name: "Your geolocations" }),
