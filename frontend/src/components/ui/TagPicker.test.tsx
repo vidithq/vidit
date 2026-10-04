@@ -48,8 +48,7 @@ const CONFLICTS: Conflict[] = [
 
 const CURATED: Tag[] = [{ id: "cs1", name: "Drone", category: "capture_source" }];
 
-// Stateful host so pill clicks round-trip through the selection state, the way
-// the submit / edit forms wire it.
+// Stateful host so pill clicks round-trip through the selection state.
 function Host({ conflicts = CONFLICTS }: { conflicts?: Conflict[] }) {
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
@@ -75,12 +74,10 @@ const endedSwitch = () =>
 describe("TagPicker conflict typeahead", () => {
   it("defaults to major ongoing conflicts plus Other pinned last", () => {
     render(<Host />);
-    // Ongoing conflicts carry their years too, ending in "present".
     expect(
       screen.getByText("Russian invasion of Ukraine (2022-present)")
     ).toBeInTheDocument();
     expect(screen.getByText("Other")).toBeInTheDocument();
-    // Minor-tier ongoing and ended conflicts stay behind the search.
     expect(screen.queryByText(/Sudanese civil war/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Falklands War/)).not.toBeInTheDocument();
     const pills = screen
@@ -100,8 +97,7 @@ describe("TagPicker conflict typeahead", () => {
   });
 
   it("suppresses the type-to-search hint when the default list is empty", () => {
-    // No major ongoing conflict and no Other: the empty state renders alone,
-    // never alongside the "type to search" hint.
+    // The empty state renders alone, never with the "type to search" hint.
     const noDefaults = [
       conflict({ id: "n1", name: "Minor ongoing war", tier: "minor" }),
     ];
@@ -112,12 +108,11 @@ describe("TagPicker conflict typeahead", () => {
 
   it("counts the rest of the searchable set and reacts to the switch", () => {
     render(<Host />);
-    // 3 ongoing total, 2 shown by default (the major + Other): 1 left.
+    // 3 ongoing, 2 shown by default (the major + Other): 1 left.
     expect(
       screen.getByText("1 more ongoing conflict, type to search.")
     ).toBeInTheDocument();
     fireEvent.click(endedSwitch());
-    // The default pills stay majors + Other; only the count widens.
     expect(
       screen.getByText("3 more conflicts, type to search.")
     ).toBeInTheDocument();
@@ -164,7 +159,6 @@ describe("TagPicker conflict typeahead", () => {
     ).toBeInTheDocument();
 
     fireEvent.click(endedSwitch());
-    // An ended conflict displays its years for disambiguation.
     expect(screen.getByText("Falklands War (1982)")).toBeInTheDocument();
   });
 
@@ -180,7 +174,6 @@ describe("TagPicker conflict typeahead", () => {
     ];
     render(<Host conflicts={guards} />);
     expect(screen.getByText("Unrest in Nowhere")).toBeInTheDocument();
-    // No doubled years for names that already carry them.
     expect(
       screen.getByText("Haitian crisis (2018–present)")
     ).toBeInTheDocument();
@@ -193,12 +186,10 @@ describe("TagPicker conflict typeahead", () => {
     render(<Host />);
     fireEvent.change(searchInput(), { target: { value: "sudan" } });
     fireEvent.click(screen.getByText("Sudanese civil war (2023-present)"));
-    // Selected: rendered once as the accent pill, out of the result list.
     expect(
       screen.getAllByText("Sudanese civil war (2023-present)")
     ).toHaveLength(1);
 
-    // A selected ended conflict stays visible with the switch back off.
     fireEvent.click(endedSwitch());
     fireEvent.change(searchInput(), { target: { value: "falklands" } });
     fireEvent.click(screen.getByText("Falklands War (1982)"));

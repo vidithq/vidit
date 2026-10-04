@@ -12,11 +12,7 @@
 // `node scripts/build-og-landmass.mjs <ne_110m_land.geojson>`, which carries
 // the source URL; the source dataset itself is not committed.
 
-/**
- * The plate-carrée frame the path is drawn in: x = lng + 180, y = 90 - lat. It
- * is `projectEquirectangular`'s frame at 360×180 scale, so the outline sits
- * under the graticule at any panel size with no reprojection.
- */
+/** Plate-carrée frame: x = lng + 180, y = 90 - lat (`projectEquirectangular` at 360×180). */
 export const OG_LANDMASS_VIEWBOX = { width: 360, height: 180 } as const;
 
 // Split on command boundaries so the constant diffs by line rather than whole.
@@ -99,5 +95,4 @@ const SEGMENTS = [
   "L106.7 12L114.3 10.6L112 9.9L117.3 8.2L152.9 6.5Z",
 ];
 
-/** Land outline path data, in `OG_LANDMASS_VIEWBOX` user units. */
 export const OG_LANDMASS_PATH = SEGMENTS.join("");

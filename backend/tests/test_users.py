@@ -1,30 +1,20 @@
 """End-to-end tests for `/users/{username}` + `/users/{username}/events`
 plus `PATCH /users/me` (self-edit of bio / links) and the avatar endpoints.
 
-The public profile is the second surface (after geolocations) that
-analysts will land on the day they get the invite. Contracts to lock in:
+Contracts:
 
-* Soft-deleted users 404, same shape as unknown — so an admin
-  removal doesn't double as a "this username existed" oracle.
-* The profile feed counts AND lists only the analyst's published
-  geolocations: live (`deleted_at IS NULL`, `hidden_at IS NULL`) and
-  `status = 'geolocated'`. The feed's own `total` and its rows must
-  apply the same filter, otherwise the pager counts rows it never
-  serves. `geolocations_count` on the profile payload counts the same
-  set: it is what the Insights card's Geolocated tile prints, directly
-  above that feed, so a tile counting machine detections makes the page
-  contradict itself. `GET /users/{u}/stats` is where the analyst's
-  documented work is reported: the three worked statuses, minus the
-  requests they withdrew, split by status and summed as `total_events`.
-* `UserProfile` carries the public profile fields (bio, avatar_url,
-  external_links) but never leaks `email`.
-* `PATCH /users/me` distinguishes "field omitted" from "field set to
-  null/empty" — omitting preserves, null/empty clears.
-* `avatar_url` is server-minted. `PUT /users/me/avatar` stores one image
-  on our own media host and points the column at it, `DELETE` clears
-  both, and the self-edit body cannot set it. Anything the owner could
-  type there would be a URL every viewer's browser fetches, which is the
-  beacon the upload pipeline closes.
+* Soft-deleted users 404 like unknown ones, so removal is no existence oracle.
+* The profile feed counts and lists only published geolocations (live and
+  `status = 'geolocated'`) with the same filter, so the pager never counts
+  unserved rows. `geolocations_count` counts the same set (the Insights card's
+  Geolocated tile). `GET /users/{u}/stats` reports the documented work: the
+  three worked statuses minus withdrawn requests, summed as `total_events`.
+* `UserProfile` carries bio, avatar_url and external_links, never `email`.
+* `PATCH /users/me` distinguishes an omitted field (preserved) from null or
+  empty (cleared).
+* `avatar_url` is server-minted: a typed URL would be fetched by every viewer's
+  browser (a beacon). `PUT /users/me/avatar` stores one image on our media host,
+  `DELETE` clears both, and the self-edit body cannot set it.
 """
 
 from __future__ import annotations
@@ -128,13 +118,11 @@ def _make_geo(
     status: str = STATUS_GEOLOCATED,
     before_closed_status: str | None = None,
 ) -> Event:
-    """One event owned by ``author``, defaulting to a published geolocation.
+    """One event owned by ``author``, a published geolocation by default.
 
-    ``status`` / ``before_closed_status`` build the other lifecycle states.
-    The per-state stamps are set to match, because the table CHECKs
-    (``ck_events_closed_stamp``, ``ck_events_geolocated_stamp``,
-    ``ck_events_before_closed_status``) reject a row that carries a state
-    without its stamp.
+    ``status`` / ``before_closed_status`` build the other states, with the stamps
+    the table CHECKs (``ck_events_closed_stamp``, ``ck_events_geolocated_stamp``,
+    ``ck_events_before_closed_status``) require.
     """
     now = datetime.now(UTC)
     geo = Event(
@@ -170,17 +158,13 @@ def test_profile_returns_user_shape(live_user):
     assert body["username"] == live_user.username
     assert body["bio"] is None
     assert body["avatar_url"] is None
-    # Default ``{}``  — never NULL — so the frontend renders a stable shape.
+    # Defaults to ``{}``, never NULL.
     assert body["external_links"] == {}
     assert body["geolocations_count"] == 0
 
 
 def test_profile_does_not_leak_email(db):
-    """`UserProfile` is the public schema — email must not surface here.
-
-    Locked in deliberately: a public profile that included the email
-    would be a free harvest endpoint for anyone with the username.
-    """
+    """`UserProfile` is public: an email here would be a harvest endpoint."""
     user = User(
         username=f"priv{uuid.uuid4().hex[:8]}",
         email=f"private-{uuid.uuid4().hex}@example.com",
@@ -204,12 +188,7 @@ def test_profile_404_for_unknown_username():
 
 
 def test_profile_404_for_soft_deleted_user(soft_deleted_user):
-    """Same surface as unknown — admin removal doesn't double as a probe.
-
-    A 200 (with empty fields) or any distinguishable error would let
-    a caller enumerate "which usernames were once registered but
-    later removed by an admin." The flat 404 is what closes that.
-    """
+    """Same 404 as unknown: any distinguishable answer would reveal removed usernames."""
     response = client.get(f"/api/v1/users/{soft_deleted_user.username}")
     assert response.status_code == 404
 
@@ -228,9 +207,7 @@ def test_feed_returns_pagination_envelope(live_user):
 
 
 def test_feed_excludes_soft_deleted_geos(db, live_user):
-    """The feed must filter soft-delete; otherwise the public profile
-    contradicts the rest of the site (which hides admin-removed rows)
-    and admin removals leak back through one specific endpoint."""
+    """The feed filters soft-deleted rows, as the rest of the site does."""
     live = _make_geo(db, author=live_user, title="live one")
     dead = _make_geo(db, author=live_user, title="removed", deleted=True)
 
@@ -244,10 +221,7 @@ def test_feed_excludes_soft_deleted_geos(db, live_user):
 
 
 def test_feed_count_matches_profile_count_on_published_work(db, live_user):
-    """On an analyst holding published work alone, `geolocations_count`
-    from `/users/{u}` and `total` from `/users/{u}/events` agree. Drift
-    here is the visible symptom of someone fixing one visibility filter
-    and not the other."""
+    """With published work alone, `geolocations_count` and the feed `total` agree."""
     _make_geo(db, author=live_user)
     _make_geo(db, author=live_user)
     _make_geo(db, author=live_user, deleted=True)
@@ -258,17 +232,9 @@ def test_feed_count_matches_profile_count_on_published_work(db, live_user):
 
 
 def test_feed_serves_published_work_only(db, live_user):
-    """The portfolio carries what the analyst vouched for, and nothing
-    else.
-
-    A `detected` row is machine output they have not stood behind and a
-    `closed`-off-`detected` row is one they threw out, so listing either
-    as their submission misrepresents them to every visitor. A
-    `requested` row is an open call for help, an ask rather than an
-    answer, so it is out too. The detections stay reachable: the owner works
-    them from their detections queue, and the coverage map still plots
-    them beside the published rows with a split count.
-    """
+    """The portfolio lists only what the analyst vouched for: not a `detected` row
+    (unvouched machine output), a closed-off detection, or a `requested` row.
+    Detections stay reachable from the owner's queue and the coverage map."""
     published = _make_geo(db, author=live_user, title="published")
     detection = _make_geo(db, author=live_user, title="detection", status=STATUS_DETECTED)
     rejected = _make_geo(
@@ -286,21 +252,15 @@ def test_feed_serves_published_work_only(db, live_user):
     assert [row["id"] for row in body["items"]] == [str(published.id)]
     excluded = {str(detection.id), str(rejected.id), str(request.id), str(removed.id)}
     assert excluded.isdisjoint({row["id"] for row in body["items"]})
-    # The pager must not count rows it will never serve: a `total` of 5
-    # over one served row is how a "Show more" that leads nowhere ships.
+    # `total` must not count rows the feed never serves (a "Show more" to nowhere).
     assert body["total"] == 1
 
 
 def test_profile_count_counts_published_work_only(db, live_user):
-    """`geolocations_count` counts the published geolocations and nothing
-    else, across the full lifecycle.
+    """`geolocations_count` counts published geolocations only, across the lifecycle.
 
-    It is the Insights card's Geolocated tile number, and the tile sits
-    above a Recent submissions block and a coverage split that both count
-    published rows. An analyst who ran an archive import owns hundreds of
-    machine detections, so counting those here tiles a figure an order of
-    magnitude above everything under it and credits them with claims they
-    never made.
+    An archive import leaves hundreds of machine detections; counting them would
+    credit the analyst with claims they never made.
     """
     _make_geo(db, author=live_user, title="published")
     _make_geo(db, author=live_user, title="detection", status=STATUS_DETECTED)
@@ -327,13 +287,8 @@ def test_profile_count_counts_published_work_only(db, live_user):
 
 
 def test_profile_count_and_stats_report_different_numbers(db, live_user):
-    """The whole body of live work is still reported, under its own name.
-
-    `/stats` splits by status and sums to `total_events`; the profile
-    payload counts the published part. A change that collapses the two
-    takes the wider figure off the profile entirely, which is what the
-    Insights card and the coverage map read against.
-    """
+    """`/stats` splits by status and sums to `total_events`; the profile counts the
+    published part. Collapsing the two would drop the wider figure."""
     _make_geo(db, author=live_user)
     _make_geo(db, author=live_user, status=STATUS_DETECTED)
     _make_geo(
@@ -353,9 +308,7 @@ def test_profile_count_and_stats_report_different_numbers(db, live_user):
 
 
 def test_feed_orders_published_rows_newest_event_date_first(db, live_user):
-    """Order is over the filtered set, not a filtered slice of a wider
-    ordering: a detection dated between two published rows must not consume
-    a page slot or reshuffle what survives it."""
+    """Order applies to the filtered set: a detection dated between two published rows takes no page slot."""
     _make_geo(db, author=live_user, event_date=date(2025, 1, 1), title="old")
     _make_geo(db, author=live_user, event_date=date(2026, 12, 1), title="new")
     _make_geo(db, author=live_user, event_date=date(2026, 6, 1), title="mid")
@@ -373,9 +326,7 @@ def test_feed_orders_published_rows_newest_event_date_first(db, live_user):
 
 
 def test_feed_caps_per_page_at_100(db, live_user):
-    """Whatever the caller requests, the server caps at 100 — a
-    backstop against accidental large reads (and the cheapest piece
-    of anti-scraping discipline before the proper per-IP / per-user limits land)."""
+    """The server caps `per_page` at 100, whatever is requested."""
     response = client.get(f"/api/v1/users/{live_user.username}/events?per_page=500")
     assert response.status_code == 200
     assert response.json()["per_page"] == 100
@@ -414,14 +365,8 @@ def test_patch_me_sets_bio(live_user, db):
 
 
 def test_patch_me_replaces_external_links_wholesale(live_user, db):
-    """JSONB column is replaced, not deep-merged. Documenting the contract.
-
-    The edit form submits the entire panel at once; if a user clears the
-    GitHub field and re-saves, the column should reflect "no github
-    anymore" — not silently retain the old value because the field was
-    absent. Filtering nulls in the handler is what produces a clean
-    object instead of ``{"x": "@handle", "github": null, ...}``.
-    """
+    """The JSONB column is replaced, not deep-merged: clearing a field and re-saving
+    drops it, and the handler filters nulls out of the stored object."""
     client.patch(
         "/api/v1/users/me",
         json={"external_links": {"x": "@me", "github": "@me-gh"}},
@@ -455,12 +400,8 @@ def test_patch_me_replaces_external_links_wholesale(live_user, db):
     ],
 )
 def test_patch_me_stores_the_handle_alone(live_user, db, field, sent, stored):
-    """Both accepted forms land on the column as the bare handle.
-
-    One form on the column is what lets every reader print the account name
-    without parsing a URL, and it is why the profile can link an ``x`` value to
-    the platform without trusting the host the analyst typed.
-    """
+    """Both accepted forms are stored as the bare handle, so readers print the name
+    without parsing a URL and link it without trusting the typed host."""
     response = client.patch(
         "/api/v1/users/me",
         json={"external_links": {field: sent}},
@@ -480,10 +421,9 @@ def test_patch_me_stores_the_handle_alone(live_user, db, field, sent, stored):
         # A post is not an account, and neither is a product path.
         ("x", "https://x.com/ana/status/1"),
         ("x", "https://x.com/i/flow"),
-        # A mirror names the platform's account on a host the platform does
-        # not own, so linking it would send readers somewhere else entirely.
+        # A mirror host the platform does not own.
         ("x", "https://evil.example/ana"),
-        # Neither a handle nor a URL: the message says which two forms exist.
+        # Neither a handle nor a URL.
         ("x", "x.com/ana"),
         ("x", "some user"),
         ("x", "sixteencharacters"),
@@ -521,11 +461,7 @@ def test_patch_me_omitted_fields_preserved(live_user, db):
 
 
 def test_patch_me_empty_string_clears_bio(live_user, db):
-    """Submitting "" clears the bio — that's the "delete and save" flow.
-
-    Without this, a user couldn't drop their bio without an admin
-    intervention. The schema strips whitespace then coerces empty → None.
-    """
+    """Submitting "" clears the bio: the schema strips whitespace and coerces empty to None."""
     live_user.bio = "seeded"
     db.commit()
 
@@ -543,12 +479,8 @@ def test_patch_me_empty_string_clears_bio(live_user, db):
 
 
 def test_patch_me_cannot_set_avatar_url(live_user, db):
-    """The self-edit body has no ``avatar_url``, and the schema forbids extras.
-
-    The column is the address every viewer's browser fetches, so it may only
-    hold a URL the server minted. Leaving the field writable here would keep
-    the beacon the upload endpoints exist to close.
-    """
+    """The self-edit body has no ``avatar_url`` and forbids extras: the column may
+    only hold a server-minted URL (a writable field is a beacon)."""
     response = client.patch(
         "/api/v1/users/me",
         json={"avatar_url": "https://tracker.example.com/beacon.gif"},
@@ -571,8 +503,7 @@ def test_patch_me_rejects_overlong_bio(live_user):
 
 
 def test_patch_me_ignores_extra_fields(live_user):
-    """The schema is ``extra=forbid``, guarding against a future caller that
-    thinks it can set an unlisted column via the self-edit endpoint."""
+    """The schema is ``extra=forbid``: an unlisted column cannot be set via self-edit."""
     response = client.patch(
         "/api/v1/users/me",
         json={"is_admin": True},
@@ -586,12 +517,7 @@ def test_patch_me_ignores_extra_fields(live_user):
 
 @pytest.fixture
 def local_storage(monkeypatch, tmp_path):
-    """Point the storage backend at a scratch directory for one test.
-
-    The avatar contract is "the object physically lands on our own media host,
-    and the replaced one physically goes away", which only the local backend
-    lets a test read back off disk.
-    """
+    """Point storage at a scratch directory; only the local backend can be read back off disk."""
     monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
     monkeypatch.setattr(storage_module.settings, "local_storage_dir", str(tmp_path))
     return tmp_path
@@ -611,14 +537,13 @@ def _put_avatar(live_user, content: bytes = TINY_JPEG, content_type: str = "imag
 
 
 def test_put_avatar_stores_the_image_on_our_own_host(local_storage, live_user, db):
-    """The minted URL is under our storage prefix, so no viewer's browser is
-    sent to a host the profile owner chose."""
+    """The minted URL is under our storage prefix, never an owner-chosen host."""
     response = _put_avatar(live_user)
     assert response.status_code == 200
     url = response.json()["avatar_url"]
     assert url.startswith(f"{LOCAL_STORAGE_URL_PREFIX}/avatars/{live_user.id}/")
     assert url.endswith(".jpg")
-    # One object, not the hero/thumb trio the evidence pipeline writes.
+    # One object, not the hero/thumb trio.
     stored = _stored_path(local_storage, url)
     assert stored.is_file()
     assert list(stored.parent.iterdir()) == [stored]
@@ -629,8 +554,7 @@ def test_put_avatar_stores_the_image_on_our_own_host(local_storage, live_user, d
 
 
 def test_put_avatar_replaces_and_removes_the_previous_object(local_storage, live_user, db):
-    """A replaced picture is deleted, not left addressable: the old URL keeps
-    working for anyone who saved it otherwise."""
+    """A replaced picture is deleted, or its old URL keeps working."""
     first_url = _put_avatar(live_user).json()["avatar_url"]
     first_path = _stored_path(local_storage, first_url)
     assert first_path.is_file()
@@ -720,8 +644,7 @@ def test_put_avatar_names_the_accepted_formats_when_refusing_one(local_storage, 
 
 
 def test_put_avatar_rejects_an_image_over_the_avatar_pixel_cap(local_storage, live_user, db):
-    """A profile picture has its own, lower pixel ceiling: an image an evidence
-    upload would take is refused as an avatar, and nothing is stored."""
+    """An avatar has a lower pixel ceiling than evidence: refused, nothing stored."""
     width, height = MAX_AVATAR_DECODED_PIXELS // 5000 + 1, 5000
     assert width * height <= MAX_DECODED_PIXELS
     buf = BytesIO()

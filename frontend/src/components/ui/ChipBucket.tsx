@@ -1,11 +1,10 @@
 import { Pill } from "./Pill";
 
 /**
- * A multi-select chip bucket for one filter family (conflicts, capture
- * sources, tags, media types): every option is a pill, selected ones filled
- * accent, and clicking toggles membership. Within a bucket the semantics are
- * any-match (OR); combining buckets is the caller's contract (AND on the
- * server). Shared by the map's filter overlay and the search page.
+ * A multi-select chip bucket for one filter family: every option a pill, selected
+ * ones accent, click toggles. Within a bucket, any-match (OR); combining buckets
+ * is the caller's contract (AND on the server). Shared by the map's filter
+ * overlay and the search page.
  */
 export function ChipBucket({
   options,

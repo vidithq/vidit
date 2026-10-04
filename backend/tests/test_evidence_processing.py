@@ -1,18 +1,5 @@
-"""Tests for the pre-storage metadata strip.
-
-The strip pass is the platform's defence against accidentally leaking
-the submitter's own GPS coordinates (or other personally-identifying
-EXIF / IPTC / XMP metadata) every time they upload a phone-shot
-JPEG. These tests lock in the contract:
-
-* JPEG with EXIF in → bytes with no EXIF marker out.
-* Corrupt image in → ``EvidenceProcessingError`` (router 400, no
-  half-written S3 object), and so are bytes that are not JPEG, PNG or WebP.
-* Non-image content type (video) → bytes unchanged (no Pillow on the
-  hot path for the 100 MB upload ceiling).
-* The output is still a valid, decodable image at the same dimensions
-  and mode.
-"""
+"""Pre-storage metadata strip: no EXIF/IPTC/XMP out, corrupt or non-JPEG/PNG/WebP in raises
+``EvidenceProcessingError``, video passes through unchanged, output stays a decodable image."""
 
 from __future__ import annotations
 
@@ -39,18 +26,10 @@ from app.services.storage import ALLOWED_IMAGE_TYPES
 
 
 def _jpeg_with_exif() -> bytes:
-    """A real 4×4 JPEG with a populated EXIF block.
-
-    ``exif=<bytes>`` writes the literal block into the APP1 segment,
-    so the output carries the ``Exif\\x00\\x00`` marker that our
-    strip must remove. The minimal block here mimics a GPS-stamped
-    phone photo without depending on piexif.
-    """
+    """A real 4x4 JPEG with a populated EXIF block (a GPS-stamped phone photo stand-in)."""
     img = Image.new("RGB", (4, 4), "blue")
     buf = BytesIO()
-    # Tiny but well-formed EXIF block — a single IFD0 entry. The exact
-    # content doesn't matter; what matters is the "Exif" magic ends up
-    # in the JPEG bytes for the test to detect.
+    # Minimal well-formed EXIF block, a single IFD0 entry; only the "Exif" magic matters.
     exif = (
         b"Exif\x00\x00"  # APP1 EXIF magic
         b"II*\x00"  # little-endian TIFF header
@@ -75,12 +54,9 @@ def test_strip_metadata_removes_exif_from_jpeg():
 
     cleaned = strip_metadata(raw, "image/jpeg")
 
-    # Substring belt: literal ``Exif`` marker is gone.
     assert b"Exif" not in cleaned, "EXIF marker survived strip"
-    # Semantic braces: the actual EXIF dict via getexif() is empty
-    # (this is the load-bearing assertion — a hostile fixture could
-    # carry EXIF without the literal "Exif" magic, but it couldn't
-    # produce a non-empty ``getexif()`` dict).
+    # The load-bearing check: a hostile fixture could carry EXIF without the literal magic,
+    # but not a non-empty getexif().
     out = Image.open(BytesIO(cleaned))
     out.load()
     assert dict(out.getexif()) == {}, "EXIF dict survived strip"
@@ -90,14 +66,8 @@ def test_strip_metadata_removes_exif_from_jpeg():
 
 
 def test_strip_metadata_removes_icc_profile_xmp_and_comment():
-    """Module docstring claims ICC profile + XMP are stripped; lock that
-    contract in, with the JPEG comment the encoder copies out of
-    ``img.info`` unless the strip empties it.
-    """
-    # Build a JPEG carrying an ICC profile + an XMP-shaped block. The
-    # exact ICC body is bytes (we just need *something* in the slot);
-    # XMP is XML-shaped APP1 data after a "http://ns.adobe.com/xap/1.0/\0"
-    # signature.
+    """ICC profile, XMP and the JPEG comment (copied from ``img.info`` unless the strip empties it) are stripped."""
+    # A JPEG carrying an ICC profile and an XMP-shaped APP1 block.
     img = Image.new("RGB", (4, 4), "green")
     buf = BytesIO()
     icc = b"\x00\x00\x02\x18ADBE\x02\x10\x00\x00mntrRGB" + b"\x00" * 64
@@ -118,29 +88,21 @@ def test_strip_metadata_removes_icc_profile_xmp_and_comment():
     out = Image.open(BytesIO(cleaned))
     out.load()
     assert "icc_profile" not in out.info, "ICC profile survived strip"
-    # XMP lands in ``info["XML:com.adobe.xmp"]`` (or similar) when
-    # Pillow can parse it; either way the key shouldn't be present.
+    # Pillow exposes parsed XMP under an ``info`` key; it must be absent.
     assert not any(k.lower().startswith("xml") for k in out.info), (
         f"XMP-shaped key survived strip: {out.info.keys()}"
     )
 
 
 def test_strip_metadata_passes_through_video_bytes():
-    # Video content type → no Pillow path, identical bytes back.
-    # The bytes don't have to be a real video; the contract is
-    # "non-image content type, no transform attempted".
+    # Non-image content type: no transform attempted, identical bytes back.
     payload = b"\x00\x00\x00\x20ftypisom\x00\x00\x02\x00isomiso2avc1mp41"
     result = strip_metadata(payload, "video/mp4")
     assert result == payload
 
 
 def test_strip_metadata_raises_on_corrupt_image():
-    """A 4-byte JPEG stub (SOI + EOI only) isn't decodable.
-
-    Pillow's ``UnidentifiedImageError`` / ``OSError`` must surface as
-    ``EvidenceProcessingError`` so the router's ``ValueError`` → 400 path picks
-    it up before any storage write.
-    """
+    """A 4-byte JPEG stub (SOI + EOI only) surfaces as ``EvidenceProcessingError`` before any storage write."""
     with pytest.raises(EvidenceProcessingError) as refused:
         strip_metadata(b"\xff\xd8\xff\xd9", "image/jpeg")
 
@@ -148,8 +110,7 @@ def test_strip_metadata_raises_on_corrupt_image():
 
 
 def test_strip_metadata_raises_on_truncated_image():
-    """A valid JPEG cut in half opens, then fails to decode; it gets the same
-    message as an unreadable file."""
+    """A truncated JPEG opens, then fails to decode; same message as an unreadable file."""
     whole = _solid_jpeg(64, 64)
 
     with pytest.raises(EvidenceProcessingError) as refused:
@@ -159,20 +120,11 @@ def test_strip_metadata_raises_on_truncated_image():
 
 
 def test_strip_metadata_rejects_decompression_bomb(monkeypatch):
-    """A small file declaring oversized dimensions must 400 before
-    Pillow allocates the (multi-GB) pixel buffer.
+    """A small file declaring oversized dimensions 400s before Pillow allocates the pixel buffer.
 
-    The explicit ``width * height > MAX_DECODED_PIXELS`` check on the
-    lazy ``Image.open(...).size`` is the load-bearing defence —
-    operates on locals (race-free) and fires before any pixel-buffer
-    allocation. Pillow's own ``DecompressionBombError`` is still
-    handled by the ``except`` clause as a safety net for inputs that
-    declare a small size in the header but ship oversized data past
-    Pillow's 89 MP default, but we do NOT narrow Pillow's global cap
-    here (would race between concurrent ``asyncio.to_thread`` calls).
-
-    The regex below accepts either error wording so a future
-    refactor of the message strings doesn't break the test.
+    The ``width * height > MAX_DECODED_PIXELS`` check on the lazy ``Image.open(...).size``
+    is the defence. Pillow's own cap is not narrowed globally (it would race across
+    concurrent ``asyncio.to_thread`` calls). The regex accepts either error wording.
     """
     from app.services import evidence_processing as ep
 
@@ -184,24 +136,15 @@ def test_strip_metadata_rejects_decompression_bomb(monkeypatch):
     with pytest.raises(EvidenceProcessingError, match="(pixel cap|decompression bomb)"):
         ep.strip_metadata(buf.getvalue(), "image/jpeg")
 
-    # Sanity: with the cap restored by monkeypatch's teardown, the
-    # same image should strip fine again. (Run as a separate
-    # ``monkeypatch.undo()`` here so the assertion sees the original
-    # value within the test body.)
+    # The cap restored, the same image strips fine.
     monkeypatch.undo()
     assert ep.strip_metadata(buf.getvalue(), "image/jpeg")
 
 
 def test_strip_metadata_preserves_palette_png_colours():
-    """A palette-mode PNG must come back as a real-colour image, not
-    rebuilt as black/garbage.
+    """A palette-mode PNG comes back as a real-colour image, not black.
 
-    The PR-review-reproduced bug: ``Image.frombytes(img.mode,
-    img.size, img.tobytes())`` on a ``mode == "P"`` image rebuilt the
-    bytes but lost the palette, so pixel index `15` got read as RGB
-    `(0, 0, 0)`. We assert the output is decodable AND the pixel
-    colour at (0,0) is close to the original blue (Pillow's PNG /
-    palette quantisation isn't exact-equal, but it shouldn't be black).
+    Regression: rebuilding a ``mode == "P"`` image with ``Image.frombytes`` lost the palette.
     """
     img = Image.new("RGB", (4, 4), (15, 50, 200)).convert("P", palette=Image.Palette.ADAPTIVE)
     buf = BytesIO()
@@ -211,30 +154,23 @@ def test_strip_metadata_preserves_palette_png_colours():
     out = Image.open(BytesIO(cleaned))
     out.load()
 
-    # Should be RGB/RGBA, not palette (we converted away from P).
+    # RGB/RGBA, not palette.
     assert out.mode in {"RGB", "RGBA"}
     pixel = out.getpixel((0, 0))
-    # Allow for palette / JPEG-like roundtrip drift but the blue channel
-    # must dominate; if the bug regresses, all channels would be 0.
+    # The blue channel must dominate; the bug zeroed all channels.
     assert pixel[2] > 100, f"palette PNG lost colour during strip — got {pixel}"
 
 
 def test_strip_metadata_preserves_palette_png_transparency():
-    """A palette PNG with a ``tRNS`` chunk (per-index alpha) must come
-    back as RGBA with alpha intact — not silently flattened to opaque
-    RGB.
+    """A palette PNG with a ``tRNS`` chunk comes back as RGBA with alpha intact.
 
-    Earlier check was ``"transparency" in img.info`` which works for
-    the palette+tRNS case but misses ``mode == "PA"`` (palette +
-    alpha plane). The fix uses ``has_transparency_data`` which covers
-    both; this test guards specifically the tRNS path.
+    Guards the tRNS path; ``has_transparency_data`` also covers ``mode == "PA"``.
     """
-    # Build a palette PNG with one fully-transparent and one opaque
-    # entry. The tRNS bytes table corresponds to palette indexes.
+    # One fully transparent and one opaque palette entry.
     img = Image.new("P", (4, 4))
     img.putpalette([255, 0, 0, 0, 0, 255], "RGB")  # idx 0 red, idx 1 blue
     img.info["transparency"] = bytes([0, 255])  # idx 0 transparent, idx 1 opaque
-    # Make the corner pixel use the transparent index.
+    # The corner pixel uses the transparent index.
     img.putpixel((0, 0), 0)
     img.putpixel((3, 3), 1)
     buf = BytesIO()
@@ -251,11 +187,7 @@ def test_strip_metadata_preserves_palette_png_transparency():
 
 
 def test_strip_metadata_rejects_animated_webp():
-    """Animated WebP / APNG silently flattened to one frame is worse
-    than rejection — the analyst thinks their footage uploaded but
-    only the first frame survives. Surface a clean error so they can
-    re-upload as a video.
-    """
+    """Animated WebP / APNG is rejected: flattening to one frame would silently lose the footage."""
     frames = [Image.new("RGB", (4, 4), c) for c in ("red", "green", "blue")]
     buf = BytesIO()
     frames[0].save(
@@ -272,21 +204,12 @@ def test_strip_metadata_rejects_animated_webp():
 
 
 def test_max_decoded_pixels_clears_realistic_camera_output():
-    """Guard against an accidental tightening below realistic phone / DSLR
-    uploads: top-of-line phone cameras shoot ~50 MP today, so the cap must
-    stay at or above that. (100 MP astrophotography is rare enough to reject.)
-    """
+    """The decode cap stays at or above ~50 MP phone cameras."""
     assert MAX_DECODED_PIXELS >= 50_000_000
 
 
-# ── make_jpeg_derivative ─────────────────────────────────────────────────
-
-
 def _solid_jpeg(width: int, height: int) -> bytes:
-    """A real JPEG of the requested dimensions. Used to verify the
-    resize+encode path produces decodable output and clamps to the
-    target ``max_dim``.
-    """
+    """A real JPEG of the requested dimensions."""
     img = Image.new("RGB", (width, height), "red")
     buf = BytesIO()
     img.save(buf, format="JPEG", quality=95)
@@ -294,24 +217,17 @@ def _solid_jpeg(width: int, height: int) -> bytes:
 
 
 def test_make_jpeg_derivative_clamps_longer_edge_to_max_dim():
-    """The output's longer edge must equal ``max_dim`` exactly when the
-    input is larger. Aspect ratio preserved on the shorter edge.
-    """
+    """The longer edge equals ``max_dim`` exactly for a larger input; aspect ratio is preserved."""
     raw = _solid_jpeg(3200, 1600)  # 2:1 landscape
     out = make_jpeg_derivative(raw, "image/jpeg", HERO_MAX_DIM)
     decoded = Image.open(BytesIO(out))
     assert max(decoded.size) == HERO_MAX_DIM, decoded.size
-    # 2:1 aspect preserved.
     assert decoded.size == (HERO_MAX_DIM, HERO_MAX_DIM // 2)
     assert decoded.format == "JPEG"
 
 
 def test_make_jpeg_derivative_does_not_upscale_smaller_images():
-    """``Image.thumbnail`` refuses to upscale — that's the intended
-    behaviour. A 200×100 source through the 400-max thumb path lands
-    back at 200×100, not upscaled to 400×200. Saves bandwidth on
-    already-tiny inputs without producing a visibly soft upscale.
-    """
+    """``Image.thumbnail`` does not upscale: 200x100 through the 400-max path stays 200x100."""
     raw = _solid_jpeg(200, 100)
     out = make_jpeg_derivative(raw, "image/jpeg", THUMBNAIL_MAX_DIM)
     decoded = Image.open(BytesIO(out))
@@ -319,10 +235,7 @@ def test_make_jpeg_derivative_does_not_upscale_smaller_images():
 
 
 def test_make_jpeg_derivative_always_outputs_jpeg_for_png_input():
-    """PNG sources must be re-encoded as JPEG — the convention is that
-    every derivative ends in ``.jpg`` regardless of source format so
-    the frontend's structural-naming derivation is unambiguous.
-    """
+    """PNG sources are re-encoded as JPEG: every derivative ends in ``.jpg`` so the frontend naming derivation is unambiguous."""
     img = Image.new("RGBA", (800, 600), (255, 0, 0, 128))
     buf = BytesIO()
     img.save(buf, format="PNG")
@@ -330,25 +243,19 @@ def test_make_jpeg_derivative_always_outputs_jpeg_for_png_input():
     out = make_jpeg_derivative(raw, "image/png", THUMBNAIL_MAX_DIM)
     decoded = Image.open(BytesIO(out))
     assert decoded.format == "JPEG"
-    # Alpha flattened to RGB (JPEG can't carry transparency).
+    # JPEG cannot carry transparency.
     assert decoded.mode == "RGB"
 
 
 def test_make_jpeg_derivative_returns_video_bytes_unchanged():
-    """Mirrors ``strip_metadata`` — videos pass through unchanged so
-    the helper composes cleanly in the storage layer where the
-    upload path branches on content type only once.
-    """
+    """Videos pass through unchanged, as in ``strip_metadata``."""
     payload = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00"  # MP4 header signature, not parsed
     out = make_jpeg_derivative(payload, "video/mp4", HERO_MAX_DIM)
     assert out is payload
 
 
 def test_make_jpeg_derivative_rejects_corrupt_image():
-    """A corrupt input should surface as ``EvidenceProcessingError``
-    (router → 400) rather than a 500 from an uncaught Pillow exception.
-    Matches ``strip_metadata``'s contract.
-    """
+    """A corrupt input raises ``EvidenceProcessingError`` (router 400), not an uncaught Pillow 500."""
     with pytest.raises(EvidenceProcessingError) as refused:
         make_jpeg_derivative(b"not-a-jpeg", "image/jpeg", HERO_MAX_DIM)
 
@@ -356,11 +263,7 @@ def test_make_jpeg_derivative_rejects_corrupt_image():
 
 
 def test_make_jpeg_derivative_rejects_decompression_bomb(monkeypatch):
-    """``max_dim`` doesn't override the bomb cap — header-parse
-    dimensions above ``MAX_DECODED_PIXELS`` are still refused before
-    any pixel-buffer allocation. Lowering the cap via monkeypatch
-    keeps the test fixture small while still exercising the branch.
-    """
+    """``max_dim`` does not override the bomb cap (lowered here by monkeypatch to keep the fixture small)."""
     monkeypatch.setattr("app.services.evidence_processing.MAX_DECODED_PIXELS", 2500)
     raw = _solid_jpeg(100, 100)  # 10_000 pixels — above the patched cap
     with pytest.raises(EvidenceProcessingError, match="pixel cap"):
@@ -368,27 +271,16 @@ def test_make_jpeg_derivative_rejects_decompression_bomb(monkeypatch):
 
 
 def test_hero_is_larger_than_thumbnail():
-    """Sanity-check the constants relate the way callers assume —
-    swapping them would silently invert the bandwidth budget across
-    every render surface in the app.
-    """
+    """Swapping the constants would invert the bandwidth budget across every render surface."""
     assert HERO_MAX_DIM > THUMBNAIL_MAX_DIM
 
 
 def test_make_jpeg_derivative_bakes_in_exif_orientation():
-    """A source JPEG carrying EXIF Orientation 6 (rotate 270° CW for
-    display) must be transposed before resize so the derivative pixel
-    orientation matches what a browser would render from the EXIF-
-    bearing original. Without ``exif_transpose``, the derivative would
-    render upright while the original (still EXIF-stamped on its
-    raw-bytes public URL) renders rotated — visible mismatch in any
-    surface that shows both, and specifically broken on the
-    demo-seed-pool path which skips ``strip_metadata`` entirely.
+    """EXIF Orientation 6 is applied before resize so the derivative matches the browser rendering of the original.
+
+    The demo-seed-pool path skips ``strip_metadata``, so the original keeps its EXIF.
     """
-    # Build a 200×100 (landscape) JPEG, then write an EXIF block with
-    # Orientation = 6 (rotate 270° CW for display). A browser
-    # honouring EXIF would render it as 100×200 (portrait); after
-    # ``exif_transpose`` the pixel array itself is 100×200.
+    # 200x100 landscape JPEG with Orientation 6: after ``exif_transpose`` the raster is 100x200.
     img = Image.new("RGB", (200, 100), "blue")
     buf = BytesIO()
     exif = (
@@ -405,26 +297,19 @@ def test_make_jpeg_derivative_bakes_in_exif_orientation():
     img.save(buf, format="JPEG", quality=95, exif=exif)
     raw = buf.getvalue()
 
-    # The source as a Pillow image (without exif_transpose) is 200×100.
+    # Without exif_transpose the source is 200x100.
     assert Image.open(BytesIO(raw)).size == (200, 100)
 
     out = make_jpeg_derivative(raw, "image/jpeg", HERO_MAX_DIM)
     decoded = Image.open(BytesIO(out))
-    # After transpose the *pixel* dimensions are swapped; the longer
-    # edge is still ≤ HERO_MAX_DIM (no upscaling on small inputs).
+    # Pixel dimensions are swapped; no upscaling on small inputs.
     assert decoded.size == (100, 200), (
         f"EXIF Orientation 6 not baked into derivative — got {decoded.size}, expected (100, 200)"
     )
 
 
 def _jpeg_with_orientation(orientation: int, size: tuple[int, int]) -> bytes:
-    """A JPEG carrying an EXIF Orientation tag and nothing else.
-
-    Tag 274 is Orientation; value 6 means "the camera was rotated, display
-    this raster turned 90 degrees clockwise". Pillow writes the tag into the
-    APP1 block and leaves the raster as-is, which is exactly what a phone
-    produces.
-    """
+    """A JPEG carrying only an EXIF Orientation tag (value 6), as a phone writes it."""
     img = Image.new("RGB", size, "red")
     exif = img.getexif()
     exif[274] = orientation
@@ -434,31 +319,25 @@ def _jpeg_with_orientation(orientation: int, size: tuple[int, int]) -> bytes:
 
 
 def test_strip_metadata_applies_exif_orientation_before_dropping_it():
-    """A rotated photo comes out upright, not sideways.
+    """A rotated photo comes out upright.
 
-    The strip drops the whole metadata block, Orientation included. Dropping
-    the tag without first applying it silently rotates the picture: the raster
-    still says landscape and nothing is left to tell a viewer otherwise. Every
-    derivative cut from the stripped copy inherits that, so this is the one
-    place it can be fixed.
+    The strip drops Orientation with the rest of the metadata, so it must
+    apply the tag first; every derivative inherits the stripped copy.
     """
     stripped = strip_metadata(_jpeg_with_orientation(6, (200, 100)), "image/jpeg")
 
     out = Image.open(BytesIO(stripped))
-    # 200x100 landscape raster + "rotate 90" = a 100x200 portrait image.
+    # 200x100 landscape + rotate 90 = 100x200 portrait.
     assert out.size == (100, 200)
-    # And the tag is gone, so no viewer applies the rotation a second time.
+    # The tag is gone, so no viewer rotates a second time.
     assert out.getexif().get(274) is None
 
 
 def test_strip_metadata_leaves_an_unrotated_image_alone():
-    """Orientation 1 ("as stored") is the common case; dimensions must not move."""
+    """Orientation 1 ("as stored") leaves dimensions unchanged."""
     stripped = strip_metadata(_jpeg_with_orientation(1, (200, 100)), "image/jpeg")
 
     assert Image.open(BytesIO(stripped)).size == (200, 100)
-
-
-# ── declared type, metadata chunks, decode slots ─────────────────────────
 
 
 def _encoded(fmt: str, mode: str = "RGB") -> bytes:
@@ -485,8 +364,7 @@ _MAGIC = {
     ],
 )
 def test_strip_metadata_stores_any_accepted_format_as_the_declared_type(fmt, mode, declared):
-    """A JPEG, PNG or WebP is accepted whatever type it declares and is stored
-    encoded as the declared type, so the stored bytes match the stored type."""
+    """A JPEG, PNG or WebP is accepted whatever type it declares and stored as the declared type."""
     cleaned = strip_metadata(_encoded(fmt, mode), declared)
 
     assert cleaned.startswith(_MAGIC[declared])
@@ -494,8 +372,7 @@ def test_strip_metadata_stores_any_accepted_format_as_the_declared_type(fmt, mod
 
 @pytest.mark.parametrize(("fmt", "declared"), [("TIFF", "image/png"), ("GIF", "image/jpeg")])
 def test_strip_metadata_refuses_a_format_it_does_not_accept(fmt, declared):
-    """Bytes no JPEG, PNG or WebP decoder reads are refused whatever type they
-    declare, with a message naming the formats an upload may be in."""
+    """Bytes no allowed decoder reads are refused, with a message naming the allowed formats."""
     with pytest.raises(EvidenceProcessingError) as refused:
         strip_metadata(_encoded(fmt), declared)
 
@@ -503,8 +380,7 @@ def test_strip_metadata_refuses_a_format_it_does_not_accept(fmt, declared):
 
 
 def test_every_accepted_image_type_strips_to_its_own_format():
-    """The decoders tried are exactly those of the upload allowlist, and each
-    accepted type strips to its own format."""
+    """The decoders tried are those of the upload allowlist; each type strips to its own format."""
     Image.init()
     pillow_format = {mime: fmt for fmt, mime in Image.MIME.items()}
     assert set(_ACCEPTED_FORMATS) == {pillow_format[t] for t in ALLOWED_IMAGE_TYPES}
@@ -543,8 +419,7 @@ def _with_every_metadata_chunk(fmt: str) -> bytes:
     ],
 )
 def test_strip_metadata_removes_every_metadata_chunk(fmt, content_type, chunks):
-    """PNG text, EXIF and ICC chunks, and WebP EXIF, XMP and ICC chunks, are
-    all gone from the stripped file."""
+    """PNG text, EXIF and ICC chunks and WebP EXIF, XMP and ICC chunks are gone."""
     raw = _with_every_metadata_chunk(fmt)
     assert all(chunk in raw for chunk in chunks), "fixture must carry every chunk"
 
@@ -558,10 +433,7 @@ def test_strip_metadata_removes_every_metadata_chunk(fmt, content_type, chunks):
 
 
 def test_at_most_max_concurrent_decodes_run_at_once(monkeypatch):
-    """However many uploads arrive together, only ``MAX_CONCURRENT_DECODES``
-    images are open at the same time, from ``Image.open`` to the end of its
-    ``with`` block, so their rasters bound the memory image processing takes;
-    the other uploads wait for a slot."""
+    """At most ``MAX_CONCURRENT_DECODES`` images are open at once (``Image.open`` to the end of its ``with``), bounding raster memory."""
     held: set[int] = set()
     most = 0
     lock = threading.Lock()

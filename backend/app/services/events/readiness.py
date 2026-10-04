@@ -1,8 +1,6 @@
 """The publish floor of a batch completion, projected into SQL for the queue.
 
-``GET /events/detections`` filters on :func:`detection_ready_predicate`, which
-states in one SQL predicate the checks ``batch._publish_detection`` runs row by
-row. A change to a floor leg there is a change here.
+A change to a floor leg in ``batch._publish_detection`` is a change here.
 """
 
 from __future__ import annotations
@@ -12,56 +10,43 @@ from sqlalchemy import ColumnElement, and_, func
 from app.models.event import Event
 from app.models.media import Media
 
-# The proof-image leg as a Postgres jsonpath. Recursive descent over the
-# document, matching any node typed ``image`` whose ``attrs.src`` is a string:
-# the same verdict :func:`sanitize.extract_image_srcs` reaches by walking the
-# tree in Python, on the same inputs. Both count a ``placeholder://`` src, which
-# is the intake-time convention (see ``sanitize.PROOF_PLACEHOLDER_PREFIX``) and
-# never survives into a persisted doc, so no prefix test is needed on either
-# side. ``lax`` mode (the default) is what makes a node without ``attrs``, or
-# with a non-string ``src``, fall out instead of raising.
+# Proof-image leg as a jsonpath: any node typed ``image`` with a string
+# ``attrs.src``, the same verdict as :func:`sanitize.extract_image_srcs`.
+# ``placeholder://`` srcs never persist, so no prefix test is needed. ``lax``
+# mode makes a node without ``attrs`` or with a non-string ``src`` fall out
+# instead of raising.
 _PROOF_IMAGE_JSONPATH = '$.** ? (@.type == "image" && @.attrs.src.type() == "string")'
 
 
-# The queue filter values ``GET /events/detections`` accepts, ``all`` being no
-# narrowing at all. Sibling of ``event_filters.VIEWS``: the router validates
-# against it and answers 422 on anything else.
+# Queue filter values of ``GET /events/detections`` (422 on anything else);
+# ``all`` does not narrow. Sibling of ``event_filters.VIEWS``.
 DETECTION_READINESS = frozenset({"all", "ready", "incomplete"})
 
 
 def detection_ready_predicate() -> ColumnElement[bool]:
     """The publish floor of :func:`_publish_detection`, as one SQL predicate.
 
-    A detection is *ready* when everything the analyst cannot supply
-    from the review form's two picks is already on the row, leg for leg the
-    checks :func:`_publish_detection` runs before it flips the status:
+    Ready means everything the review form cannot supply is on the row:
 
-    1. a non-blank ``source_url``, there a ``strip()`` test, here non-NULL and
-       holding a non-space character;
+    1. a non-blank ``source_url`` (non-NULL, has a non-space character);
     2. ``event_coords`` present;
-    3. a ``source`` media row, there a scan of the loaded collection, here an
-       ``EXISTS``;
-    4. :func:`_require_proof_image`, here :data:`_PROOF_IMAGE_JSONPATH`.
+    3. a ``source`` media row (``EXISTS``);
+    4. a proof image (:data:`_PROOF_IMAGE_JSONPATH`).
 
-    The two remaining floor legs (a conflict, a ``capture_source`` tag) are the
-    judgment the review supplies per row, so a detection missing them is still
-    ready in this sense. That is the same line ``batchCompletionBlockers``
-    (``frontend/src/lib/events.ts``) draws, and the three implementations are
-    held to one verdict by ``tests/events/test_detections_readiness.py``.
+    The conflict and ``capture_source`` tag legs are supplied per row by the
+    review, so they are not checked here. `batchCompletionBlockers`
+    (``frontend/src/lib/events.ts``) draws the same line; keep the three in
+    step (``tests/events/test_detections_readiness.py``).
 
-    Every leg is strictly TRUE or FALSE (never NULL), so ``not_()`` of this is
-    the exact complement and a row lands in ready or incomplete, never neither.
+    Every leg is TRUE or FALSE, never NULL, so ``not_()`` is the exact complement.
     """
     return and_(
-        # ``NULL AND unknown`` is FALSE in SQL, so the NULL case can't leak
-        # into the negation as unknown. ``[^[:space:]]`` is the SQL spelling of
-        # Python's ``not source_url.strip()`` and of the frontend's
-        # ``!source_url?.trim()``: blank means no non-space character.
+        # ``NULL AND unknown`` is FALSE, so NULL never leaks into the negation.
+        # ``[^[:space:]]`` mirrors Python's ``strip()`` and the frontend's ``trim()``.
         Event.source_url.isnot(None),
         Event.source_url.regexp_match("[^[:space:]]"),
         Event.event_coords.isnot(None),
-        # ``.any()`` lowers to EXISTS, so a detection with several attachments is
-        # not row-multiplied into the count.
+        # ``.any()`` lowers to EXISTS, so several attachments do not multiply rows.
         Event.media.any(Media.role == "source"),
         func.jsonb_path_exists(Event.proof, _PROOF_IMAGE_JSONPATH),
     )

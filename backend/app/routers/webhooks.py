@@ -1,20 +1,16 @@
 """The X Account Activity webhook: the bot's nominal mention delivery.
 
-Unauthenticated by design: X calls it, and the HMAC signature over the raw
-body (the app's consumer secret, which only X and this deployment hold) is
-the gate. The CRC responder signs with the same secret and the same
-construction, so it would be a signing oracle for forged webhook bodies if
-it signed arbitrary input; the ``crc_token`` charset gate below is what
-closes that (a JSON body can never fit the allowed charset). No rate
-limiter on top: the signature rejection is one HMAC over the body, cheaper
-than any limiter bookkeeping, and a 401 costs the caller a full request
-either way.
+Unauthenticated by design: the HMAC signature over the raw body (the consumer
+secret, held only by X and this deployment) is the gate. The CRC responder
+signs with the same construction, so it would be a signing oracle for forged
+bodies if it signed arbitrary input; the ``crc_token`` charset gate closes
+that (a JSON body never fits it). No rate limiter: a signature rejection is
+one HMAC, cheaper than limiter bookkeeping.
 
 The POST does no pipeline work: it verifies, reduces the payload to the
-internal ``Mention`` shape, inserts ``bot_webhook_events`` rows, and answers
-200. The import worker drains the queue (``services/bot``). X retries or
-falls back on slow answers, so the request path must stay allocation-cheap
-and DB-light (one insert batch, one commit).
+internal ``Mention`` shape, inserts ``bot_webhook_events`` rows and answers
+200 (one insert batch, one commit, since X retries on slow answers). The
+import worker drains the queue (``services/bot``).
 """
 
 from __future__ import annotations
@@ -42,25 +38,19 @@ router = APIRouter()
 _SIGNATURE_HEADER = "x-twitter-webhooks-signature"
 _SIGNATURE_PREFIX = "sha256="
 
-# X's CRC tokens are short URL-safe strings. The gate matters because the CRC
-# answer is HMAC(consumer_secret, crc_token), the exact construction the POST
-# verifier checks over the raw body: signing arbitrary input would let anyone
-# obtain a valid signature for a forged webhook body. A JSON body always
-# contains ``{`` and ``"``, so this charset can never be coerced into one.
+# X's CRC tokens are short URL-safe strings. The CRC answer is
+# HMAC(consumer_secret, crc_token), the same construction the POST verifier
+# checks, so signing arbitrary input would hand out valid signatures for forged
+# bodies. A JSON body always contains ``{`` and ``"``, which this charset rejects.
 _CRC_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{1,200}$")
 
-# An Account Activity delivery is small (a bounded batch of tweet objects);
-# a few hundred KB is generous. Public because the body-size middleware
-# (``app.main.enforce_request_body_size``) pins this cap on the webhook path
-# and is what enforces it: it runs ahead of this route on both the
-# Content-Length and the chunked / no-Content-Length path, so an oversized
-# delivery 413s before the handler ever sees a byte. That keeps the pre-auth
-# memory bound at this small cap rather than the much larger upload ceiling
-# the middleware applies everywhere else.
+# Small by design (a bounded batch of tweet objects). Public because the
+# body-size middleware (``app.main.enforce_request_body_size``) pins this cap
+# on the webhook path, so an oversized delivery 413s pre-auth at this cap, not
+# the larger upload ceiling.
 MAX_BODY_BYTES = 512 * 1024
 
-# Belt-and-suspenders bound on the per-delivery batch: X batches far fewer
-# events per delivery; anything past the cap is dropped, not queued.
+# Bound on the per-delivery batch; anything past it is dropped, not queued.
 _MAX_EVENTS_PER_DELIVERY = 100
 
 
@@ -71,13 +61,9 @@ def _sign(secret: str, payload: bytes) -> str:
 
 @router.get("/x")
 def crc_challenge(crc_token: str) -> dict[str, str]:
-    """Answer X's Challenge-Response Check.
-
-    X sends one at registration and then hourly; a wrong or slow answer
-    deactivates the webhook. Pure HMAC over the token, no DB, so the answer
-    is immediate. Tokens outside X's URL-safe shape are rejected: see
-    ``_CRC_TOKEN_RE`` for why signing arbitrary input would be an oracle.
-    """
+    """Answer X's Challenge-Response Check (registration, then hourly; a wrong
+    or slow answer deactivates the webhook). Pure HMAC, no DB. Tokens outside
+    X's URL-safe shape are rejected (see ``_CRC_TOKEN_RE``)."""
     if not settings.x_api_consumer_secret:
         raise HTTPException(status_code=503, detail="X webhook credentials not configured")
     if not _CRC_TOKEN_RE.fullmatch(crc_token):
@@ -88,14 +74,11 @@ def crc_challenge(crc_token: str) -> dict[str, str]:
 def _event_to_mention(event: object) -> Mention | None:
     """Reduce one ``tweet_create_events`` entry to the internal shape.
 
-    Drops the bot's own posts and anything that doesn't actually mention the
-    bot (the account's subscription also delivers its timeline activity; the
-    poll's equivalent filter is reading the mentions timeline, so here the
-    ``entities.user_mentions`` ids carry the decision). Legacy AAA quirk:
-    on a truncated tweet the full text lives under
-    ``extended_tweet.full_text`` and the full entities (a tag past the
-    truncation point included) under ``extended_tweet.entities``, so both
-    prefer the extended form when present.
+    Drops the bot's own posts and anything not mentioning the bot (the
+    subscription also delivers timeline activity), decided by
+    ``entities.user_mentions`` ids. Legacy AAA quirk: a truncated tweet keeps
+    its full text under ``extended_tweet.full_text`` and its full entities
+    under ``extended_tweet.entities``, so both prefer the extended form.
     """
     if not isinstance(event, dict):
         return None
@@ -135,21 +118,17 @@ def _event_to_mention(event: object) -> Mention | None:
 
 @router.post("/x")
 async def receive_account_activity(request: Request, db: Session = Depends(get_db)) -> dict:
-    """Verify, queue, answer. Anything valid-but-irrelevant (another
-    ``for_user_id``, non-mention events, retweets of the bot) still gets a
-    200: a non-2xx makes X retry and eventually deactivate the webhook."""
+    """Verify, queue, answer. Valid-but-irrelevant deliveries still get a 200:
+    a non-2xx makes X retry and eventually deactivate the webhook."""
     if not settings.x_api_consumer_secret or not settings.x_bot_user_id:
-        # An empty x_bot_user_id would silently drop every event below (no
-        # for_user_id ever matches ""); 503 like the missing secret so a
-        # misconfigured deployment is loud, not a black hole.
+        # An empty x_bot_user_id would silently drop every event; 503 so a
+        # misconfigured deployment is loud.
         raise HTTPException(status_code=503, detail="X webhook credentials not configured")
-    # The body-size middleware already 413'd anything past ``MAX_BODY_BYTES``
-    # on this path, so by here the body is within cap.
+    # The body-size middleware already 413'd anything over ``MAX_BODY_BYTES``.
     raw = await request.body()
     provided = request.headers.get(_SIGNATURE_HEADER, "")
     expected = _sign(settings.x_api_consumer_secret, raw)
-    # Compared as bytes: header values decode as latin-1, and a non-ASCII
-    # value passed to compare_digest as str raises instead of mismatching.
+    # Compared as bytes: a non-ASCII str value makes compare_digest raise.
     if not hmac.compare_digest(
         provided.encode("utf-8", "surrogateescape"), expected.encode("ascii")
     ):
@@ -157,9 +136,8 @@ async def receive_account_activity(request: Request, db: Session = Depends(get_d
     try:
         payload = json.loads(raw)
     except ValueError:
-        # Signed by the right secret yet unparseable: X never does this, so
-        # log loudly and swallow (a 4xx would only trigger retries of the
-        # same body).
+        # Signed yet unparseable: X never does this. Log and swallow (a 4xx
+        # would only trigger retries of the same body).
         logger.warning("Unparseable signed webhook body (%d bytes)", len(raw))
         return {"queued": 0}
     if not isinstance(payload, dict) or payload.get("for_user_id") != settings.x_bot_user_id:
@@ -177,6 +155,5 @@ async def receive_account_activity(request: Request, db: Session = Depends(get_d
     mentions = [m for m in (_event_to_mention(e) for e in events) if m is not None]
     if not mentions:
         return {"queued": 0}
-    # The insert is sync SQLAlchemy: off the event loop, like the archive
-    # enqueue in routers/events/import_archive.
+    # Sync SQLAlchemy insert: off the event loop.
     return {"queued": await run_in_threadpool(enqueue_webhook_mentions, db, mentions)}

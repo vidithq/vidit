@@ -1,16 +1,12 @@
 """Run one reconciliation pass of the @ViditBot mention pipeline.
 
-The hourly net behind the Account Activity webhook (the nominal delivery
-path, see ``routers/webhooks``): pulls the bot's new mentions and catches
-anything the webhook dropped, running each through the same pipeline
-(``services/bot``); a mention the webhook already handled just counts
-``already handled``, and while ``X_WEBHOOK_ENABLED`` is true a fresh one
-pages as a webhook gap. Meant for a scheduler (e.g. a Railway cron), and
-runnable by hand. Exits non-zero when the pass could not start (missing
-credentials, mentions pull failed); per-mention failures are recorded and
-counted, not fatal.
-
-    uv run python scripts/run_bot.py
+The hourly net behind the Account Activity webhook (``routers/webhooks``):
+pulls the bot's new mentions and catches anything the webhook dropped, through
+the same pipeline (``services/bot``). A mention the webhook already handled
+counts ``already handled``; while ``X_WEBHOOK_ENABLED`` is true a fresh one
+pages as a webhook gap. For a scheduler (e.g. a Railway cron) or by hand. Exits
+non-zero when the pass could not start (missing credentials, pull failed);
+per-mention failures are recorded and counted, not fatal.
 """
 
 import asyncio
@@ -29,9 +25,8 @@ from app.services.x_api import XApiError
 
 def main() -> None:
     configure_logging()
-    # Same opt-in Sentry boot as the app: a failing pull (revoked token,
-    # pricing change, API drift) is silent and durable, so it must page
-    # rather than sit in the cron service's logs.
+    # Same opt-in Sentry boot as the app: a failing pull (revoked token, API
+    # drift) is silent and durable, so it must page.
     init_sentry()
 
     db = SessionLocal()

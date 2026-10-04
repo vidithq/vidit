@@ -1,11 +1,9 @@
 """The request-concurrency rules (``engineering.md``, Request concurrency).
 
-The API serves every request from one event loop, so a handler that touches the
-database is a plain ``def``, which FastAPI runs in its threadpool. The sweep
-below keeps an ``async`` one off that loop; ``events/test_geolocate_race.py``
-shows what one costs. A lock wait then holds a threadpool worker, so the API
-process caps it at ``LOCK_TIMEOUT_MS``, while the scheduler services, which
-share the engine but never import ``app.main``, keep waiting.
+A handler that touches the database is a plain ``def`` (FastAPI runs it in its
+threadpool); the sweep below keeps an ``async`` one off the event loop. A lock
+wait holds a worker, so the API caps it at ``LOCK_TIMEOUT_MS``; the scheduler
+services never import ``app.main`` and keep waiting.
 """
 
 from __future__ import annotations

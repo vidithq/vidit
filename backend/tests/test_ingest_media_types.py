@@ -1,10 +1,7 @@
 """One stored type per imported media kind, whichever entry read the post.
 
-A photo an entry fetches is machine-fetched bytes, not an analyst's upload, so
-it is re-encoded at ingest to the one format the display derivatives already
-use. Nothing derives a photo's type from a payload field or a filename any
-more, which is what used to let a PNG land as a PNG off an export and as a
-mislabelled JPEG off syndication.
+A fetched photo is re-encoded at ingest to the format the display derivatives
+use; no payload field or filename decides its type.
 """
 
 from __future__ import annotations
@@ -27,8 +24,7 @@ from tests._fixtures import write_archive_js
 
 
 def test_an_imported_photo_is_stored_as_the_derivative_format() -> None:
-    """The one format, pinned against the pipeline that decided it: an original
-    and its ``_hero`` / ``_thumb`` siblings read as one format everywhere."""
+    """An original and its ``_hero`` / ``_thumb`` siblings share one format."""
     assert PHOTO_CONTENT_TYPE == DERIVATIVE_CONTENT_TYPE
     assert PHOTO_CONTENT_TYPE in ALLOWED_IMAGE_TYPES
 
@@ -45,9 +41,7 @@ def _png_bytes() -> bytes:
 
 
 def test_png_bytes_land_as_the_one_photo_format() -> None:
-    """The re-encode itself: the write path declares the imported-photo type and
-    ``prepare_media`` returns bytes in it, whatever the post served. The cap
-    applies before this, to the fetched bytes (``validate_bytes``)."""
+    """``prepare_media`` returns bytes in the imported-photo type, whatever the post served."""
     prepared = prepare_media(_png_bytes(), PHOTO_CONTENT_TYPE)
 
     assert prepared.content_type == PHOTO_CONTENT_TYPE
@@ -60,9 +54,7 @@ def test_png_bytes_land_as_the_one_photo_format() -> None:
 
 
 def test_a_png_reads_the_same_off_the_export_and_off_syndication(tmp_path: Path) -> None:
-    """The asymmetry this closes: the export used to type a photo from its
-    filename and syndication used to hardcode one, so the same PNG was two
-    different stored types depending on the entry that read the post."""
+    """The same PNG gets one stored type whichever entry read the post."""
     url = "https://pbs.twimg.com/media/SHOT.png"
     archive = tmp_path / "arc"
     write_archive_js(
@@ -84,6 +76,5 @@ def test_a_png_reads_the_same_off_the_export_and_off_syndication(tmp_path: Path)
     )
 
     assert from_export.content_type == from_syndication.content_type == PHOTO_CONTENT_TYPE
-    # The export still reads the basename: it names the file the backfill reads
-    # off disk, and nothing else.
+    # The basename only names the file the backfill reads off disk.
     assert from_export.remote_url == "tweets_media/7001-SHOT.png"

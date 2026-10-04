@@ -22,117 +22,83 @@ class Settings(BaseSettings):
     aws_secret_access_key: str = ""
     local_storage_dir: str = ".local-storage"
     max_image_size: int = 10 * 1024 * 1024  # 10 MB
-    # 95 MiB, not 100: a max-size video plus multipart overhead must stay
-    # under Cloudflare's free-plan 100 MB request cap for the day `api` moves
-    # behind the proxy.
+    # 95 MiB, not 100: a max-size video plus multipart overhead must stay under
+    # Cloudflare's free-plan 100 MB request cap.
     max_video_size: int = 95 * 1024 * 1024
-    # Per-event cap on inline proof images (the ``proof_files`` batch a submit
-    # carries). Above a legitimate analyst writeup (a dozen annotated frames is
-    # rare), tight enough to refuse a pathological payload that would pin the
-    # worker through the Pillow + S3 pipeline. The source side needs no knob:
-    # an event carries exactly one source media. Lives in config (not the
-    # events router) so the body-size middleware reads it at boot without a
-    # ``main → routers`` import edge. Per-file caps are the two settings above.
+    # Per-event cap on inline proof images. Lives here (not the events router)
+    # so the body-size middleware reads it without a ``main → routers`` import.
     max_proof_images_per_event: int = 10
     cors_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002"
-    # Extra origin regex OR'd with `cors_origins` by Starlette's CORSMiddleware.
-    # Default whitelists every `localhost:<port>` so one backend can serve
-    # several concurrent frontends (worktrees, a/b sessions). Only this shipped
-    # default is dropped automatically on a non-local deployment (see
-    # `effective_cors_origin_regex`): with `allow_credentials=True` a live
-    # localhost origin regex would let any localhost page in a victim's browser
-    # read authenticated API responses. Prod leans on the explicit `cors_origins`
-    # allowlist; any operator-set pattern (e.g. staging) is always honoured.
+    # Extra origin regex OR'd with `cors_origins`. The default allows every
+    # `localhost:<port>` for concurrent dev frontends and is dropped on a
+    # non-local deployment (see `effective_cors_origin_regex`): with
+    # `allow_credentials=True` it would let any localhost page read
+    # authenticated responses. An operator-set pattern is always honoured.
     cors_origin_regex: str = DEFAULT_CORS_ORIGIN_REGEX
-    # Cookie auth: set SameSite=none + Secure when frontend and backend live on
-    # different registrable domains (e.g. vercel.app → up.railway.app). Locally
-    # (localhost:3000 → localhost:8000) lax + insecure is enough.
+    # Cookie auth: SameSite=none + Secure when frontend and backend are on
+    # different registrable domains; lax + insecure is enough locally.
     cookie_secure: bool = False
     cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     cookie_domain: str = ""  # empty → host-only cookie (recommended)
-    # Master switch for the shared slowapi limiter (app/ratelimit.py). Limits
-    # are per-endpoint decorators (e.g. 5/min on /login, 10/hr on /register,
-    # per-minute reads/writes elsewhere) — there is no global floor. Hostile
-    # during local dev iteration (repeated register/login); set false in
-    # backend/.env to silence every limit at once.
+    # Master switch for the shared slowapi limiter (app/ratelimit.py). Limits are
+    # per-endpoint decorators with no global floor; set false in backend/.env to
+    # silence them all during local dev.
     rate_limit_enabled: bool = True
     sentry_dsn: str = ""
     sentry_environment: str = "development"
     sentry_traces_sample_rate: float = 0.0
-    # Level of the ``app.*`` loggers (see ``observability.configure_logging``).
+    # Level of the ``app.*`` loggers (``observability.configure_logging``).
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
-    # Trusted proxy hops in front of the backend. Each appends its observed
-    # connecting IP to ``X-Forwarded-For``, so the rate-limit key
-    # (``services.audit.rate_limit_key``) picks the entry at position
-    # ``-trusted_proxy_hops`` (1 = right-most = Railway only, current prod
-    # topology; bump to 2 if Cloudflare or another trusted reverse proxy ever
-    # sits in front of Railway).
+    # Trusted proxy hops in front of the backend. The rate-limit key
+    # (``services.audit.rate_limit_key``) picks the ``X-Forwarded-For`` entry at
+    # ``-trusted_proxy_hops`` (1 = Railway only; 2 if Cloudflare sits in front).
     trusted_proxy_hops: int = 1
 
-    # Transactional email. `console` (local-dev default) logs instead of
-    # sending. `resend` POSTs to https://api.resend.com/emails — requires
-    # RESEND_API_KEY and a verified `EMAIL_FROM` domain in the Resend dashboard.
+    # Transactional email. `console` logs instead of sending; `resend` needs
+    # RESEND_API_KEY and a verified `EMAIL_FROM` domain.
     email_provider: Literal["console", "resend"] = "console"
     resend_api_key: str = ""
     email_from: str = "noreply@vidit.app"
     email_from_name: str = "Vidit"
 
-    # Where a "new content report" notification is sent, one message per report
-    # filed. Unset (the default) sends nothing: reporting still works and the
-    # row is still queued for the admin console, the operator just learns about
-    # it by opening the queue. A single address rather than a list: the
-    # moderation inbox is one destination, and fanning out is the mail
-    # provider's job, not this setting's.
+    # Recipient of the "new content report" notification. Unset sends nothing
+    # (reports still queue for the admin console). One address: fan-out is the
+    # mail provider's job.
     report_notify_email: str | None = None
 
-    # Public frontend origin for links in transactional emails. Fully-qualified
-    # URL, no trailing slash. Prod deploy workflow sets this to https://vidit.app.
+    # Public frontend origin for links in emails: absolute URL, no trailing slash.
     frontend_url: str = "http://localhost:3000"
 
-    # Reset token TTL (minutes), short on purpose: the link is single-use, but
-    # a tight window also bounds the value of an intercepted email. Registration
-    # confirmation TTL is hard-coded in services/registration.py (prod never
-    # tunes it).
+    # Reset token TTL (minutes). Short to bound the value of an intercepted
+    # email. The registration confirmation TTL is in services/registration.py.
     password_reset_token_minutes: int = 15
 
-    # Comma-separated allowlist of emails auto-promoted to is_admin on
-    # login/register. Survives DB reseeds (avoids a "did you run the script"
-    # footgun). Empty (local-dev default) auto-promotes nobody; set to
-    # ``admin@vidit.app`` in prod.
+    # Comma-separated emails auto-promoted to is_admin on login/register. Empty
+    # promotes nobody.
     admin_emails: str = ""
 
-    # X bot (the "tag @ViditBot" on-ramp, see docs/ingestion.md). Reading the
-    # bot's mentions uses the app-only bearer token + the bot account's numeric
-    # user id (stored here so a run never pays a user lookup); both empty means
-    # the bot runner refuses to start. Posting replies needs user-context OAuth
-    # 1.0a credentials (all four); empty means the run processes mentions but
-    # posts nothing.
+    # X bot (docs/ingestion.md). Reading mentions needs the bearer token and the
+    # bot's numeric user id (stored to skip a lookup per run); both empty means
+    # the runner refuses to start. Replies need all four OAuth 1.0a credentials;
+    # empty means mentions are processed but nothing is posted.
     x_bot_bearer_token: str = ""
     x_bot_user_id: str = ""
-    # The bot account's handle, stripped from the strict mention format's
-    # stored proof text. Configurable so a staging bot or a rename cannot
-    # silently leak the tag into proofs.
+    # The bot's handle, stripped from stored proof text. Configurable so a
+    # staging bot or rename cannot leak the tag into proofs.
     x_bot_handle: str = "viditbot"
     x_api_consumer_key: str = ""
     x_api_consumer_secret: str = ""
     x_bot_access_token: str = ""
     x_bot_access_token_secret: str = ""
-    # Whether the X Account Activity webhook is registered and live in this
-    # deployment. Flipped true after ``scripts/manage_x_webhook.py`` register +
-    # subscribe succeed against prod. Gates the poll's gap detector: while
-    # false, a mention arriving via the cron is nominal and raises no warning.
+    # Whether the X Account Activity webhook is live in this deployment. While
+    # false, a mention arriving via the cron raises no gap warning.
     x_webhook_enabled: bool = False
-    # Billed-spend ceilings on the write side. The mention surface is public:
-    # any stranger can tag the bot on a coordinate tweet, and each posted reply
-    # is billed. The window posts at most this many replies (success + failure),
-    # in total and per author; past a ceiling the detection still lands
-    # (detecting is unbilled) but the reply is skipped and logged, so a flood
-    # burns nothing but its own posting effort. The window is wall-clock (the
-    # trailing hour, read from the ledger), not per pass: the worker drains
-    # every few seconds, so a per-pass budget would multiply the caps hundreds
-    # of times an hour. Raise both for a traffic spike (a promo tweet) without
-    # a redeploy of code.
+    # Billed-spend ceilings on replies. Anyone can tag the bot and each reply is
+    # billed, so the window posts at most this many replies (success + failure),
+    # in total and per author; past a ceiling the detection still lands but the
+    # reply is skipped and logged. The window is the trailing hour read from the
+    # ledger, not per pass (the worker drains every few seconds).
     bot_max_replies_per_hour: int = 40
     bot_max_replies_per_author_per_hour: int = 10
 
@@ -148,15 +114,11 @@ class Settings(BaseSettings):
 
     @property
     def effective_cors_origin_regex(self) -> str:
-        """`cors_origin_regex`, with the shipped localhost dev-convenience
-        default dropped on a non-local deployment. Left on, the default
-        (`^https?://localhost:\\d+$`) plus `allow_credentials=True` would let any
-        localhost page in a victim's browser make credentialed cross-origin reads
-        against the deployed API (writes stay blocked by the double-submit CSRF
-        token a cross-origin script can't read). Only the exact shipped default
-        is auto-dropped: an operator who sets any other pattern owns it, so a
-        staging regex is always honoured and a deliberately-kept localhost regex
-        must be set explicitly. Prod otherwise uses the `cors_origins` allowlist."""
+        """`cors_origin_regex`, minus the shipped localhost default on a
+        non-local deployment. With `allow_credentials=True` that default would
+        let any localhost page make credentialed reads against the API (writes
+        stay blocked by the CSRF token). Only the exact shipped default is
+        dropped: an operator-set pattern is always honoured."""
         if self.cors_origin_regex != DEFAULT_CORS_ORIGIN_REGEX:
             return self.cors_origin_regex
         host = urlparse(self.database_url).hostname
@@ -172,7 +134,7 @@ class Settings(BaseSettings):
     @field_validator("database_url", mode="after")
     @classmethod
     def _normalize_postgres_scheme(cls, v: str) -> str:
-        # Railway / Heroku inject postgres://; SQLAlchemy 2 requires postgresql://
+        # Railway / Heroku inject postgres://; SQLAlchemy 2 needs postgresql://.
         if v.startswith("postgres://"):
             return "postgresql://" + v.removeprefix("postgres://")
         return v

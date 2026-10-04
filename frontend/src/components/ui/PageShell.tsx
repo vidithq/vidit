@@ -22,26 +22,21 @@ export function PageShell({
   title: ReactNode;
   subtitle?: ReactNode;
   back?: boolean;
-  /** Where Back lands when the session carries nothing to return to, i.e. the
-   *  reader arrived straight from a search result. Forwards to `smartBack`'s
-   *  own `fallback`, which stays `/` when this is unset. The public guides pass
-   *  their hub, so a cold entry still has somewhere to go. */
+  /** Where Back lands when the session has nothing to return to. Forwards to
+   *  `smartBack`'s `fallback` (`/` when unset). */
   backFallback?: string;
   actions?: ReactNode;
   children: ReactNode;
 }) {
   const router = useRouter();
   const handleBack = () => smartBack(router, backFallback);
-  // The chip's back slot, published by `Sidebar` from a ref. It is null until
-  // the chip exists (the sidebar renders nothing while auth resolves), and the
-  // portal below waits for it rather than looking once at mount.
+  // The chip's back slot, published by `Sidebar`. Null until the chip exists.
   const phoneBackSlot = useSyncExternalStore(
     subscribePhoneBackSlot,
     getPhoneBackSlot,
     getPhoneBackSlot,
   );
-  // One back control, two placements: only the visibility classes differ, so
-  // the header copy and the chip copy cannot drift.
+  // One control, two placements: only the visibility classes differ.
   const renderBack = (className: string) => (
     <Button
       icon
@@ -55,59 +50,38 @@ export function PageShell({
     </Button>
   );
   return (
-    // `max-sm:pt-16` is 64px, derived from the chip the off-canvas rail leaves
-    // in the corner: 8px inset from the top edge, 1px border, 2px padding, 44px
-    // control, about 55px in all, which 64px clears.
+    // `max-sm:pt-16` (64px) clears the off-canvas rail's chip (about 55px).
     <PageFrame className="pt-10 max-sm:pt-16 pb-16 space-y-6">
       <header className="relative">
         {back && (
-          // `right-full` parks the button outside the header's left edge
-          // (header is `relative`), so the title's x-coordinate is the same
-          // whether or not the back arrow renders. That gutter only exists once
-          // the centred column has room to sit off the rail, which is from `lg`
-          // up: below it the button landed under the fixed sidebar, where taps
-          // reached the nav rather than the button. Between `sm` and `lg` it
-          // sits in flow above the title, and `flex` says so: the row above the
-          // heading is the intended layout, not an inline atom that happens to
-          // break before its block sibling (`size-9` fixes the width, so a
-          // block-level flex box can't stretch the square). `-ml-2` pulls it
-          // back toward the heading: the 36px square insets its 18px glyph by
-          // 9px, and the class takes 8 of those back. Below `sm` the row goes
-          // and the copy below takes over, in the chip the off-canvas rail
-          // leaves in the corner.
+          // `right-full` parks the button outside the header's left edge, so the
+          // title's x is the same with or without it. That gutter exists from
+          // `lg` up; below it the button would sit under the fixed sidebar. From
+          // `sm` to `lg` it sits in flow above the title (`flex`, since `size-9`
+          // fixes the width). `-ml-2` takes back 8 of the glyph's 9px inset.
+          // Below `sm` the chip copy takes over.
           renderBack(
             "max-sm:hidden flex -ml-2 mb-1 lg:inline-flex lg:absolute lg:right-full lg:top-1.5 lg:mr-3 lg:mb-0 lg:ml-0",
           )
         )}
-        {/* Phone only: the same control, portaled into the chip's back slot.
-            It carries no visibility class of its own, the slot living inside a
+        {/* Phone only: portaled into the chip's back slot, which lives inside a
             `sm:hidden` chip. */}
         {back && phoneBackSlot && createPortal(renderBack(""), phoneBackSlot)}
-        {/* The action cluster drops under the title once the two can't share a
-            row (a phone-width viewport with a long title): `basis-56` is the
-            14rem the title asks for, which is what flex wrapping measures, so
-            a heading is never squeezed into a one-word column. It is a
-            preference and not a floor (`min-w-0`, `grow` rather than `flex-1`
-            so the basis survives): as a hard minimum it outgrew the frame on
-            the narrowest phones and scrolled the whole page sideways. */}
+        {/* The actions drop under the title once they can't share a row. `basis-56`
+            (14rem) is a preference, not a floor (`min-w-0`, `grow`): as a hard
+            minimum it scrolled the page sideways on the narrowest phones. */}
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="basis-56 grow min-w-0 space-y-2">
             <h1 className="text-xl font-medium text-neutral-100">{title}</h1>
             {subtitle && (
-              // The owner's email is one unbreakable token; without an
-              // anywhere-break it runs past the frame on a phone.
+              // The owner's email is one unbreakable token.
               <div className="text-sm text-neutral-400 wrap-anywhere">
                 {subtitle}
               </div>
             )}
           </div>
-          {/* `max-w-full` caps the cluster at the header width, which is what
-              lets a wide row (the request page's four action buttons plus the
-              share and report controls) wrap inside itself. Without it,
-              `shrink-0` holds the cluster at its max-content width and a phone
-              scrolls sideways. The cap only binds once the cluster has taken
-              its own line, so a cluster that fits beside the title is
-              untouched. */}
+          {/* `max-w-full` lets a wide action row wrap inside itself; `shrink-0` alone
+              would scroll a phone sideways. */}
           {actions && <div className="shrink-0 max-w-full">{actions}</div>}
         </div>
       </header>
@@ -116,7 +90,6 @@ export function PageShell({
   );
 }
 
-// Centered pre-data loading state. One home for the muted "Loading…".
 export function PageLoading({ label = "Loading…" }: { label?: string }) {
   return (
     <PageCenter>
@@ -125,8 +98,7 @@ export function PageLoading({ label = "Loading…" }: { label?: string }) {
   );
 }
 
-// Centered error state, optionally with a back link. Covers both the bare
-// message and the "message + Back to map" variant.
+// Centered error state, with an optional back link.
 export function PageError({
   message,
   backHref,

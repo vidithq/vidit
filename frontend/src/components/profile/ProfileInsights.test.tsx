@@ -38,9 +38,8 @@ describe("ProfileInsights", () => {
   it("opens the rows behind every tile, scoped to the analyst", async () => {
     await renderCard(statsFixture());
 
-    // Each tile is the way into the set it was summed off: the status pair
-    // carries the lifecycle vocabulary, the two leaders carry their own name
-    // as the filter value.
+    // Each tile links into the set it was summed off: the status pair carries the lifecycle
+    // vocabulary, the leaders their own name.
     expect(screen.getByRole("link", { name: /Geolocated/ })).toHaveAttribute(
       "href",
       "/search?type=event&author=ana&status=geolocated"
@@ -63,8 +62,7 @@ describe("ProfileInsights", () => {
 
     expect(screen.getByText("Russo-Ukrainian War")).toBeInTheDocument();
     expect(screen.getByText("drone")).toBeInTheDocument();
-    // The count behind a leader is not printed beside it: the search the tile
-    // opens is where "by how much" is read.
+    // The count behind a leader isn't printed; the search the tile opens shows it.
     expect(screen.queryByText(/Russo-Ukrainian War · 9/)).not.toBeInTheDocument();
   });
 
@@ -78,8 +76,7 @@ describe("ProfileInsights", () => {
     expect(
       screen.queryByRole("link", { name: /Top capture source/ })
     ).not.toBeInTheDocument();
-    // The counted tiles still link: an empty ranked list says nothing about
-    // whether the analyst has events.
+    // The counted tiles still link: an empty ranked list says nothing about whether the analyst has events.
     expect(screen.getByRole("link", { name: /Geolocated/ })).toBeInTheDocument();
   });
 

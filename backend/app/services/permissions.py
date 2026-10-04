@@ -1,12 +1,8 @@
 """Authorization checks shared across routers.
 
-The "this row's owner must be the caller" idiom, recurring on every
-owner-mutating endpoint (event delete, close, the detected geolocate). In
-``services/`` rather than ``dependencies.py`` because ``Depends``
-factories would force callers to re-resolve the row through the dependency
-layer — and several resolutions are bespoke (SELECT ... FOR UPDATE for the
-geolocate race, joinedload sets for the detail response). The check is just
-an assertion on already-resolved values.
+Lives here, not in ``dependencies.py``: callers resolve the row themselves
+(``SELECT ... FOR UPDATE``, joinedload sets), so the check only asserts on
+already-resolved values.
 """
 
 from __future__ import annotations
@@ -20,12 +16,9 @@ from app.models.user import User
 
 
 class _HasOwnerId(Protocol):
-    """Anything carrying a ``UUID`` ``owner_id`` column, duck-typed.
+    """Anything carrying a ``UUID`` ``owner_id``, duck-typed.
 
-    Lets type-checkers verify callers pass the right shape without
-    importing the concrete ``Event`` model here. ``uuid.UUID``
-    (not the looser ``object``) rejects the mistake of passing ``user.id``
-    itself as ``row``.
+    ``uuid.UUID`` (not ``object``) rejects passing ``user.id`` as ``row``.
     """
 
     owner_id: uuid.UUID
@@ -34,10 +27,7 @@ class _HasOwnerId(Protocol):
 def ensure_owner(row: _HasOwnerId, user: User) -> None:
     """Raise 403 if ``user`` does not own ``row``; no-op on a match.
 
-    The 403 detail is generic ("Not authorized") so the response shape
-    matches every other permission denial. Soft-delete / not-found
-    discrimination is the caller's job — the path that fetched the row
-    owns the 404.
+    Soft-delete and 404 handling belong to the caller that fetched the row.
     """
     if row.owner_id != user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")

@@ -1,10 +1,5 @@
-// The auth-flow routes. `<Sidebar>` and `<BetaBanner>` hide on these
-// pages so sign-in / register render without app chrome.
-//
-// Auth-flow subset only, NOT the full public set (`/` and `/about` are also
-// public — see `PUBLIC_*` in `proxy.ts`). Kept separate because this
-// predicate is permanent: the sidebar stays hidden here after the
-// invite-gated write wall comes down at public launch.
+// Auth-flow routes: `<Sidebar>` and `<BetaBanner>` hide here so sign-in and register render
+// without chrome. Not the full public set (`/`, `/about`; see `PUBLIC_*` in `proxy.ts`).
 
 export function isAuthRoute(pathname: string): boolean {
   return (

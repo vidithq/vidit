@@ -8,15 +8,13 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace, back: vi.fn() }),
 }));
 
-// The two pickers the filter panel fills itself from. The page reads them
-// declaratively on every render, whatever scope it is on.
+// The two pickers the filter panel fills from, read on every render.
 vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: () => ({ data: [] }),
 }));
 
 const search = vi.fn();
-// The typeahead behind the Author section is stubbed out: these tests drive
-// the field by hand, so the suggestion list only has to stay empty.
+// The Author typeahead is stubbed: tests drive the field by hand.
 vi.mock("@/lib/search", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/search")>()),
   search: (opts: unknown) => search(opts),
@@ -101,8 +99,7 @@ describe("the search page's Collections group", () => {
     render(<SearchPage />);
 
     expect(await screen.findByText("Nova Kakhovka dam")).toBeInTheDocument();
-    // The count the group prints is the pre-limit total, and the card says
-    // whose shelf this is: a result stands beside other analysts' work.
+    // The group count is the pre-limit total, and the card says whose shelf it is.
     expect(screen.getByText("5 events")).toBeInTheDocument();
     expect(screen.getByText("ana")).toBeInTheDocument();
   });
@@ -118,8 +115,7 @@ describe("the search page's Collections group", () => {
 
   it("reads type=collection off the URL and shows that group alone", async () => {
     searchParams = new URLSearchParams("q=kakhovka&type=collection");
-    // A response carrying every group, so what the page renders is the scope's
-    // own gate rather than an empty payload.
+    // A full response, so the render is the scope's own gate.
     search.mockResolvedValue(
       response({
         type: "collection",
@@ -142,9 +138,7 @@ describe("the search page's Collections group", () => {
   });
 
   it("browses one analyst's shelf on an author alone", async () => {
-    // Where the profile's Collections `Show more` lands: no query, the author
-    // as the only filter. The empty query is a valid search here, so the page
-    // must issue the read rather than hold at the start-typing prompt.
+    // Where the profile's Collections `Show more` lands: author only, no query; the page must still issue the read.
     searchParams = new URLSearchParams("type=collection&author=ana");
     search.mockResolvedValue(
       response({ type: "collection", query: "", collections: [collection()] }),
@@ -166,8 +160,7 @@ describe("the filter panel on the Collections scope", () => {
     screen.queryByRole("button", { name: `Toggle ${title}` });
 
   it("offers the Author section alone", async () => {
-    // The backend narrows collections on the author and empties the group on
-    // every other event predicate, so no other section may open here.
+    // The backend empties the group on any other event predicate, so no other section opens.
     searchParams = new URLSearchParams("type=collection&author=ana");
     search.mockResolvedValue(
       response({ type: "collection", query: "", collections: [collection()] }),

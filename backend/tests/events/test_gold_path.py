@@ -1,14 +1,9 @@
 """The gold-path integration pass: the curated-onboarding seam end to end.
 
-Every hop below has its own unit suite (registration, archive intake, the
-detection spine, the owner flow, the read surfaces); this test pins the
-handoffs between them, driving only public HTTP endpoints:
-
-register → confirm (signed in) → archive upload → a ``detected`` row lands
-(media persisted + hashed, proof body set, ``detected_from_url`` provenance)
-→ rendered marked on every read surface (list, detail, map points, the
-owner's detections queue) → the owner geolocates over the evidence floor →
-the row freezes ``geolocated``, unmarks, and is anonymously visible.
+Pins the handoffs between the per-hop suites through public HTTP only: register,
+confirm, archive upload, a ``detected`` row that renders marked on every read surface,
+the owner geolocating over the evidence floor, and the row freezing ``geolocated``,
+unmarking, and becoming anonymously visible.
 """
 
 from __future__ import annotations
@@ -37,10 +32,8 @@ from tests.events._helpers import (
 )
 from tests.events.conftest import _delete_user_and_events
 
-# One geo tweet shaped like a real export entry: a parseable coordinate in the
-# text plus one photo. The archive's own media is annotation, so it lands as a
-# hashed ``proof`` row; the tweet declares no source, so ``source_url`` stays
-# NULL until the owner supplies one at geolocate (the honest source contract).
+# One geo tweet like a real export entry. It declares no source, so ``source_url`` stays
+# NULL until geolocate.
 _TWEET_ID = "9001"
 _TWEETS_JS = (
     "window.YTD.tweets.part0 = "
@@ -84,9 +77,8 @@ def email_recorder(monkeypatch):
 
 @pytest.fixture
 def invite_code(db):
-    # The handle is bound at mint and copies onto the account at registration,
-    # which is the nominal path: an archive import runs under it, and the
-    # provenance permalinks it writes name that X account.
+    # The handle bound at mint copies onto the account; the provenance permalinks name
+    # that X account.
     row = InviteCode(code=f"gold-invite-{uuid.uuid4().hex}", x_handle=f"gold{uuid.uuid4().hex[:8]}")
     db.add(row)
     db.commit()
@@ -128,8 +120,8 @@ def test_gold_path_register_import_geolocate_publish(
         )
         assert confirmed.status_code == 200, confirmed.text
         user_id = uuid.UUID(confirmed.json()["id"])
-        # Confirm signs the analyst in: the session + CSRF cookies are on the
-        # jar; mutating calls echo the CSRF cookie as the double-submit header.
+        # Confirm signs in: the session + CSRF cookies are on the jar, and mutating
+        # calls echo the CSRF cookie.
         auth_headers = {CSRF_HEADER: client.cookies[CSRF_COOKIE]}
 
         # ── 2. Upload the archive; the worker turns it into a detection ──
@@ -140,9 +132,8 @@ def test_gold_path_register_import_geolocate_publish(
                 "account.js": b"never read",
             }
         )
-        # The presigned two-step, all through public endpoints: mint the
-        # upload, POST the zip direct to storage (the dev stand-in for S3's
-        # POST policy), then enqueue by key.
+        # Presigned two-step: mint, POST the zip to storage (dev stand-in for S3's POST
+        # policy), enqueue by key.
         presigned = client.post("/api/v1/events/import-archive/presign", headers=auth_headers)
         assert presigned.status_code == 200, presigned.text
         presign = presigned.json()

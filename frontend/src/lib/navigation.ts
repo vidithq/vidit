@@ -1,55 +1,31 @@
 /**
- * Smart back-navigation helper.
+ * Smart back-navigation. `router.back()` walks off our origin and is a no-op on a fresh tab;
+ * `document.referrer` never updates on client nav.
  *
- * Not `router.back()` / `window.history.back()`: they walk off our origin
- * (e.g. back to the X.com post) and are a no-op on a fresh tab. Not
- * `document.referrer`: it only updates on full-page loads, and Next.js client
- * nav uses `history.pushState`, which never touches it — so in a long SPA flow
- * it stays whatever it was at first entry.
- *
- * Instead, `PathTracker` (mounted in the root providers) maintains a back-stack
- * of same-origin pathnames in `sessionStorage`: it pushes the path being left on
- * each forward navigation, and `smartBack` pops it. A single "prev" slot can't
- * do this — `smartBack` navigates with `push` (a forward nav), so the tracker
- * would immediately re-record the page just left, and the button would
- * ping-pong between the last two pages instead of walking the chain
- * (Map → Profile → Detections then back should go Detections → Profile → Map). A
- * one-shot "going back" flag, set by `smartBack` and consumed by the tracker,
- * stops that re-record so the walk stays honest.
+ * `PathTracker` (root providers) keeps a back-stack of same-origin pathnames in
+ * `sessionStorage`: it pushes the path being left on each forward navigation and `smartBack`
+ * pops it. A single "prev" slot would ping-pong between two pages, since `smartBack`
+ * navigates with `push` and the tracker would re-record the page just left. A one-shot
+ * "going back" flag, set by `smartBack` and consumed by the tracker, stops that.
  */
 const NAV_STACK_KEY = "vidit:nav-stack";
 const GOING_BACK_KEY = "vidit:nav-going-back";
 const SKIP_RECORD_KEY = "vidit:nav-skip-record";
-// Cap the stack so a long session can't grow sessionStorage without bound; the
-// deep tail of a back-stack is never reached in practice.
+// Caps sessionStorage growth.
 const MAX_STACK = 50;
 
 /**
- * Sanitise the `?next=` query param before honouring it as a post-login
- * redirect target.
+ * Sanitise `?next=` before honouring it as a post-login redirect. The WHATWG URL parser is
+ * the source of truth: parse against `window.location.origin` and honour only if `origin`
+ * did not escape. Character checks on the raw string miss cases the parser rewrites:
+ * - `//evil.com/x`: scheme-relative.
+ * - `/\evil.com`: `\` normalises to `/`, giving `//evil.com`.
+ * - `/\t/evil.com`: the parser strips TAB/LF/CR, landing at `//evil.com`.
+ * - `javascript:alert(1)`: `origin` is `null`.
  *
- * The WHATWG URL parser is the source of truth: parse against
- * `window.location.origin`, honour only if `origin` didn't escape.
- * Character-position checks on the raw string aren't enough — the parser
- * transforms syntactically-relative paths into cross-origin URLs:
- *
- * - `https://evil.com/x` — absolute, obvious.
- * - `//evil.com/x` — scheme-relative; resolves to `https://evil.com`.
- * - `/\evil.com` — in HTTP-special schemes the parser normalises `\` → `/`,
- *   so this becomes `//evil.com`. (An earlier rev rejected the literal
- *   backslash at position 1.)
- * - `/\tevil.com` (`%2F%09evil.com`) — the parser strips TAB/LF/CR before
- *   parsing, so this becomes benign `/evil.com`; but `/\t/evil.com` lands
- *   at `//evil.com`. A position check can't see past the stripping; the
- *   post-parse origin check can.
- * - `javascript:alert(1)` — `origin` is `null`, fails the equality check.
- *
- * Returns `pathname + search + hash` (origin stripped) so `router.push`
- * treats it as same-origin nav.
- *
- * SSR safety: `useSearchParams()` returns null during prerender, so `raw`
- * is null on the server pass and we return `/map` before touching
- * `window`. The `typeof window` guard is defence-in-depth.
+ * Returns `pathname + search + hash` so `router.push` treats it as same-origin.
+ * `useSearchParams()` is null during prerender, so the server pass returns `/map` before
+ * touching `window`.
  */
 export function safeNext(raw: string | null): string {
   if (!raw) return "/map";
@@ -65,10 +41,8 @@ export function safeNext(raw: string | null): string {
   return url.pathname + url.search + url.hash;
 }
 
-/** Sign-in path that lands the user back on `target` after login: the
- *  login page reads `?next=` through `safeNext` above. For authed actions
- *  sitting on public pages (follow), where the proxy can't
- *  intercept because the page itself is anonymous-readable. */
+/** Sign-in path that returns to `target` after login (read via `safeNext`). For authed
+ *  actions on anonymous-readable pages, where the proxy can't intercept. */
 export function loginNext(target: string): string {
   return `/login?next=${encodeURIComponent(target)}`;
 }
@@ -93,10 +67,8 @@ function writeStack(stack: string[]): void {
 }
 
 /**
- * Called by `PathTracker` on every Next.js route change, with the pathname being
- * left. Pushes it onto the back-stack — unless the change was triggered by
- * `smartBack` (the one-shot flag), in which case the stack was already popped
- * and re-pushing would defeat the back walk.
+ * Called by `PathTracker` on every route change with the pathname being left. Skips the push
+ * when `smartBack` set the one-shot flag (the stack was already popped).
  */
 export function recordNavigation(leftPath: string): void {
   if (typeof window === "undefined") return;
@@ -104,16 +76,14 @@ export function recordNavigation(leftPath: string): void {
     window.sessionStorage.removeItem(GOING_BACK_KEY);
     return;
   }
-  // Same one-shot shape, for the page being left rather than the walk: a
-  // doorway declared itself before sending the reader on, so it never enters
-  // the chain.
+  // Same one-shot shape for the page being left: a doorway declared itself, so it never
+  // enters the chain.
   if (window.sessionStorage.getItem(SKIP_RECORD_KEY) === "1") {
     window.sessionStorage.removeItem(SKIP_RECORD_KEY);
     return;
   }
   const stack = readStack();
-  // Skip a duplicate of the current top (effect re-runs, repeated nav to the
-  // same path) so the stack mirrors the real visit chain.
+  // Skip a duplicate of the top (effect re-runs, repeated nav).
   if (stack[stack.length - 1] !== leftPath) {
     stack.push(leftPath);
     writeStack(stack);
@@ -121,17 +91,11 @@ export function recordNavigation(leftPath: string): void {
 }
 
 /**
- * Keep the page currently on screen out of the back-stack, for the one
- * navigation about to leave it.
- *
- * For a **redirect-only route**: a doorway that exists to resolve something and
- * send the reader on (the detections review entry, which opens the head of the
- * queue). Recorded like an ordinary page it is a trap, because walking back
- * onto it runs its redirect again and lands where the walk started, so the back
- * arrow reads as doing nothing. Call it immediately before the `replace`, in
- * the same effect: like the back-nav flag, it is consumed by the next
- * `recordNavigation`, so a flag set without a navigation following would eat
- * the next entry instead.
+ * Keep the page on screen out of the back-stack for the one navigation about to leave it.
+ * For redirect-only routes (the detections review entry): walking back onto one reruns its
+ * redirect, so the back arrow does nothing. Call it immediately before the `replace`: the
+ * next `recordNavigation` consumes the flag, so one set without a navigation eats the next
+ * entry.
  */
 export function skipBackRecord(): void {
   if (typeof window === "undefined") return;
@@ -147,8 +111,7 @@ export function smartBack(
     return;
   }
   const stack = readStack();
-  // Pop the first entry that isn't where we already are (defensive against a
-  // reload or a duplicate push looping us back to ourselves).
+  // Pop the first entry that isn't the current path (guards against reload or duplicate loops).
   let target: string | undefined;
   while (stack.length > 0) {
     const candidate = stack.pop();
@@ -158,8 +121,7 @@ export function smartBack(
     }
   }
   writeStack(stack);
-  // Flag the upcoming route change as this back-nav so `PathTracker` doesn't
-  // re-push the page we're leaving (the ping-pong this whole module avoids).
+  // Flag the route change so `PathTracker` doesn't re-push the page being left.
   window.sessionStorage.setItem(GOING_BACK_KEY, "1");
   router.push(target ?? fallback);
 }

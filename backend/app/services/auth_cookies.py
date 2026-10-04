@@ -2,15 +2,15 @@
 
 The frontend authenticates via two cookies:
 
-- ``vidit_session`` (HTTPOnly): carries the JWT. Not readable from JS, so XSS
-  can't exfiltrate it.
-- ``vidit_csrf`` (readable from JS): random token. State-changing requests must
-  echo it via the ``X-CSRF-Token`` header. The browser auto-attaches the cookie
-  cross-origin (``credentials: include``) but can't forge the header from
-  another origin — that's the CSRF guard.
+- ``vidit_session`` (HTTPOnly): carries the JWT. Not readable from JS, so XSS can't
+  exfiltrate it.
+- ``vidit_csrf`` (readable from JS): random token. State-changing requests must echo it via the
+  ``X-CSRF-Token`` header. The browser auto-attaches the cookie cross-origin
+  (``credentials: include``) but can't forge the header from another origin: that is the CSRF
+  guard.
 
-These cookies are the only authenticated channel into the backend;
-``Authorization: Bearer`` headers are ignored.
+These cookies are the only authenticated channel; ``Authorization: Bearer`` headers are ignored.
+Mirrored by ``frontend/src/lib/auth.ts`` (and an inlined cookie name in ``proxy.ts``).
 """
 
 from __future__ import annotations
@@ -30,8 +30,7 @@ SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 def issue_session_cookies(response: Response, jwt_token: str) -> str:
     """Set both cookies on ``response`` and return the new CSRF token.
 
-    Regenerated every login so a previous session's token can't be replayed
-    after re-auth.
+    Regenerated every login so a previous session's token can't be replayed.
     """
     csrf_token = secrets.token_urlsafe(32)
     max_age = settings.jwt_expire_minutes * 60
@@ -60,10 +59,9 @@ def issue_session_cookies(response: Response, jwt_token: str) -> str:
 
 
 def clear_session_cookies(response: Response) -> None:
-    # Browsers match the deletion ``Set-Cookie`` against the original
-    # cookie's attributes; ``SameSite=None`` requires ``Secure`` or the
-    # header is dropped, silently leaving the session cookie alive in prod.
-    # Mirror exactly the attributes used at issuance.
+    # Mirror the issuance attributes exactly: browsers match the deletion ``Set-Cookie``
+    # against them, and ``SameSite=None`` without ``Secure`` drops the header, silently
+    # leaving the session cookie alive in prod.
     domain = settings.cookie_domain or None
     response.delete_cookie(
         SESSION_COOKIE,

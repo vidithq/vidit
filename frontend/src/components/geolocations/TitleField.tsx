@@ -7,12 +7,11 @@ import { FieldHelp } from "@/components/ui/FieldHelp";
 interface TitleFieldProps {
   value: string;
   onChange: (v: string) => void;
-  /** Flag as a missing required field (red outline). */
   invalid?: boolean;
 }
 
-/** The "Title" field — leads both the submit and detection-edit forms, so it's
- *  one shared brick (label + `?` help + input) and can't drift between them. */
+/** The "Title" field (label, `?` help, input), shared by the submit and
+ *  detection-edit forms. */
 export function TitleField({ value, onChange, invalid = false }: TitleFieldProps) {
   return (
     <div className="space-y-1.5">

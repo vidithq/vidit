@@ -1,8 +1,6 @@
 """Tests for the maintenance service + admin /maintenance/* endpoints.
 
-These replace the cron scripts that previously lived in
-`backend/scripts/reap_*.py`. Exercise the same primitives but through
-the admin endpoint surface — auth, rate limits, audit row.
+Exercises the maintenance primitives through the admin endpoints: auth, rate limits, audit row.
 """
 
 from __future__ import annotations
@@ -218,8 +216,7 @@ def test_digest_selects_analysts_by_live_detection_count(db, detection_owner):
 
 
 def test_digest_counts_only_unpublished_real_work(db, detection_owner):
-    """What the count is about: detections still awaiting a decision. A published
-    row and a soft-deleted one are both out."""
+    """The count covers detections awaiting a decision; published and soft-deleted rows are out."""
     _detection(db, detection_owner)
     _detection(db, detection_owner, deleted_at=datetime.now(UTC))
     published = _detection(db, detection_owner)
@@ -231,8 +228,7 @@ def test_digest_counts_only_unpublished_real_work(db, detection_owner):
 
 
 def test_digest_does_not_count_a_withheld_detection(db, detection_owner):
-    """A takedown freezes the detection for its owner, so the digest must not nag
-    them to complete one they are not allowed to publish."""
+    """A taken-down detection is frozen for its owner, so the digest does not count it."""
     _detection(db, detection_owner)
     _detection(db, detection_owner, hidden_at=datetime.now(UTC))
     assert _counts(db, detection_owner) == 1
@@ -250,8 +246,7 @@ def test_digest_skips_a_deactivated_analyst(db, detection_owner):
 
 
 def test_digest_sends_one_email_per_analyst(db, detection_owner, monkeypatch):
-    """One message, the count in it, and the link back to that analyst's own
-    queue."""
+    """One message per analyst, with the count and a link to their own queue."""
     _detection(db, detection_owner)
     _detection(db, detection_owner)
     sent: list = []
@@ -268,9 +263,8 @@ def test_digest_sends_one_email_per_analyst(db, detection_owner, monkeypatch):
 
 
 def test_digest_survives_a_provider_failure(db, detection_owner, monkeypatch):
-    """A rejected address is counted, never raised: a digest is re-sendable on
-    the next run, and the other analysts still get theirs. A failed send covers
-    no detections, so ``detections_pending`` counts delivered messages only."""
+    """A rejected address is counted, not raised (the digest is re-sendable), and
+    ``detections_pending`` counts delivered messages only."""
     _detection(db, detection_owner)
 
     def _boom(email):
@@ -285,8 +279,7 @@ def test_digest_survives_a_provider_failure(db, detection_owner, monkeypatch):
 
 
 def test_digest_caps_the_addresses_one_click_writes_to(db, detection_owner):
-    """The action is one provider round-trip per analyst with no resume marker,
-    so a click is bounded; the biggest backlogs survive the cut."""
+    """One click is bounded (a provider round-trip per analyst, no resume marker); the biggest backlogs are kept."""
     _detection(db, detection_owner)
     selected = maintenance_service.detections_awaiting_completion(db, limit=1)
     assert len(selected) == 1
@@ -324,9 +317,7 @@ def test_send_completion_digests_endpoint_403_for_regular_user(regular_user):
 
 
 def test_reap_proof_orphans_endpoint_is_gone(admin_user):
-    """Proof images upload at publish now (no unattached staging row), so the
-    orphan reaper and its endpoint were removed with the ``proof_images``
-    table."""
+    """The orphan reaper endpoint no longer exists."""
     response = client.post(
         "/api/v1/admin/maintenance/reap-proof-orphans",
         headers=login_as(client, admin_user),

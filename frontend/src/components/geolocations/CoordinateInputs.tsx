@@ -12,18 +12,15 @@ interface CoordinateInputsProps {
   setLat: (v: string) => void;
   lng: string;
   setLng: (v: string) => void;
-  /** Flag both inputs as a missing/invalid required field (red outline). */
   invalid?: boolean;
-  /** Distinct field ids so a second pair (the camera position) doesn't collide
-   *  with the subject's `lat` / `lng`. Defaults to the subject pair. */
+  /** Distinct ids so the camera pair doesn't collide with `lat` / `lng`. */
   idPrefix?: string;
-  /** The subject pair is required; the optional camera pair passes `false`. */
+  /** The optional camera pair passes `false`. */
   required?: boolean;
 }
 
-/** The latitude / longitude input pair. Shared by the submit form's
- *  `LocationPicker` (the subject and the optional camera position) and the
- *  detection edit form, so the coordinate field can't drift between them. */
+/** The latitude / longitude input pair, shared by `LocationPicker` (subject and
+ *  camera position) and the detection edit form. */
 export function CoordinateInputs({
   lat,
   setLat,
@@ -36,9 +33,8 @@ export function CoordinateInputs({
   const latId = `${idPrefix}lat`;
   const lngId = `${idPrefix}lng`;
 
-  // A coordinate is almost always copied as a pair (from a maps URL, a tweet,
-  // a spreadsheet), so a paste that reads as one fills both halves whichever
-  // field received it. Anything else pastes as ordinary text.
+  // A paste that reads as a coordinate pair fills both halves; anything else
+  // pastes as text.
   const onPastePair = (e: ClipboardEvent<HTMLInputElement>) => {
     const pair = parsePastedCoordinates(e.clipboardData.getData("text"));
     if (pair === null) return;
@@ -47,19 +43,13 @@ export function CoordinateInputs({
     setLng(String(pair.lng));
   };
 
-  // The verification affordances only act on a real point, so they grey out
-  // while the pair is half-typed or out of bounds.
+  // The actions grey out while the pair is half-typed or out of bounds.
   const pair = coordinatePair(lat, lng);
 
   return (
-    // The pair's own actions ride inside the longitude field as its trailing
-    // adornment, so checking a coordinate against imagery costs neither a third
-    // column nor a line of its own under the fields. That adornment is what
-    // decides the layout: it takes a fixed 80px of the longitude field on a
-    // phone, so a two-column pair inside the form card leaves a 9-character
-    // value with no room to show itself at 320px. One column below `sm` gives
-    // each field the card's full width, two columns from `sm` up where the
-    // column is wide enough to carry the mark and the value together.
+    // The pair's actions ride in the longitude field's trailing adornment. It
+    // takes a fixed 80px on a phone, so two columns would leave a 9-character
+    // value no room at 320px: one column below `sm`.
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div className="space-y-1.5">
         <label
@@ -97,9 +87,7 @@ export function CoordinateInputs({
           placeholder="37.802411"
           className="font-mono"
           invalid={invalid}
-          // Always mounted, greyed until the pair parses: the adornment holds
-          // one width, so nothing shifts the moment the second half of a
-          // coordinate is typed.
+          // Always mounted so nothing shifts when the pair becomes valid.
           trailing={
             <CoordinateActions lat={pair?.lat ?? null} lng={pair?.lng ?? null} />
           }

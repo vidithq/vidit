@@ -5,15 +5,10 @@ import { CollectionCover } from "./CollectionCover";
 import type { CollectionCoverTile } from "@/lib/collections";
 
 /**
- * What the mosaic has to get right is the files it was handed and how many.
- *
- * The tiles are the media of the collection's own items, so each carries the
- * kind of file it is and its role. Most source media in the corpus are clips,
- * and an `<img>` pointed at one paints an empty band, which is the defect the
- * kind locks out; the role is what keeps a tile off a proof image from asking
- * for a derivative that was never written. The arrangement is the count, so
- * each count is pinned on what a reader can see: how many cells the mosaic
- * draws and how many pictures land in them.
+ * Each tile carries its file kind and role. A clip in an `<img>` paints an empty
+ * band (the kind locks that out); a proof-image tile must not ask for a
+ * derivative that was never written (the role). The arrangement is the count,
+ * pinned on cells drawn and pictures landed.
  */
 const IMAGE: CollectionCoverTile = {
   url: "https://media.example/uploads/geo/abc.jpg",
@@ -83,9 +78,8 @@ describe("CollectionCover", () => {
   });
 
   it("reads the original for a tile taken off a proof image", () => {
-    // The item's own footage is a clip, so the tile falls to its proof image.
-    // Proof uploads write no `_hero` / `_thumb` sibling, and the rewrite the
-    // other tiles take would point this one at a 403.
+    // The footage is a clip, so the tile falls to its proof image, which has no
+    // `_hero` / `_thumb` sibling (a rewrite would point it at a 403).
     render(
       <CollectionCover
         cover={[

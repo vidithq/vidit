@@ -1,18 +1,13 @@
-// Auth state lives in HttpOnly cookies set by the backend (`vidit_session`
-// = JWT, `vidit_csrf` = CSRF token), sent automatically on
-// `credentials: include`. The JWT is never touched from JS; only the CSRF
-// token is readable, to echo back via `X-CSRF-Token` on state-changing requests.
+// Auth state lives in HttpOnly cookies (`vidit_session` JWT, `vidit_csrf` CSRF token). JS only
+// reads the CSRF token, to echo it as `X-CSRF-Token` on state-changing requests.
 
-// Exported alongside the header: the narrow-viewport suite grants a session by
-// setting this cookie on the browser context (`e2e/support/mockApi.ts`), and a
-// second literal there is a cookie name the app could be renamed out from
-// under. `proxy.ts` keeps a third, deliberately inlined copy (edge runtime).
+// Mirrors `auth_cookies.CSRF_COOKIE` + `CSRF_HEADER`; change both. Exported so the e2e suite
+// (`e2e/support/mockApi.ts`) sets the same cookie. `proxy.ts` keeps a third, deliberately
+// inlined copy (edge runtime).
 export const CSRF_COOKIE = "vidit_csrf";
 export const CSRF_HEADER = "X-CSRF-Token";
 
-// Minimum password length, mirroring the backend PASSWORD_MIN_LENGTH in
-// schemas/auth.py so the client-side guard + `minLength` attrs read from one
-// source instead of a scattered literal `8`.
+// Mirrors `schemas/auth.PASSWORD_MIN_LENGTH`; change both.
 export const PASSWORD_MIN_LENGTH = 8;
 
 export function readCsrfToken(): string | null {
@@ -21,10 +16,8 @@ export function readCsrfToken(): string | null {
   for (const part of document.cookie.split("; ")) {
     if (part.startsWith(prefix)) {
       const value = part.slice(prefix.length);
-      // A malformed percent sequence must not throw during AuthContext boot
-      // (hasSessionCookie routes through here), so a URIError falls back to
-      // the raw slice. Backend tokens are URL-safe, so a real one never needs
-      // decoding and the echo still matches.
+      // A malformed percent sequence must not throw during AuthContext boot; fall back to the raw
+      // slice (backend tokens are URL-safe, so the echo still matches).
       try {
         return decodeURIComponent(value);
       } catch {
@@ -36,26 +29,17 @@ export function readCsrfToken(): string | null {
 }
 
 /**
- * True iff the browser appears to hold an active session.
- *
- * The JWT lives in the HttpOnly `vidit_session` cookie, invisible to
- * `document.cookie`, so `vidit_csrf` is the JS-visible proxy: the backend
- * sets both in lockstep on login and clears both on logout, so their
- * presence tracks the same boolean. Absence means "no point firing
- * /auth/me, the answer is already 401" — `AuthContext` uses this to skip
- * the unconditional probe and avoid a red `401` in the DevTools console on
- * every logged-out page load.
+ * True iff the browser appears to hold a session. The JWT is HttpOnly, so `vidit_csrf` is the
+ * JS-visible proxy (set and cleared in lockstep). Lets `AuthContext` skip the `/auth/me`
+ * probe and its logged-out 401 in the console.
  */
 export function hasSessionCookie(): boolean {
   return readCsrfToken() !== null;
 }
 
 /**
- * Client-side guard for a password-change form: the password must be at least
- * 8 characters and match its confirmation. Returns the message to show, or
- * `null` when both checks pass. Mirrors the backend length rule so the user sees
- * it before a round-trip. `label` names the field in the message — the
- * change-password form says "New password", the reset-password form "Password".
+ * Client-side password-change guard: at least `PASSWORD_MIN_LENGTH` characters and a match
+ * with the confirmation. Returns the message, or `null`. `label` names the field.
  */
 export function validatePasswordChange(
   password: string,

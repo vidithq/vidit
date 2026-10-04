@@ -7,22 +7,13 @@ import { EntityCard } from "@/components/ui/EntityCard";
 import type { PickableEvent } from "@/lib/collections";
 
 /**
- * One event as a collection surface renders it: the catalogue's own compact
- * card, with its lifecycle badge and without the byline.
+ * One event as a collection surface renders it: the catalogue's compact card with
+ * its lifecycle badge and without the byline (a collection is one analyst's work
+ * and the block above names them), and so without the height floor too.
  *
- * Every surface that lists a collection's events reads it, so a row on the
- * collection's page, on the picker's held block and on the picker's add block
- * fill the same slots. The byline is the one slot they all drop: a collection
- * is one analyst's own work and the block above names them, so the same handle
- * on every row would only push the title's column narrower. That is also why
- * the height floor is off: with the byline gone the floor would print a band of
- * nothing under the two lines each row carries.
- *
- * `action` is the control the surface puts on the row (the cross that takes an
- * item off, the plus that adds one). `onSelect` is the collection page's own
- * mode, where the row picks the player's step instead of opening the event: the
- * whole card becomes that button, the title renders as plain text, and the
- * event's own page is reached from the player panel's title above the list.
+ * `action` is the control the surface puts on the row. `onSelect` is the
+ * collection page's mode: the row picks the player's step instead of opening the
+ * event, and the event's page is reached from the player panel's title.
  */
 export function CollectionItemCard({
   item,
@@ -32,9 +23,9 @@ export function CollectionItemCard({
 }: {
   item: PickableEvent;
   action?: ReactNode;
-  /** True for the row the player stands on. Select mode only. */
+  /** The row the player stands on. Select mode only. */
   selected?: boolean;
-  /** Picks this row on the surface it sits on instead of opening it. */
+  /** Picks this row instead of opening it. */
   onSelect?: () => void;
 }) {
   const slots = {

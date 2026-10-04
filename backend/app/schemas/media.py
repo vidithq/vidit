@@ -10,12 +10,9 @@ class MediaRead(BaseModel):
     role: MediaRole
     storage_url: str
     media_type: MediaType
-    # Hex-encoded SHA-256 of the uploaded bytes. ``None`` for rows that predate
-    # the column (full rationale in ``models/media.py::Media.sha256``).
+    # Hex SHA-256; ``None`` on rows predating the column (``models/media.py``).
     sha256: str | None = None
-    # Original filename the browser sent at upload. Exposed publicly because
-    # investigators sometimes trace evidence to a source post by filename
-    # (``IMG_1234.jpg`` referenced in a tweet).
+    # Public so investigators can trace evidence to a post by filename.
     original_filename: str | None = None
 
     model_config = {"from_attributes": True}

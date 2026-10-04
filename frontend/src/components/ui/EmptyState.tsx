@@ -4,19 +4,15 @@ import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 /**
- * The one empty-state grammar. Three variants, one look per situation:
+ * The one empty-state grammar, in three variants:
  *
- * - `boxed` (default): the muted bordered one-liner for empty list pages
- *   (search, requests). `children` is the sentence, often with an inline
- *   `TEXT_LINK` CTA.
- * - `plain`: the headline + hint + CTA stack inside an existing container
- *   (detections queue, profile recent submissions). No box of its own.
- * - `invite`: the dashed hero for a first-run surface (timeline), `plain`'s
- *   stack in a dashed box with an optional icon.
+ * - `boxed` (default): a muted bordered one-liner for empty list pages. `children`
+ *   is the sentence, often with an inline `TEXT_LINK` CTA.
+ * - `plain`: headline, hint and CTA inside an existing container, with no box.
+ * - `invite`: `plain`'s stack in a dashed hero box with an optional icon, for a
+ *   first-run surface.
  *
- * `lead` is the headline, `children` the hint under it, `cta` the action
- * node(s). Each call site picks exactly one variant; the paints live here so
- * the six sites can't drift again.
+ * `lead` is the headline, `children` the hint, `cta` the action node(s).
  */
 export function EmptyState({
   variant = "boxed",
@@ -28,9 +24,9 @@ export function EmptyState({
 }: {
   variant?: "boxed" | "plain" | "invite";
   icon?: LucideIcon;
-  /** Headline above the hint (plain / invite). */
+  /** Plain and invite only. */
   lead?: string;
-  /** Action node(s) under the hint (plain / invite). */
+  /** Plain and invite only. */
   cta?: ReactNode;
   children?: ReactNode;
   className?: string;

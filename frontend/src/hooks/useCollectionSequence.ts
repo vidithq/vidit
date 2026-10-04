@@ -9,26 +9,14 @@ import type { EventListItem } from "@/types";
 interface SequenceResult {
   items: EventListItem[] | null;
   error: string | null;
-  // Which collection this result answers. A result kept across an id change is
-  // stale and must not leak into the new page state.
+  // Which collection this result answers; a result kept across an id change is stale.
   id: string | null;
 }
 
-/**
- * A collection's items in reading order, walked once.
- *
- * `useApiResource`'s shape over a read that is several requests rather than
- * one path: the walk follows the `Link: rel="next"` cursor to the end, aborts
- * on unmount and on an id change, and is skipped while `id` is empty (route
- * params not ready). `items` is null until the walk lands, which is what
- * `loading` reports. A result carries the id it answers, so the items and the
- * error of the collection just left never render under the one just opened.
- *
- * Both collection pages take it, so neither reads the set its own way. The
- * collection's page draws its pins, its panel and its rows from the one
- * sequence, which is what keeps the three describing the same collection; the
- * edit page seeds its picker from it and diffs the save against it.
- */
+/** A collection's items in reading order, walked once: `useApiResource`'s shape over several
+ * requests (the `Link: rel="next"` walk), aborted on unmount and id change, skipped while `id`
+ * is empty. `items` is null until the walk lands. Both collection pages use it so pins, panel
+ * and rows describe one set; the edit page also diffs its save against it. */
 export function useCollectionSequence(id: string): {
   items: EventListItem[] | null;
   error: string | null;
@@ -63,8 +51,7 @@ export function useCollectionSequence(id: string): {
   return {
     items: fresh ? fresh.items : null,
     error: fresh ? fresh.error : null,
-    // An empty id reads as loading, not as an empty collection: the route
-    // params are still resolving and the page has nothing to say yet.
+    // An empty id reads as loading: route params are still resolving.
     loading: fresh === null,
   };
 }

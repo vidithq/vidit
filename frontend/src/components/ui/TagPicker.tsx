@@ -18,39 +18,33 @@ import { FORM_INVALID_LABEL, FORM_LABEL } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 
-// Free-tag name ceiling, mirroring the backend `TagCreate.name` constraint in
-// schemas/tag.py (itself the `String(100)` column cap), so the input can't
-// accept a name the API would 422.
+// Mirrors `schemas/tag.py` `TagCreate.name` (the `String(100)` cap); change both.
 const TAG_NAME_MAX_LEN = 100;
 
 interface TagPickerProps {
-  /** Live tags (referenced by ≥1 geolocation) — source of the free-tag chips
-   *  and the create-new dedup list. */
+  /** Live tags (referenced by at least one geolocation): the free-tag chips and
+   *  the create-new dedup list. */
   tags: Tag[];
   setTags: Dispatch<SetStateAction<Tag[]>>;
-  /** Full curated taxonomy (`capture_source`), including zero-usage rows
-   *  (fetched with `?curated=true`). */
+  /** Curated taxonomy (`capture_source`), zero-usage rows included
+   *  (`?curated=true`). */
   curatedTags: Tag[];
   selectedTagIds: string[];
   setSelectedTagIds: Dispatch<SetStateAction<string[]>>;
-  /** The full conflicts referential (`GET /conflicts`, ~800 rows), filtered
-   *  client-side by the typeahead. */
+  /** `GET /conflicts` (~800 rows), filtered client-side. */
   conflicts: Conflict[];
   selectedConflictIds: string[];
   setSelectedConflictIds: Dispatch<SetStateAction<string[]>>;
-  /** Flag a curated group as a missing required field (red label + outline)
-   *  when the form's submit/validate was blocked on it. */
+  /** Flag a group blocking submit (red label + outline). */
   conflictInvalid?: boolean;
   captureSourceInvalid?: boolean;
 }
 
 /**
- * Shared tag-selection section for the geolocation + request submit forms.
- * Both render *this* so they can't drift apart. Conflict is a multi-select
- * typeahead over the conflicts referential (not a tag category); capture
- * source is single-select (one lens per piece of media) from the curated
- * taxonomy, free tags from the live list. The capture-source group doesn't
- * render when no `capture_source` tags are passed.
+ * Shared tag-selection section for the geolocation and request forms. Conflict
+ * is a multi-select typeahead over the conflicts referential; capture source is
+ * single-select from the curated taxonomy and hidden when none is passed; free
+ * tags come from the live list.
  */
 export function TagPicker({
   tags,
@@ -64,7 +58,6 @@ export function TagPicker({
   conflictInvalid = false,
   captureSourceInvalid = false,
 }: TagPickerProps) {
-  // Red label + ring around the chips when the group blocked a submit/validate.
   const invalidChips = "rounded-md p-2 ring-1 ring-red-500/40";
   const captureSourceTags = curatedTags.filter(
     (t) => t.category === "capture_source"
@@ -77,9 +70,8 @@ export function TagPicker({
     );
   };
 
-  // Capture source is single-valued — one original lens per piece of
-  // media — so its chips behave like a radio group: picking one clears
-  // any other capture-source pick. Clicking the active one clears it.
+  // Single-valued (one lens per piece of media): radio-like, and clicking the
+  // active chip clears it.
   const selectCaptureSource = (tagId: string) => {
     const captureIds = new Set(captureSourceTags.map((t) => t.id));
     setSelectedTagIds((prev) => {
@@ -159,26 +151,19 @@ export function TagPicker({
   );
 }
 
-// Cap on the visible conflict result list: search over the ~800-row
-// referential ("Include ended") shows the first slice plus a "type to narrow"
-// hint. The empty-input default (major ongoing conflicts + Other) sits far
-// under it.
+// Cap on the visible results; the empty-input default sits far under it.
 const CONFLICTS_PREVIEW = 30;
 
 /**
- * Multi-select typeahead over the conflicts referential, filtering client-side
- * (the full list is fetched once, so no debounce is needed). With the input
- * empty only the major-tier ongoing conflicts show, with the "Other" escape
- * row pinned last; a hint counts the rest of the searchable set. Searching
- * covers all ongoing conflicts, and the "Include ended conflicts" switch
- * extends it to ended ones. Results sort by tier then name (see
- * `sortConflicts`). Selected conflicts render as accent pills above the input,
- * deselectable, and drop out of the result list.
+ * Multi-select typeahead over the conflicts referential, filtering client-side.
+ * Empty input shows the major-tier ongoing conflicts with "Other" pinned last
+ * and a hint counting the rest. Searching covers all ongoing conflicts; the
+ * "Include ended conflicts" switch adds ended ones. Results sort by tier then
+ * name (`sortConflicts`). Selected conflicts render as deselectable accent
+ * pills above the input.
  *
- * Exported for the surfaces that pick conflicts WITHOUT the rest of the
- * classification card: the detections review flow picks one per detection, and
- * carries the pick to the next detection. Everything picking conflicts alongside
- * tags takes `<TagPicker>` instead.
+ * Exported for surfaces that pick conflicts without the classification card
+ * (the detections review flow); alongside tags, use `<TagPicker>`.
  */
 export function ConflictTypeahead({
   conflicts,
@@ -197,19 +182,15 @@ export function ConflictTypeahead({
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
 
-  // A selection survives the filters: an ended pick stays visible (and
-  // deselectable) even with the switch off or a non-matching query.
+  // A selection survives the filters (an ended pick stays deselectable).
   const selected = conflicts.filter((c) => selectedIds.includes(c.id));
 
   const q = query.trim().toLowerCase();
-  // What a search can reach under the current switch state.
   const searchable = conflicts.filter(
     (c) => !selectedIds.includes(c.id) && (includeEnded || c.ongoing)
   );
-  // Empty input: only the major ongoing conflicts plus the "Other" escape row
-  // (regardless of the switch, which only widens the searchable set). The
-  // escape row is matched by name alone, no ongoing gate: it must always be
-  // offered even if a future backend change flips its flag.
+  // Empty input: major ongoing conflicts plus the "Other" escape row, matched by
+  // name alone so it is always offered.
   const matches = sortConflicts(
     q === ""
       ? conflicts.filter(
@@ -221,8 +202,7 @@ export function ConflictTypeahead({
   );
   const visible = matches.slice(0, CONFLICTS_PREVIEW);
   const overflow = matches.length - visible.length;
-  // Empty input: count what typing can reach beyond the default pills, so the
-  // switch has a visible effect before any keystroke.
+  // Lets the switch show an effect before any keystroke.
   const searchableBeyondDefault = searchable.length - matches.length;
 
   return (
@@ -275,8 +255,7 @@ export function ConflictTypeahead({
           {overflow} more. Type to narrow the list.
         </p>
       )}
-      {/* Only under a non-empty list: the hint must not co-render with the
-          empty-state message above. */}
+      {/* Not alongside the empty-state message. */}
       {q === "" && visible.length > 0 && searchableBeyondDefault > 0 && (
         <p className="text-xs text-neutral-500">
           {searchableBeyondDefault} more{includeEnded ? "" : " ongoing"}{" "}
@@ -287,15 +266,10 @@ export function ConflictTypeahead({
   );
 }
 
-// Inline "create a free tag" affordance. `free` is the only category an
-// analyst can create; `capture_source` is admin-curated (see
-// `backend/app/routers/tags.py::USER_CREATABLE_CATEGORIES`). Private to the
-// TagPicker, its only consumer.
-//
-// 409 = name already exists in the DB (case-sensitive). Surfaced as a
-// non-blocking message; the existing tag may be hidden from /tags because it
-// has zero live geolocations (the orphan filter), but that's not worth a
-// special path until it bites.
+// Inline "create a free tag". `free` is the only category an analyst can create
+// (`routers/tags.py::USER_CREATABLE_CATEGORIES`). A 409 (name exists,
+// case-sensitive) shows a non-blocking message; the existing tag may be hidden
+// from /tags by the orphan filter.
 function NewTagInput({
   existingTags,
   onCreated,
@@ -316,9 +290,8 @@ function NewTagInput({
     {
       fallback: "Could not create tag.",
       onError: (e) => {
-        // 409 = name already in the DB (case-sensitive). Other API errors
-        // surface their message; a non-API throw (e.g. a network TypeError)
-        // shows the fixed message, not a raw "Failed to fetch".
+        // A non-API throw (network TypeError) shows the fixed message, not a
+        // raw "Failed to fetch".
         if (e instanceof ApiError && e.status === 409) {
           return "That tag already exists.";
         }
@@ -341,9 +314,8 @@ function NewTagInput({
   async function submit() {
     if (!canSubmit) return;
 
-    // Already in the local list: skip the round-trip and auto-select. Matched
-    // exact + case-sensitive (the backend uniqueness rule) so a near-match
-    // casing isn't masked as an existing tag.
+    // Already local: skip the round-trip and select. Exact and case-sensitive,
+    // like the backend uniqueness rule.
     const local = existingTags.find(
       (t) => t.name === trimmed && t.category === "free",
     );

@@ -1,10 +1,6 @@
-"""Write path for ``POST /events`` (the direct geolocate).
-
-Auth + validation (coordinates, dates, file type, proof JSON), the required
-conflict + `capture_source` floor, and the proof-image intake: proof
-files ride in the same multipart and resolve against ``placeholder://`` srcs
-in the proof document. Shared fixtures live in `conftest.py`; `client` and the
-proof helpers in `_helpers.py`.
+"""Write path for ``POST /events``: validation, the conflict + ``capture_source`` floor,
+and proof-image intake (proof files ride in the same multipart and resolve against
+``placeholder://`` srcs).
 """
 
 from __future__ import annotations
@@ -25,8 +21,6 @@ from tests.events._helpers import (
     proof_file_part,
     proof_form_field,
 )
-
-# ── POST /events, auth + validation paths ────────────────────────────────
 
 
 def _form(**overrides):
@@ -56,12 +50,7 @@ def test_create_requires_authentication():
 
 
 def test_create_rejects_missing_file(author):
-    """Empty multipart with no source file → rejected.
-
-    The `file: UploadFile = File(...)` signature requires the part in the
-    multipart body; FastAPI rejects the request with 422 before the handler
-    runs (the service's own media floor backs it as a 400).
-    """
+    """The ``file`` part is required: FastAPI 422s before the handler runs."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
@@ -71,11 +60,7 @@ def test_create_rejects_missing_file(author):
 
 
 def test_create_rejects_invalid_latitude(author):
-    """Out-of-range coord is rejected by the handler before any upload.
-
-    Important property: this 400 fires *before* the S3 uploads so a
-    malformed coord can never strand half-written S3 objects.
-    """
+    """A malformed coordinate 400s before any upload, so no S3 objects are stranded."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
@@ -89,8 +74,7 @@ def test_create_rejects_invalid_latitude(author):
 
 
 def test_create_rejects_half_typed_capture_coords(author):
-    """The optional camera point is both-or-neither; a lone half is a client
-    bug surfaced as 400, not silently dropped."""
+    """The camera point is both-or-neither; a lone half is a 400."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
@@ -102,10 +86,8 @@ def test_create_rejects_half_typed_capture_coords(author):
 
 
 def test_create_rejects_invalid_event_date(author):
-    """``event_date='not-a-date'`` returns a clean 422 before any S3
-    round-trip: an unvalidated string reaching the ``Mapped[date]`` column
-    500s at flush, after the files have already been uploaded. 422 matches
-    the ``parse_bbox`` shape so malformed-input rejections share a code."""
+    """A bad ``event_date`` is a 422 before any upload; unvalidated, it 500s at flush
+    after the files are uploaded."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
@@ -119,10 +101,8 @@ def test_create_rejects_invalid_event_date(author):
 def test_create_event_date_tolerates_only_a_separated_time_tail(
     db, author, conflict, capture_source_tag, tmp_path, monkeypatch
 ):
-    """``2026-05-01T12:00:00Z`` stores 2026-05-01 (a saved URL or an older
-    client may still send the datetime form); a tail glued on without the ISO
-    separator is garbage, not a date, so it 422s instead of being silently
-    truncated to a date the caller never wrote."""
+    """The datetime form stores its date; a tail without the ISO separator 422s instead
+    of being truncated."""
     from app.services import storage as storage_module
 
     monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
@@ -156,18 +136,14 @@ def test_create_event_date_tolerates_only_a_separated_time_tail(
 
 
 def test_list_rejects_malformed_date_filter(author):
-    """``submitted_to=not-a-date`` returns 422, NOT a 500. Before the
-    fix the raw string was concatenated with ``' 23:59:59'`` and
-    handed to Postgres, which raised ``InvalidDatetimeFormat`` and
-    surfaced as a 500. ``/points`` will be anonymous-reachable once read
-    endpoints open, so this is a Sentry-noise + abuse-amplifier vector."""
+    """A bad ``submitted_to`` is a 422, not a 500 from a malformed Postgres timestamp."""
     response = client.get(
         f"/api/v1/events/points?bbox={WORLD_BBOX}&submitted_to=not-a-date",
         headers=login_as(client, author),
     )
     assert response.status_code == 422
-    # A date with junk glued on is rejected the same way: the datetime
-    # tolerance covers a ``T`` or space separated tail, nothing else.
+    # Junk after the date is rejected too: the datetime tolerance covers only a T or
+    # space separated tail.
     glued = client.get(
         f"/api/v1/events/points?bbox={WORLD_BBOX}&event_date_from=2026-05-0199",
         headers=login_as(client, author),
@@ -176,9 +152,8 @@ def test_list_rejects_malformed_date_filter(author):
 
 
 def test_create_rejects_too_many_proof_files(author, conflict, capture_source_tag):
-    """A proof batch past ``max_proof_images_per_event`` (10) is rejected
-    before any upload. Without the cap, one submit can pin the worker
-    through the Pillow + S3 pipeline for dozens of files in one request."""
+    """A proof batch past ``max_proof_images_per_event`` is rejected before upload (caps
+    Pillow + S3 work per request)."""
     doc = {
         "type": "doc",
         "content": [
@@ -204,11 +179,9 @@ def test_create_rejects_too_many_proof_files(author, conflict, capture_source_ta
 
 
 def test_create_rejects_disallowed_file_type(author, conflict, capture_source_tag):
-    """A source file with a MIME type outside `ALLOWED_TYPES` is rejected with
-    the typed `invalid_file` envelope BEFORE any S3 IO. Passes the required
-    tags + proof so the request reaches the file-validate loop in the intake,
-    without them, an earlier floor guard fires first and the test exercises
-    the wrong code path."""
+    """A MIME type outside ``ALLOWED_TYPES`` gets the typed ``invalid_file`` envelope
+    before any S3 IO. Required tags + proof are passed so an earlier floor guard does
+    not fire instead."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
@@ -225,8 +198,7 @@ def test_create_rejects_disallowed_file_type(author, conflict, capture_source_ta
 
 
 def test_create_rejects_video_proof_file(author, conflict, capture_source_tag):
-    """A proof part must be an image, the proof body embeds ``<img>`` nodes,
-    so a video there could never render."""
+    """A proof part must be an image: a video could never render in the proof body."""
     doc = {
         "type": "doc",
         "content": [{"type": "image", "attrs": {"src": "placeholder://clip.mp4"}}],
@@ -263,8 +235,7 @@ def test_create_rejects_invalid_proof_json(author):
 
 
 def test_create_rejects_proof_without_image(author, conflict, capture_source_tag):
-    """The proof-image floor: a proof body with no inline image 400s before
-    any upload (a vouched location needs a visual argument)."""
+    """A proof body with no inline image 400s before any upload."""
     doc = {
         "type": "doc",
         "content": [{"type": "paragraph", "content": [{"type": "text", "text": "words only"}]}],
@@ -284,8 +255,7 @@ def test_create_rejects_proof_without_image(author, conflict, capture_source_tag
 
 
 def test_create_rejects_placeholder_without_matching_file(author, conflict, capture_source_tag):
-    """A ``placeholder://`` src with no uploaded file of that name is a 400
-    (nothing uploads on a mismatched batch)."""
+    """A ``placeholder://`` src with no uploaded file of that name is a 400."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
@@ -303,8 +273,8 @@ def test_create_rejects_placeholder_without_matching_file(author, conflict, capt
 
 
 def test_create_rejects_unreferenced_proof_file(author, conflict, capture_source_tag):
-    """The reverse mismatch: an uploaded proof file no placeholder references
-    would land as an untracked S3 object, 400 instead."""
+    """An uploaded proof file no placeholder references would be an untracked S3 object:
+    400."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
@@ -325,9 +295,6 @@ def test_create_rejects_unreferenced_proof_file(author, conflict, capture_source
     assert "stray.jpg" in detail["message"]
 
 
-# ── POST /events, required tag categories ────────────────────────────────
-
-
 def test_create_rejects_no_tags(author):
     """No tags at all → 400. Conflict is checked first, before any upload."""
     response = client.post(
@@ -343,7 +310,6 @@ def test_create_rejects_no_tags(author):
 
 
 def test_create_rejects_missing_conflict(author, capture_source_tag):
-    """A capture-source tag without a conflict → 400."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
@@ -357,7 +323,6 @@ def test_create_rejects_missing_conflict(author, capture_source_tag):
 
 
 def test_create_rejects_missing_capture_source_tag(author, conflict):
-    """A conflict without a capture-source tag → 400."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
@@ -371,11 +336,7 @@ def test_create_rejects_missing_capture_source_tag(author, conflict):
 
 
 def test_create_rejects_free_tag_only(author, free_tag):
-    """A free tag alone satisfies neither required category → 400.
-
-    Guards against the resolved-category check being fooled by *any*
-    tag being present, it has to be the right categories.
-    """
+    """A free tag alone satisfies neither required category."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
@@ -388,10 +349,8 @@ def test_create_rejects_free_tag_only(author, free_tag):
 def test_create_succeeds_with_full_floor(
     db, author, conflict, capture_source_tag, tmp_path, monkeypatch
 ):
-    """Coordinates + one source + a resolved proof image + the conflict and
-    capture-source floor
-    → 201; the placeholder src is rewritten to a real URL and a
-    ``Media(role='proof')`` row lands alongside the source."""
+    """The placeholder src is rewritten to a real URL and a ``Media(role='proof')`` row
+    lands beside the source."""
     from app.services import storage as storage_module
 
     monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
@@ -429,7 +388,6 @@ def test_create_succeeds_with_full_floor(
     assert srcs[0].startswith("http")  # placeholder rewritten to the landed URL
     assert "placeholder://" not in json.dumps(body["proof"])
 
-    # Row-level: one source + one proof media.
     import uuid as _uuid
 
     rows = db.query(Media).filter(Media.event_id == _uuid.UUID(body["id"])).all()
@@ -443,8 +401,8 @@ def test_create_succeeds_with_full_floor(
 def test_create_round_trips_source_posted_at_and_event_time(
     db, author, conflict, capture_source_tag, tmp_path, monkeypatch
 ):
-    """``source_posted_at`` (required) and the optional ``event_time`` round-trip
-    on the read model; ``event_time`` omitted → null."""
+    """``source_posted_at`` and ``event_time`` round-trip; an omitted ``event_time`` is
+    null."""
     from app.services import storage as storage_module
 
     monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
@@ -483,8 +441,7 @@ def test_create_round_trips_source_posted_at_and_event_time(
 def test_create_accepts_missing_event_date(
     db, author, conflict, capture_source_tag, tmp_path, monkeypatch
 ):
-    """``event_date`` omitted → 201 with a null date (reads as Unknown): the
-    footage doesn't always establish when the depicted event happened."""
+    """An omitted ``event_date`` reads as Unknown."""
     from app.services import storage as storage_module
 
     monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
@@ -510,8 +467,7 @@ def test_create_accepts_missing_event_date(
 
 
 def test_create_rejects_invalid_source_posted_at(author):
-    """Garbage ``source_posted_at`` → 422 before any S3 round-trip (same contract
-    as ``event_date``)."""
+    """Garbage ``source_posted_at`` 422s before any upload."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
@@ -525,20 +481,9 @@ def test_create_rejects_invalid_source_posted_at(author):
 def test_create_cleans_up_s3_when_proof_file_is_corrupt(
     db, author, conflict, capture_source_tag, tmp_path, monkeypatch
 ):
-    """A mid-batch upload failure must not strand orphan S3 objects.
-
-    The source file uploads successfully, then the proof file is a corrupt
-    JPEG that the EXIF-strip pre-pass rejects with a 400. Without cleanup the
-    transaction rolls back and the source sits in S3 forever with no DB row
-    pointing at it. With cleanup, the just-uploaded keys are swept via
-    `Storage.delete_many` before the exception bubbles.
-
-    Passes the required conflict + capture-source tag so the request
-    reaches the upload stage, without them the required-category guard would
-    400 *before* any upload and the test would pass vacuously.
-
-    Uses local storage so we can inspect the filesystem directly.
-    """
+    """A mid-batch failure sweeps the already-uploaded keys via ``Storage.delete_many``
+    instead of stranding S3 objects. Required tags are passed so the request reaches
+    the upload stage; local storage lets the test inspect the filesystem."""
     from app.services import storage as storage_module
 
     monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
@@ -557,14 +502,13 @@ def test_create_cleans_up_s3_when_proof_file_is_corrupt(
             ("proof_files", ("proof-1.jpg", b"\xff\xd8\xff\xd9", "image/jpeg")),
         ],
     )
-    # The bad file fails EXIF-strip → 400 typed-error envelope from the service.
     assert response.status_code == 400
     detail = response.json()["detail"]
     assert detail["code"] == "evidence_processing_failed"
-    assert detail["message"]  # non-empty Pillow / strip_metadata message
+    assert detail["message"]
 
-    # Crucial invariant: no files were left behind on disk (source uploads
-    # under uploads/, proof images under proof/).
+    # No files are left behind on disk (sources under uploads/, proof images under
+    # proof/).
     leaked = []
     for prefix in ("uploads", "proof"):
         base = tmp_path / prefix
@@ -577,8 +521,8 @@ def test_create_cleans_up_s3_when_proof_file_is_corrupt(
 def test_create_names_the_accepted_formats_when_refusing_an_image(
     author, conflict, capture_source_tag
 ):
-    """A file no JPEG, PNG or WebP decoder reads is refused whatever type it
-    declares, with a message naming the formats an upload may be in."""
+    """An undecodable file is refused whatever type it declares, naming the allowed
+    formats."""
     tiff = BytesIO()
     Image.new("RGB", (4, 4)).save(tiff, format="TIFF")
 

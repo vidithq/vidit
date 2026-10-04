@@ -58,10 +58,8 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
 describe("DetectionQueueRow", () => {
   it("badges a detection carrying the whole evidence floor as ready to review", () => {
     render(<DetectionQueueRow detection={detectionFixture()} />);
-    // "Ready to review", never a bare "Ready": the detection still needs the
-    // conflict and the capture source, which a review supplies. What the state
-    // means is the queue filter's own `?`, so the row carries the label and
-    // nothing to hover or press.
+    // "Ready to review", never a bare "Ready": the detection still needs the conflict and capture
+    // source. The queue filter's `?` explains the state, so the row has nothing to hover or press.
     expect(screen.getByText("Ready to review")).toBeInTheDocument();
     expect(screen.queryByText("Ready")).not.toBeInTheDocument();
     expect(screen.queryByRole("button")).toBeNull();
@@ -83,8 +81,7 @@ describe("DetectionQueueRow", () => {
 
   it("says nothing about the entry when the detection predates the record", () => {
     render(<DetectionQueueRow detection={detectionFixture({ detected_via: null })} />);
-    // Absent rather than "Unknown": the row is a triage line, and a segment
-    // saying nothing is worse than one segment fewer.
+    // Absent rather than "Unknown": a triage line is better one segment short than saying nothing.
     expect(screen.queryByText(/archive|Pasted|bot/)).toBeNull();
   });
 
@@ -95,8 +92,7 @@ describe("DetectionQueueRow", () => {
       />
     );
     expect(screen.queryByText("Ready to review")).not.toBeInTheDocument();
-    // The common case is one piece, and its name is what tells the analyst
-    // whether the row is worth opening.
+    // The common case is one missing piece, and its name tells the analyst whether the row is worth opening.
     expect(screen.getByText("Missing: Proof image")).toBeInTheDocument();
   });
 
@@ -109,8 +105,7 @@ describe("DetectionQueueRow", () => {
         })}
       />
     );
-    // The row stays dense whatever the import missed: three names joined into
-    // one badge outgrow it, and the edit form names them in place.
+    // The row stays dense whatever the import missed: three joined names outgrow it, and the edit form names them in place.
     expect(screen.getByText("Missing: 2 pieces")).toBeInTheDocument();
   });
 

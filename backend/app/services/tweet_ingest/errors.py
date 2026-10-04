@@ -1,9 +1,4 @@
-"""Failures surfaced by the tweet-ingest package.
-
-Shared by every path: ``syndication`` raises them on fetch problems, ``urls``
-on a string that names no post, and ``acquire`` re-raises both. A leaf module,
-so any brick can raise them without a cycle.
-"""
+"""Failures surfaced by the tweet-ingest package (leaf module)."""
 
 from __future__ import annotations
 
@@ -13,50 +8,35 @@ class TweetImportError(RuntimeError):
 
 
 class InvalidTweetUrl(TweetImportError):
-    """The URL the caller provided isn't a tweet URL we can fetch.
-
-    Examples: ``https://example.com``, an X profile page, an X search URL,
-    a malformed string. Routes turn this into a ``400``.
-    """
+    """The URL is not a fetchable tweet URL (a profile, a search, a malformed
+    string). Routes answer ``400``."""
 
 
 class TweetNotAccessible(TweetImportError):
-    """The tweet exists for X but not for an unauthenticated reader.
-
-    Covers the syndication 404 (gone, protected, never existed) and the
-    ``TweetTombstone`` body X answers with a 200 for a tweet readable only
-    behind a login (age-restricted, withheld in a jurisdiction). Routes turn
-    this into a ``404`` carrying the message as ``detail``, so the message is
+    """The tweet is not readable without a login: the syndication 404 (gone,
+    protected), or the ``TweetTombstone`` body X sends with a 200 (age-restricted,
+    withheld). Routes answer ``404`` with the message as ``detail``, so it is
     analyst-facing prose.
     """
 
 
 class TweetFetchFailed(TweetImportError):
-    """The syndication endpoint was unreachable / 5xx / schema drift.
-
-    Routes turn this into a ``502``: the import panel renders the one message
-    without distinguishing a transport blip from schema drift, which are
-    operationally identical (retry later, or fill the form by hand).
-    """
+    """The syndication endpoint was unreachable, answered 5xx, or drifted in schema.
+    Routes answer ``502``."""
 
 
 class TweetUpstreamBusy(TweetFetchFailed):
     """X declined to serve the request for now: a 429, or X's own 5xx.
 
-    The syndication budget is unauthenticated and shared by every analyst and
-    the bot, so throttling is an expected outcome with its own operational
-    story: wait, then retry. Routes turn this into a ``503`` naming the retry,
-    apart from the ``502`` that means the payload drifted under us. Both stay
-    5xx, so both keep reaching Sentry, as two issues instead of one bucket.
+    The unauthenticated syndication budget is shared, so throttling is expected.
+    Routes answer ``503`` (apart from the ``502`` of payload drift), so the two
+    reach Sentry as separate issues.
 
-    ``retry_after`` is the delay the upstream asked for in its ``Retry-After``
-    header, in seconds, ``None`` when it sent none or sent a date instead. The
-    retry policy (:mod:`tweet_ingest.retry`) reads it; nothing else does.
+    ``retry_after`` is the ``Retry-After`` delay in seconds, ``None`` when absent
+    or a date. Only :mod:`tweet_ingest.retry` reads it.
 
-    A subclass of ``TweetFetchFailed`` on purpose: every fail-soft caller
-    (``acquire._self_reply_parent``, the chasers under ``chase/``) keeps
-    degrading exactly as before, and only a caller that wants the distinction
-    catches this class first.
+    A subclass of ``TweetFetchFailed`` so fail-soft callers
+    (``acquire._self_reply_parent``, ``chase/``) keep degrading.
     """
 
     def __init__(self, message: str, *, retry_after: float | None = None) -> None:
@@ -65,11 +45,8 @@ class TweetUpstreamBusy(TweetFetchFailed):
 
 
 class TweetUpstreamUnreachable(TweetFetchFailed):
-    """The request got no answer at all: a timeout, or a transport error.
+    """No answer at all: a timeout or transport error.
 
-    Its own class next to :class:`TweetUpstreamBusy` so the retry policy can
-    name the two failures worth a second attempt without also catching the ones
-    a retry cannot fix (a payload that drifted, a body that will not parse).
-    A subclass of ``TweetFetchFailed``, so routes keep answering ``502`` and
-    every fail-soft caller keeps degrading as before.
+    Separate from :class:`TweetUpstreamBusy` so the retry policy can name the
+    two retryable failures. A ``TweetFetchFailed`` subclass (``502``).
     """

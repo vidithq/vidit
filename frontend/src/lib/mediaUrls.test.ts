@@ -27,9 +27,8 @@ describe("displayUrlsFor", () => {
   });
 
   it("always returns the original for a proof image", () => {
-    // `upload_proof_image` passes `produce_derivatives=False`, so this object
-    // has no `_hero` / `_thumb` sibling. Asking for one is a 403 from the CDN
-    // and a broken picture wherever the row is shown.
+    // `upload_proof_image` writes no `_hero` / `_thumb` sibling: asking for one is a CDN 403 and a
+    // broken picture.
     const url = "https://cdn.example.com/proof/u1/abc.jpg";
     expect(
       displayUrlsFor({ storage_url: url, media_type: "image", role: "proof" })
@@ -41,8 +40,8 @@ describe("displayUrlsFor", () => {
   });
 
   it("does not mistake the domain dot for an extension", () => {
-    // Extensionless path — the only dots are in the host. A naive
-    // lastIndexOf(".") would rewrite "example.com" into a derivative.
+    // Extensionless path with dots only in the host: a naive lastIndexOf(".") would rewrite
+    // "example.com".
     const url = "https://cdn.example.com/uploads/abc";
     expect(displayUrlsFor(image(url))).toEqual({
       original: url,
@@ -99,8 +98,8 @@ describe("posterFrameUrl", () => {
   });
 
   it("leaves a URL that already names a fragment alone", () => {
-    // An explicit start time from a caller wins; appending would produce two
-    // fragments and the browser would honour neither.
+    // An explicit start time wins; appending would produce two fragments and the browser would
+    // honour neither.
     const url = "https://cdn.example.com/a/clip.mp4#t=12";
     expect(posterFrameUrl(url)).toBe(url);
   });

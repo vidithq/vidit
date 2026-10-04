@@ -1,10 +1,8 @@
 """Run one pass of the Wikipedia ongoing-conflicts sync.
 
-Meant for a daily scheduler (e.g. a Railway cron), and runnable by hand.
-Exits non-zero when the page could not be fetched or no longer matches the
-expected structure; in that case nothing was written (see
-``services/conflict_sync``).
-
+For a daily scheduler (e.g. a Railway cron) or by hand. Exits non-zero when the
+page could not be fetched or no longer matches the expected structure, writing
+nothing (``services/conflict_sync``).
     uv run python scripts/sync_conflicts.py
 """
 
@@ -22,9 +20,8 @@ from app.services.conflict_sync import ConflictSyncError, sync_conflicts
 
 def main() -> None:
     configure_logging()
-    # Same opt-in Sentry boot as the app: the interesting failure mode (the
-    # page structure changed and every run aborts) is silent and durable, so
-    # it must page rather than sit in the cron service's logs.
+    # Same opt-in Sentry boot as the app: a changed page structure aborts every
+    # run silently, so it must page.
     init_sentry()
 
     db = SessionLocal()

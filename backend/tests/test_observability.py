@@ -1,9 +1,8 @@
 """``observability``: what a captured Sentry event carries, and how a log record prints.
 
-Each Sentry test boots the SDK through the helper with an in-memory transport in
-place of the network one, then resets the global client so later tests in the
-worker report nowhere. The logging tests run in a fresh interpreter, since
-``configure_logging`` rewires the process's root logger.
+Sentry tests boot the SDK with an in-memory transport, then reset the global
+client. Logging tests run in a fresh interpreter because ``configure_logging``
+rewires the root logger.
 """
 
 from __future__ import annotations

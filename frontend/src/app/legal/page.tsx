@@ -6,15 +6,8 @@ import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { TEXT_LINK } from "@/components/ui/styles";
 
-// Public legal notice, reachable without an account (see `PUBLIC_PREFIXES` in
-// `proxy.ts`). Linked from the about page and from the auth screens. Server
-// component, composed from the same PageShell + Card primitives as the
-// methodology guide.
-//
-// The publisher is a non-professional one within the meaning of LCEN article
-// 6-III-2, so only the hosting providers are identified by name, plus a contact
-// address for notices. The maintainer's identity is held by the hosts, not
-// published here.
+// Public legal notice (see `PUBLIC_PREFIXES` in `proxy.ts`). The publisher is non-professional under LCEN article
+// 6-III-2, so only the hosting providers are named, plus a contact address; the maintainer's identity is held by the hosts.
 
 const TITLE = "Legal notice";
 const DESCRIPTION =
@@ -40,12 +33,9 @@ export const metadata: Metadata = {
   },
 };
 
-// Where takedown notices, data requests and other legal mail land.
 const CONTACT_EMAIL = "support@vidit.app";
 
-// The three providers that host the platform, each with the role it plays.
-// Article 6-III-2 asks for the host's identity, so the list carries the legal
-// name, the postal address and the site of each one.
+// The hosting providers and their roles (legal name, postal address, site, per article 6-III-2).
 const HOSTS = [
   {
     name: "Vercel Inc.",

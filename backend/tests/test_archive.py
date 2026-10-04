@@ -1,10 +1,8 @@
 """Unit tests for the X-archive acquire adapter.
 
-Runs against the committed synthetic archive (``tests/data/
-synthetic_archive/``) — fully fake content (synthetic in-bounds coords, fake
-handles), never real tweet data. The grammar the export resolves to is pinned
-typology by typology in ``tests/ingest_contract``; what is left here is the
-export reader itself, the chase it spends per thread, and the media fetch.
+Runs against the committed synthetic archive (``tests/data/synthetic_archive/``),
+never real tweet data. The grammar is pinned in ``tests/ingest_contract``; this
+file covers the export reader, the per-thread chase, and the media fetch.
 """
 
 from __future__ import annotations
@@ -46,14 +44,12 @@ def test_read_tweets_parses_records():
     by_id = {r.tweet_id: r for r in records}
     # 7001 is the fixture's retweet and is dropped; 8001 only says "RT" mid-text.
     assert set(by_id) == {"1001", "2001", "2002", "3001", "4001", "5001", "6001", "8001"}
-    # Twitter created_at normalized to ISO 8601.
     assert by_id["1001"].created_at.startswith("2025-11-12")
-    # Permalink derives from the verified handle, not the archive.
+    # The handle comes from the verified handle, not the archive.
     assert by_id["1001"].handle == "ana"
-    # Reply edges survive inline — what stitch needs and syndication can't give.
+    # Reply edges survive inline (stitch needs them).
     assert by_id["2002"].in_reply_to_status_id == "2001"
     assert by_id["1001"].in_reply_to_status_id is None
-    # Media reference is the archive-relative path.
     assert [m.remote_url for m in by_id["1001"].media] == ["tweets_media/1001-AAA1.jpg"]
     assert by_id["3001"].media == []
 
@@ -61,12 +57,10 @@ def test_read_tweets_parses_records():
 def test_stitch_and_resolve_over_archive():
     records = read_tweets(ARCHIVE, handle="ana")
     detections = resolve_threads(stitch(records)).detections
-    # 1001(1) + thread 2001/2002(1) + 3001 DMS(1) + 4001 hemi(1) + 5001(0)
-    # + 6001 multi-coord(2) + 7001 retweet, dropped(0) + 8001(0) = 6.
+    # 1001(1) + thread 2001/2002(1) + 3001(1) + 4001(1) + 5001(0) + 6001(2) + 7001 dropped + 8001(0).
     assert len(detections) == 6
-    # The self-thread detection carries the head's media (as proof: the thread
-    # declares no source) + the head permalink, even though the coordinate
-    # lived in the reply.
+    # The self-thread detection carries the head's media as proof and the head
+    # permalink, though the coordinate lived in the reply.
     thread_detection = next(d for d in detections if d.detected_from_url.endswith("/2001"))
     assert thread_detection.source_url is None
     assert thread_detection.source_media == []
@@ -87,10 +81,8 @@ async def test_archive_media_fetcher_reads_present_and_misses_absent():
 
 
 def test_read_tweets_maps_video_media(tmp_path):
-    """A ``video`` / ``animated_gif`` entry maps to the mp4 the export saved:
-    ``tweets_media/<tweet_id>-<basename>``, basename from the highest-bitrate
-    mp4 variant (query string stripped). An entry with no usable mp4 variant is
-    dropped, not crashed on."""
+    """A video or gif maps to ``tweets_media/<tweet_id>-<basename>`` of the highest-bitrate
+    mp4 variant; an entry with no mp4 variant is dropped."""
     archive = tmp_path / "arc"
     write_archive_js(
         archive,
@@ -149,8 +141,7 @@ def test_read_tweets_maps_video_media(tmp_path):
 
 
 def test_read_tweets_skips_non_numeric_id(tmp_path):
-    """A crafted ``id_str`` carrying path metacharacters is dropped, so it never
-    reaches the ``tweets_media/<id>-...`` path built from it."""
+    """An ``id_str`` with path metacharacters is dropped before it builds a media path."""
     archive = tmp_path / "arc"
     write_archive_js(
         archive,
@@ -164,9 +155,8 @@ def test_read_tweets_skips_non_numeric_id(tmp_path):
 
 
 def test_read_tweets_drops_retweets(tmp_path):
-    """A retweet carries someone else's post, so importing it would attribute a
-    stranger's geolocation to the account running the import. Discriminator, and
-    why the text prefix is it: ``_RETWEET_PREFIX_RE`` in ``archive.py``."""
+    """A retweet would attribute a stranger's geolocation to the importer; the
+    discriminator is ``_RETWEET_PREFIX_RE`` in ``archive.py``."""
     archive = tmp_path / "arc"
     write_archive_js(
         archive,
@@ -191,16 +181,13 @@ def test_read_tweets_drops_retweets(tmp_path):
     )
     records = read_tweets(archive, handle="ana")
     assert [r.tweet_id for r in records] == ["9002"]
-    # Nothing downstream ever sees the retweet's coordinate.
     detections = resolve_threads(stitch(records)).detections
     assert [d.detected_from_url for d in detections] == ["https://x.com/ana/status/9002"]
 
 
 def test_several_third_party_status_links_are_ambiguous_no_chase(tmp_path, monkeypatch):
-    """Two distinct third-party status links, neither in the archive: the source
-    is ambiguous, so nothing is chased and the record carries no source tweet
-    (the source stays empty for review); the same id linked twice remains one
-    candidate and is chased."""
+    """Two distinct third-party status links, neither in the archive, are ambiguous:
+    nothing is chased. The same id linked twice is one candidate and is chased."""
     import app.services.tweet_ingest.chase.x as x_chase_mod
 
     archive = tmp_path / "arc"
@@ -255,10 +242,8 @@ def test_several_third_party_status_links_are_ambiguous_no_chase(tmp_path, monke
 
 
 def test_embedded_x_status_in_foreign_host_is_not_chased(tmp_path, monkeypatch):
-    """Host gate: a non-X URL (an archive.org capture, a common OSINT citation)
-    that merely carries ``x.com/<w>/status/<id>`` inside its path is not an X
-    status link, so it is never chased. The candidate rule keys on the real
-    host, never on a substring match over the whole URL."""
+    """A non-X URL (e.g. an archive.org capture) carrying ``x.com/<w>/status/<id>``
+    in its path is not chased: the rule keys on the real host, not a substring."""
     import app.services.tweet_ingest.chase.x as x_chase_mod
 
     archive = tmp_path / "arc"
@@ -293,8 +278,7 @@ def test_embedded_x_status_in_foreign_host_is_not_chased(tmp_path, monkeypatch):
 
 
 def _one_tweet_archive(dest: Path, text: str, urls: list[dict], media_url: str) -> None:
-    """One export entry: ``text``, its ``entities.urls``, and one attached photo
-    whose ``t.co`` wrapper is ``media_url`` (the production shape)."""
+    """One export entry with ``text``, its ``entities.urls``, and one photo wrapped as ``media_url``."""
     write_archive_js(
         dest,
         [
@@ -318,10 +302,8 @@ def _one_tweet_archive(dest: Path, text: str, urls: list[dict], media_url: str) 
 
 
 def test_a_sole_telegram_link_is_chased_beside_the_posts_own_media(tmp_path, monkeypatch):
-    """The production shape: one link the analyst wrote plus the wrapper X
-    appended for the post's own photo. The wrapper binds to no entity, so it is
-    neither a candidate nor proof content, and the Telegram chase runs on the
-    one real link."""
+    """The photo's ``t.co`` wrapper binds to no entity, so it is not a candidate
+    and the chase runs on the one real link."""
     import app.services.tweet_ingest.chase.telegram as telegram_mod
     from app.services.tweet_ingest.records import ChasedPost, ChaseResult
 
@@ -351,8 +333,7 @@ def test_a_sole_telegram_link_is_chased_beside_the_posts_own_media(tmp_path, mon
 
 
 def test_a_link_written_inside_prose_is_a_candidate(tmp_path):
-    """No label grammar: where the analyst wrote the link does not matter, only
-    how many candidates the thread carries."""
+    """Link position does not matter, only the candidate count."""
     archive = tmp_path / "arc"
     _one_tweet_archive(
         archive,
@@ -365,9 +346,7 @@ def test_a_link_written_inside_prose_is_a_candidate(tmp_path):
 
 
 def _cdn_client_factory(handler):
-    """An ``httpx.AsyncClient`` factory backed by a ``MockTransport`` handler, for
-    monkeypatching ``httpx.AsyncClient`` so ``fetch_cdn_media`` never leaves the
-    box."""
+    """An ``httpx.AsyncClient`` factory on a ``MockTransport`` handler, so ``fetch_cdn_media`` stays offline."""
     real = httpx.AsyncClient
 
     def make_client(**_kwargs):
@@ -377,8 +356,7 @@ def _cdn_client_factory(handler):
 
 
 async def test_fetch_cdn_media_caps_oversized_stream(monkeypatch):
-    """A CDN response larger than the shared byte cap is dropped fail-soft
-    (media-incomplete), not buffered unbounded into memory."""
+    """An oversized CDN response is dropped fail-soft (media-incomplete), not buffered."""
     import app.services.tweet_ingest.archive as archive_mod
 
     monkeypatch.setattr(archive_mod, "MEDIA_FETCH_MAX_BYTES", 16)
@@ -404,9 +382,7 @@ async def test_fetch_cdn_media_returns_within_cap(monkeypatch):
 
 
 async def test_fetch_cdn_media_retries_a_throttled_cdn(monkeypatch, retry_sleeps):
-    """The footage is the point of the detection, so a CDN refusing to serve right
-    now is sat out on the package's one schedule (``tweet_ingest.retry``) rather
-    than persisted as a media-incomplete row."""
+    """A throttling CDN is retried on ``tweet_ingest.retry``'s schedule, not persisted as media-incomplete."""
     import app.services.tweet_ingest.archive as archive_mod
     from app.services.tweet_ingest import retry
 
@@ -425,9 +401,7 @@ async def test_fetch_cdn_media_retries_a_throttled_cdn(monkeypatch, retry_sleeps
 
 
 async def test_fetch_cdn_media_degrades_once_the_retries_are_spent(monkeypatch, retry_sleeps):
-    """Fail-soft is unchanged past the schedule: the detection lands
-    media-incomplete, and the warning on it is what names the unreachable
-    source."""
+    """Past the schedule, the detection lands media-incomplete (fail-soft)."""
     import app.services.tweet_ingest.archive as archive_mod
     from app.services.tweet_ingest import retry
 
@@ -439,11 +413,9 @@ async def test_fetch_cdn_media_degrades_once_the_retries_are_spent(monkeypatch, 
 
 
 async def test_archive_media_fetcher_rejects_path_traversal(tmp_path):
-    """The fetcher never reads outside the extraction dir, even when a record's
-    ``remote_url`` resolves to a real sibling file (defeats arbitrary-file read)."""
+    """A ``remote_url`` resolving to a real sibling file outside the extraction dir is not read."""
     archive = tmp_path / "arc"
     (archive / "tweets_media").mkdir(parents=True)
-    # A real file just outside the archive dir, reachable only by escaping it.
     (tmp_path / "secret.png").write_bytes(b"\x89PNG not yours")
     fetch = archive_media_fetcher(archive)
     escaping = ParsedMedia(kind="image", remote_url="tweets_media/../../secret.png")

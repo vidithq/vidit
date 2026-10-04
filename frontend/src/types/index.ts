@@ -1,15 +1,8 @@
 import type { components } from "@/lib/api-types";
 
-/**
- * Linktree-style profile links. Each value is free-form: a handle
- * (`@username`) or a URL, and the frontend decides whether to render it as a
- * clickable anchor by sniffing for an http scheme.
- *
- * Aliased from the dedicated backend schema, which is per-platform typed. The
- * read payloads (`UserRead` / `UserProfile`) declare their `external_links`
- * column as a loose `{[key: string]: string | null}` map, so this is the
- * narrow shape the frontend keys off.
- */
+/** Profile links: each value is a handle or a URL; the frontend renders an anchor only when it
+ * sniffs an http scheme. Aliased from the per-platform backend schema (the read payloads
+ * declare a loose map). */
 export type ExternalLinks = components["schemas"]["ExternalLinks"];
 
 export interface User {
@@ -24,158 +17,103 @@ export interface User {
 
 export type TagCategory = components["schemas"]["TagRead"]["category"];
 
-/** One archive-import job as the owner polls it
- *  (`POST /events/import-archive` returns it queued;
- *  `GET /events/import-archive/{job_id}` follows it). Carries the assemble
- *  counts, final once `status` is `done`. */
+/** An archive-import job as the owner polls it (queued by `POST /events/import-archive`,
+ *  followed by `GET .../{job_id}`); counts are final once `status` is `done`. */
 export type ArchiveImportJob = components["schemas"]["ArchiveImportJobRead"];
 
-/** `POST /events/import-archive/presign`: the staging `upload_key` to enqueue
- *  with, plus the direct-to-storage upload target (`url` + form `fields`). */
+/** `POST /events/import-archive/presign`: the staging `upload_key` plus the direct-to-storage
+ *  target (`url` + form `fields`). */
 export type ArchiveImportPresign = components["schemas"]["ArchiveImportPresignRead"];
 
 export type Tag = components["schemas"]["TagRead"];
 
-/** One row of the conflicts referential (`GET /conflicts`). `ongoing` drives
- *  the picker's default list; `start_year` / `end_year` disambiguate ended
- *  entries. */
+/** One row of the conflicts referential (`GET /conflicts`). */
 export type Conflict = components["schemas"]["ConflictRead"];
 
-/** The unified 4-value event lifecycle: ``requested`` (an open call to
- *  geolocate, the requested/request view) → ``detected`` (machine output,
- *  rendered marked everywhere until its owner submits it) → ``geolocated`` (a
- *  person vouched for it: via the form, or by submitting a reviewed detection;
- *  not an independent-verification claim; corrected from there on as new
- *  versions) → ``closed`` (the row taken back by its owner, from any of the
- *  three). */
+/** The 4-value event lifecycle: `requested` (open call) → `detected` (machine output, marked
+ *  until its owner submits) → `geolocated` (a person vouched for it, then corrected as new
+ *  versions) → `closed` (taken back by its owner from any of the three). */
 export type EventStatus = components["schemas"]["EventRead"]["status"];
 
-/** Which state a ``closed`` row left, and so what its close was: ``requested``
- *  a withdrawn ask, ``detected`` a rejected machine reading, ``geolocated`` a
- *  retracted claim. Null on every live row. */
+/** The state a `closed` row left: `requested` a withdrawn ask, `detected` a rejected reading,
+ *  `geolocated` a retracted claim. Null on live rows. */
 export type BeforeClosedStatus = NonNullable<
   components["schemas"]["EventRead"]["before_closed_status"]
 >;
 
-/** Which entry produced a machine detection: the bot, a pasted URL, or an archive
- *  backfill. Generated, so a fourth entry reaches every reader through the
- *  drift gate. Null on a row imported before the column existed. */
+/** Which entry produced a detection: the bot, a pasted URL, or an archive backfill. Null on
+ *  rows imported before the column existed. */
 export type DetectedVia = NonNullable<components["schemas"]["EventRead"]["detected_via"]>;
 
-/** Compact point from /events/points:
- *  [id, lat, lng, event_date, added_date, detected]. ``event_date`` and
- *  ``added_date`` (the created_at day) are ISO ``YYYY-MM-DD`` strings;
- *  ``event_date`` is null when unknown (optional column), and a null-dated
- *  point is skipped by the event-date scrubber rather than hidden. The
- *  timeline scrubbers bucket the dates for the histograms and filter their
- *  windows client-side. ``detected`` is 1 for a machine detection (marked on
- *  the map), 0 for a geolocated row. The endpoint only returns located rows,
- *  so every point has coordinates. */
+/** Compact point from /events/points: [id, lat, lng, event_date, added_date, detected]. Dates
+ *  are ISO `YYYY-MM-DD`; `event_date` is null when unknown (the scrubber skips such points).
+ *  `detected` is 1 for a machine detection, 0 for geolocated. Every point has coordinates. */
 export type MapPoint = [string, number, number, string | null, string, 0 | 1];
 
 /** Index of the ``detected`` flag in the `MapPoint` tuple. */
 export const POINT_DETECTED_FLAG = 5;
 
-/** Decode a point's lifecycle status from its ``detected`` flag.
- *
- *  The binary decode is total: `/events/points` serves live ``geolocated``
- *  and ``detected`` rows only (a ``requested`` guess is not a confident pin,
- *  and a ``closed`` row, whatever its ``before_closed_status``, is judged off
- *  the map by the endpoint's own status predicate), so the flag never has to
- *  encode a third state. The return type pins the two strings to the
- *  generated `EventStatus` vocabulary. */
+/** Lifecycle status from the `detected` flag. Total because `/events/points` serves live
+ *  `geolocated` and `detected` rows only (not `requested` guesses or `closed` rows). */
 export function pointLifecycleStatus(point: MapPoint): EventStatus {
   return point[POINT_DETECTED_FLAG] === 1 ? "detected" : "geolocated";
 }
 
-/** Narrow points to the picked lifecycle statuses (empty pick = all), the
- *  client-side counterpart of the server's ``?status=`` any-match. Shared by
- *  the map canvas and the filter panel's timeline histograms so the two can't
- *  disagree about what a status chip hides. */
+/** Narrow points to the picked statuses (empty pick = all): the client counterpart of the
+ *  server's `?status=` any-match, shared by the map canvas and the filter histograms. */
 export function filterPointsByStatus(points: MapPoint[], statuses: string[]): MapPoint[] {
   if (statuses.length === 0) return points;
   return points.filter((p) => statuses.includes(pointLifecycleStatus(p)));
 }
 
-/**
- * What one pasted X post did: `POST /events/import-from-tweet`. The ids the
- * engine created, updated and left alone, in the order it produced them, so
- * the page opens the first detection it gets. `warnings` are the engine's codes
- * for what review still has to answer; `reason` names the refusal when the
- * post produced no detection at all.
- */
+/** What one pasted X post did (`POST /events/import-from-tweet`): the ids created, updated and
+ * left alone, in engine order. `warnings` are codes for what review must answer; `reason`
+ * names the refusal when no detection resulted. */
 export type TweetImportOutcome = components["schemas"]["TweetImportRead"];
 
-/**
- * One candidate from the submit-form duplicate probe
- * (GET /events/possible-duplicates). Soft-warning shape, just enough
- * to recognise the same event and decide whether to abandon the submission.
- * ``source_url`` is null on a sourceless ``detected`` candidate.
- */
+/** One candidate from the submit-form duplicate probe (`GET /events/possible-duplicates`): a
+ * soft warning. `source_url` is null on a sourceless `detected` candidate. */
 export type PossibleDuplicate = components["schemas"]["PossibleDuplicateRead"];
 
-/** A stored media row (image or video) on an event. `sha256` /
- *  `original_filename` are null on rows that predate those columns. */
+/** A stored media row; `sha256` and `original_filename` are null on rows predating those columns. */
 export type Media = components["schemas"]["MediaRead"];
 
-/** Full event detail (`GET /events/{id}`, `GET /events/detections`).
- *  Adds the source URL, the proof body, the full media list, provenance
- *  (``detected_from_url``), and the ``requested_by``
- *  trace on top of the compact ``EventList`` card fields. Covers every
- *  lifecycle state: a ``requested`` row (the requested view) reads through
- *  this same shape, with ``event_coords`` null unless the poster attached a
- *  guess. ``source_url`` and ``source_posted_at`` are null on a ``detected``
- *  row with no declared source; every ``requested`` / ``geolocated`` row
- *  carries a ``source_url``. */
+/** Full event detail (`GET /events/{id}`, `GET /events/detections`): the compact `EventList`
+ *  card plus source URL, proof body, full media list, provenance and `requested_by`. Covers
+ *  every lifecycle state; `event_coords` is null on a request without a guess, and
+ *  `source_url` / `source_posted_at` are null on a `detected` row with no declared source. */
 export type EventDetail = components["schemas"]["EventRead"];
 
-/** One filed version of an event (`GET /events/{id}/versions`, `GET
- *  /events/{id}/versions/{n}`). `version_no` is the version the row **holds**,
- *  not the one that replaced it, and `edited_by` / `created_at` / `note` belong
- *  to the edit that superseded it, which is the edit that produced version
- *  `version_no + 1` (see `lib/events.ts::eventVersions`). `snapshot` is the
- *  editable state as it stood, `{}` on a `redacted` row. */
+/** One filed version (`GET /events/{id}/versions[/{n}]`). `version_no` is the version the row
+ *  holds; `edited_by` / `created_at` / `note` belong to the edit that superseded it (see
+ *  `lib/events.ts::eventVersions`). `snapshot` is the editable state then, `{}` when `redacted`. */
 export type EventVersion = components["schemas"]["EventVersionRead"];
 
-/** One page of an event's history plus the size of the whole history. Paged
- *  like every list (`Link: rel="next"`), so `total` is not `items.length`. */
+/** One page of history plus the whole history's size (`total` is not `items.length`). */
 export type EventVersionList = components["schemas"]["EventVersionList"];
 
-/** One link's archived copy: the snapshot URL and the provider holding it.
- *  Carried by `archived_source`, by `archived_detected_from`, and by each entry
- *  of `archived_secondary_sources`, which stays index-aligned with
- *  `secondary_source_urls`. Null in any of them means no copy has been recorded
- *  for that link yet. */
+/** One link's archived copy (snapshot URL and provider), on `archived_source`,
+ *  `archived_detected_from` and each index-aligned entry of `archived_secondary_sources`.
+ *  Null means no copy recorded. */
 export type ArchivedLink = components["schemas"]["ArchivedLinkRead"];
 
 /** Compact event card (`GET /events`). */
 export type EventListItem = components["schemas"]["EventList"];
 
-/** The ``type=`` filter values, echoed back on the response. */
 export type SearchType = components["schemas"]["SearchResponse"]["type"];
 
-/**
- * Each search hit's ``*_highlight`` field is the original text with STX /
- * ETX bytes (U+0002 / U+0003) around matched fragments — see
- * ``lib/search.ts::splitHighlights`` for the parser. Control bytes never
- * appear in legitimate user text, so users can't forge markers to corrupt
- * the even/odd parity. The frontend renders the fragments as ``<mark>``
- * client-side; no raw HTML crosses the API boundary (XSS-safe).
- */
+/** Each hit's `*_highlight` field wraps matches in STX / ETX bytes (U+0002 / U+0003); see
+ * `lib/search.ts::splitHighlights`. Rendered as `<mark>` client side, so no raw HTML crosses
+ * the API (XSS-safe). */
 export type SearchEventHit = components["schemas"]["SearchEventHit"];
 
-/** A requested-view search hit: an event card plus the
- *  ``title_highlight`` fragment. ``source_url`` is required-nullable
- *  (a ``requested`` hit always carries one today, per
- *  ``ck_events_source_url_status``). */
+/** A requested-view hit: an event card plus `title_highlight`. `source_url` is always set
+ *  today (`ck_events_source_url_status`). */
 export type SearchRequestHit = components["schemas"]["SearchRequestHit"];
 
-/** An analyst search hit. ``bio_highlight`` is populated only when the bio
- *  matched (the backend nulls the unmarked case) so the UI can hide the
- *  snippet block cleanly. */
+/** An analyst hit; `bio_highlight` is set only when the bio matched. */
 export type SearchUserHit = components["schemas"]["SearchUserHit"];
 
-/** Grouped `GET /search` result set. ``total`` carries the per-group pre-LIMIT
- *  match counts; ``query`` / ``type`` echo the inputs so the UI can discard
- *  out-of-order responses while the user types. */
+/** Grouped `GET /search` result. `total` holds per-group pre-LIMIT counts; `query` / `type`
+ *  echo the inputs so the UI can discard out-of-order responses. */
 export type SearchResponse = components["schemas"]["SearchResponse"];

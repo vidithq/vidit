@@ -8,25 +8,17 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
 # What one mention did with a tagged tweet. ``created``: at least one
-# ``detected`` row landed. ``updated``: no row was created, and the newer parse
-# overwrote at least one open detection the analyst already held, which is an answer
-# to the tag and earns the success reply just as a creation does.
-# ``no_detection``: the thread yielded no coordinate,
-# which a linked author gets the failure reply for (unless the tagged tweet is
-# itself a reply to the bot, the loop guard in ``services/bot``).
-# ``no_account``: no live Vidit account carries the tagged author's
-# ``x_handle`` (admin-linked), so nothing was created and no reply posted.
-# ``skipped``: every detection deduped against an existing row and moved
-# nothing on it.
-# ``requested``: the thread carried no coordinate but did carry footage and a
-# source link, so a ``requested`` row was opened instead of a refusal
-# (``services/bot``, the request branch).
-# ``inherited``: the author never typed the tag, X's reply prefix carried it
-# over from the parent, so nothing was acquired and nothing answered.
-# ``self``: the bot's own post surfaced in its mentions timeline (recorded so
-# the ``since_id`` cursor advances past it instead of re-billing it every
-# pull). ``failed``: processing raised (captured to Sentry; delete the row to
-# retry that mention on the next run).
+# ``detected`` row landed. ``updated``: no row created, but a newer parse
+# overwrote an open detection (earns the success reply). ``no_detection``: no
+# coordinate (a linked author gets the failure reply unless the tagged tweet
+# replies to the bot, the ``services/bot`` loop guard). ``no_account``: no live
+# account carries the author's ``x_handle``; nothing created or posted.
+# ``skipped``: every detection deduped and moved nothing. ``requested``: no
+# coordinate but footage and a source link, so a ``requested`` row opened
+# (``services/bot``). ``inherited``: X's reply prefix carried the tag from the
+# parent, so nothing was acquired or answered. ``self``: the bot's own post,
+# recorded so the ``since_id`` cursor advances. ``failed``: processing raised
+# (captured to Sentry; delete the row to retry).
 BotMentionOutcome = Literal[
     "created",
     "updated",
@@ -41,31 +33,26 @@ BotMentionOutcome = Literal[
 
 
 class BotMention(Base):
-    """One processed @-mention of the bot — the poll's idempotency ledger.
+    """One processed @-mention of the bot, the poll's idempotency ledger.
 
-    A mention is recorded whatever its outcome, so a run never re-processes
-    (and never re-bills) a tweet it has already seen: the next pull's
-    ``since_id`` derives from the max ``mention_tweet_id`` here (minus a
-    lookback overlap, see ``services/bot._SINCE_ID_OVERLAP``), and mentions
-    already present are skipped even if the API re-serves them.
+    Every mention is recorded whatever its outcome, so a run never re-processes
+    or re-bills a seen tweet: ``since_id`` derives from the max
+    ``mention_tweet_id`` (minus ``services/bot._SINCE_ID_OVERLAP``).
     """
 
     __tablename__ = "bot_mentions"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    # The tagged tweet's id (X snowflake, numeric string). UNIQUE is the
-    # idempotency guarantee; max() over the numeric cast is the poll cursor.
+    # The tagged tweet's id (X snowflake). UNIQUE is the idempotency guarantee;
+    # max() over the numeric cast is the poll cursor.
     mention_tweet_id: Mapped[str] = mapped_column(String(25), unique=True, nullable=False)
-    # The tagging analyst's handle, normalized (lowercase, no leading @) —
-    # operator forensics, not a FK: attribution resolves through the
-    # admin-linked ``users.x_handle``.
+    # Normalized handle (lowercase, no @), for forensics, not a FK: attribution
+    # goes through ``users.x_handle``.
     author_handle: Mapped[str] = mapped_column(String(50), nullable=False)
     outcome: Mapped[BotMentionOutcome] = mapped_column(String(20), nullable=False)
     events_created: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    # The bot's in-thread reply, when one was posted: the success reply, or the
-    # failure reply naming the refusal. NULL when no reply was owed, reply
-    # credentials are absent, the budget was spent, or the post failed
-    # (fail-soft: the detection is durable even when the reply isn't).
+    # The bot's in-thread reply, if posted. NULL when none was owed, credentials
+    # are absent, the budget was spent, or the post failed (fail-soft).
     reply_tweet_id: Mapped[str | None] = mapped_column(String(25), nullable=True)
     processed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

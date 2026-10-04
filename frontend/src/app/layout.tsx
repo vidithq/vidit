@@ -13,12 +13,7 @@ const montserrat = Montserrat({
 });
 
 export const metadata: Metadata = {
-  // Anchors every page-level metadata URL (og:image, og:url, canonical,
-  // etc.) to the production hostname. Without it Next falls back to
-  // `https://${VERCEL_PROJECT_PRODUCTION_URL}` — the per-project Vercel
-  // alias, not canonical `vidit.app` — so social crawlers publish the
-  // alias URL. Also silences the "metadata.metadataBase is not set" build
-  // warning.
+  // Pins metadata URLs to the production host; otherwise Next uses the per-project Vercel alias and crawlers publish that.
   metadataBase: new URL("https://vidit.app"),
   title: "Vidit: OSINT/GEOINT Platform",
   description:
@@ -41,16 +36,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    // `suppressHydrationWarning`: the inline script below sets `data-palette`
-    // and `data-theme` on <html> before hydration, which the server markup
-    // doesn't carry, so React would flag the attribute mismatch. Scoped to this
-    // one element.
+    // The inline script below sets `data-palette` and `data-theme` before hydration; suppress the attribute-mismatch warning on this element.
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Apply the saved accent palette + light/dark theme before first paint
-            so themed UI doesn't flash the default hue or a dark background on
-            load. Sets only attributes, so an unexpected stored value is inert
-            (no matching override = default). */}
+        {/* Applies the saved palette and theme before first paint to avoid a flash; sets only attributes, so a bad stored value is inert. */}
         <script
           dangerouslySetInnerHTML={{
             __html:
@@ -66,13 +55,7 @@ export default function RootLayout({
           <BetaBanner />
           {children}
         </Providers>
-        {/* Vercel Web Analytics + Speed Insights. Cookieless aggregate
-            counters (no cross-site tracking, no consent banner needed), so
-            they fit the same privacy posture as the PII-stripped Sentry
-            setup. Both no-op outside Vercel deployments; the injected
-            /_vercel/insights and /_vercel/speed-insights scripts 404 softly
-            in local dev. Data only flows once the operator enables the two
-            toggles in the Vercel dashboard (see docs/engineering.md). */}
+        {/* Cookieless aggregate analytics (no consent banner needed); no-op outside Vercel. Data flows once the operator enables the toggles (see docs/engineering.md). */}
         <Analytics />
         <SpeedInsights />
       </body>

@@ -24,12 +24,9 @@ describe("MediaLightbox", () => {
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAttribute("aria-modal", "true");
     expect(dialog).toHaveAttribute("aria-label", "A street corner");
-    // Portalled out of the caller's markup, so a viewer opened from a scrolling
-    // or transformed surface (the map's detail panel, a proof body) still
-    // covers the viewport instead of being clipped inside it.
+    // Portalled, so a scrolling or transformed caller cannot clip it.
     expect(container).toBeEmptyDOMElement();
     expect(dialog.parentElement).toBe(document.body);
-    // An image views at the hero derivative, not the original.
     expect(screen.getByAltText("A street corner")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Download" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
@@ -48,10 +45,8 @@ describe("MediaLightbox", () => {
     fireEvent.click(screen.getByRole("dialog"));
     expect(onClose).toHaveBeenCalledTimes(3);
 
-    // The content click is stopped, so a click on the media (or a video's own
-    // controls) never dismisses the viewer. Clicking the media itself rather
-    // than the box around it, so the assertion survives a change in how the
-    // backdrop frames its content.
+    // Clicking the media itself, not its box, survives changes to the backdrop
+    // framing.
     fireEvent.click(screen.getByAltText("A street corner"));
     expect(onClose).toHaveBeenCalledTimes(3);
   });
@@ -62,20 +57,16 @@ describe("MediaLightbox", () => {
 
     expect(dialog.querySelector("media-controller")).not.toBeNull();
     expect(dialog.querySelector("video[controls]")).toBeNull();
-    // The player's control bar carries the download, so the corner would show a
-    // second one. Close stays, since only the overlay can dismiss itself.
+    // The bar carries the download, so no corner copy. Close stays.
     expect(
       screen.getByRole("button", { name: "Download" }).closest("media-control-bar"),
     ).not.toBeNull();
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
-    // This is the context that owns the real full screen, so no expand.
     expect(dialog.querySelector("media-fullscreen-button")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Expand video" })).toBeNull();
   });
 
-  // A player put into real fullscreen layers over the overlay, and the browser
-  // exits it on Escape by itself. Closing here too would collapse both layers
-  // from one press and drop the reader back onto the page.
+  // Fullscreen owns Escape: closing here too would collapse both layers.
   it("leaves Escape to fullscreen while a player is fullscreen", () => {
     const onClose = vi.fn();
     render(<MediaLightbox source={VIDEO} onClose={onClose} />);
@@ -85,7 +76,6 @@ describe("MediaLightbox", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
 
-    // Out of fullscreen, the same key closes the viewer as before.
     Object.defineProperty(document, "fullscreenElement", {
       configurable: true,
       value: null,
@@ -101,12 +91,8 @@ describe("MediaLightbox", () => {
     expect(document.activeElement).toBe(opener);
 
     const { unmount } = render(<MediaLightbox source={IMAGE} onClose={vi.fn()} />);
-    // The dialog's own exit is where the keyboard lands, not wherever the page
-    // happened to leave it.
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close" }));
 
-    // Tab wraps inside the overlay rather than walking out into the page under
-    // the backdrop.
     const stops = screen
       .getAllByRole("button")
       .filter((el) => screen.getByRole("dialog").contains(el));
@@ -127,10 +113,8 @@ describe("MediaLightbox", () => {
       />,
     );
 
-    // A plain URL is saveable too (a proof image has no Media row).
     expect(screen.getByRole("button", { name: "Download" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
-    // Falls back to the filename for the dialog's accessible name.
     expect(screen.getByRole("dialog")).toHaveAttribute("aria-label", "picked.jpg");
   });
 });

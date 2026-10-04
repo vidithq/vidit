@@ -1,27 +1,13 @@
-"""Transactional email — Resend in prod, console echo in dev/test.
+"""Transactional email: Resend in prod, console echo in dev/test.
 
-Avoids the official ``resend`` SDK: we need one ``POST /emails`` JSON call,
-and pulling in a third-party HTTP client when ``httpx`` is already a dep is
-more risk than reward.
+One ``httpx`` call to ``POST /emails``, no ``resend`` SDK.
 
-Configuration
--------------
+``EMAIL_PROVIDER=resend`` needs ``RESEND_API_KEY`` and ``EMAIL_FROM``.
 
-* ``EMAIL_PROVIDER=console`` (dev default) prints the email to stdout and
-  returns — iterate on flows without burning Resend quota or chasing DKIM.
-* ``EMAIL_PROVIDER=resend`` POSTs to api.resend.com. Requires
-  ``RESEND_API_KEY`` and ``EMAIL_FROM``.
-
-Failure handling
-----------------
-
-``send`` raises ``EmailSendError`` on any non-2xx or transport error.
-Callers decide whether it's fatal:
-
-* ``/auth/forgot-password``: swallow + log. Responds 204 either way to
-  avoid disclosing user existence; a send blip mustn't leak it via a 500.
-* ``/auth/register``: swallow + log. A Resend outage mustn't block the
-  pending-registration insert — the user can "resend confirmation" later.
+``send`` raises ``EmailSendError`` on any non-2xx or transport error. Callers
+swallow and log: ``/auth/forgot-password`` answers 204 either way (a 500 would
+disclose user existence), and ``/auth/register`` must still insert the pending
+registration during a Resend outage.
 """
 
 from __future__ import annotations
@@ -98,8 +84,8 @@ def _send_resend(email: Email) -> None:
         raise EmailSendError(f"transport error sending to Resend: {exc}") from exc
 
     if resp.status_code >= 300:
-        # Don't log the full body — Resend echoes the recipient address;
-        # logging it would defeat the anti-enumeration play.
+        # No body in the message: Resend echoes the recipient address, which
+        # would defeat anti-enumeration.
         raise EmailSendError(f"Resend returned {resp.status_code} (see Resend dashboard for body)")
 
 
@@ -111,13 +97,7 @@ def send(email: Email) -> None:
     if provider == "resend":
         _send_resend(email)
         return
-    # pydantic Literal validation should make this unreachable; defensive.
     raise EmailSendError(f"unknown EMAIL_PROVIDER: {provider!r}")
-
-
-# ── Templates ───────────────────────────────────────────────────────────────
-# Inline rather than a templating engine: two short messages, easier to
-# review next to the code that sends them than behind an indirection.
 
 
 def password_reset_email(*, to: str, link: str) -> Email:
@@ -142,17 +122,10 @@ def password_reset_email(*, to: str, link: str) -> Email:
 
 
 def password_changed_email(*, to: str) -> Email:
-    """Out-of-band heads-up that the password was just rotated.
+    """Out-of-band notice that the password was rotated, so an attacker who has the password is detectable.
 
-    The endpoint re-asserts the current password, so a stolen cookie alone
-    can't trigger this — but an attacker who *also* has the password
-    (phishing, credential stuffing) can. A non-actionable notice to the
-    recovery address makes the rotation a detectable event.
-
-    No IP / UA / geo: they'd confuse an owner rotating while travelling, and
-    an attacker who can read this email has already taken the inbox. The
-    forgot-password link is the recovery surface, not a deep link into the
-    change-password flow.
+    No IP / UA / geo (they confuse a travelling owner). The forgot-password
+    link is the recovery surface, not a deep link into change-password.
     """
     return Email(
         to=to,
@@ -174,12 +147,7 @@ def password_changed_email(*, to: str) -> Email:
 
 
 def detections_link(username: str) -> str:
-    """The absolute URL of an analyst's own Detections queue.
-
-    One home for the address every detection-related message points at: the import
-    completion mail and the completion digest both send an analyst to the same
-    page.
-    """
+    """The absolute URL of an analyst's own Detections queue."""
     return f"{settings.frontend_url.rstrip('/')}/profile/{username}/detections"
 
 
@@ -193,9 +161,7 @@ def archive_import_complete_email(
     warnings: dict[str, int] | None = None,
     detections_link: str,
 ) -> Email:
-    # The four counts are disjoint: every detection in the archive lands in
-    # exactly one of them, so they read as a breakdown rather than as overlapping
-    # callouts. Only the headline is unconditional.
+    # The four counts are disjoint. Only the headline is unconditional.
     lines = [f"  {created} new detection{'s' if created != 1 else ''} created"]
     if updated:
         lines.append(f"  {updated} existing detection{'s' if updated != 1 else ''} updated")
@@ -203,14 +169,10 @@ def archive_import_complete_email(
         lines.append(f"  {skipped} left as {'they are' if skipped != 1 else 'it is'} (skipped)")
     if failed:
         lines.append(f"  {failed} could not be imported")
-    # The warnings say what review has to answer on the detections this import
-    # created or updated, so they cut across two of the four buckets and sit
-    # under their own heading rather than beside disjoint counts.
+    # Warnings cut across two of the four buckets, so they get their own
+    # heading. Wording comes from ``tweet_ingest.WARNING_MESSAGES``, shared with
+    # the bot reply and the import panel; the email counts detections, not posts.
     raised = warnings or {}
-    # One line per warning the import raised, in the shared table's order and
-    # in its words: the bot's reply and the import panel say the same sentence
-    # for the same code (``tweet_ingest.WARNING_MESSAGES``). What the email adds
-    # is the count, of detections rather than of posts.
     flagged = [
         f"  {raised[code]} detection{'s' if raised[code] != 1 else ''}: {message}"
         for code, message in WARNING_MESSAGES.items()
@@ -254,12 +216,9 @@ def archive_import_failed_email(*, to: str) -> Email:
 
 
 def completion_digest_email(*, to: str, count: int, link: str) -> Email:
-    """The nudge on detections still awaiting completion.
+    """Count of detections awaiting completion plus the queue link.
 
-    One message per analyst, a count and the way back to their queue. It stays
-    this thin on purpose: which detections are worth publishing is a judgment made
-    in the queue, so listing titles here would only be a second, staler copy of
-    the page the link opens.
+    Thin on purpose: no titles, since the queue is the source of truth.
     """
     plural = "s" if count != 1 else ""
     return Email(
@@ -281,26 +240,17 @@ def completion_digest_email(*, to: str, count: int, link: str) -> Email:
 
 
 def admin_reports_link() -> str:
-    """The absolute URL of the admin console, where the report queue lives."""
+    """The absolute URL of the admin console report queue."""
     return f"{settings.frontend_url.rstrip('/')}/admin"
 
 
 def event_link(event_id: str) -> str:
-    """The absolute URL of one event's page.
-
-    Every event answers here whatever its status: the page serves a
-    ``requested`` row by id too and simply omits the location module when the
-    row carries no point.
-    """
+    """The absolute URL of one event's page (served for every status)."""
     return f"{settings.frontend_url.rstrip('/')}/events/{event_id}"
 
 
 def collection_link(collection_id: str) -> str:
-    """The absolute URL of one collection's page.
-
-    A withheld collection answers 404 there for everyone but an admin, which
-    is who this link is written for.
-    """
+    """The absolute URL of one collection's page (404 for non-admins when withheld)."""
     return f"{settings.frontend_url.rstrip('/')}/collections/{collection_id}"
 
 
@@ -316,17 +266,10 @@ def content_report_email(
     reporter: str,
     created_at: datetime,
 ) -> Email:
-    """Tell the moderation address that a report just landed.
+    """Tell the moderation address that a report landed, with the full report inline.
 
-    Carries the whole report rather than a bare link, so the operator can
-    judge from the message whether it needs opening now. ``reporter`` is a
-    username or the word ``anonymous``: reporting needs no account, and which
-    of the two it was changes how much weight the report carries.
-
-    ``target`` is the word for what was reported, ``event`` or ``collection``,
-    and it names every line that describes the thing. One message for both
-    kinds, so a collection report reads exactly like an event report with the
-    noun swapped.
+    ``reporter`` is a username or ``anonymous``. ``target`` is ``event`` or
+    ``collection`` and names every line that describes the thing.
     """
     detail_block = f"Details:\n\n{details}\n\n" if details else ""
     label = target.capitalize()

@@ -3,9 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import ShareButtons from "./ShareButtons";
 
-/** The intent URL a share opened, decoded back into its `text` and `url`
- *  parameters, so a spec reads the tweet body and the link rather than the
- *  raw query string. */
+/** The intent URL a share opened, decoded into `text` and `url` so a spec reads the tweet body and link. */
 function openedIntent(openMock: ReturnType<typeof vi.fn>) {
   expect(openMock).toHaveBeenCalledTimes(1);
   const [href, target, features] = openMock.mock.calls[0];

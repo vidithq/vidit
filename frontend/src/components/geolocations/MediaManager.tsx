@@ -11,40 +11,33 @@ import { displayUrlsFor, posterFrameUrl } from "@/lib/mediaUrls";
 import type { Media } from "@/types";
 
 interface MediaManagerProps {
-  /** Persisted media (the detection edit form, or a request's locked media).
-   *  Empty for a fresh submit. */
+  /** Persisted media; empty for a fresh submit. */
   existing?: Media[];
-  /** Ids of existing media the owner marked for removal — hidden from the grid,
-   *  applied on save. */
+  /** Existing media marked for removal: hidden from the grid, applied on save. */
   removedIds?: ReadonlySet<string>;
-  /** Mark an existing media for removal. Omit (with `locked`) for read-only. */
+  /** Omit (with `locked`) for read-only. */
   onRemoveExisting?: (id: string) => void;
-  /** New files staged for upload, shown with a local preview. */
+  /** New files staged for upload, with a local preview. */
   staged: File[];
   onAddFiles?: (files: File[]) => void;
   onRemoveStaged?: (index: number) => void;
   /** Read-only (request fulfilment): show existing media, no add / remove. */
   locked?: boolean;
-  /** The event's `is_graphic` flag. Covers the persisted tiles with the age
-   *  gate, so fulfilling a flagged request does not paint the requester's
-   *  footage at the analyst before they confirm. Staged files are the
-   *  analyst's own pick and stay ungated: they chose the file. */
+  /** Covers the persisted tiles with the age gate. Staged files stay ungated:
+   *  the analyst chose them. */
   isGraphic?: boolean;
 }
 
 /**
  * The source-media control, shared by the submit form (`LocationPicker`) and the
- * detection edit form so the two can't drift. A thin specialisation of the
- * generic [`FileManager`](../ui/FileManager.tsx): it supplies the media
- * thumbnails (persisted + locally-staged) as items, FileManager owns the grid,
- * the add tile, drag-drop, and the remove chrome. Object URLs for staged files
- * are revoked on change / unmount so a clear → re-pick cycle doesn't leak blobs.
+ * detection edit form. A thin specialisation of `FileManager`: it supplies the
+ * thumbnails (persisted and staged) as items. Staged object URLs are revoked on
+ * change and unmount.
  *
- * **One source per event.** An event carries at most one `source` media (the
- * backend enforces it with a partial unique index). So this is a single-file
- * picker: the add tile disappears once a source is present (kept existing or
- * staged), and the analyst removes the current one to swap it. `FileManager`'s
- * `multiple={false}` also caps a multi-file drop to the first file.
+ * **One source per event** (the backend enforces it with a partial unique
+ * index), so this is a single-file picker: the add tile disappears once a source
+ * is present, and the analyst removes it to swap. `multiple={false}` also caps a
+ * multi-file drop to the first file.
  */
 export function MediaManager({
   existing = [],
@@ -90,22 +83,16 @@ export function MediaManager({
         ),
       onRemove: !locked && onRemoveExisting ? () => onRemoveExisting(m.id) : undefined,
       removeLabel: "Remove media",
-      // The tile itself is a muted, cropped preview; the lightbox is where a
-      // persisted source is actually reviewable, same as the read-only detail
-      // page's MediaGallery (playable video, uncropped image), so editing a
-      // detection doesn't lose the ability to watch/inspect its source media.
-      // It is literally the same viewer: `MediaLightboxBody` inside
-      // FileManager's shared `MediaOverlay` shell.
+      // The tile is a muted, cropped preview; the lightbox (the same
+      // `MediaLightboxBody` viewer) is where the source is reviewable.
       viewContent: <MediaLightboxBody source={m} />,
-      // A clip's download sits in the player's own control bar, so only an
-      // image needs one in the overlay corner (same rule as MediaLightbox).
+      // A clip's download is in the player's bar (same rule as MediaLightbox).
       viewActions:
         m.media_type === "image" ? <MediaDownloadButton source={m} /> : undefined,
       viewLabel: m.media_type === "image" ? "View image" : "Play video",
       gated: isGraphic,
     })),
-    // Render staged tiles only once their object URLs line up 1:1, else a brief
-    // mismatch flashes a broken preview.
+    // Only once the object URLs line up 1:1, else a broken preview flashes.
     ...(stagedUrls.length === staged.length
       ? staged.map((f, i) => ({
           key: `${f.name}-${i}`,
@@ -124,8 +111,7 @@ export function MediaManager({
           ),
           onRemove: onRemoveStaged ? () => onRemoveStaged(i) : undefined,
           removeLabel: "Remove file",
-          // A staged file has no id and no derivatives, so it reaches the same
-          // viewer through the plain `{src, kind}` source shape.
+          // No id or derivatives: the plain `{src, kind}` source shape.
           viewContent: (
             <MediaLightboxBody
               source={{
@@ -146,8 +132,6 @@ export function MediaManager({
       items={items}
       onAddFiles={locked ? undefined : onAddFiles}
       accept={ACCEPTED_MEDIA_MIME}
-      // One source per event: single-file picker. The add tile hides once a
-      // source is present (existing or staged), so a second can't be staged.
       addLabel="Add media"
       layout="grid"
     />

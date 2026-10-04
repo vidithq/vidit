@@ -41,8 +41,7 @@ import { Pill, type PillTone } from "@/components/ui/Pill";
 import { PurgeReceipt } from "@/components/admin/ActionReceipt";
 import { UserActionsCard } from "@/components/admin/UserActionsCard";
 
-// Invite lifecycle mapped onto the shared pill tones: active is the accent
-// draw, revoked the red end-state, exhausted / expired the quiet neutral.
+// Invite status on the shared pill tones: active accent, revoked red, exhausted and expired neutral.
 const STATUS_TONE: Record<InviteCodeStatus, PillTone> = {
   active: "accent",
   exhausted: "neutral",
@@ -50,9 +49,8 @@ const STATUS_TONE: Record<InviteCodeStatus, PillTone> = {
   expired: "neutral",
 };
 
-// The wire name of a spent code is `exhausted`, which reads as a quota that ran
-// out; a single-use code either served its one account or it did not, so the
-// column says "used". Every other status carries its own name.
+// The wire name of a spent code is `exhausted`, which reads as a quota that ran out; a single-use
+// code served its account or didn't, so the column says "used".
 const STATUS_LABEL: Partial<Record<InviteCodeStatus, string>> = {
   exhausted: "used",
 };
@@ -67,10 +65,9 @@ function StatusChip({ status }: { status: InviteCodeStatus }) {
   );
 }
 
-// Header cell for the per-analyst stat columns: the app-wide glyph stands in
-// for the label (FileArchive imports, Bot detections, MapPin geolocations,
-// AtSign for detections the X bot minted from mentions), which the cell keeps
-// as a tooltip and for screen readers.
+// Header cell for the per-analyst stat columns: the app-wide glyph stands in for the label
+// (FileArchive imports, Bot detections, MapPin geolocations, AtSign X-bot detections from
+// mentions), kept as tooltip and for screen readers.
 function StatHeader({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
   return (
     <th className="py-2 pr-3 font-medium" title={label}>
@@ -104,13 +101,11 @@ function InviteCodeRow({
   const [deleting, setDeleting] = useState(false);
   const { copied, copy } = useCopyToClipboard();
 
-  // Revoking retires a live code, so the button only stands where there is
-  // something to retire.
+  // Revoking retires a live code: the button stands only where there is one to retire.
   const canRevoke = invite.status === "active";
   const redeemer = invite.redeemer;
-  // Deletion drops the row itself, which the backend allows only while no
-  // account was created from the code. Same predicate here, so the button
-  // stands exactly where it works.
+  // Deletion drops the row, which the backend allows only while no account was created from the
+  // code. Same predicate here, so the button stands exactly where it works.
   const canDelete = redeemer == null;
 
   const {
@@ -155,10 +150,8 @@ function InviteCodeRow({
         </Button>
       </td>
       <td className="py-2 pr-3">
-        {/* The wire status ranks revoked > expired > exhausted (the first
-            thing an admin acted on), but this column answers "did the code
-            serve an account", so a redeemed code reads used whatever
-            happened to its expiry date afterwards. */}
+        {/* The wire status ranks revoked > expired > exhausted, but this column answers "did the code
+            serve an account", so a redeemed code reads used whatever happened to its expiry. */}
         <StatusChip
           status={invite.used_at !== null ? "exhausted" : invite.status}
         />
@@ -251,9 +244,8 @@ function InviteCodeRow({
 }
 
 export function OnboardingPanel() {
-  // The invite table is capped and cursor-paged like every other list, so the
-  // console walks it with a Load more rather than reading it whole: asking for
-  // the whole table now silently returns its first 100 rows.
+  // The invite table is capped and cursor-paged (the whole table returns only its first 100 rows),
+  // so the console walks it with Load more.
   const buildPath = useCallback(
     (cursor: string | null) => inviteCodesPath(cursor),
     [],
@@ -275,10 +267,8 @@ export function OnboardingPanel() {
   const [expiresInDays, setExpiresInDays] = useState<number | "">(14);
   const [xHandle, setXHandle] = useState("");
 
-  // The mint action owns the one error slot, and revoke and delete write to it
-  // via `setError` (neither has a loading state of its own, the row owns that),
-  // so the panel keeps a single shared error. The loader carries its own, shown
-  // in the same banner.
+  // The mint action owns the one error slot; revoke and delete write to it via `setError` (the row
+  // owns their loading state). The loader's error shows in the same banner.
   const createMutation = useMutation(
     () =>
       createInviteCode({
@@ -304,8 +294,7 @@ export function OnboardingPanel() {
   const onRevoke = async (id: string) => {
     try {
       await revokeInviteCode(id);
-      // A mint or a revoke changes what the first page holds, so the walk
-      // restarts rather than patching a row inside a page it may have left.
+      // A mint or revoke changes what the first page holds: restart the walk rather than patch a page it may have left.
       reload();
     } catch (err) {
       setError(errorMessage(err, "Failed to revoke invite code"));
@@ -315,8 +304,7 @@ export function OnboardingPanel() {
   const onDelete = async (id: string) => {
     try {
       await deleteInviteCode(id);
-      // The row is gone, so the walk restarts like it does after a mint or a
-      // revoke rather than patching a page that no longer holds it.
+      // The row is gone: restart the walk as after a mint or revoke.
       setExpandedId((prev) => (prev === id ? null : prev));
       reload();
     } catch (err) {
@@ -329,8 +317,8 @@ export function OnboardingPanel() {
     reload();
   };
 
-  // The card renders below the table (not as an expanded row) so it stays
-  // put when the wide table scrolls horizontally.
+  // The card renders below the table (not as an expanded row) so it stays put when the wide table
+  // scrolls horizontally.
   const managed = codes.find((c) => c.id === expandedId)?.redeemer ?? null;
 
   return (
@@ -455,8 +443,7 @@ export function OnboardingPanel() {
 
       {managed && (
         <UserActionsCard
-          // Keyed by user so form drafts and an armed danger confirm never
-          // survive a switch from one analyst's Manage to another's.
+          // Keyed by user so form drafts and an armed danger confirm never survive a switch between analysts.
           key={managed.user_id}
           user={{
             id: managed.user_id,

@@ -1,8 +1,7 @@
 """``GET /search``: full-text search across geolocations, requests, collections, users.
 
-Single endpoint, single query box, grouped response. See
-``services/search.py`` for the FTS plumbing. Anonymous, like the rest of the
-read surface; the 60/min per-IP limit is the abuse floor.
+Anonymous like the rest of the read surface; the 60/min per-IP limit is the
+abuse floor. FTS plumbing is in ``services/search.py``.
 """
 
 from __future__ import annotations
@@ -40,9 +39,8 @@ def search(
         description="One of 'all', 'event', 'geolocation', 'request', 'collection', 'user'",
     ),
     limit: int = Query(20, ge=1, le=50, description="Per-group cap"),
-    # The standard event filter set (same vocabulary as /events and
-    # /events/points, see services/event_filters); scopes the two event
-    # groups. List params accept multiple values (?tag=a&tag=b).
+    # The standard event filter set (``services/event_filters``); scopes the two
+    # event groups. List params take multiple values (?tag=a&tag=b).
     status: list[str] | None = Query(None),
     conflict: list[str] | None = Query(None),
     capture_source: list[str] | None = Query(None),
@@ -61,17 +59,15 @@ def search(
 ) -> SearchResponse:
     """Grouped FTS across the four result groups.
 
-    Empty / whitespace-only ``q`` returns an empty response — keeps the
-    "user is still typing" hits cheap. The frontend debounces the
-    input on its side so we shouldn't see those much in practice, but
-    the cheap short-circuit is robust against accidental load.
+    Empty or whitespace-only ``q`` returns an empty response (keeps the
+    still-typing hits cheap).
 
     Any active filter scopes the event groups and empties the users group;
     ``author`` narrows the collections group to that owner and every other
     filter empties it. With an empty ``q`` the response browses the filtered
-    view, the collections group included when ``author`` is the only filter
-    (the profile's two "Show more" entry points). Filter semantics are the
-    shared ones (see ``services/event_filters.apply_filters``).
+    view, collections included when ``author`` is the only filter (the
+    profile's two "Show more" entry points). Filter semantics are
+    ``services/event_filters.apply_filters``.
     """
     if type not in search_service.ALLOWED_TYPES:
         raise HTTPException(
@@ -96,9 +92,8 @@ def search(
     )
     grouped = search_service.search_all(db, query=q, types=types, limit=limit, filters=filters)
 
-    # ``total`` is the pre-LIMIT match count from ``COUNT(*) OVER ()``,
-    # so it can exceed ``len(hits)`` — the UI uses this to render "N of M"
-    # truthfully ("3 of 142", not "3 of 3").
+    # ``total`` is the pre-LIMIT match count (``COUNT(*) OVER ()``), so it can
+    # exceed ``len(hits)``.
     return SearchResponse(
         geolocations=grouped["geolocations"]["hits"],
         requests=grouped["requests"]["hits"],
@@ -111,8 +106,7 @@ def search(
             users=grouped["users"]["total"],
         ),
         query=q,
-        # The ``type not in ALLOWED_TYPES`` guard above (422 otherwise) proves
-        # membership, so the narrowing cast to the Literal is sound.
+        # Safe: the ``ALLOWED_TYPES`` guard above proves membership.
         type=cast(SearchType, type),
     )
 
@@ -129,9 +123,6 @@ def suggest_authors(
     ),
     db: Session = Depends(get_db),
 ) -> AuthorSuggestions:
-    """Usernames for the author-filter typeahead (both filter surfaces).
-
-    The author filter is an exact match; this picker is how a partial name
-    becomes a real handle. Empty ``q`` short-circuits to an empty list.
-    """
+    """Usernames for the author-filter typeahead. The filter is an exact match;
+    this is how a partial name becomes a handle. Empty ``q`` returns []."""
     return AuthorSuggestions(authors=search_service.suggest_authors(db, query=q))

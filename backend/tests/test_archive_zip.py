@@ -190,10 +190,8 @@ def test_malformed_zip_raises(tmp_path):
 
 
 def test_guard_values_are_sanity_caps_not_product_limits():
-    """Pin the guard sizes: the zip cap and the total-uncompressed cap are
-    anti-abuse ceilings sized far above any legitimate export (the product
-    limits are the per-media caps at assemble time), and the per-file cap
-    stays at 200 MB."""
+    """Pin the guard sizes: the zip and total caps are anti-abuse ceilings far above
+    any real export (product limits are the per-media caps at assemble time)."""
     assert archive_zip.MAX_UPLOAD_BYTES == 4 * 1024**3
     assert archive_zip.MAX_TOTAL_UNCOMPRESSED_BYTES == 8 * 1024**3
     assert archive_zip.MAX_FILE_UNCOMPRESSED_BYTES == 200 * 1024**2

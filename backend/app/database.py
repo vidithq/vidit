@@ -5,8 +5,8 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import settings
 
-# How long an API statement waits for a lock another transaction holds before
-# Postgres cancels it. Applied by ``bound_lock_waits``, which only the API calls.
+# How long an API statement waits on another transaction's lock before Postgres
+# cancels it (applied by ``bound_lock_waits``).
 LOCK_TIMEOUT_MS = 5000
 
 engine = create_engine(
@@ -15,8 +15,7 @@ engine = create_engine(
     max_overflow=30,
     pool_pre_ping=True,
     pool_recycle=3600,
-    # Error text leaves out bound parameters (password hashes, emails), so
-    # they never reach logs or Sentry.
+    # Errors omit bound parameters (hashes, emails) so they stay out of logs and Sentry.
     hide_parameters=True,
 )
 SessionLocal = sessionmaker(bind=engine)
@@ -29,12 +28,11 @@ class Base(DeclarativeBase):
 def bound_lock_waits() -> None:
     """Start every connection ``engine`` opens with ``lock_timeout`` at ``LOCK_TIMEOUT_MS``.
 
-    ``main.py`` calls this at import: a request queued on a lock holds one of the
-    API's threadpool workers, so its wait has to end. The scheduler services
-    share the engine without calling it, and wait. The setting rides in the
-    startup ``options`` rather than a ``SET`` in a ``connect`` listener, which
-    psycopg2's implicit transaction and the pool's reset rollback would undo.
-    Pooled connections opened before the call are dropped, so none escapes it.
+    Only the API calls it (``main.py``, at import): a request queued on a lock
+    holds a threadpool worker. Scheduler services share the engine and wait.
+    The setting rides in the startup ``options`` because a ``SET`` in a
+    ``connect`` listener would be undone by psycopg2's implicit transaction and
+    the pool's reset rollback. Earlier pooled connections are dropped.
     """
     event.listen(engine, "do_connect", _add_lock_timeout)
     engine.dispose()

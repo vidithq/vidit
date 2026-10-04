@@ -4,20 +4,17 @@ import { cn } from "@/lib/cn";
 import { TAP_STEP } from "./Button";
 import { Switch } from "./Switch";
 
-/** An on/off row, shared by the filter surfaces and the settings page. The
- *  whole row is the switch (role + click live here), so the `<Switch>` renders
- *  as its visual span and a tap anywhere on the row toggles rather than having
- *  to land on a 20x36px track. It takes the phone tap step for the same reason.
+/** An on/off row, shared by the filter surfaces and the settings page. The whole
+ *  row is the switch (role + click live here), so `<Switch>` renders as its
+ *  visual span and a tap anywhere toggles. It takes the phone tap step.
  *
- *  `description` picks the shape. Without one the row is the filter toggle: a
- *  micro uppercase label on a divided list. With one it is a preference row,
- *  the label at reading size over a line that says what the preference does,
- *  which is the settings page. The two shapes differ in type and chrome only;
- *  the control, the semantics and the tap target are the same row.
+ *  `description` picks the shape. Without one: the filter toggle (micro
+ *  uppercase label on a divided list). With one: a preference row (label at
+ *  reading size over a line saying what it does). Same control, semantics and
+ *  tap target.
  *
- *  The accessible name is the label alone (`aria-labelledby` on it), never the
- *  block: a screen reader announces the switch by what it switches, and the
- *  description reads after it as the row's own text. */
+ *  The accessible name is the label alone (`aria-labelledby`); the description
+ *  reads after it as the row's own text. */
 export function ToggleRow({
   label,
   description,
@@ -26,13 +23,11 @@ export function ToggleRow({
   className = "",
 }: {
   label: string;
-  /** A line under the label, at `text-xs`. Passing one moves the row to the
-   *  settings shape. */
+  /** A line under the label; passing one moves the row to the settings shape. */
   description?: ReactNode;
   on: boolean;
   onToggle: () => void;
-  /** Orthogonal extras: the caller's own divider and spacing (the settings
-   *  card separates its rows with a `border-t`). */
+  /** The caller's own divider and spacing. */
   className?: string;
 }) {
   const labelId = useId();

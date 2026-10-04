@@ -1,41 +1,31 @@
 # Vulture whitelist: framework-magic false positives only.
 #
-# `uv run vulture` (config in pyproject.toml) scans app + scripts for dead code
-# at min_confidence 60. FastAPI / SQLAlchemy / Pydantic reach a lot of names by
-# mechanisms vulture can't see, so those read as unused. The two blanket classes
-# (route + validator handlers, the model_config / cls contract names) are handled
-# by ignore_decorators / ignore_names in pyproject.toml. This file covers the
-# rest: attributes populated or read purely through framework machinery.
+# `uv run vulture` (config in pyproject.toml) scans app + scripts at
+# min_confidence 60. Route and validator handlers and the model_config / cls
+# names are covered by ignore_decorators / ignore_names in pyproject.toml; this
+# file covers attributes populated or read purely through framework machinery.
 #
-# vulture scans this file too, so a bare name here (or `_.attr` for a method)
-# counts as a reference and marks the real definition live. The names collapse by
-# identifier, so one entry covers every same-named attribute (e.g. a single
-# `original_filename` clears both the Media column and the MediaRead field).
+# vulture scans this file too, so a bare name (or `_.attr` for a method) marks
+# the real definition live. Names collapse by identifier, so one entry covers
+# every same-named attribute.
 #
-# This is NOT a place to silence genuine dead code. If vulture flags a helper
-# with zero call sites anywhere (app, tests, scripts), remove it instead. Every
-# entry below was checked to have a real producer or consumer that vulture can't
-# trace by static analysis.
-
+# Not a place to silence genuine dead code: a helper with zero call sites
+# (app, tests, scripts) is removed instead. Every entry has a real producer or
+# consumer vulture can't trace.
 # ── SQLAlchemy Mapped[...] columns ────────────────────────────────────────────
-# Populated from the DB row on every ORM load and set at construction; no line
-# reads them by name in app/.
-# Set positionally in build_source_link_rows and read only through the
-# relationship's string order_by ("EventSourceLink.position").
+# Populated from the DB row on ORM load; no line in app/ reads them by name.
+# ``position`` is read only through the relationship's string order_by.
 position  # app/models/event.py EventSourceLink
 original_filename  # app/models/media.py, and schemas/media.py
 processed_at  # app/models/bot_mention.py, audit stamp written at insert only
-# Set at construction in services/versions.file_version and read only through
-# the `edited_by` relationship the history serializer walks.
+# ``edited_by_id`` is read only through the `edited_by` relationship.
 edited_by_id  # app/models/event.py EventVersion
 email_verified_at  # app/models/user.py, audit stamp written at registration only
 
 # ── Write-only audit columns ──────────────────────────────────────────────────
-# Stamped by app code, queried by an operator over SQL. They carry no wire
-# field and no app read, so every mention collapses onto the column and its
-# assignment. The lifecycle stamps below are also what ties `events.status` to
-# its CHECK constraints, so the row cannot be reconstructed without them; see
-# docs/data-model.md.
+# Stamped by app code and queried by an operator over SQL, with no wire field
+# or app read. The lifecycle stamps also tie `events.status` to its CHECK
+# constraints (docs/data-model.md).
 resolved_by  # app/models/content_report.py, stamped by services/reports.resolve_report
 updated_at  # app/models/event.py, SQLAlchemy ``onupdate`` stamp
 requested_at  # app/models/event.py, state-entry stamp
@@ -45,12 +35,11 @@ finished_at  # app/models/archive_import_job.py, stamped by services/archive_job
 added_at  # app/models/collection.py CollectionEvent, stamped when an event joins
 
 # ── ASGI middleware override ──────────────────────────────────────────────────
-# Starlette's BaseHTTPMiddleware calls dispatch(); it is never referenced by name.
+# Starlette calls dispatch(); never referenced by name.
 _.dispatch  # app/middleware/csrf.py CSRFMiddleware
 
 # ── Pydantic response-model fields ────────────────────────────────────────────
-# Set by the service layer when constructing the schema and serialized by
-# Pydantic; the field name is never read back in app/.
+# Set by the service layer and serialized by Pydantic; never read back in app/.
 redeemer  # schemas/admin.py AdminInviteCodeRead
 in_collection  # schemas/collection.py CollectionMembershipRead
 cover  # schemas/collection.py CollectionRead, the card's mosaic
@@ -89,30 +78,27 @@ activity  # schemas/user.py UserStatsRead
 source_hosts  # schemas/user.py UserStatsRead
 other_hosts_count  # schemas/user.py UserStatsRead
 no_source_count  # schemas/user.py UserStatsRead
-# ``ActivityBucket(period=...)`` does not clear it: vulture's visit_Call reads
-# keyword arguments for getattr / hasattr / %-format only, so a keyword name at
-# a call site is never a use. Every wire field above is here for that reason.
+# ``ActivityBucket(period=...)`` does not clear it: vulture reads keyword
+# arguments for getattr / hasattr / %-format only. Every wire field above is
+# here for that reason.
 period  # schemas/user.py ActivityBucket (wire field)
 progress_done  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 progress_total  # models/archive_import_job.py + schemas/event.py: worker-stamped, wire-read only
 redacted  # schemas/event.py EventVersionRead (wire field, built in routers/events/_common.py)
-# Written by ``services/versions.redact_version``, read by nothing in ``app/``: the
-# column is the row-level record of who redacted a version, and the readable
-# trail is the ``admin_events`` row the same write files.
+# Written by ``services/versions.redact_version``, read by nothing in ``app/``;
+# the readable trail is the ``admin_events`` row the same write files.
 redacted_by_id  # models/event.py EventVersion
 
 # ── Test-only helper ──────────────────────────────────────────────────────────
-# Called from tests/, which the gate does not scan, so it reads as unused here.
+# Called only from tests/, which the gate does not scan.
 _cache_clear  # services/tweet_ingest/syndication.py
 
 # ── Starlette request-body cache, written by us, read by the framework ────────
-# The body-size middleware caches the streamed body onto ``request._body`` so
-# Starlette replays it to the route (same slot ``Request.body()`` fills). We
-# only write it; the read is inside Starlette, which the gate does not scan.
+# The body-size middleware caches the body onto ``request._body`` so Starlette
+# replays it; the read is inside Starlette, which the gate does not scan.
 _body  # main.py enforce_request_body_size
 
 # ── SQLAlchemy hybrid expression ──────────────────────────────────────────────
-# The SQL half of ``Event.is_machine_detection``: SQLAlchemy reaches it through
-# the ``@is_machine_detection.inplace.expression`` decorator and binds it to the
-# hybrid, so no line calls it by name.
+# The SQL half of ``Event.is_machine_detection``, bound by the
+# ``@is_machine_detection.inplace.expression`` decorator.
 _is_machine_detection_expression  # models/event.py Event

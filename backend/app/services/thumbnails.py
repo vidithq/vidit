@@ -1,20 +1,12 @@
 """The card-thumbnail pick, in one home.
 
-Every card and preview surface (events list, profile events, timeline,
-search hits, map pin hover, detections queue) shows one thumbnail per
-event. The order: the first ``source`` media, else the first ``proof``
-IMAGE. Many real events carry only a proof image (archive-imported
-detections, bot-created detections), and without the fallback those cards
-render the "no media" box despite holding a perfectly showable image.
-Proof images already render publicly on the event detail page, so the
-fallback is presentation only. A proof VIDEO is never picked: the proof
-document embeds images only, and the type check here keeps a stray video
-row out regardless.
+Each event card shows the first ``source`` media, else the first ``proof``
+image (archive-imported and bot-created detections often carry only a proof
+image). A proof video is never picked.
 
-Both halves of the rule live here so a surface cannot load one set of
-rows and pick from another: :func:`thumbnail_media_criteria` is the
-eager-load predicate, :func:`pick_thumbnail` the pick over the loaded
-rows. The frontend never re-picks; it renders what the payload carries.
+Both halves live here so a surface cannot load one set of rows and pick from
+another: :func:`thumbnail_media_criteria` is the eager-load predicate,
+:func:`pick_thumbnail` the pick. The frontend never re-picks.
 """
 
 from collections.abc import Iterable
@@ -28,9 +20,8 @@ from app.models.media import Media
 def thumbnail_media_criteria() -> ColumnElement[bool]:
     """Load predicate matching every row :func:`pick_thumbnail` may pick.
 
-    Used inside ``selectinload / joinedload(Event.media.and_(...))`` on the
-    card surfaces, so a list payload never hydrates proof rows it will not
-    show (a proof video, in particular, stays unloaded).
+    For ``selectinload / joinedload(Event.media.and_(...))``, so list payloads
+    never hydrate proof rows they will not show.
     """
     return or_(
         Media.role == "source",

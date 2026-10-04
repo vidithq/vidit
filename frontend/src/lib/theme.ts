@@ -1,16 +1,11 @@
 /**
- * Light / dark theme preference. A second axis, independent of the accent
- * palette ([`palette.ts`](./palette.ts)): the palette re-tints the accent hue,
- * the theme flips the neutral base (backgrounds, text, borders) and the map
- * basemap.
+ * Light / dark theme preference, independent of the accent palette ([`palette.ts`](./palette.ts)):
+ * it flips the neutral base and the map basemap.
  *
- * Dark is the historical default and stays inert (no `data-theme`, or
- * `data-theme="dark"`, both fall back to Tailwind's default neutral scale).
- * `light` reflects `data-theme="light"` onto `<html>`, which remaps the
- * `--color-neutral-*` scale (plus the semantic red / amber scales) to a curated
- * light ramp in [`globals.css`](../app/globals.css), re-colouring every
- * `neutral-*` utility with no per-component change. The map can't read CSS
- * variables, so `Map.tsx` swaps its basemap style off `useTheme`.
+ * Dark is the default and inert (no `data-theme`, or `dark`). `light` reflects
+ * `data-theme="light"` onto `<html>`, remapping the `--color-neutral-*` scale (plus semantic
+ * red / amber) in [`globals.css`](../app/globals.css). The map can't read CSS variables, so
+ * `Map.tsx` swaps its basemap off `useTheme`.
  */
 
 import { createAttributePreference } from "./attributePreference";

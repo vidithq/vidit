@@ -7,8 +7,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }));
 
-// MapLibre touches `window` at module scope, so the coverage map never loads
-// its real canvas under jsdom.
+// MapLibre touches `window` at module scope.
 vi.mock("next/dynamic", () => ({
   default: () => function MapStub() {
     return <div data-testid="map" />;
@@ -49,9 +48,7 @@ const PROFILE: PublicProfile = {
   external_links: { x: "ana_osint", website: "https://ana.example" },
   followers_count: 4,
   following_count: 2,
-  // Equal to `geolocated_count` below on purpose: both count the analyst's
-  // published geolocations, so a fixture splitting them would let a component
-  // read the wrong one and still pass.
+  // Equal to `geolocated_count` on purpose, so a component reading the wrong one still fails.
   geolocations_count: 2,
   created_at: "2026-01-05T09:00:00Z",
   is_following: false,
@@ -116,19 +113,13 @@ const COLLECTIONS: CollectionPage = {
   per_page: 6,
 };
 
-/**
- * The blocks a reader meets, each named by the one piece of text that block
- * alone puts on the page. Pinned by document position rather than by test
- * hooks on the components, so this reads the page the way a visitor scrolling
- * it does.
- */
+/** The blocks a reader meets, each named by text only that block shows, pinned by document position. */
 const BLOCKS: Record<string, string> = {
   "Recent submissions": "recent submissions",
   Collections: "collections",
   Insights: "insights",
   Coverage: "coverage",
-  // Edit mode only: reading the links is the header action cluster, so this
-  // eyebrow titles the inputs and nothing else.
+  // Edit mode only: this eyebrow titles the inputs.
   "Linked accounts": "linked accounts",
   "1 detection to submit": "detections queue",
   "Sign out": "account controls",
@@ -138,8 +129,7 @@ const BLOCKS: Record<string, string> = {
 function blockOrder(container: HTMLElement): string[] {
   const seen: string[] = [];
   for (const el of container.querySelectorAll("*")) {
-    // The element's own words, not its descendants': every ancestor of a
-    // marker would otherwise match it and the walk would report wrappers.
+    // The element's own words, else every ancestor of a marker would match.
     const own = Array.from(el.childNodes)
       .filter((n) => n.nodeType === Node.TEXT_NODE)
       .map((n) => n.textContent)
@@ -181,17 +171,14 @@ describe("public profile order", () => {
 
   it("shows a visitor the work, then the explanation", async () => {
     const { container } = mountProfile();
-    // Insights arrive from their own fetch, so wait for the block that needs
-    // them before reading the order.
+    // Insights arrive from their own fetch; wait before reading the order.
     await screen.findByText("Insights");
 
-    // The map shows the work at its widest and Insights interprets it, so the
-    // two sit together; the list that grows reads last of the work blocks.
+    // Map and Insights sit together; the growing list reads last.
     expect(blockOrder(container)).toEqual([
       "coverage",
       "insights",
-      // The analyst's own grouping of the work, between the card that
-      // describes all of it and the list that just grows.
+      // The analyst's grouping, between the Insights card and the list.
       "collections",
       "recent submissions",
     ]);
@@ -204,14 +191,11 @@ describe("public profile order", () => {
     mountProfile();
     await screen.findByText("Insights");
 
-    // Bare marks, so the handle carrying the account is in the accessible
-    // name rather than on screen: a brand mark says the platform and nothing
-    // else, and a bare handle does not say which account it is.
+    // Bare marks: the handle goes in the accessible name, since a brand mark names only the platform.
     const x = screen.getByRole("link", { name: "X / Twitter: @ana_osint" });
     expect(x).toHaveAttribute("href", "https://x.com/ana_osint");
     expect(x.textContent).toBe("");
-    // The href is the pasted URL as `URL` normalises it; the name spends its
-    // width on the domain rather than on the scheme the reader can assume.
+    // The href is the pasted URL as `URL` normalises it; the name shows the domain, not the scheme.
     const site = screen.getByRole("link", { name: "Website: ana.example" });
     expect(site).toHaveAttribute("href", "https://ana.example/");
 
@@ -227,9 +211,7 @@ describe("public profile order", () => {
     mountProfile();
     await screen.findByText("Insights");
 
-    // Follow is the one gesture on the analyst themselves, and it sits at the
-    // far right of the header cluster. The edit pair is the owner's, and
-    // sharing has no control on this page.
+    // Follow sits at the far right of the header cluster; the edit pair is the owner's; sharing has no control here.
     expect(screen.getByRole("button", { name: "Follow" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /copy profile link/i })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit profile" })).toBeNull();
@@ -245,9 +227,7 @@ describe("public profile order", () => {
     mountProfile();
     await screen.findByText("Insights");
 
-    // One kind of control in the row, and it is the site's one icon control:
-    // the owner's Edit sits in the same ghost square as the accounts beside it,
-    // navigating or acting, rather than in a tier of its own.
+    // One kind of control in the row: the owner's Edit uses the same ghost square as the accounts.
     const marks = [
       screen.getByRole("link", { name: "X / Twitter: @ana_osint" }),
       screen.getByRole("link", { name: "Website: ana.example" }),
@@ -261,23 +241,15 @@ describe("public profile order", () => {
     mountProfile();
     await screen.findByText("Insights");
 
-    // A heading a visitor has to open a `?` to understand is a heading that
-    // said nothing: the calendar counts when the documented events happened,
-    // not when they were posted, and the bar counts the host of a source
-    // link, with the events naming none accounted for rather than dropped.
-    // The calendar's heading is the field's own name, the one the submit and
-    // edit forms print, so one concept keeps one name across the app.
+    // Headings must not need a `?`: the calendar counts when events happened (the field's own name, as in the forms), the bar counts source-link hosts, undated or hostless events accounted for.
     expect(await screen.findByText("Event dates")).toBeInTheDocument();
-    // The grid's own population, summed off the buckets (0 + 1 + ... + 6),
-    // not the card's `total_events`: an undated event has no cell here.
+    // The grid's population summed off the buckets, not `total_events` (undated events have no cell).
     expect(
       screen.getByText(
         "The month each event took place, not when it was posted, imported or published. It covers the 21 events dated in the years shown."
       )
     ).toBeInTheDocument();
-    // The population line is scoped to the tiles, because it is not true of
-    // everything under it: the grid counts dated events only, and the bar
-    // splits the set by a field an event may not carry.
+    // The population line is scoped to the tiles: the grid counts dated events only and the bar splits by a field an event may lack.
     expect(
       screen.getByText(
         "The tiles below read one set of 3 events: this analyst's geolocations and machine detections. Two count it, two name what leads it."
@@ -353,8 +325,7 @@ describe("public profile identity", () => {
     mountProfile();
 
     expect(screen.getByText("Open-source imagery, mostly Sahel.")).toBeInTheDocument();
-    // A section eyebrow would put the bio back on the page as a block, which
-    // is what pushed the evidence below the fold.
+    // A section eyebrow would put the bio back as a block and push the evidence below the fold.
     expect(screen.queryByText("Bio")).not.toBeInTheDocument();
   });
 
@@ -362,8 +333,7 @@ describe("public profile identity", () => {
     withProfile({ bio: null });
     const { container } = mountProfile();
 
-    // No empty line and no orphaned card: the identity line is what the
-    // handle sits over.
+    // No empty line or orphaned card: the identity line sits under the handle.
     expect(container.querySelector("h1 + div")?.textContent).toBe(
       "4 followers·2 following·Member since 5 Jan 2026"
     );
@@ -374,8 +344,7 @@ describe("public profile identity", () => {
     withProfile({ external_links: { discord: "mpgeoint" } });
     mountProfile();
 
-    // Discord publishes no profile URL for a username, so the one thing a
-    // reader can do with it is take it to their own client.
+    // Discord has no profile URL for a username, so the reader can only copy it.
     expect(
       screen.getByRole("button", { name: "Copy Discord username: mpgeoint" })
     ).toBeInTheDocument();
@@ -405,8 +374,7 @@ describe("public profile identity", () => {
     withProfile({});
     mountProfile();
 
-    // The counters strip named the same figure Insights calls `Geolocated`,
-    // under a vaguer word and in the more prominent slot.
+    // The counters strip named the Insights `Geolocated` figure under a vaguer word.
     expect(screen.queryByText("Submitted")).not.toBeInTheDocument();
     expect(screen.queryByText("Since")).not.toBeInTheDocument();
   });
@@ -416,9 +384,7 @@ describe("public profile identity", () => {
     mountProfile();
 
     const line = screen.getByText(/Notes at https/);
-    // The link is plain text that breaks where it must; PageShell's subtitle
-    // slot owns the anywhere-break, so one unbreakable token cannot scroll a
-    // phone sideways.
+    // The link breaks where it must; PageShell's subtitle slot owns the anywhere-break so a token cannot scroll a phone sideways.
     expect(line.closest(".wrap-anywhere")).not.toBeNull();
   });
 });
@@ -456,8 +422,7 @@ describe("public profile edit mode", () => {
     await waitFor(() =>
       expect(screen.getByText("Profile picture")).toBeInTheDocument()
     );
-    // The read-only portfolio drops out, so every field sits between the
-    // header and Save, with the links inputs the one section left.
+    // The read-only portfolio drops out; the links inputs are the one section left.
     expect(blockOrder(container)).toEqual(["linked accounts"]);
     // The two field groups stay contiguous and in reading order.
     expect(
@@ -466,11 +431,9 @@ describe("public profile edit mode", () => {
         .compareDocumentPosition(screen.getByText("Linked accounts")) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
-    // The header's link buttons give way to those inputs: one place to read a
-    // linked account per mode, so the page never shows both at once.
+    // One place to read a linked account per mode: buttons give way to inputs.
     expect(screen.queryByRole("link", { name: /X \/ Twitter/ })).toBeNull();
-    // The saved bio is not also printed under the handle: one field, one copy
-    // of it on screen. The owner's email keeps the slot.
+    // The saved bio is not printed under the handle; the owner's email keeps the slot.
     expect(container.querySelector("h1 + div")?.textContent).toBe("ana@example.test");
   });
 });

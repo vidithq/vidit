@@ -9,16 +9,10 @@ import type { EventDetail } from "@/types";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 
 /**
- * A request is a ``requested`` event (see ``docs/data-model.md`` → ``events``),
- * served by the same ``GET /events/{id}`` a located row uses; this page renders
- * the shared ``EventDetailBody`` under the shared action cluster. The request
- * surface is the one that carries all four tiers: the geolocate flow action,
- * the author's edit of the question, their close, and the share and report
- * utilities. ``useEventActions`` owns every one of them, so this page holds
- * nothing of its own. Close captures
- * a required free-text reason via ``CloseEventForm``, shown as the Reason
- * beside the status badge, which is what tells a withdrawn request from a
- * rejected detection.
+ * A request is a `requested` event (see `docs/data-model.md`, `events`) served by
+ * `GET /events/{id}`; renders the shared `EventDetailBody` under the shared
+ * action cluster (`useEventActions` owns all four tiers). Close captures a
+ * required reason via `CloseEventForm`, shown beside the status badge.
  */
 export default function RequestDetailPage() {
   const params = useParams();
@@ -30,7 +24,7 @@ export default function RequestDetailPage() {
   } = useApiResource<EventDetail>(
     requestId ? `/events/${requestId}` : null
   );
-  // Called before the early returns, as every hook here must be.
+  // Called before the early returns.
   const { actions, panels } = useEventActions({
     event: request,
     surface: "request",
@@ -53,13 +47,10 @@ export default function RequestDetailPage() {
       subtitle={<AuthorByline author={request.owner} avatar />}
       actions={actions}
     >
-        {/* The close and report forms, directly under the header where the
-            triggers that opened them are. */}
+        {/* Close and report forms sit under the header, where their triggers are. */}
         {panels}
 
-        {/* A request is an event with no coordinates, so the body renders with
-            an empty Location and the missing detected-from / requested-by rows
-            simply drop out. */}
+        {/* No coordinates: the Location is empty and the missing rows drop out. */}
         <EventDetailBody geo={request} variant="page" />
     </PageShell>
   );

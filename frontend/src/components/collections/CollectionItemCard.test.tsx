@@ -6,9 +6,8 @@ import type { PickableEvent } from "@/lib/collections";
 import { CollectionItemCard } from "./CollectionItemCard";
 
 /**
- * The row every collection surface renders, measured once for both of them:
- * the picker's blocks open the event, the collection page's list picks the
- * player's step instead. A row carries one gesture either way.
+ * The picker blocks open the event; the collection page list picks the
+ * player's step instead. One gesture either way.
  */
 const ITEM: PickableEvent = {
   id: "e1",
@@ -29,7 +28,7 @@ describe("CollectionItemCard", () => {
       screen.getByRole("link", { name: "Strike on the rail junction" }),
     ).toHaveAttribute("href", "/events/e1");
     expect(screen.getByText("Geolocated")).toBeInTheDocument();
-    // A collection is one analyst's own work and the block above names them.
+    // No byline: the block above names the analyst.
     expect(screen.queryByText(/^by/)).not.toBeInTheDocument();
   });
 
@@ -38,7 +37,6 @@ describe("CollectionItemCard", () => {
 
     render(<CollectionItemCard item={ITEM} selected onSelect={onSelect} />);
 
-    // One gesture: the row is the button, and the title is plain text.
     expect(
       screen.queryByRole("link", { name: "Strike on the rail junction" }),
     ).not.toBeInTheDocument();

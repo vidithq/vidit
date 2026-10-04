@@ -6,12 +6,9 @@ import type { Conflict } from "@/types";
 export const CONFLICT_OTHER_NAME = "Other";
 
 /**
- * Display label for a conflict: the name plus its years. Ongoing entries read
- * "Name (2014-present)", ended ones "Name (1982)" or "Name (1990-1991)".
- * Two guards skip the suffix: no known start year, and names that already
- * carry a 4-digit year (Wikipedia names like "Haitian crisis (2018–present)"
- * would otherwise render their years twice). Years are rendered here, never
- * baked into the stored name.
+ * Display label: the name plus its years ("Name (2014-present)", "Name (1982)", "Name
+ * (1990-1991)"). The suffix is skipped with no start year or when the name already carries a
+ * 4-digit year (Wikipedia names). Years are rendered here, never stored in the name.
  */
 export function conflictLabel(c: Conflict): string {
   if (c.start_year === null || /\d{4}/.test(c.name)) return c.name;
@@ -32,10 +29,9 @@ const TIER_RANK: Record<NonNullable<Conflict["tier"]>, number> = {
 };
 
 /**
- * Referential display order: tier rank (major < minor < conflict < none),
- * then name alphabetically. The "Other" escape row is pinned last no matter
- * its tier or the active filters. The server orders ongoing-then-name, so
- * this is computed client-side. Returns a new array.
+ * Referential display order: tier rank (major < minor < conflict < none), then name; "Other"
+ * is pinned last. The server orders ongoing-then-name, so this runs client side. Returns a
+ * new array.
  */
 export function sortConflicts(list: Conflict[]): Conflict[] {
   return [...list].sort((a, b) => {

@@ -66,9 +66,7 @@ def test_create_free_tag_passes(authed_user, db):
 
 
 def test_create_free_tag_strips_whitespace(authed_user, db):
-    """Pydantic's `strip_whitespace=True` runs before the DB hit, so a
-    name typed with leading / trailing spaces lands stripped — and won't
-    silently duplicate against an existing un-spaced row."""
+    """`strip_whitespace=True` runs before the DB hit, so a padded name lands stripped and cannot duplicate an un-spaced row."""
     _, headers = authed_user
     core = f"spaced-{uuid.uuid4().hex[:8]}"
     response = client.post(
@@ -84,9 +82,7 @@ def test_create_free_tag_strips_whitespace(authed_user, db):
 
 @pytest.mark.parametrize("name", ["", "   ", "\t\n"])
 def test_create_free_tag_rejects_empty(authed_user, name):
-    """Empty (or whitespace-only) names hit the `min_length=1` bound
-    *after* the strip, so the schema rejects them with 422 rather than
-    saving a useless empty row."""
+    """Empty or whitespace-only names hit `min_length=1` after the strip: 422."""
     _, headers = authed_user
     response = client.post(
         "/api/v1/tags",
@@ -97,9 +93,7 @@ def test_create_free_tag_rejects_empty(authed_user, name):
 
 
 def test_create_free_tag_rejects_too_long(authed_user):
-    """101 chars overflows the `String(100)` column cap. The schema
-    bound catches it at 422 so the DB never sees a value it would
-    truncate or reject downstream."""
+    """101 chars overflows `String(100)`; the schema 422s before the DB sees it."""
     _, headers = authed_user
     response = client.post(
         "/api/v1/tags",
@@ -110,10 +104,8 @@ def test_create_free_tag_rejects_too_long(authed_user):
 
 
 def test_create_free_tag_duplicate_returns_existing(authed_user, db):
-    """A second create with the same name + category returns 200 OK
-    with the existing row, not 409. Lets the frontend's `NewTagInput`
-    select an orphan tag (refs == 0, hidden from `GET /tags`) by name
-    without needing the backend to expose a separate get-by-name."""
+    """A repeat create with the same name and category returns 200 with the existing
+    row, so `NewTagInput` can select an orphan tag (hidden from `GET /tags`)."""
     _, headers = authed_user
     name = f"dup-{uuid.uuid4().hex[:8]}"
     r1 = client.post(
@@ -134,9 +126,7 @@ def test_create_free_tag_duplicate_returns_existing(authed_user, db):
 
 
 def test_create_free_tag_clashing_category_returns_409(authed_user, db):
-    """A second create with the same name but a different category
-    still 409s — the row already exists but the caller is asking for
-    something semantically different."""
+    """The same name with a different category still 409s."""
     _, headers = authed_user
     name = f"clash-{uuid.uuid4().hex[:8]}"
     # Seed a curated row directly (the public API only lets analysts
@@ -157,8 +147,7 @@ def test_create_free_tag_clashing_category_returns_409(authed_user, db):
 
 
 def test_create_conflict_tag_forbidden(authed_user):
-    """Conflicts live in their own referential now; the retired ``conflict``
-    tag category behaves like any other non-creatable category."""
+    """The ``conflict`` category is like any other non-creatable category."""
     _, headers = authed_user
     response = client.post(
         "/api/v1/tags",
@@ -188,12 +177,7 @@ def test_create_tag_requires_auth():
 
 
 def test_list_tags_filters_orphans(authed_user, db):
-    """Tags with zero live-geolocation references must not appear in /tags.
-
-    Otherwise the map filter UI surfaces chips that match zero rows — a
-    confusing dead-end for the analyst, and what was happening before the
-    JOIN-and-distinct rewrite of the endpoint.
-    """
+    """Tags with no live-geolocation references are hidden from /tags (the map filter would show dead chips)."""
     user, _ = authed_user
     orphan = Tag(name=f"orphan-{uuid.uuid4().hex[:8]}", category="free")
     used = Tag(name=f"used-{uuid.uuid4().hex[:8]}", category="free")
@@ -228,14 +212,8 @@ def test_list_tags_filters_orphans(authed_user, db):
 
 
 def test_list_tags_curated_returns_unused_curated_tags(db):
-    """`?curated=true` returns the capture_source taxonomy regardless of
-    live usage.
-
-    The submit form's required selector needs every option up front,
-    including ones no live geolocation references yet, the opposite of
-    the default view's orphan-hiding behaviour. Free tags are never part
-    of the curated set (and conflicts are not tags at all).
-    """
+    """`?curated=true` returns the capture_source taxonomy regardless of usage (the
+    submit form needs every option); free tags are never in it."""
     capture = Tag(name=f"cs-{uuid.uuid4().hex[:8]}", category="capture_source")
     free = Tag(name=f"fr-{uuid.uuid4().hex[:8]}", category="free")
     db.add_all([capture, free])
@@ -261,11 +239,7 @@ def test_list_tags_curated_returns_unused_curated_tags(db):
 
 
 def test_list_tags_drops_tag_when_only_geo_is_soft_deleted(authed_user, db):
-    """Soft-deleted geolocations don't keep a tag alive in the filter.
-
-    If the only geo using a tag is soft-deleted, the tag's a dead-end —
-    it should fall off the filter just like a never-used orphan would.
-    """
+    """A tag used only by a soft-deleted geolocation falls off the filter like an orphan."""
     user, _ = authed_user
     tag = Tag(name=f"sd-{uuid.uuid4().hex[:8]}", category="free")
     db.add(tag)

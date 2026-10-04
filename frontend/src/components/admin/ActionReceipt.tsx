@@ -3,13 +3,9 @@ import type { ReactNode } from "react";
 import type { AdminPurgeDetectedResponse } from "@/lib/admin";
 import { Pill } from "@/components/ui/Pill";
 
-/**
- * Post-action receipt shared by the destructive admin panels (analyst delete,
- * geolocation delete): a quiet summary box with the hard/soft mode badge.
- * Hard reads danger (red); soft is neutral, the same vocabulary as the invite
- * StatusChip, so no bespoke badge colours (the two panels had drifted to
- * amber vs orange for the same semantic).
- */
+/** Post-action receipt shared by the destructive admin panels (analyst delete, geolocation
+ * delete): a quiet summary box with the hard/soft mode badge. Hard reads danger (red), soft is
+ * neutral, as the invite StatusChip. */
 export function ActionReceipt({
   mode,
   header,
@@ -37,11 +33,8 @@ export function ActionReceipt({
   );
 }
 
-/**
- * The detected-purge receipt, shared by the onboarding table and the
- * Manage-analysts search so the copy cannot drift between the two surfaces
- * (the same reason `UserActionsCard` is shared).
- */
+/** The detected-purge receipt, shared by the onboarding table and Manage-analysts search so the
+ * copy can't drift (like `UserActionsCard`). */
 export function PurgeReceipt({ purge }: { purge: AdminPurgeDetectedResponse }) {
   return (
     <ActionReceipt

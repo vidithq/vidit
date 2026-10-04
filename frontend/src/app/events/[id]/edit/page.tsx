@@ -18,23 +18,13 @@ import {
 import type { EventDetail } from "@/types";
 
 /**
- * Owner edit of one event, in the three shapes an owner edits in: correcting an
- * open request, confirming a machine detection, or correcting a published
- * geolocation. One address for all three, since the fields are the same form.
- * A request is overwritten in place (`RequestEditForm`), while a detection and a
- * published row share `EventEditForm`, which reads the state and offers the
- * write that state allows. A `closed` row is terminal and has no owner edit, so
- * the page says so and links to the event.
+ * Owner edit of one event: correcting an open request (`RequestEditForm`,
+ * overwritten in place), confirming a detection, or correcting a published
+ * geolocation (both `EventEditForm`). A `closed` row has no owner edit.
  *
- * The page is also one step of a review pass over the detections queue when the
- * URL carries `?queue=1`.
- *
- * The flag makes a review a walk over real URLs rather than a session in
- * component state: each detection is its own address, so a reload keeps its place
- * and the browser's Back steps back one detection. The page reads the owner's queue
- * (the list the queue page reads), places this detection in it, and hands the form
- * the position plus where to go next. Past the last detection, the walk ends on the
- * queue list.
+ * With `?queue=1` the page is one step of a detections review walk over real
+ * URLs: it places this detection in the owner's queue and hands the form the
+ * position and the next address; past the last, the walk ends on the queue list.
  */
 export default function EditEventPage() {
   const params = useParams();
@@ -47,8 +37,7 @@ export default function EditEventPage() {
     user && id ? `/events/${id}` : null
   );
 
-  // The queue is read only for a detection the viewer owns and asked to review, so
-  // an ordinary edit costs no extra request.
+  // Read the queue only for a detection the owner asked to review.
   const inQueue = searchParams.get(QUEUE_PARAM) === "1";
   const isOwnDetection =
     !!geo && !!user && user.id === geo.owner.id && geo.status === "detected";
@@ -68,12 +57,9 @@ export default function EditEventPage() {
     return <PageLoading />;
   }
 
-  // Both writes are owner-only and state-gated, the same gates the backend
-  // enforces (403 / 409). Surface them before the form rather than letting the
-  // post bounce.
+  // Writes are owner-only and state-gated (403 / 409); refuse before the form.
   if (user.id !== geo.owner.id) {
-    // An open request reads at `/requests/{id}`, every other row at
-    // `/events/{id}`, so the way out names the surface it actually opens.
+    // Open requests read at `/requests/{id}`, other rows at `/events/{id}`.
     const isRequest = geo.status === "requested";
     return (
       <PageShell back title="Edit event">
@@ -91,16 +77,12 @@ export default function EditEventPage() {
     );
   }
 
-  // An open request is corrected in place, overwriting the row: it is a
-  // question rather than a vouched claim, so there is no version to file.
-  // Answering it is a different act, and lives on the submit form
-  // (`/submit?request_id=`), which anyone may use.
+  // An open request is overwritten in place (no version); answering it is the submit form's job (`/submit?request_id=`).
   if (geo.status === "requested") {
     return <RequestEditForm geo={geo} redirectTo={`/requests/${geo.id}`} />;
   }
 
-  // A detection is confirmed here and a published geolocation is edited here.
-  // What is left is `closed`, the terminal state, which no write reopens.
+  // What is left is `closed`, which no write reopens.
   if (geo.status !== "detected" && geo.status !== "geolocated") {
     return (
       <PageShell back title="Edit event">
@@ -118,16 +100,13 @@ export default function EditEventPage() {
     );
   }
 
-  // Where the form returns to when it is done: the detections queue after a
-  // confirmation, the event itself after a version.
+  // Return to the queue after a confirmation, the event after a version.
   const doneHref =
     geo.status === "geolocated"
       ? `/events/${geo.id}`
       : `/profile/${user.username}/detections`;
 
-  // The position is read off the live queue, so a detection published or rejected
-  // a moment ago is out of both the count and the walk. A detection the queue no
-  // longer holds carries no position: the page is a plain edit again.
+  // Position comes from the live queue; a detection it no longer holds gets a plain edit.
   const items = queueData?.items ?? [];
   const index = items.findIndex((e) => e.id === geo.id);
   const next = items[index + 1];

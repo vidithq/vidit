@@ -1,17 +1,10 @@
 """Load typology fixtures and assemble them into records / a test archive.
 
-Four consumers over one catalogue of typologies: the resolve test resolves each
-typology's thread, the bot and paste tests run their own entry over the same
-bodies, and the archive test builds one consolidated X export from the
-disk-only typologies and runs the real backfill over it.
-
-A typology ships ``body.json`` (the post an entry is pointed at, in syndication
-shape, or raw archive entries under ``thread`` for the archive-only shapes),
-``expected.json``, and any further body the acquisition or a chase reads:
-``parent_<id>.json`` for the post a reply hangs under, ``chased_<id>.json`` for
-a linked status, ``embed.html`` for a linked Telegram post.
-:func:`syndication_client` serves all of them and 404s everything else, so every
-path runs offline.
+A typology ships ``body.json`` (syndication shape, or raw archive entries under ``thread``
+for archive-only shapes), ``expected.json``, and any further body the acquisition reads:
+``parent_<id>.json`` (reply parent), ``chased_<id>.json`` (linked status), ``embed.html``
+(linked Telegram post). :func:`syndication_client` serves them and 404s everything else,
+so every path runs offline.
 """
 
 from __future__ import annotations
@@ -32,17 +25,14 @@ from tests._fixtures import TINY_MP4, write_archive_js
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
-# The one entry that reads the engine's second exit, so the one path an
-# ``expected["request"]`` block is asserted for.
+# The one entry that reads the engine's second exit, so the only path asserting ``expected["request"]``.
 _REQUEST_PATH = "bot"
 
-# Twitter's archive ``created_at`` format, for turning an ISO fixture timestamp
-# into the raw export shape the archive reader parses.
+# Twitter's archive ``created_at`` format.
 _TWITTER_TIME_FMT = "%a %b %d %H:%M:%S %z %Y"
 
 
 def typology_names() -> list[str]:
-    """Every typology directory under ``fixtures/``, sorted for stable ids."""
     return sorted(p.name for p in FIXTURES_DIR.iterdir() if p.is_dir())
 
 
@@ -55,25 +45,19 @@ def load_expected(typology: str) -> dict[str, Any]:
 
 
 def load_embed(typology: str) -> str | None:
-    """The Telegram embed the typology ships, or ``None`` when it ships none.
+    """The Telegram embed the typology ships, or ``None``.
 
-    The one reader for ``embed.html``: :func:`syndication_client` serves it to a
-    chase, and ``tests/test_bot.py`` reads it to build the mirror bodies its
-    request-branch tests run on, so the bot's Telegram payload and the
-    catalogue's cannot drift.
+    Also read by ``tests/test_bot.py`` so the bot's Telegram payload and the catalogue's cannot drift.
     """
     embed = FIXTURES_DIR / typology / "embed.html"
     return embed.read_text(encoding="utf-8") if embed.is_file() else None
 
 
 def typologies_for_path(path: str) -> list[str]:
-    """Every typology one entry path runs, so a gap has to be declared.
+    """Every typology one entry path runs.
 
-    A typology is in unless its ``expected.json`` carries ``paths.<path>.skip``
-    with the reason that entry cannot be pointed at it. Reading the list off the
-    catalogue rather than a hand-kept Python list is what makes a newly added
-    typology enter every entry's run by default: skipping it takes a written
-    reason beside the fixture, not a name quietly left out of a test module.
+    A typology is in unless its ``expected.json`` carries ``paths.<path>.skip`` with a
+    reason, so a newly added typology enters every entry's run by default.
     """
     return [
         typology
@@ -91,10 +75,8 @@ def load_chased(typology: str, tweet_id: str) -> dict[str, Any]:
 def expected_for_path(typology: str, path: str) -> dict[str, Any]:
     """``expected.json`` as one entry path sees it.
 
-    The three entries answer one grammar, so the shared expectation at the top
-    level is the whole answer. A ``paths.<path>`` block holds only what is that
-    entry's own vocabulary (the bot's failure reason) or a ``skip`` marking a
-    typology that entry cannot be pointed at (an archive-only shape).
+    The shared top level is the whole answer; a ``paths.<path>`` block holds only that
+    entry's own vocabulary (the bot's failure reason) or a ``skip``.
     """
     expected = load_expected(typology)
     overrides = expected.get("paths", {}).get(path, {})
@@ -104,18 +86,12 @@ def expected_for_path(typology: str, path: str) -> dict[str, Any]:
 def assert_resolution_matches(typology: str, path: str, resolution: Resolution) -> None:
     """Assert one entry's resolution answers the typology's expectation.
 
-    The shared assertion every consumer runs: one detection per coordinate, and
-    every detection carrying the title, source, mirrors, warnings and media split
-    the expectation names. A ``paths.<path>.reason`` override pins the refusal
-    that entry reports.
+    One detection per coordinate, each carrying the title, source, mirrors, warnings and
+    media split the expectation names. ``paths.<path>.reason`` pins that entry's refusal.
 
-    An ``expected["request"]`` block pins the engine's second exit, the draft a
-    coordinate-less thread still yields (its source, its title, its footage). A
-    typology without one must yield none, so a shape that starts drafting a
-    request has to say so in the catalogue rather than appearing only in a
-    bot-side test. The block is the bot's alone, since the bot is the one entry
-    that asks for the exit (``resolve_threads(..., with_requests=True)``): every
-    other entry resolves none whatever the catalogue says.
+    An ``expected["request"]`` block pins the second exit (the draft a coordinate-less
+    thread yields); a typology without one must yield none. Only the bot asks for the exit
+    (``with_requests=True``), so every other entry resolves none.
     """
     block = load_expected(typology).get("paths", {}).get(path, {})
     expected = expected_for_path(typology, path)
@@ -146,8 +122,7 @@ def assert_resolution_matches(typology: str, path: str, resolution: Resolution) 
 
 
 def is_self_thread(body: dict[str, Any]) -> bool:
-    """A ``self_thread`` fixture holds raw archive entries under ``thread``,
-    not a single syndication body."""
+    """A ``self_thread`` fixture holds raw archive entries under ``thread``, not one syndication body."""
     return "thread" in body
 
 
@@ -157,12 +132,7 @@ def owner_url(body: dict[str, Any]) -> str:
 
 
 def load_bodies(typology: str) -> dict[str, dict[str, Any]]:
-    """Every syndication body the typology ships, keyed by tweet id.
-
-    ``body.json`` plus each ``parent_<id>.json`` / ``chased_<id>.json`` beside
-    it, which is what an entry path reads when it follows a reply edge or
-    chases a linked status.
-    """
+    """Every syndication body the typology ships, keyed by tweet id (``body.json``, ``parent_<id>.json``, ``chased_<id>.json``)."""
     bodies: dict[str, dict[str, Any]] = {}
     body = load_body(typology)
     if not is_self_thread(body):
@@ -178,13 +148,9 @@ def load_bodies(typology: str) -> dict[str, dict[str, Any]]:
 def syndication_client(typology: str) -> httpx.Client:
     """A transport serving the typology's bodies and embed, 404 elsewhere.
 
-    Two upstreams behind one client, because one client is what an entry passes
-    down to the chase: an ``x.com`` syndication read answers from the typology's
-    bodies, and a ``t.me`` read answers with its ``embed.html`` when it ships
-    one. A 404 is X's answer for a post no unauthenticated reader can see, which
-    is how a chase outside the fixture degrades: fail-soft, no network. The
-    process-wide fetch cache is cleared first so a body cached by another
-    typology cannot answer here.
+    An ``x.com`` read answers from the bodies, a ``t.me`` read from ``embed.html``. A 404
+    is X's answer for an invisible post, so an out-of-fixture chase fails soft offline.
+    The fetch cache is cleared first so another typology's body cannot answer here.
     """
     bodies = load_bodies(typology)
     embed = load_embed(typology)
@@ -202,12 +168,7 @@ def syndication_client(typology: str) -> httpx.Client:
 
 
 def thread_for(typology: str, tmp_path: Path) -> list[TweetRecord]:
-    """The typology's thread, as the live acquisition reads it.
-
-    ``acquire_thread`` over the fixture bodies for a syndication typology (so a
-    self-reply brings its parent in), the throwaway archive for an
-    archive-only one.
-    """
+    """The typology's thread as the live acquisition reads it (``acquire_thread``, or the throwaway archive for archive-only shapes)."""
     body = load_body(typology)
     if is_self_thread(body):
         threads = stitch(thread_from_self_thread(typology, tmp_path))
@@ -219,20 +180,12 @@ def thread_for(typology: str, tmp_path: Path) -> list[TweetRecord]:
         ).records
 
 
-# The handle the unit-path ``self_thread`` archive is read under. The unit
-# expected only pins the derived fields (coords, media roles, title), none of
-# which depend on the handle, so any stable value works; the archive test reads
-# under the real owner fixture's handle instead.
+# Handle the unit-path ``self_thread`` archive is read under; the expected fields do not depend on it.
 _UNIT_THREAD_HANDLE = "self_thread_owner"
 
 
 def thread_from_self_thread(typology: str, tmp_path: Path) -> list[TweetRecord]:
-    """The records for the ``self_thread`` typology, read from a throwaway archive.
-
-    A self-thread only exists in an archive (the reply edge is inline), so this
-    writes the fixture's raw entries into a ``tweets.js`` under ``tmp_path`` and
-    reads them back. ``stitch`` is applied by the caller.
-    """
+    """Records for the ``self_thread`` typology, read from a throwaway ``tweets.js`` (a self-thread only exists in an archive). ``stitch`` is the caller's."""
     body = load_body(typology)
     archive = tmp_path / f"{typology}_archive"
     (archive / "tweets_media").mkdir(parents=True, exist_ok=True)
@@ -240,16 +193,9 @@ def thread_from_self_thread(typology: str, tmp_path: Path) -> list[TweetRecord]:
     return read_tweets(archive, handle=_UNIT_THREAD_HANDLE)
 
 
-# ── Archive assembly ──────────────────────────────────────────────────────
-
-
 @dataclass(frozen=True)
 class ArchiveMediaFile:
-    """One media file the consolidated archive must write to disk.
-
-    ``relative_path`` is the ``tweets_media/<id>-<basename>`` path the archive
-    reader will resolve; ``data`` is the synthetic bytes to write there.
-    """
+    """One media file the consolidated archive writes: ``relative_path`` (``tweets_media/<id>-<basename>``) and its synthetic ``data``."""
 
     relative_path: str
     data: bytes
@@ -280,10 +226,8 @@ def _video_entry(mp4_url: str) -> dict[str, Any]:
 def _media_entries_from_syndication(
     details: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[tuple[str, bytes]]]:
-    """Translate a syndication ``mediaDetails`` list into archive media entries.
+    """Translate a syndication ``mediaDetails`` list into archive media entries plus the ``(basename, bytes)`` pairs the reader finds on disk.
 
-    Returns the ``extended_entities.media`` entries plus, for each, the
-    ``(media_url_basename, bytes)`` the archive reader will look for on disk.
     Photos keep their FAKE basename; videos map to the mp4 variant basename.
     """
     from tests._fixtures import TINY_JPEG
@@ -315,10 +259,7 @@ def archive_tweet_from_body(
 ) -> tuple[dict[str, Any], list[ArchiveMediaFile]]:
     """Convert a syndication-body fixture into one raw X-export tweet entry.
 
-    Carries the OP text, timestamp, media, and any ``entities.urls`` source
-    links through into the archive shape. Quote fixtures are not routed here
-    (an archive quote needs an in-archive join or a chase, exercised separately);
-    this covers the disk-only typologies.
+    Quote fixtures are not routed here (an archive quote needs a join or a chase, tested separately).
     """
     tweet_id = body["id_str"]
     entry: dict[str, Any] = {
@@ -345,11 +286,7 @@ def archive_tweet_from_body(
 def archive_tweet_from_thread_entry(
     entry: dict[str, Any],
 ) -> list[ArchiveMediaFile]:
-    """The on-disk media files a raw ``self_thread`` archive entry references.
-
-    The entry is already in export shape (it goes into ``tweets.js`` verbatim);
-    this only enumerates the ``tweets_media/`` bytes it needs.
-    """
+    """The ``tweets_media/`` files a raw ``self_thread`` entry (already in export shape) references."""
     from tests._fixtures import TINY_JPEG
 
     tweet_id = entry["id_str"]
@@ -383,12 +320,9 @@ def archive_tweet_from_thread_entry(
 
 
 def build_consolidated_archive(typologies: list[str], dest: Path) -> None:
-    """Assemble the given typologies into one X export under ``dest``.
+    """Assemble the given typologies into one X export under ``dest`` (``tweets.js`` plus media files).
 
-    Writes ``tweets.js`` (``window.YTD.tweets.part0 = [...]``) plus the
-    ``tweets_media/`` byte files every entry references. Syndication-body
-    typologies become one tweet each; a ``self_thread`` fixture expands into its
-    raw entries so ``stitch`` rejoins them.
+    A ``self_thread`` fixture expands into its raw entries so ``stitch`` rejoins them.
     """
     (dest / "tweets_media").mkdir(parents=True, exist_ok=True)
     tweets: list[dict[str, Any]] = []

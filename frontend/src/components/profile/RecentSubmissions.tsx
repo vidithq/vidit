@@ -12,10 +12,8 @@ import type { PublicProfile } from "@/lib/users";
 import type { components } from "@/lib/api-types";
 import type { EventListItem } from "@/types";
 
-/** One card in the profile's recent-submissions list: the same compact card
- *  shape the located catalogue and the requested queue use. The endpoint
- *  serves published work only (``geolocated``), so every row here carries a
- *  location the analyst vouched for. */
+/** One card in the recent-submissions list, the compact shape the located catalogue and requested
+ * queue use. The endpoint serves published work only (`geolocated`). */
 export type RecentSubmission = EventListItem;
 
 /** Shape returned by `GET /users/{username}/events`. */
@@ -32,21 +30,13 @@ export function RecentSubmissions({
 }) {
   return (
     <Card>
-      {/* Same line-breaking rule as PageShell's header: the heading block asks
-          for a basis, so a row too tight for both drops the link to its own
-          line instead of squeezing "Show more" into two stacked words. The
-          14rem basis matching the one PageShell uses is cosmetic, not a
-          contract: either can be retuned on its own without breaking the
-          other. */}
+      {/* Same line-breaking rule as PageShell's header: the heading block asks for a basis, so a tight
+          row drops the link to its own line. The 14rem basis is cosmetic, not a contract. */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="basis-56 grow min-w-0 space-y-1">
           <SectionEyebrow title="Recent submissions" margin="none" />
-          {/* Gated on the rows this block renders, not on
-              ``geolocations_count``. The two now count the same set, so they
-              agree on the profiles that matter, but only the rows also cover
-              a feed read that failed: keying the copy off a count that
-              arrived on a different request promises "latest geolocations"
-              above an empty list. */}
+          {/* Gated on the rows this block renders, not `geolocations_count`: a count from a different
+              request could promise "latest geolocations" above an empty list (a failed feed read). */}
           <p className="text-xs text-neutral-500">
             {submissions.length > 0
               ? `${profile.username}'s latest geolocations, newest first.`
@@ -54,12 +44,9 @@ export function RecentSubmissions({
           </p>
         </div>
         {submissions.length > 0 && (
-          // ``status=geolocated`` so the expansion serves the same body of
-          // work the block above does: search's located group otherwise
-          // widens to machine detections. The value is in the panel's own
-          // vocabulary, so it lands as a removable chip a reader can drop to
-          // widen the view deliberately. Same builder as the Insights tiles
-          // above, so the profile has one shape of link into search.
+          // Mirrors backend `event_filters.published_events()`: `status=geolocated` makes the expansion serve the
+          // same work as the block above (search's located group otherwise widens to machine detections). In the
+          // panel's own vocabulary, so it lands as a removable chip. Same builder as the Insights tiles.
           <Link
             href={profileSearchHref(profile.username, { status: "geolocated" })}
             className={buttonClasses("secondary", {
@@ -90,11 +77,8 @@ export function RecentSubmissions({
           ))}
         </div>
       ) : (
-        // Own profile, nothing submitted yet: the freshly-invited analyst gets
-        // a next action instead of dead-ending. A visitor gets nothing further,
-        // because the heading above already reads "No geolocations yet." and a
-        // second sentence saying the same thing is the block printing its empty
-        // state twice.
+        // Own profile, nothing submitted: the freshly-invited analyst gets a next action. A visitor gets
+        // nothing more, since the heading already reads "No geolocations yet."
         isOwn && (
           <EmptyState
             variant="plain"

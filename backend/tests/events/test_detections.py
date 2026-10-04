@@ -1,12 +1,7 @@
-"""The owner Detections queue: ``GET /geolocations/detections``.
+"""The owner Detections queue ``GET /geolocations/detections``.
 
-Owner-scoped list of the caller's machine-``detected`` geolocations, paginated,
-in full ``EventRead`` shape (media + tags) so the queue renders the evidence.
-Scoping is to ``current_user``, so the endpoint ignores any URL username. The
-``readiness`` filter, its counts and its pagination are here too; the rule it
-filters on is held to the publish floor by ``test_detections_readiness.py``.
-Shared fixtures live in ``conftest.py``; ``client`` / ``_make_geo`` in
-``_helpers.py``.
+Scoped to ``current_user`` (any URL username is ignored), in full ``EventRead`` shape,
+with the ``readiness`` filter and its counts.
 """
 
 from __future__ import annotations
@@ -63,13 +58,11 @@ def test_detections_empty_for_user_without_detections(author):
 
 
 def test_detections_returns_only_callers_live_detected(db, author, second_user):
-    """Only the caller's live ``detected`` rows: not a geolocated row, not a
-    soft-deleted one, and not another analyst's detection; the endpoint scopes
-    to ``current_user`` regardless of any URL username."""
+    """Only the caller's live ``detected`` rows, not geolocated, deleted, or another's."""
     mine = _detected(db, author)
     _make_geo(db, author=author, status=STATUS_GEOLOCATED)  # geolocated, excluded
-    _detected(db, author, deleted=True)  # soft-deleted — excluded
-    _detected(db, second_user)  # another analyst — excluded
+    _detected(db, author, deleted=True)  # soft-deleted, excluded
+    _detected(db, second_user)  # another analyst, excluded
 
     response = client.get(_URL, headers=login_as(client, author))
     assert response.status_code == 200
@@ -133,16 +126,11 @@ def test_detections_rejects_out_of_range_paging(author):
     assert client.get(f"{_URL}?page=abc", headers=headers).status_code == 422
 
 
-# ── readiness filter ──────────────────────────────────────────────────────
-
-
 def test_detections_readiness_selects_over_the_whole_queue(db, author):
-    """``ready`` pages through ready detections only, ``incomplete`` through the
-    rest, and ``all`` (the default) through both.
+    """``ready`` and ``incomplete`` select over the whole queue, ``all`` (default) both.
 
-    The bug this replaces: the queue filtered the loaded page client-side while
-    paging server-side, so an analyst on a page of ten incomplete rows read
-    "no ready detections" and concluded their whole import carried no evidence.
+    Regression: the queue filtered the loaded page client-side while paging
+    server-side, so a page of incomplete rows read as "no ready detections".
     """
     ids = _mixed_queue(db, author)
     headers = login_as(client, author)
@@ -173,9 +161,7 @@ def test_detections_total_counts_the_filtered_set(db, author):
 
 
 def test_detections_carries_both_counts_under_every_filter(db, author):
-    """``ready_total`` / ``incomplete_total`` describe the whole queue whatever
-    ``readiness`` asks for: the analyst reads both figures without paging and
-    without a second call."""
+    """``ready_total`` / ``incomplete_total`` describe the whole queue under every ``readiness``."""
     _mixed_queue(db, author)
     headers = login_as(client, author)
 
@@ -187,11 +173,7 @@ def test_detections_carries_both_counts_under_every_filter(db, author):
 
 
 def test_detections_pages_within_the_filtered_set(db, author):
-    """Paging under a filter walks the filtered rows, and only those.
-
-    The pages partition the filtered set: no row is served twice, none is
-    skipped, and a page never leaks a row the filter excluded.
-    """
+    """Paging under a filter partitions the filtered set: no repeats, no skips, no leaks."""
     ids = _mixed_queue(db, author)
     headers = login_as(client, author)
     expected = {ids[name] for name in INCOMPLETE_CASE_NAMES}

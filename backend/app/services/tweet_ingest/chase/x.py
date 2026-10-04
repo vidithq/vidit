@@ -1,9 +1,7 @@
 """Chase an X status: one syndication read of the post a link names.
 
-The technology X serves footage on is a status, so this chaser answers for a
-status id and for any URL naming one, and declines everything else. What comes
-back is the post itself (author, text, date, media), which the resolution
-stores as the thread's quoted post.
+Answers for a status id or a URL naming one; the post (author, text, date,
+media) is stored by the resolution as the thread's quoted post.
 """
 
 from __future__ import annotations
@@ -18,20 +16,14 @@ from ..urls import canonical_tweet_url, x_status_id
 
 
 def chase(target: str, *, client: httpx.Client | None = None) -> ChaseResult:
-    """The X status ``target`` names, read through syndication.
+    """The X status ``target`` (a bare id or a status URL) read through syndication.
 
-    ``target`` is a bare status id (what an export holds for a quote) or a URL
-    naming a status on an X host. ``no_target`` when ``target`` names no X
-    status, which is how the dispatcher moves on to the next chaser.
-    ``transient_failure`` when X throttled us or never answered, the retry
-    schedule already spent (``fetch_syndication``). ``not_accessible`` for
-    everything else X answers with and nothing can be taken from: a post it
-    will not serve, and a payload carrying no author, since an authorless post
-    cannot be attributed and so is not footage anyone declared.
+    ``no_target`` when it names no X status; ``transient_failure`` when throttled
+    or unanswered after the retry schedule (``fetch_syndication``);
+    ``not_accessible`` otherwise, including a payload with no author (an
+    authorless post cannot be attributed).
     """
-    # ``isascii`` with ``isdigit``: the latter is True for every Unicode decimal
-    # digit, so an Arabic-Indic or fullwidth string would pass as a status id and
-    # go into the syndication URL as something X cannot read.
+    # ``isdigit`` alone accepts any Unicode decimal digit, which X cannot read.
     status_id = target if target.isascii() and target.isdigit() else x_status_id(target)
     if status_id is None:
         return ChaseResult(outcome="no_target")

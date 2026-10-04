@@ -6,40 +6,25 @@ interface PagedResult<T> {
   /** Cursor of the next page, `null` once the walk is exhausted. */
   cursor: string | null;
   error: string | null;
-  // Which first-page path this result answers, so a result kept across a path
-  // change is recognised as stale instead of leaking into the new page state.
+  // Which first-page path this result answers; a stale one must not leak into the new page.
   path: string | null;
 }
 
-/** The rows out of a page payload that *is* the rows. The default for every
- *  list endpoint answering a bare array; an endpoint answering an envelope
- *  (`GET /events/{id}/versions` serves `{items, total}`) passes its own reader.
- *  Module-level so the default keeps one identity across renders: it is a hook
- *  dependency, and a fresh closure per render would refetch the first page
- *  forever. */
+/** Rows of a payload that is the rows: the default for bare-array endpoints. Module-level so
+ *  it keeps one identity (a hook dependency; a fresh closure would refetch forever). */
 const bareArray = (payload: unknown): unknown[] => payload as unknown[];
 
 /**
- * Declarative GET for a cursor-paged list: fetches the first page on mount and
- * on path change, and appends each further page on `loadMore`.
+ * Declarative GET for a cursor-paged list: first page on mount and path change, further pages
+ * appended on `loadMore`. The counterpart of `useApiResource` for capped lists (max 100 rows):
+ * follows the `Link: rel="next"` cursor, and `hasMore` is true while the server says another
+ * page exists.
  *
- * The counterpart of `useApiResource` for the capped list endpoints. A list
- * response holds at most 100 rows, so a surface showing more of the set
- * follows the `Link: rel="next"` cursor rather than asking for a wider page:
- * `hasMore` is true exactly while the server says another page exists.
- *
- * `buildPath` takes the cursor of the page to fetch (`null` for the first) and
- * returns its path, so each caller keeps its own query builder. The first-page
- * effect keys on the path string, not on the function, so an unmemoized
- * builder costs a new `loadMore` identity each render rather than a refetch;
- * memoizing it (`useCallback`) is still the shape to write.
- *
- * `reload` refetches the first page and drops the walk so far, for a caller
- * whose own writes change the set (minting or revoking an invite code).
- *
- * `rows` reads the page's rows out of its payload, for the endpoints that wrap
- * them (`{items, total}`). It has to keep one identity across renders, so pass
- * a module-level function, never an inline closure.
+ * `buildPath` takes the cursor to fetch (`null` for the first) so each caller keeps its own
+ * query builder. The first-page effect keys on the path string, so an unmemoized builder only
+ * changes `loadMore`'s identity; memoize it anyway. `reload` refetches the first page and
+ * drops the walk, for callers whose writes change the set. `rows` reads rows out of a wrapped
+ * payload (`{items, total}`) and needs a stable identity: pass a module-level function.
  */
 export function useCursorList<T, P = T[]>(
   buildPath: (cursor: string | null) => string,
@@ -61,9 +46,8 @@ export function useCursorList<T, P = T[]>(
   });
   const [loadingMore, setLoadingMore] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
-  // The in-flight `loadMore`, so the first-page effect's cleanup can abort it:
-  // a page-2 answer belongs to the path that minted its cursor, and once that
-  // path is gone (a filter change, an unmount) the rows are unusable.
+  // The in-flight `loadMore`, aborted by the first-page cleanup: its page belongs to the path
+  // that minted its cursor.
   const moreRequest = useRef<AbortController | null>(null);
 
   const firstPath = buildPath(null);
@@ -101,10 +85,8 @@ export function useCursorList<T, P = T[]>(
 
   const loadMore = useCallback(() => {
     if (cursor === null || loadingMore) return;
-    // The path this page belongs to, captured now: by the time the answer
-    // lands the caller may have rebuilt the query, and appending rows from
-    // the old filter set onto the new list is how a walk shows two sets at
-    // once.
+    // Captured now: if the query is rebuilt before the answer lands, rows from the old filters
+    // must not append to the new list.
     const walk = firstPath;
     const controller = new AbortController();
     moreRequest.current = controller;
@@ -112,8 +94,7 @@ export function useCursorList<T, P = T[]>(
     apiFetchPage<P>(buildPath(cursor), { signal: controller.signal })
       .then((page) => {
         if (controller.signal.aborted) return;
-        // Append, never replace: the walk is totally ordered, so a page can
-        // neither repeat a row already shown nor skip one.
+        // Append, never replace: the walk is totally ordered.
         setResult((prev) =>
           prev.path !== walk
             ? prev
@@ -137,9 +118,8 @@ export function useCursorList<T, P = T[]>(
       })
       .finally(() => {
         if (moreRequest.current === controller) moreRequest.current = null;
-        // Unconditional: at most one `loadMore` is ever in flight (the guard
-        // above), so an aborted one still has to clear the flag or the button
-        // stays disabled forever.
+        // Unconditional: only one `loadMore` is ever in flight, so an aborted one must still clear
+        // the flag.
         setLoadingMore(false);
       });
   }, [buildPath, cursor, firstPath, loadingMore, rows]);

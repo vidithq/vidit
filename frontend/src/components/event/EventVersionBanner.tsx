@@ -6,20 +6,13 @@ import { AuthorByline } from "@/components/ui/AuthorByline";
 import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
 
 /**
- * What a `/events/{id}/vN` page says before anything else: this is not the
- * record as it stands.
+ * What a `/events/{id}/vN` page says first: this is not the record as it stands. Amber, the caution
+ * register: the reader isn't blocked, the way to the current version is in the same sentence, and
+ * the link stays the app's one accent inside the amber card (the `design.md` callout split).
  *
- * Amber, the caution register: the reader is not blocked, they are reading
- * something superseded, and the way to the current version is in the same
- * sentence. The link is orange inside the amber card, the split
- * `design.md` holds every callout to: the card is the warning, the clickable
- * affordance stays the app's one accent.
- *
- * The byline names who produced this version, which is the edit that
- * superseded the one before it; version 1 was published rather than edited, so
- * it says so, and its date is the publication. An editor whose account is gone
- * leaves the clause out rather than naming nobody, and a version whose
- * producing row could not be read drops the date the same way.
+ * The byline names who produced this version (the edit that superseded the one before); version 1
+ * was published, not edited, and its date is the publication. A gone editor account leaves the
+ * clause out, and so does an unreadable producing row for the date.
  */
 export function EventVersionBanner({
   eventId,

@@ -19,8 +19,7 @@ import type { PickableEvent } from "@/lib/collections";
 
 import { EventPicker } from "./EventPicker";
 
-/** The picker's own debounce, the beat it waits before a typed query goes
- *  out. */
+/** The picker's debounce before a typed query goes out. */
 const DEBOUNCE_MS = 300;
 
 const row = (
@@ -62,7 +61,7 @@ function removeRow(title: string): HTMLElement {
   });
 }
 
-/** Five rows, which is exactly the cap, plus a sixth the block has to drop. */
+/** Five rows (the cap) plus a sixth the block must drop. */
 const sixRows = [
   row({ id: "e1", title: "One" }),
   row({ id: "e2", title: "Two" }),
@@ -99,8 +98,7 @@ describe("EventPicker, the events the collection holds", () => {
     );
 
     expect(screen.getByText("2 events, ordered by event date, earliest first.")).toBeInTheDocument();
-    // The order the collection's own page reads its items in, so the pending
-    // list and the collection it becomes read alike.
+    // Chronological, as the collection page reads its items.
     const held = screen.getAllByRole("button", { name: /^Remove/ });
     expect(held.map((control) => control.getAttribute("aria-label"))).toEqual([
       "Remove Earlier strike from this collection",
@@ -121,8 +119,7 @@ describe("EventPicker, the events the collection holds", () => {
       />,
     );
 
-    // The id is the server's last sort key, so a shared date reads here in the
-    // order the saved collection will read it, not in the order of the clicks.
+    // The id is the server's last sort key, so a shared date matches the saved order.
     const held = screen.getAllByRole("button", { name: /^Remove/ });
     expect(held.map((control) => control.getAttribute("aria-label"))).toEqual([
       "Remove Picked second from this collection",
@@ -176,9 +173,8 @@ describe("EventPicker, the add block", () => {
       />,
     );
 
-    // The rows come off the browse walk, and nothing is asked of the endpoint
-    // that reads words until something is typed. What that walk asks for is
-    // `pickerBrowsePath`'s own spec, in `lib/collections.test.ts`.
+    // Rows come off the browse walk; `/search` is asked nothing until something is
+    // typed (the walk's spec is `pickerBrowsePath`'s, in `lib/collections.test.ts`).
     expect(addRow("Strike on the rail junction")).toBeInTheDocument();
     expect(searchPickableEvents).not.toHaveBeenCalled();
   });
@@ -198,8 +194,7 @@ describe("EventPicker, the add block", () => {
     );
     fireEvent.click(addRow("Strike on the rail junction"));
 
-    // The row itself, not its id: the block above renders the catalogue card
-    // for what the collection holds, and nothing else on the page has it.
+    // The row itself: the first block also renders the catalogue card for held rows.
     expect(onAdd).toHaveBeenCalledWith(only);
   });
 
@@ -224,10 +219,7 @@ describe("EventPicker, the add block", () => {
       />,
     );
 
-    // On the first block now, with the cross that takes it off again.
     expect(removeRow("Strike on the rail junction")).toBeInTheDocument();
-    // And still in the results, saying why it cannot be added twice rather
-    // than dropping out of an answer the analyst searched for.
     const control = screen.getByRole("button", {
       name: "Already in this collection",
     });
@@ -273,18 +265,15 @@ describe("EventPicker, the add block", () => {
       target: { value: "Kakhovka" },
     });
 
-    // Debounced: the words go out once the typing stops, not per keystroke.
+    // Debounced: the words go out once typing stops.
     expect(searchPickableEvents).not.toHaveBeenCalled();
-    // `act` awaited, so the timer fires and the answer it starts lands
-    // before the assertions below.
+    // `act` awaited so the timer and its answer land before the assertions.
     await act(async () => {
       vi.advanceTimersByTime(DEBOUNCE_MS);
     });
 
     expect(searchPickableEvents).toHaveBeenCalledWith("ana", "Kakhovka");
     expect(addRow("Kakhovka dam")).toBeInTheDocument();
-    // The rows are the answer to the query, so the browsed row is not under
-    // them.
     expect(
       screen.queryByText("Strike on the rail junction"),
     ).not.toBeInTheDocument();
@@ -307,14 +296,12 @@ describe("EventPicker, the add block", () => {
     fireEvent.change(screen.getByRole("searchbox"), {
       target: { value: "Kakhovka" },
     });
-    // `act` awaited, so the timer fires and the answer it starts lands
-    // before the assertions below.
+    // `act` awaited so the timer and its answer land before the assertions.
     await act(async () => {
       vi.advanceTimersByTime(DEBOUNCE_MS);
     });
 
-    // The search endpoint hands out no cursor, so the block states the figure
-    // rather than offering a walk it cannot take.
+    // No cursor from search, so the block states the figure.
     expect(
       screen.getByText(/Showing 5 of 62 matches\. Refine the search/),
     ).toBeInTheDocument();
@@ -341,9 +328,6 @@ describe("EventPicker, the add block", () => {
       vi.advanceTimersByTime(DEBOUNCE_MS);
     });
 
-    // The two halves serve different sets: the browse list is the only way to
-    // a collectable event carrying no coordinates, so the line says so even
-    // when nothing was capped.
     expect(
       screen.getByText(
         "Search reaches your events that carry coordinates; clear the field to see the rest.",

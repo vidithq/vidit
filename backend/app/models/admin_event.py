@@ -9,11 +9,7 @@ from app.database import Base
 
 
 class AdminEvent(Base):
-    """Append-only audit row for admin actions.
-
-    Sibling to ``auth_events``; the schemas overlap enough that the two
-    could eventually merge into one row type.
-    """
+    """Append-only audit row for admin actions (sibling to ``auth_events``)."""
 
     __tablename__ = "admin_events"
 

@@ -14,7 +14,6 @@ import { useMutation } from "@/hooks/useMutation";
 import { detectionEditPath, importFromPost } from "@/lib/events";
 import type { TweetImportOutcome } from "@/types";
 
-/** The finished run in one line: what landed, what moved, what was left alone. */
 function outcomeSummary(outcome: TweetImportOutcome): string {
   const parts: string[] = [];
   if (outcome.created.length > 0) {
@@ -31,24 +30,20 @@ function outcomeSummary(outcome: TweetImportOutcome): string {
   return parts.join(" · ");
 }
 
-/** The detection the page opens: the first one created, else the first one the
- *  re-import overwrote. Never a skipped row: the import left those alone
- *  precisely because they are not its to edit (published, closed or withheld),
- *  so opening one on a review link would offer an edit that cannot land.
- *  Undefined when the run wrote nothing. */
+/** The first detection created, else the first the re-import overwrote. Never a
+ *  skipped row: those are not the import's to edit (published, closed or
+ *  withheld), so a review link would offer an edit that cannot land. */
 function firstDetectionId(outcome: TweetImportOutcome): string | undefined {
   return [...outcome.created, ...outcome.updated][0];
 }
 
-/** Whether the run wrote or matched anything at all. False is the failure
- *  shape: a refusal, or a post nothing could be stored from. */
+/** False is the failure shape: a refusal, or a post nothing could be stored from. */
 function wroteSomething(outcome: TweetImportOutcome): boolean {
   return (
     outcome.created.length > 0 || outcome.updated.length > 0 || outcome.skipped.length > 0
   );
 }
 
-/** The one line a finished run says: what it wrote, else why it wrote nothing. */
 function outcomeLine(outcome: TweetImportOutcome): string {
   const summary = outcomeSummary(outcome);
   if (summary) return summary;
@@ -60,20 +55,16 @@ function outcomeLine(outcome: TweetImportOutcome): string {
 
 /**
  * The "From an X post" entry: paste a link to one of your own posts and the
- * detection engine reads it into detections, the same rows the bot and the
- * archive backfill create. Own posts only, so the API compares the post's
- * author against the X account linked to your profile and answers
- * `not_your_post` otherwise; that message is rendered as-is.
+ * detection engine reads it into detections, like the bot and the archive
+ * backfill. The API answers `not_your_post` when the author differs from your
+ * linked X account; that message renders as-is.
  *
- * A clean run goes straight to the detection's review. A run with something to say
- * (warnings, a refusal, a post the import left as it is) stays here and says it,
- * with the review one click away when there is a detection to open, so nothing the
- * engine raised is lost in a redirect.
+ * A clean run goes straight to the detection's review. A run with warnings, a
+ * refusal, or a post left as it is stays here and says so, with the review one
+ * click away when there is a detection to open.
  *
- * The sentence for a warning or a refusal arrives with its code: the bot's
- * in-thread reply and the archive's outcome email read the same backend table,
- * so this page holds no copy of its own and cannot describe one code
- * differently from the other two entries.
+ * Warning and refusal sentences come with their code from the backend table the
+ * bot's reply and the archive email also read, so this page holds no copy.
  */
 export function ImportPostPanel() {
   const router = useRouter();
@@ -114,9 +105,8 @@ export function ImportPostPanel() {
             Import guide
           </Link>
         </p>
-        {/* The pair stacks below `sm`: the button's label stays on one line by
-            design, which at 320px leaves the URL field about 100px of a row
-            they share. */}
+        {/* Stacks below `sm`: at 320px the one-line button leaves the field
+            about 100px. */}
         <div className="flex max-sm:flex-col gap-2">
           <Input
             type="url"
@@ -140,9 +130,8 @@ export function ImportPostPanel() {
 
       {outcome && (
         <div className="space-y-3">
-          {/* A refusal and a post nothing could be stored from are failures,
-              so they read as one: the success banner over "no coordinate in
-              the post" told an analyst their paste had worked. */}
+          {/* A refusal or an unstorable post is a failure: a success banner
+              would tell the analyst the paste worked. */}
           <div className={wroteSomething(outcome) ? FORM_SUCCESS_BANNER : FORM_ERROR_BANNER}>
             {outcomeLine(outcome)}
           </div>

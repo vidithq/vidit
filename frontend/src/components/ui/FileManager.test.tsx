@@ -89,9 +89,8 @@ describe("FileManager", () => {
     ];
     render(<FileManager {...baseProps} items={items} />);
 
-    // The gate wraps the view trigger rather than sitting inside it, so the
-    // trigger is covered: inert takes it out of the tab order and the reveal
-    // control is what a click lands on.
+    // The gate wraps the trigger: inert drops it from the tab order and the reveal
+    // control takes the click.
     const reveal = screen.getByRole("button", {
       name: "Show graphic content (18 or older)",
     });
@@ -100,7 +99,6 @@ describe("FileManager", () => {
 
     fireEvent.click(reveal);
 
-    // Revealed: the tile is a normal view trigger again.
     expect(screen.getByAltText("thumb").closest("[inert]")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "View image" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();

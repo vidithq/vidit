@@ -5,18 +5,13 @@ import { TEXT_LINK } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
 
 /**
- * The "by @user" assembly used by the geolocation and request detail
- * subtitles, the map side panel header, and the detail body's Author row.
- * Text size and colour stay at the call site (a PageShell subtitle already
- * sets both); `size` scales the gap for the dense panel header; `avatar` leads
- * with the author's profile picture where the byline is the page's author
- * signature (the detail-page slots).
+ * The "by @user" assembly for the detail subtitles, the map side panel header
+ * and the detail body's Author row. Text size and colour stay at the call site;
+ * `size` scales the gap for the dense panel header; `avatar` leads with the
+ * profile picture where the byline is the page's author signature.
  *
- * `link={false}` is the same assembly without its anchor, for a slot that is
- * itself one click: a row covered by a stretched link cannot hold a second
- * link, which a mouse would reach and a keyboard would announce as a separate
- * stop. The handle stays readable and the profile is one tap away from
- * wherever that row leads.
+ * `link={false}` drops the anchor for a slot that is itself one click: a row
+ * under a stretched link cannot hold a second link (a separate keyboard stop).
  */
 export function AuthorByline({
   author,
@@ -30,17 +25,13 @@ export function AuthorByline({
     username: string;
     avatar_url?: string | null;
   };
-  /** Render the leading "by ". Off for slots whose label already says it
-   *  (the detail body's Author row). */
+  /** The leading "by ". Off where a label already says it. */
   prefix?: boolean;
-  /** `sm`: default; `xs`: the dense map-panel header (smaller gap). */
+  /** `xs` is the dense map-panel header (smaller gap). */
   size?: "sm" | "xs";
-  /** Lead with the author's avatar (initial fallback). Implies no "by "
-   *  prefix: picture + handle already read as a signature. */
+  /** Lead with the avatar; implies no "by " prefix. */
   avatar?: boolean;
-  /** Link the handle to the profile. Off inside a row that is already one
-   *  click (a history row's stretched link), where a nested anchor is a
-   *  target the mouse and the keyboard disagree about. */
+  /** Off inside a row that is already one click. */
   link?: boolean;
   className?: string;
 }) {

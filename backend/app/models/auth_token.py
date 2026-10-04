@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
-# Single source of truth for `purpose` values. Mirrored in the migration's CHECK.
+# Source of truth for `purpose` values; mirrored in the migration's CHECK.
 PURPOSE_PASSWORD_RESET = "password_reset"
 ALL_PURPOSES = (PURPOSE_PASSWORD_RESET,)
 
@@ -14,12 +14,9 @@ ALL_PURPOSES = (PURPOSE_PASSWORD_RESET,)
 class AuthToken(Base):
     """One row per outstanding password-reset token.
 
-    The raw secret is never stored — only `sha256(secret)` lands in
-    `token_hash`. A DB read reveals which users have outstanding tokens and
-    when they expire, but not the live values needed to log in or reset.
-
-    Single-use: `consume` flips `consumed_at`; the router refuses any token
-    whose row already has a non-null `consumed_at`.
+    Only `sha256(secret)` is stored in `token_hash`, so a DB read reveals who
+    holds tokens but not live values. Single-use: `consume` flips
+    `consumed_at`, and the router refuses a non-null one.
     """
 
     __tablename__ = "auth_tokens"

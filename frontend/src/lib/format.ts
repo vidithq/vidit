@@ -1,6 +1,3 @@
-/**
- * Format a date string (ISO or datetime) to "28 Mar 2026" format.
- */
 export function formatDate(input: string): string {
   const date = new Date(input);
   if (isNaN(date.getTime())) return input;
@@ -11,11 +8,7 @@ export function formatDate(input: string): string {
   });
 }
 
-/**
- * Format an activity-bucket month key for a reader: `2026-03` → "Mar 2026".
- *
- * An unparsable key renders as-is, the same fallback `formatDate` takes.
- */
+/** `2026-03` → "Mar 2026"; an unparsable key renders as-is. */
 export function formatMonth(period: string): string {
   const [year, month] = period.split("-");
   const date = new Date(Date.UTC(Number(year), Number(month) - 1, 1));
@@ -27,13 +20,8 @@ export function formatMonth(period: string): string {
   });
 }
 
-/**
- * Format a UTC instant (ISO datetime) as "28 Mar 2026, 14:30 UTC". Returns
- * the placeholder dash when `iso` is null (an unknown source post time, e.g.
- * a machine detection with no dated source): `new Date(null)` resolves to
- * the 1970 epoch instead of an invalid date, so the null case needs an
- * explicit check rather than relying on `isNaN(d.getTime())`.
- */
+/** A UTC instant as "28 Mar 2026, 14:30 UTC"; the placeholder dash for null. `new Date(null)`
+ * is the 1970 epoch, not invalid, so null needs its own check. */
 export function formatInstant(iso: string | null): string {
   if (iso === null) return "—";
   const d = new Date(iso);
@@ -53,12 +41,8 @@ export function formatInstant(iso: string | null): string {
   return `${date}, ${time} UTC`;
 }
 
-/**
- * An ISO instant → the value an `<input type="datetime-local">` expects
- * ("YYYY-MM-DDTHH:MM"), in UTC. Empty string on `null` or an unparseable
- * input (see `formatInstant` on why `null` needs its own check ahead of the
- * `new Date` parse).
- */
+/** An ISO instant as the UTC value an `<input type="datetime-local">` expects
+ * ("YYYY-MM-DDTHH:MM"); empty on null or unparseable input. */
 export function toDatetimeLocalUTC(iso: string | null): string {
   if (iso === null) return "";
   const d = new Date(iso);
@@ -66,10 +50,7 @@ export function toDatetimeLocalUTC(iso: string | null): string {
   return d.toISOString().slice(0, 16);
 }
 
-/**
- * Extract the hostname from a URL. Falls back to the raw input
- * if the URL is malformed (avoids throwing in render).
- */
+/** Hostname of a URL, or the raw input when malformed (never throws in render). */
 export function safeHostname(url: string): string {
   try {
     return new URL(url).hostname;

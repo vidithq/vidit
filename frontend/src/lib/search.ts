@@ -4,19 +4,14 @@ import type {
   SearchType,
 } from "@/types";
 
-/**
- * Hit ``GET /search``. Debouncing is the caller's job (the page wrapper
- * uses a 300ms useEffect timer). The endpoint short-circuits empty queries
- * server-side, so an over-eager debounce is an efficiency, not correctness, issue.
- */
+/** `GET /search`. Debouncing is the caller's job; the endpoint short-circuits empty queries. */
 export function search(opts: {
   q: string;
   type?: SearchType;
   limit?: number;
-  /** The standard event filter set (same vocabulary as /events and
-   *  /events/points); scopes the two event groups and empties the users
-   *  group. With an empty `q` and any active filter the backend browses the
-   *  filtered view (the profile's "Show more" entry point). */
+  /** The standard event filter set (as /events and /events/points); scopes the two event
+   *  groups and empties the users group. With an empty `q` and any filter the backend browses
+   *  the filtered view (the profile's "Show more"). */
   author?: string;
   status?: string[];
   conflict?: string[];
@@ -46,21 +41,11 @@ export function search(opts: {
   return apiFetch<SearchResponse>(`/search?${params.toString()}`);
 }
 
-/**
- * A `/search` URL scoped to one analyst: the profile's single entry point into
- * the filtered catalogue, shared by the Insights tiles, `RecentSubmissions`'
- * *Show more* and the Collections section's, so they cannot drift.
- *
- * `author` is an exact username match server-side
- * (`services/event_filters.apply_author_filter`), so the handle travels
- * verbatim, and the search page reads the scope back off `type` rather than
- * guessing. `type` defaults to the two event groups, since every filter below
- * is an event predicate; `collection` scopes to that analyst's shelf, the one
- * other group `author` narrows instead of emptying. `filters` takes the URL
- * vocabulary the search page parses (`status`, `conflict`, `capture_source`,
- * ...), one value per key, which is what a link off a single figure carries;
- * the panel on the page widens it from there.
- */
+/** A `/search` URL scoped to one analyst: the profile's one entry into the filtered catalogue
+ *  (Insights tiles, *Show more* links). `author` is an exact username match
+ *  (`services/event_filters.apply_author_filter`). `type` defaults to the event groups since
+ *  every filter is an event predicate; `collection` scopes to the analyst's shelf, the other
+ *  group `author` narrows. `filters` takes the search page's URL vocabulary, one value per key. */
 export function profileSearchHref(
   username: string,
   filters: Record<string, string> = {},
@@ -71,19 +56,12 @@ export function profileSearchHref(
   return `/search?${params.toString()}`;
 }
 
-/**
- * The `?author=` charset gate, mirroring the backend's
- * `AUTHOR_FILTER_PATTERN` (`services/event_filters.py`): the single frontend
- * source for "is this a committable author value". Anything else would 422
- * server-side and surface as a broken-looking error banner.
- */
+/** Mirrors `AUTHOR_FILTER_PATTERN` (`services/event_filters.py`); change both. Anything else
+ *  would 422. */
 export const AUTHOR_FILTER_RE = /^[A-Za-z0-9_-]{1,50}$/;
 
-/**
- * Username typeahead for the author filter: `GET /search/authors`. The
- * author filter is an exact match, so this picker is how a partial name
- * becomes a real handle (prefix matches first, capped server-side).
- */
+/** Username typeahead for the exact-match author filter: `GET /search/authors` (prefix
+ *  matches first). */
 export async function suggestAuthors(q: string): Promise<string[]> {
   const trimmed = q.trim();
   if (!trimmed) return [];
@@ -92,27 +70,16 @@ export async function suggestAuthors(q: string): Promise<string[]> {
   return res.authors;
 }
 
-/**
- * Split a sentinel-wrapped highlight string into alternating text + mark
- * segments. The backend (``services/search.py``) wraps matched fragments
- * with STX / ETX bytes (U+0002 / U+0003) — control bytes that never appear
- * in legitimate user text — and strips them from the source document
- * before ``ts_headline`` runs, so the response is well-formed regardless
- * of what's on disk. An earlier rev used ASCII ``[[HL]]`` / ``[[/HL]]``,
- * which a user could plant in their own bio or title to corrupt the
- * even/odd parity for everyone reading their content.
- *
- * Well-formed pairs make the even/odd-index split safe — no stateful
- * parser needed. Renders ``<mark>`` around matched fragments without
- * passing HTML across the API boundary (XSS-safe by construction).
- */
+/** Split a sentinel-wrapped highlight string into alternating text and mark segments. The
+ *  backend (`services/search.py`) wraps matches in STX / ETX (U+0002 / U+0003), control bytes
+ *  absent from user text, and strips them from the source first, so a user can't plant
+ *  markers to corrupt parity. Well-formed pairs make the even/odd split safe, and no HTML
+ *  crosses the API boundary (XSS-safe). */
 export function splitHighlights(s: string): Array<{
   text: string;
   highlighted: boolean;
 }> {
-  // Split on either sentinel byte — STX flips parity to "highlighted",
-  // ETX flips it back. Empty segments (consecutive sentinels) are kept so
-  // the odd/even-index parity holds.
+  // STX flips parity to highlighted, ETX flips it back. Empty segments are kept so parity holds.
   const parts = s.split(/[]/);
   return parts.map((text, i) => ({ text, highlighted: i % 2 === 1 }));
 }

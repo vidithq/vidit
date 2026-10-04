@@ -24,44 +24,28 @@ import {
  * The owner's shelving panel for one event: every collection they hold, each
  * with an on/off state, plus a row that opens a new one.
  *
- * It reads `GET /events/{id}/collections`, which is owner-only and lists empty
- * collections too, since putting the first event on one is what this panel is
- * for, and the `New collection` row is a link to the create page carrying this
- * event, which opens the collection with the event already on it and comes back
- * here. Each row is the app's boolean row (`<ToggleRow>`), so a tap anywhere on
- * it toggles rather than having to land on the track. It carries the
- * collection's item count as the row's `description`, which is what puts the
- * title at reading size: a title runs to 255 characters and the row's other
- * shape sets its label as a filter's 10px uppercase micro text. The count is
- * the line the surface has to say anyway, in the phrasing every collection
- * surface uses (`eventCountLabel`).
+ * Reads `GET /events/{id}/collections` (owner-only, empty collections included).
+ * `New collection` links to the create page carrying this event. Each row is a
+ * `<ToggleRow>` with the item count as its `description`, which sets the title
+ * at reading size (titles run to 255 characters).
  *
- * **The toggle is optimistic, and it rolls back.** Membership is one bit and
- * both writes are idempotent, so the row flips on the click and the request
- * follows it; a refusal puts the bit back where it was and says why in the
- * panel's one error banner. The count line moves with the bit, since the row
- * states what the collection holds and the click is what changes it. Waiting for the round trip instead would leave a
- * reader who is shelving several events watching a row that has not moved, and
- * a stale bit is the one failure a rollback fully undoes.
+ * **The toggle is optimistic and rolls back.** Membership is one bit and both
+ * writes are idempotent, so the row flips on the click; a refusal restores the
+ * bit and shows the error banner. The count moves with the bit.
  */
 export function AddToCollectionPanel({ eventId }: { eventId: string }) {
   const { data, error } = useApiResource<CollectionMemberships>(
     eventCollectionsPath(eventId),
   );
-  // The panel's own copy of the rows, so a toggle paints before its write
-  // lands. Seeded from the read rather than derived from it: what the reader
-  // sees after a click is local state the request either confirms or reverts.
+  // Local copy so a toggle paints before its write lands.
   const [rows, setRows] = useState<CollectionMembership[] | null>(null);
 
   useEffect(() => {
     if (data) setRows(data.items);
   }, [data]);
 
-  // The bit and the count move together: the count line under the title is
-  // what the collection holds, so shelving an event has to add to it rather
-  // than leaving the row saying the figure from before the click. A call that
-  // sets the bit it already holds changes nothing, which is what keeps a
-  // rollback from counting twice.
+  // The bit and the count move together. Setting the bit it already holds is a
+  // no-op, so a rollback never counts twice.
   const setMembership = (id: string, on: boolean) =>
     setRows((current) =>
       current === null
@@ -77,9 +61,7 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
           ),
     );
 
-  // `true` on success, `undefined` when the write threw (`useMutation.run`
-  // resolves to undefined then), which is what tells the caller to roll the
-  // row back. The hook owns the message either way.
+  // `undefined` when the write threw: the caller rolls back.
   const write = useMutation(
     async (collectionId: string, on: boolean) => {
       if (on) await addEventToCollection(collectionId, eventId);
@@ -106,9 +88,8 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
   return (
     <div className="space-y-4">
       {rows.length > 0 ? (
-        /* The dividers and the row padding are this list's, not the
-           primitive's: its described shape carries neither, the way the
-           settings card supplies both for its own two rows. */
+        /* The dividers and row padding are this list's: the described shape
+           carries neither. */
         <div className="divide-y divide-neutral-800">
           {rows.map((row) => (
             <ToggleRow
@@ -129,9 +110,6 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
 
       {write.error && <div className={FORM_ERROR_BANNER}>{write.error}</div>}
 
-      {/* Opening a collection is its own page, and it carries this event, so
-          the analyst lands back here with the row already on rather than
-          filling a form inside a panel over the event they are reading. */}
       <Link href={newCollectionHref(eventId)} className={buttonClasses("ghost")}>
         <Plus size={14} strokeWidth={1.8} />
         New collection

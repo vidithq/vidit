@@ -1,27 +1,6 @@
-"""End-to-end tests for the pre-creation registration flow.
+"""Pre-creation registration flow: register stages a pending row, confirm creates the user.
 
-The contract we want to lock in:
-
-* ``POST /auth/register`` does NOT create a ``users`` row. It stages
-  the request in ``pending_registrations`` and emails a confirmation
-  link.
-* ``POST /auth/confirm-registration`` consumes the token, creates the
-  ``users`` row, marks the invite consumed, and issues the session +
-  CSRF cookies.
-* Pending rows pin the email + username until either confirmation or
-  expiry. Re-registering with the same address while pending is in
-  flight returns a friendly "in flight" error rather than an opaque
-  500 on a unique-constraint violation.
-* The invite is held by the pending row (the FK) but its ``used_at``
-  is only stamped at confirmation: an abandoned signup must NOT burn
-  the invite.
-* The reaper drops expired rows.
-* All errors map to a documented HTTP status; the soft-verify
-  ``/auth/verify-email`` endpoint is gone.
-
-We monkeypatch ``email.send`` (the wire boundary) rather than the
-template helpers so the assertion is "we tried to send a link to the
-right address" without coupling to the prose of the email body.
+``email.send`` (the wire boundary) is patched, so assertions do not depend on email body prose.
 """
 
 from __future__ import annotations
@@ -42,8 +21,6 @@ from app.routers import auth as auth_router
 from app.services import email, registration
 from app.services.auth_cookies import CSRF_COOKIE, SESSION_COOKIE
 
-# ── Fixtures ──────────────────────────────────────────────────────────────
-
 
 @pytest.fixture
 def client():
@@ -61,7 +38,6 @@ def db():
 
 @pytest.fixture
 def email_recorder(monkeypatch):
-    """Capture every email.send() call in order."""
 
     sent: list[email.Email] = []
 
@@ -79,8 +55,7 @@ def invite_code(db):
     db.add(row)
     db.commit()
     yield row
-    # Cascading cleanup: drop any pending rows / users that reference
-    # this invite, then the invite itself.
+    # Drop pending rows and users that reference this invite, then the invite.
     db.query(PendingRegistration).filter(PendingRegistration.invite_code_id == row.id).delete()
     used_user_id = row.used_by
     db.delete(row)
@@ -108,9 +83,6 @@ def _extract_token(text: str) -> str:
     return text[idx:end]
 
 
-# ── Register: stages a pending row, sends the email, does NOT create user ──
-
-
 def test_register_returns_202_and_no_user_row(client, invite_code, email_recorder, db):
     payload = _unique_payload(invite_code)
     response = client.post("/api/v1/auth/register", json=payload)
@@ -119,7 +91,7 @@ def test_register_returns_202_and_no_user_row(client, invite_code, email_recorde
     assert body["email"] == payload["email"]
     assert body["status"] == "pending_confirmation"
 
-    # No user row yet — the pending row is holding the identity.
+    # No user row yet: the pending row holds the identity.
     assert db.query(User).filter(User.email == payload["email"]).first() is None
     pending = (
         db.query(PendingRegistration).filter(PendingRegistration.email == payload["email"]).first()
@@ -137,14 +109,13 @@ def test_register_returns_202_and_no_user_row(client, invite_code, email_recorde
 def test_register_does_not_set_session_cookie(client, invite_code, email_recorder):
     response = client.post("/api/v1/auth/register", json=_unique_payload(invite_code))
     assert response.status_code == 202
-    # No login cookie should be set — the user proves email control first.
+    # No login cookie until the user proves email control.
     assert SESSION_COOKIE not in client.cookies
     assert CSRF_COOKIE not in client.cookies
 
 
 def test_register_does_not_consume_invite(client, invite_code, email_recorder, db):
-    """An abandoned signup must NOT burn the invite. ``used_at`` is
-    stamped at confirmation time, not register time."""
+    """An abandoned signup does not burn the invite (``used_at`` is stamped at confirmation)."""
     client.post("/api/v1/auth/register", json=_unique_payload(invite_code))
     db.refresh(invite_code)
     assert invite_code.used_at is None
@@ -188,8 +159,7 @@ def test_register_rejects_when_email_is_pending(client, invite_code, email_recor
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
 
-    # Second register with the same email but a different username — must hit
-    # the friendly "in flight" branch, not an opaque DB error.
+    # Same email, different username: hits the "in flight" branch, not a DB error.
     again = {**payload, "username": f"alt{uuid.uuid4().hex[:6]}"}
     response = client.post("/api/v1/auth/register", json=again)
     assert response.status_code == 409
@@ -204,8 +174,7 @@ def test_register_rejects_when_email_is_pending(client, invite_code, email_recor
 
 
 def test_register_rejects_when_email_already_registered(client, invite_code, email_recorder, db):
-    # Pre-existing user with this email — register must error with the
-    # "account exists" message, not the "in flight" one.
+    # Existing user with this email: "account exists", not "in flight".
     existing_email = f"prev-{uuid.uuid4().hex}@example.com"
     user = User(
         username=f"prev{uuid.uuid4().hex[:8]}",
@@ -229,8 +198,7 @@ def test_register_rejects_when_email_already_registered(client, invite_code, ema
 
 
 def test_register_soft_deleted_user_still_blocks_email(client, invite_code, email_recorder, db):
-    """A soft-deleted user keeps its email bound — re-registration must
-    NOT slip past the live-user check."""
+    """A soft-deleted user keeps its email bound: re-registration is refused."""
     deleted_email = f"deleted-{uuid.uuid4().hex}@example.com"
     user = User(
         username=f"del{uuid.uuid4().hex[:8]}",
@@ -254,18 +222,12 @@ def test_register_soft_deleted_user_still_blocks_email(client, invite_code, emai
 def test_register_schedules_email_send_via_background_tasks(
     client, invite_code, email_recorder, monkeypatch
 ):
-    """The Resend round-trip must be scheduled, not called inline.
+    """The Resend round-trip is scheduled, not called inline.
 
-    Without this, the success branch is hundreds of ms slower than the
-    "already pending" / "already registered" error branches and leaks
-    state via response time. The TestClient runs BackgroundTasks
-    before handing us the response, so a "was it called?" check can't
-    distinguish "scheduled" from "called inline".
-
-    Instead we patch ``BackgroundTasks.add_task`` itself and assert
-    that the handler scheduled exactly one task with the
-    confirmation-sender as its callable. That catches a refactor that
-    quietly moves ``email.send`` back onto the request thread.
+    An inline call makes the success branch slower than the error branches
+    and leaks state via response time. TestClient runs BackgroundTasks before
+    returning, so the test patches ``BackgroundTasks.add_task`` and asserts one
+    task with the confirmation sender as callable.
     """
     from fastapi import BackgroundTasks
 
@@ -286,9 +248,6 @@ def test_register_schedules_email_send_via_background_tasks(
     assert kwargs.get("to") and kwargs.get("raw_token")
 
 
-# ── Confirm: creates the user, consumes the invite, signs them in ──
-
-
 def test_confirm_creates_user_and_signs_them_in(client, invite_code, email_recorder, db):
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
@@ -300,8 +259,7 @@ def test_confirm_creates_user_and_signs_them_in(client, invite_code, email_recor
     assert body["email"] == payload["email"]
     assert body["username"] == payload["username"]
 
-    # Session + CSRF cookies set in the same response so the analyst
-    # lands on the post-confirm page already logged in.
+    # Session and CSRF cookies arrive in the same response.
     assert SESSION_COOKIE in client.cookies
     assert CSRF_COOKIE in client.cookies
 
@@ -350,12 +308,10 @@ def test_confirm_with_expired_token_returns_400(client, invite_code, email_recor
 def test_confirm_with_revoked_invite_returns_400_and_releases_pending(
     client, invite_code, email_recorder, db
 ):
-    """Admin revokes the invite between register and confirm → 400, address released.
+    """Admin revokes the invite between register and confirm: 400, address released.
 
-    The pending row must be deleted (not rolled back) so the user can
-    re-register with a fresh invite without waiting 24h for the TTL.
-    Pins the "commit DELETE on dead-invite" behavior the seeder
-    review (round 3, C1) pushed back on.
+    The pending row is deleted (not rolled back) so the user can re-register
+    without waiting for the TTL.
     """
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
@@ -404,11 +360,9 @@ def test_confirm_with_expired_invite_returns_400_and_releases_pending(
 def test_confirm_with_already_consumed_invite_returns_400_and_releases_pending(
     client, invite_code, email_recorder, db
 ):
-    """Same invite consumed by another path (typo retry, two-tab paste) → 400,
-    address released so the loser can re-register under a fresh invite.
+    """Invite consumed by another path (two-tab paste) between register and confirm: 400, address released.
 
-    Without this guard the loser would loop forever on the dead invite
-    until the 24h pending TTL expired.
+    Without the guard the loser loops on the dead invite until the pending TTL.
     """
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
@@ -431,24 +385,20 @@ def test_confirm_with_already_consumed_invite_returns_400_and_releases_pending(
 
 
 def test_confirm_is_single_use(client, invite_code, email_recorder, db):
-    """A second click on the same link must fail — the pending row was
-    deleted by the first click, so the token is dead."""
+    """A second click on the same link fails: the first click deleted the pending row."""
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
     token = _extract_token(email_recorder[0].text)
 
     first = client.post("/api/v1/auth/confirm-registration", json={"token": token})
     assert first.status_code == 200
-    # Fresh client to avoid mixing cookie state from the first confirm.
+    # Fresh client: no cookie state from the first confirm.
     fresh = TestClient(app)
     second = fresh.post("/api/v1/auth/confirm-registration", json={"token": token})
     assert second.status_code == 400
 
     db.query(User).filter(User.email == payload["email"]).delete()
     db.commit()
-
-
-# ── Resend: idempotent, always 204 ──
 
 
 def test_resend_confirmation_returns_204_for_unknown_email(client, email_recorder):
@@ -463,8 +413,7 @@ def test_resend_confirmation_returns_204_for_unknown_email(client, email_recorde
 def test_resend_confirmation_re_sends_for_live_pending(client, invite_code, email_recorder, db):
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
-    # One email so far. Issue a resend; expect a second send with a
-    # *different* token (the old one is dead).
+    # The resend sends a second email with a different token (the old one is dead).
     first_token = _extract_token(email_recorder[0].text)
     response = client.post("/api/v1/auth/resend-confirmation", json={"email": payload["email"]})
     assert response.status_code == 204
@@ -474,9 +423,6 @@ def test_resend_confirmation_re_sends_for_live_pending(client, invite_code, emai
 
     response = client.post("/api/v1/auth/confirm-registration", json={"token": first_token})
     assert response.status_code == 400
-
-
-# ── Reaper ──
 
 
 def test_reap_pending_registrations_drops_expired_rows(db, invite_code):
@@ -498,18 +444,11 @@ def test_reap_pending_registrations_drops_expired_rows(db, invite_code):
     assert db.query(PendingRegistration).filter(PendingRegistration.id == row_id).first() is None
 
 
-# ── Race / IntegrityError mapping ──
-
-
 def test_integrity_constraint_lookup_email():
-    """Email UNIQUE name on the IntegrityError maps via psycopg's ``diag``.
+    """The IntegrityError constraint name maps to the email or username pending error via psycopg's ``diag``.
 
-    Unit-tests the constraint-extraction helper that decides whether a
-    UNIQUE-violation INSERT race surfaces ``EmailPendingError`` or
-    ``UsernamePendingError``. Driving this end-to-end (real race
-    against real Postgres) would require a controlled gap between
-    the application-layer SELECT and the INSERT in two sessions; the
-    helper's behavior is the part that's actually fragile.
+    Unit-tests the extraction helper: a real two-session INSERT race would need a
+    controlled gap after the SELECT.
     """
     from types import SimpleNamespace
 
@@ -524,12 +463,9 @@ def test_integrity_constraint_lookup_email():
 
 
 def test_integrity_constraint_lookup_falls_back_to_orig_text():
-    """Drivers without ``diag.constraint_name`` fall back to scanning ``str(orig)``.
+    """Drivers without ``diag.constraint_name`` fall back to scanning the driver message.
 
-    We deliberately do NOT scan ``str(exc)`` — that includes the
-    parametrised INSERT SQL with the column list, so a naive
-    substring search would always match every column name. The
-    fallback path only looks at the driver's own message.
+    ``str(exc)`` is not scanned: it includes the INSERT column list, which would match every column.
     """
     from sqlalchemy.exc import IntegrityError
 
@@ -544,19 +480,13 @@ def test_integrity_constraint_lookup_falls_back_to_orig_text():
 
 
 def test_integrity_constraint_lookup_ignores_str_exc_column_list():
-    """``str(IntegrityError)`` contains the SQL column list — it must NOT be
-    treated as constraint-name evidence.
+    """``str(IntegrityError)`` (which contains the SQL column list) is not constraint-name evidence.
 
-    The full str(exc) for a real users-table violation includes
-    ``INSERT INTO users (id, username, email, ...)``. If the helper
-    naively scans str(exc), it sees ``username`` and misattributes an
-    email collision as a username clash. This regression test pins
-    the helper to *driver-message* scanning only.
+    Scanning it would misattribute an email collision to ``username``.
     """
     from sqlalchemy.exc import IntegrityError
 
-    # Real email collision: orig says so, but the SQL message (the
-    # first arg) contains the column list with "username" in it.
+    # Email collision: orig says so, the SQL message lists "username".
     exc = IntegrityError(
         "INSERT INTO users (id, username, email) VALUES (...)",
         {},
@@ -586,11 +516,9 @@ def test_integrity_constraint_lookup_unknown_returns_none():
 
 
 def test_is_username_constraint_defaults_safe():
-    """``None`` constraint name routes to the email branch, NOT username.
+    """A ``None`` constraint name routes to the email branch, not username.
 
-    Pins the "unknown-driver default" mapping — a future refactor that
-    flips the default to username would silently invent username
-    clashes on every otherwise-unrecognised IntegrityError.
+    Flipping the default would invent username clashes on unrecognised errors.
     """
     assert registration._is_username_constraint(None) is False
     assert registration._is_username_constraint("something_unrecognised") is False
@@ -601,21 +529,16 @@ def test_is_username_constraint_defaults_safe():
 
 
 def test_consume_invite_code_does_not_over_consume_under_race(db, invite_code):
-    """A single-use invite must not be consumable twice.
+    """A single-use invite cannot be consumed twice.
 
-    Two threads calling ``consume_invite_code`` against the same
-    invite under READ COMMITTED would, with the previous
-    read-modify-write pattern, both observe it unredeemed and both
-    stamp it, the headline C1 regression. The atomic
-    ``UPDATE ... WHERE used_at IS NULL RETURNING`` guarantees one
-    winner.
+    Under READ COMMITTED a read-modify-write would let both threads stamp it;
+    the atomic ``UPDATE ... WHERE used_at IS NULL RETURNING`` has one winner.
     """
     import threading
 
     from app.services.auth import consume_invite_code
 
-    # Pre-create two real users so the FK on ``invite_codes.used_by``
-    # doesn't fail the test for an unrelated reason.
+    # Real users so the ``invite_codes.used_by`` FK does not fail the test.
     users = [
         User(
             username=f"race-u-{uuid.uuid4().hex[:8]}",
@@ -659,8 +582,7 @@ def test_consume_invite_code_does_not_over_consume_under_race(db, invite_code):
         winners = [r for r in results if r]
         assert len(winners) == 1, f"exactly one consume must succeed; got {winners}"
     finally:
-        # invite_codes.used_by FK is ON DELETE SET NULL; clear it
-        # before deleting the users to keep the audit row valid.
+        # used_by FK is ON DELETE SET NULL: clear it before deleting the users.
         for u in users:
             db.query(InviteCode).filter(InviteCode.used_by == u.id).update(
                 {"used_by": None, "used_at": None}
@@ -670,11 +592,10 @@ def test_consume_invite_code_does_not_over_consume_under_race(db, invite_code):
 
 
 def test_confirm_is_atomic_under_parallel_use(client, invite_code, email_recorder, db):
-    """Two concurrent confirms with the same token must not both create a user.
+    """Two concurrent confirms with the same token create one user.
 
-    The DELETE-RETURNING claim on ``pending_registrations`` is the
-    single-use guard. The losing thread sees zero rows and returns
-    the same opaque 400 as any other invalid-token failure.
+    The DELETE-RETURNING claim on ``pending_registrations`` is the single-use
+    guard; the loser sees zero rows and gets the opaque 400.
     """
     import threading
 
@@ -711,24 +632,19 @@ def test_confirm_is_atomic_under_parallel_use(client, invite_code, email_recorde
     db.commit()
 
 
-# ── Reaper (continued) ──
-
-
 def test_register_normalizes_email_case(client, invite_code, email_recorder, db):
-    """The ``Admin@vidit.app`` vs ``admin@vidit.app`` collision is the
-    admin-escalation vector: the case-sensitive UNIQUE on ``users.email``
-    would otherwise let both register, and ``maybe_promote_admin``'s
-    ``.lower()`` allowlist match would flip ``is_admin=True`` on both.
-    Lowercasing at the schema layer means the UNIQUE catches the second.
+    """``Admin@vidit.app`` vs ``admin@vidit.app`` is an admin-escalation vector.
+
+    The case-sensitive UNIQUE on ``users.email`` would let both register and
+    ``maybe_promote_admin`` (``.lower()`` match) would promote both. Lowercasing
+    at the schema layer makes the UNIQUE catch the second.
     """
     payload = _unique_payload(invite_code)
     payload["email"] = payload["email"].upper()
     response = client.post("/api/v1/auth/register", json=payload)
     assert response.status_code == 202, response.text
     assert response.json()["email"] == payload["email"].lower()
-    # And the pending row is keyed under the lowercased value, so a
-    # follow-up POST with the lowercase form hits the in-flight branch
-    # instead of slipping past the SELECT.
+    # The pending row is keyed lowercased, so a lowercase follow-up hits the in-flight branch.
     assert (
         db.query(PendingRegistration)
         .filter(PendingRegistration.email == payload["email"].lower())
@@ -759,9 +675,6 @@ def test_reap_pending_registrations_keeps_live_rows(db, invite_code):
         db.commit()
 
 
-# ── Invite-bound X handle ─────────────────────────────────────────────────
-
-
 def test_confirm_copies_invite_x_handle_onto_account(client, invite_code, email_recorder, db):
     bound = f"bh{uuid.uuid4().hex[:10]}"
     invite_code.x_handle = bound
@@ -784,9 +697,10 @@ def test_confirm_copies_invite_x_handle_onto_account(client, invite_code, email_
 def test_confirm_survives_taken_x_handle_and_skips_link(
     client, invite_code, email_recorder, db, caplog
 ):
-    """The handle got linked to another account between mint and redemption:
-    registration must still succeed, without the link (logged warning); the
-    admin x-handle endpoint is the repair path."""
+    """A handle linked to another account between mint and redemption: registration succeeds without the link.
+
+    The admin x-handle endpoint is the repair path.
+    """
     bound = f"bh{uuid.uuid4().hex[:10]}"
     holder = User(
         username=f"holder{uuid.uuid4().hex[:8]}",

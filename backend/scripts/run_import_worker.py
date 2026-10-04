@@ -1,19 +1,13 @@
 """The archive-import worker: drain the job queues, forever.
 
-The always-on Railway service behind ``POST /events/import-archive`` and the
-X webhook: claims ``archive_import_jobs`` rows (``FOR UPDATE SKIP LOCKED``,
-so a second worker is safe), runs the backfill off the API process, and
-emails the owner the outcome (see ``services/archive_jobs``); each pass also
-drains the ``bot_webhook_events`` queue through the shared mention pipeline
-(see ``services/bot``), the webhook endpoint only inserts and this always-on
-process is what answers the tag. Each drain pass opens a fresh session
-(shared across that pass's jobs; per-job failure isolation is the rollback
-inside ``process``), and a pass that dies outside job processing is captured
-and retried with a backoff instead of killing the service.
-
-    uv run python scripts/run_import_worker.py
-
-Also runnable with ``IMPORT_WORKER_ONCE=1`` for a single drain-and-exit pass
+The always-on Railway service behind ``POST /events/import-archive`` and the X
+webhook: claims ``archive_import_jobs`` rows (``FOR UPDATE SKIP LOCKED``, so a
+second worker is safe), runs the backfill off the API process and emails the
+owner the outcome (``services/archive_jobs``). Each pass also drains
+``bot_webhook_events`` through the shared mention pipeline (``services/bot``);
+the webhook endpoint only inserts. Each pass opens a fresh session shared
+across its jobs (per-job isolation is the rollback inside ``process``), and a
+pass that dies outside job processing is captured and retried with a backoff.
 (useful by hand and for a cron fallback).
 """
 
@@ -51,8 +45,8 @@ def _drain() -> int:
 
 def main() -> None:
     configure_logging()
-    # Same opt-in Sentry boot as the app and the bot cron: a failing import is
-    # durable (the job row lands ``failed``) but must page, not sit in logs.
+    # Same opt-in Sentry boot as the app and bot cron: a failed import lands the
+    # job row ``failed`` but must also page.
     init_sentry()
 
     if os.environ.get("IMPORT_WORKER_ONCE"):
@@ -62,10 +56,9 @@ def main() -> None:
 
     print("Import worker up; polling the queue.")
     while True:
-        # A pass that dies OUTSIDE process() (a transient DB outage, session
-        # construction) must not kill the always-on service:
-        # capture, back off, try again. Job-level failures are already landed
-        # and captured inside run_once.
+        # A pass dying outside process() (DB outage, session construction) must
+        # not kill the service: capture, back off, retry. Job-level failures are
+        # already landed and captured inside run_once.
         try:
             handled = _drain()
         except Exception:  # noqa: BLE001

@@ -3,17 +3,12 @@ import { join } from "node:path";
 
 import { ImageResponse } from "next/og";
 
-// The shared Satori frame every `opengraph-image.tsx` in the app renders into:
-// one canvas size, one font, one palette, one wordmark, one footer. Satori is a
-// known-bespoke surface (see AGENTS.md), so it does not compose the Tailwind
-// primitives, but the cards still resolve to a single home rather than one
-// hand-built layout per route.
+// The shared Satori frame every `opengraph-image.tsx` renders into: one canvas size, font,
+// palette, wordmark and footer. Satori is a known-bespoke surface (see AGENTS.md) so it
+// doesn't compose the Tailwind primitives. `_og` is a Next private folder: no route.
 //
-// `_og` is a Next private folder: it holds no route of its own.
-//
-// `runtime = "nodejs"` (not "edge") for the `readFileSync` below, and
-// `process.cwd()` for the path; the `outputFileTracingIncludes` rule in
-// `next.config.mjs` is what puts the .ttf in the function bundle on Vercel,
+// `runtime = "nodejs"` (not "edge") for the `readFileSync` below and `process.cwd()`; the
+// `outputFileTracingIncludes` rule in `next.config.mjs` puts the .ttf in the Vercel bundle,
 // without which every card request 500s with ENOENT.
 
 const MONTSERRAT_700 = readFileSync(
@@ -26,16 +21,13 @@ export const OG_SIZE = { width: 1200, height: 630 };
 export const OG_CONTENT_TYPE = "image/png";
 
 /**
- * Card palette, the hex values behind the Tailwind classes the app uses:
- * `neutral-950` surface, `neutral-900` panel, `neutral-800` border and minor
- * graticule, `neutral-700` major graticule, `neutral-600` coastline,
- * `orange-500` accent, and `neutral-100` / `neutral-400` / `neutral-500` type.
- * Satori takes no class names, so the scale is restated here as literals; it is
- * the one place the cards read colour from.
- *
- * `land` is the one value off that scale, a step between `neutral-900` and
- * `neutral-800`: it lifts the locator panel's landmass off the panel while
- * leaving the minor graticule visible where it crosses land.
+ * Card palette: hex values of the Tailwind classes the app uses (`neutral-950` surface,
+ * `neutral-900` panel, `neutral-800` border and minor graticule, `neutral-700` major
+ * graticule, `neutral-600` coastline, `orange-500` accent, `neutral-100` / `neutral-400` /
+ * `neutral-500` type). Satori takes no class names, so the scale is restated here, the one
+ * place cards read colour from. `land` is the one off-scale value, between `neutral-900` and
+ * `neutral-800`: it lifts the landmass off the panel and keeps the minor graticule visible
+ * across land.
  */
 export const OG_COLOR = {
   surface: "#0a0a0a",
@@ -52,11 +44,8 @@ export const OG_COLOR = {
   faint: "#737373",
 } as const;
 
-/**
- * The sidebar wordmark: accent `V` plus neutral `idit`. Satori only allows
- * `display: flex | block | none`, so it is a flex row whose two children carry
- * the colour contrast rather than a single styled string.
- */
+/** The sidebar wordmark: accent `V` plus neutral `idit`. Satori allows only
+ * `display: flex | block | none`, so two flex children carry the contrast. */
 export function OgWordmark({ fontSize = 40 }: { fontSize?: number }) {
   return (
     <div style={{ display: "flex", alignItems: "baseline", fontSize: `${fontSize}px` }}>
@@ -88,10 +77,8 @@ export function OgBadge({ label, tone = "neutral" }: { label: string; tone?: "ne
   );
 }
 
-/**
- * Card chrome: the wordmark and an optional badge on top, the caller's body in
- * the middle, `vidit.app` and an optional caption at the bottom.
- */
+/** Card chrome: wordmark and optional badge on top, the caller's body in the middle,
+ * `vidit.app` and optional caption at the bottom. */
 export function OgCard({
   badge,
   caption,
@@ -111,9 +98,8 @@ export function OgCard({
         padding: "64px",
         background: OG_COLOR.surface,
         color: OG_COLOR.text,
-        // Only the 700 cut is bundled; Satori falls back to its default font
-        // for any unloaded weight, so every node uses 700 and differentiates by
-        // size and colour, not weight.
+        // Only the 700 cut is bundled; Satori falls back to its default font for other weights,
+        // so every node uses 700 and differs by size and colour.
         fontFamily: "Montserrat",
         fontWeight: 700,
       }}
@@ -130,8 +116,8 @@ export function OgCard({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          // The body stretches to fill, so the footer needs its own clearance;
-          // without it a bottom-anchored stat row sits flush on the footer.
+          // The body stretches to fill, so the footer needs its own clearance or a bottom-anchored
+          // stat row sits flush on it.
           paddingTop: "28px",
           fontSize: "22px",
           color: OG_COLOR.faint,
@@ -144,17 +130,13 @@ export function OgCard({
   );
 }
 
-/**
- * The site-wide card body: headline and subhead, no per-route data. It is what
- * `/opengraph-image` renders, and what a data card falls back to when its
- * upstream read fails rather than answers, so a transient failure unfurls as
- * the platform instead of as a claim about the link.
- */
+/** The site-wide card body (headline and subhead). Renders at `/opengraph-image` and is what
+ * a data card falls back to when its upstream read fails, so a transient failure unfurls as
+ * the platform, not as a claim about the link. */
 export function OgDefaultBody() {
   return (
     <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
-      {/* Two-line layout via stacked divs because satori's flex line-break
-          support is unreliable. */}
+      {/* Stacked divs for the two lines: satori's flex line-break support is unreliable. */}
       <div
         style={{
           fontSize: "84px",
@@ -167,8 +149,7 @@ export function OgDefaultBody() {
         <div>The home for</div>
         <div>conflict geolocations.</div>
       </div>
-      {/* Subhead: smaller + neutral colour so it reads as subordinate to the
-          headline despite the shared 700 weight. */}
+      {/* Subhead: smaller and neutral so it reads as subordinate despite the shared 700 weight. */}
       <div
         style={{
           marginTop: "32px",
@@ -186,14 +167,9 @@ export function OgDefaultBody() {
   );
 }
 
-/**
- * What a data card answers with when its upstream read failed rather than
- * answered: the site-wide composition, and no claim about the link.
- *
- * The route also emits no title or description of its own on this path, so the
- * unfurl falls back to the site-wide metadata and the whole preview stays
- * neutral rather than mixing a "not found" headline with a generic image.
- */
+/** What a data card answers with when its upstream read failed: the site-wide composition,
+ * no claim about the link. The route also emits no title or description on this path, so the
+ * whole preview stays neutral. */
 export function ogFailedReadResponse(): ImageResponse {
   return ogImageResponse(
     <OgCard>
@@ -203,17 +179,11 @@ export function ogFailedReadResponse(): ImageResponse {
   );
 }
 
-/**
- * Render a card element at the shared size, with the bundled font attached.
- *
- * `noStore` marks the response as one a cache must not keep, which is what a
- * card built on a failed read needs: the failure is a second-long condition and
- * the image outlives it everywhere it is stored. It reaches the response
- * headers `next/og` emits, so it binds the CDN and any crawler that honours it;
- * a crawler that caches by its own policy regardless is not addressable from
- * here, which is the other half of why the failure card carries no not-found
- * copy: whatever it keeps, it keeps a neutral image.
- */
+/** Render a card element at the shared size with the bundled font. `noStore` marks the
+ * response uncacheable for a card built on a failed read (a second-long condition the image
+ * would otherwise outlive); it reaches the `next/og` headers, binding the CDN and honouring
+ * crawlers. A crawler with its own caching policy is out of reach, which is why the failure
+ * card carries no not-found copy. */
 export function ogImageResponse(
   element: React.ReactElement,
   { noStore = false }: { noStore?: boolean } = {},

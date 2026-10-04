@@ -1,9 +1,8 @@
 """Parametrized contract check: each typology resolves to its expected shape.
 
-Builds the geoloc tweet's record (or stitched thread) per typology, runs the
-shared ``resolve_threads`` core, and asserts every derived field of every detection
-against ``expected.json``. This is the offline unit boundary; the archive
-integration lives in ``test_archive_contract``.
+Runs the shared ``resolve_threads`` core per typology and asserts every derived field of
+every detection against ``expected.json``. Offline; the archive integration lives in
+``test_archive_contract``.
 """
 
 from __future__ import annotations
@@ -40,8 +39,7 @@ def _roles(media: list[Any]) -> list[list[str]]:
 
 @pytest.mark.parametrize("typology", loader.typology_names())
 def test_typology_resolves_to_expected(typology: str, tmp_path: Path) -> None:
-    """One detection per coordinate the typology carries, each with the source,
-    dates, title and media split the shared expectation names."""
+    """One detection per coordinate, each with the source, dates, title and media split the expectation names."""
     expected = loader.load_expected(typology)
     resolution = resolve_threads([loader.thread_for(typology, tmp_path)])
 
@@ -71,12 +69,7 @@ def test_typology_resolves_to_expected(typology: str, tmp_path: Path) -> None:
 
 
 def test_marker_lines_reach_the_proof_as_typed(tmp_path: Path) -> None:
-    """The ``T:`` / ``C:`` / ``S:`` convention: the markers are the analyst's own
-    words, so nothing strips them. The proof keeps the whole marker block, the
-    ``C:`` coordinate line included, with the ``S:`` shortlink expanded back to
-    the status it points at. The bot tag is the one thing that goes, being
-    addressing rather than content. The title the same block derives is pinned
-    by the parametrized contract above."""
+    """The ``T:`` / ``C:`` / ``S:`` markers are the analyst's own words and are kept in the proof, with ``S:`` expanded to its status; only the bot tag (addressing, not content) goes."""
     typology = "marker_lines"
     detection = _detection(loader.thread_for(typology, tmp_path))
     assert detection.proof_text == loader.load_expected(typology)["proof_text"]
@@ -85,11 +78,7 @@ def test_marker_lines_reach_the_proof_as_typed(tmp_path: Path) -> None:
 def test_x_status_link_chase_fills_source_from_chased_tweet(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The archive chase branch: an X status link with no inline quote resolves
-    its source from the chased tweet (its canonical url, date, and media), while
-    the OP's own photo stays proof. The archive reader chases at read time; the
-    live entries chase inside ``acquire_thread``, and both land on the shared
-    expectation."""
+    """The archive chase branch: an X status link with no inline quote takes its source from the chased tweet, while the OP's own photo stays proof."""
     import app.services.tweet_ingest.archive as archive_mod
     import app.services.tweet_ingest.chase.x as x_chase_mod
 
@@ -98,7 +87,7 @@ def test_x_status_link_chase_fills_source_from_chased_tweet(
     expected = loader.load_expected(typology)
     chased_body = loader.load_chased(typology, expected["chased_status_id"])
 
-    # The OP as a single archive tweet carrying the x-status link + its photo.
+    # The OP as one archive tweet with the x-status link and its photo.
     archive = tmp_path / "chase_archive"
     (archive / "tweets_media").mkdir(parents=True)
     entry, files = loader.archive_tweet_from_body(body)
@@ -128,12 +117,7 @@ def _telegram_record(
     *,
     extra_links: list[SourceLink] | None = None,
 ) -> TweetRecord:
-    """A geoloc tweet linking a t.me post, with an optional chased footage.
-
-    One OP photo (annotation) and a Telegram link. ``telegram`` is the chased
-    embed (or ``None`` for the no-chase path); ``extra_links`` adds more links to
-    exercise the ambiguity rule.
-    """
+    """A geoloc tweet linking a t.me post: one OP photo, a Telegram link, an optional chased embed (``telegram``) and ``extra_links`` for the ambiguity rule."""
     return TweetRecord(
         tweet_id="8400000000000000001",
         handle="osint_stork",
@@ -168,8 +152,7 @@ def test_chased_telegram_sensitive_is_date_only() -> None:
 
 
 def test_unchased_telegram_link_is_link_only() -> None:
-    """The no-chase path (record carries no footage): link source, no date, no
-    source media, the ``telegram_link`` contract."""
+    """The no-chase path: link source, no date, no source media (the ``telegram_link`` contract)."""
     detection = _detection([_telegram_record(None)])
     assert detection.source_url == _TG_URL
     assert detection.source_posted_at is None
@@ -177,8 +160,7 @@ def test_unchased_telegram_link_is_link_only() -> None:
 
 
 def test_two_candidate_links_leave_the_source_empty() -> None:
-    """Two candidate links make the source ambiguous; even a chased Telegram
-    footage is dropped and the source stays empty for review."""
+    """Two candidate links make the source ambiguous: even chased Telegram footage is dropped and the source stays empty for review."""
     footage = TelegramFootage(url=_TG_URL, posted_at="2026-03-04T09:00:00+00:00", media=[])
     record = _telegram_record(
         footage,
@@ -188,8 +170,7 @@ def test_two_candidate_links_leave_the_source_empty() -> None:
     assert detection.source_url is None
     assert detection.source_posted_at is None
     assert detection.source_media == []
-    # No primary was picked, so both candidates land as mirrors and the owner
-    # promotes one at review rather than losing them.
+    # Both candidates land as mirrors so the owner can promote one at review.
     assert detection.secondary_source_urls == [
         _TG_URL,
         "https://www.youtube.com/watch?v=FAKEVIDEO01",
@@ -197,8 +178,7 @@ def test_two_candidate_links_leave_the_source_empty() -> None:
 
 
 def test_second_link_becomes_a_secondary_source() -> None:
-    """A quoted footage tweet outranks links and takes the source slot; the
-    mirror the OP also linked lands as a secondary source."""
+    """A quoted footage tweet outranks links and takes the source slot; the OP's own link lands as a secondary source."""
     record = TweetRecord(
         tweet_id="8400000000000000009",
         handle="osint_stork",
@@ -229,8 +209,7 @@ def _links_record(links: list[SourceLink]) -> TweetRecord:
 
 
 def test_primary_link_is_not_repeated_as_a_secondary() -> None:
-    """The source link written in another spelling (``twitter.com``, a tracking
-    query) is the primary, not a mirror of it."""
+    """The source link in another spelling (``twitter.com``, a tracking query) is the primary, not a mirror."""
     status = "https://x.com/source_gull/status/8500000000000000002"
     detection = _detection(
         [
@@ -248,9 +227,7 @@ def test_primary_link_is_not_repeated_as_a_secondary() -> None:
 
 
 def test_tracking_query_spelling_of_the_primary_is_not_a_mirror() -> None:
-    """The identity strip is what drops it: same video id, share provenance only
-    in the query, so the second spelling is one link and the slot is not
-    ambiguous."""
+    """Same video id with share provenance only in the query is one link, so the slot is not ambiguous."""
     video = "https://www.youtube.com/watch?v=FAKEVIDEO01"
     detection = _detection(
         [_links_record([SourceLink(video), SourceLink(f"{video}&si=abc123&utm_source=x")])]
@@ -260,9 +237,7 @@ def test_tracking_query_spelling_of_the_primary_is_not_a_mirror() -> None:
 
 
 def test_distinct_videos_sharing_a_path_are_two_candidates() -> None:
-    """Two YouTube ids on the one ``/watch`` path are two links, so the source is
-    ambiguous and both land as mirrors: one identity rule, and it reads the
-    query because that is where the video id lives."""
+    """Two YouTube ids on one ``/watch`` path are two links (the identity rule reads the query), so the source is ambiguous and both land as mirrors."""
     first = "https://www.youtube.com/watch?v=FAKEVIDEO01"
     second = "https://www.youtube.com/watch?v=FAKEVIDEO02"
     detection = _detection([_links_record([SourceLink(first), SourceLink(second)])])
@@ -271,8 +246,7 @@ def test_distinct_videos_sharing_a_path_are_two_candidates() -> None:
 
 
 def test_a_maps_link_is_never_a_source() -> None:
-    """A Google Maps link is where the coordinate came from, not the footage, so
-    it is excluded from the candidates and the thread stays sourceless."""
+    """A Google Maps link is where the coordinate came from, not the footage: it is not a candidate."""
     detection = _detection(
         [_links_record([SourceLink("https://www.google.com/maps/@44.6123,33.5221,15z")])]
     )
@@ -281,8 +255,7 @@ def test_a_maps_link_is_never_a_source() -> None:
 
 
 def test_an_article_link_is_a_source() -> None:
-    """Host-blind: a link on no chase-vocabulary host is a candidate like any
-    other, so a sole article link fills the slot link-only."""
+    """Host-blind: a link on no chase-vocabulary host is a candidate like any other, so a sole article link fills the slot link-only."""
     article = "https://example-news.test/2026/03/04/strike-report"
     detection = _detection([_links_record([SourceLink(article)])])
     assert detection.source_url == article
@@ -290,8 +263,7 @@ def test_an_article_link_is_a_source() -> None:
 
 
 def test_a_retweet_produces_nothing() -> None:
-    """A post opening on the retweet prefix carries someone else's words, so the
-    engine reads no thread at all."""
+    """A post opening on the retweet prefix carries someone else's words, so the engine reads no thread."""
     record = _links_record([])
     retweet = TweetRecord(
         tweet_id=record.tweet_id,
@@ -305,8 +277,7 @@ def test_a_retweet_produces_nothing() -> None:
 
 
 def test_every_typology_has_both_fixture_files() -> None:
-    """Guard the catalogue: each typology ships a body and an expected file so a
-    half-added typology fails loudly here, not as a confusing KeyError later."""
+    """Each typology ships a body and an expected file, so a half-added typology fails loudly here."""
     for typology in loader.typology_names():
         assert (loader.FIXTURES_DIR / typology / "body.json").is_file()
         assert (loader.FIXTURES_DIR / typology / "expected.json").is_file()
@@ -316,10 +287,7 @@ _ENTRY_PATHS = ("bot", "paste", "archive")
 
 
 def test_no_entry_answers_a_typology_differently() -> None:
-    """The gate of the one-grammar rework: the three entries read one grammar,
-    so no ``paths.<entry>`` block may override what a typology resolves to. A
-    block may only pin that entry's own vocabulary (the bot's failure reason) or
-    skip a shape it cannot be pointed at."""
+    """No ``paths.<entry>`` block may override what a typology resolves to: only the entry's own vocabulary (the bot's failure reason) or a ``skip``."""
     for typology in loader.typology_names():
         paths = loader.load_expected(typology).get("paths", {})
         assert set(paths) <= set(_ENTRY_PATHS), typology
@@ -328,8 +296,7 @@ def test_no_entry_answers_a_typology_differently() -> None:
 
 
 def test_every_skip_carries_its_reason() -> None:
-    """A declared gap says why in prose, which is what makes the declaration
-    worth more than a name left out of a test module."""
+    """A declared gap says why in prose."""
     for typology in loader.typology_names():
         for entry, block in loader.load_expected(typology).get("paths", {}).items():
             skip = block.get("skip")

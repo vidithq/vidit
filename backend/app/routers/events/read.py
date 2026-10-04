@@ -72,23 +72,15 @@ def _build_points_cache_key(
 ) -> str:
     """Hash the filter tuple into a collision-safe ``points_cache`` key.
 
-    The previous colon-join (``f"points:{conflict}:{tag}:..."``) collapsed
-    any colon-carrying value to the same key — ``conflict="a:b"`` vs
-    ``conflict="a", tag="b"`` — so the second request silently served the
-    first's cached payload. Hashing a structured ``orjson`` tuple makes
-    separator collisions impossible and bounds key length.
+    A structured ``orjson`` tuple makes separator collisions impossible (a
+    colon-join would alias ``conflict="a:b"`` with ``conflict="a", tag="b"``).
+    List filters are sorted so click order doesn't change the key.
 
-    List-shaped filters (``conflict``, ``tag``) are sorted before
-    serialisation so the same logical filter set hashes alike regardless
-    of the order the chips were clicked.
-
-    ``bbox`` is the float tuple already snapped onto the server-side grid
-    (:func:`snap_bbox`), never the raw client box: raw boxes arrive at the
-    client's own precision, so they key near-uniquely and a caller cycling
-    a low decimal would evict every other entry from the LRU. Snapped, two
-    viewports in the same cell share an entry, and because the same tuple
-    also builds the query predicate, a cached payload can never be served
-    for a box it wasn't computed for.
+    ``bbox`` is the box already snapped onto the server-side grid
+    (:func:`snap_bbox`), never the raw client box: raw boxes key near-uniquely
+    and would evict every other LRU entry. The same tuple builds the query
+    predicate, so a cached payload is never served for a box it wasn't computed
+    for.
     """
     payload = orjson.dumps(
         [
@@ -112,15 +104,10 @@ def _build_points_cache_key(
 @limiter.limit("60/minute")
 def list_points(
     request: Request,
-    # Required, so the payload tracks the area the caller asked for. The map's
-    # own path is viewport-sized, and a missing or malformed value is a 422:
-    # sweeping the catalog now costs a deliberate world-sized parameter rather
-    # than a bare GET. Nothing caps the area, because the map legitimately asks
-    # for the world box at low zoom.
+    # Required so the payload tracks the asked area; missing or malformed is a
+    # 422. Uncapped because the map asks for the world box at low zoom.
     bbox: str = Query(..., description="south,west,north,east, four floats"),
-    # ``conflict``, ``capture_source`` and ``tag`` accept multiple values
-    # (``?tag=a&tag=b``); a single ``?tag=a`` parses to ``["a"]``, so older
-    # single-select clients keep working.
+    # Multi-value (``?tag=a&tag=b``); a single value parses to a one-item list.
     conflict: list[str] | None = Query(None),
     capture_source: list[str] | None = Query(None),
     tag: list[str] | None = Query(None),
@@ -129,35 +116,25 @@ def list_points(
     submitted_from: str | None = None,
     submitted_to: str | None = None,
     author: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
-    # ``media`` accepts multiple values (``?media=image&media=video``); an event
-    # matches if it has any attachment of a listed type.
+    # Multi-value; an event matches if it has any attachment of a listed type.
     media: list[str] | None = Query(None),
     db: Session = Depends(get_db),
 ):
     """Return the map's events inside ``bbox`` as a compact array:
     ``[[id, lat, lng, event_date, added_date, detected], ...]``.
-    No joins, designed for map display with client-side clustering.
-    ``bbox`` (``south,west,north,east``) is required and bounds the payload
-    by the area asked for rather than by catalog size; a missing or malformed
-    value returns 422 (see :func:`parse_bbox` for the accepted shape).
-    Live ``geolocated`` / ``detected`` rows with a subject coordinate only: a
-    ``requested`` guess is not a confident pin, and a closed row was judged
-    out. ``event_date`` and ``added_date`` (the ``created_at`` calendar day)
-    are ISO ``YYYY-MM-DD`` strings; ``event_date`` is ``null`` when unknown
-    (the column is optional) and the frontend then leaves that point out of
-    the event-date scrubber instead of hiding it. The frontend buckets the
-    dates for the two timeline scrubbers and filters the windows client-side
-    (no refetch per drag). ``detected`` is ``1`` for a machine detection
-    (rendered marked), ``0`` for a geolocated row: a flag, not a status string,
-    to keep the payload small. Cached in-memory for 60s per unique
-    bbox + filter combination, the bbox first snapped outward onto a fixed
-    server-side grid (see :func:`snap_bbox`).
+
+    No joins, built for client-side clustering. ``bbox``
+    (``south,west,north,east``) is required and bounds the payload by area; a
+    missing or malformed value is a 422 (:func:`parse_bbox`). Live
+    ``geolocated`` / ``detected`` rows with a subject coordinate only. Dates
+    are ISO ``YYYY-MM-DD`` (``added_date`` is the ``created_at`` day);
+    ``event_date`` is ``null`` when unknown. ``detected`` is a 1/0 flag, not a
+    status string, to keep the payload small. Cached in memory for 60s per
+    snapped bbox + filter combination (:func:`snap_bbox`).
     """
     validate_media_types(media)
-    # Parse before any cache work: a malformed box must 422 rather than key
-    # (and cache) off a string the query would never run with. Snap once, then
-    # use the snapped box for both the key and the predicate, so the cached
-    # payload always covers exactly the box its key names.
+    # Parse before any cache work so a malformed box 422s instead of being
+    # cached. The snapped box feeds both the key and the predicate.
     bounds = snap_bbox(parse_bbox(bbox))
     cache_key = _build_points_cache_key(
         bbox=bounds,
@@ -200,9 +177,8 @@ def list_points(
         author=author,
         media=media,
     )
-    # Map-only narrowing on top of the located view: a closed detection stays
-    # on the list (audit trail) but comes off the map, a coordinate is
-    # required for a pin at all, and the viewport bounds the rest.
+    # Map-only narrowing: a closed detection stays on the list but leaves the
+    # map, and a pin needs a coordinate inside the viewport.
     q = q.filter(
         Event.status.in_((STATUS_GEOLOCATED, STATUS_DETECTED)),
         Event.event_coords.isnot(None),
@@ -210,9 +186,7 @@ def list_points(
     )
 
     rows = q.all()
-    # Compact 6-tuple: [id, lat, lng, event_date, added_date, detected].
-    # ``detected`` is a 1/0 flag (not a status string) so the no-LIMIT payload
-    # stays small; the map colours the marker off it.
+    # Compact 6-tuple; ``detected`` is a 1/0 flag to keep the no-LIMIT payload small.
     result = [
         [
             str(r.id),
@@ -242,9 +216,7 @@ def list_events(
     request: Request,
     response: Response,
     view: str = Query("located"),
-    # ``status`` accepts multiple values (``?status=a&status=b``, any-match);
-    # a single ``?status=a`` parses to ``["a"]``, so older single-select
-    # callers keep working.
+    # Multi-value, any-match; a single value parses to a one-item list.
     status: list[str] | None = Query(None),
     conflict: list[str] | None = Query(None),
     capture_source: list[str] | None = Query(None),
@@ -262,14 +234,12 @@ def list_events(
     """Newest-first cards for one lifecycle view.
 
     ``view=located`` (default) is the catalog; ``view=requested`` the open-call
-    queue (ex ``/requests``). Two-step "ids then full rows" shape so eager-loads
-    can't inflate the LIMIT count.
+    queue. Two steps (ids, then full rows) so eager-loads can't inflate the
+    LIMIT count.
 
-    Capped at 100 rows however large ``limit`` is; a caller reading past the
-    first page follows the ``cursor`` in the ``Link: rel="next"`` header, which
-    is present exactly when a next page holds at least one row. Ordering is
-    ``created_at DESC, id DESC``, total by construction, so a walk cannot
-    duplicate or skip a row when rows land mid-walk.
+    Capped at 100 rows however large ``limit`` is; the ``Link: rel="next"``
+    cursor is present exactly when a next page holds a row. Ordering is
+    ``created_at DESC, id DESC``, total, so a walk can't duplicate or skip rows.
     """
     if view not in VIEWS:
         raise HTTPException(
@@ -278,7 +248,7 @@ def list_events(
     validate_status_filter(status)
     size = page_size(limit)
 
-    # Step 1: get IDs with limit (no joins that inflate rows)
+    # Step 1: ids with the limit (no row-inflating joins)
     id_query = apply_filters(
         db.query(Event.id, Event.created_at),
         view=view,
@@ -297,8 +267,7 @@ def list_events(
     if cursor is not None:
         id_query = id_query.filter(keyset_before(Event.created_at, Event.id, decode_cursor(cursor)))
 
-    # One row past the page: presence of the extra row is what decides whether
-    # a ``Link: rel="next"`` goes out at all.
+    # One row past the page decides whether a ``Link: rel="next"`` goes out.
     window = id_query.order_by(Event.created_at.desc(), Event.id.desc()).limit(size + 1).all()
     keys, has_next = take_page(window, size)
 
@@ -310,7 +279,7 @@ def list_events(
         last = keys[-1]
         response.headers["Link"] = next_link(request, encode_cursor(last.created_at, last.id))
 
-    # Step 2: load full objects + coordinates in one query
+    # Step 2: full objects + coordinates in one query
     rows = (
         db.query(
             Event,
@@ -318,19 +287,16 @@ def list_events(
             ST_X(Event.event_coords).label("lng"),
         )
         .options(
-            # ``selectinload`` (IN on the page's ids), never ``subqueryload``:
-            # combined with ``.and_()`` criteria, subqueryload loses the outer
-            # query's correlation when SQLAlchemy serves the statement from its
-            # compiled cache, and the media branch degrades into a scan of the
-            # whole table (~4s per request on a populated database).
+            # ``selectinload``, never ``subqueryload``: with ``.and_()`` criteria
+            # subqueryload loses the outer correlation on a compiled-cache hit
+            # and the media branch scans the whole table (~4s per request).
             selectinload(Event.owner),
             selectinload(Event.tags),
             selectinload(Event.conflicts),
             selectinload(Event.media.and_(thumbnail_media_criteria())),
         )
         .filter(Event.id.in_(ids))
-        # Same total ordering as the id window above, so the hydrated page
-        # comes back in the order the cursor was cut from.
+        # Same ordering as the id window, so the page matches the cursor.
         .order_by(Event.created_at.desc(), Event.id.desc())
         .all()
     )
@@ -351,30 +317,20 @@ def list_detections(
 ):
     """The caller's ``detected`` events awaiting a geolocate, newest first.
 
-    Owner-scoped to ``current_user`` (never the ``{username}`` in any URL): the
-    "Detections" queue behind ``/profile/{username}/detections`` where a
-    ``detected`` row becomes ``geolocated`` over time. Returns full
-    ``EventRead`` (media + tags) so the queue shows the evidence and names, per
-    row, what a detection is still missing with no per-row round-trip. Ordered by
-    ``created_at DESC, id DESC``: the latest import is the first thing to
-    triage.
+    Owner-scoped to ``current_user`` (never a URL username): the Detections
+    queue. Returns full ``EventRead`` so the queue shows evidence and what each
+    detection still lacks without a per-row round-trip. Ordered by
+    ``created_at DESC, id DESC``.
 
-    ``readiness`` narrows the queue server-side to the detections that clear the
-    publish floor (``ready``) or to those that don't (``incomplete``), ``all``
-    being the whole queue; anything else is a 422, as ``view`` is on
-    :func:`list_events`. The floor is :func:`detection_ready_predicate`, the SQL
-    projection of the one ``services/events/batch._publish_detection``
-    enforces. Filtering here rather than over the loaded page is the point: the
-    queue pages at 10 rows over imports of several hundred, so a page-local
-    filter answers about ten detections while the analyst reads it as an answer
-    about the queue.
+    ``readiness`` narrows the queue server-side to detections that clear the
+    publish floor (``ready``), those that don't (``incomplete``), or ``all``;
+    anything else is a 422. The floor is :func:`detection_ready_predicate`, the
+    SQL projection of ``services/events/batch._publish_detection``. Filtering
+    here, not over the loaded page, because the queue pages at 10 rows over
+    imports of hundreds.
 
-    ``total`` counts the filtered set, so the page arithmetic describes what is
-    being walked; ``ready_total`` and ``incomplete_total`` always count the
-    whole queue, so the two numbers are readable at a glance under any
-    ``readiness`` and without paging.
-
-    Walked with the ``page`` / ``per_page`` offset pager the queue renders,
+    ``total`` counts the filtered set; ``ready_total`` and ``incomplete_total``
+    always count the whole queue. Offset-paged (``page`` / ``per_page``),
     capped at 100 rows per page.
     """
     if readiness not in DETECTION_READINESS:
@@ -382,9 +338,8 @@ def list_detections(
             status_code=422,
             detail=f"readiness must be one of: {', '.join(sorted(DETECTION_READINESS))}",
         )
-    # A too-large page size is clamped (over-asking buys nothing, it isn't an
-    # error); below-1 values are 422 at the ``Query(ge=1)`` gate rather than a
-    # negative OFFSET / non-positive LIMIT, which Postgres answers with a 500.
+    # Over-large sizes are clamped; below 1 is a 422 at ``Query(ge=1)`` (a
+    # non-positive LIMIT / negative OFFSET would be a Postgres 500).
     per_page = page_size(per_page)
 
     detected = (
@@ -394,9 +349,7 @@ def list_detections(
     )
     ready = detection_ready_predicate()
 
-    # Both counts in one pass with ``FILTER``, rather than a count per branch:
-    # the payload carries them whatever ``readiness`` asks for, and the filtered
-    # total is one of the two (or their sum) rather than a third query.
+    # Both counts in one ``FILTER`` pass; the filtered total derives from them.
     ready_total, incomplete_total = (
         db.query(
             func.count().filter(ready),
@@ -426,13 +379,10 @@ def list_detections(
             ST_Y(Event.capture_source_coords).label("capture_lat"),
             ST_X(Event.capture_source_coords).label("capture_lng"),
         )
-        # The loader rule for every paged event query (this one, the user
-        # geolocations page, the follow timeline): ``selectinload`` for the
-        # many-to-many / one-to-many sets, because a ``joinedload`` would
-        # row-multiply against ``LIMIT`` and silently truncate the page.
-        # ``joinedload`` is safe only for the many-to-one owner / requested_by
-        # (no inflation; here always NULL on a detection, loaded to skip a
-        # lazy hit).
+        # Loader rule for every paged event query: ``selectinload`` for
+        # many-to-many / one-to-many sets, since ``joinedload`` would
+        # row-multiply against ``LIMIT`` and truncate the page. ``joinedload``
+        # is safe only for many-to-one owner / requested_by.
         .options(
             joinedload(Event.owner),
             joinedload(Event.requested_by),

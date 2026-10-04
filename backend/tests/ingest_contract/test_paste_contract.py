@@ -1,15 +1,9 @@
 """Paste entry contract: every typology through the pasted-post import.
 
-The paste's detection half is its own acquisition
-(``tweet_ingest.acquire_pasted_thread``, the URL parsed once then the shared one
-hop) followed by the engine (``resolve_threads``), which is what
-``detection.import_pasted_post`` runs before it writes. It runs here against the
-same typology fixtures the other consumers use, offline (a ``MockTransport``
-over the typology's bodies) and with no DB, so what this file pins is that the
-paste's entry answers what the shared expectation says.
-
-Each typology's expected value is ``expected.json``'s top level. A
-``paths.paste`` block holds only a ``skip`` for a shape no live post can carry.
+Runs ``tweet_ingest.acquire_pasted_thread`` then ``resolve_threads`` (what
+``detection.import_pasted_post`` runs before writing) offline (``MockTransport``, no DB)
+against the shared typology fixtures. Expected values are ``expected.json``'s top level;
+a ``paths.paste`` block holds only a ``skip``.
 """
 
 from __future__ import annotations
@@ -38,9 +32,7 @@ def test_typology_matches_the_paste_contract(typology: str) -> None:
 
 @pytest.mark.parametrize("typology", ["mirror_telegram_no_coord", "mirror_x_status_no_coord"])
 def test_a_coordinate_less_mirror_post_drafts_nothing_for_the_paste(typology: str) -> None:
-    """The second exit is opened per call and the paste never asks: the two
-    mirror shapes the bot opens a request for are a plain ``coords_missing``
-    refusal here, which is what the analyst has always been answered with."""
+    """The paste never opens the second exit: mirror shapes the bot drafts a request for are a plain ``coords_missing`` refusal here."""
     body = loader.load_body(typology)
     with loader.syndication_client(typology) as client:
         acquired = acquire_pasted_thread(loader.owner_url(body), client=client)
@@ -51,9 +43,7 @@ def test_a_coordinate_less_mirror_post_drafts_nothing_for_the_paste(typology: st
 
 
 def test_the_paste_reads_the_same_authors_parent() -> None:
-    """The two-post field format, pasted on the reply: the coordinate sits on
-    the analyst's post and the footage link on their own reply. Provenance
-    anchors on the parent, which is the head of the acquired thread."""
+    """Two-post field format, pasted on the reply: provenance anchors on the parent, the head of the acquired thread."""
     typology = "self_reply_geo_then_source"
     expected = loader.load_expected(typology)
     body = loader.load_body(typology)

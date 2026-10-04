@@ -1,10 +1,8 @@
 """Tests for analyst-recorded source archival.
 
-Nothing here talks to an archiving service, because nothing in the module does:
-the capture happens in the analyst's browser and the server only checks and
-stores what comes back. What is under test is therefore the two halves of that
-check (is this one of the event's links, and is this URL a snapshot address on a
-provider we accept) and the one-slot write.
+The capture happens in the analyst's browser; the server only checks and stores
+it. Under test: the two halves of that check (is it one of the event's links, is
+the URL a snapshot address on an accepted provider) and the one-slot write.
 """
 
 from __future__ import annotations
@@ -133,8 +131,7 @@ def test_collect_links_orders_source_first_and_tags_origin(event):
 
 
 def test_collect_links_drops_a_url_the_parse_refuses(db, owner):
-    """The archivable set is ``sanitize.safe_link_href``, so a scheme the proof
-    editor would refuse is not one an analyst can record a copy for."""
+    """The archivable set is ``sanitize.safe_link_href``: a scheme the proof editor refuses is not archivable."""
     row = Event(
         owner_id=owner.id,
         title="Bad link",
@@ -151,8 +148,7 @@ def test_collect_links_drops_a_url_the_parse_refuses(db, owner):
 
 
 def test_collect_links_drops_an_oversized_url(db, owner):
-    """Past the ``source_url`` ceiling the value could not be stored anyway, so
-    it never reaches the unique index it would abort."""
+    """A value past the ``source_url`` ceiling cannot be stored, so it never reaches the unique index."""
     oversized = "https://example.org/" + "x" * SOURCE_URL_MAX_LENGTH
     row = Event(
         owner_id=owner.id,
@@ -170,8 +166,7 @@ def test_collect_links_drops_an_oversized_url(db, owner):
 
 
 def test_collect_links_attributes_a_shared_link_to_the_source(db, owner):
-    """A link that is both the declared source and a proof citation is one
-    link, kept under the strongest provenance the walk reaches first."""
+    """A link that is both the source and a proof citation is one link, under the first provenance reached."""
     row = Event(
         owner_id=owner.id,
         title="Cited source",
@@ -197,8 +192,7 @@ def test_collect_links_includes_the_secondary_source_links(db, event):
 
 
 def test_collect_links_includes_the_provenance_link(db, event):
-    """The analyst's own post carries the geolocation claim, and rots the same
-    way the footage source does."""
+    """The analyst's own post carries the geolocation claim and rots like the footage source."""
     event.detected_from_url = DETECTED_FROM
     db.commit()
     db.refresh(event)
@@ -242,13 +236,10 @@ def test_a_wayback_replay_url_is_accepted():
 
 
 def test_a_well_formed_replay_url_is_accepted_whatever_it_replays():
-    """The contract: validation says where a snapshot lives, never what it
-    captured. A replay URL naming another link is accepted, because the embedded
-    original is spelled in whatever form the source platform used at capture time
-    (a ``youtu.be`` short link, ``twitter.com`` before it became ``x.com``,
-    ``t.me/s/`` for a channel preview) and comparing it against the stored link
-    refused correct snapshots every time a platform moved its own URLs. The
-    analyst owns what the snapshot shows; the form warns them before it posts."""
+    """Validation says where a snapshot lives, never what it captured. A replay URL
+    naming another link is accepted: the embedded original uses whatever form the
+    platform had at capture time (``youtu.be``, ``twitter.com``, ``t.me/s/``), so
+    comparing would refuse correct snapshots. The form warns the analyst."""
     for embedded in (
         "https://elsewhere.test/x",
         "https://youtu.be/dQw4w9WgXcQ",
@@ -259,8 +250,7 @@ def test_a_well_formed_replay_url_is_accepted_whatever_it_replays():
 
 
 def test_a_replay_modifier_is_accepted():
-    """The Wayback player appends a replay modifier to the timestamp; a link
-    copied out of it is still a snapshot of the page."""
+    """A link copied from the Wayback player (replay modifier on the timestamp) is still a snapshot."""
     assert (
         source_archive.validate_snapshot(f"https://web.archive.org/web/{CAPTURE_TS}id_/{SOURCE}")
         == "wayback"
@@ -274,9 +264,7 @@ def test_an_archive_today_code_is_accepted():
 
 
 def test_every_archive_today_mirror_is_the_same_provider():
-    """One service serves these snapshots under six interchangeable domains, and
-    which one an analyst is handed depends on where they are, so refusing four of
-    them refuses valid pastes."""
+    """archive.today serves snapshots under six interchangeable domains; refusing any refuses valid pastes."""
     for host in (
         "archive.ph",
         "archive.today",
@@ -289,8 +277,7 @@ def test_every_archive_today_mirror_is_the_same_provider():
 
 
 def test_an_archive_today_capture_url_is_accepted():
-    """The service addresses one capture two ways, the short code and the long
-    ``/<timestamp>/<original url>`` its own result pages link."""
+    """One capture has two addresses: the short code and ``/<timestamp>/<original url>``."""
     assert (
         source_archive.validate_snapshot(f"https://archive.ph/{CAPTURE_TS}/{SOURCE}")
         == "archive_today"
@@ -298,16 +285,13 @@ def test_an_archive_today_capture_url_is_accepted():
 
 
 def test_an_archive_today_lookup_is_still_refused():
-    """``archive.ph/newest/<url>`` resolves to whatever the service holds today
-    rather than to one fixed capture, and a timestamp is digits where ``newest``
-    is not, so widening to the capture URL does not admit it."""
+    """``archive.ph/newest/<url>`` is not one fixed capture, and ``newest`` is not a digit timestamp, so it is refused."""
     assert _reject_code(f"https://archive.ph/newest/{SOURCE}") == "snapshot_not_a_snapshot_code"
     assert _reject_code("https://archive.ph/") == "snapshot_not_a_snapshot_code"
 
 
 def test_both_ghostarchive_shapes_are_accepted():
-    """A page capture and a video one, the latter addressed by the YouTube video
-    id it archived."""
+    """A page capture and a video capture (addressed by the YouTube video id)."""
     assert (
         source_archive.validate_snapshot("https://ghostarchive.org/archive/aBcD1") == "ghostarchive"
     )
@@ -332,10 +316,8 @@ def test_http_is_refused():
 
 
 def test_a_host_outside_the_allowlist_is_refused():
-    """The allowlist is the abuse bound: the catalog renders the value as an
-    outbound link, so a lookalike host is not "an archiving service". The check
-    parses the hostname rather than matching a prefix, so a subdomain trick and a
-    suffix trick both land here."""
+    """The allowlist bounds abuse (the catalog renders the value as an outbound link).
+    The hostname is parsed, not prefix-matched, so subdomain and suffix tricks fail."""
     for host in (
         "archive.org",
         "web-archive.org.evil.example",
@@ -381,8 +363,7 @@ def test_staging_stores_the_copy_with_its_provider_and_origin(db, event):
 
 
 def test_staging_overwrites_the_slot_on_a_resubmission(db, event):
-    """One copy per link is what makes a second paste the owner's correction
-    path rather than a competing row."""
+    """One copy per link: a second paste corrects it rather than adding a row."""
     _stage(db, event, SOURCE, WAYBACK_SNAPSHOT)
     _stage(db, event, SOURCE, ARCHIVE_TODAY_SNAPSHOT)
 
@@ -395,14 +376,12 @@ def test_staging_overwrites_the_slot_on_a_resubmission(db, event):
 
 
 def test_a_link_the_event_does_not_carry_has_no_origin(db, event):
-    """``origin_of`` is the membership test every path runs before it files a
-    copy, so a URL the event never declared resolves to nothing."""
+    """``origin_of`` is the membership test before filing a copy: an undeclared URL resolves to nothing."""
     assert source_archive.origin_of(event, "https://elsewhere.example/x") is None
 
 
 def test_every_kind_of_link_the_event_carries_has_its_own_origin(db, event):
-    """The source, a mirror, the provenance link and a proof citation are all
-    archivable, each stored under its own origin."""
+    """The source, a mirror, the provenance link and a proof citation are archivable, each under its own origin."""
     event.detected_from_url = DETECTED_FROM
     _with_mirrors(db, event, MIRROR)
 
@@ -433,9 +412,7 @@ def test_archive_row_for_matches_a_link_by_url(db, event):
 
 
 def test_a_re_paste_of_the_stored_copy_is_the_same_snapshot():
-    """A snapshot URL reaches the form through a browser, which is where a
-    trailing slash and a host in another case come from, so the no-change leg
-    folds both sides before it calls a re-paste a correction."""
+    """Browsers add a trailing slash or change host case, so both sides are folded before a re-paste counts as a correction."""
     assert source_archive.same_snapshot(WAYBACK_SNAPSHOT, WAYBACK_SNAPSHOT)
     assert source_archive.same_snapshot(WAYBACK_SNAPSHOT, f"{WAYBACK_SNAPSHOT}/")
     assert source_archive.same_snapshot(
@@ -454,8 +431,7 @@ def test_a_different_copy_is_not_the_same_snapshot():
 
 
 def test_the_provider_constraint_rejects_an_unknown_service(db, event):
-    """The Literal is pinned at the database too, so a row written outside the
-    service cannot introduce a provider the read surface has no glyph for."""
+    """The provider Literal is also pinned in the database, so no row can add a provider the UI has no glyph for."""
     db.add(
         SourceArchive(
             event_id=event.id,

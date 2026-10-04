@@ -6,21 +6,16 @@ import { Play } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { FLOATING_CONTROL } from "@/components/ui/styles";
 
-// Landing about-video. Click-to-play: nothing streams until a visitor asks for
-// it (`preload="metadata"` fetches the header and paints the first frame, which
-// serves as the poster, so the clip itself costs an anonymous visitor nothing).
-// A tap anywhere on the frame, or on the centered play control, starts it, and
-// native `controls` stay on from then on, so a phone can pause and scrub with
-// no hover to reveal them. `playsInline` keeps iOS playing in the frame instead
-// of taking over the screen. A client island because page.tsx is a server
-// component.
+// Landing about-video, click-to-play: nothing streams until asked (`preload="metadata"` paints the
+// first frame as the poster). A tap on the frame or the play control starts it; native `controls`
+// stay on afterwards so a phone can pause and scrub. `playsInline` keeps iOS in the frame. A client
+// island because page.tsx is a server component.
 export default function DemoVideo({ src }: { src: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [started, setStarted] = useState(false);
 
-  // A refused play() (an interrupted gesture) leaves the overlay up rather than
-  // raising an unhandled rejection; `onPlay` owns the state, so playback
-  // started from the native controls or the keyboard flips it too.
+  // A refused play() (interrupted gesture) leaves the overlay up instead of an unhandled rejection;
+  // `onPlay` owns the state, so native controls and the keyboard flip it too.
   function start() {
     void videoRef.current?.play().catch(() => {});
   }
@@ -33,9 +28,7 @@ export default function DemoVideo({ src }: { src: string }) {
         playsInline
         preload="metadata"
         controls={started}
-        // Only before the first play: once the native controls are up, a click
-        // on the frame is theirs (it toggles pause), and re-playing here would
-        // undo it.
+        // Only before the first play: afterwards a click on the frame is the native controls' (it toggles pause).
         onClick={started ? undefined : start}
         onPlay={() => setStarted(true)}
         className="h-full w-full"

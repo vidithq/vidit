@@ -1,39 +1,25 @@
 /**
- * A browser-local string preference reflected onto `<html data-*>`: the shared
- * plumbing behind the accent palette (`data-palette`) and the light / dark
- * theme (`data-theme`). Both are the same shape: a `localStorage` value,
- * validated on read, mirrored onto a root `dataset` attribute that CSS keys
- * off, and broadcast on a custom event so every live `useClientPreference`
- * reader in the tab updates (the native `storage` event only fires in *other*
- * tabs).
- *
- * A display choice like these lives in `localStorage` rather than the server
- * profile: it follows the browser, costs no request, and works for logged-out
- * readers too.
+ * A browser-local string preference reflected onto `<html data-*>`, shared by the accent
+ * palette and the theme: a validated `localStorage` value mirrored onto a root `dataset`
+ * attribute CSS keys off, and broadcast on a custom event so every `useClientPreference`
+ * reader in the tab updates (the native `storage` event only fires in other tabs). It lives
+ * in `localStorage` rather than the profile: it follows the browser, costs no request, and
+ * works logged out.
  */
 
 export interface AttributePreference<T extends string> {
   /** The stored value, or the fallback when absent / invalid / server-side. */
   get(): T;
-  /** Persist, reflect onto `<html>`, and notify readers in this tab. */
   set(value: T): void;
 }
 
 export function createAttributePreference<T extends string>(config: {
-  /** `localStorage` key, e.g. `vidit:palette`. */
   key: string;
-  /**
-   * The camelCase `dataset` key (NOT the HTML attribute name), e.g. `palette`
-   * writes `data-palette`. A multi-word key must be camelCase (`colorScheme`
-   * for `data-color-scheme`); a literal `data-*` string here would write the
-   * wrong attribute and the matching CSS selector would never fire.
-   */
+  /** camelCase `dataset` key, not the attribute name (`colorScheme` for `data-color-scheme`);
+   *  a literal `data-*` string writes the wrong attribute. */
   attribute: string;
-  /** Custom event dispatched on change, e.g. `vidit:palette-changed`. */
   event: string;
-  /** Value returned when nothing valid is stored. */
   fallback: T;
-  /** Narrows an arbitrary stored string to a known value. */
   isValid: (value: string | null) => value is T;
 }): AttributePreference<T> {
   const { key, attribute, event, fallback, isValid } = config;
@@ -44,9 +30,7 @@ export function createAttributePreference<T extends string>(config: {
     return isValid(stored) ? stored : fallback;
   }
 
-  // Reflect onto `<html data-*>` without persisting. Internal: the pre-paint
-  // reflection is done by the inline script in the root layout, so `set` is the
-  // only caller.
+  // Reflect without persisting. The pre-paint reflection is the inline script in the root layout.
   function apply(value: T): void {
     if (typeof document === "undefined") return;
     document.documentElement.dataset[attribute] = value;

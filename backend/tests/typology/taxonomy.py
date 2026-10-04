@@ -53,8 +53,7 @@ class Typology:
 
 
 def _joined(op_text: str, quoted_text: str) -> str:
-    # The engine concatenates every tweet's text before extraction; mirror that
-    # so a coordinate split across OP + quoted tweet is seen the same way.
+    # Mirrors the engine, which concatenates tweet texts before extraction.
     return op_text + ("\n" + quoted_text if quoted_text else "")
 
 

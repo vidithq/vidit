@@ -19,8 +19,7 @@ interface GlobalErrorProps {
 
 export default function GlobalError({ error, reset }: GlobalErrorProps) {
   useEffect(() => {
-    // Mirror `app/error.tsx`: forward explicitly since the SDK doesn't
-    // auto-capture error-boundary errors. No-op until the DSN is set.
+    // Mirror `app/error.tsx`: forward explicitly (no-op without a DSN).
     Sentry.captureException(error);
   }, [error]);
 
