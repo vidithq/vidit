@@ -9,7 +9,7 @@ Contributions that exist only to enable a competing hosted SaaS on top of this c
 ## Before you start
 
 - **Read [`roadmap.md`](planning/roadmap.md)** for the *why*, the milestone ladder, and what's deferred to *future considerations*.
-- **Read [`next.md`](planning/next.md)** to see what's on the table this version and the next one. Each row's full detail, later versions and unscheduled work live in [`backlog.md`](planning/backlog.md). Open work only; shipped items move to [`CHANGELOG.md`](CHANGELOG.md).
+- **Browse the [GitHub Project](https://github.com/orgs/vidithq/projects/1)** to see open work. Each item is an issue in `vidithq/vidit` with a type (Feature, Debt, Task, Bug) and the project fields Status, Priority (P0 to P3), Version (v0.6 to v1.0, or Unscheduled), and Area. Shipped items move to [`CHANGELOG.md`](CHANGELOG.md).
 - **Read [`AGENTS.md`](AGENTS.md)** for project conventions.
 
 For substantial work, file an issue first.
@@ -35,7 +35,7 @@ See [`README.md`](README.md#getting-started-local-dev) → *Getting started (loc
    Plain `uv run pytest` still works (serial, against the dev database as-is; needs `uv run alembic upgrade head`).
 
    Frontend, from `frontend/`: `npm test` (Vitest, colocated `*.test.ts(x)`), plus `npm run lint`, `npx tsc --noEmit`, `npm run build`, and `npm run test:e2e` (Playwright; run `npx playwright install chromium` once first). `make hygiene` runs the cross-cutting gates (jscpd, knip, palette-coverage). What the Playwright suite measures and why jsdom cannot: [`docs/engineering.md`](docs/engineering.md#narrow-viewport-smoke-tests).
-4. **Update the docs in the same PR.** Touching at least one file under `docs/` and one under `planning/` is mechanically enforced by the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml); a PR with genuinely no docs/planning impact can carry the `no-docs-needed` label to pass it. See *Doc-sync rule* below for the conventions the check is a floor for.
+4. **Update the docs in the same PR.** Touching at least one file under `docs/` is mechanically enforced by the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml); a PR with no docs impact can carry the `no-docs-needed` label to pass it. See *Doc-sync rule* below for the conventions the check is a floor for.
 5. **PR title is a Conventional Commit.** See *Commit conventions* below; the title is also checked in CI by [`.github/workflows/pr-title.yml`](.github/workflows/pr-title.yml).
 6. **CI must be green.** The `ci` workflow (backend lint + backend tests + frontend + `docs-pairing` jobs), the PR-title workflow, and the `DCO` status check (Probot app) all need to pass.
 7. **Sign off every commit.** See *Contributor sign-off* below.
@@ -85,9 +85,9 @@ An amend + force-push to fix a missing sign-off often re-triggers only the DCO c
 
 ## Doc-sync rule
 
-- **Item shipped?** Delete it from [`next.md`](planning/next.md) and from [`backlog.md`](planning/backlog.md). Add a one-line entry to [`CHANGELOG.md`](CHANGELOG.md) under `## Unreleased` with the PR number.
-- **Item descoped?** Delete its line from `next.md` and move its row to *Unscheduled candidates* in `backlog.md`. Rejected → delete.
-- **Writing a row?** The full row lives in `backlog.md`, under its version. A `next.md` row holds the current or the next version only, and its last cell is one sentence stating the outcome, followed by a link to the full row in `backlog.md`. When a version becomes the current or the next one, add its rows to `next.md` in that form.
+- **New work?** Open an issue in `vidithq/vidit`, set its type (Feature, Debt, Task, Bug), and add it to the [GitHub Project](https://github.com/orgs/vidithq/projects/1) with Priority, Version, and Area set.
+- **Item shipped?** Put `Closes #N` in the PR description so the merge closes the issue. Add a one-line entry to [`CHANGELOG.md`](CHANGELOG.md) under `## Unreleased` with the PR number.
+- **Item descoped?** Set its Version to Unscheduled. Rejected → close the issue as not planned.
 
 Touched a published surface → sync the matching doc:
 
@@ -97,7 +97,7 @@ Touched a published surface → sync the matching doc:
 - Auth model, deploy URLs, env vars, dev workflow → [`../AGENTS.md`](AGENTS.md) and [`../README.md`](README.md)
 - Palette or shared style constant → [`design.md`](docs/design.md)
 
-CI enforces the floor: every PR must touch *something* under `docs/` AND something under `planning/` (the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)). The specific pairings above are conventions human review still owns; the check is friction-first to keep the tracker and reference docs honest, not a granular contract. A PR that genuinely needs neither touch (a planning-only roadmap change, a CI/meta tweak) can carry the **`no-docs-needed`** label to pass the check (justify it in the PR description); Dependabot PRs are exempt automatically.
+CI enforces the floor: every PR must touch *something* under `docs/` (the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)). The specific pairings above are conventions human review still owns; the check is friction-first to keep the reference docs honest, not a granular contract. A PR with no docs impact (a roadmap change, a CI or meta tweak) can carry the **`no-docs-needed`** label to pass the check (justify it in the PR description); Dependabot PRs are exempt automatically.
 
 ## Security issues
 

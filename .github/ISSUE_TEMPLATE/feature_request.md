@@ -28,7 +28,7 @@ Where does this fit on the roadmap?
 - [ ] Refactor / hygiene (no version gating)
 - [ ] Unscheduled candidate
 
-See [`planning/next.md`](../../planning/next.md) for the current and next milestones, and [`planning/backlog.md`](../../planning/backlog.md) for every milestone table and the *Unscheduled candidates* section. Items in [`planning/roadmap.md`](../../planning/roadmap.md) → *Future considerations* carry a documented rationale and revisit trigger: check that your proposal isn't already covered there.
+See the [GitHub Project](https://github.com/orgs/vidithq/projects/1) for open work by version, including the Unscheduled items. Items in [`planning/roadmap.md`](../../planning/roadmap.md) → *Future considerations* carry a documented rationale and revisit trigger: check that your proposal isn't already covered there.
 
 ## Anything else
 

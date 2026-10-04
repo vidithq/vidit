@@ -278,8 +278,7 @@ async function slowScrollToBottom(page, durationMs = 2200) {
 // The import creates detections and answers their ids, so the
 // bytes come off the detection's stored media rather than from a CDN proxy.
 // It reads the caller's OWN posts only, so `auth` must be the account
-// whose linked X handle authored those tweets (see planning/backlog.md →
-// "Give the promo pipeline its own user bootstrap").
+// whose linked X handle authored those tweets (see issue #505).
 //
 // Returns the on-disk path the caller should upload, or null if no
 // candidate produced a usable video. The cache filename embeds the

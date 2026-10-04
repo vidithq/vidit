@@ -20,7 +20,7 @@ export default function RequestsPage() {
   // ``closed`` and drops off here (still reachable by permalink). No status
   // filter: "closed" here would mean "withdrawn", which reads as "done" on a
   // work queue and misleads. Enriching this into a triage board (sort, filters,
-  // activity signals) is tracked in planning/backlog.md, gated on request volume.
+  // activity signals) is tracked in issue #396, gated on request volume.
   // Public read: no auth gate; "Post request" routes through /submit, which
   // bounces a signed-out visitor to login.
   //

@@ -120,7 +120,7 @@ vidit/
 │       └── proxy.ts     default-deny auth + host canonicalisation
 ├── video/            promo-as-code pipeline (Playwright capture + Remotion render, `make promo`)
 ├── docs/             api, backups, data-model, design, engineering (technical reference)
-├── planning/         roadmap + next (project planning, not user docs)
+├── planning/         roadmap (project planning, not user docs)
 ├── docker/           daily backup cron image
 ├── AGENTS.md            project context for AI tools (CLAUDE.md is a one-line `@AGENTS.md` pointer for Claude Code)
 ├── CHANGELOG.md         release history
@@ -142,8 +142,7 @@ More detail: [docs/engineering.md](docs/engineering.md).
 The technical reference is also hosted at **[docs.vidit.app](https://docs.vidit.app)** (MkDocs Material build of [`docs/`](docs/)).
 
 - [Roadmap](planning/roadmap.md)
-- [What's next](planning/next.md)
-- [Backlog](planning/backlog.md)
+- [Work tracker (GitHub Project)](https://github.com/orgs/vidithq/projects/1)
 - [Engineering](docs/engineering.md)
 - [Data model](docs/data-model.md)
 - [REST API](docs/api.md)

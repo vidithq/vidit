@@ -5,7 +5,9 @@ Enforced by .github/workflows/pr-title.yml. Examples in CONTRIBUTING.md.
 
 ## Summary
 
-What this change does, in one to three sentences. Link the issue it closes (`Closes #N`) if there is one.
+What this change does, in one to three sentences. Fill in the issue this PR closes, or delete the line if there is none.
+
+Closes #
 
 ## Why
 
@@ -13,7 +15,7 @@ Why this is the right change — the user problem, the constraint, the trade-off
 
 ## Doc-sync checklist
 
-CI hard-fails the PR if `docs/` AND `planning/` aren't both touched (the `docs-pairing` job in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)). The bullets below are the conventions human review still owns — tick what applies; if none apply, explain why in the description.
+CI hard-fails the PR if `docs/` isn't touched (the `docs-pairing` job in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)). The bullets below are the conventions human review still owns. Tick what applies; if none apply, explain why in the description.
 
 - [ ] Touched `backend/app/routers/**` → updated [`docs/api.md`](../docs/api.md)
 - [ ] Touched `backend/app/models/**` or `backend/alembic/versions/**` → updated [`docs/data-model.md`](../docs/data-model.md) (table block **and** ER diagram)
@@ -22,7 +24,6 @@ CI hard-fails the PR if `docs/` AND `planning/` aren't both touched (the `docs-p
 - [ ] Tech-choice swap (not a routine version bump) → updated [`docs/engineering.md`](../docs/engineering.md)
 - [ ] Auth model, deployment URLs, env vars, or primary dev workflow change → updated [`AGENTS.md`](../AGENTS.md) **and** [`README.md`](../README.md)
 - [ ] Palette recipe / shared style constant in [`styles.ts`](../frontend/src/components/ui/styles.ts) → updated [`docs/design.md`](../docs/design.md) (*Orange palette recipe*)
-- [ ] Shipped item removed from [`planning/next.md`](../planning/next.md) and [`planning/backlog.md`](../planning/backlog.md) (or briefly noted in the relevant macro)
 
 ## Test plan
 

@@ -518,7 +518,7 @@ class Event(Base):
         # here so the model matches the migration. ``ix_events_owner_id`` is
         # redundant with the composite for a lookup, and the DB carries the
         # composite as ``created_at DESC`` (immaterial to current reads): both
-        # noted in planning/backlog.md for a later index-cleanup pass.
+        # tracked in issue #476 for a later index-cleanup pass.
         Index("ix_events_owner_id", "owner_id"),
         Index("ix_events_owner_created", "owner_id", "created_at"),
         # Backs the keyset the capped list endpoints walk: `/events`,
