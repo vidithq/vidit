@@ -2,7 +2,7 @@
 
 ## Open posture
 
-Vidit is **100% open source under [AGPL-3.0](LICENSE)**: no proprietary tier, no internal version. The rationale and the funding posture live in [`roadmap.md`](planning/roadmap.md) → *Openness & transparency*.
+Vidit is open source under [AGPL-3.0](LICENSE), with no proprietary tier. See [`roadmap.md`](planning/roadmap.md) → *Openness & transparency*.
 
 Contributions that exist only to enable a competing hosted SaaS on top of this codebase are out of scope for the upstream. Fork freely (AGPL allows it), but expect review to push back.
 
@@ -34,10 +34,10 @@ See [`README.md`](README.md#getting-started-local-dev) → *Getting started (loc
 
    Plain `uv run pytest` still works (serial, against the dev database as-is; needs `uv run alembic upgrade head`).
 
-   Frontend, from `frontend/`: `npm test` (Vitest, colocated `*.test.ts(x)`), plus `npm run lint`, `npx tsc --noEmit`, `npm run build`, and `npm run test:e2e` (Playwright; run `npx playwright install chromium` once first). `make hygiene` runs the cross-cutting gates (jscpd, knip, palette-coverage). What the Playwright suite measures and why jsdom cannot: [`docs/engineering.md`](docs/engineering.md#narrow-viewport-smoke-tests).
-4. **Update the docs in the same PR.** Touching at least one file under `docs/` and one under `planning/` is mechanically enforced by the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml); a PR with genuinely no docs/planning impact can carry the `no-docs-needed` label to pass it. See *Doc-sync rule* below for the conventions the check is a floor for.
+   Frontend, from `frontend/`: `npm test` (Vitest, colocated `*.test.ts(x)`), plus `npm run lint`, `npx tsc --noEmit`, `npm run build`, and `npm run test:e2e` (Playwright; run `npx playwright install chromium` once first). `make hygiene` runs the cross-cutting gates (`make help` lists them). What the Playwright suite measures and why jsdom cannot: [`docs/engineering.md`](docs/engineering.md#narrow-viewport-smoke-tests).
+4. **Update the docs in the same PR.** See [*Doc-sync rule*](#doc-sync-rule) below.
 5. **PR title is a Conventional Commit.** See *Commit conventions* below; the title is also checked in CI by [`.github/workflows/pr-title.yml`](.github/workflows/pr-title.yml).
-6. **CI must be green.** The `ci` workflow (backend lint + backend tests + frontend + `docs-pairing` jobs), the PR-title workflow, and the `DCO` status check (Probot app) all need to pass.
+6. **CI must be green.** Every job of the `ci` workflow, the PR-title workflow, CodeQL, and the `DCO` status check (Probot app) must pass. [`docs/engineering.md`](docs/engineering.md#github-actions) lists the jobs.
 7. **Sign off every commit.** See *Contributor sign-off* below.
 8. **Read touched docs cold before requesting review.** If anything misleads a new contributor, the PR isn't ready.
 
@@ -62,7 +62,7 @@ PR title is the commit message (squash-merge).
 
 ## Contributor sign-off
 
-Every commit on a PR must carry a `Signed-off-by:` trailer. This is the [Developer Certificate of Origin 1.1](https://developercertificate.org): by signing off, you certify that you have the right to submit the code under [AGPL-3.0](LICENSE). It is **not** a CLA: there is no relicensing clause, inbound = outbound = AGPL-3.0 (the PostgreSQL / Mastodon shape).
+Every commit on a PR must carry a `Signed-off-by:` trailer. This is the [Developer Certificate of Origin 1.1](https://developercertificate.org): by signing off, you certify that you have the right to submit the code under [AGPL-3.0](LICENSE). It is **not** a CLA: there is no relicensing clause, inbound = outbound = AGPL-3.0.
 
 Add the trailer with `git commit -s`:
 
@@ -85,18 +85,12 @@ An amend + force-push to fix a missing sign-off often re-triggers only the DCO c
 
 ## Doc-sync rule
 
-- **Item shipped?** Delete it from [`next.md`](planning/next.md). Add a one-line entry to [`CHANGELOG.md`](CHANGELOG.md) under `## Unreleased` with the PR number.
+- **Item shipped?** Delete it from [`next.md`](planning/next.md). Add an entry to [`CHANGELOG.md`](CHANGELOG.md) under `## Unreleased`: one line, ending with the PR link, and no file lists (the PR carries them).
 - **Item descoped?** Move it to *Unscheduled candidates* in `next.md`. Rejected → delete.
 
-Touched a published surface → sync the matching doc:
+Touched a published surface → sync the matching doc. The checklist in [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) maps each surface to its doc.
 
-- Endpoints → [`api.md`](docs/api.md)
-- Tables / columns / migrations → [`data-model.md`](docs/data-model.md) (table block **and** ER diagram)
-- Deploy / repo / infra / tech swap → [`engineering.md`](docs/engineering.md)
-- Auth model, deploy URLs, env vars, dev workflow → [`../AGENTS.md`](AGENTS.md) and [`../README.md`](README.md)
-- Palette or shared style constant → [`design.md`](docs/design.md)
-
-CI enforces the floor: every PR must touch *something* under `docs/` AND something under `planning/` (the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)). The specific pairings above are conventions human review still owns; the check is friction-first to keep the tracker and reference docs honest, not a granular contract. A PR that genuinely needs neither touch (a planning-only roadmap change, a CI/meta tweak) can carry the **`no-docs-needed`** label to pass the check (justify it in the PR description); Dependabot PRs are exempt automatically.
+CI enforces a floor: every PR must touch something under `docs/` and something under `planning/` (the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)). The checklist pairings are conventions that human review owns; the check does not verify them. A PR that needs neither touch (a planning-only roadmap change, a CI or meta tweak) can carry the **`no-docs-needed`** label to pass the check; justify it in the PR description. Dependabot PRs are exempt.
 
 ## Security issues
 

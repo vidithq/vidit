@@ -10,6 +10,7 @@ Format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The README, CONTRIBUTING, templates, planning files and promo pipeline guide are deduplicated and corrected against the code.**
 - **Dependabot waits before opening a version-update PR** ([`.github/dependabot.yml`](.github/dependabot.yml), [`docs/engineering.md`](docs/engineering.md)). Each ecosystem sets a `cooldown`: 7 days for a major, 3 for a minor and 1 for a patch on `pip` and `npm`, and 7 days flat on `github-actions`. Security updates are unaffected.
 
 - **The events service is a package, one module per write verb** ([#371](https://github.com/vidithq/vidit/pull/371), [`backend/app/services/events/`](backend/app/services/events), [`docs/engineering.md`](docs/engineering.md)). `services/events/` holds `create`, `request`, `geolocation`, `revision`, `batch` and `closure`, one write verb each, over the shared `errors`, `coordinates`, `source_links`, `rules` and `readiness` modules. The package root re-exports the public API, so every caller imports from `app.services.events` as before. The code moved unchanged.

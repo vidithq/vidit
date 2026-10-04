@@ -24,7 +24,7 @@
 //      who consented to appear in the promo, and the export it imports is
 //      that same analyst's own. No other export on this machine is filmed,
 //      and no post is ever attributed to an account other than its author.
-//   2. The import creates for real. Since v0.5.2 an import updates the drafts
+//   2. The import creates for real. An import updates the drafts
 //      it already produced instead of duplicating them, so re-importing an
 //      export the instance already holds creates nothing. Rather than stage a
 //      fake creation, the take imports a TRIMMED copy of the same analyst's
@@ -45,6 +45,17 @@
 //   - the instance running on :3000 / :8000, with the analyst's account on it
 //   - VIDIT_DEMO_PASSWORD set to that account's local password
 //   - video/out/x-archive-trimmed.zip written by prep-review-take.py
+//
+// Shoot constraints:
+//   - `POST /events/import-archive/presign` allows 10 calls an hour per
+//     account; past that the take stalls on `Uploading your archive`.
+//   - Run `prep-review-take.py --report` first and write the storyboard
+//     against the counts it prints.
+//   - The bot beat that follows the take in `src/PromoV05B.tsx` is a plate,
+//     `public/clips/bot-embed.mp4`, recorded by `record-v04.js bot-embed`
+//     (no instance, no session). It films the bot's reply with the
+//     conversation shown, so the tag and the confirmation are both on camera.
+//     Without the plate the take runs straight into the closing card.
 //
 // Usage: VIDIT_DEMO_PASSWORD=… node record-v05b.js
 

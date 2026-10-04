@@ -42,6 +42,18 @@
 // after the render (one `DELETE /collections/{id}/events/{event_id}` with the
 // same cookies) so the demo collection ends as it started.
 //
+// Beats: the profile's Collections shelf and one card under the cursor; the
+// collection's page whole in one frame, player at step 1; `STEPS` presses of
+// the player's next control; the Edit control, a search in Add events, the
+// add, the save, the collection coming back one event longer; the byline back
+// to the profile and the shelf in search through `Show more`; one query
+// narrowing the shelf. The cut runs 40 to 50 seconds: holds of 0.8 to 1.5 s,
+// scrolls at `SCROLL_MS`.
+//
+// `src/PromoCollections.tsx` paints a flat `#0a0a0a` ground instead of the
+// shared `<Background>` blooms: behind a bright page filling most of the
+// frame, a bloom reads as a smear around the window.
+//
 // Usage: node record-collections.js       (the instance must already be running)
 
 const fs = require("fs");
