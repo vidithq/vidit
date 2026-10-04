@@ -33,7 +33,9 @@ function outcome(overrides: Partial<TweetImportOutcome> = {}): TweetImportOutcom
 }
 
 function paste() {
-  fireEvent.change(screen.getByPlaceholderText(/x\.com/), { target: { value: POST_URL } });
+  fireEvent.change(screen.getByPlaceholderText("https://x.com/handle/status/…"), {
+    target: { value: POST_URL },
+  });
   fireEvent.click(screen.getByRole("button", { name: "Create the detection" }));
 }
 
