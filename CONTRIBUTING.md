@@ -9,7 +9,7 @@ Contributions that exist only to enable a competing hosted SaaS on top of this c
 ## Before you start
 
 - **Read [`roadmap.md`](planning/roadmap.md)** for the *why*, the milestone ladder, and what's deferred to *future considerations*.
-- **Read [`next.md`](planning/next.md)** to see what's on the table this version. Open work only; shipped items move to [`CHANGELOG.md`](CHANGELOG.md).
+- **Browse the [GitHub Project](https://github.com/orgs/vidithq/projects/1)** to see open work. Each item is an issue in `vidithq/vidit` with a type (Feature, Debt, Task, Bug) and the project fields Status, Priority (P0 to P3), Version (v0.6 to v1.0, or Unscheduled), and Area. Shipped items move to [`CHANGELOG.md`](CHANGELOG.md).
 - **Read [`AGENTS.md`](AGENTS.md)** for project conventions.
 
 For substantial work, file an issue first.
@@ -85,12 +85,13 @@ An amend + force-push to fix a missing sign-off often re-triggers only the DCO c
 
 ## Doc-sync rule
 
-- **Item shipped?** Delete it from [`next.md`](planning/next.md). Add an entry to [`CHANGELOG.md`](CHANGELOG.md) under `## Unreleased`: one line, ending with the PR link, and no file lists (the PR carries them).
-- **Item descoped?** Move it to *Unscheduled candidates* in `next.md`. Rejected → delete.
+- **New work?** Open an issue in `vidithq/vidit`, set its type (Feature, Debt, Task, Bug), and add it to the [GitHub Project](https://github.com/orgs/vidithq/projects/1) with Priority, Version, and Area set.
+- **Item shipped?** Put `Closes #N` in the PR description so the merge closes the issue. Add an entry to [`CHANGELOG.md`](CHANGELOG.md) under `## Unreleased`: one line, ending with the PR link, and no file lists (the PR carries them).
+- **Item descoped?** Set its Version to Unscheduled. Rejected → close the issue as not planned.
 
 Touched a published surface → sync the matching doc. The checklist in [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) maps each surface to its doc.
 
-CI enforces a floor: every PR must touch something under `docs/` and something under `planning/` (the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)). The checklist pairings are conventions that human review owns; the check does not verify them. A PR that needs neither touch (a planning-only roadmap change, a CI or meta tweak) can carry the **`no-docs-needed`** label to pass the check; justify it in the PR description. Dependabot PRs are exempt.
+CI enforces a floor: every PR must touch something under `docs/` (the `docs-pairing` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)). The checklist pairings are conventions that human review owns; the check does not verify them. A PR with no docs impact (a roadmap change, a CI or meta tweak) can carry the **`no-docs-needed`** label to pass the check; justify it in the PR description. Dependabot PRs are exempt.
 
 ## Security issues
 

@@ -5,7 +5,9 @@ Enforced by .github/workflows/pr-title.yml. Examples in CONTRIBUTING.md.
 
 ## Summary
 
-What this change does, in one to three sentences. Link the issue it closes (`Closes #N`) if there is one.
+What this change does, in one to three sentences. Fill in the issue this PR closes, or delete the line if there is none.
+
+Closes #
 
 ## Why
 
@@ -13,7 +15,7 @@ Why this is the right change: the user problem, the constraint, the trade-off. S
 
 ## Doc-sync checklist
 
-CI fails the PR unless it touches both `docs/` and `planning/` (see [`CONTRIBUTING.md`](../CONTRIBUTING.md#doc-sync-rule) → *Doc-sync rule*). Human review owns the pairings below. Tick what applies; if none apply, explain why in the description.
+CI fails the PR unless it touches `docs/` (see [`CONTRIBUTING.md`](../CONTRIBUTING.md#doc-sync-rule) → *Doc-sync rule*). Human review owns the pairings below. Tick what applies; if none apply, explain why in the description.
 
 - [ ] Touched `backend/app/routers/**` → updated [`docs/api.md`](../docs/api.md)
 - [ ] Touched `backend/app/models/**` or `backend/alembic/versions/**` → updated [`docs/data-model.md`](../docs/data-model.md) (table block **and** ER diagram)
@@ -22,7 +24,6 @@ CI fails the PR unless it touches both `docs/` and `planning/` (see [`CONTRIBUTI
 - [ ] Tech-choice swap (not a routine version bump) → updated [`docs/engineering.md`](../docs/engineering.md)
 - [ ] Auth model, deployment URLs, env vars, or primary dev workflow change → updated [`docs/engineering.md`](../docs/engineering.md) (*Local environment*, *Deployment*) **and** [`README.md`](../README.md)
 - [ ] Palette recipe / shared style constant in [`styles.ts`](../frontend/src/components/ui/styles.ts) → updated [`docs/design.md`](../docs/design.md) (*Accent recipe*)
-- [ ] Shipped item removed from [`planning/next.md`](../planning/next.md)
 
 ## Test plan
 

@@ -75,7 +75,7 @@ https://github.com/user-attachments/assets/f314673c-d357-4468-af6d-2299c831c5fc
 
 A FastAPI + PostgreSQL/PostGIS backend and a Next.js frontend. [docs/engineering.md](docs/engineering.md) covers the tech stack, the repository layout and the CI jobs.
 
-The technical reference lives in [`docs/`](docs/) (start at [docs/index.md](docs/index.md)) and is hosted at **[docs.vidit.app](https://docs.vidit.app)**. Planning lives in [planning/roadmap.md](planning/roadmap.md) and [planning/next.md](planning/next.md); release history in [CHANGELOG.md](CHANGELOG.md).
+The technical reference lives in [`docs/`](docs/) (start at [docs/index.md](docs/index.md)) and is hosted at **[docs.vidit.app](https://docs.vidit.app)**. Planning lives in [planning/roadmap.md](planning/roadmap.md) and the [GitHub Project](https://github.com/orgs/vidithq/projects/1); release history in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 

@@ -15,6 +15,7 @@ Technical reference for [Vidit](https://vidit.app), an OSINT/GEOINT geolocation 
 
 ## Elsewhere
 
-- [Roadmap and work tracker](https://github.com/vidithq/vidit/tree/main/planning): strategy, version milestones, and current work
+- [Roadmap](https://github.com/vidithq/vidit/blob/main/planning/roadmap.md): strategy and version milestones
+- [Work tracker](https://github.com/orgs/vidithq/projects/1): current work
 - [CHANGELOG](https://github.com/vidithq/vidit/blob/main/CHANGELOG.md)
 - [Contributing](https://github.com/vidithq/vidit/blob/main/CONTRIBUTING.md)

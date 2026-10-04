@@ -2,7 +2,7 @@
 
 > Become the home of the OSINT/GEOINT community.
 
-What's currently open lives in [`next.md`](next.md). What's already shipped lives in [`CHANGELOG.md`](../CHANGELOG.md).
+Open work lives in the [Vidit GitHub Project](https://github.com/orgs/vidithq/projects/1), one issue per item. What's already shipped lives in [`CHANGELOG.md`](../CHANGELOG.md).
 
 ---
 
@@ -39,7 +39,7 @@ The audit puts the problem in the shell rather than in the content. The three su
 
 This version makes four golden paths work end to end on a 375px phone, with 320px as the floor: open a shared link, read the geolocation and follow the analyst; browse and filter the map; submit a geolocation from the phone, through both the single form and the X-post import; sign in and manage the account. It ships with a narrow-viewport test floor so the paths stay fixed. It is not a native app: that stays in *Future considerations*.
 
-Work breakdown: [`next.md`](next.md) → *v0.6*.
+Work breakdown: [v0.6 issues in the GitHub Project](https://github.com/orgs/vidithq/projects/1/views/3?filterQuery=version%3Av0.6).
 
 ## v0.6.4: Collections
 
@@ -47,7 +47,7 @@ Analysts already produce this shape of work outside Vidit: a thread grouping sev
 
 A collection is a named, curated set of one analyst's own events, personal only: one owner, shown on the owner's public profile. Items order automatically (event date, then creation), the title and a short description are the free-text fields, same class as the profile bio, and a collection carries no manual ordering and no uploaded picture, keeping it a set of facts rather than a narrative. The card on the profile wears a mosaic of the first few items' own media, so what identifies a collection is what it holds. Collaborative and organization-owned collections wait for v0.7.
 
-Work breakdown: [`next.md`](next.md) → *v0.6.4*.
+Work breakdown: shipped, see [`CHANGELOG.md`](../CHANGELOG.md).
 
 ## v0.7: Collaboration & reviews
 
@@ -59,31 +59,31 @@ Phase B makes organizations a first-class entity: a verified collective with mem
 
 Reviews are an independent attestation layer: several analysts or organizations can review the same geolocation, they may disagree, and a review never changes the event's status.
 
-Work breakdown: [`next.md`](next.md) → *v0.7*.
+Work breakdown: [v0.7 issues in the GitHub Project](https://github.com/orgs/vidithq/projects/1/views/3?filterQuery=version%3Av0.7).
 
 ## v0.8: Moderation
 
 The moderation pipeline, built as product one version ahead of its legal formalization: an in-product report mechanism feeding an admin moderation queue, machine scanning of uploads (AWS Rekognition, CSAM, metadata stripping), and a written public content policy. Sequenced before open write so the tooling is proven while contributors are still invite-curated.
 
-Work breakdown: [`next.md`](next.md) → *v0.8*.
+Work breakdown: [v0.8 issues in the GitHub Project](https://github.com/orgs/vidithq/projects/1/views/3?filterQuery=version%3Av0.8).
 
 ## v0.9: Search & discovery
 
 The corpus becomes smarter than the sum of its pins: events that carry several subject points, search that reaches proof bodies and source URLs, related-event discovery.
 
-Work breakdown: [`next.md`](next.md) → *v0.9*.
+Work breakdown: [v0.9 issues in the GitHub Project](https://github.com/orgs/vidithq/projects/1/views/3?filterQuery=version%3Av0.9).
 
 ## v0.10: Recognition
 
 The recognition layer: community credits, achievement badges, activity on the profile, and leaderboards. Strictly separate from the quality model (see *Future considerations → Trust + governance*): recognition never gates or ranks content.
 
-Work breakdown: [`next.md`](next.md) → *v0.10*.
+Work breakdown: [v0.10 issues in the GitHub Project](https://github.com/orgs/vidithq/projects/1/views/3?filterQuery=version%3Av0.10).
 
 ## v1.0: Public v1
 
 Open write and the public launch. Self-registration opens and the invite-code gate retires; the threat model widens to account-farmers and unknown uploaded content, absorbed by the layers built in v0.7 to v0.10 plus a registration anti-abuse stack (CAPTCHA, honeypot, disposable-email blocklist, rate limits, account lockout), auth hardening, and self-serve handle verification (verify-by-post, with a claim/dispute path), since open registration removes the admin touchpoint that binds a handle today. The legal foundation lands (legal entity, terms of service, DSA compliance, DPA agreements, professional insurance), plus map density, cost tuning, and the beta framing removed.
 
-Work breakdown: [`next.md`](next.md) → *v1.0*.
+Work breakdown: [v1.0 issues in the GitHub Project](https://github.com/orgs/vidithq/projects/1/views/3?filterQuery=version%3Av1.0).
 
 ---
 
@@ -112,4 +112,4 @@ Long-term items deferred for cost, scale, philosophical fit, or because the curr
 ## Openness & transparency
 
 - **100% open source under [AGPL-3.0](../LICENSE), before v1.** Nothing is proprietary. Nothing on the maintainer's hosted instance (`vidit.app`) is paid today; if monetization ever lands there, the intended shape is API rate limits + paid-only endpoints aimed at consumers of the community's work (saved-search alert webhooks, larger exports), never at analysts. AGPL keeps any hosted fork open while letting anyone run their own instance.
-- **Public roadmap.** A reader-facing projection of these milestones ships on the public landing. The internal `roadmap.md` / `next.md` / `CHANGELOG.md` are the source.
+- **Public roadmap.** A reader-facing projection of these milestones ships on the public landing. The internal `roadmap.md`, the [GitHub Project](https://github.com/orgs/vidithq/projects/1) and `CHANGELOG.md` are the source.

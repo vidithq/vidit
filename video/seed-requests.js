@@ -15,8 +15,7 @@
 //
 // PRECONDITION: the import reads the caller's OWN posts only, so the
 // seeding account's linked X handle must be the author of `TWEETS` and
-// `RECORDING_TWEET_URL`. See planning/next.md → "Give the promo pipeline
-// its own user bootstrap".
+// `RECORDING_TWEET_URL`. See issue #505.
 //
 // Idempotent: deletes the request author's and the recording viewer's
 // prior "seeded request" rows before re-seeding so re-runs converge to

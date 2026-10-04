@@ -32,7 +32,7 @@ const config = [
     // bootstrap, etc.) — all idiomatic React 18 patterns. Refactoring them
     // to compute-at-render or move-to-event-handler is meaningful work and
     // doesn't belong in the same PR as the framework bump. Tracked in
-    // planning/next.md → Refactors.
+    // issue #475.
     rules: {
       "react-hooks/set-state-in-effect": "warn",
     },

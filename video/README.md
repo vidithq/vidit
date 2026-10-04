@@ -26,7 +26,7 @@ Takes that sign in need their account to exist on the instance already:
 | `record-collections.js` | `PROMO_LOGIN_EMAIL` / `PROMO_LOGIN_PASSWORD` |
 | `record-v05.js` | nobody (logged out) |
 
-The request author differs from the viewer on purpose: an owner viewing their own request sees *Close this request* where the take expects *Geolocate this*, and the take fails on the missing control. No script in the repo creates these accounts; see [`planning/next.md`](../planning/next.md) → *Give the promo pipeline its own user bootstrap*.
+The request author differs from the viewer on purpose: an owner viewing their own request sees *Close this request* where the take expects *Geolocate this*, and the take fails on the missing control. No script in the repo creates these accounts; see [issue #505](https://github.com/vidithq/vidit/issues/505).
 
 ## Promos
 

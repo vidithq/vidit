@@ -404,7 +404,7 @@ class Event(Base):
         ),
         # Serves the profile read and the admin GDPR delete's owned-event
         # enumeration. ``ix_events_owner_id`` is redundant with the composite
-        # (cleanup noted in planning/next.md).
+        # (cleanup tracked in issue #476).
         Index("ix_events_owner_id", "owner_id"),
         Index("ix_events_owner_created", "owner_id", "created_at"),
         # Backs the keyset of the capped list endpoints (``created_at DESC, id
