@@ -91,6 +91,34 @@ describe("ProofEditor", () => {
     expect(html).not.toContain("\uFFFC");
   });
 
+  it("keeps a staged image across a remount", async () => {
+    const first = vi.fn();
+    const mounted = render(<ProofEditor onChange={() => {}} onProofFilesChange={first} />);
+    const file = png("frame.png");
+    await act(async () => {
+      const url = (await editor.uploadFile!(file)) as string;
+      editor.replaceBlocks(editor.document, [{ type: "image", props: { url } }]);
+    });
+    await waitFor(() => expect(first).toHaveBeenLastCalledWith([file]));
+    const html = editor.blocksToHTMLLossy(editor.document);
+    mounted.unmount();
+
+    const second = vi.fn();
+    const { container } = render(
+      <ProofEditor
+        onChange={() => {}}
+        onProofFilesChange={second}
+        initialContent={html}
+        initialProofFiles={[file]}
+      />,
+    );
+    await waitFor(() => expect(container.querySelector("img")?.src).toMatch(/^blob:/));
+    act(() => {
+      editor.insertBlocks([{ type: "paragraph", content: "More" }], editor.document[0], "after");
+    });
+    await waitFor(() => expect(second).toHaveBeenLastCalledWith([file]));
+  });
+
   it("keeps an image out of a text-only body", async () => {
     const seed = '<p>Before</p><img src="https://cdn.test/p.jpg"><p>After</p>';
     const images = render(<ProofEditor onChange={() => {}} initialContent={seed} />).container;

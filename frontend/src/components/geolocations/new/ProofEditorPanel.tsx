@@ -17,6 +17,7 @@ interface ProofEditorPanelProps {
   proof: string | null;
   onChange: (proof: string) => void;
   /** Local inline images, uploaded as `proof_files[]` at publish. */
+  proofFiles?: readonly File[];
   onProofFilesChange?: (files: File[]) => void;
   invalid?: boolean;
 }
@@ -25,6 +26,7 @@ interface ProofEditorPanelProps {
 export function ProofEditorPanel({
   proof,
   onChange,
+  proofFiles,
   onProofFilesChange,
   invalid = false,
 }: ProofEditorPanelProps) {
@@ -47,10 +49,11 @@ export function ProofEditorPanel({
         }
       />
 
-      {/* The editor reads `initialContent` once: seeding from the current `proof`
-          restores the draft when the panel remounts on a submit-type toggle. */}
+      {/* The editor reads both seeds once: on a remount, the current `proof` and its staged
+          files restore the draft, inline images included. */}
       <ProofEditor
         initialContent={proof}
+        initialProofFiles={proofFiles}
         onChange={onChange}
         onProofFilesChange={onProofFilesChange}
       />

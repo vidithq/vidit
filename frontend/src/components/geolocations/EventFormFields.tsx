@@ -342,6 +342,7 @@ export function EventFormFields({
       <ProofEditorPanel
         proof={form.proof}
         onChange={form.setProof}
+        proofFiles={form.proofFiles}
         onProofFilesChange={form.setProofFiles}
         invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
       />

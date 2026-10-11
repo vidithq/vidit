@@ -44,6 +44,9 @@ interface ProofEditorProps {
   onProofFilesChange?: (files: File[]) => void;
   /** Stored HTML to start from. Read once at mount: pair with a `key` on the parent to re-seed. */
   initialContent?: string | null;
+  /** The files `onProofFilesChange` last reported, read once at mount: a remount seeded with
+   *  `placeholder://` srcs still previews and reports them. */
+  initialProofFiles?: readonly File[];
   /** False for a body stored without images (a collection's description): no image block, no
    * upload path. */
   allowImages?: boolean;
@@ -180,6 +183,7 @@ export default function ProofEditor({
   onChange,
   onProofFilesChange,
   initialContent,
+  initialProofFiles,
   allowImages = true,
   invalid = false,
 }: ProofEditorProps) {
@@ -189,20 +193,19 @@ export default function ProofEditor({
   const usedNamesRef = useRef<Set<string>>(new Set());
   const seedingRef = useRef(false);
 
+  const stage = (file: File) => {
+    usedNamesRef.current.add(file.name);
+    const placeholder = `${PROOF_PLACEHOLDER_PREFIX}${file.name}`;
+    stagedRef.current.push({ placeholder, previewUrl: URL.createObjectURL(file), file });
+    return placeholder;
+  };
+
   const uploadFile = async (file: File) => {
     const name = safeProofFilename(file.name, usedNamesRef.current);
     if (name === null) throw new Error("Unusable filename");
-    usedNamesRef.current.add(name);
     // Upload under exactly `name` so the server's `safe_original_filename` reproduces the
     // placeholder suffix (a File can't be renamed).
-    const staged = file.name === name ? file : new File([file], name, { type: file.type });
-    const placeholder = `${PROOF_PLACEHOLDER_PREFIX}${name}`;
-    stagedRef.current.push({
-      placeholder,
-      previewUrl: URL.createObjectURL(staged),
-      file: staged,
-    });
-    return placeholder;
+    return stage(file.name === name ? file : new File([file], name, { type: file.type }));
   };
 
   const editor = useCreateBlockNote({
@@ -228,22 +231,24 @@ export default function ProofEditor({
     },
   });
 
-  // Seed once; the parent re-keys to re-seed.
-  useEffect(() => {
-    if (!initialContent) return;
-    seedingRef.current = true;
-    editor.replaceBlocks(editor.document, editor.tryParseHTMLToBlocks(initialContent));
-    seedingRef.current = false;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor]);
-
-  // Revoke staged blob URLs on unmount so compose then navigate doesn't leak object URLs.
+  // Seed once; the parent re-keys to re-seed. The cleanup revokes the staged blob URLs (compose
+  // then navigate must not leak them) and empties the staging, so a dev double mount restages.
   useEffect(() => {
     const staged = stagedRef.current;
+    const usedNames = usedNamesRef.current;
+    initialProofFiles?.forEach(stage);
+    if (initialContent) {
+      seedingRef.current = true;
+      editor.replaceBlocks(editor.document, editor.tryParseHTMLToBlocks(initialContent));
+      seedingRef.current = false;
+    }
     return () => {
       for (const s of staged) URL.revokeObjectURL(s.previewUrl);
+      staged.length = 0;
+      usedNames.clear();
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
 
   const emit = () => {
     if (seedingRef.current) return;
