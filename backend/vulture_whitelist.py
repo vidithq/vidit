@@ -38,6 +38,12 @@ added_at  # app/models/collection.py CollectionEvent, stamped when an event join
 # Starlette calls dispatch(); never referenced by name.
 _.dispatch  # app/middleware/csrf.py CSRFMiddleware
 
+# ── html.parser.HTMLParser callbacks ──────────────────────────────────────────
+# ``feed()`` calls them; never referenced by name.
+_.handle_starttag  # app/services/sanitize.py
+_.handle_endtag  # app/services/sanitize.py
+_.handle_data  # app/services/sanitize.py
+
 # ── Pydantic response-model fields ────────────────────────────────────────────
 # Set by the service layer and serialized by Pydantic; never read back in app/.
 redeemer  # schemas/admin.py AdminInviteCodeRead
