@@ -237,12 +237,17 @@ def rewrite_image_srcs(html: str, src_map: Mapping[str, str]) -> str:
 
 
 def html_from_text(text: str, *, image_srcs: list[str] | None = None) -> str:
-    """One paragraph per non-blank line, then one ``img`` per src; empty input yields ``""``."""
+    """One paragraph per non-blank line, then one ``img`` per src; empty input yields ``""``.
+
+    The srcs are ones storage minted, so like :func:`rewrite_image_srcs` they
+    skip the host check.
+    """
     paragraphs = "".join(
         f"<p>{html_escape(line, quote=False)}</p>" for line in text.split("\n") if line.strip()
     )
-    images = "".join(f'<img src="{html_escape(src)}">' for src in image_srcs or [])
-    return sanitize_html(paragraphs + images)
+    minted = {f"{PROOF_PLACEHOLDER_PREFIX}{i}": src for i, src in enumerate(image_srcs or [])}
+    images = "".join(f'<img src="{placeholder}">' for placeholder in minted)
+    return sanitize_html(paragraphs, allow_images=False) + rewrite_image_srcs(images, minted)
 
 
 class _Reader(HTMLParser):

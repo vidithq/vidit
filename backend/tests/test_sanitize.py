@@ -392,6 +392,13 @@ def test_from_text_appends_images_and_stays_canonical(dev_media):
     assert sanitize_html(out) == out
 
 
+def test_from_text_keeps_minted_srcs_off_the_media_host(monkeypatch):
+    monkeypatch.setattr(settings, "cloudfront_domain", "cdn.example.com")
+    out = html_from_text("a", image_srcs=["https://bucket.example/p.png?x=1&y=2"])
+    assert out == '<p>a</p><img src="https://bucket.example/p.png?x=1&amp;y=2">'
+    assert extract_image_srcs(out) == ["https://bucket.example/p.png?x=1&y=2"]
+
+
 def test_text_reverses_from_text():
     assert html_text(html_from_text("one\n\ntwo\nthree")) == "one\ntwo\nthree"
 
