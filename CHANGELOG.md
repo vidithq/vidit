@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The roadmap lives in the GitHub Project, one epic issue per upcoming version; the vision moves to the README and the `planning/` folder is removed ([#529](https://github.com/vidithq/vidit/pull/529)).
 - The README, CONTRIBUTING, issue templates, planning files and promo pipeline guide are deduplicated and checked against the code ([#373](https://github.com/vidithq/vidit/pull/373)).
 - Dependabot waits a cooldown before opening a version-update PR (7 days for a major, 3 for a minor, 1 for a patch); security updates are unaffected ([#387](https://github.com/vidithq/vidit/pull/387)).
 - The events service is a package with one module per write verb; callers import it from the same place ([#371](https://github.com/vidithq/vidit/pull/371)).

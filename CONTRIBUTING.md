@@ -2,13 +2,13 @@
 
 ## Open posture
 
-Vidit is open source under [AGPL-3.0](LICENSE), with no proprietary tier. See [`roadmap.md`](planning/roadmap.md) → *Openness & transparency*.
+Vidit is open source under [AGPL-3.0](LICENSE), with no proprietary tier. See the [future considerations epic](https://github.com/vidithq/vidit/issues/535) → *Openness and transparency*.
 
 Contributions that exist only to enable a competing hosted SaaS on top of this codebase are out of scope for the upstream. Fork freely (AGPL allows it), but expect review to push back.
 
 ## Before you start
 
-- **Read [`roadmap.md`](planning/roadmap.md)** for the *why*, the milestone ladder, and what's deferred to *future considerations*.
+- **Read the [vision](README.md#vision)** for the *why*, the `Epic:` issues in the [GitHub Project](https://github.com/orgs/vidithq/projects/1) for the milestone ladder (one per Version value), and the [future considerations epic](https://github.com/vidithq/vidit/issues/535) for what's deferred.
 - **Browse the [GitHub Project](https://github.com/orgs/vidithq/projects/1)** to see open work. Each item is an issue in `vidithq/vidit` with a type (Feature, Debt, Task, Bug) and the project fields Status, Priority (P0 to P3), Version (v0.6 to v1.0, or Unscheduled), and Area. Shipped items move to [`CHANGELOG.md`](CHANGELOG.md).
 - **Read [`AGENTS.md`](AGENTS.md)** for project conventions.
 

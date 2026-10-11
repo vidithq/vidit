@@ -122,7 +122,8 @@ const FEATURE_GROUPS: {
 
 const GITHUB_URL = "https://github.com/vidithq/vidit";
 
-// Reader-facing roadmap, the public projection of `planning/roadmap.md`.
+// Reader-facing roadmap. Mirrors the `Epic:` issues in the GitHub Project
+// (https://github.com/orgs/vidithq/projects/1); change both.
 // Current + upcoming only; shipped history lives in the CHANGELOG. `state`
 // drives the treatment: the current version carries the accent card and pill.
 // Optional `link` surfaces an in-card link to a concrete artifact.

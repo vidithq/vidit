@@ -57,9 +57,18 @@ The detection engine is documented in [docs/ingestion.md](docs/ingestion.md), th
 
 ---
 
+## Vision
+
+- **Problem:** analysts who geolocate armed-conflict events post their work on X with no structured format and no place to centralize it, and the few dedicated tools are closed to part of the community.
+- **Solution:** one open platform to reference, archive and visualize those geolocations, with a structured proof format and an interactive map.
+- **Primary persona:** the OSINT/GEOINT analyst, amateur or professional, who geolocates open-source media (X, Telegram, satellite imagery) inside an international, English-speaking community on X and Discord.
+- **Guiding principles:** openness (no artificial barriers), simplicity (posting a geolocation takes under two minutes), quality (an experience that matches the seriousness of the work), neutrality (geolocated facts, not political stances).
+
+---
+
 ## Why open source
 
-Vidit is open source under [AGPL-3.0](LICENSE). Anyone can self-host the platform; modifications deployed as a network service must publish their source under the same license. See [`planning/roadmap.md`](planning/roadmap.md) → *Openness & transparency*.
+Vidit is open source under [AGPL-3.0](LICENSE). Anyone can self-host the platform; modifications deployed as a network service must publish their source under the same license. See the [future considerations epic](https://github.com/vidithq/vidit/issues/535) → *Openness and transparency*.
 
 ---
 
@@ -75,7 +84,7 @@ https://github.com/user-attachments/assets/f314673c-d357-4468-af6d-2299c831c5fc
 
 A FastAPI + PostgreSQL/PostGIS backend and a Next.js frontend. [docs/engineering.md](docs/engineering.md) covers the tech stack, the repository layout and the CI jobs.
 
-The technical reference lives in [`docs/`](docs/) (start at [docs/index.md](docs/index.md)) and is hosted at **[docs.vidit.app](https://docs.vidit.app)**. Planning lives in [planning/roadmap.md](planning/roadmap.md) and the [GitHub Project](https://github.com/orgs/vidithq/projects/1); release history in [CHANGELOG.md](CHANGELOG.md).
+The technical reference lives in [`docs/`](docs/) (start at [docs/index.md](docs/index.md)) and is hosted at **[docs.vidit.app](https://docs.vidit.app)**. The roadmap lives in the [GitHub Project](https://github.com/orgs/vidithq/projects/1): each upcoming version has one `Epic:` issue with its title, summary and design. Release history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
