@@ -11,6 +11,8 @@ import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
 import { PROOF_PLACEHOLDER_PREFIX, safeProofFilename } from "@/lib/proofImages";
 import { HEADING_LEVELS, isSafeLinkHref, RICH_TEXT_EXTENSIONS } from "@/lib/richText";
 
+import { MarkdownPaste } from "./markdownPaste";
+
 interface ProofEditorProps {
   onChange: (json: Record<string, unknown>) => void;
   /** The proof body's inline images, kept locally while typing and uploaded at publish (as
@@ -166,6 +168,8 @@ const FORMAT_GROUPS: Format[][] = [
  *
  * `allowImages={false}` removes that control for a body stored under the same allowlist minus
  * images (a collection's description): one editor, so marks, lists and link rules stay the same.
+ *
+ * A plain-text paste that reads as Markdown arrives formatted (`markdownPaste.ts`).
  */
 export default function ProofEditor({
   onChange,
@@ -193,7 +197,7 @@ export default function ProofEditor({
 
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: RICH_TEXT_EXTENSIONS,
+    extensions: [...RICH_TEXT_EXTENSIONS, MarkdownPaste],
     content: initialContent ?? undefined,
     editorProps: {
       attributes: {
