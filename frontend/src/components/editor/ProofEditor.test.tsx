@@ -1,5 +1,6 @@
 import { act, render, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { en } from "@blocknote/core/locales";
 import type { useCreateBlockNote } from "@blocknote/react";
 
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
@@ -15,6 +16,12 @@ vi.mock("@blocknote/react", async (importOriginal) => {
     useCreateBlockNote: (...args: Parameters<typeof actual.useCreateBlockNote>) =>
       (editor = actual.useCreateBlockNote(...args)),
   };
+});
+
+// The toolbar positions itself from the selection's rects, which jsdom's Range does not implement.
+beforeAll(() => {
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
 });
 
 const png = (name: string) => new File(["x"], name, { type: "image/png" });
@@ -94,5 +101,54 @@ describe("ProofEditor", () => {
     await waitFor(() => expect(textOnly).toHaveTextContent("After"));
     expect(images.querySelector('[data-content-type="image"]')).not.toBeNull();
     expect(textOnly.querySelector('[data-content-type="image"]')).toBeNull();
+  });
+
+  describe("formatting toolbar", () => {
+    const t = en.formatting_toolbar;
+    const dropped = [
+      t.align_left.tooltip,
+      t.align_center.tooltip,
+      t.align_right.tooltip,
+      t.nest.tooltip,
+      t.unnest.tooltip,
+      t.file_replace.tooltip.image,
+      t.file_preview_toggle.tooltip,
+      t.file_caption.tooltip,
+    ];
+
+    const toolbarLabels = async (container: HTMLElement, select: () => void) => {
+      await waitFor(() => expect(editor.document).toHaveLength(2));
+      act(select);
+      return Array.from(
+        container.ownerDocument.querySelectorAll(".bn-formatting-toolbar button"),
+        (b) => b.getAttribute("aria-label"),
+      );
+    };
+
+    it.each([
+      [
+        "selected text",
+        () => editor._tiptapEditor.commands.setTextSelection({ from: 4, to: 9 }),
+        t.bold.tooltip,
+      ],
+      [
+        "a selected image",
+        () => editor.setTextCursorPosition(editor.document[1]),
+        t.file_delete.tooltip.image,
+      ],
+    ])("offers nothing the server drops for %s", async (_name, select, kept) => {
+      const { container } = render(
+        <ProofEditor
+          onChange={() => {}}
+          initialContent='<p>Anchor points</p><img src="https://cdn.test/p.jpg">'
+        />,
+      );
+      const labels = await toolbarLabels(container, () => {
+        editor.focus();
+        select();
+      });
+      expect(labels).toContain(kept);
+      for (const label of dropped) expect(labels).not.toContain(label);
+    });
   });
 });

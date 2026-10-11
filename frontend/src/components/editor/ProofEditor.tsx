@@ -10,11 +10,17 @@ import {
   defaultStyleSpecs,
 } from "@blocknote/core";
 import {
+  FileCaptionButton,
   FilePanel,
   FilePanelController,
+  FilePreviewButton,
+  FileReplaceButton,
   FormattingToolbar,
   FormattingToolbarController,
   getFormattingToolbarItems,
+  NestBlockButton,
+  TextAlignButton,
+  UnnestBlockButton,
   UploadTab,
   useCreateBlockNote,
   useDictionary,
@@ -112,20 +118,23 @@ const VIDIT_THEME = {
 
 // Alignment and nesting do not survive the server allowlist. The replace button opens
 // BlockNote's default file panel, whose Embed tab mints off-host image URLs the server refuses.
-const DROPPED_TOOLBAR_ITEMS = new Set([
-  "textAlignLeftButton",
-  "textAlignCenterButton",
-  "textAlignRightButton",
-  "nestBlockButton",
-  "unnestBlockButton",
-  "replaceFileButton",
+// With the preview off an image exports as a link, and a caption as `<figure>`, which the server
+// drops or flattens. Matched by component, not by BlockNote's item keys, so a key rename can't
+// let one back in.
+const DROPPED_TOOLBAR_BUTTONS = new Set<unknown>([
+  TextAlignButton,
+  NestBlockButton,
+  UnnestBlockButton,
+  FileReplaceButton,
+  FilePreviewButton,
+  FileCaptionButton,
 ]);
 
 function ProofFormattingToolbar({ blockTypeSelectItems }: FormattingToolbarProps) {
   return (
     <FormattingToolbar>
       {getFormattingToolbarItems(blockTypeSelectItems).filter(
-        (item) => !DROPPED_TOOLBAR_ITEMS.has(String(item.key)),
+        (item) => !DROPPED_TOOLBAR_BUTTONS.has(item.type),
       )}
     </FormattingToolbar>
   );
@@ -212,7 +221,7 @@ export default function ProofEditor({
   const emit = () => {
     if (seedingRef.current) return;
     // BlockNote writes U+FFFC into an empty block so it survives its own round trip; it is not text.
-    const html = editor.blocksToHTMLLossy(editor.document).replaceAll("￼", "");
+    const html = editor.blocksToHTMLLossy(editor.document).replaceAll("\uFFFC", "");
     onChange(html);
     onProofFilesChange?.(referencedProofFiles(html, stagedRef.current));
   };
