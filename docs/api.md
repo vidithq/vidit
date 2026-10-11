@@ -469,7 +469,7 @@ Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/
 | `event_date` | `YYYY-MM-DD`. Blank stores NULL | opt | opt | opt | opt | opt |
 | `event_time` | `HH:MM`, UTC. Blank stores NULL. Independent of `event_date` | opt | opt | opt | opt | opt |
 | `source_posted_at` | `YYYY-MM-DDTHH:MM`, read as UTC: when the source posted the media | req | req | keep | req | keep |
-| `proof` | Serialized Tiptap document, sanitized server-side. A `placeholder://<filename>` src resolves against `proof_files`; an already-uploaded URL passes through | opt | opt | opt | opt | opt |
+| `proof` | An HTML string, sanitized on the [rich text](#rich-text) rules. A `placeholder://<filename>` src resolves against `proof_files`; an already-uploaded URL passes through | opt | opt | opt | opt | opt |
 | `tag_ids` | JSON array of tag ids. Replaces the tag set | floor | opt | opt | floor | floor |
 | `conflict_ids` | JSON array of [conflict](#conflicts) ids. Replaces the conflict set | floor | opt | opt | floor | floor |
 | `is_graphic` | `true` when the footage shows death, injury or human remains. Defaults to `false`. Ratchets: `false` never clears a set flag; only [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation) clears it | opt | opt | opt | opt | opt |
@@ -499,6 +499,21 @@ A `geolocated` row also always carries coordinates and a `source_url`. The two r
 
 `max_proof_images_per_event` bounds what the final proof body displays: the already-uploaded images it still references plus the new files. An image kept only because a past version displays it does not count. Over the ceiling is a 422 `too_many_files`.
 
+#### Rich text
+
+An event's `proof` and a collection's `description` are HTML strings. The server sanitizes every incoming body with [`services/sanitize.py`](../backend/app/services/sanitize.py) and stores and serves the canonical result:
+
+- **Tags:** `p`, `h2`, `h3`, `strong`, `em`, `s`, `code`, `pre`, `a`, `ul`, `ol`, `li`, `blockquote`, `hr`, `br`, and `img` in a `proof`. Any other tag is removed and its text kept. `script` and `style` are removed with their content.
+- **Attributes:** `href` on `a`, `src` and `alt` on `img`. Every other attribute is removed. The server adds no `rel` or `target`; the renderer adds them.
+- **Links:** an `href` must be an `http` or `https` URL with a host. A link whose `href` fails is kept as plain text.
+- **Images:** a `src` must be a relative path or a URL on the configured media host (see [`engineering.md`](engineering.md#particularities-non-obvious-behavior-found-during-development)). A `placeholder://<filename>` src is accepted on the event forms only. An image whose `src` fails is removed.
+- **Empty body:** a body with no text and no image is stored as `""`.
+- **Caps:** at most 200,000 characters, 10,000 `<` characters, and 32 levels of nesting. A body over a cap is `invalid_proof` or `invalid_description`.
+
+The plain-text projection (`sanitize.html_text`) measures the description cap and feeds `description_text` and search. It decodes entities, drops U+FFFC, and starts a new line at every `p`, `h2`, `h3`, `li`, `blockquote`, `pre`, `ul`, `ol` and `hr` boundary, at every `br`, and at every newline in the text. Each line is stripped, blank lines are dropped, and the rest join with `\n`.
+
+At publish, the server sanitizes the body first, uploads `proof_files`, and then rewrites each `placeholder://` src to the stored URL.
+
 ### Event write errors
 
 The error table every event form endpoint shares. Each endpoint section names which of its rows apply and adds its own.
@@ -508,7 +523,7 @@ The error table every event form endpoint shares. Each endpoint section names wh
 | 400 | (plain string) | Empty or whitespace-only `title` or `source_url` |
 | 400 | `invalid_coordinates` | A coordinate out of range, or half of a pair |
 | 400 | `media_required` | No source media, or the write would leave none |
-| 400 | `invalid_proof` | The sanitizer rejected `proof` |
+| 400 | `invalid_proof` | `proof` exceeds a [rich text](#rich-text) cap |
 | 400 | `proof_image_required` | No image in the final proof body |
 | 400 | `tag_requirements_not_met` | No conflict, or no `capture_source` tag |
 | 400 | `too_many_source_links` | More than 10 `secondary_source_urls` after normalization |
@@ -772,7 +787,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
   "archived_secondary_sources": [
     { "url": "https://archive.ph/aBcDe", "provider": "archive_today" }
   ],
-  "proof": { "type": "doc", "content": [] },
+  "proof": "<p>Matched the ridgeline and the pylon.</p><img src=\"https://media.example/proof/…jpg\">",
   "event_date": "2026-03-15",
   "event_time": "14:30:00",
   "source_posted_at": "2026-03-14T18:05:00Z",
@@ -827,7 +842,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 | `version_no` | `1` until the owner corrects the event, then one higher per [correction](#post-eventsidversions) |
 | `geolocated_at` | When the row became `geolocated`; `null` before publication |
 | `close_reason`, `before_closed_status` | `null` while the event is open |
-| `media` | The `source` attachment only. A `proof` image lives inline in the `proof` document as a URL |
+| `media` | The `source` attachment only. A `proof` image lives inline in the `proof` HTML as an `img` src |
 | `thumbnail` | The card thumbnail, on the rule of [`GET /events`](#get-events) |
 | `is_graphic` | `true` when the footage is flagged as showing death, injury or human remains |
 
@@ -1082,7 +1097,7 @@ The event's superseded versions, newest first. Public, like the event. The live 
         "secondary_source_urls": [],
         "tags": [{ "id": "uuid", "name": "Drone", "category": "capture_source" }],
         "conflicts": [{ "id": "uuid", "name": "Russian invasion of Ukraine" }],
-        "proof": { "type": "doc", "content": [] },
+        "proof": "<p>Matched the ridgeline.</p><img src=\"https://media.example/proof/…jpg\">",
         "proof_media": [ { "…": "MediaRead" } ],
         "archives": [
           {
@@ -1359,9 +1374,9 @@ Ongoing-conflict names and dates derive from Wikipedia's "List of ongoing armed 
 A collection is a named set of one analyst's own events, shown on the owner's public profile. [`data-model.md`](data-model.md#collections) describes the storage. On the wire:
 
 - **Title:** required, 1 to 255 characters after stripping surrounding whitespace.
-- **Description:** required, a Tiptap document in the shape of an event's `proof`, sanitized on the proof allowlist minus images. An `image` node is dropped. A link `href` must be `http(s)`.
-- **Description cap:** 500 characters, measured on the plain-text projection that every read serves as `description_text`, not on the JSON.
-- **`invalid_description` (400):** the body is not a `type: "doc"` document, its projection is empty, or its projection exceeds 500 characters. A `description` that is not a JSON object is a 422.
+- **Description:** required, an HTML string sanitized on the [rich text](#rich-text) rules. An `img` is removed.
+- **Description cap:** 500 characters, measured on the plain-text projection that every read serves as `description_text`, not on the HTML.
+- **`invalid_description` (400):** the body exceeds a rich text cap, its projection is empty, or its projection exceeds 500 characters. A `description` that is not a string is a 422.
 - **What a collection shows:** visible events (neither soft-deleted nor withheld) in `geolocated` or `detected`. The same predicate governs the item list, the count, the date range, the mosaic, the tag union, and the add check. An event that leaves that set leaves all six with no membership write.
 - **Order:** items order themselves by when their events happened; there is no manual order.
 
@@ -1373,19 +1388,7 @@ Open a collection, holding the events you pick.
 ```json
 {
   "title": "Zaporizhzhia plant",
-  "description": {
-    "type": "doc",
-    "content": [
-      {
-        "type": "paragraph",
-        "content": [
-          { "type": "text", "text": "Strikes and their aftermath at the plant, " },
-          { "type": "text", "text": "2025 to 2026", "marks": [{ "type": "bold" }] },
-          { "type": "text", "text": "." }
-        ]
-      }
-    ]
-  },
+  "description": "<p>Strikes and their aftermath at the plant, <strong>2025 to 2026</strong>.</p>",
   "event_ids": ["7c9e6679-7425-40de-944b-e07fc1f90ae7"]
 }
 ```
@@ -1401,7 +1404,7 @@ Open a collection, holding the events you pick.
 | 403 | One of `event_ids` belongs to someone else |
 | 404 | `event_not_found`: an id no event carries |
 | 409 | `event_not_collectable`: an event's state is not one a collection shows |
-| 422 | Title empty or over 255 characters; `description` not a JSON object; or more than 500 `event_ids` |
+| 422 | Title empty or over 255 characters; `description` not a string; or more than 500 `event_ids` |
 
 ---
 
@@ -1439,17 +1442,7 @@ One collection's header: owner, title, description, tags, item count, and the da
   "id": "uuid",
   "owner": { "id": "uuid", "username": "analyst", "avatar_url": "https://…/avatars/…jpg" },
   "title": "Zaporizhzhia plant",
-  "description": {
-    "type": "doc",
-    "content": [
-      {
-        "type": "paragraph",
-        "content": [
-          { "type": "text", "text": "Strikes and their aftermath at the plant, 2025 to 2026." }
-        ]
-      }
-    ]
-  },
+  "description": "<p>Strikes and their aftermath at the plant, 2025 to 2026.</p>",
   "description_text": "Strikes and their aftermath at the plant, 2025 to 2026.",
   "cover": [
     { "url": "https://…/uploads/geo/…jpg", "media_type": "image", "role": "source" },
@@ -1499,7 +1492,7 @@ Write your collection's title and description. Owner only. Both fields are requi
 | 400 | `invalid_description` |
 | 403 | Not your collection |
 | 404 | `collection_not_found` |
-| 422 | Title empty or over 255 characters, or `description` not a JSON object |
+| 422 | Title empty or over 255 characters, or `description` not a string |
 
 ---
 
