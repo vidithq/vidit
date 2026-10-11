@@ -10,7 +10,7 @@
 #   1. Weekly **version-update PRs** on every ecosystem so the floor stays
 #      current and the next security PR rebases on a smaller delta.
 #   2. **Grouping** so a busy ecosystem doesn't open ten PRs in one morning:
-#      `@sentry/*`, `@tiptap/*`, `@typescript-eslint/*`, `@types/*`, and the
+#      `@sentry/*`, `@blocknote/*`, `@typescript-eslint/*`, `@types/*`, and the
 #      `next` family each consolidate into a single PR. Everything else
 #      groups into a `minor-and-patch` catch-all. Major bumps stay
 #      individual on purpose — those are the ones worth reviewing
@@ -72,9 +72,9 @@ updates:
       sentry:
         patterns:
           - "@sentry/*"
-      tiptap:
+      blocknote:
         patterns:
-          - "@tiptap/*"
+          - "@blocknote/*"
       typescript-eslint:
         patterns:
           - "@typescript-eslint/*"

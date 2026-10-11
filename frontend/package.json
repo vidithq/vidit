@@ -16,14 +16,14 @@
     "palette:check": "node scripts/check-palette-coverage.mjs"
   },
   "dependencies": {
+    "@blocknote/core": "^0.55.0",
+    "@blocknote/mantine": "^0.55.0",
+    "@blocknote/react": "^0.55.0",
     "@sentry/nextjs": "^11.2.0",
-    "@tiptap/extension-image": "^3.31.4",
-    "@tiptap/pm": "^3.31.4",
-    "@tiptap/react": "^3.31.4",
-    "@tiptap/starter-kit": "^3.31.4",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "fflate": "^0.8.3",
+    "html-react-parser": "^6.1.8",
     "lucide-react": "^1.49.0",
     "maplibre-gl": "^6.4.1",
     "media-chrome": "^4.19.3",
