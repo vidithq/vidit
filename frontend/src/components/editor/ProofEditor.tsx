@@ -7,7 +7,6 @@ import {
   BlockNoteSchema,
   createHeadingBlockSpec,
   defaultBlockSpecs,
-  defaultInlineContentSpecs,
   defaultStyleSpecs,
 } from "@blocknote/core";
 import {
@@ -84,21 +83,20 @@ const STYLES = { bold, italic, strike, code };
 
 const SCHEMA_WITH_IMAGES = BlockNoteSchema.create({
   blockSpecs: { ...TEXT_BLOCKS, image: proofImage },
-  inlineContentSpecs: defaultInlineContentSpecs,
   styleSpecs: STYLES,
 });
 
 const SCHEMA_TEXT_ONLY = BlockNoteSchema.create({
   blockSpecs: TEXT_BLOCKS,
-  inlineContentSpecs: defaultInlineContentSpecs,
   styleSpecs: STYLES,
 });
 
 // The neutral scale and accent as CSS variables, so the editor follows the reader's theme and
-// accent like every Tailwind utility does (`globals.css` remaps both).
+// accent like every Tailwind utility does (`globals.css` remaps both). The wrapper paints the
+// field's background.
 const VIDIT_THEME = {
   colors: {
-    editor: { text: "var(--color-neutral-300)", background: "var(--color-neutral-800)" },
+    editor: { text: "var(--color-neutral-300)", background: "transparent" },
     menu: { text: "var(--color-neutral-200)", background: "var(--color-neutral-900)" },
     tooltip: { text: "var(--color-neutral-200)", background: "var(--color-neutral-800)" },
     hovered: { text: "var(--color-neutral-100)", background: "var(--color-neutral-800)" },

@@ -1,31 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-/** The one-paragraph body the proof editor emits for unmarked text. */
-function textDoc(text: string): string {
-  return `<p>${text}</p>`;
-}
+import { textHtml } from "@/test/proofEditorStub";
 
-// The editor is stubbed as a textarea that emits HTML; the props the form
-// passes it are asserted through the marks it prints.
-vi.mock("@/components/editor/ProofEditor", () => ({
-  default: ({
-    onChange,
-    allowImages,
-    invalid,
-  }: {
-    onChange: (html: string) => void;
-    allowImages?: boolean;
-    invalid?: boolean;
-  }) => (
-    <textarea
-      aria-label="Description"
-      data-allow-images={String(allowImages)}
-      data-invalid={String(invalid)}
-      onChange={(e) => onChange(textDoc(e.target.value))}
-    />
-  ),
-}));
+vi.mock("@/components/editor/ProofEditor", () => import("@/test/proofEditorStub"));
 
 // The picker is `EventPicker.test.tsx`'s subject.
 vi.mock("@/hooks/useCursorList", () => ({
@@ -94,7 +72,7 @@ describe("CollectionDetailsForm", () => {
 
     expect(onSubmit).toHaveBeenCalledWith(
       "March strikes",
-      textDoc("Strikes on the corridor through March."),
+      textHtml("Strikes on the corridor through March."),
       [],
     );
   });
@@ -134,7 +112,7 @@ describe("CollectionDetailsForm", () => {
   it("opens an edit on the collection's own document", async () => {
     await renderForm({
       initialTitle: "Kupiansk rail corridor",
-      initialDescription: textDoc("Three days of strikes."),
+      initialDescription: textHtml("Three days of strikes."),
       submitLabel: "Save collection",
     });
 
@@ -142,7 +120,7 @@ describe("CollectionDetailsForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save collection" }));
     expect(onSubmit).toHaveBeenCalledWith(
       "Kupiansk rail corridor",
-      textDoc("Three days of strikes."),
+      textHtml("Three days of strikes."),
       [],
     );
   });

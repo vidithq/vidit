@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { textHtml } from "@/test/proofEditorStub";
+
 const push = vi.fn();
 const replace = vi.fn();
 vi.mock("next/navigation", () => ({
@@ -12,32 +14,7 @@ vi.mock("next/navigation", () => ({
 const useAuth = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => useAuth() }));
 
-/** The one-paragraph body for a line of unmarked text. */
-function textDoc(text: string): string {
-  return `<p>${text}</p>`;
-}
-
-/** That body as text, for the stub's seed. */
-function docText(html: string | null | undefined): string {
-  return html?.replace(/^<p>|<\/p>$/g, "") ?? "";
-}
-// BlockNote needs layout APIs jsdom lacks, so the editor is stubbed as a textarea that prints its seeded
-// body and emits the one-paragraph HTML the real editor emits for unmarked text.
-vi.mock("@/components/editor/ProofEditor", () => ({
-  default: ({
-    initialContent,
-    onChange,
-  }: {
-    initialContent?: string | null;
-    onChange: (html: string) => void;
-  }) => (
-    <textarea
-      aria-label="Description"
-      defaultValue={docText(initialContent)}
-      onChange={(e) => onChange(textDoc(e.target.value))}
-    />
-  ),
-}));
+vi.mock("@/components/editor/ProofEditor", () => import("@/test/proofEditorStub"));
 
 const useApiResource = vi.fn();
 vi.mock("@/hooks/useApiResource", () => ({
@@ -220,7 +197,7 @@ describe("EditCollectionPage", () => {
       expect(updateCollection).toHaveBeenCalledWith(
         "c1",
         "Kupiansk rail corridor, March",
-        textDoc("Three days of strikes on the eastern approach."),
+        textHtml("Three days of strikes on the eastern approach."),
       ),
     );
     expect(push).toHaveBeenCalledWith("/collections/c1");
