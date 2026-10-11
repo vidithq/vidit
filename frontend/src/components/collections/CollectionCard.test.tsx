@@ -24,6 +24,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
       },
     ],
   },
+  description_markdown: "Three days of strikes on the eastern approach.",
   description_text: "Three days of strikes on the eastern approach.",
   cover: [],
   tags: [],

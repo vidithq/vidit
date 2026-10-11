@@ -1,6 +1,12 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+import { getSchema, resolveExtensions, type JSONContent } from "@tiptap/core";
+import { MarkdownManager } from "@tiptap/markdown";
+import { Node } from "@tiptap/pm/model";
 import { describe, expect, it } from "vitest";
 
-import { isSafeLinkHref, richTextContract } from "./richText";
+import { isSafeLinkHref, RICH_TEXT_EXTENSIONS, richTextContract } from "./richText";
 
 describe("richTextContract", () => {
   it("matches the allowlist the server sanitizer loads", async () => {
@@ -9,6 +15,56 @@ describe("richTextContract", () => {
     await expect(`${JSON.stringify(richTextContract(), null, 2)}\n`).toMatchFileSnapshot(
       "../../../backend/app/services/rich_text_contract.json",
     );
+  });
+});
+
+describe("the server's Markdown projection", () => {
+  // `backend/tests/data/rich_text_markdown.json` pairs documents with what
+  // `services/rich_text_markdown.tiptap_doc_markdown` writes for them (the backend suite asserts
+  // that half). Parsing each Markdown string back with Tiptap's CommonMark parser must give the
+  // same document, so the projection's escaping loses nothing.
+  const fixtures: Array<{ name: string; doc: JSONContent; markdown: string }> = JSON.parse(
+    readFileSync(
+      path.resolve(__dirname, "../../../backend/tests/data/rich_text_markdown.json"),
+      "utf8",
+    ),
+  );
+  const manager = new MarkdownManager({ extensions: resolveExtensions(RICH_TEXT_EXTENSIONS) });
+  const schema = getSchema(RICH_TEXT_EXTENSIONS);
+  const { marks, nodes } = richTextContract();
+
+  const keptAttrs = (kept: string[] | undefined, attrs: Record<string, unknown> = {}) => {
+    const entries = Object.entries(attrs).filter(
+      ([name, value]) => kept?.includes(name) && value !== null,
+    );
+    return entries.length ? { attrs: Object.fromEntries(entries) } : {};
+  };
+
+  // ProseMirror's own form (adjacent runs with the same marks joined), reduced to the attrs the
+  // contract keeps, without empty paragraphs, which hold nothing to project.
+  const canonical = (json: JSONContent): JSONContent => {
+    const strip = (node: JSONContent): JSONContent => {
+      const { attrs, content, marks: nodeMarks, ...rest } = node;
+      return {
+        ...rest,
+        ...keptAttrs(nodes[node.type ?? ""], attrs),
+        ...(nodeMarks
+          ? { marks: nodeMarks.map((m) => ({ type: m.type, ...keptAttrs(marks[m.type], m.attrs) })) }
+          : {}),
+        ...(content
+          ? {
+              content: content
+                .filter((child) => child.type !== "paragraph" || child.content?.length)
+                .map(strip),
+            }
+          : {}),
+      };
+    };
+    return strip(Node.fromJSON(schema, json).toJSON());
+  };
+
+  it.each(fixtures)("reads back as the same document: $name", ({ doc, markdown }) => {
+    expect(canonical(manager.parse(markdown))).toEqual(canonical(doc));
   });
 });
 

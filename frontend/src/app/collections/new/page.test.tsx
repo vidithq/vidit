@@ -115,6 +115,7 @@ const created: Collection = {
       { type: "paragraph", content: [{ type: "text", text: "Strikes on the corridor through March." }] },
     ],
   },
+  description_markdown: "Strikes on the corridor through March.",
   description_text: "Strikes on the corridor through March.",
   cover: [],
   tags: [],

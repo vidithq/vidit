@@ -20,6 +20,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
       { type: "paragraph", content: [{ type: "text", text: "Three days of strikes on the eastern approach." }] },
     ],
   },
+  description_markdown: "Three days of strikes on the eastern approach.",
   description_text: "Three days of strikes on the eastern approach.",
   cover: [],
   tags: [],

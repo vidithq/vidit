@@ -2505,7 +2505,8 @@ export interface components {
          *     ``title`` and ``description`` (a Tiptap document) are the owner's two
          *     required fields. ``description_text`` is its plain-text projection
          *     (``services/sanitize.tiptap_doc_text``) for surfaces without rich text
-         *     (card clamp, share card, snippet).
+         *     (card clamp, share card, snippet). ``description_markdown`` is its read-only
+         *     CommonMark projection (``services/rich_text_markdown.tiptap_doc_markdown``).
          *
          *     ``event_count``, ``first_date`` and ``last_date`` are computed at read time
          *     over the events the collection may show
@@ -2534,6 +2535,8 @@ export interface components {
             description: {
                 [key: string]: unknown;
             };
+            /** Description Markdown */
+            description_markdown: string;
             /** Description Text */
             description_text: string;
             /** Event Count */
@@ -2780,6 +2783,8 @@ export interface components {
             proof: {
                 [key: string]: unknown;
             } | null;
+            /** Proof Markdown */
+            proof_markdown: string | null;
             requested_by: components["schemas"]["AuthorRef"] | null;
             /** Secondary Source Urls */
             secondary_source_urls: string[];
@@ -2836,6 +2841,8 @@ export interface components {
             id: string;
             /** Note */
             note: string | null;
+            /** Proof Markdown */
+            proof_markdown: string | null;
             /** Redacted */
             redacted: boolean;
             /** Snapshot */

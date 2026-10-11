@@ -5,7 +5,7 @@ routers), the projection helpers and :func:`resolve_live_event`.
 """
 
 import uuid
-from typing import Annotated, NoReturn
+from typing import Annotated, Any, NoReturn
 
 from fastapi import HTTPException
 from pydantic import StringConstraints
@@ -23,6 +23,7 @@ from app.schemas.event import (
 from app.schemas.media import MediaRead
 from app.services.event_filters import visible_events
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
+from app.services.rich_text_markdown import tiptap_doc_markdown
 from app.services.source_archive import SnapshotRejected, archive_row_for
 from app.services.thumbnails import pick_thumbnail
 from app.services.versions import VersionLimitError
@@ -136,6 +137,10 @@ def build_event_list(
     )
 
 
+def _proof_markdown(proof: Any) -> str | None:
+    return None if proof is None else tiptap_doc_markdown(proof)
+
+
 def build_version_read(row: EventVersion) -> EventVersionRead:
     """Assemble one superseded version's wire shape.
 
@@ -150,6 +155,7 @@ def build_version_read(row: EventVersion) -> EventVersionRead:
         note=row.note,
         created_at=row.created_at,
         snapshot=row.snapshot,
+        proof_markdown=_proof_markdown(row.snapshot.get("proof")),
         redacted=row.redacted_at is not None,
     )
 
@@ -196,6 +202,7 @@ def build_event_read(
         # Same walk, so the lists stay index-aligned; no extra query.
         archived_secondary_sources=[_archived_link(geo, link.url) for link in geo.source_links],
         proof=geo.proof,
+        proof_markdown=_proof_markdown(geo.proof),
         event_date=geo.event_date,
         event_time=geo.event_time,
         source_posted_at=geo.source_posted_at,

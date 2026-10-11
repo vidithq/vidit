@@ -367,6 +367,7 @@ def test_create_collection_keeps_bold_italic_and_a_bullet_list(db, cleanup, owne
     collection_ids.append(uuid.UUID(body["id"]))
     assert body["description"] == description
     assert body["description_text"] == "Strikes on Kupiansk\nRail corridor\nDepot"
+    assert body["description_markdown"] == "*Strikes on* **Kupiansk**\n\n- Rail corridor\n- Depot"
 
 
 def test_create_collection_drops_an_image_from_the_description(db, cleanup, owner):

@@ -24,6 +24,7 @@ export const eventDetail = (id: string, title: string): EventDetail => ({
   source_url: "https://t.me/channel/12345",
   secondary_source_urls: [],
   archived_secondary_sources: [],
+  proof_markdown: null,
   proof: null,
   created_at: "2026-03-15T10:00:00Z",
   geolocated_at: "2026-03-15T10:00:00Z",

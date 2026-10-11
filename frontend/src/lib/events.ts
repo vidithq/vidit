@@ -494,6 +494,7 @@ export function snapshotToEventView(
         }
     ),
     proof: (snapshot.proof as Record<string, unknown> | null | undefined) ?? null,
+    proof_markdown: version.proof_markdown,
   };
 }
 

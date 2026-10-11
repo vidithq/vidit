@@ -43,6 +43,8 @@ _.dispatch  # app/middleware/csrf.py CSRFMiddleware
 redeemer  # schemas/admin.py AdminInviteCodeRead
 in_collection  # schemas/collection.py CollectionMembershipRead
 cover  # schemas/collection.py CollectionRead, the card's mosaic
+description_markdown  # schemas/collection.py CollectionRead (wire field)
+proof_markdown  # schemas/event.py EventRead and EventVersionRead (wire field)
 archives_imported  # schemas/admin.py AdminInviteRedeemerRead
 bot_detection_count  # schemas/admin.py AdminInviteRedeemerRead
 last_seen_at  # schemas/admin.py AdminInviteRedeemerRead

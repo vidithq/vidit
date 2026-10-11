@@ -44,6 +44,7 @@ from app.schemas.tag import TagRead
 from app.services.event_filters import collectable_events
 from app.services.pagination import keyset_after
 from app.services.permissions import ensure_owner
+from app.services.rich_text_markdown import tiptap_doc_markdown
 from app.services.sanitize import sanitize_tiptap_doc_or_raise, tiptap_doc_text
 from app.services.thumbnails import pick_thumbnail, thumbnail_media_criteria
 
@@ -349,6 +350,7 @@ def build_collection_reads(db: Session, collections: Sequence[Collection]) -> li
                 title=collection.title,
                 description=collection.description,
                 description_text=collection.description_text,
+                description_markdown=tiptap_doc_markdown(collection.description),
                 cover=tiles.get(collection.id, []),
                 tags=tags.get(collection.id, []),
                 event_count=row_stats.event_count,

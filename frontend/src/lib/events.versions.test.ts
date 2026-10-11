@@ -49,6 +49,7 @@ const CURRENT: EventDetail = {
   detected_from_url: null,
   detected_via: null,
   archived_detected_from: null,
+  proof_markdown: "",
   proof: { type: "doc", content: [{ type: "image", attrs: { src: "https://m/c.jpg" } }] },
   created_at: "2026-06-01T00:00:00Z",
   // Apart from `created_at`: submitted at midnight, published nine hours later; version 1 is the publication.
@@ -83,6 +84,7 @@ function row(
     note: null,
     created_at: `2026-06-0${versionNo + 1}T00:00:00Z`,
     snapshot,
+    proof_markdown: null,
     redacted: false,
     ...extra,
   };

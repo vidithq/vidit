@@ -387,6 +387,8 @@ def test_create_succeeds_with_full_floor(
     assert len(srcs) == 1
     assert srcs[0].startswith("http")  # placeholder rewritten to the landed URL
     assert "placeholder://" not in json.dumps(body["proof"])
+    # The Markdown projection reads the stored doc, so it carries the landed URL too.
+    assert f"]({srcs[0]})" in body["proof_markdown"]
 
     import uuid as _uuid
 

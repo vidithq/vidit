@@ -118,6 +118,9 @@ class EventVersionRead(BaseModel):
     created_at: datetime
     # ``{}`` on a redacted version.
     snapshot: dict[str, Any]
+    # The CommonMark projection of ``snapshot["proof"]``, as ``EventRead.proof_markdown``
+    # serves the live one; NULL when the snapshot holds no proof (a redacted version).
+    proof_markdown: str | None
     # Whether an admin blanked this version; the row and number stay.
     redacted: bool
 
@@ -229,6 +232,9 @@ class EventRead(BaseModel):
     # entry ``i`` covers mirror ``i``, NULL like ``archived_source``.
     archived_secondary_sources: list[ArchivedLinkRead | None]
     proof: dict[str, Any] | None
+    # Read-only CommonMark projection of ``proof``
+    # (``services/rich_text_markdown.tiptap_doc_markdown``); NULL with it.
+    proof_markdown: str | None
     event_date: date | None
     # UTC; NULL when the hour is unknown.
     event_time: time | None

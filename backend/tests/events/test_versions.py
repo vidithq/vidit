@@ -711,6 +711,8 @@ def test_versions_read_lists_newest_first(db, author, conflict, capture_source_t
     assert body["items"][0]["note"] == "second"
     assert body["items"][0]["edited_by"]["username"] == author.username
     assert body["items"][1]["note"] is None
+    # Each version carries the projection of its own snapshot's proof.
+    assert body["items"][1]["proof_markdown"] == f"Cross-reference.\n\n![]({STORED_PROOF_URL})"
 
 
 def test_versions_read_is_empty_before_any_edit(db, author, conflict, capture_source_tag):
@@ -1313,6 +1315,7 @@ def test_one_version_serves_a_redacted_version_blanked(
     body = response.json()
     assert body["redacted"] is True
     assert body["snapshot"] == {}
+    assert body["proof_markdown"] is None
     assert body["note"] is None
     assert body["edited_by"]["username"] == author.username
 

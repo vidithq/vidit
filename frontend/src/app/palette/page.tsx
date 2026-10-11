@@ -190,6 +190,7 @@ const MOCK_DETAIL: EventDetail = {
   detected_from_url: null,
   detected_via: null,
   archived_detected_from: null,
+  proof_markdown: null,
   proof: null,
   created_at: "2026-06-01T00:00:00Z",
   geolocated_at: "2026-06-03T10:00:00Z",

@@ -38,6 +38,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
       { type: "paragraph", content: [{ type: "text", text: "The breach and the flooding downstream of it." }] },
     ],
   },
+  description_markdown: "The breach and the flooding downstream of it.",
   description_text: "The breach and the flooding downstream of it.",
   cover: [],
   tags: [],

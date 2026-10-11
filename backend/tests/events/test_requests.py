@@ -514,6 +514,7 @@ def test_create_request_blank_proof_stores_empty_doc(db, author):
     assert response.status_code == 201, response.text
     body = response.json()
     assert body["proof"] == {"type": "doc", "content": []}
+    assert body["proof_markdown"] == ""
 
     request_id = uuid.UUID(body["id"])
     proof_media = db.query(Media).filter(Media.event_id == request_id, Media.role == "proof")

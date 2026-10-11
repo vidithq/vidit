@@ -60,6 +60,7 @@ const EVENT: EventDetail = {
   source_url: "https://t.me/channel/12345",
   secondary_source_urls: [],
   archived_secondary_sources: [],
+  proof_markdown: "",
   proof: { type: "doc", content: [] },
   created_at: "2026-06-01T10:00:00Z",
   geolocated_at: "2026-06-01T10:00:00Z",
@@ -82,6 +83,7 @@ function version(
     note: null,
     created_at: `2026-06-0${versionNo + 1}T10:00:00Z`,
     snapshot,
+    proof_markdown: null,
     redacted: false,
     ...extra,
   };

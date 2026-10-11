@@ -79,6 +79,7 @@ export const EVENT: EventDetail = {
   },
   secondary_source_urls: [],
   archived_secondary_sources: [],
+  proof_markdown: "",
   proof: {
     type: "doc",
     content: [
@@ -198,6 +199,7 @@ export const COLLECTION: Collection = {
       },
     ],
   },
+  description_markdown: COLLECTION_DESCRIPTION,
   description_text: COLLECTION_DESCRIPTION,
   cover: [{ url: MEDIA_URL, media_type: "image", role: "source" }],
   tags: [],
