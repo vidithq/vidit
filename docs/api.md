@@ -469,7 +469,7 @@ Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/
 | `event_date` | `YYYY-MM-DD`. Blank stores NULL | opt | opt | opt | opt | opt |
 | `event_time` | `HH:MM`, UTC. Blank stores NULL. Independent of `event_date` | opt | opt | opt | opt | opt |
 | `source_posted_at` | `YYYY-MM-DDTHH:MM`, read as UTC: when the source posted the media | req | req | keep | req | keep |
-| `proof` | Serialized Tiptap document, sanitized server-side. A `placeholder://<filename>` src resolves against `proof_files`; an already-uploaded URL passes through | opt | opt | opt | opt | opt |
+| `proof` | Serialized Tiptap document, sanitized server-side. A `placeholder://<filename>` src resolves against `proof_files`; an already-uploaded URL passes through. A `link` mark keeps only `href`, an absolute `http(s)` URL of at most 2000 bytes; any other link loses its mark and keeps its text | opt | opt | opt | opt | opt |
 | `tag_ids` | JSON array of tag ids. Replaces the tag set | floor | opt | opt | floor | floor |
 | `conflict_ids` | JSON array of [conflict](#conflicts) ids. Replaces the conflict set | floor | opt | opt | floor | floor |
 | `is_graphic` | `true` when the footage shows death, injury or human remains. Defaults to `false`. Ratchets: `false` never clears a set flag; only [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation) clears it | opt | opt | opt | opt | opt |
@@ -1359,7 +1359,7 @@ Ongoing-conflict names and dates derive from Wikipedia's "List of ongoing armed 
 A collection is a named set of one analyst's own events, shown on the owner's public profile. [`data-model.md`](data-model.md#collections) describes the storage. On the wire:
 
 - **Title:** required, 1 to 255 characters after stripping surrounding whitespace.
-- **Description:** required, a Tiptap document in the shape of an event's `proof`, sanitized on the proof allowlist minus images. An `image` node is dropped. A link `href` must be `http(s)`.
+- **Description:** required, a Tiptap document in the shape of an event's `proof`, sanitized on the proof allowlist minus images. An `image` node is dropped. A `link` mark follows the proof rule: `href` only, an absolute `http(s)` URL of at most 2000 bytes.
 - **Description cap:** 500 characters, measured on the plain-text projection that every read serves as `description_text`, not on the JSON.
 - **`invalid_description` (400):** the body is not a `type: "doc"` document, its projection is empty, or its projection exceeds 500 characters. A `description` that is not a JSON object is a 422.
 - **What a collection shows:** visible events (neither soft-deleted nor withheld) in `geolocated` or `detected`. The same predicate governs the item list, the count, the date range, the mosaic, the tag union, and the add check. An event that leaves that set leaves all six with no membership write.

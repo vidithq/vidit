@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from app.config import settings
+from app.models.event import SOURCE_URL_MAX_LENGTH
 from app.services.storage import LOCAL_STORAGE_URL_PREFIX
 
 # Src scheme for a not-yet-uploaded proof image (``placeholder://<filename>``,
@@ -97,12 +98,14 @@ def _safe_image_src(value: Any, *, allow_placeholders: bool = False) -> str | No
 def safe_link_href(value: Any) -> str | None:
     """The value if it is an explicit ``http(s)://`` URL, else ``None``.
 
-    Rejects ``javascript:``, ``data:``, ``mailto:``, and schemeless paths.
-    The one link allowlist: applied at write time and again by source
-    archival. A value ``urlparse`` refuses (``http://[::1``) returns ``None``
-    instead of raising. Mirrored by ``isSafeLinkHref`` (`lib/proof.tsx`).
+    Rejects ``javascript:``, ``data:``, ``mailto:``, schemeless paths, and a
+    value over ``SOURCE_URL_MAX_LENGTH`` bytes (the archive row's column, so
+    every link that passes can be archived). The one link allowlist: applied
+    at write time and again by source archival. A value ``urlparse`` refuses
+    (``http://[::1``) returns ``None`` instead of raising. Mirrored by
+    ``isSafeLinkHref`` (`lib/proof.tsx`).
     """
-    if not isinstance(value, str):
+    if not isinstance(value, str) or len(value.encode()) > SOURCE_URL_MAX_LENGTH:
         return None
     try:
         parsed = urlparse(value)
@@ -379,11 +382,8 @@ def _sanitize_mark(raw: Any) -> dict[str, Any] | None:
         href = safe_link_href(attrs.get("href"))
         if href is None:
             return None
-        cleaned: dict[str, Any] = {"type": "link", "attrs": {"href": href}}
-        target = attrs.get("target")
-        if target in {"_blank", "_self"}:
-            cleaned["attrs"]["target"] = target
-        return cleaned
+        # href only: the renderer sets target and rel itself, so no stored value can change them.
+        return {"type": "link", "attrs": {"href": href}}
     return {"type": mark_type}
 
 

@@ -16,14 +16,19 @@ const intAttr = (v: unknown): number | undefined =>
 const stringAttr = (v: unknown): string | undefined =>
   typeof v === "string" ? v : undefined;
 
+/** Mirrors backend `event.SOURCE_URL_MAX_LENGTH`, the cap `safe_link_href` applies; change both. */
+const LINK_HREF_MAX_BYTES = 2000;
+
 /** Mirrors `storage.LOCAL_STORAGE_URL_PREFIX` (dev backend media mount): the one non-https
  * origin a proof image may carry, only in a build that pins no media host. */
 const LOCAL_STORAGE_URL_PREFIX = "http://localhost:8000/local-storage/";
 
-/** Mirrors backend `sanitize.safe_link_href`; change both. Defense in depth: only an explicit
- * http(s) URL with a hostname becomes an anchor href (rejects `javascript:`, `data:`,
- * `mailto:`, relative). The backend sanitizer is the source of truth. */
-function isSafeLinkHref(href: string): boolean {
+/** Mirrors backend `sanitize.safe_link_href`; change both. Only an explicit http(s) URL with a
+ * hostname is a link (rejects `javascript:`, `data:`, `mailto:`, relative). The renderer applies
+ * it again at paint (a row stored before a rule tightened is still readable), and `ProofEditor`
+ * mints links against it. */
+export function isSafeLinkHref(href: string): boolean {
+  if (new TextEncoder().encode(href).length > LINK_HREF_MAX_BYTES) return false;
   let parsed: URL;
   try {
     parsed = new URL(href);
@@ -80,12 +85,12 @@ function applyMarks(text: string, marks: TiptapNode["marks"]): ReactNode {
       case "link": {
         const href = stringAttr(mark.attrs?.href);
         if (!href || !isSafeLinkHref(href)) return acc;
-        const target = stringAttr(mark.attrs?.target);
+        // `nofollow ugc`: the href is user-written, so it carries no endorsement for crawlers.
         return (
           <a
             href={href}
-            target={target ?? "_blank"}
-            rel="noopener noreferrer"
+            target="_blank"
+            rel="noopener noreferrer nofollow ugc"
             className={TEXT_LINK}
           >
             {acc}

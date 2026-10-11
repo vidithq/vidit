@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { proofHasImage, renderProof, tiptapDocText } from "./proof";
+import { isSafeLinkHref, proofHasImage, renderProof, tiptapDocText } from "./proof";
 
 const doc = (...content: Record<string, unknown>[]) => ({
   type: "doc",
@@ -46,20 +46,25 @@ describe("renderProof", () => {
     expect(container.querySelector("code")).toHaveTextContent("mono");
   });
 
-  it("renders links with noopener noreferrer and a _blank default", () => {
+  it("renders a link in a new tab, rel-guarded, whatever target the mark carries", () => {
+    // A row stored before the sanitizer dropped `target` may still carry `_self`.
     const container = renderDoc(
       doc(
         paragraph(
           text("source", [
-            { type: "link", attrs: { href: "https://example.com/post" } },
+            {
+              type: "link",
+              attrs: { href: "https://example.com/post", target: "_self" },
+            },
           ])
         )
       )
     );
     const a = container.querySelector("a");
     expect(a).toHaveAttribute("href", "https://example.com/post");
+    expect(a).toHaveTextContent("source");
     expect(a).toHaveAttribute("target", "_blank");
-    expect(a).toHaveAttribute("rel", "noopener noreferrer");
+    expect(a).toHaveAttribute("rel", "noopener noreferrer nofollow ugc");
   });
 
   it("drops the anchor entirely when a link mark has no href", () => {
@@ -374,5 +379,39 @@ describe("tiptapDocText", () => {
   it("gives an image no text of its own", () => {
     const image = { type: "image", attrs: { src: "https://x/y.jpg" } };
     expect(tiptapDocText(doc(image, paragraph(text("Caption"))))).toBe("Caption");
+  });
+});
+
+describe("isSafeLinkHref", () => {
+  // The editor mints links against this rule and the renderer re-applies it, so a link the editor
+  // allows is one `services/sanitize.py::safe_link_href` keeps.
+  it("accepts absolute http(s) URLs with a host", () => {
+    expect(isSafeLinkHref("https://x.com/user/status/1")).toBe(true);
+    expect(isSafeLinkHref("http://localhost:8000/p")).toBe(true);
+    expect(isSafeLinkHref("HTTPS://X.COM/a")).toBe(true);
+  });
+
+  it("rejects the other protocols linkify registers by default", () => {
+    for (const url of [
+      "mailto:analyst@example.com",
+      "tel:+33123456789",
+      "sms:+33123456789",
+      "ftp://files.example.com/x",
+      "xmpp:analyst@example.com",
+    ]) {
+      expect(isSafeLinkHref(url)).toBe(false);
+    }
+  });
+
+  it("rejects a scheme-less value, an email, and a smuggled javascript: scheme", () => {
+    expect(isSafeLinkHref("example.com/a")).toBe(false);
+    expect(isSafeLinkHref("analyst@example.com")).toBe(false);
+    expect(isSafeLinkHref("javascript:alert(1)")).toBe(false);
+    expect(isSafeLinkHref("java\nscript:alert(1)")).toBe(false);
+    expect(isSafeLinkHref("https://")).toBe(false);
+  });
+
+  it("rejects an href past the 2000-byte ceiling the server applies", () => {
+    expect(isSafeLinkHref("https://example.com/" + "x".repeat(2000))).toBe(false);
   });
 });

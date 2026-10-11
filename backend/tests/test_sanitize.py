@@ -1,6 +1,7 @@
 import pytest
 
 from app.config import settings
+from app.models.event import SOURCE_URL_MAX_LENGTH
 from app.services.sanitize import (
     _MAX_DEPTH,
     _MAX_NODES,
@@ -345,68 +346,55 @@ def test_link_mark_https_href_passes():
     ]
 
 
-def test_link_mark_strips_unknown_attrs():
-    """Only href and (optionally) target survive on a link mark."""
-    doc = {
+def _linked_text(attrs: dict) -> dict:
+    return {
         "type": "doc",
         "content": [
             {
                 "type": "paragraph",
                 "content": [
-                    {
-                        "type": "text",
-                        "text": "click",
-                        "marks": [
-                            {
-                                "type": "link",
-                                "attrs": {
-                                    "href": "https://example.com",
-                                    "target": "_blank",
-                                    "onclick": "alert(1)",
-                                    "rel": "evil",
-                                },
-                            },
-                        ],
-                    }
+                    {"type": "text", "text": "click", "marks": [{"type": "link", "attrs": attrs}]}
                 ],
             }
         ],
     }
-    cleaned = sanitize_tiptap_doc(doc)
-    mark = cleaned["content"][0]["content"][0]["marks"][0]
-    assert mark == {
-        "type": "link",
-        "attrs": {"href": "https://example.com", "target": "_blank"},
-    }
 
 
-def test_link_mark_invalid_target_dropped():
-    doc = {
-        "type": "doc",
-        "content": [
+def test_link_mark_keeps_href_only():
+    """target, rel and any other attr drop: the renderer sets target and rel itself."""
+    cleaned = sanitize_tiptap_doc(
+        _linked_text(
             {
-                "type": "paragraph",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "click",
-                        "marks": [
-                            {
-                                "type": "link",
-                                "attrs": {
-                                    "href": "https://example.com",
-                                    "target": "_javascript_window_",
-                                },
-                            },
-                        ],
-                    }
-                ],
+                "href": "https://en.wikipedia.org/wiki/Leopard_2",
+                "target": "_self",
+                "rel": "opener",
+                "class": "evil",
+                "onclick": "alert(1)",
             }
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    mark = cleaned["content"][0]["content"][0]["marks"][0]
-    assert "target" not in mark["attrs"]
+        )
+    )
+    node = cleaned["content"][0]["content"][0]
+    assert node["text"] == "click"
+    assert node["marks"] == [
+        {"type": "link", "attrs": {"href": "https://en.wikipedia.org/wiki/Leopard_2"}}
+    ]
+
+
+@pytest.mark.parametrize(
+    "href",
+    [
+        "javascript:alert(1)",
+        "JaVaScRiPt:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "mailto:a@example.com",
+        "/relative/path",
+        "//example.com/x",
+        "https://example.com/" + "x" * SOURCE_URL_MAX_LENGTH,
+    ],
+)
+def test_link_mark_unsafe_href_drops_mark_keeps_text(href):
+    node = sanitize_tiptap_doc(_linked_text({"href": href}))["content"][0]["content"][0]
+    assert node == {"type": "text", "text": "click"}
 
 
 def test_link_mark_schemeless_href_dropped():

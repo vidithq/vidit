@@ -1,25 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 
-import { TAP_STEP } from "@/components/ui/Button";
+import { Button, TAP_STEP } from "@/components/ui/Button";
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
+import { Input } from "@/components/ui/Input";
 import { cn } from "@/lib/cn";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
+import { isSafeLinkHref } from "@/lib/proof";
 import { PROOF_PLACEHOLDER_PREFIX, safeProofFilename } from "@/lib/proofImages";
 
-/** A link the proof pipeline carries end to end: an absolute http(s) URL. Exported for its test. */
-export const isProofLinkUri = (url: string): boolean => /^https?:\/\//i.test(url);
-
-// Links are http(s) only, like both sanitisers downstream (`services/sanitize.py::safe_link_href`,
-// `lib/proof.tsx::isSafeLinkHref`). StarterKit v3 registers Link with linkify's wider protocol set
-// (mailto, tel, ...) and autolink on, so an autolinked `mailto:` would look like a link and be
+// Links are http(s) only, the rule the renderer applies (`lib/proof.tsx::isSafeLinkHref`, mirrored
+// by `services/sanitize.py::safe_link_href`). StarterKit v3 registers Link with linkify's wider
+// protocol set (mailto, tel, ...), so an autolinked `mailto:` would look like a link and be
 // stripped at publish. `protocols` can only widen, so the narrowing goes through `isAllowedUri`,
-// which paste, autolink and render consult. A typed `https://...` still links; a bare
-// `example.com` or email address doesn't. Change only together with those two mirrors.
+// which paste, autolink, `setLink` and render consult. A typed `https://...` still links; a bare
+// `example.com` or email address doesn't. `openOnClick: false` so a click in the editor places the
+// caret on a link to edit it instead of leaving the page.
 //
 // Underline is off: StarterKit v3 registers it (Cmd/Ctrl+U), but the backend sanitizer drops the
 // mark (`services/sanitize.py`, `_ALLOWED_MARKS` = bold / italic / strike / code / link) and the
@@ -27,7 +27,11 @@ export const isProofLinkUri = (url: string): boolean => /^https?:\/\//i.test(url
 // lose its formatting at publish. Change only together with those two mirrors.
 const PROOF_STARTER_KIT = StarterKit.configure({
   underline: false,
-  link: { isAllowedUri: isProofLinkUri },
+  link: {
+    isAllowedUri: (url) => isSafeLinkHref(url),
+    openOnClick: false,
+    autolink: true,
+  },
 });
 
 interface ProofEditorProps {
@@ -147,6 +151,46 @@ export default function ProofEditor({
     },
   });
 
+  // The URL field under the toolbar: `null` while closed, else its draft value.
+  const [linkDraft, setLinkDraft] = useState<string | null>(null);
+  const [linkInvalid, setLinkInvalid] = useState(false);
+
+  const closeLink = () => {
+    setLinkDraft(null);
+    setLinkInvalid(false);
+    editor?.commands.focus();
+  };
+
+  const applyLink = () => {
+    if (!editor || linkDraft === null) return;
+    const href = linkDraft.trim();
+    if (href === "") {
+      editor.chain().focus().extendMarkRange("link").unsetLink().run();
+      closeLink();
+      return;
+    }
+    if (!isSafeLinkHref(href)) {
+      setLinkInvalid(true);
+      return;
+    }
+    // A caret outside any link has no text to mark, so the URL becomes its own linked text.
+    if (editor.state.selection.empty && !editor.isActive("link")) {
+      editor
+        .chain()
+        .focus()
+        .insertContent({ type: "text", text: href, marks: [{ type: "link", attrs: { href } }] })
+        .run();
+    } else {
+      editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
+    }
+    closeLink();
+  };
+
+  const removeLink = () => {
+    editor?.chain().focus().extendMarkRange("link").unsetLink().run();
+    closeLink();
+  };
+
   // Revoke staged blob URLs on unmount so compose then navigate doesn't leak object URLs.
   useEffect(() => {
     const entries = entriesRef.current;
@@ -223,6 +267,21 @@ export default function ProofEditor({
         >
           List
         </button>
+        <button
+          type="button"
+          title="Link the selected text (http or https URL)"
+          onClick={() => {
+            setLinkInvalid(false);
+            setLinkDraft(
+              linkDraft === null ? (editor.getAttributes("link").href ?? "") : null,
+            );
+          }}
+          className={`${TOOL} ${
+            editor.isActive("link") || linkDraft !== null ? TOOL_ON : TOOL_OFF
+          }`}
+        >
+          Link
+        </button>
         {allowImages && (
           <>
             <div className="w-px h-4 bg-neutral-700 mx-1" />
@@ -247,6 +306,46 @@ export default function ProofEditor({
           </>
         )}
       </div>
+
+      {linkDraft !== null && (
+        <div className="flex flex-wrap items-center gap-1 px-2 py-1 border-b border-neutral-700">
+          <Input
+            type="url"
+            aria-label="Link URL"
+            placeholder="https://en.wikipedia.org/wiki/..."
+            autoFocus
+            value={linkDraft}
+            invalid={linkInvalid}
+            aria-invalid={linkInvalid}
+            className="flex-1 min-w-48"
+            onChange={(e) => {
+              setLinkDraft(e.target.value);
+              setLinkInvalid(false);
+            }}
+            onKeyDown={(e) => {
+              // Enter would otherwise submit the form this editor sits in.
+              if (e.key === "Enter") {
+                e.preventDefault();
+                applyLink();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                closeLink();
+              }
+            }}
+          />
+          <Button variant="ghost" onClick={applyLink}>
+            Apply
+          </Button>
+          {editor.isActive("link") && (
+            <Button variant="ghost" onClick={removeLink}>
+              Remove
+            </Button>
+          )}
+          <Button variant="ghost" onClick={closeLink}>
+            Cancel
+          </Button>
+        </div>
+      )}
 
       <EditorContent editor={editor} />
     </div>

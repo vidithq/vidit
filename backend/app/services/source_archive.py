@@ -96,17 +96,6 @@ class SnapshotRejected(Exception):
         self.code = code
 
 
-def _is_archivable(url: str) -> bool:
-    """Whether a stored link can have a copy recorded.
-
-    Uses :func:`sanitize.safe_link_href`, plus a length ceiling: a value past
-    the ``source_url`` limit would abort the insert on the unique btree index.
-    """
-    if len(url.encode()) > SOURCE_URL_MAX_LENGTH:
-        return False
-    return safe_link_href(url) is not None
-
-
 def collect_links(event: Event) -> list[tuple[str, SourceArchiveOrigin]]:
     """Every archivable link on an event, ``source_url`` first, deduped.
 
@@ -118,7 +107,7 @@ def collect_links(event: Event) -> list[tuple[str, SourceArchiveOrigin]]:
     seen: set[str] = set()
 
     def add(url: str, origin: SourceArchiveOrigin) -> None:
-        if url in seen or not _is_archivable(url):
+        if url in seen or safe_link_href(url) is None:
             return
         seen.add(url)
         links.append((url, origin))

@@ -1,16 +1,55 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Tiptap's useEditor boots ProseMirror, which needs DOM APIs jsdom lacks. Only toolbar wiring is
-// asserted, so stub the editor: truthy, with the `isActive` it calls at render.
+// asserted, so stub the editor: every chained command is recorded and `run()` ends the chain.
+const stub = vi.hoisted(() => {
+  const calls: Array<[string, unknown[]]> = [];
+  const chain: Record<string, unknown> = new Proxy(
+    {},
+    {
+      get: (_target, name: string) =>
+        (...args: unknown[]) => {
+          if (name === "run") return true;
+          calls.push([name, args]);
+          return chain;
+        },
+    },
+  );
+  const state = { linkActive: false, emptySelection: false, href: undefined as string | undefined };
+  const editor = {
+    isActive: (name: string) => name === "link" && state.linkActive,
+    getAttributes: () => ({ href: state.href }),
+    chain: () => chain,
+    commands: { focus: () => true },
+    get state() {
+      return { selection: { empty: state.emptySelection } };
+    },
+  };
+  return { calls, state, editor };
+});
+
 vi.mock("@tiptap/react", () => ({
-  useEditor: () => ({ isActive: () => false }),
+  useEditor: () => stub.editor,
   EditorContent: () => null,
 }));
 
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 
-import ProofEditor, { isProofLinkUri, resolveProofDoc } from "./ProofEditor";
+import ProofEditor, { resolveProofDoc } from "./ProofEditor";
+
+beforeEach(() => {
+  stub.calls.length = 0;
+  Object.assign(stub.state, { linkActive: false, emptySelection: false, href: undefined });
+});
+
+const commandNames = () => stub.calls.map(([name]) => name);
+
+function openLinkField(): HTMLInputElement {
+  render(<ProofEditor onChange={() => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: "Link" }));
+  return screen.getByRole("textbox", { name: "Link URL" }) as HTMLInputElement;
+}
 
 describe("ProofEditor", () => {
   it("offers the proof-image control by default (upload-at-publish)", () => {
@@ -23,10 +62,10 @@ describe("ProofEditor", () => {
 
   it("drops the image control, and nothing else, under allowImages={false}", () => {
     // A collection's description is stored with `allow_images=False`, so offering the control would
-    // stage a file the server drops. Marks and list controls stay: one editor serves both.
+    // stage a file the server drops. Marks, list and link controls stay: one editor serves both.
     render(<ProofEditor onChange={() => {}} allowImages={false} />);
     expect(screen.queryByText("+ Image")).not.toBeInTheDocument();
-    for (const label of ["B", "I", "H3", "List"]) {
+    for (const label of ["B", "I", "H3", "List", "Link"]) {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
     }
   });
@@ -41,33 +80,63 @@ describe("ProofEditor", () => {
       (container.firstElementChild as HTMLElement).className,
     ).toContain(FORM_INVALID_FIELD);
   });
+
+  it("keeps resolveProofDoc pure: a doc with no staged images passes through", () => {
+    const json = { type: "doc", content: [] };
+    expect(resolveProofDoc(json, [])).toEqual({ doc: json, files: [] });
+  });
 });
 
-describe("link URI allowlist", () => {
-  // The editor may only mint what survives publication: both sanitisers
-  // (`services/sanitize.py::safe_link_href`, `lib/proof.tsx::isSafeLinkHref`) take absolute http(s) only.
-  it("accepts absolute http(s) URLs", () => {
-    expect(isProofLinkUri("https://x.com/user/status/1")).toBe(true);
-    expect(isProofLinkUri("http://localhost:8000/p")).toBe(true);
-    expect(isProofLinkUri("HTTPS://X.COM/a")).toBe(true);
+describe("ProofEditor link control", () => {
+  it("links the selected text to an https URL", () => {
+    const field = openLinkField();
+    fireEvent.change(field, { target: { value: " https://en.wikipedia.org/wiki/Leopard_2 " } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(stub.calls).toContainEqual([
+      "setLink",
+      [{ href: "https://en.wikipedia.org/wiki/Leopard_2" }],
+    ]);
+    expect(screen.queryByRole("textbox", { name: "Link URL" })).not.toBeInTheDocument();
   });
 
-  it("rejects the other protocols linkify registers by default", () => {
-    for (const url of [
-      "mailto:analyst@example.com",
-      "tel:+33123456789",
-      "sms:+33123456789",
-      "ftp://files.example.com/x",
-      "xmpp:analyst@example.com",
-    ]) {
-      expect(isProofLinkUri(url)).toBe(false);
+  it("inserts the URL as its own linked text at a bare caret", () => {
+    stub.state.emptySelection = true;
+    const field = openLinkField();
+    fireEvent.change(field, { target: { value: "https://example.com/a" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    const href = "https://example.com/a";
+    expect(stub.calls).toContainEqual([
+      "insertContent",
+      [{ type: "text", text: href, marks: [{ type: "link", attrs: { href } }] }],
+    ]);
+    expect(commandNames()).not.toContain("setLink");
+  });
+
+  it("refuses a URL that is not http(s) and keeps the field open, flagged", () => {
+    const field = openLinkField();
+    for (const value of ["javascript:alert(1)", "example.com", "mailto:a@example.com"]) {
+      fireEvent.change(field, { target: { value } });
+      fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+      expect(field).toHaveAttribute("aria-invalid", "true");
     }
+    expect(commandNames()).not.toContain("setLink");
+    expect(commandNames()).not.toContain("insertContent");
   });
 
-  it("rejects a scheme-less value, an email, and a smuggled javascript: scheme", () => {
-    expect(isProofLinkUri("example.com/a")).toBe(false);
-    expect(isProofLinkUri("analyst@example.com")).toBe(false);
-    expect(isProofLinkUri("javascript:alert(1)")).toBe(false);
-    expect(isProofLinkUri("java\nscript:alert(1)")).toBe(false);
+  it("prefills the current href and offers Remove on an existing link", () => {
+    stub.state.linkActive = true;
+    stub.state.href = "https://example.com/old";
+    const field = openLinkField();
+    expect(field.value).toBe("https://example.com/old");
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(commandNames()).toEqual(["focus", "extendMarkRange", "unsetLink"]);
+  });
+
+  it("hides Remove when the selection holds no link", () => {
+    openLinkField();
+    expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
   });
 });
