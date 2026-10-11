@@ -1,11 +1,19 @@
 """The frozen Tiptap-to-HTML converter of migration ``u9w1y3a5c7e9``."""
 
 import importlib.util
+import os
+import subprocess
+import sys
+import uuid
 from pathlib import Path
 
+import psycopg2
 import pytest
+from psycopg2.extras import Json
 
+from app.config import settings
 from app.services.sanitize import extract_image_srcs, html_text, sanitize_html
+from tests.conftest import _admin_conn, _db_name, _swap_db
 
 _PATH = Path(__file__).parents[1] / "alembic" / "versions" / "u9w1y3a5c7e9_rich_text_html.py"
 _spec = importlib.util.spec_from_file_location("rich_text_migration", _PATH)
@@ -151,3 +159,91 @@ def test_newlines_inside_text_become_breaks_outside_code():
 )
 def test_a_document_without_text_or_image_becomes_empty(doc):
     assert tiptap_to_html(doc) == ""
+
+
+def _alembic_upgrade(url: str, revision: str) -> None:
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", revision],
+        env={**os.environ, "DATABASE_URL": url},
+        check=True,
+        capture_output=True,
+    )
+
+
+@pytest.fixture
+def pre_html_db():
+    """A throwaway database migrated to the revision before ``u9w1y3a5c7e9``."""
+    name = f"{_db_name(settings.database_url)}_rich_text"
+    url = _swap_db(settings.database_url, name)
+    admin = _admin_conn(settings.database_url)
+    try:
+        with admin.cursor() as cur:
+            cur.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+            cur.execute(f'CREATE DATABASE "{name}"')
+        with psycopg2.connect(url) as conn, conn.cursor() as cur:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS postgis")
+        _alembic_upgrade(url, migration.down_revision)
+        yield url
+    finally:
+        with admin.cursor() as cur:
+            cur.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+        admin.close()
+
+
+def test_upgrade_converts_stored_documents(pre_html_db):
+    proof = _doc(
+        {"type": "heading", "attrs": {"level": 1}, "content": [_text("T")]},
+        _p(
+            _text("a "),
+            _text("b", {"type": "bold"}),
+            _text("l", {"type": "link", "attrs": {"href": "https://x.example/"}}),
+            {"type": "hardBreak"},
+            _text("c"),
+        ),
+        {"type": "image", "attrs": {"src": "/media/a.png", "alt": "x"}},
+    )
+    proof_html = (
+        '<h2>T</h2><p>a <strong>b</strong><a href="https://x.example/">l</a><br>c</p>'
+        '<img src="/media/a.png" alt="x">'
+    )
+    user, event, collection, version, redacted = (str(uuid.uuid4()) for _ in range(5))
+    with psycopg2.connect(pre_html_db) as conn, conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO users (id, username, is_active, created_at) VALUES (%s, 'u', true, now())",
+            (user,),
+        )
+        cur.execute(
+            "INSERT INTO events (id, owner_id, title, proof, status, created_at, updated_at) "
+            "VALUES (%s, %s, 't', %s, 'detected', now(), now())",
+            (event, user, Json(proof)),
+        )
+        cur.execute(
+            "INSERT INTO collections (id, owner_id, title, description, description_text, "
+            "created_at, updated_at) VALUES (%s, %s, 'c', %s, 'words', now(), now())",
+            (collection, user, Json(_doc(_p(_text("words"))))),
+        )
+        cur.execute(
+            "INSERT INTO event_versions (id, event_id, version_no, snapshot, created_at) "
+            "VALUES (%s, %s, 1, %s, now()), (%s, %s, 2, '{}', now())",
+            (version, event, Json({"title": "t", "proof": proof}), redacted, event),
+        )
+
+    _alembic_upgrade(pre_html_db, migration.revision)
+
+    with psycopg2.connect(pre_html_db) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT table_name, data_type FROM information_schema.columns "
+            "WHERE (table_name, column_name) IN (('events', 'proof'), ('collections', 'description'))"
+        )
+        assert dict(cur.fetchall()) == {"events": "text", "collections": "text"}
+        cur.execute("SELECT proof FROM events")
+        assert cur.fetchone() == (proof_html,)
+        cur.execute("SELECT description, description_text FROM collections")
+        assert cur.fetchone() == ("<p>words</p>", "words")
+        cur.execute("SELECT version_no, snapshot FROM event_versions ORDER BY version_no")
+        assert cur.fetchall() == [(1, {"title": "t", "proof": proof_html}), (2, {})]
+
+
+def test_downgrade_refuses():
+    with pytest.raises(NotImplementedError):
+        migration.downgrade()
