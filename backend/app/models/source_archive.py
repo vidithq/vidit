@@ -17,7 +17,7 @@ from app.database import Base
 # Where the link was found: ``source_url`` (declared footage source),
 # ``secondary_source`` (a mirror in ``event_source_links``), ``detected_from``
 # (``events.detected_from_url``, provenance), ``proof_link`` (an href in the
-# proof body's Tiptap document).
+# proof body's HTML).
 SourceArchiveOrigin = Literal["source_url", "secondary_source", "detected_from", "proof_link"]
 
 # Which service holds the snapshot, inferred from its host at write time

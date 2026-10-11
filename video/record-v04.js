@@ -21,6 +21,7 @@
 // Usage: node record-v04.js [demo,bot-embed]  (default: both)
 
 const fs = require("fs");
+const { proofHasImage } = require("./proof-html");
 const path = require("path");
 const { spawnSync } = require("child_process");
 const { ensureMediaCache, PROOF_IMG } = require("./gen-archive");
@@ -222,17 +223,6 @@ function isoToDatetimeLocal(iso) {
   );
 }
 
-function proofHasImage(proof) {
-  let found = false;
-  const walk = (n) => {
-    if (!n || typeof n !== "object") return;
-    if (n.type === "image") found = true;
-    if (Array.isArray(n.content)) n.content.forEach(walk);
-  };
-  walk(proof);
-  return found;
-}
-
 // Region-fit conflict for the maintainer's real work (Levant vs elsewhere).
 function pickConflictId(conflicts, lng) {
   const byName = (re) => conflicts.find((c) => re.test(c.name));
@@ -367,23 +357,17 @@ async function promoteHeroDetection(auth) {
       isoToDatetimeLocal(detail.detected_post_at) ||
       "2026-07-01T12:00"
   );
-  let proof = detail.proof || { type: "doc", content: [] };
+  let proof = detail.proof || "";
   if (!proofHasImage(proof)) {
     ensureMediaCache(); // guarantees the satellite proof still exists
-    proof = {
-      ...proof,
-      content: [
-        ...(proof.content || []),
-        { type: "image", attrs: { src: "placeholder://proof-sat.jpg" } },
-      ],
-    };
+    proof += '<img src="placeholder://proof-sat.jpg" alt="">';
     fd.append(
       "proof_files",
       new Blob([fs.readFileSync(PROOF_IMG)], { type: "image/jpeg" }),
       "proof-sat.jpg"
     );
   }
-  fd.append("proof", JSON.stringify(proof));
+  fd.append("proof", proof);
   if (conflictId) fd.append("conflict_ids", JSON.stringify([conflictId]));
   if (capture) {
     fd.append(

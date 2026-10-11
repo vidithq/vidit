@@ -28,7 +28,6 @@ Reads are paginated through ``services/pagination``.
 
 from __future__ import annotations
 
-import copy
 import json
 import uuid
 from collections.abc import Iterable, Mapping
@@ -132,7 +131,6 @@ def build_snapshot(geo: Event) -> dict[str, Any]:
     ``source_media`` holds at most one entry (matching
     ``schemas/event.EventRead.media``) with the whole render shape, since a swap
     deletes the row; the S3 object stays (see :func:`referenced_source_media`).
-    ``proof`` is deep-copied so it cannot alias the live row's JSONB.
     ``proof_media`` lists only images THIS version's proof body references,
     otherwise it would misreport the version and pin images forever.
     ``archives`` is sorted by link so a reshuffle does not read as an edit.
@@ -153,7 +151,7 @@ def build_snapshot(geo: Event) -> dict[str, Any]:
         "secondary_source_urls": [link.url for link in geo.source_links],
         "tags": tag_entries(geo.tags),
         "conflicts": conflict_entries(geo.conflicts),
-        "proof": copy.deepcopy(geo.proof),
+        "proof": geo.proof,
         "proof_media": [
             media_entry(m) for m in geo.media if m.role == "proof" and m.storage_url in displayed
         ],

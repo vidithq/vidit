@@ -13,19 +13,19 @@ from app.models.media import Media
 from app.models.tag import Tag
 from app.models.user import User
 from app.services.evidence_intake import MediaRequiredError, TooManyFilesError
-from app.services.sanitize import extract_image_srcs, sanitize_tiptap_doc_or_raise
+from app.services.sanitize import extract_image_srcs, sanitize_html
 
 from .errors import InvalidProofError, ProofImageRequiredError, TagRequirementsError
 
 
-def _sanitize_proof(proof_data: dict | None, *, allow_placeholders: bool = False) -> dict | None:
-    """Sanitise a proof body; ``None`` passes through. The typed 400 comes from
-    :func:`services.sanitize.sanitize_tiptap_doc_or_raise`."""
+def _sanitize_proof(proof_data: str | None) -> str | None:
+    """Sanitise a proof body, ``placeholder://`` srcs admitted; ``None`` passes through."""
     if proof_data is None:
         return None
-    return sanitize_tiptap_doc_or_raise(
-        proof_data, error=InvalidProofError, allow_placeholders=allow_placeholders
-    )
+    try:
+        return sanitize_html(proof_data, allow_placeholders=True)
+    except ValueError as exc:
+        raise InvalidProofError(str(exc)) from exc
 
 
 def _require_submission_floor(tags: list[Tag], conflicts: list[Conflict]) -> None:
@@ -90,9 +90,9 @@ def _apply_source_removals(db: Session, swap: SourceSwap) -> None:
     db.flush()
 
 
-def _require_proof_image(proof_doc: dict | None) -> None:
+def _require_proof_image(proof: str | None) -> None:
     """Require at least one image in the proof, uploaded or ``placeholder://``."""
-    if proof_doc is None or not extract_image_srcs(proof_doc):
+    if proof is None or not extract_image_srcs(proof):
         raise ProofImageRequiredError("At least one proof image is required")
 
 

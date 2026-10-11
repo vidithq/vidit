@@ -46,7 +46,7 @@ async def create_with_evidence(
     event_date: date | None,
     event_time: time | None = None,
     source_posted_at: datetime,
-    proof_data: dict | None,
+    proof_data: str | None,
     tag_ids: list,
     conflict_ids: list,
     is_graphic: bool = False,
@@ -86,7 +86,7 @@ async def create_with_evidence(
 
     _require_submission_media(file is not None)
 
-    proof_data = _sanitize_proof(proof_data, allow_placeholders=True)
+    proof_data = _sanitize_proof(proof_data)
 
     # Check the rest of the floor before any upload to save the S3 round-trip.
     _require_proof_image(proof_data)
@@ -125,7 +125,7 @@ async def create_with_evidence(
         db,
         event=geo,
         source_files=[file],
-        proof_doc=proof_data,
+        proof_html=proof_data,
         proof_files=proof_files,
         sweep_context="event create rollback",
     )

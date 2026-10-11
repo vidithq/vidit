@@ -30,7 +30,6 @@ from app.routers._forms import (
     parse_json_id_list,
     parse_optional_iso_date,
     parse_optional_iso_time,
-    parse_optional_json_object,
 )
 from app.routers.events._common import (
     SecondarySourceUrl,
@@ -91,7 +90,7 @@ def create_event(
     conflict_ids: str | None = Form(None),
     # Graphic-content declaration; an omitting client submits unflagged.
     is_graphic: bool = Form(False),
-    # Exactly one source file; proof images resolve against the doc's placeholders.
+    # Exactly one source file; proof images resolve against the proof's placeholders.
     file: UploadFile = File(...),
     proof_files: list[UploadFile] | None = File(None),
     current_user: User = Depends(get_current_user),
@@ -118,7 +117,7 @@ def create_event(
     parsed_event_time = parse_optional_iso_time(event_time, field="event_time")
     parsed_source_posted_at = parse_iso_datetime(source_posted_at, field="source_posted_at")
 
-    proof_data = parse_optional_json_object(proof, field="proof")
+    proof_data = proof or None
     parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids", as_uuid=True)
     parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
 
@@ -203,7 +202,7 @@ def create_event_request(
 
     proof_files = proof_files or []
 
-    proof_data = parse_optional_json_object(proof, field="proof")
+    proof_data = proof or None
     parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids", as_uuid=True)
     parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids", as_uuid=True)
     # ``event_time`` may stand alone: an approximate hour is knowable without a date.

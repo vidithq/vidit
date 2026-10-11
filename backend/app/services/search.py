@@ -76,8 +76,8 @@ def _geo_tsvector():
 def _collection_tsvector():
     """``to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(description_text, ''))``.
 
-    Uses the plain-text projection, not the Tiptap JSONB, which would index
-    node names. Expression-tree-equal to ``ix_collections_search_fts`` in
+    Uses the plain-text projection, not the HTML, which would index
+    tag names. Expression-tree-equal to ``ix_collections_search_fts`` in
     migration ``s7u9w1y3a5c7`` (the parenthesising is the parsing).
     """
     document = (

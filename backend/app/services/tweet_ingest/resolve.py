@@ -325,7 +325,7 @@ def split_media(thread: list[TweetRecord]) -> tuple[list[ParsedMedia], list[Pars
     slot empty).
 
     With the slot still empty, the thread's first own video fills it and leaves
-    the proof (the proof document embeds images only, so a video left there
+    the proof (the proof body embeds images only, so a video left there
     would be lost). Photos are never promoted (map crops, annotated frames), and
     a quote keeps precedence even with no media.
     """
@@ -384,7 +384,7 @@ class Detection:
 
     coordinate: ParsedCoord
     title: str
-    # Plain text; the caller wraps it into the JSONB proof document.
+    # Plain text; the caller wraps it into the HTML proof body.
     proof_text: str
     # The declared source, distinct from ``detected_from_url``. None without a
     # quote or exactly one candidate link.

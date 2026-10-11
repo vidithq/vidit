@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## v0.6.7, 2026-10-11
+
+### Changed
+
+- Proofs and collection descriptions use a block editor with a slash menu and are stored as sanitized HTML; existing bodies convert automatically, dropping list start numbers, code block languages and image titles ([#542](https://github.com/vidithq/vidit/pull/542)).
+
 ## v0.6.6, 2026-10-11
 
 ### Changed

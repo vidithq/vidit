@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Literal, Protocol, cast
+from typing import Literal, Protocol, cast
 
 import httpx
 from fastapi import UploadFile
@@ -49,7 +49,7 @@ from app.services.events import (
     stamp_provenance,
 )
 from app.services.evidence_intake import EvidenceIntakeError, collect_media_keys
-from app.services.sanitize import tiptap_doc_from_text
+from app.services.sanitize import extract_image_srcs, html_from_text
 from app.services.source_archive import reconcile_source_archive
 from app.services.storage import (
     PreparedMedia,
@@ -317,7 +317,7 @@ async def _resolve_media(
     # A declared source whose every candidate failed leaves the slot empty.
     missing = bool(detection.source_media) and not source_filled
     for parsed in detection.proof_media:
-        # The proof doc holds image nodes only, so a non-image proof media would be an
+        # The proof body holds images only, so a non-image proof media would be an
         # unreadable orphan. Not a miss: nothing could ever store it.
         if parsed.kind != "image":
             continue
@@ -362,27 +362,6 @@ async def _store_media(
     return proof_image_urls
 
 
-def _proof_doc(detection: Detection, proof_image_urls: list[str]) -> dict[str, Any]:
-    """The row's proof document: cleaned post text, then proof images as image nodes.
-
-    One writer for the document and the ``role=proof`` rows, so they cannot drift.
-    """
-    doc = tiptap_doc_from_text(detection.proof_text)
-    if proof_image_urls:
-        content = list(doc.get("content", []))
-        content.extend({"type": "image", "attrs": {"src": url}} for url in proof_image_urls)
-        doc["content"] = content
-    return doc
-
-
-def _proof_image_nodes(doc: dict[str, Any]) -> list[dict[str, Any]]:
-    return [
-        node
-        for node in doc.get("content", [])
-        if isinstance(node, dict) and node.get("type") == "image"
-    ]
-
-
 async def _persist_one(
     db: Session,
     *,
@@ -404,7 +383,7 @@ async def _persist_one(
             # The declared footage source, distinct from the ``detected_from_url`` provenance.
             # NULL when none declared: the geolocate promotion requires it.
             source_url=detection.source_url,
-            proof=_proof_doc(detection, []),
+            proof=html_from_text(detection.proof_text),
             event_date=detection.event_date,
             source_posted_at=detection.source_posted_at,
             status=STATUS_DETECTED,
@@ -429,7 +408,7 @@ async def _persist_one(
 
         proof_image_urls = await _store_media(db, geo, resolved, uploaded_keys)
         if proof_image_urls:
-            geo.proof = _proof_doc(detection, proof_image_urls)  # reassign flags the JSONB dirty
+            geo.proof = html_from_text(detection.proof_text, image_srcs=proof_image_urls)
         db.commit()
     except Exception:
         # Roll back before the sweep so an autoflush can't resurrect the half-added Media rows.
@@ -505,7 +484,7 @@ async def _upsert_one(
     """Overwrite an open detection's import-owned state; ``True`` when anything moved.
 
     Rewrites title, coordinate, event date, source URL and mirrors, both post instants, proof
-    document and media. Keeps id, owner, created and detected times, provenance, and archived
+    body and media. Keeps id, owner, created and detected times, provenance, and archived
     copies an analyst recorded (:func:`source_archive.reconcile_source_archive` re-files or
     drops only the source copy when the source URL moves).
 
@@ -536,10 +515,10 @@ async def _upsert_one(
     else:
         reuse_media = _media_unchanged(stored, resolved)
         if reuse_media:
-            # Proof rows whose image nodes are missing from the document: replace them rather
-            # than strand them.
-            image_nodes = _proof_image_nodes(row.proof)
-            reuse_media = len(image_nodes) == sum(1 for item in resolved if item.role == "proof")
+            # Proof rows whose images are missing from the body: replace them rather than
+            # strand them.
+            image_srcs = extract_image_srcs(row.proof)
+            reuse_media = len(image_srcs) == sum(1 for item in resolved if item.role == "proof")
     uploaded_keys: list[str] = []
     replaced_keys: list[str] = []
     try:
@@ -548,7 +527,7 @@ async def _upsert_one(
             # Before the new proof lands, matching ``events.geolocate``.
             reconcile_source_archive(db, event=row)
         if reuse_media:
-            proof_image_urls = [str(node["attrs"]["src"]) for node in _proof_image_nodes(row.proof)]
+            proof_image_urls = extract_image_srcs(row.proof)
         else:
             replaced_keys = collect_media_keys(stored)
             for media in stored:
@@ -558,9 +537,9 @@ async def _upsert_one(
             db.flush()
             proof_image_urls = await _store_media(db, row, resolved, uploaded_keys)
             changed = True
-        doc = _proof_doc(detection, proof_image_urls)
-        if row.proof != doc:
-            row.proof = doc
+        proof = html_from_text(detection.proof_text, image_srcs=proof_image_urls)
+        if row.proof != proof:
+            row.proof = proof
             changed = True
         if not changed:
             # Nothing dirtied. Roll back to drop the row lock the re-read took.
@@ -869,7 +848,7 @@ async def open_request(
             title=draft.title,
             source_url=draft.source_url,
             secondary_source_urls=draft.secondary_source_urls,
-            proof_data=tiptap_doc_from_text(draft.proof_text),
+            proof_data=html_from_text(draft.proof_text),
             event_date=draft.event_date,
             source_posted_at=draft.source_posted_at,
             tag_ids=[],

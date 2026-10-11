@@ -55,8 +55,8 @@ const CLOSE_PANEL_ID = "close-detection-form";
  * with that version. No confirm.
  *
  * Built like the create form: `EventFormFields`, `useEventForm`, `MediaManager`.
- * State is seeded from props (the form mounts after the row loaded), so Tiptap
- * gets its `initialContent` on first paint.
+ * State is seeded from props (the form mounts after the row loaded), so the proof
+ * editor gets its `initialContent` on first paint.
  *
  * With `queue` set the header gains the position and a Skip, and a finished
  * detection hands over to the next one.

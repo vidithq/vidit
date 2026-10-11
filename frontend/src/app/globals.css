@@ -198,30 +198,24 @@
   }
 }
 
-/* Tiptap editor styles */
-.ProseMirror {
-  min-height: 200px;
+/* BlockNote proof editor: headings and links read as they do in the rendered proof
+   (`lib/proof.tsx` TAG_CLASSES, and `TEXT_LINK` for links). */
+.bn-editor [data-content-type="heading"] h2 {
+  font-size: var(--text-xl);
 }
-.ProseMirror p {
-  margin: 0.5em 0;
+.bn-editor [data-content-type="heading"] h3 {
+  font-size: var(--text-lg);
 }
-.ProseMirror h3 {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin: 0.75em 0 0.25em;
+.bn-editor a {
+  color: var(--color-orange-400);
 }
-.ProseMirror ul {
-  list-style: disc;
-  padding-left: 1.5em;
+.bn-editor a:hover {
+  text-decoration: underline;
 }
-.ProseMirror img {
-  max-width: 100%;
-  height: auto;
-  border-radius: 4px;
-  margin: 0.5em 0;
-}
-.ProseMirror:focus {
-  outline: none;
+/* A wheel that reaches the end of the slash menu would scroll the page, which moves the
+   anchor and flips the menu under the pointer. */
+.bn-suggestion-menu {
+  overscroll-behavior: contain;
 }
 
 /* Custom scrollbar: follows the neutral scale, so it flips with the theme */

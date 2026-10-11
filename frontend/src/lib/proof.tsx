@@ -1,29 +1,21 @@
-import type { ReactNode } from "react";
+import { createElement, type ReactNode } from "react";
+import parse, {
+  domToReact,
+  htmlToDOM,
+  type DOMNode,
+  type Element,
+  type HTMLReactParserOptions,
+  type Text,
+} from "html-react-parser";
+
 import { ProofImage } from "@/components/event/ProofImage";
 import { TEXT_LINK } from "@/components/ui/styles";
 
-type TiptapNode = {
-  type?: string;
-  text?: string;
-  attrs?: Record<string, unknown>;
-  marks?: Array<{ type?: string; attrs?: Record<string, unknown> }>;
-  content?: TiptapNode[];
-};
-
-const intAttr = (v: unknown): number | undefined =>
-  typeof v === "number" && Number.isInteger(v) ? v : undefined;
-
-const stringAttr = (v: unknown): string | undefined =>
-  typeof v === "string" ? v : undefined;
-
-/** Mirrors `storage.LOCAL_STORAGE_URL_PREFIX` (dev backend media mount): the one non-https
- * origin a proof image may carry, only in a build that pins no media host. */
+/** Mirrors `storage.LOCAL_STORAGE_URL_PREFIX`; change both. */
 const LOCAL_STORAGE_URL_PREFIX = "http://localhost:8000/local-storage/";
 
-/** Mirrors backend `sanitize.safe_link_href`; change both. Defense in depth: only an explicit
- * http(s) URL with a hostname becomes an anchor href (rejects `javascript:`, `data:`,
- * `mailto:`, relative). The backend sanitizer is the source of truth. */
-function isSafeLinkHref(href: string): boolean {
+/** Mirrors backend `sanitize.safe_link_href`; change both. */
+export function isSafeLinkHref(href: string): boolean {
   let parsed: URL;
   try {
     parsed = new URL(href);
@@ -36,15 +28,8 @@ function isSafeLinkHref(href: string): boolean {
   );
 }
 
-/** Mirrors backend `sanitize._safe_image_src`; change both. A proof image is a relative path
- * or an https URL on this deployment's media host, so a persisted
- * `<image src="https://attacker/pixel.gif">` can't exfiltrate a viewer's IP/UA.
- * `NEXT_PUBLIC_MEDIA_HOST` is that host (inlined at build, the same pin `next.config.mjs`
- * gives `next/image`). With no media host set it keeps the dev shape: any https host plus
- * the local-storage prefix.
- *
- * Normalise like a browser (WHATWG) first: strip tab/CR/LF and treat `\` as `/`, so `/\host`,
- * `/<TAB>/host` and `//host` reduce to `//host`. */
+/** Mirrors backend `sanitize._safe_image_src`; change both. Normalises like a browser (WHATWG)
+ * first, so `/\host` and `/<TAB>/host` reduce to the protocol-relative `//host`. */
 function isSafeImageSrc(src: string): boolean {
   const normalized = src.replace(/[\t\r\n]/g, "").replace(/\\/g, "/");
   if (normalized.slice(0, 2) === "//") return false;
@@ -61,55 +46,26 @@ function isSafeImageSrc(src: string): boolean {
   return mediaHost ? parsed.hostname === mediaHost.toLowerCase() : true;
 }
 
-function applyMarks(text: string, marks: TiptapNode["marks"]): ReactNode {
-  if (!marks || marks.length === 0) return text;
-  return marks.reduce<ReactNode>((acc, mark) => {
-    switch (mark.type) {
-      case "bold":
-        return <strong>{acc}</strong>;
-      case "italic":
-        return <em>{acc}</em>;
-      case "strike":
-        return <s>{acc}</s>;
-      case "code":
-        return (
-          <code className="px-1 py-0.5 rounded-sm bg-neutral-800 text-orange-300 text-xs">
-            {acc}
-          </code>
-        );
-      case "link": {
-        const href = stringAttr(mark.attrs?.href);
-        if (!href || !isSafeLinkHref(href)) return acc;
-        const target = stringAttr(mark.attrs?.target);
-        return (
-          <a
-            href={href}
-            target={target ?? "_blank"}
-            rel="noopener noreferrer"
-            className={TEXT_LINK}
-          >
-            {acc}
-          </a>
-        );
-      }
-      default:
-        return acc;
-    }
-  }, text);
-}
+/** The read view's class per allowlisted tag (`a` and `img` render as components). Mirrors the
+ *  backend `sanitize.py` tag allowlist; change both. Any other tag renders its children only. */
+const TAG_CLASSES: Record<string, string | undefined> = {
+  p: undefined,
+  h2: "text-xl font-bold mt-4 mb-2",
+  h3: "text-lg font-semibold mt-3 mb-2",
+  strong: undefined,
+  em: undefined,
+  s: undefined,
+  code: "px-1 py-0.5 rounded-sm bg-neutral-800 text-orange-300 text-xs",
+  pre: "bg-neutral-950 border border-neutral-800 rounded-sm p-3 my-3 overflow-x-auto text-xs",
+  ul: "list-disc pl-6 my-2 space-y-1",
+  ol: "list-decimal pl-6 my-2 space-y-1",
+  li: undefined,
+  blockquote: "border-l-2 border-neutral-700 pl-4 my-3 text-neutral-400",
+  hr: "my-4 border-neutral-800",
+  br: undefined,
+};
 
-function renderInline(content: TiptapNode[] | undefined): ReactNode {
-  if (!content) return null;
-  return content.map((node, i) => {
-    if (node.type === "text" && typeof node.text === "string") {
-      return <span key={i}>{applyMarks(node.text, node.marks)}</span>;
-    }
-    if (node.type === "hardBreak") {
-      return <br key={i} />;
-    }
-    return null;
-  });
-}
+const VOID_TAGS = new Set(["hr", "br"]);
 
 /** Options passed down, never inspected per node. `gateImages` carries `is_graphic` to the
  *  leaf that paints pixels, so proof imagery gets the same age confirmation as source media. */
@@ -117,174 +73,132 @@ interface ProofRenderOptions {
   gateImages?: boolean;
 }
 
-function renderBlock(
-  node: TiptapNode,
-  key: number,
-  options: ProofRenderOptions,
-): ReactNode {
-  switch (node.type) {
-    case "paragraph":
-      return <p key={key}>{renderInline(node.content)}</p>;
-    case "heading": {
-      const level = intAttr(node.attrs?.level) ?? 3;
-      const tag = `h${Math.min(Math.max(level, 1), 6)}` as
-        | "h1"
-        | "h2"
-        | "h3"
-        | "h4"
-        | "h5"
-        | "h6";
-      const sizes: Record<typeof tag, string> = {
-        h1: "text-2xl font-bold mt-4 mb-2",
-        h2: "text-xl font-bold mt-4 mb-2",
-        h3: "text-lg font-semibold mt-3 mb-2",
-        h4: "text-base font-semibold mt-2 mb-1",
-        h5: "text-sm font-semibold mt-2 mb-1",
-        h6: "text-xs font-semibold uppercase tracking-wider mt-2 mb-1",
-      };
-      const Tag = tag;
-      return (
-        <Tag key={key} className={sizes[tag]}>
-          {renderInline(node.content)}
-        </Tag>
-      );
-    }
-    case "blockquote":
-      return (
-        <blockquote
-          key={key}
-          className="border-l-2 border-neutral-700 pl-4 my-3 text-neutral-400"
-        >
-          {(node.content ?? []).map((c, i) => renderBlock(c, i, options))}
-        </blockquote>
-      );
-    case "bulletList":
-      return (
-        <ul key={key} className="list-disc pl-6 my-2 space-y-1">
-          {(node.content ?? []).map((c, i) => renderBlock(c, i, options))}
-        </ul>
-      );
-    case "orderedList": {
-      const start = intAttr(node.attrs?.start);
-      return (
-        <ol
-          key={key}
-          start={start}
-          className="list-decimal pl-6 my-2 space-y-1"
-        >
-          {(node.content ?? []).map((c, i) => renderBlock(c, i, options))}
-        </ol>
-      );
-    }
-    case "listItem":
-      return (
-        <li key={key}>
-          {(node.content ?? []).map((c, i) => renderBlock(c, i, options))}
-        </li>
-      );
-    case "codeBlock":
-      return (
-        <pre
-          key={key}
-          className="bg-neutral-950 border border-neutral-800 rounded-sm p-3 my-3 overflow-x-auto text-xs"
-        >
-          <code>{(node.content ?? []).map((c) => c.text ?? "").join("")}</code>
-        </pre>
-      );
-    case "horizontalRule":
-      return <hr key={key} className="my-4 border-neutral-800" />;
-    case "image": {
-      const src = stringAttr(node.attrs?.src);
-      if (!src || !isSafeImageSrc(src)) return null;
-      const alt = stringAttr(node.attrs?.alt) ?? "";
-      const title = stringAttr(node.attrs?.title);
-      // The one interactive leaf: a click opens the shared MediaLightbox (evidence is only
-      // auditable at full size). See ProofImage.
-      return (
-        <ProofImage
-          key={key}
-          src={src}
-          alt={alt}
-          title={title}
-          isGraphic={options.gateImages}
-        />
-      );
-    }
-    default:
-      return null;
-  }
+// Type tags, not class checks: the parser's ESM and CJS builds load separate copies of the node
+// classes. A script or style node is typed apart from "tag", so it drops with its text.
+const isElement = (node: unknown): node is Element =>
+  (node as { type?: string } | null)?.type === "tag";
+const isText = (node: DOMNode): node is Text => node.type === "text";
+
+function containsImage(node: Element): boolean {
+  return node.children.some(
+    (c) => isElement(c) && (c.name === "img" || containsImage(c)),
+  );
 }
 
+function parserOptions({ gateImages }: ProofRenderOptions): HTMLReactParserOptions {
+  const options: HTMLReactParserOptions = {
+    replace(node) {
+      if (isText(node)) return undefined;
+      if (!isElement(node)) return <></>;
+      const children = () => domToReact(node.children as DOMNode[], options);
+      const { name, attribs } = node;
+
+      if (name === "img") {
+        const src = attribs.src;
+        if (!src || !isSafeImageSrc(src)) return <></>;
+        // The one interactive leaf: a click opens the shared MediaLightbox (evidence is only
+        // auditable at full size). See ProofImage.
+        return <ProofImage src={src} alt={attribs.alt ?? ""} isGraphic={gateImages} />;
+      }
+      if (name === "a") {
+        const href = attribs.href;
+        if (!href || !isSafeLinkHref(href)) return <>{children()}</>;
+        return (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer nofollow ugc"
+            className={TEXT_LINK}
+          >
+            {children()}
+          </a>
+        );
+      }
+      if (!Object.hasOwn(TAG_CLASSES, name)) return <>{children()}</>;
+
+      const inPre =
+        name === "code" && isElement(node.parent) && node.parent.name === "pre";
+      // ProofImage paints block-level markup, which a <p> cannot hold.
+      const tag = name === "p" && containsImage(node) ? "div" : name;
+      return createElement(
+        tag,
+        { className: inPre ? undefined : TAG_CLASSES[name] },
+        VOID_TAGS.has(name) ? undefined : children(),
+      );
+    },
+  };
+  return options;
+}
+
+/** A stored proof or collection description (server-sanitized HTML) as React: allowlisted tags
+ *  only, every attribute dropped but a safe link href and a safe image src. */
 export function renderProof(
-  proof: Record<string, unknown>,
+  html: string | null,
   options: ProofRenderOptions = {},
 ): ReactNode {
-  const root = proof as TiptapNode;
-  if (root.type === "doc" && Array.isArray(root.content)) {
-    return root.content.map((node, i) => renderBlock(node, i, options));
-  }
-  return null;
+  if (!html) return null;
+  return parse(html, parserOptions(options));
 }
 
-/**
- * Plain-text projection of a Tiptap document. Mirrors backend `sanitize.tiptap_doc_text`
- * (fills `collections.description_text`, which the search index reads and
- * `services/collections` measures its 500-character cap on); change both.
- *
- * Concatenate the text of every text node, start a new line at every block boundary and
- * `hardBreak`, drop blank lines, strip each line, join with `\n`. The collection description
- * counter measures this string, so a divergence lets a body through that the server 422s, or
- * refuses one it would take.
- */
-export function tiptapDocText(doc: Record<string, unknown> | null): string {
-  if (!doc) return "";
+const LINE_TAGS = new Set(["p", "h2", "h3", "li", "blockquote", "pre", "hr", "ul", "ol"]);
+
+/** Mirrors backend `sanitize.html_text`; change both. The description counter measures this
+ *  string against the server's cap, so a divergence lets a body through that the server 422s. */
+export function htmlText(html: string | null): string {
+  if (!html) return "";
   const lines: string[] = [];
   let current = "";
-
   const flush = (): void => {
     const line = current.trim();
     current = "";
     if (line) lines.push(line);
   };
-
-  const walk = (node: TiptapNode): void => {
-    if (node.type === "text") {
-      if (typeof node.text === "string") current += node.text;
-      return;
+  const walk = (nodes: DOMNode[]): void => {
+    for (const node of nodes) {
+      if (isText(node)) {
+        node.data
+          .split("\n")
+          .forEach((part, i) => {
+            if (i > 0) flush();
+            current += part;
+          });
+      } else if (isElement(node)) {
+        if (node.name === "br") {
+          flush();
+          continue;
+        }
+        const block = LINE_TAGS.has(node.name);
+        if (block) flush();
+        walk(node.children as DOMNode[]);
+        if (block) flush();
+      }
     }
-    if (node.type === "hardBreak") {
-      flush();
-      return;
-    }
-    node.content?.forEach(walk);
-    // Every block but the root ends its line; a container whose children already flushed adds nothing.
-    if (node.type !== "doc") flush();
   };
-
-  walk(doc as TiptapNode);
+  walk(htmlToDOM(html));
   flush();
   return lines.join("\n");
 }
 
-/** Every image `src` the proof carries, in document order. Mirrors
- *  `sanitize.extract_image_srcs`: a `src` string is what counts, not the node type, and a
- *  `placeholder://` src counts on both sides. */
-function proofImageSrcs(proof: Record<string, unknown> | null): string[] {
-  if (!proof) return [];
+/** Every image `src` the body carries, in document order. Mirrors
+ *  `sanitize.extract_image_srcs`: a `src` string is what counts, and a `placeholder://` src
+ *  counts on both sides. */
+export function proofImageSrcs(html: string | null): string[] {
+  if (!html) return [];
   const srcs: string[] = [];
-  const walk = (node: TiptapNode): void => {
-    if (node.type === "image" && typeof node.attrs?.src === "string") {
-      srcs.push(node.attrs.src);
+  const walk = (nodes: DOMNode[]): void => {
+    for (const node of nodes) {
+      if (!isElement(node)) continue;
+      if (node.name === "img" && node.attribs.src !== undefined) srcs.push(node.attribs.src);
+      walk(node.children as DOMNode[]);
     }
-    node.content?.forEach(walk);
   };
-  walk(proof as TiptapNode);
+  walk(htmlToDOM(html));
   return srcs;
 }
 
 /** True when the proof carries at least one image: a geolocation's proof is a source ↔
  *  satellite cross-reference, and text alone can't be audited. The server enforces it in
  *  `events._require_proof_image` over the same srcs. */
-export function proofHasImage(proof: Record<string, unknown> | null): boolean {
-  return proofImageSrcs(proof).length > 0;
+export function proofHasImage(html: string | null): boolean {
+  return proofImageSrcs(html).length > 0;
 }

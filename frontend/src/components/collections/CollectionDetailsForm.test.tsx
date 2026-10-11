@@ -1,34 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-/** The one-paragraph document the proof editor emits for unmarked text. */
-function textDoc(text: string): Record<string, unknown> {
-  return {
-    type: "doc",
-    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
-  };
-}
+import { textHtml } from "@/test/proofEditorStub";
 
-// The editor is stubbed as a textarea that emits a document; the props the form
-// passes it are asserted through the marks it prints.
-vi.mock("@/components/editor/ProofEditor", () => ({
-  default: ({
-    onChange,
-    allowImages,
-    invalid,
-  }: {
-    onChange: (doc: Record<string, unknown>) => void;
-    allowImages?: boolean;
-    invalid?: boolean;
-  }) => (
-    <textarea
-      aria-label="Description"
-      data-allow-images={String(allowImages)}
-      data-invalid={String(invalid)}
-      onChange={(e) => onChange(textDoc(e.target.value))}
-    />
-  ),
-}));
+vi.mock("@/components/editor/ProofEditor", () => import("@/test/proofEditorStub"));
 
 // The picker is `EventPicker.test.tsx`'s subject.
 vi.mock("@/hooks/useCursorList", () => ({
@@ -90,19 +65,19 @@ describe("CollectionDetailsForm", () => {
     expect(descriptionField()).toHaveAttribute("data-allow-images", "false");
   });
 
-  it("hands back the document the editor emitted, not a string", async () => {
+  it("hands back the HTML the editor emitted", async () => {
     await renderForm();
     fill("March strikes", "Strikes on the corridor through March.");
     fireEvent.click(submit());
 
     expect(onSubmit).toHaveBeenCalledWith(
       "March strikes",
-      textDoc("Strikes on the corridor through March."),
+      textHtml("Strikes on the corridor through March."),
       [],
     );
   });
 
-  it("counts the document's text, so marking a word up costs nothing", async () => {
+  it("counts the description's text, so marking a word up costs nothing", async () => {
     await renderForm();
     fill("March strikes", "Twelve chars");
 
@@ -134,10 +109,10 @@ describe("CollectionDetailsForm", () => {
     expect(descriptionField()).toHaveAttribute("data-invalid", "true");
   });
 
-  it("opens an edit on the collection's own document", async () => {
+  it("opens an edit on the collection's own description", async () => {
     await renderForm({
       initialTitle: "Kupiansk rail corridor",
-      initialDescription: textDoc("Three days of strikes."),
+      initialDescription: textHtml("Three days of strikes."),
       submitLabel: "Save collection",
     });
 
@@ -145,7 +120,7 @@ describe("CollectionDetailsForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save collection" }));
     expect(onSubmit).toHaveBeenCalledWith(
       "Kupiansk rail corridor",
-      textDoc("Three days of strikes."),
+      textHtml("Three days of strikes."),
       [],
     );
   });

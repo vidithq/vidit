@@ -50,7 +50,7 @@ async def save_version(
     event_date: date | None,
     event_time: time | None,
     source_posted_at: datetime | None,
-    proof_data: dict | None,
+    proof_data: str | None,
     tag_ids: list,
     conflict_ids: list,
     is_graphic: bool = False,
@@ -145,7 +145,7 @@ async def save_version(
     # Before any S3 work, so a refused swap files no version.
     swap = _plan_source_swap(geo, remove_media_ids=remove_media_ids or [], files=files)
 
-    proof_data = _sanitize_proof(proof_data, allow_placeholders=True)
+    proof_data = _sanitize_proof(proof_data)
 
     # The floor against the post-edit state (surviving media), before any S3 work.
     _require_submission_media(swap.survivors > 0)
@@ -253,7 +253,7 @@ async def save_version(
         db,
         event=geo,
         source_files=files,
-        proof_doc=proof_data,
+        proof_html=proof_data,
         proof_files=proof_files,
         sweep_context=f"event {geo.id} save_version rollback",
     )

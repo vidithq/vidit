@@ -209,7 +209,7 @@ const MOCK_DETECTION_READY: EventDetail = {
   id: "detection-ready",
   status: "detected",
   source_url: "https://t.me/channel/12345",
-  proof: { type: "doc", content: [{ type: "image", attrs: { src: "" } }] },
+  proof: '<img src="/local-storage/demo.jpg">',
   media: [
     {
       id: "m1",
@@ -1267,7 +1267,7 @@ export default function PalettePage() {
             <div className="w-full max-w-xl">
               <ProofSection>
                 <div className="text-sm text-neutral-300 leading-relaxed">
-                  The proof body goes here (a rendered doc, or request notes).
+                  The proof body goes here (rendered HTML, or request notes).
                 </div>
               </ProofSection>
             </div>

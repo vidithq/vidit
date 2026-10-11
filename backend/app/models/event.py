@@ -206,9 +206,8 @@ class Event(Base):
     # The declared footage source. A detection may carry none; the other states
     # require it (``ck_events_source_url_status``, ``services/events.geolocate``).
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # The empty-doc default catches ORM constructions that omit proof. Inlined
-    # because the models layer must not import from services.
-    proof = mapped_column(JSONB, nullable=False, default=lambda: {"type": "doc", "content": []})
+    # Sanitised HTML (``services/sanitize.sanitize_html``); ``""`` is an empty body.
+    proof: Mapped[str] = mapped_column(Text, nullable=False, default="")
     # Often unknown for a ``requested`` event; required at ``geolocated``.
     event_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     # UTC time of day. May stand alone: an hour can be known before the day.

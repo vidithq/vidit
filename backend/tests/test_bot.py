@@ -491,7 +491,7 @@ async def test_a_tagged_post_creates_a_detection(db, linked_owner):
     assert event.source_posted_at.date().isoformat() == "2026-03-10"
 
     # The proof is the post as written, minus the bot tag and media wrappers.
-    proof = json.dumps(event.proof)
+    proof = event.proof
     assert "Smoke plume matches the skyline" in proof
     assert "48.123456" in proof
     assert "viditbot" not in proof
@@ -529,7 +529,7 @@ async def test_the_two_post_field_format_lands_one_detection(db, linked_owner):
     assert event.source_url == "https://www.tiktok.com/@war/video/7"
     assert event.source_posted_at is None
 
-    proof = json.dumps(event.proof)
+    proof = event.proof
     assert "Matched the tower skyline" in proof  # the parent's line
     assert "footage saved below" in proof  # the reply's line joins it
     assert "viditbot" not in proof

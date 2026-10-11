@@ -8,41 +8,18 @@ from __future__ import annotations
 
 from typing import Any
 
-PROOF_WITH_IMAGE: dict[str, Any] = {
-    "type": "doc",
-    "content": [
-        {"type": "paragraph", "content": [{"type": "text", "text": "Cross-referenced."}]},
-        {"type": "image", "attrs": {"src": "https://cdn.example.com/proof.jpg"}},
-    ],
-}
+PROOF_WITH_IMAGE = '<p>Cross-referenced.</p><img src="https://cdn.example.com/proof.jpg">'
 
-# Nested two levels down: the Python floor and the SQL recursive descent must both find it.
-PROOF_IMAGE_NESTED: dict[str, Any] = {
-    "type": "doc",
-    "content": [
-        {
-            "type": "bulletList",
-            "content": [
-                {
-                    "type": "listItem",
-                    "content": [{"type": "image", "attrs": {"src": "https://cdn/x.jpg"}}],
-                }
-            ],
-        }
-    ],
-}
+# Nested one list level down: the Python floor and the SQL pattern must both find it.
+PROOF_IMAGE_NESTED = '<ul><li><p>a</p><img alt="frame" src="https://cdn/x.jpg"></li></ul>'
 
-PROOF_TEXT_ONLY: dict[str, Any] = {
-    "type": "doc",
-    "content": [{"type": "paragraph", "content": [{"type": "text", "text": "No imagery."}]}],
-}
+PROOF_TEXT_ONLY = "<p>No imagery.</p>"
 
-# The sanitiser only drops an *unsafe* ``src``, so a persisted doc can hold a src-less image.
-# The three implementations most easily disagree on it.
-PROOF_IMAGE_WITHOUT_SRC: dict[str, Any] = {
-    "type": "doc",
-    "content": [{"type": "image"}],
-}
+# The sanitiser drops a src-less image, but a row written past it can hold one, and text
+# can name the tag. The three implementations most easily disagree on these.
+PROOF_IMAGE_WITHOUT_SRC = '<img alt="src=&quot;x&quot;"><p>&lt;img src="y"&gt;</p>'
+# `` src="`` spelled inside another attribute's value.
+PROOF_IMAGE_WITH_SRC_IN_A_VALUE = '<img alt="x src=">'
 
 # name -> (``_make_geo`` overrides on top of a plain detection, ready?)
 READINESS_CASES: dict[str, tuple[dict[str, Any], bool]] = {
@@ -67,6 +44,10 @@ READINESS_CASES: dict[str, tuple[dict[str, Any], bool]] = {
     "no_proof_image": ({"with_media": True, "proof": PROOF_TEXT_ONLY}, False),
     "proof_image_without_a_src": (
         {"with_media": True, "proof": PROOF_IMAGE_WITHOUT_SRC},
+        False,
+    ),
+    "proof_image_with_src_inside_a_value": (
+        {"with_media": True, "proof": PROOF_IMAGE_WITH_SRC_IN_A_VALUE},
         False,
     ),
     "missing_everything_but_the_title": (

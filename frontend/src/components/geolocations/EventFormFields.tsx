@@ -31,7 +31,7 @@ export interface EventSharedFields {
   event_time: string | undefined;
   source_posted_at: string;
   is_graphic: boolean;
-  proof: Record<string, unknown> | null;
+  proof: string | null;
   tag_ids: string[];
   conflict_ids: string[];
   proof_files: File[];
@@ -73,8 +73,8 @@ export interface EventFormState {
   setSourcePostedAt: Dispatch<SetStateAction<string>>;
   isGraphic: boolean;
   setIsGraphic: Dispatch<SetStateAction<boolean>>;
-  proof: Record<string, unknown> | null;
-  setProof: Dispatch<SetStateAction<Record<string, unknown> | null>>;
+  proof: string | null;
+  setProof: Dispatch<SetStateAction<string | null>>;
   /** New inline proof images, uploaded as `proof_files[]` at post. */
   proofFiles: File[];
   setProofFiles: Dispatch<SetStateAction<File[]>>;
@@ -104,7 +104,7 @@ export interface EventFormState {
  * Seed one form's state from the row it edits, or empty for a fresh submit.
  *
  * Seeds are `useState` initialisers, so they apply at mount. The edit surfaces
- * mount after their row loaded (which gives Tiptap its `initialContent`); the
+ * mount after their row loaded (which gives the proof editor its `initialContent`); the
  * submit form seeds empty and drives the setters from its own load effect.
  */
 export function useEventForm(row?: EventDetail | null): EventFormState {
@@ -137,7 +137,7 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
   const [eventTime, setEventTime] = useState(seededEventTime);
   const [sourcePostedAt, setSourcePostedAt] = useState(seededSourcePostedAt);
   const [isGraphic, setIsGraphic] = useState(seed?.is_graphic ?? false);
-  const [proof, setProof] = useState<Record<string, unknown> | null>(
+  const [proof, setProof] = useState<string | null>(
     seed?.proof ?? null
   );
   const [proofFiles, setProofFiles] = useState<File[]>([]);
@@ -342,6 +342,7 @@ export function EventFormFields({
       <ProofEditorPanel
         proof={form.proof}
         onChange={form.setProof}
+        proofFiles={form.proofFiles}
         onProofFilesChange={form.setProofFiles}
         invalid={invalidKeys.has("proof") || invalidKeys.has("proof_image")}
       />

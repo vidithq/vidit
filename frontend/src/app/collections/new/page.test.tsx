@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { textHtml } from "@/test/proofEditorStub";
+
 const push = vi.fn();
 const replace = vi.fn();
 const searchParams = new URLSearchParams();
@@ -12,38 +14,9 @@ vi.mock("next/navigation", () => ({
 const useAuth = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => useAuth() }));
 
+vi.mock("@/components/editor/ProofEditor", () => import("@/test/proofEditorStub"));
+
 // The `?event=` read: the picker's first block renders the event's own row.
-/** The one-paragraph document for a line of unmarked text. */
-function textDoc(text: string): Record<string, unknown> {
-  return {
-    type: "doc",
-    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
-  };
-}
-
-/** That document as text, for the stub's seed. */
-function docText(doc: Record<string, unknown> | null | undefined): string {
-  const paragraph = (doc?.content as { content?: { text?: string }[] }[])?.[0];
-  return paragraph?.content?.[0]?.text ?? "";
-}
-// The Tiptap editor boots ProseMirror once, so it is stubbed as a textarea that prints its seeded document
-// and emits the one-paragraph document the real editor emits for unmarked text.
-vi.mock("@/components/editor/ProofEditor", () => ({
-  default: ({
-    initialContent,
-    onChange,
-  }: {
-    initialContent?: Record<string, unknown> | null;
-    onChange: (doc: Record<string, unknown>) => void;
-  }) => (
-    <textarea
-      aria-label="Description"
-      defaultValue={docText(initialContent)}
-      onChange={(e) => onChange(textDoc(e.target.value))}
-    />
-  ),
-}));
-
 const useApiResource = vi.fn();
 vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => useApiResource(path),
@@ -55,7 +28,7 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
   createCollection: (
     title: string,
-    description: Record<string, unknown>,
+    description: string,
     ids: string[],
   ) => createCollection(title, description, ids),
   searchPickableEvents: (username: string, q: string) =>
@@ -109,12 +82,7 @@ const created: Collection = {
   id: "c9",
   owner: { id: "u1", username: "ana", avatar_url: null },
   title: "March strikes",
-  description: {
-    type: "doc",
-    content: [
-      { type: "paragraph", content: [{ type: "text", text: "Strikes on the corridor through March." }] },
-    ],
-  },
+  description: "<p>Strikes on the corridor through March.</p>",
   description_text: "Strikes on the corridor through March.",
   cover: [],
   tags: [],
@@ -200,7 +168,7 @@ describe("NewCollectionPage", () => {
     await waitFor(() =>
       expect(createCollection).toHaveBeenCalledWith(
         "March strikes",
-        textDoc("Strikes on the corridor through March."),
+        textHtml("Strikes on the corridor through March."),
         [],
       ),
     );
@@ -228,7 +196,7 @@ describe("NewCollectionPage", () => {
     await waitFor(() =>
       expect(createCollection).toHaveBeenCalledWith(
         "March strikes",
-        textDoc("Strikes on the corridor through March."),
+        textHtml("Strikes on the corridor through March."),
         ["e1"],
       ),
     );
@@ -257,7 +225,7 @@ describe("NewCollectionPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create collection" }));
     expect(createCollection).toHaveBeenCalledWith(
       "March strikes",
-      textDoc("Strikes on the corridor through March."),
+      textHtml("Strikes on the corridor through March."),
       ["e1"],
     );
   });

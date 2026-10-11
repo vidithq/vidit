@@ -24,6 +24,7 @@ from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
 from app.services.detection import backfill_from_archive, persist_detections
+from app.services.sanitize import extract_image_srcs
 from app.services.tweet_ingest import (
     COORDS_MISSING,
     Detection,
@@ -85,7 +86,7 @@ def _rows_for(db, owner: User, typology: str) -> list[Event]:
 
 
 def _proof_image_count(event: Event) -> int:
-    return sum(1 for node in event.proof["content"] if node.get("type") == "image")
+    return len(extract_image_srcs(event.proof))
 
 
 async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
@@ -103,7 +104,7 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
     rows = db.query(Event).filter(Event.owner_id == owner.id).all()
     assert len(rows) == 11
     assert all(r.status == STATUS_DETECTED for r in rows)
-    assert all(r.proof and r.proof["content"] for r in rows)
+    assert all(r.proof for r in rows)
 
     assert _rows_for(db, owner, "no_coord") == []
     # A refused thread is counted under the code the bot and paste name. Four carry no
@@ -148,13 +149,13 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
         assert source_rows.count() == 0, typology
 
     # Media roles + proof-image injection, per typology.
-    # referenceless: 2 proof images, both injected into the proof doc.
+    # referenceless: 2 proof images, both injected into the proof.
     [ref] = _rows_for(db, owner, "referenceless_annotation")
     assert _media_roles(db, ref) == {"proof": 2}
     assert _proof_image_count(ref) == 2
 
     # self_video: the only media is a video and nothing declared a source, so it fills the
-    # source slot; the proof doc stays empty and the video survives as evidence.
+    # source slot; the proof stays empty and the video survives as evidence.
     [sv] = _rows_for(db, owner, "self_video_no_signal")
     assert _media_roles(db, sv) == {"source": 1}
     assert _proof_image_count(sv) == 0

@@ -32,12 +32,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   id: "c1",
   owner: OWNER,
   title: "Nova Kakhovka dam",
-  description: {
-    type: "doc",
-    content: [
-      { type: "paragraph", content: [{ type: "text", text: "The breach and the flooding downstream of it." }] },
-    ],
-  },
+  description: "<p>The breach and the flooding downstream of it.</p>",
   description_text: "The breach and the flooding downstream of it.",
   cover: [],
   tags: [],

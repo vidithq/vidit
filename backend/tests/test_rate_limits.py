@@ -34,7 +34,7 @@ from app.ratelimit import (
 )
 from app.services.auth import create_access_token, hash_password
 from app.services.auth_cookies import SESSION_COOKIE
-from app.services.sanitize import tiptap_doc_from_text
+from app.services.sanitize import html_from_text
 from tests.conftest import login_as
 from tests.events._helpers import WORLD_BBOX
 
@@ -362,8 +362,8 @@ def test_read_quota_key_rejects_a_forged_token(user):
 
 _MISSING_ID = uuid.UUID(int=0)
 
-# A Tiptap document, enough to pass body validation.
-_PROBE_DESCRIPTION = tiptap_doc_from_text("A probe shelf.")
+# An HTML description, enough to pass body validation.
+_PROBE_DESCRIPTION = html_from_text("A probe shelf.")
 
 # The unparseable date makes every submit handler 422 before touching storage.
 # `files` forces the multipart body the File(...) parameters require.

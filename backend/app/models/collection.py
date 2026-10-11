@@ -2,7 +2,6 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -15,7 +14,7 @@ class Collection(Base):
     One owner, and an event joins only when the same account owns both (checked
     in ``services/collections.add_event``; it spans two tables). The title is
     capped by the event's ``TITLE_MAX_LENGTH``. The required ``description`` is
-    a Tiptap document capped on its text by
+    sanitised HTML capped on its text by
     ``schemas/collection.DESCRIPTION_MAX_LENGTH``. Items order by when the
     events happened: no manual position, denormalized count or version history.
 
@@ -30,15 +29,12 @@ class Collection(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH), nullable=False)
-    # Tiptap document, the shape ``Event.proof`` takes minus images (dropped by
-    # the write service). The empty-doc default catches ORM constructions that
-    # omit it; inlined because the models layer must not import from services.
-    description = mapped_column(
-        JSONB, nullable=False, default=lambda: {"type": "doc", "content": []}
-    )
+    # Sanitised HTML, the shape ``Event.proof`` takes minus images (dropped by
+    # the write service).
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     # Plain-text projection of ``description``, written on every write from
-    # ``services/sanitize.tiptap_doc_text``. Stored because the search GIN index
-    # would otherwise index node names and punctuation. No column width: the
+    # ``services/sanitize.html_text``. Stored because the search GIN index
+    # would otherwise index tags and entities. No column width: the
     # 500-character cap is the API's.
     description_text: Mapped[str] = mapped_column(Text, nullable=False)
     # Takedown: NULL = visible; same axis and reversal as ``Event.hidden_at``.

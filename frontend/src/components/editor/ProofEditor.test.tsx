@@ -1,73 +1,212 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-
-// Tiptap's useEditor boots ProseMirror, which needs DOM APIs jsdom lacks. Only toolbar wiring is
-// asserted, so stub the editor: truthy, with the `isActive` it calls at render.
-vi.mock("@tiptap/react", () => ({
-  useEditor: () => ({ isActive: () => false }),
-  EditorContent: () => null,
-}));
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { en } from "@blocknote/core/locales";
+import type { useCreateBlockNote } from "@blocknote/react";
 
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 
-import ProofEditor, { isProofLinkUri, resolveProofDoc } from "./ProofEditor";
+import ProofEditor, { referencedProofFiles } from "./ProofEditor";
 
-describe("ProofEditor", () => {
-  it("offers the proof-image control by default (upload-at-publish)", () => {
-    // The image is held locally and uploaded only at publish via `proof_files[]`, so the control is live.
-    render(<ProofEditor onChange={() => {}} />);
-    const control = screen.getByText("+ Image");
-    expect(control).toBeInTheDocument();
-    expect(control.querySelector('input[type="file"]')).not.toBeNull();
+// The created editor, so a test drives edits through BlockNote's own API (jsdom has no typing).
+let editor: ReturnType<typeof useCreateBlockNote>;
+vi.mock("@blocknote/react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@blocknote/react")>();
+  return {
+    ...actual,
+    useCreateBlockNote: (...args: Parameters<typeof actual.useCreateBlockNote>) =>
+      (editor = actual.useCreateBlockNote(...args)),
+  };
+});
+
+// The toolbar positions itself from the selection's rects, which jsdom's Range does not implement.
+beforeAll(() => {
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
+});
+
+const png = (name: string) => new File(["x"], name, { type: "image/png" });
+
+describe("referencedProofFiles", () => {
+  const a = { placeholder: "placeholder://a.png", previewUrl: "blob:a", file: png("a.png") };
+  const b = { placeholder: "placeholder://b.png", previewUrl: "blob:b", file: png("b.png") };
+
+  it("keeps the files the body still shows, in staging order", () => {
+    const html = '<p>x</p><img src="placeholder://b.png"><img src="placeholder://a.png">';
+    expect(referencedProofFiles(html, [a, b])).toEqual([a.file, b.file]);
   });
 
-  it("drops the image control, and nothing else, under allowImages={false}", () => {
-    // A collection's description is stored with `allow_images=False`, so offering the control would
-    // stage a file the server drops. Marks and list controls stay: one editor serves both.
-    render(<ProofEditor onChange={() => {}} allowImages={false} />);
-    expect(screen.queryByText("+ Image")).not.toBeInTheDocument();
-    for (const label of ["B", "I", "H3", "List"]) {
-      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
-    }
+  it("drops a file whose image was deleted", () => {
+    expect(referencedProofFiles('<img src="placeholder://a.png">', [a, b])).toEqual([a.file]);
+  });
+
+  it("ignores a placeholder that only appears as text or a link", () => {
+    const html = '<p>placeholder://a.png <a href="placeholder://b.png">b</a></p>';
+    expect(referencedProofFiles(html, [a, b])).toEqual([]);
+  });
+
+  it("stages nothing for an uploaded image's media-host src", () => {
+    expect(referencedProofFiles('<img src="https://cdn.test/p.jpg">', [a])).toEqual([]);
+  });
+});
+
+describe("ProofEditor", () => {
+  it("seeds from stored HTML without emitting it back", async () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <ProofEditor onChange={onChange} initialContent="<p>Anchor <strong>points</strong></p>" />,
+    );
+    await waitFor(() => expect(container.querySelector("strong")).toHaveTextContent("points"));
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("wears the shared invalid outline when the caller flags it", () => {
     const { container, rerender } = render(<ProofEditor onChange={() => {}} />);
-    const box = container.firstElementChild as HTMLElement;
-    expect(box.className).not.toContain(FORM_INVALID_FIELD);
+    const box = () => container.firstElementChild as HTMLElement;
+    expect(box().className).not.toContain(FORM_INVALID_FIELD);
 
     rerender(<ProofEditor onChange={() => {}} invalid />);
-    expect(
-      (container.firstElementChild as HTMLElement).className,
-    ).toContain(FORM_INVALID_FIELD);
-  });
-});
-
-describe("link URI allowlist", () => {
-  // The editor may only mint what survives publication: both sanitisers
-  // (`services/sanitize.py::safe_link_href`, `lib/proof.tsx::isSafeLinkHref`) take absolute http(s) only.
-  it("accepts absolute http(s) URLs", () => {
-    expect(isProofLinkUri("https://x.com/user/status/1")).toBe(true);
-    expect(isProofLinkUri("http://localhost:8000/p")).toBe(true);
-    expect(isProofLinkUri("HTTPS://X.COM/a")).toBe(true);
+    expect(box().className).toContain(FORM_INVALID_FIELD);
   });
 
-  it("rejects the other protocols linkify registers by default", () => {
-    for (const url of [
-      "mailto:analyst@example.com",
-      "tel:+33123456789",
-      "sms:+33123456789",
-      "ftp://files.example.com/x",
-      "xmpp:analyst@example.com",
-    ]) {
-      expect(isProofLinkUri(url)).toBe(false);
-    }
+  it("emits the typed text as HTML and stages only the images the body still shows", async () => {
+    const onChange = vi.fn();
+    const onProofFilesChange = vi.fn();
+    render(<ProofEditor onChange={onChange} onProofFilesChange={onProofFilesChange} />);
+    const kept = png("kept.png");
+    const dropped = png("dropped.png");
+
+    await act(async () => {
+      const keptUrl = await editor.uploadFile!(kept);
+      await editor.uploadFile!(dropped);
+      editor.replaceBlocks(editor.document, [
+        { type: "paragraph", content: "Ruins north of the rail yard" },
+        { type: "paragraph" },
+        { type: "image", props: { url: keptUrl as string } },
+      ]);
+    });
+
+    await waitFor(() => expect(onProofFilesChange).toHaveBeenLastCalledWith([kept]));
+    const html = onChange.mock.lastCall![0] as string;
+    expect(html).toContain("Ruins north of the rail yard");
+    expect(html).not.toContain("\uFFFC");
   });
 
-  it("rejects a scheme-less value, an email, and a smuggled javascript: scheme", () => {
-    expect(isProofLinkUri("example.com/a")).toBe(false);
-    expect(isProofLinkUri("analyst@example.com")).toBe(false);
-    expect(isProofLinkUri("javascript:alert(1)")).toBe(false);
-    expect(isProofLinkUri("java\nscript:alert(1)")).toBe(false);
+  it("keeps a staged image across a remount", async () => {
+    const first = vi.fn();
+    const mounted = render(<ProofEditor onChange={() => {}} onProofFilesChange={first} />);
+    const file = png("frame.png");
+    await act(async () => {
+      const url = (await editor.uploadFile!(file)) as string;
+      editor.replaceBlocks(editor.document, [{ type: "image", props: { url } }]);
+    });
+    await waitFor(() => expect(first).toHaveBeenLastCalledWith([file]));
+    const html = editor.blocksToHTMLLossy(editor.document);
+    mounted.unmount();
+
+    const second = vi.fn();
+    const { container } = render(
+      <ProofEditor
+        onChange={() => {}}
+        onProofFilesChange={second}
+        initialContent={html}
+        initialProofFiles={[file]}
+      />,
+    );
+    await waitFor(() => expect(container.querySelector("img")?.src).toMatch(/^blob:/));
+    act(() => {
+      editor.insertBlocks([{ type: "paragraph", content: "More" }], editor.document[0], "after");
+    });
+    await waitFor(() => expect(second).toHaveBeenLastCalledWith([file]));
+  });
+
+  it("keeps an image out of a text-only body", async () => {
+    const seed = '<p>Before</p><img src="https://cdn.test/p.jpg"><p>After</p>';
+    const images = render(<ProofEditor onChange={() => {}} initialContent={seed} />).container;
+    const textOnly = render(
+      <ProofEditor onChange={() => {}} initialContent={seed} allowImages={false} />,
+    ).container;
+
+    await waitFor(() => expect(textOnly).toHaveTextContent("After"));
+    expect(images.querySelector('[data-content-type="image"]')).not.toBeNull();
+    expect(textOnly.querySelector('[data-content-type="image"]')).toBeNull();
+  });
+
+  // jsdom has no DataTransfer: the fields BlockNote and the guard read.
+  const fileTransfer = (file: File) => ({
+    types: ["Files"],
+    files: [file],
+    items: [{ kind: "file", type: file.type, getAsFile: () => file }],
+    getData: () => "",
+  });
+
+  it.each([
+    ["an image into a text-only body", png("frame.png"), false],
+    ["a file outside the image allowlist", new File(["x"], "notes.pdf", { type: "application/pdf" }), true],
+  ])("ignores a pasted or dropped file: %s", async (_name, file, allowImages) => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <ProofEditor onChange={onChange} initialContent="<p>Kept</p>" allowImages={allowImages} />,
+    );
+    await waitFor(() => expect(container).toHaveTextContent("Kept"));
+    const body = container.querySelector<HTMLElement>(".bn-editor")!;
+
+    await act(async () => {
+      editor.setTextCursorPosition(editor.document[0], "end");
+      expect(fireEvent.paste(body, { clipboardData: fileTransfer(file) })).toBe(false);
+      expect(fireEvent.drop(body, { dataTransfer: fileTransfer(file) })).toBe(false);
+    });
+
+    expect(editor.document).toHaveLength(1);
+    expect(editor.document[0].type).toBe("paragraph");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  describe("formatting toolbar", () => {
+    const t = en.formatting_toolbar;
+    const dropped = [
+      t.align_left.tooltip,
+      t.align_center.tooltip,
+      t.align_right.tooltip,
+      t.nest.tooltip,
+      t.unnest.tooltip,
+      t.file_replace.tooltip.image,
+      t.file_preview_toggle.tooltip,
+      t.file_caption.tooltip,
+    ];
+
+    const toolbarLabels = async (container: HTMLElement, select: () => void) => {
+      await waitFor(() => expect(editor.document).toHaveLength(2));
+      act(select);
+      return Array.from(
+        container.ownerDocument.querySelectorAll(".bn-formatting-toolbar button"),
+        (b) => b.getAttribute("aria-label"),
+      );
+    };
+
+    it.each([
+      [
+        "selected text",
+        () => editor._tiptapEditor.commands.setTextSelection({ from: 4, to: 9 }),
+        t.bold.tooltip,
+      ],
+      [
+        "a selected image",
+        () => editor.setTextCursorPosition(editor.document[1]),
+        t.file_delete.tooltip.image,
+      ],
+    ])("offers nothing the server drops for %s", async (_name, select, kept) => {
+      const { container } = render(
+        <ProofEditor
+          onChange={() => {}}
+          initialContent='<p>Anchor points</p><img src="https://cdn.test/p.jpg">'
+        />,
+      );
+      const labels = await toolbarLabels(container, () => {
+        editor.focus();
+        select();
+      });
+      expect(labels).toContain(kept);
+      for (const label of dropped) expect(labels).not.toContain(label);
+    });
   });
 });

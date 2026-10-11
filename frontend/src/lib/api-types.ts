@@ -2443,9 +2443,7 @@ export interface components {
          */
         CollectionCreate: {
             /** Description */
-            description: {
-                [key: string]: unknown;
-            };
+            description: string;
             /** Event Ids */
             event_ids?: string[];
             /** Title */
@@ -2502,9 +2500,9 @@ export interface components {
          * CollectionRead
          * @description One collection as every read surface renders it.
          *
-         *     ``title`` and ``description`` (a Tiptap document) are the owner's two
+         *     ``title`` and ``description`` (sanitised HTML) are the owner's two
          *     required fields. ``description_text`` is its plain-text projection
-         *     (``services/sanitize.tiptap_doc_text``) for surfaces without rich text
+         *     (``services/sanitize.html_text``) for surfaces without rich text
          *     (card clamp, share card, snippet).
          *
          *     ``event_count``, ``first_date`` and ``last_date`` are computed at read time
@@ -2531,9 +2529,7 @@ export interface components {
              */
             created_at: string;
             /** Description */
-            description: {
-                [key: string]: unknown;
-            };
+            description: string;
             /** Description Text */
             description_text: string;
             /** Event Count */
@@ -2560,9 +2556,7 @@ export interface components {
          */
         CollectionUpdate: {
             /** Description */
-            description: {
-                [key: string]: unknown;
-            };
+            description: string;
             /** Title */
             title: string;
         };
@@ -2777,9 +2771,7 @@ export interface components {
             media: components["schemas"]["MediaRead"][];
             owner: components["schemas"]["AuthorRef"];
             /** Proof */
-            proof: {
-                [key: string]: unknown;
-            } | null;
+            proof: string | null;
             requested_by: components["schemas"]["AuthorRef"] | null;
             /** Secondary Source Urls */
             secondary_source_urls: string[];

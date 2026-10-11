@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from html import escape
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -24,7 +25,6 @@ from app.models.source_archive import SourceArchive
 from app.models.user import User
 from app.services import source_archive
 from app.services.auth import hash_password
-from app.services.sanitize import extract_link_hrefs
 
 SOURCE = "https://newsdesk.example/post/1234567890"
 PROOF_LINK = "https://example.org/report"
@@ -61,24 +61,10 @@ def owner(db):
     db.commit()
 
 
-def _proof_doc(*hrefs: str) -> dict:
-    """A Tiptap document whose paragraph carries one link mark per href."""
-    return {
-        "type": "doc",
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "see this",
-                        "marks": [{"type": "link", "attrs": {"href": href}}],
-                    }
-                    for href in hrefs
-                ],
-            }
-        ],
-    }
+def _proof_html(*hrefs: str) -> str:
+    """An HTML proof whose paragraph carries one link per href."""
+    links = "".join(f'<a href="{escape(href)}">see this</a>' for href in hrefs)
+    return f"<p>{links}</p>"
 
 
 @pytest.fixture
@@ -87,7 +73,7 @@ def event(db, owner):
         owner_id=owner.id,
         title="Archived event",
         source_url=SOURCE,
-        proof=_proof_doc(PROOF_LINK),
+        proof=_proof_html(PROOF_LINK),
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
     )
@@ -113,16 +99,6 @@ def _with_mirrors(db, event, *urls: str) -> Event:
 # ── link collection ────────────────────────────────────────────────────
 
 
-def test_extract_link_hrefs_reads_link_marks_and_dedupes():
-    doc = _proof_doc(PROOF_LINK, PROOF_LINK, "https://example.org/other")
-    assert extract_link_hrefs(doc) == [PROOF_LINK, "https://example.org/other"]
-
-
-def test_extract_link_hrefs_drops_non_http_schemes():
-    doc = _proof_doc("javascript:alert(1)", PROOF_LINK)
-    assert extract_link_hrefs(doc) == [PROOF_LINK]
-
-
 def test_collect_links_orders_source_first_and_tags_origin(event):
     assert source_archive.collect_links(event) == [
         (SOURCE, "source_url"),
@@ -136,7 +112,7 @@ def test_collect_links_drops_a_url_the_parse_refuses(db, owner):
         owner_id=owner.id,
         title="Bad link",
         source_url=SOURCE,
-        proof=_proof_doc("mailto:someone@example.com"),
+        proof=_proof_html("mailto:someone@example.com"),
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
     )
@@ -154,7 +130,7 @@ def test_collect_links_drops_an_oversized_url(db, owner):
         owner_id=owner.id,
         title="Long link",
         source_url=SOURCE,
-        proof=_proof_doc(oversized),
+        proof=_proof_html(oversized),
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
     )
@@ -171,7 +147,7 @@ def test_collect_links_attributes_a_shared_link_to_the_source(db, owner):
         owner_id=owner.id,
         title="Cited source",
         source_url=SOURCE,
-        proof=_proof_doc(SOURCE),
+        proof=_proof_html(SOURCE),
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
     )

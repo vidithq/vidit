@@ -224,14 +224,14 @@ async function slowScrollToTopOf(
   if (targetY !== null) await slowScrollToY(page, targetY, durationMs);
 }
 
-// Find the screen-space rect of a substring inside the ProseMirror
+// Find the screen-space rect of a substring inside the BlockNote
 // proof editor. Returns `null` when the substring isn't currently in
 // the rendered text (e.g., already deleted by a previous beat).
 async function findProofTextRect(page, substring) {
   return page.evaluate((needle) => {
-    const pm = document.querySelector(".ProseMirror");
-    if (!pm) return null;
-    const walker = document.createTreeWalker(pm, NodeFilter.SHOW_TEXT);
+    const editor = document.querySelector(".bn-editor");
+    if (!editor) return null;
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) {
       const idx = (node.textContent || "").indexOf(needle);
@@ -248,9 +248,8 @@ async function findProofTextRect(page, substring) {
 }
 
 // Mouse-drag to visibly select a substring in the proof editor, then
-// press Delete. ProseMirror handles the keyboard event as a content
-// removal, so the doc model + DOM stay in sync. No-op when the
-// substring isn't found.
+// press Delete. A real key press keeps BlockNote's document model in
+// sync with the DOM. No-op when the substring isn't found.
 async function selectAndDeleteProofText(page, substring) {
   const rect = await findProofTextRect(page, substring);
   if (!rect) return false;
@@ -265,7 +264,15 @@ async function selectAndDeleteProofText(page, substring) {
   await page.mouse.up();
   await wait(450);
   await page.keyboard.press("Delete");
-  await wait(550);
+  await wait(250);
+  // A cut that spanned a whole block leaves an empty one; Backspace merges it away.
+  const emptied = await page.evaluate(() => {
+    const anchor = window.getSelection()?.anchorNode;
+    const block = anchor && (anchor.nodeType === 1 ? anchor : anchor.parentElement)?.closest(".bn-block-content");
+    return !!block && !(block.textContent || "").trim();
+  });
+  if (emptied) await page.keyboard.press("Backspace");
+  await wait(300);
   return true;
 }
 
@@ -714,26 +721,6 @@ async function prepareRequestUpload(auth) {
       if (await selectAndDeleteProofText(page, needle)) break;
     }
   }
-  // Belt-and-braces collapse: walk the proof's text nodes and squeeze
-  // any double-newlines that survived the deletes (Tiptap sometimes
-  // keeps the `\n` chars even when the surrounding text is gone). The
-  // mutation goes through ProseMirror's contenteditable surface via
-  // execCommand so the editor model picks up the change.
-  await page.evaluate(() => {
-    const pm = document.querySelector(".ProseMirror");
-    if (!pm) return;
-    const walker = document.createTreeWalker(pm, NodeFilter.SHOW_TEXT);
-    let node;
-    while ((node = walker.nextNode())) {
-      const before = node.textContent || "";
-      const after = before
-        .replace(/\n{2,}/g, " ")
-        .replace(/[ \t]+/g, " ")
-        .replace(/^ /, "")
-        .replace(/ $/, "");
-      if (after !== before) node.textContent = after;
-    }
-  });
   await wait(900); // beat to read the cleaned proof
 
   console.log("→ scroll to submit (slow)");

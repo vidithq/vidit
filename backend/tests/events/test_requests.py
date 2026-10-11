@@ -36,6 +36,7 @@ from app.services.events import (
     update_request,
 )
 from app.services.evidence_intake import collect_media_keys
+from app.services.sanitize import extract_image_srcs
 from tests._fixtures import TINY_JPEG
 from tests._fixtures import tiny_jpeg as _tiny_jpeg
 from tests.conftest import login_as
@@ -263,22 +264,6 @@ def test_create_rejects_blank_source_url(author):
     assert "source_url" in response.json()["detail"].lower()
 
 
-def test_create_rejects_invalid_proof_json(author):
-    response = client.post(
-        "/api/v1/events/requests",
-        headers=login_as(client, author),
-        data={
-            "title": "ok",
-            "source_url": "https://example.com",
-            "source_posted_at": "2026-05-01T12:00",
-            "proof": "{not valid",
-        },
-        files={"file": _tiny_jpeg()},
-    )
-    assert response.status_code == 400
-    assert "proof" in response.json()["detail"].lower()
-
-
 def test_create_rejects_over_length_title(author):
     """A title past 255 chars 422s at the Form boundary, before any upload."""
     response = client.post(
@@ -309,7 +294,7 @@ def test_create_rejects_over_length_source_url(author):
 
 
 def test_create_rejects_unsanitisable_proof(author):
-    """Valid JSON that is not a Tiptap ``doc`` gets ``invalid_proof`` before any upload."""
+    """A proof past the sanitiser's tag-count cap gets ``invalid_proof`` before any upload."""
     response = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
@@ -317,7 +302,7 @@ def test_create_rejects_unsanitisable_proof(author):
             "title": "ok",
             "source_url": "https://example.com/post/1",
             "source_posted_at": "2026-05-01T12:00",
-            "proof": '{"type": "not-doc"}',
+            "proof": "<br>" * 10_001,
         },
         files={"file": _tiny_jpeg()},
     )
@@ -460,10 +445,10 @@ def test_create_request_keeps_proof_image(db, author, tmp_path, monkeypatch):
     assert response.status_code == 201, response.text
     body = response.json()
     assert body["status"] == "requested"
-    srcs = [n["attrs"]["src"] for n in body["proof"]["content"] if n["type"] == "image"]
+    srcs = extract_image_srcs(body["proof"])
     assert len(srcs) == 1
     assert srcs[0].startswith("http")  # placeholder rewritten to the landed URL
-    assert "placeholder://" not in json.dumps(body["proof"])
+    assert "placeholder://" not in body["proof"]
 
     request_id = uuid.UUID(body["id"])
     rows = db.query(Media).filter(Media.event_id == request_id).all()
@@ -498,7 +483,7 @@ def test_create_request_event_time_without_event_date(db, author):
     db.commit()
 
 
-def test_create_request_blank_proof_stores_empty_doc(db, author):
+def test_create_request_blank_proof_stores_an_empty_body(db, author):
     """The model default must fire: ``events.proof`` is NOT NULL and ``create_request``
     omits ``proof=``."""
     response = client.post(
@@ -513,7 +498,7 @@ def test_create_request_blank_proof_stores_empty_doc(db, author):
     )
     assert response.status_code == 201, response.text
     body = response.json()
-    assert body["proof"] == {"type": "doc", "content": []}
+    assert body["proof"] == ""
 
     request_id = uuid.UUID(body["id"])
     proof_media = db.query(Media).filter(Media.event_id == request_id, Media.role == "proof")
@@ -526,13 +511,7 @@ def test_create_request_blank_proof_stores_empty_doc(db, author):
 
 def test_create_request_drops_unsafe_proof_image_src(db, author):
     """The sanitiser still drops an unsafe src (protocol-relative URL) on a request."""
-    unsafe_doc = {
-        "type": "doc",
-        "content": [
-            {"type": "image", "attrs": {"src": "//evil.example/pixel.gif"}},
-            {"type": "paragraph", "content": [{"type": "text", "text": "wip"}]},
-        ],
-    }
+    unsafe_doc = '<img src="//evil.example/pixel.gif"><p>wip</p>'
     response = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
@@ -540,14 +519,13 @@ def test_create_request_drops_unsafe_proof_image_src(db, author):
             "title": "Unsafe proof image",
             "source_url": "https://example.com/post/unsafe",
             "source_posted_at": "2026-05-05T11:00",
-            "proof": json.dumps(unsafe_doc),
+            "proof": unsafe_doc,
         },
         files={"file": _tiny_jpeg()},
     )
     assert response.status_code == 201, response.text
     body = response.json()
-    assert not [n for n in body["proof"]["content"] if n["type"] == "image"]
-    assert "evil.example" not in json.dumps(body["proof"])
+    assert body["proof"] == "<p>wip</p>"
 
     request_id = uuid.UUID(body["id"])
     db.query(Media).filter(Media.event_id == request_id).delete(synchronize_session=False)
@@ -873,7 +851,7 @@ def test_edit_request_overwrites_in_place_without_a_version(db, author, free_tag
         source_url="https://example.com/second",
         secondary_source_urls=["https://mirror.example/a"],
         tag_ids=json.dumps([str(free_tag.id)]),
-        proof=json.dumps({"type": "doc", "content": [{"type": "paragraph"}]}),
+        proof="<p></p>",
     )
     assert response.status_code == 200, response.text
     body = response.json()

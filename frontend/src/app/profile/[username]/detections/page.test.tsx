@@ -45,10 +45,7 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     source_url: "https://t.me/channel/12345",
     secondary_source_urls: [],
     archived_secondary_sources: [],
-    proof: {
-      type: "doc",
-      content: [{ type: "image", attrs: { src: "https://cdn.test/p.jpg" } }],
-    },
+    proof: '<img src="https://cdn.test/p.jpg">',
     created_at: "2026-06-02T10:00:00Z",
     geolocated_at: null,
     closed_at: null,

@@ -1,68 +1,97 @@
-"""Server-side validation for Tiptap (ProseMirror) JSON documents.
+"""Server-side sanitisation of rich-text HTML (event proofs, collection descriptions).
 
-An attacker can bypass the editor and POST raw JSON (javascript: URLs,
-tracking-pixel image hosts, off-domain links), so `sanitize_tiptap_doc` walks
-the tree against an allowlist of nodes, marks, and attrs and drops the rest.
-Depth and node-count caps bound recursion and storage cost.
-
-The allowlists and URL predicates mirror the front end
-(`lib/proof.tsx`, `ProofEditor.tsx`); a security fix to either side needs the other.
+The rules are in ``docs/api.md`` (Rich text). The allowlists and URL predicates
+mirror the front end (`lib/proof.tsx`); a security fix to either side needs the
+other.
 """
 
-from typing import Any
+import re
+import secrets
+from collections.abc import Mapping
+from html import escape as html_escape
+from html.parser import HTMLParser
 from urllib.parse import urlparse
+
+import nh3
 
 from app.config import settings
 from app.services.storage import LOCAL_STORAGE_URL_PREFIX
 
 # Src scheme for a not-yet-uploaded proof image (``placeholder://<filename>``,
 # the file rides in the same multipart request). Intake resolves it before
-# storing, so no persisted doc carries one. Mirrored by `lib/proofImages.ts`.
+# storing, so no persisted body carries one. Mirrored by `lib/proofImages.ts`.
 PROOF_PLACEHOLDER_PREFIX = "placeholder://"
 
-# Tiptap StarterKit nodes + Image (see `ProofEditor.tsx`).
-_ALLOWED_NODES: dict[str, set[str]] = {
-    "doc": set(),
-    "paragraph": set(),
-    "text": set(),
-    "heading": {"level"},
-    "blockquote": set(),
-    "bulletList": set(),
-    "orderedList": {"start"},
-    "listItem": set(),
-    "codeBlock": {"language"},
-    "hardBreak": set(),
-    "horizontalRule": set(),
-    "image": {"src", "alt", "title"},
-}
+# Every tag but ``img``, which only a proof carries.
+_TEXT_TAGS = frozenset(
+    {
+        "p",
+        "h2",
+        "h3",
+        "strong",
+        "em",
+        "s",
+        "code",
+        "pre",
+        "a",
+        "ul",
+        "ol",
+        "li",
+        "blockquote",
+        "hr",
+        "br",
+    }
+)
+# ``"*"`` empties ammonia's default generic set (``lang``, ``title``).
+_ATTRIBUTES: dict[str, set[str]] = {"*": set(), "a": {"href"}, "img": {"src", "alt"}}
 
-# StarterKit marks + link (href checked in _sanitize_mark).
-_ALLOWED_MARKS: set[str] = {"bold", "italic", "strike", "code", "link"}
+_LINE_TAGS = frozenset({"p", "h2", "h3", "li", "blockquote", "pre", "ul", "ol", "hr", "br"})
 
-# DoS guards: a long writeup with ~20 images is well under both.
+# DoS guards, checked before parsing: html5ever's tree builder is quadratic in
+# nesting depth, so the tag count bounds parse time (10,000 nested tags parse
+# in about 0.1 s). A long writeup with ~20 images is well under both.
+_MAX_LENGTH = 200_000
+_MAX_TAGS = 10_000
+# The read view (html-react-parser) recurses per level and overflows the
+# browser stack near 2,500 nested tags, which the tag cap alone allows.
 _MAX_DEPTH = 32
-_MAX_NODES = 5_000
+_VOID_TAGS = frozenset({"img", "br", "hr"})
+# html5ever reopens each active formatting element (b, code, em, font, ...; an
+# ``a`` never stacks) in every new block, and keeps at most three copies of a
+# tag with identical attributes, so N unclosed tags with distinct attributes and
+# M blocks build N x M nodes (50 KB built 1.2 GB). Capping the distinct tags
+# bounds that list at three copies each: at the cap, the tag-count limit costs
+# about 0.05 s and 64 MB. Two tags count as one only when their source text is
+# identical and fits ``_PLAIN_TAG_REST``, a span html5ever reads the same way;
+# any other formatting tag counts on its own.
+_MAX_FORMATTING_TAGS = 16
+_FORMATTING_TAG = re.compile(
+    r"<(?:b|big|code|em|font|i|nobr|s|small|strike|strong|tt|u)(?=[\t\n\f\r />])", re.IGNORECASE
+)
+_PLAIN_TAG_REST = re.compile(
+    r"""(?:[\t\n\f\r ]++[^\t\n\f\r />"'<=]++(?:=(?:"[^"]*+"|'[^']*+'|[^\t\n\f\r >"'<=`]++))?)*+"""
+    r"[\t\n\f\r ]*+/?>"
+)
+
+# Canonical output quotes every attribute value and escapes ``"``, ``<`` and
+# ``>`` inside it, so a tag reads as a run of `` name="value"`` tokens and a
+# value cannot fake a ``src`` token. An ``a`` carries only ``href``, so a bare
+# ``<a>`` lost it; the parser never nests links, so the lazy match pairs it
+# with its own ``</a>``.
+_BARE_IMG = re.compile(r'<img(?:\s(?!src=)[a-z-]+="[^"]*")*>')
+_BARE_LINK = re.compile(r"<a>(.*?)</a>", re.DOTALL)
+
+# The editor writes U+FFFC into an empty block; it carries no text.
+_OBJECT_REPLACEMENT = "\ufffc"
 
 
-def _safe_image_src(value: Any, *, allow_placeholders: bool = False) -> str | None:
-    """Image src must be relative or point at the configured media host.
+def _safe_image_src(value: str, *, allow_placeholders: bool = False) -> str | None:
+    """The src if it is relative or on the configured media host, else ``None``.
 
-    - ``cloudfront_domain`` set (prod): only that host's https URLs pass.
-    - no CDN + ``s3``: only the bucket endpoint passes. Falling through to
-      "any https" would let a stored tracking pixel exfiltrate every viewer's
-      IP/UA.
-    - no CDN + ``local`` (dev): the local-storage prefix and any other https
-      pass.
-
-    ``allow_placeholders`` also admits ``placeholder://<filename>`` (intake
-    only). Ownership of a stored image is an intake question
-    (``evidence_intake._reject_foreign_proof_srcs``). Mirrored by
-    ``isSafeImageSrc`` (`lib/proof.tsx`).
+    Mirrored by ``isSafeImageSrc`` (`lib/proof.tsx`).
     """
-    if not isinstance(value, str):
-        return None
     if allow_placeholders and value.startswith(PROOF_PLACEHOLDER_PREFIX):
-        # A bare prefix names no file; drop the node rather than 400 at intake.
+        # A bare prefix names no file; drop the image rather than 400 at intake.
         return value if len(value) > len(PROOF_PLACEHOLDER_PREFIX) else None
     # Reject protocol-relative URLs before the relative-path return below
     # (``//attacker.example/pixel.gif`` would exfiltrate viewers' IP/UA).
@@ -94,16 +123,11 @@ def _safe_image_src(value: Any, *, allow_placeholders: bool = False) -> str | No
     return value
 
 
-def safe_link_href(value: Any) -> str | None:
-    """The value if it is an explicit ``http(s)://`` URL, else ``None``.
+def safe_link_href(value: str) -> str | None:
+    """The value if it is an ``http(s)://`` URL with a host, else ``None``.
 
-    Rejects ``javascript:``, ``data:``, ``mailto:``, and schemeless paths.
-    The one link allowlist: applied at write time and again by source
-    archival. A value ``urlparse`` refuses (``http://[::1``) returns ``None``
-    instead of raising. Mirrored by ``isSafeLinkHref`` (`lib/proof.tsx`).
+    Mirrored by ``isSafeLinkHref`` (`lib/proof.tsx`).
     """
-    if not isinstance(value, str):
-        return None
     try:
         parsed = urlparse(value)
     except ValueError:
@@ -130,279 +154,156 @@ def normalised_host(value: str) -> str | None:
     return (parsed.hostname or "").lower().removeprefix("www.") or None
 
 
-def extract_image_srcs(doc: Any) -> list[str]:
-    """Image srcs of a Tiptap document (sanitized or not), in tree order, deduped."""
-    seen: set[str] = set()
-    srcs: list[str] = []
-
-    def walk(node: Any) -> None:
-        if not isinstance(node, dict):
-            return
-        if node.get("type") == "image":
-            attrs = node.get("attrs")
-            if isinstance(attrs, dict):
-                src = attrs.get("src")
-                if isinstance(src, str) and src not in seen:
-                    seen.add(src)
-                    srcs.append(src)
-        content = node.get("content")
-        if isinstance(content, list):
-            for child in content:
-                walk(child)
-
-    walk(doc)
-    return srcs
-
-
-def extract_link_hrefs(doc: Any) -> list[str]:
-    """Link-mark hrefs of a Tiptap document (sanitized or not), in tree order, deduped.
-
-    Only ``http(s)`` hrefs come back: :func:`safe_link_href` is re-applied
-    because a row stored before a rule tightened is still readable.
-    """
-    seen: set[str] = set()
-    hrefs: list[str] = []
-
-    def walk(node: Any) -> None:
-        if not isinstance(node, dict):
-            return
-        marks = node.get("marks")
-        if isinstance(marks, list):
-            for mark in marks:
-                if not isinstance(mark, dict) or mark.get("type") != "link":
-                    continue
-                attrs = mark.get("attrs")
-                if not isinstance(attrs, dict):
-                    continue
-                href = safe_link_href(attrs.get("href"))
-                if href is not None and href not in seen:
-                    seen.add(href)
-                    hrefs.append(href)
-        content = node.get("content")
-        if isinstance(content, list):
-            for child in content:
-                walk(child)
-
-    walk(doc)
-    return hrefs
-
-
-def sanitize_tiptap_doc(
-    doc: Any, *, allow_images: bool = True, allow_placeholders: bool = False
-) -> dict[str, Any]:
-    """Validate a Tiptap document against the allowlist.
-
-    Drops unknown nodes/marks/attrs and images or links with an unsafe URL.
-    Raises ValueError if the root isn't a `type='doc'` object or the tree
-    exceeds the caps.
-
-    ``allow_images=False`` drops every image node. ``allow_placeholders=True``
-    admits ``placeholder://`` srcs for the create paths (see
-    ``PROOF_PLACEHOLDER_PREFIX``).
-    """
-    if not isinstance(doc, dict) or doc.get("type") != "doc":
-        raise ValueError("Tiptap document must be a JSON object with type='doc'")
-    counter = [0]
-    sanitized = _sanitize_node(
-        doc,
-        depth=0,
-        counter=counter,
-        allow_images=allow_images,
-        allow_placeholders=allow_placeholders,
-    )
-    if sanitized is None:
-        return {"type": "doc", "content": []}
-    sanitized.setdefault("content", [])
-    return sanitized
-
-
-def sanitize_tiptap_doc_or_raise(
-    doc: Any,
-    *,
-    error: type[Exception],
-    allow_images: bool = True,
-    allow_placeholders: bool = False,
-) -> dict[str, Any]:
-    """Sanitise a document, raising ``error`` where the sanitiser raises ``ValueError``.
-
-    Routers map typed service errors by ``code``
-    (``routers/_errors.raise_typed_error``), so the ValueError must become one
-    first. Callers: ``services/events/rules._sanitize_proof`` and
-    ``services/collections._checked_description``. ``error`` is a parameter so
-    each service owns its vocabulary without importing the other; the message
-    passes through unchanged.
-    """
-    try:
-        return sanitize_tiptap_doc(
-            doc, allow_images=allow_images, allow_placeholders=allow_placeholders
-        )
-    except ValueError as exc:
-        raise error(str(exc)) from exc
-
-
-def tiptap_doc_from_text(text: str) -> dict[str, Any]:
-    """One paragraph per non-blank line; empty input yields an empty doc.
-
-    Wraps machine-detected text (``clean_proof_text``) into the proof shape.
-    """
-    paragraphs = [line for line in text.split("\n") if line.strip()]
-    if not paragraphs:
-        return {"type": "doc", "content": []}
-    return {
-        "type": "doc",
-        "content": [
-            {"type": "paragraph", "content": [{"type": "text", "text": line}]}
-            for line in paragraphs
-        ],
-    }
-
-
-def tiptap_doc_text(doc: Any) -> str:
-    """The plain-text projection of a Tiptap document.
-
-    The one reader of a rich-text body as text: the search index
-    (``collections.description_text``, ``services/search._collection_tsvector``),
-    the card clamp, the share card, and the length cap in ``services/collections``.
-
-    Text nodes concatenate and every block boundary starts a new line
-    (``hardBreak`` ends one inside a paragraph). Blank lines drop out, lines
-    are stripped and joined with ``\\n``. Textless nodes contribute nothing.
-
-    Mirrored by ``lib/proof.tsx::tiptapDocText``; change both.
-    """
-    lines: list[str] = []
-    current: list[str] = []
-
-    def flush() -> None:
-        line = "".join(current).strip()
-        current.clear()
-        if line:
-            lines.append(line)
-
-    def walk(node: Any) -> None:
-        if not isinstance(node, dict):
-            return
-        node_type = node.get("type")
-        if node_type == "text":
-            text = node.get("text")
-            if isinstance(text, str):
-                current.append(text)
-            return
-        if node_type == "hardBreak":
-            flush()
-            return
-        content = node.get("content")
-        if isinstance(content, list):
-            for child in content:
-                walk(child)
-        # Every block but the root ends its line; containers flush an empty buffer.
-        if node_type != "doc":
-            flush()
-
-    walk(doc)
-    flush()
-    return "\n".join(lines)
-
-
-def _sanitize_node(
-    node: Any, *, depth: int, counter: list[int], allow_images: bool, allow_placeholders: bool
-) -> dict[str, Any] | None:
-    if depth > _MAX_DEPTH:
-        raise ValueError(f"Tiptap document exceeds max depth ({_MAX_DEPTH})")
-    counter[0] += 1
-    if counter[0] > _MAX_NODES:
-        raise ValueError(f"Tiptap document exceeds max node count ({_MAX_NODES})")
-
-    if not isinstance(node, dict):
-        return None
-    node_type = node.get("type")
-    if not isinstance(node_type, str) or node_type not in _ALLOWED_NODES:
-        return None
-    if node_type == "image" and not allow_images:
-        return None
-
-    cleaned: dict[str, Any] = {"type": node_type}
-
-    allowed_attrs = _ALLOWED_NODES[node_type]
-    raw_attrs = node.get("attrs")
-    if isinstance(raw_attrs, dict) and allowed_attrs:
-        clean_attrs = _sanitize_attrs(
-            node_type, raw_attrs, allowed_attrs, allow_placeholders=allow_placeholders
-        )
-        if clean_attrs is None:
-            return None  # signal: drop the entire node (e.g. image with unsafe src)
-        if clean_attrs:
-            cleaned["attrs"] = clean_attrs
-
-    text = node.get("text")
-    if isinstance(text, str):
-        cleaned["text"] = text
-
-    raw_marks = node.get("marks")
-    if isinstance(raw_marks, list):
-        clean_marks = [m for m in (_sanitize_mark(raw) for raw in raw_marks) if m is not None]
-        if clean_marks:
-            cleaned["marks"] = clean_marks
-
-    raw_content = node.get("content")
-    if isinstance(raw_content, list):
-        clean_content = [
-            c
-            for c in (
-                _sanitize_node(
-                    child,
-                    depth=depth + 1,
-                    counter=counter,
-                    allow_images=allow_images,
-                    allow_placeholders=allow_placeholders,
-                )
-                for child in raw_content
+def _check_size(html: str) -> None:
+    if len(html) > _MAX_LENGTH:
+        raise ValueError(f"Rich text exceeds max length ({_MAX_LENGTH} characters)")
+    if html.count("<") > _MAX_TAGS:
+        raise ValueError(f"Rich text exceeds max tag count ({_MAX_TAGS})")
+    distinct: set[str] = set()
+    unparsed = 0
+    for tag in _FORMATTING_TAG.finditer(html):
+        rest = _PLAIN_TAG_REST.match(html, tag.end())
+        if rest is None:
+            unparsed += 1
+        else:
+            distinct.add(html[tag.start() : rest.end()])
+        if len(distinct) + unparsed > _MAX_FORMATTING_TAGS:
+            raise ValueError(
+                f"Rich text exceeds max distinct formatting tags ({_MAX_FORMATTING_TAGS})"
             )
-            if c
-        ]
-        if clean_content:
-            cleaned["content"] = clean_content
 
+
+def _clean(
+    html: str,
+    *,
+    allow_images: bool,
+    allow_placeholders: bool,
+    src_map: Mapping[str, str] | None = None,
+) -> str:
+    # ammonia parses every ``href`` / ``src`` with the url crate before the
+    # filter runs, and ``placeholder://<filename>`` puts the filename where a
+    # host goes, so a space in it would fail that parse. Swapping the prefix
+    # for a per-call relative path keeps the value for the filter to judge.
+    marker = f"/{secrets.token_hex(16)}/"
+    if allow_placeholders:
+        html = html.replace(PROOF_PLACEHOLDER_PREFIX, marker)
+
+    def attribute_filter(tag: str, attr: str, value: str) -> str | None:
+        if allow_placeholders and value.startswith(marker):
+            value = PROOF_PLACEHOLDER_PREFIX + value[len(marker) :]
+        if tag == "a" and attr == "href":
+            return safe_link_href(value)
+        if tag == "img" and attr == "src":
+            src = _safe_image_src(value, allow_placeholders=allow_placeholders)
+            if src is not None and src_map is not None:
+                return src_map.get(src, src)
+            return src
+        return value
+
+    cleaned = nh3.clean(
+        html,
+        tags=_TEXT_TAGS | {"img"} if allow_images else _TEXT_TAGS,
+        clean_content_tags={"script", "style"},
+        attributes=_ATTRIBUTES,
+        attribute_filter=attribute_filter,
+        link_rel=None,
+        url_schemes={"http", "https"},
+    )
+    cleaned = _BARE_LINK.sub(r"\1", _BARE_IMG.sub("", cleaned)).replace(_OBJECT_REPLACEMENT, "")
+    if allow_placeholders:
+        cleaned = cleaned.replace(marker, PROOF_PLACEHOLDER_PREFIX)
     return cleaned
 
 
-def _sanitize_mark(raw: Any) -> dict[str, Any] | None:
-    if not isinstance(raw, dict):
-        return None
-    mark_type = raw.get("type")
-    if mark_type not in _ALLOWED_MARKS:
-        return None
-    if mark_type == "link":
-        attrs = raw.get("attrs")
-        if not isinstance(attrs, dict):
-            return None
-        href = safe_link_href(attrs.get("href"))
-        if href is None:
-            return None
-        cleaned: dict[str, Any] = {"type": "link", "attrs": {"href": href}}
-        target = attrs.get("target")
-        if target in {"_blank", "_self"}:
-            cleaned["attrs"]["target"] = target
-        return cleaned
-    return {"type": mark_type}
-
-
-def _sanitize_attrs(
-    node_type: str, raw_attrs: dict[str, Any], allowed: set[str], *, allow_placeholders: bool
-) -> dict[str, Any] | None:
-    """Returns the cleaned attr dict, or None if the whole node should be dropped."""
-    cleaned: dict[str, Any] = {}
-    for key, value in raw_attrs.items():
-        if key not in allowed:
-            continue
-        if node_type == "image" and key == "src":
-            safe = _safe_image_src(value, allow_placeholders=allow_placeholders)
-            if safe is None:
-                return None  # unsafe image: drop the node
-            cleaned[key] = safe
-        elif node_type == "heading" and key == "level":
-            if isinstance(value, int) and 1 <= value <= 6:
-                cleaned[key] = value
-        elif isinstance(value, (str, int, type(None))):
-            cleaned[key] = value
+def sanitize_html(html: str, *, allow_images: bool = True, allow_placeholders: bool = False) -> str:
+    """The canonical, allowlisted form of a rich-text body; raises ValueError over a cap."""
+    _check_size(html)
+    cleaned = _clean(html, allow_images=allow_images, allow_placeholders=allow_placeholders)
+    reader = _Reader(cleaned)
+    if reader.max_depth > _MAX_DEPTH:
+        raise ValueError(f"Rich text exceeds max nesting depth ({_MAX_DEPTH})")
+    if "<img " not in cleaned and not reader.lines:
+        return ""
     return cleaned
+
+
+def rewrite_image_srcs(html: str, src_map: Mapping[str, str]) -> str:
+    """A sanitised proof body with each image src in ``src_map`` swapped for its value.
+
+    The swap runs inside the sanitiser, so the result stays canonical. Mapped
+    URLs are ones storage minted, so they skip the host check.
+    """
+    return _clean(html, allow_images=True, allow_placeholders=True, src_map=src_map)
+
+
+def html_from_text(text: str, *, image_srcs: list[str] | None = None) -> str:
+    """One paragraph per non-blank line, then one ``img`` per src; empty input yields ``""``.
+
+    The srcs are ones storage minted, so like :func:`rewrite_image_srcs` they
+    skip the host check.
+    """
+    paragraphs = "".join(
+        f"<p>{html_escape(line, quote=False)}</p>" for line in text.split("\n") if line.strip()
+    )
+    minted = {f"{PROOF_PLACEHOLDER_PREFIX}{i}": src for i, src in enumerate(image_srcs or [])}
+    images = "".join(f'<img src="{placeholder}">' for placeholder in minted)
+    return sanitize_html(paragraphs, allow_images=False) + rewrite_image_srcs(images, minted)
+
+
+class _Reader(HTMLParser):
+    """One pass over a body: its text lines, image srcs and link hrefs."""
+
+    _URL_ATTRS = {"img": "src", "a": "href"}
+
+    def __init__(self, html: str) -> None:
+        super().__init__(convert_charrefs=True)
+        self.lines: list[str] = []
+        self.current: list[str] = []
+        self.urls: dict[str, list[str]] = {"img": [], "a": []}
+        self.depth = 0
+        self.max_depth = 0
+        self.feed(html)
+        self.close()
+        self.flush()
+
+    def flush(self) -> None:
+        text = "".join(self.current)
+        self.current.clear()
+        self.lines.extend(line.strip() for line in text.split("\n") if line.strip())
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag not in _VOID_TAGS:
+            self.depth += 1
+            self.max_depth = max(self.max_depth, self.depth)
+        if tag in _LINE_TAGS:
+            self.flush()
+        if tag in self._URL_ATTRS:
+            wanted = self._URL_ATTRS[tag]
+            self.urls[tag].extend(v for name, v in attrs if name == wanted and v is not None)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag not in _VOID_TAGS:
+            self.depth -= 1
+        if tag in _LINE_TAGS:
+            self.flush()
+
+    def handle_data(self, data: str) -> None:
+        self.current.append(data)
+
+
+def html_text(html: str) -> str:
+    """The plain-text projection of a sanitised rich-text body.
+
+    Mirrored by ``lib/proof.tsx::htmlText``; change both.
+    """
+    return "\n".join(_Reader(html).lines)
+
+
+def extract_image_srcs(html: str) -> list[str]:
+    """Image srcs of a rich-text body, in document order, deduped."""
+    return list(dict.fromkeys(_Reader(html).urls["img"]))
+
+
+def extract_link_hrefs(html: str) -> list[str]:
+    """Link hrefs of a rich-text body, in document order."""
+    return _Reader(html).urls["a"]

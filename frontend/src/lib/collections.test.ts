@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
+import { textHtml } from "@/test/proofEditorStub";
+
 import {
   addEventToCollection,
   collectionEventsPath,
@@ -39,17 +41,7 @@ const COLLECTION: Collection = {
   id: "c1",
   owner: { id: "u1", username: "ana", avatar_url: null },
   title: "Kupiansk rail corridor",
-  description: {
-    type: "doc",
-    content: [
-      {
-        type: "paragraph",
-        content: [
-          { type: "text", text: "Three days of strikes on the eastern approach." },
-        ],
-      },
-    ],
-  },
+  description: "<p>Three days of strikes on the eastern approach.</p>",
   description_text: "Three days of strikes on the eastern approach.",
   cover: [],
   tags: [],
@@ -106,16 +98,10 @@ describe("collection paths", () => {
 });
 
 describe("collection writes", () => {
-  /** A description as the write bodies carry it: one plain-text paragraph. */
-  const doc = (text: string) => ({
-    type: "doc",
-    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
-  });
-
   it("opens a collection under a title and a description", async () => {
     await createCollection(
       "Kupiansk rail corridor",
-      doc("Three days of strikes."),
+      textHtml("Three days of strikes."),
     );
 
     const [path, options] = lastCall();
@@ -124,13 +110,13 @@ describe("collection writes", () => {
     // Ids ride every create, empty when none were picked.
     expect(JSON.parse(options.body as string)).toEqual({
       title: "Kupiansk rail corridor",
-      description: doc("Three days of strikes."),
+      description: textHtml("Three days of strikes."),
       event_ids: [],
     });
   });
 
   it("opens a collection holding what the picker ticked", async () => {
-    await createCollection("March strikes", doc("Strikes through March."), [
+    await createCollection("March strikes", textHtml("Strikes through March."), [
       "e1",
       "e2",
     ]);
@@ -140,7 +126,7 @@ describe("collection writes", () => {
     expect(path).toBe("/collections");
     expect(JSON.parse(options.body as string)).toEqual({
       title: "March strikes",
-      description: doc("Strikes through March."),
+      description: textHtml("Strikes through March."),
       event_ids: ["e1", "e2"],
     });
   });
@@ -149,7 +135,7 @@ describe("collection writes", () => {
     await updateCollection(
       "c1",
       "Operation reconstruction",
-      doc("Every strike of the operation."),
+      textHtml("Every strike of the operation."),
     );
 
     const [path, options] = lastCall();
@@ -157,7 +143,7 @@ describe("collection writes", () => {
     expect(options.method).toBe("PATCH");
     expect(JSON.parse(options.body as string)).toEqual({
       title: "Operation reconstruction",
-      description: doc("Every strike of the operation."),
+      description: textHtml("Every strike of the operation."),
     });
   });
 

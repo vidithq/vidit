@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import UTC, date, datetime
-from typing import Any
 
 from fastapi.testclient import TestClient
 from geoalchemy2.shape import from_shape
@@ -39,8 +37,8 @@ def _make_geo(
     lat: float | None = 48.5,
     lng: float | None = 34.5,
     title: str | None = None,
-    # ``None`` takes the model's empty-doc default, which fails the proof-image floor.
-    proof: dict[str, Any] | None = None,
+    # ``None`` takes the model's empty-body default, which fails the proof-image floor.
+    proof: str | None = None,
     event_date: date | None = None,
     source_posted_at: datetime | None = None,
     deleted: bool = False,
@@ -109,25 +107,12 @@ def _make_geo(
     return geo
 
 
-# Proof multipart pieces: a Tiptap doc whose image node references
+# Proof multipart pieces: an HTML body whose image references
 # ``placeholder://<filename>`` plus the matching file part.
 
 
-def proof_doc_with_placeholder(filename: str = "proof-1.jpg") -> dict[str, Any]:
-    return {
-        "type": "doc",
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [{"type": "text", "text": "Proof write-up."}],
-            },
-            {"type": "image", "attrs": {"src": f"placeholder://{filename}"}},
-        ],
-    }
-
-
 def proof_form_field(filename: str = "proof-1.jpg") -> str:
-    return json.dumps(proof_doc_with_placeholder(filename))
+    return f'<p>Proof write-up.</p><img src="placeholder://{filename}">'
 
 
 def proof_file_part(filename: str = "proof-1.jpg") -> tuple[str, tuple[str, bytes, str]]:

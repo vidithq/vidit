@@ -1,659 +1,422 @@
+import time
+from html.parser import HTMLParser
+from urllib.parse import urlparse
+
 import pytest
 
 from app.config import settings
 from app.services.sanitize import (
-    _MAX_DEPTH,
-    _MAX_NODES,
     extract_image_srcs,
-    sanitize_tiptap_doc,
-    sanitize_tiptap_doc_or_raise,
-    tiptap_doc_from_text,
-    tiptap_doc_text,
+    extract_link_hrefs,
+    html_from_text,
+    html_text,
+    rewrite_image_srcs,
+    sanitize_html,
 )
 
 
-def test_empty_doc_passes():
-    doc = {"type": "doc", "content": []}
-    assert sanitize_tiptap_doc(doc) == {"type": "doc", "content": []}
+@pytest.fixture
+def dev_media(monkeypatch):
+    """The local-storage dev shape: no CDN, so any https image passes."""
+    monkeypatch.setattr(settings, "cloudfront_domain", "")
+    monkeypatch.setattr(settings, "storage_backend", "local")
 
 
-def test_simple_paragraph_passes():
-    doc = {
-        "type": "doc",
-        "content": [{"type": "paragraph", "content": [{"type": "text", "text": "hello"}]}],
-    }
-    assert sanitize_tiptap_doc(doc) == doc
+# --- allowlist ---------------------------------------------------------------
 
 
-def test_unknown_node_type_dropped():
-    doc = {
-        "type": "doc",
-        "content": [
-            {"type": "iframe", "attrs": {"src": "evil.com"}},
-            {"type": "paragraph", "content": [{"type": "text", "text": "ok"}]},
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert cleaned["content"] == [
-        {"type": "paragraph", "content": [{"type": "text", "text": "ok"}]}
-    ]
+def test_empty_body_stays_empty():
+    assert sanitize_html("") == ""
 
 
-def test_unknown_mark_dropped():
-    doc = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "x",
-                        "marks": [
-                            {"type": "bold"},
-                            {"type": "underline"},
-                        ],
-                    }
-                ],
-            }
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert cleaned["content"][0]["content"][0]["marks"] == [{"type": "bold"}]
+def test_allowed_tags_survive_unchanged(dev_media):
+    html = (
+        "<h2>Title</h2><h3>Sub</h3>"
+        "<p><strong>b</strong> <em>i</em> <s>s</s> <code>c</code><br>next</p>"
+        '<p><a href="https://example.com/x">link</a></p>'
+        "<ul><li><p>one</p></li></ul><ol><li><p>two</p></li></ol>"
+        "<blockquote><p>quote</p></blockquote><pre><code>a\n  b</code></pre><hr>"
+        '<img src="https://media.example.com/a.png" alt="frame">'
+    )
+    assert sanitize_html(html) == html
 
 
-def test_unknown_attr_dropped():
-    doc = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "heading",
-                "attrs": {"level": 2, "onclick": "alert(1)"},
-                "content": [{"type": "text", "text": "x"}],
-            }
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert cleaned["content"][0]["attrs"] == {"level": 2}
+def test_unknown_tags_unwrap_and_keep_their_text():
+    assert sanitize_html("<h1>t</h1><div>d</div><u>u</u><span>s</span>") == "tdus"
 
 
-def test_heading_level_out_of_range_dropped():
-    doc = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "heading",
-                "attrs": {"level": 99},
-                "content": [{"type": "text", "text": "x"}],
-            }
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert "attrs" not in cleaned["content"][0]
+def test_unknown_attributes_drop():
+    html = '<p class="x" style="color:red" id="y" data-x="1" title="t" lang="en">t</p>'
+    assert sanitize_html(html) == "<p>t</p>"
 
 
-def test_image_javascript_url_drops_node():
-    doc = {
-        "type": "doc",
-        "content": [
-            {"type": "image", "attrs": {"src": "javascript:alert(1)"}},
-            {"type": "paragraph", "content": [{"type": "text", "text": "after"}]},
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert cleaned["content"] == [
-        {"type": "paragraph", "content": [{"type": "text", "text": "after"}]}
-    ]
+def test_link_keeps_only_href():
+    html = '<a href="https://e.example" target="_blank" rel="opener" title="t">l</a>'
+    assert sanitize_html(html) == '<a href="https://e.example">l</a>'
 
 
-def test_image_relative_url_passes():
-    doc = {
-        "type": "doc",
-        "content": [{"type": "image", "attrs": {"src": "/uploads/x.png"}}],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert cleaned["content"][0]["attrs"]["src"] == "/uploads/x.png"
+def test_list_items_keep_their_paragraphs():
+    html = "<ul><li><p>a</p><ul><li><p>b</p></li></ul></li></ul>"
+    assert sanitize_html(html) == html
 
 
-def test_allow_images_false_drops_images_keeps_text():
-    """``allow_images=False`` (a request's proof) drops a valid image, since no proof_files anchor it; text survives."""
-    doc = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [{"type": "text", "text": "Lead on the depot."}],
-            },
-            {"type": "image", "attrs": {"src": "/uploads/x.png"}},
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc, allow_images=False)
-    assert cleaned["content"] == [
-        {
-            "type": "paragraph",
-            "content": [{"type": "text", "text": "Lead on the depot."}],
-        }
-    ]
+def test_malformed_markup_is_repaired():
+    assert sanitize_html("<p>a<p>b<strong>c") == "<p>a</p><p>b<strong>c</strong></p>"
 
 
-def test_data_url_image_dropped():
-    doc = {
-        "type": "doc",
-        "content": [{"type": "image", "attrs": {"src": "data:image/svg+xml,<svg/>"}}],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert cleaned["content"] == []
+def test_sanitising_is_idempotent(dev_media):
+    html = '<p>x <a href="https://e.example/?a=1&amp;b=2">y</a></p><img src="/m.png" alt="a>b">'
+    once = sanitize_html(html)
+    assert sanitize_html(once) == once
 
 
-def test_http_image_dropped_https_only():
-    """Plain http:// is rejected; only https or relative paths pass."""
-    doc = {
-        "type": "doc",
-        "content": [{"type": "image", "attrs": {"src": "http://example.com/x.png"}}],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert cleaned["content"] == []
+# --- XSS corpus ---------------------------------------------------------------
+
+_ALLOWED: dict[str, set[str]] = {
+    **{
+        t: set()
+        for t in [
+            "p",
+            "h2",
+            "h3",
+            "strong",
+            "em",
+            "s",
+            "code",
+            "pre",
+            "ul",
+            "ol",
+            "li",
+            "blockquote",
+            "hr",
+            "br",
+        ]
+    },
+    "a": {"href"},
+    "img": {"src", "alt"},
+}
 
 
-def test_image_protocol_relative_url_dropped():
-    """Protocol-relative ``//evil.com/x.gif`` must not slip through the
-    ``startswith("/")`` early-return: it would leak every viewer's IP/UA/Referer
-    through a persisted tracking pixel."""
-    doc = {
-        "type": "doc",
-        "content": [
-            {"type": "image", "attrs": {"src": "//attacker.example/pixel.gif"}},
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert cleaned["content"] == []
+def _tags(html: str) -> list[tuple[str, dict[str, str | None]]]:
+    """Every start tag of ``html`` with its attributes, as a browser would read them."""
+    found: list[tuple[str, dict[str, str | None]]] = []
+
+    class Collector(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            found.append((tag, dict(attrs)))
+
+    collector = Collector()
+    collector.feed(html)
+    collector.close()
+    return found
 
 
-def test_image_backslash_protocol_relative_url_dropped():
-    """The backslash spelling also drops: browsers normalise ``/\\evil.com`` to ``//evil.com`` (WHATWG)."""
-    doc = {
-        "type": "doc",
-        "content": [
-            {"type": "image", "attrs": {"src": "/\\attacker.example/pixel.gif"}},
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert cleaned["content"] == []
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "<script>alert(1)</script>",
+        "<style>body{background:url(javascript:alert(1))}</style>",
+        '<img src="x" onerror="alert(1)">',
+        "<svg onload=alert(1)><circle/></svg>",
+        "<svg><script>alert(1)</script></svg>",
+        "<math><mtext><script>alert(1)</script></mtext></math>",
+        '<iframe src="https://evil.example"></iframe>',
+        '<form action="javascript:alert(1)"><button>x</button></form>',
+        '<a href="javascript:alert(1)">x</a>',
+        '<a href="JaVaScRiPt:alert(1)">x</a>',
+        '<a href=" javascript:alert(1)">x</a>',
+        '<a href="java\tscript:alert(1)">x</a>',
+        '<img src="javascript:alert(1)">',
+        '<img src="//evil.example/pixel.gif">',
+        '<img src="/\\evil.example/pixel.gif">',
+        '<img src="/\t/evil.example/pixel.gif">',
+        '<p style="background:url(https://evil.example/p.gif)">x</p>',
+        "<!--<script>alert(1)</script>-->",
+        "<<script>script>alert(1)<</script>/script>",
+        '<a href="https://ok.example"><img src=x onerror=alert(1)>',
+        '<noscript><p title="</noscript><img src=x onerror=alert(1)>"></noscript>',
+        '<textarea><img src=x onerror="alert(1)"></textarea>',
+    ],
+)
+def test_xss_payloads_leave_only_allowlisted_markup(payload, monkeypatch):
+    monkeypatch.setattr(settings, "cloudfront_domain", "cdn.example.com")
+    tags = _tags(sanitize_html(payload))
+    for tag, attrs in tags:
+        assert tag in _ALLOWED, tag
+        assert set(attrs) <= _ALLOWED[tag], (tag, attrs)
+        if tag == "a":
+            assert urlparse(attrs["href"]).scheme in {"http", "https"}
+        if tag == "img":
+            assert urlparse(attrs["src"]).hostname == "cdn.example.com"
 
 
-def test_image_tab_obfuscated_protocol_relative_url_dropped():
-    """Browsers strip ASCII tab/CR/LF from a URL (WHATWG), so ``/`` TAB ``/evil.com``
-    resolves to ``//evil.com``; the sanitiser must strip the same characters."""
-    doc = {
-        "type": "doc",
-        "content": [
-            {"type": "image", "attrs": {"src": "/\t/attacker.example/pixel.gif"}},
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert cleaned["content"] == []
+def test_script_and_style_content_is_dropped():
+    assert sanitize_html("<script>alert(1)</script><style>p{}</style><p>t</p>") == "<p>t</p>"
+
+
+# --- links ------------------------------------------------------------------------
+
+
+def test_refused_link_becomes_text():
+    html = '<p><a href="javascript:alert(1)">a<strong>b</strong></a> c</p>'
+    assert sanitize_html(html) == "<p>a<strong>b</strong> c</p>"
+
+
+@pytest.mark.parametrize(
+    "href", ["mailto:x@example.com", "/relative", "example.com", "placeholder://x"]
+)
+def test_non_http_links_become_text(href):
+    assert sanitize_html(f'<a href="{href}">t</a>', allow_placeholders=True) == "t"
+
+
+def test_http_and_https_links_pass():
+    html = '<a href="http://a.example/">a</a><a href="https://b.example/x?y=1&amp;z=2">b</a>'
+    assert sanitize_html(html) == html
+
+
+# --- images and media host rules ---------------------------------------------
+
+
+def test_refused_image_is_removed_not_left_bare():
+    html = '<p>x</p><img src="javascript:alert(1)" alt="kept?"><p>y</p>'
+    assert sanitize_html(html) == "<p>x</p><p>y</p>"
+
+
+@pytest.mark.parametrize("html", ['<img alt="a"><img>', '<img alt="x src=">'])
+def test_image_without_src_is_removed(html):
+    assert sanitize_html(html) == ""
+
+
+def test_markup_characters_in_an_attribute_value_keep_the_image():
+    out = sanitize_html('<img alt="a>b" src="/m.png">')
+    assert out == '<img alt="a&gt;b" src="/m.png">'
+    assert extract_image_srcs(out) == ["/m.png"]
+
+
+def test_relative_image_passes():
+    assert sanitize_html('<img src="/media/a.png">') == '<img src="/media/a.png">'
+
+
+def test_allow_images_false_drops_images_and_keeps_text(dev_media):
+    html = '<p>words</p><img src="https://m.example/a.png"><p>more</p>'
+    assert sanitize_html(html, allow_images=False) == "<p>words</p><p>more</p>"
+
+
+def test_http_image_dropped_https_only(dev_media):
+    assert sanitize_html('<img src="http://m.example/a.png">') == ""
 
 
 def test_image_off_cdn_dropped_when_cdn_configured(monkeypatch):
-    """With cloudfront_domain set, only that host's https URLs are allowed."""
     monkeypatch.setattr(settings, "cloudfront_domain", "cdn.example.com")
-    doc = {
-        "type": "doc",
-        "content": [
-            {"type": "image", "attrs": {"src": "https://attacker.com/track.gif"}},
-            {"type": "image", "attrs": {"src": "https://cdn.example.com/ok.jpg"}},
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert cleaned["content"] == [
-        {"type": "image", "attrs": {"src": "https://cdn.example.com/ok.jpg"}}
-    ]
+    html = '<img src="https://cdn.example.com/a.png"><img src="https://other.example/a.png">'
+    assert sanitize_html(html) == '<img src="https://cdn.example.com/a.png">'
 
 
-def test_image_any_https_passes_when_no_cdn(monkeypatch):
-    """In dev with no CDN configured, any https:// image src is allowed."""
-    monkeypatch.setattr(settings, "cloudfront_domain", "")
-    doc = {
-        "type": "doc",
-        "content": [{"type": "image", "attrs": {"src": "https://example.com/x.png"}}],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert cleaned["content"][0]["attrs"]["src"] == "https://example.com/x.png"
-
-
-def test_local_storage_url_passes_in_dev(monkeypatch):
-    """In dev (no CDN, local backend) the http://localhost local-storage prefix is allowed."""
-    monkeypatch.setattr(settings, "cloudfront_domain", "")
-    monkeypatch.setattr(settings, "storage_backend", "local")
-    doc = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "image",
-                "attrs": {"src": "http://localhost:8000/local-storage/proof/u/abc.png"},
-            }
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert (
-        cleaned["content"][0]["attrs"]["src"]
-        == "http://localhost:8000/local-storage/proof/u/abc.png"
+def test_image_any_https_passes_when_no_cdn(dev_media):
+    assert sanitize_html('<img src="https://m.example/a.png">') == (
+        '<img src="https://m.example/a.png">'
     )
 
 
-def test_local_storage_url_dropped_when_backend_is_s3(monkeypatch):
-    """The dev escape needs no CDN and a local backend: a CDN-less S3 env rejects loopback URLs."""
-    monkeypatch.setattr(settings, "cloudfront_domain", "")
-    monkeypatch.setattr(settings, "storage_backend", "s3")
-    doc = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "image",
-                "attrs": {"src": "http://localhost:8000/local-storage/proof/u/abc.png"},
-            }
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert cleaned["content"] == []
+def test_local_storage_url_passes_in_dev(dev_media):
+    from app.services.storage import LOCAL_STORAGE_URL_PREFIX
+
+    html = f'<img src="{LOCAL_STORAGE_URL_PREFIX}/proof/u/a.png">'
+    assert sanitize_html(html) == html
 
 
 def test_image_src_pinned_to_s3_bucket_when_no_cdn(monkeypatch):
-    """A bare-S3 deploy pins image src to the bucket's endpoint, not any https host."""
     monkeypatch.setattr(settings, "cloudfront_domain", "")
     monkeypatch.setattr(settings, "storage_backend", "s3")
     monkeypatch.setattr(settings, "s3_bucket", "vidit-prod")
     monkeypatch.setattr(settings, "aws_region", "eu-west-3")
-    doc = {
-        "type": "doc",
-        "content": [
-            {"type": "image", "attrs": {"src": "https://attacker.com/pixel.gif"}},
-            {
-                "type": "image",
-                "attrs": {"src": "https://vidit-prod.s3.eu-west-3.amazonaws.com/proof/x.jpg"},
-            },
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert cleaned["content"] == [
-        {
-            "type": "image",
-            "attrs": {"src": "https://vidit-prod.s3.eu-west-3.amazonaws.com/proof/x.jpg"},
-        }
-    ]
+    bucket = '<img src="https://vidit-prod.s3.eu-west-3.amazonaws.com/proof/a.png">'
+    html = bucket + '<img src="https://attacker.example/pixel.gif">'
+    assert sanitize_html(html) == bucket
 
 
-def test_local_storage_url_dropped_in_prod(monkeypatch):
-    """The dev escape hatch is disabled when a CloudFront host is set."""
+# --- placeholders -------------------------------------------------------------
+
+
+def test_placeholder_src_needs_the_flag():
+    html = '<img src="placeholder://a.png">'
+    assert sanitize_html(html) == ""
+    assert sanitize_html(html, allow_placeholders=True) == html
+
+
+def test_placeholder_filename_with_spaces_and_markup_chars_survives():
+    html = '<img src="placeholder://Screen Shot 2026 (1) &amp; &quot;x&quot;.png">'
+    out = sanitize_html(html, allow_placeholders=True)
+    assert out == html
+    assert extract_image_srcs(out) == ['placeholder://Screen Shot 2026 (1) & "x".png']
+
+
+def test_bare_placeholder_prefix_is_dropped():
+    assert sanitize_html('<img src="placeholder://">', allow_placeholders=True) == ""
+
+
+def test_placeholder_text_outside_an_image_is_kept_verbatim():
+    html = "<p>see placeholder://x.png</p>"
+    assert sanitize_html(html, allow_placeholders=True) == html
+
+
+def test_rewrite_image_srcs_swaps_placeholders_for_stored_urls(dev_media):
+    body = sanitize_html(
+        '<p>x</p><img src="placeholder://a b.png"><img src="https://m.example/kept.png">',
+        allow_placeholders=True,
+    )
+    out = rewrite_image_srcs(body, {"placeholder://a b.png": "https://m.example/new.png"})
+    assert (
+        out == '<p>x</p><img src="https://m.example/new.png"><img src="https://m.example/kept.png">'
+    )
+
+
+# --- caps -----------------------------------------------------------------------
+
+
+def test_excessive_tag_count_rejected_before_parsing():
+    with pytest.raises(ValueError, match="max tag count"):
+        sanitize_html("<p>x</p>" * 6_000)
+
+
+def test_deep_nesting_rejected_but_nested_lists_pass():
+    assert sanitize_html("<ul><li><p>" * 10 + "x" + "</p></li></ul>" * 10)
+    with pytest.raises(ValueError, match="max nesting depth"):
+        sanitize_html("<blockquote>" * 40 + "x" + "</blockquote>" * 40)
+
+
+def test_distinct_formatting_tags_rejected_before_parsing():
+    # Each distinct unclosed tag is reopened in every block: unbounded, this
+    # 50 KB body built 4.5 million nodes (1.2 GB, 1.6 s) in the parser.
+    html = "<p>" + "".join(f"<font a={i}>" for i in range(3000)) + "</p>" + "<p>x</p>" * 1500
+    started = time.perf_counter()
+    with pytest.raises(ValueError, match="max distinct formatting tags"):
+        sanitize_html(html)
+    assert time.perf_counter() - started < 0.1
+
+
+def test_repeated_formatting_tags_count_once():
+    code = '<pre><code class="language-text" data-language="text">x</code></pre>'
+    html = "<p>" + "<strong>a</strong><em>b</em><code>c</code>" * 100 + "</p>" + code * 50
+    assert sanitize_html(html)
+
+
+@pytest.mark.parametrize(
+    "tag",
+    [
+        '<font a=">{i}">',  # a quoted ``>`` does not end the tag
+        "<font a={i}>",
+        "<FONT a={i}>",
+        "<b\na={i}>",
+        "<i/a={i}>",
+    ],
+)
+def test_each_distinct_formatting_spelling_counts(tag):
+    sanitize_html("".join(tag.format(i=i) for i in range(16)))
+    with pytest.raises(ValueError, match="max distinct formatting tags"):
+        sanitize_html("".join(tag.format(i=i) for i in range(17)))
+
+
+def test_excessive_length_rejected():
+    with pytest.raises(ValueError, match="max length"):
+        sanitize_html("x" * 200_001)
+
+
+# --- extraction -------------------------------------------------------------------
+
+
+def test_extract_image_srcs_in_order_and_deduped():
+    html = '<img src="/a.png"><ul><li><img src="/b.png"></li></ul><img src="/a.png"><img alt="x">'
+    assert extract_image_srcs(html) == ["/a.png", "/b.png"]
+
+
+def test_extract_link_hrefs_in_order_and_decoded():
+    html = '<a href="https://a.example">a</a><a href="http://b.example/?x=1&amp;y=2">d</a>'
+    assert extract_link_hrefs(html) == ["https://a.example", "http://b.example/?x=1&y=2"]
+
+
+# --- text projection ------------------------------------------------------------
+
+
+def test_text_joins_paragraphs_with_one_newline():
+    assert html_text("<p>one</p><p>two</p>") == "one\ntwo"
+
+
+def test_text_concatenates_the_runs_of_one_paragraph():
+    assert html_text("<p>a <strong>b</strong><em>c</em> <a href='https://x.example'>d</a></p>") == (
+        "a bc d"
+    )
+
+
+def test_text_gives_each_list_item_its_own_line():
+    assert html_text("<ul><li><p>a</p></li><li><p>b</p></li></ul><ol><li>c</li></ol>") == (
+        "a\nb\nc"
+    )
+
+
+def test_text_breaks_a_line_at_headings_quotes_rules_and_breaks():
+    html = "<h2>h</h2><blockquote><p>q</p></blockquote>x<br>y<hr>z<pre><code>c</code></pre>"
+    assert html_text(html) == "h\nq\nx\ny\nz\nc"
+
+
+def test_text_drops_blank_lines_and_strips():
+    assert html_text("<p>  a  </p><p> </p><p></p><br><p>b</p>") == "a\nb"
+
+
+def test_text_decodes_entities():
+    assert html_text("<p>a &amp; &lt;b&gt; &quot;c&quot;</p>") == 'a & <b> "c"'
+
+
+def test_text_of_an_empty_body_is_empty():
+    assert html_text("") == ""
+
+
+def test_text_ignores_images():
+    assert html_text('<p>a</p><img src="/x.png" alt="alt text"><p>b</p>') == "a\nb"
+
+
+# --- html_from_text ---------------------------------------------------------------
+
+
+def test_from_text_writes_one_paragraph_per_non_blank_line():
+    assert html_from_text("a & <b>\n\n  c  \n") == "<p>a &amp; &lt;b&gt;</p><p>  c  </p>"
+
+
+def test_from_text_of_blank_input_is_empty():
+    assert html_from_text(" \n\n") == ""
+
+
+def test_from_text_appends_images_and_stays_canonical(dev_media):
+    out = html_from_text("caption", image_srcs=["https://m.example/a.png"])
+    assert out == '<p>caption</p><img src="https://m.example/a.png">'
+    assert sanitize_html(out) == out
+
+
+def test_from_text_keeps_minted_srcs_off_the_media_host(monkeypatch):
     monkeypatch.setattr(settings, "cloudfront_domain", "cdn.example.com")
-    doc = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "image",
-                "attrs": {"src": "http://localhost:8000/local-storage/proof/u/abc.png"},
-            }
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert cleaned["content"] == []
+    out = html_from_text("a", image_srcs=["https://bucket.example/p.png?x=1&y=2"])
+    assert out == '<p>a</p><img src="https://bucket.example/p.png?x=1&amp;y=2">'
+    assert extract_image_srcs(out) == ["https://bucket.example/p.png?x=1&y=2"]
 
 
-def test_link_mark_javascript_href_dropped():
-    doc = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "click",
-                        "marks": [
-                            {"type": "link", "attrs": {"href": "javascript:alert(1)"}},
-                        ],
-                    }
-                ],
-            }
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert "marks" not in cleaned["content"][0]["content"][0]
+def test_text_reverses_from_text():
+    assert html_text(html_from_text("one\n\ntwo\nthree")) == "one\ntwo\nthree"
 
 
-def test_link_mark_https_href_passes():
-    doc = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "click",
-                        "marks": [
-                            {"type": "link", "attrs": {"href": "https://example.com"}},
-                        ],
-                    }
-                ],
-            }
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert cleaned["content"][0]["content"][0]["marks"] == [
-        {"type": "link", "attrs": {"href": "https://example.com"}}
-    ]
+def test_text_splits_preformatted_lines():
+    assert html_text("<pre><code>a\n  b\n\nc</code></pre>") == "a\nb\nc"
 
 
-def test_link_mark_strips_unknown_attrs():
-    """Only href and (optionally) target survive on a link mark."""
-    doc = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "click",
-                        "marks": [
-                            {
-                                "type": "link",
-                                "attrs": {
-                                    "href": "https://example.com",
-                                    "target": "_blank",
-                                    "onclick": "alert(1)",
-                                    "rel": "evil",
-                                },
-                            },
-                        ],
-                    }
-                ],
-            }
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    mark = cleaned["content"][0]["content"][0]["marks"][0]
-    assert mark == {
-        "type": "link",
-        "attrs": {"href": "https://example.com", "target": "_blank"},
-    }
+def test_sanitising_drops_the_object_replacement_character():
+    assert sanitize_html("<p>a\ufffcb</p>") == "<p>ab</p>"
 
 
-def test_link_mark_invalid_target_dropped():
-    doc = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "click",
-                        "marks": [
-                            {
-                                "type": "link",
-                                "attrs": {
-                                    "href": "https://example.com",
-                                    "target": "_javascript_window_",
-                                },
-                            },
-                        ],
-                    }
-                ],
-            }
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    mark = cleaned["content"][0]["content"][0]["marks"][0]
-    assert "target" not in mark["attrs"]
+@pytest.mark.parametrize(
+    "html", ["<p></p>", "<p>\ufffc</p>", "<p> &nbsp;</p><hr><br>", "<ul><li></li></ul>"]
+)
+def test_a_body_without_text_or_image_is_empty(html):
+    assert sanitize_html(html) == ""
 
 
-def test_link_mark_schemeless_href_dropped():
-    """Schemeless URLs ('example.com') render as relative paths in a browser: rejected."""
-    doc = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "click",
-                        "marks": [{"type": "link", "attrs": {"href": "example.com"}}],
-                    }
-                ],
-            }
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert "marks" not in cleaned["content"][0]["content"][0]
-
-
-def test_root_must_be_doc():
-    with pytest.raises(ValueError, match="type='doc'"):
-        sanitize_tiptap_doc({"type": "paragraph"})
-
-
-def test_non_dict_input_raises():
-    with pytest.raises(ValueError):
-        sanitize_tiptap_doc("not a doc")
-
-
-def test_nested_unknown_nodes_dropped():
-    doc = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "blockquote",
-                "content": [
-                    {"type": "paragraph", "content": [{"type": "text", "text": "ok"}]},
-                    {"type": "script", "content": [{"type": "text", "text": "evil"}]},
-                ],
-            }
-        ],
-    }
-    cleaned = sanitize_tiptap_doc(doc)
-    assert cleaned["content"][0]["content"] == [
-        {"type": "paragraph", "content": [{"type": "text", "text": "ok"}]}
-    ]
-
-
-def test_excessive_depth_rejected():
-    """Deeply nested blockquotes blow the cap."""
-    inner: dict = {"type": "paragraph", "content": [{"type": "text", "text": "x"}]}
-    for _ in range(_MAX_DEPTH + 5):
-        inner = {"type": "blockquote", "content": [inner]}
-    doc = {"type": "doc", "content": [inner]}
-    with pytest.raises(ValueError, match="max depth"):
-        sanitize_tiptap_doc(doc)
-
-
-def test_extract_image_srcs_walks_nested_blocks_and_dedupes():
-    doc = {
-        "type": "doc",
-        "content": [
-            {"type": "paragraph", "content": [{"type": "text", "text": "intro"}]},
-            {
-                "type": "image",
-                "attrs": {"src": "https://cdn.example.com/a.jpg"},
-            },
-            {
-                "type": "blockquote",
-                "content": [
-                    {"type": "image", "attrs": {"src": "https://cdn.example.com/b.jpg"}},
-                    {
-                        "type": "image",
-                        "attrs": {"src": "https://cdn.example.com/a.jpg"},  # dup
-                    },
-                ],
-            },
-        ],
-    }
-    assert extract_image_srcs(doc) == [
-        "https://cdn.example.com/a.jpg",
-        "https://cdn.example.com/b.jpg",
-    ]
-
-
-def test_extract_image_srcs_ignores_image_without_src():
-    doc = {
-        "type": "doc",
-        "content": [
-            {"type": "image", "attrs": {}},
-            {"type": "image"},
-            {"type": "image", "attrs": {"src": 42}},
-        ],
-    }
-    assert extract_image_srcs(doc) == []
-
-
-def test_excessive_node_count_rejected():
-    """A flat blob of N+1 paragraphs trips the node-count cap."""
-    doc = {
-        "type": "doc",
-        "content": [
-            {"type": "paragraph", "content": [{"type": "text", "text": "."}]}
-            for _ in range(_MAX_NODES + 10)
-        ],
-    }
-    with pytest.raises(ValueError, match="max node count"):
-        sanitize_tiptap_doc(doc)
-
-
-# ── tiptap_doc_text: the one plain-text projection ─────────────────────────
-
-
-def test_doc_text_joins_paragraphs_with_one_newline():
-    doc = {
-        "type": "doc",
-        "content": [
-            {"type": "paragraph", "content": [{"type": "text", "text": "First line."}]},
-            {"type": "paragraph", "content": [{"type": "text", "text": "Second line."}]},
-        ],
-    }
-    assert tiptap_doc_text(doc) == "First line.\nSecond line."
-
-
-def test_doc_text_concatenates_the_runs_of_one_paragraph():
-    """Marks carry no text of their own, so a bolded word reads inline."""
-    doc = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [
-                    {"type": "text", "text": "Strikes on "},
-                    {"type": "text", "text": "Kupiansk", "marks": [{"type": "bold"}]},
-                    {"type": "text", "text": " in March."},
-                ],
-            }
-        ],
-    }
-    assert tiptap_doc_text(doc) == "Strikes on Kupiansk in March."
-
-
-def test_doc_text_gives_each_list_item_its_own_line():
-    doc = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "bulletList",
-                "content": [
-                    {
-                        "type": "listItem",
-                        "content": [
-                            {"type": "paragraph", "content": [{"type": "text", "text": "One"}]}
-                        ],
-                    },
-                    {
-                        "type": "listItem",
-                        "content": [
-                            {"type": "paragraph", "content": [{"type": "text", "text": "Two"}]}
-                        ],
-                    },
-                ],
-            }
-        ],
-    }
-    assert tiptap_doc_text(doc) == "One\nTwo"
-
-
-def test_doc_text_breaks_a_line_at_a_heading_blockquote_and_hard_break():
-    """Every block ends its line, and a hard break ends one inside a paragraph."""
-    doc = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "heading",
-                "attrs": {"level": 3},
-                "content": [{"type": "text", "text": "Kupiansk"}],
-            },
-            {
-                "type": "blockquote",
-                "content": [
-                    {"type": "paragraph", "content": [{"type": "text", "text": "Quoted."}]}
-                ],
-            },
-            {
-                "type": "paragraph",
-                "content": [
-                    {"type": "text", "text": "Before"},
-                    {"type": "hardBreak"},
-                    {"type": "text", "text": "After"},
-                ],
-            },
-        ],
-    }
-    assert tiptap_doc_text(doc) == "Kupiansk\nQuoted.\nBefore\nAfter"
-
-
-def test_doc_text_drops_blank_lines_and_strips_the_result():
-    """An empty paragraph and padded runs leave no whitespace in the reading."""
-    doc = {
-        "type": "doc",
-        "content": [
-            {"type": "paragraph"},
-            {"type": "paragraph", "content": [{"type": "text", "text": "  Spaced  "}]},
-            {"type": "paragraph", "content": [{"type": "text", "text": "   "}]},
-            {"type": "horizontalRule"},
-            {"type": "paragraph", "content": [{"type": "text", "text": "End"}]},
-        ],
-    }
-    assert tiptap_doc_text(doc) == "Spaced\nEnd"
-
-
-def test_doc_text_of_an_empty_doc_is_empty():
-    assert tiptap_doc_text({"type": "doc", "content": []}) == ""
-
-
-def test_doc_text_reverses_doc_from_text():
-    """``tiptap_doc_text`` reads back what ``tiptap_doc_from_text`` wraps."""
-    text = "Strikes on the corridor.\nThree days, one rail line."
-    assert tiptap_doc_text(tiptap_doc_from_text(text)) == text
-
-
-class _Refused(Exception):
-    """The typed error a caller hands the shared helper."""
-
-
-def test_sanitize_or_raise_returns_the_sanitized_doc():
-    """The passing case is the sanitiser's own; the helper only adds the error mapping."""
-    doc = {
-        "type": "doc",
-        "content": [
-            {"type": "image", "attrs": {"src": "/media/proof.jpg"}},
-            {"type": "paragraph", "content": [{"type": "text", "text": "Words only."}]},
-        ],
-    }
-    assert sanitize_tiptap_doc_or_raise(doc, error=_Refused, allow_images=False) == {
-        "type": "doc",
-        "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Words only."}]}],
-    }
-
-
-def test_sanitize_or_raise_raises_the_callers_error_with_the_message():
-    """A refused body raises the caller's class with the sanitiser's message."""
-    with pytest.raises(_Refused) as exc:
-        sanitize_tiptap_doc_or_raise({"type": "paragraph"}, error=_Refused)
-    assert "type='doc'" in str(exc.value)
+def test_a_body_with_only_an_image_is_kept():
+    assert sanitize_html('<p></p><img src="/a.png">') == '<p></p><img src="/a.png">'

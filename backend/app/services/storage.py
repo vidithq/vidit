@@ -571,7 +571,7 @@ def detected_media_key(geolocation_id: UUID, content_type: str) -> str:
 
 
 async def upload_proof_image(file: UploadFile, user_id: UUID) -> UploadResult:
-    """Inline image embedded in a Tiptap proof body, under a per-user prefix.
+    """Inline image embedded in a proof body, under a per-user prefix.
 
     Always an image (intake rejects the rest). Skips derivatives: the image
     renders from the raw URL, so hero/thumb would be unfetched objects locked

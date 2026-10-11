@@ -228,7 +228,8 @@ class EventRead(BaseModel):
     # Archived copies of ``secondary_source_urls``: same length and order,
     # entry ``i`` covers mirror ``i``, NULL like ``archived_source``.
     archived_secondary_sources: list[ArchivedLinkRead | None]
-    proof: dict[str, Any] | None
+    # Sanitised HTML (``services/sanitize.sanitize_html``).
+    proof: str | None
     event_date: date | None
     # UTC; NULL when the hour is unknown.
     event_time: time | None
@@ -266,7 +267,7 @@ class EventRead(BaseModel):
     requested_by: AuthorRef | None
     # Durable geolocation credit, oldest first. Empty until ``geolocated``.
     geolocators: list[AuthorRef]
-    # ONLY ``source`` rows: proof images travel inside the proof JSON.
+    # ONLY ``source`` rows: proof images travel inside the proof HTML.
     media: list[MediaRead]
     # Card / preview thumbnail (``services.thumbnails`` owns the pick rule), so
     # a preview needn't re-derive it client-side.

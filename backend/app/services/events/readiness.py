@@ -5,17 +5,18 @@ A change to a floor leg in ``batch._publish_detection`` is a change here.
 
 from __future__ import annotations
 
-from sqlalchemy import ColumnElement, and_, func
+from sqlalchemy import ColumnElement, and_
 
 from app.models.event import Event
 from app.models.media import Media
 
-# Proof-image leg as a jsonpath: any node typed ``image`` with a string
-# ``attrs.src``, the same verdict as :func:`sanitize.extract_image_srcs`.
-# ``placeholder://`` srcs never persist, so no prefix test is needed. ``lax``
-# mode makes a node without ``attrs`` or with a non-string ``src`` fall out
-# instead of raising.
-_PROOF_IMAGE_JSONPATH = '$.** ? (@.type == "image" && @.attrs.src.type() == "string")'
+# Proof-image leg as a regex over the stored HTML, the same verdict as
+# :func:`sanitize.extract_image_srcs` on a canonical body: ``<img`` there is
+# always markup (text escapes ``<``), and every attribute is a `` name="value"``
+# token whose value escapes ``"``, so walking the tokens finds a real ``src``
+# and never one spelled inside a value. ``placeholder://`` srcs never persist,
+# so no prefix test is needed.
+_PROOF_IMAGE_PATTERN = r'<img(\s[a-z-]+="[^"]*")*\ssrc="'
 
 
 # Queue filter values of ``GET /events/detections`` (422 on anything else);
@@ -31,7 +32,7 @@ def detection_ready_predicate() -> ColumnElement[bool]:
     1. a non-blank ``source_url`` (non-NULL, has a non-space character);
     2. ``event_coords`` present;
     3. a ``source`` media row (``EXISTS``);
-    4. a proof image (:data:`_PROOF_IMAGE_JSONPATH`).
+    4. a proof image (:data:`_PROOF_IMAGE_PATTERN`).
 
     The conflict and ``capture_source`` tag legs are supplied per row by the
     review, so they are not checked here. `batchCompletionBlockers`
@@ -48,5 +49,5 @@ def detection_ready_predicate() -> ColumnElement[bool]:
         Event.event_coords.isnot(None),
         # ``.any()`` lowers to EXISTS, so several attachments do not multiply rows.
         Event.media.any(Media.role == "source"),
-        func.jsonb_path_exists(Event.proof, _PROOF_IMAGE_JSONPATH),
+        Event.proof.regexp_match(_PROOF_IMAGE_PATTERN),
     )

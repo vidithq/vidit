@@ -610,7 +610,7 @@ Opening one is [`/collections/new`](../frontend/src/app/collections/new/page.tsx
 
 - Both sit behind `useRequireAuth` and compose `PageShell` over [`<CollectionDetailsForm>`](../frontend/src/components/collections/CollectionDetailsForm.tsx): three `Card` sections, **Details**, **Events in this collection**, and **Add events**, then the Save / Cancel row. Only the verb on the button differs. The edit page carries no subtitle; the Title field names the collection.
 - **Details** is the title over the description, each with the shared `remaining / cap` [`<CharCounter>`](../frontend/src/components/ui/CharCounter.tsx) against `COLLECTION_TITLE_MAX_LEN` and `COLLECTION_DESCRIPTION_MAX_LEN`. Submit refuses a blank or over-long value on either. Both fields ride every write and are the only writable fields.
-- The description field is [`<ProofEditor>`](../frontend/src/components/editor/ProofEditor.tsx) under `allowImages={false}`: bold, italic, headings, lists, and links, no images, since nothing on this form uploads and the server drops the node. It wears the field box, the `focus-within` accent border, and `FORM_INVALID_FIELD` on refusal, with its label and counter on the row above. The counter measures `tiptapDocText` ([`lib/proof.tsx`](../frontend/src/lib/proof.tsx)), the projection the server caps, so markup costs nothing.
+- The description field is [`<ProofEditor>`](../frontend/src/components/editor/ProofEditor.tsx) under `allowImages={false}`: bold, italic, headings, lists, and links, no images, since nothing on this form uploads and the server drops the node. It wears the field box, the `focus-within` accent border, and `FORM_INVALID_FIELD` on refusal, with its label and counter on the row above. The counter measures `htmlText` ([`lib/proof.tsx`](../frontend/src/lib/proof.tsx)), the projection the server caps, so markup costs nothing (see [Rich text](#rich-text)).
 - `/collections/new` has two entry points: the profile section (beside its heading and in its first-run state) and the add-to-collection panel, which passes `?event={id}`. With the parameter the page opens holding that event, the create carries it ([`POST /collections`](api.md#post-collections)), and the page returns to the event. Without it the page opens the collection it created. Cancel and Back return to where the reader came from.
 - `/collections/{id}/edit` is owner only. A non-owner gets the backend's 403 stated before the form, with a link to the collection. The save writes the difference: the details through `PATCH`, then one `PUT` per added row and one `DELETE` per removed row, in that order, stopping at the first refusal and naming the act that failed. Saving returns to the collection.
 
@@ -703,6 +703,101 @@ Section order mirrors the detail page: Title → **Source media** → **Location
 With the flag set on a detection the reader owns, the page reads the owner's queue, places the detection in it, and adds the pass's own chrome to the header cluster: the position (*Detection n of m*) and **Skip**, beside the **Close** the form always carries and the utilities. The three verbs a pass uses sit together, above the fields they dispose of. Submitting runs the single-row [`POST /events/{id}/geolocate`](api.md#post-eventsidgeolocate) transition behind the form's confirm and then opens the next detection instead of returning to the queue; closing, behind its own required-reason panel, hands over the same way; **Skip** hands over without writing. Past the last detection the pass ends on the queue list. The position is read off the live queue, so a detection just published or closed is out of both the count and the walk, and a detection the queue no longer holds carries no position at all: the page is a plain edit again.
 
 **Required by default.** No field carries a `required` or an `optional` marker: per-field markers make the form a legend to decode, and two guides say the same thing better. The readiness tick-list under the actions names every unmet requirement of the publish path you are aiming at, and a clicked action outlines the missing fields in place. On submit, [`IncompleteFormNotice`](../frontend/src/components/ui/IncompleteFormNotice.tsx) lists every unmet field at once (not the first miss) above the action, and outlines each missing field in place (`FORM_INVALID_FIELD`). The forms set `noValidate`, so this notice, not native one-bubble-at-a-time validation, owns the feedback. It is shared across geolocation, request, and detection submit, each computing its own required set (detection is a superset of create; request is a subset). One content rule: a geolocation's proof must contain an image (`proofHasImage`), the source-to-satellite cross-reference. Detection-submit is a single **Submit** behind a confirm: a `detected` row is machine output nobody has vouched for, so submit applies the whole form and publishes it as `geolocated` in one step, after which every change to it is a version on a public record. The confirm **arms the button in place** rather than replacing it with a confirm pair: the label reads *Confirm submit*, the button takes `ARMED_RING`, and the second click writes. Nothing is inserted and nothing moves, so the second click lands where the first one did, and the button keeps focus, so Enter twice submits. It disarms on its own after a few seconds, on Escape, and on any click or focus landing elsewhere ([`useConfirmAction`](../frontend/src/hooks/useConfirmAction.ts) owns all of it). What the second click costs is in the `?` beside the button, and the armed state announces itself in a sibling live region, the shape every copy control uses, so no control renames itself mid-gesture.
+
+### Rich text
+
+An event's proof and a collection's description are one format: HTML that the server sanitizes on every write. One editor writes it, one renderer reads it, and the server is the only place its rules are enforced.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`a surface or a value in transit`"]:::spec
+    l2["`a shared frontend helper`"]:::shared
+    l3["`the one place a rule is enforced`"]:::core
+    l1 ~~~ l2 ~~~ l3
+  end
+
+  subgraph write [Write]
+    direction TB
+    editor["`**ProofEditor**
+    BlockNote, schema cut to the allowlist; emits blocksToHTMLLossy`"]:::shared
+    staged["`**uploadFile**, **resolveFileUrl**
+    stage the picked file under placeholder://name, preview it from a blob URL`"]:::shared
+    form["`**the form**
+    proof or description HTML, plus proof_files[] still referenced`"]:::spec
+    text["`**htmlText**
+    plain-text projection the description counter measures`"]:::shared
+    editor --> form
+    form --> text
+      staged --> editor
+  end
+
+  subgraph server [Server]
+    direction TB
+    intake["`**intake**
+    rewrites each placeholder:// src to the stored media URL`"]:::spec
+    sanitize["`**sanitize.py**
+    nh3 tag and attribute allowlist, safe_link_href, _safe_image_src`"]:::core
+    stored["`**TEXT column**
+    sanitized HTML; html_text fills description_text`"]:::spec
+    sanitize --> intake --> stored
+  end
+
+  subgraph read [Read]
+    direction TB
+    render["`**renderProof**
+    html-react-parser; allowlisted tags only, safe href and src`"]:::shared
+    image["`**ProofImage**
+    lightbox and graphic gate`"]:::shared
+    render --> image
+  end
+
+  form --> sanitize
+  stored --> render
+```
+
+#### The editor
+
+[`<ProofEditor>`](../frontend/src/components/editor/ProofEditor.tsx) wraps [BlockNote](https://www.blocknotejs.org) with a schema cut to what the server stores:
+
+- Blocks: paragraph, heading (levels 2 and 3), bulleted and numbered list items, quote, code block, divider, and image. `allowImages={false}` removes the image block for a collection's description.
+- Styles: bold, italic, strikethrough, and inline code. Underline is not offered, because the server drops `<u>`.
+- Links: BlockNote's link control accepts only what `isSafeLinkHref` accepts, an absolute http(s) URL.
+
+The formatting toolbar drops the alignment, nesting, and replace-file buttons, since the stored HTML carries no alignment or nesting and the replace panel offers an embed tab. The file panel offers upload only, so every image comes from the analyst's own file. The theme reads the neutral scale and accent as CSS variables, so the editor follows the reader's theme and accent. The text size is `FIELD_TEXT`, the size every other field uses.
+
+The editor reads `initialContent` once, through `tryParseHTMLToBlocks`. Re-key the parent to seed it again. Each change emits `blocksToHTMLLossy` to `onChange`. BlockNote writes U+FFFC into an empty block, and the editor strips it before emitting.
+
+#### Images
+
+An image uploads at publish, not when it is picked:
+
+1. BlockNote's `uploadFile` hook names the file with `safeProofFilename` and stores the block's URL as `placeholder://<filename>`.
+2. `resolveFileUrl` previews that URL from a `blob:` URL while the analyst writes.
+3. Each change reports, through `onProofFilesChange`, the staged files whose placeholder is still an `<img src>` in the emitted HTML (`referencedProofFiles`).
+4. The form posts those files as `proof_files[]` beside the HTML. The server matches each file to its placeholder by filename and rewrites the `src` to the stored media URL.
+
+#### Storage
+
+The server stores the body in a `TEXT` column and sanitizes every write with nh3 in [`sanitize.py`](../backend/app/services/sanitize.py) on the [rich text rules](api.md#rich-text).
+
+#### The read view
+
+[`renderProof`](../frontend/src/lib/proof.tsx) parses the stored HTML with html-react-parser and renders only allowlisted tags, each with its class from `TAG_CLASSES`. Any other tag renders its children only. Every attribute is dropped except:
+
+- A link whose `href` passes `isSafeLinkHref` becomes an anchor with `target="_blank"`, `rel="noopener noreferrer nofollow ugc"`, and `TEXT_LINK`. Any other link renders as its text.
+- An image whose `src` passes `isSafeImageSrc` becomes [`<ProofImage>`](../frontend/src/components/event/ProofImage.tsx), which opens the shared lightbox. `gateImages` passes the event's `is_graphic` to it, so a proof image takes the same age confirmation as source media. A paragraph that holds an image renders as a `div`.
+
+`isSafeLinkHref` and `isSafeImageSrc` mirror the server's predicates, so a body that bypasses the sanitizer still renders no unsafe URL.
+
+#### Plain text
+
+`htmlText` in [`lib/proof.tsx`](../frontend/src/lib/proof.tsx) mirrors the server's `html_text`: it concatenates the text with entities decoded, starts a new line at every block boundary and every `<br>`, trims each line, and drops blank lines. The collection description counter measures it, and the server caps the same projection and stores it as `description_text`. `proofHasImage` reads the same parse for the geolocation floor: a proof needs at least one `<img src>`.
 
 ### Field help (`?`)
 

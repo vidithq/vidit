@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { textHtml } from "@/test/proofEditorStub";
+
 const push = vi.fn();
 const replace = vi.fn();
 vi.mock("next/navigation", () => ({
@@ -12,36 +14,7 @@ vi.mock("next/navigation", () => ({
 const useAuth = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => useAuth() }));
 
-/** The one-paragraph document for a line of unmarked text. */
-function textDoc(text: string): Record<string, unknown> {
-  return {
-    type: "doc",
-    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
-  };
-}
-
-/** That document as text, for the stub's seed. */
-function docText(doc: Record<string, unknown> | null | undefined): string {
-  const paragraph = (doc?.content as { content?: { text?: string }[] }[])?.[0];
-  return paragraph?.content?.[0]?.text ?? "";
-}
-// The Tiptap editor boots ProseMirror once, so it is stubbed as a textarea that prints its seeded document
-// and emits the one-paragraph document the real editor emits for unmarked text.
-vi.mock("@/components/editor/ProofEditor", () => ({
-  default: ({
-    initialContent,
-    onChange,
-  }: {
-    initialContent?: Record<string, unknown> | null;
-    onChange: (doc: Record<string, unknown>) => void;
-  }) => (
-    <textarea
-      aria-label="Description"
-      defaultValue={docText(initialContent)}
-      onChange={(e) => onChange(textDoc(e.target.value))}
-    />
-  ),
-}));
+vi.mock("@/components/editor/ProofEditor", () => import("@/test/proofEditorStub"));
 
 const useApiResource = vi.fn();
 vi.mock("@/hooks/useApiResource", () => ({
@@ -58,7 +31,7 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
   updateCollection: (
     id: string,
     title: string,
-    description: Record<string, unknown>,
+    description: string,
   ) => updateCollection(id, title, description),
   fetchCollectionSequence: (id: string) => fetchCollectionSequence(id),
   addEventToCollection: (c: string, e: string) => addEventToCollection(c, e),
@@ -112,12 +85,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   id: "c1",
   owner: { id: "u1", username: "ana", avatar_url: null },
   title: "Kupiansk rail corridor",
-  description: {
-    type: "doc",
-    content: [
-      { type: "paragraph", content: [{ type: "text", text: "Three days of strikes on the eastern approach." }] },
-    ],
-  },
+  description: "<p>Three days of strikes on the eastern approach.</p>",
   description_text: "Three days of strikes on the eastern approach.",
   cover: [],
   tags: [],
@@ -186,7 +154,7 @@ describe("EditCollectionPage", () => {
     expect(screen.getByLabelText("Title")).toHaveValue(
       "Kupiansk rail corridor",
     );
-    // Seeded with the collection's document; `find` because the form loads it through `next/dynamic`.
+    // Seeded with the collection's description; `find` because the form loads it through `next/dynamic`.
     expect(
       await screen.findByRole("textbox", { name: "Description" }),
     ).toHaveValue("Three days of strikes on the eastern approach.");
@@ -229,7 +197,7 @@ describe("EditCollectionPage", () => {
       expect(updateCollection).toHaveBeenCalledWith(
         "c1",
         "Kupiansk rail corridor, March",
-        textDoc("Three days of strikes on the eastern approach."),
+        textHtml("Three days of strikes on the eastern approach."),
       ),
     );
     expect(push).toHaveBeenCalledWith("/collections/c1");

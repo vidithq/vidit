@@ -522,19 +522,11 @@ def test_search_matches_collection_by_description(caller, seed_collection):
 
 
 def test_search_matches_a_word_the_description_only_bolds(db, caller, seed_collection):
-    """The index reads the projection, not the JSONB, so marked runs are findable."""
+    """The index reads the projection, not the HTML, so marked runs are findable."""
     token = _unique_token()
     collection_id = seed_collection("A plain name", "Placeholder.")
     collection = db.query(Collection).filter(Collection.id == collection_id).one()
-    collection.description = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [{"type": "text", "text": token, "marks": [{"type": "bold"}]}],
-            }
-        ],
-    }
+    collection.description = f"<p><strong>{token}</strong></p>"
     collection.description_text = token
     db.commit()
 

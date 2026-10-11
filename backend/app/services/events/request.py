@@ -70,7 +70,7 @@ async def create_request(
     title: str,
     source_url: str,
     secondary_source_urls: list[str],
-    proof_data: dict | None,
+    proof_data: str | None,
     lat: float | None = None,
     lng: float | None = None,
     capture_source_lat: float | None = None,
@@ -120,7 +120,7 @@ async def create_request(
 
     _require_submission_media(file is not None)
 
-    proof_data = _sanitize_proof(proof_data, allow_placeholders=True)
+    proof_data = _sanitize_proof(proof_data)
 
     geo = Event(
         owner_id=current_user.id,
@@ -156,7 +156,7 @@ async def create_request(
         db,
         event=geo,
         source_files=[file],
-        proof_doc=proof_data,
+        proof_html=proof_data,
         proof_files=proof_files,
         sweep_context="event request create rollback",
     )
@@ -173,7 +173,7 @@ async def update_request(
     title: str,
     source_url: str,
     secondary_source_urls: list[str],
-    proof_data: dict | None,
+    proof_data: str | None,
     lat: float | None = None,
     lng: float | None = None,
     capture_source_lat: float | None = None,
@@ -237,7 +237,7 @@ async def update_request(
     # Before any S3 work, so a refused swap writes nothing.
     swap = _plan_source_swap(geo, remove_media_ids=remove_media_ids, files=files)
 
-    proof_data = _sanitize_proof(proof_data, allow_placeholders=True)
+    proof_data = _sanitize_proof(proof_data)
 
     _require_submission_media(swap.survivors > 0)
 
@@ -276,7 +276,7 @@ async def update_request(
         db,
         event=geo,
         source_files=files,
-        proof_doc=proof_data,
+        proof_html=proof_data,
         proof_files=proof_files,
         sweep_context=f"event {geo.id} request edit rollback",
     )
