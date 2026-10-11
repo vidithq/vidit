@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// jsdom cannot mount the map canvas (WebGL) or the Tiptap editor (DOM APIs); both keep a marker.
+// jsdom cannot mount the map canvas (WebGL); it and the proof editor (its own test) keep a marker.
 vi.mock("@/components/map/Map", () => ({
   default: () => <div data-testid="map" />,
 }));
@@ -114,10 +114,7 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     source_url: "https://t.me/channel/12345",
     secondary_source_urls: [],
     archived_secondary_sources: [],
-    proof: {
-      type: "doc",
-      content: [{ type: "image", attrs: { src: "https://cdn.test/p.jpg" } }],
-    },
+    proof: '<img src="https://cdn.test/p.jpg">',
     created_at: "2026-06-02T10:00:00Z",
     geolocated_at: null,
     closed_at: null,

@@ -12,28 +12,24 @@ vi.mock("next/navigation", () => ({
 const useAuth = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => useAuth() }));
 
-/** The one-paragraph document for a line of unmarked text. */
-function textDoc(text: string): Record<string, unknown> {
-  return {
-    type: "doc",
-    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
-  };
+/** The one-paragraph body for a line of unmarked text. */
+function textDoc(text: string): string {
+  return `<p>${text}</p>`;
 }
 
-/** That document as text, for the stub's seed. */
-function docText(doc: Record<string, unknown> | null | undefined): string {
-  const paragraph = (doc?.content as { content?: { text?: string }[] }[])?.[0];
-  return paragraph?.content?.[0]?.text ?? "";
+/** That body as text, for the stub's seed. */
+function docText(html: string | null | undefined): string {
+  return html?.replace(/^<p>|<\/p>$/g, "") ?? "";
 }
-// The Tiptap editor boots ProseMirror once, so it is stubbed as a textarea that prints its seeded document
-// and emits the one-paragraph document the real editor emits for unmarked text.
+// BlockNote needs layout APIs jsdom lacks, so the editor is stubbed as a textarea that prints its seeded
+// body and emits the one-paragraph HTML the real editor emits for unmarked text.
 vi.mock("@/components/editor/ProofEditor", () => ({
   default: ({
     initialContent,
     onChange,
   }: {
-    initialContent?: Record<string, unknown> | null;
-    onChange: (doc: Record<string, unknown>) => void;
+    initialContent?: string | null;
+    onChange: (html: string) => void;
   }) => (
     <textarea
       aria-label="Description"
@@ -58,7 +54,7 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
   updateCollection: (
     id: string,
     title: string,
-    description: Record<string, unknown>,
+    description: string,
   ) => updateCollection(id, title, description),
   fetchCollectionSequence: (id: string) => fetchCollectionSequence(id),
   addEventToCollection: (c: string, e: string) => addEventToCollection(c, e),
@@ -112,12 +108,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   id: "c1",
   owner: { id: "u1", username: "ana", avatar_url: null },
   title: "Kupiansk rail corridor",
-  description: {
-    type: "doc",
-    content: [
-      { type: "paragraph", content: [{ type: "text", text: "Three days of strikes on the eastern approach." }] },
-    ],
-  },
+  description: "<p>Three days of strikes on the eastern approach.</p>",
   description_text: "Three days of strikes on the eastern approach.",
   cover: [],
   tags: [],

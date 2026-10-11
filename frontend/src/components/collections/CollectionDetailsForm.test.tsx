@@ -1,15 +1,12 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-/** The one-paragraph document the proof editor emits for unmarked text. */
-function textDoc(text: string): Record<string, unknown> {
-  return {
-    type: "doc",
-    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
-  };
+/** The one-paragraph body the proof editor emits for unmarked text. */
+function textDoc(text: string): string {
+  return `<p>${text}</p>`;
 }
 
-// The editor is stubbed as a textarea that emits a document; the props the form
+// The editor is stubbed as a textarea that emits HTML; the props the form
 // passes it are asserted through the marks it prints.
 vi.mock("@/components/editor/ProofEditor", () => ({
   default: ({
@@ -17,7 +14,7 @@ vi.mock("@/components/editor/ProofEditor", () => ({
     allowImages,
     invalid,
   }: {
-    onChange: (doc: Record<string, unknown>) => void;
+    onChange: (html: string) => void;
     allowImages?: boolean;
     invalid?: boolean;
   }) => (

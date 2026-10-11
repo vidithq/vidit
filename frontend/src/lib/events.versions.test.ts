@@ -49,7 +49,7 @@ const CURRENT: EventDetail = {
   detected_from_url: null,
   detected_via: null,
   archived_detected_from: null,
-  proof: { type: "doc", content: [{ type: "image", attrs: { src: "https://m/c.jpg" } }] },
+  proof: '<img src="https://m/c.jpg">',
   created_at: "2026-06-01T00:00:00Z",
   // Apart from `created_at`: submitted at midnight, published nine hours later; version 1 is the publication.
   geolocated_at: "2026-06-01T09:00:00Z",
@@ -110,7 +110,7 @@ function snapshot(overrides: Record<string, unknown> = {}): Record<string, unkno
     secondary_source_urls: ["https://t.me/mirror/2", "https://t.me/mirror/1"],
     tags: [{ id: "t2", name: "Drone", category: "capture_source" }],
     conflicts: [{ id: "c1", name: "Russian invasion of Ukraine" }],
-    proof: { type: "doc", content: [{ type: "image", attrs: { src: "https://m/b.jpg" } }] },
+    proof: '<img src="https://m/b.jpg">',
     proof_media: [
       {
         id: "pm1",
@@ -581,7 +581,7 @@ describe("hasVersionChanges", () => {
     // `toDatetimeLocalUTC` renders the stored instant as a naive UTC clock.
     sourcePostedAt: "2026-05-09T15:45",
     isGraphic: CURRENT.is_graphic,
-    proof: CURRENT.proof as Record<string, unknown>,
+    proof: CURRENT.proof,
     tagIds: CURRENT.tags.map((tag) => tag.id),
     conflictIds: CURRENT.conflicts.map((c) => c.id),
     secondarySourceUrls: [...CURRENT.secondary_source_urls],
@@ -638,7 +638,7 @@ describe("hasVersionChanges", () => {
       { tagIds: [] },
       { conflictIds: [] },
       { secondarySourceUrls: ["https://t.me/mirror/1"] },
-      { proof: { type: "doc", content: [] } },
+      { proof: "" },
     ];
     for (const change of moved) {
       expect(hasVersionChanges(CURRENT, untouched(change))).toBe(true);

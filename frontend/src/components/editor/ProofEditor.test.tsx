@@ -1,73 +1,51 @@
-import { render, screen } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-
-// Tiptap's useEditor boots ProseMirror, which needs DOM APIs jsdom lacks. Only toolbar wiring is
-// asserted, so stub the editor: truthy, with the `isActive` it calls at render.
-vi.mock("@tiptap/react", () => ({
-  useEditor: () => ({ isActive: () => false }),
-  EditorContent: () => null,
-}));
 
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 
-import ProofEditor, { isProofLinkUri, resolveProofDoc } from "./ProofEditor";
+import ProofEditor, { referencedProofFiles } from "./ProofEditor";
 
-describe("ProofEditor", () => {
-  it("offers the proof-image control by default (upload-at-publish)", () => {
-    // The image is held locally and uploaded only at publish via `proof_files[]`, so the control is live.
-    render(<ProofEditor onChange={() => {}} />);
-    const control = screen.getByText("+ Image");
-    expect(control).toBeInTheDocument();
-    expect(control.querySelector('input[type="file"]')).not.toBeNull();
+const png = (name: string) => new File(["x"], name, { type: "image/png" });
+
+describe("referencedProofFiles", () => {
+  const a = { placeholder: "placeholder://a.png", previewUrl: "blob:a", file: png("a.png") };
+  const b = { placeholder: "placeholder://b.png", previewUrl: "blob:b", file: png("b.png") };
+
+  it("keeps the files the body still shows, in staging order", () => {
+    const html = '<p>x</p><img src="placeholder://b.png"><img src="placeholder://a.png">';
+    expect(referencedProofFiles(html, [a, b])).toEqual([a.file, b.file]);
   });
 
-  it("drops the image control, and nothing else, under allowImages={false}", () => {
-    // A collection's description is stored with `allow_images=False`, so offering the control would
-    // stage a file the server drops. Marks and list controls stay: one editor serves both.
-    render(<ProofEditor onChange={() => {}} allowImages={false} />);
-    expect(screen.queryByText("+ Image")).not.toBeInTheDocument();
-    for (const label of ["B", "I", "H3", "List"]) {
-      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
-    }
+  it("drops a file whose image was deleted", () => {
+    expect(referencedProofFiles('<img src="placeholder://a.png">', [a, b])).toEqual([a.file]);
+  });
+
+  it("ignores a placeholder that only appears as text or a link", () => {
+    const html = '<p>placeholder://a.png <a href="placeholder://b.png">b</a></p>';
+    expect(referencedProofFiles(html, [a, b])).toEqual([]);
+  });
+
+  it("stages nothing for an uploaded image's media-host src", () => {
+    expect(referencedProofFiles('<img src="https://cdn.test/p.jpg">', [a])).toEqual([]);
+  });
+});
+
+describe("ProofEditor", () => {
+  it("seeds from stored HTML without emitting it back", async () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <ProofEditor onChange={onChange} initialContent="<p>Anchor <strong>points</strong></p>" />,
+    );
+    await waitFor(() => expect(container.querySelector("strong")).toHaveTextContent("points"));
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("wears the shared invalid outline when the caller flags it", () => {
     const { container, rerender } = render(<ProofEditor onChange={() => {}} />);
-    const box = container.firstElementChild as HTMLElement;
-    expect(box.className).not.toContain(FORM_INVALID_FIELD);
+    const box = () => container.firstElementChild as HTMLElement;
+    expect(box().className).not.toContain(FORM_INVALID_FIELD);
 
     rerender(<ProofEditor onChange={() => {}} invalid />);
-    expect(
-      (container.firstElementChild as HTMLElement).className,
-    ).toContain(FORM_INVALID_FIELD);
-  });
-});
-
-describe("link URI allowlist", () => {
-  // The editor may only mint what survives publication: both sanitisers
-  // (`services/sanitize.py::safe_link_href`, `lib/proof.tsx::isSafeLinkHref`) take absolute http(s) only.
-  it("accepts absolute http(s) URLs", () => {
-    expect(isProofLinkUri("https://x.com/user/status/1")).toBe(true);
-    expect(isProofLinkUri("http://localhost:8000/p")).toBe(true);
-    expect(isProofLinkUri("HTTPS://X.COM/a")).toBe(true);
-  });
-
-  it("rejects the other protocols linkify registers by default", () => {
-    for (const url of [
-      "mailto:analyst@example.com",
-      "tel:+33123456789",
-      "sms:+33123456789",
-      "ftp://files.example.com/x",
-      "xmpp:analyst@example.com",
-    ]) {
-      expect(isProofLinkUri(url)).toBe(false);
-    }
-  });
-
-  it("rejects a scheme-less value, an email, and a smuggled javascript: scheme", () => {
-    expect(isProofLinkUri("example.com/a")).toBe(false);
-    expect(isProofLinkUri("analyst@example.com")).toBe(false);
-    expect(isProofLinkUri("javascript:alert(1)")).toBe(false);
-    expect(isProofLinkUri("java\nscript:alert(1)")).toBe(false);
+    expect(box().className).toContain(FORM_INVALID_FIELD);
   });
 });

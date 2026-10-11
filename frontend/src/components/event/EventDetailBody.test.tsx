@@ -52,15 +52,7 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     source_url: "https://t.me/channel/12345",
     secondary_source_urls: [],
     archived_secondary_sources: [],
-    proof: {
-      type: "doc",
-      content: [
-        {
-          type: "paragraph",
-          content: [{ type: "text", text: "Anchor points match the imagery." }],
-        },
-      ],
-    },
+    proof: "<p>Anchor points match the imagery.</p>",
     created_at: "2026-06-02T10:00:00Z",
     geolocated_at: "2026-06-03T10:00:00Z",
     closed_at: null,

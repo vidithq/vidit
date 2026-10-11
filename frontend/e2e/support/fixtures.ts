@@ -79,20 +79,7 @@ export const EVENT: EventDetail = {
   },
   secondary_source_urls: [],
   archived_secondary_sources: [],
-  proof: {
-    type: "doc",
-    content: [
-      {
-        type: "paragraph",
-        content: [
-          {
-            type: "text",
-            text: "The tree line and the pair of concrete utility poles match the reference imagery, and the roof vents line up with the satellite view.",
-          },
-        ],
-      },
-    ],
-  },
+  proof: "<p>The tree line and the pair of concrete utility poles match the reference imagery, and the roof vents line up with the satellite view.</p>",
   event_date: "2025-01-03",
   event_time: "14:20:00",
   source_posted_at: "2025-01-03T15:05:00Z",
@@ -189,15 +176,7 @@ export const COLLECTION: Collection = {
     avatar_url: null,
   },
   title: "Kupiansk rail corridor: three days of strikes on the eastern approach",
-  description: {
-    type: "doc",
-    content: [
-      {
-        type: "paragraph",
-        content: [{ type: "text", text: COLLECTION_DESCRIPTION }],
-      },
-    ],
-  },
+  description: `<p>${COLLECTION_DESCRIPTION}</p>`,
   description_text: COLLECTION_DESCRIPTION,
   cover: [{ url: MEDIA_URL, media_type: "image", role: "source" }],
   tags: [],

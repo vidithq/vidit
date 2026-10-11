@@ -36,7 +36,7 @@ const createInput: EventCreateInput = {
   source_url: "https://t.me/c/1",
   event_date: "2026-01-02",
   source_posted_at: "2026-01-01T00:00",
-  proof: { type: "doc", content: [] },
+  proof: "",
   tag_ids: ["t1"],
   conflict_ids: ["c1"],
   files: [vid],
@@ -72,6 +72,12 @@ describe("createEvent multipart", () => {
     expect(body.getAll("proof_files")).toEqual([pngA, pngB]);
     expect(body.get("file")).toBe(vid); // create sends the source under singular `file`
     expect(body.getAll("files")).toEqual([]);
+  });
+
+  it("posts the proof as its HTML string, unencoded", async () => {
+    const proof = '<p>See</p><img src="placeholder://a.png">';
+    await createEvent({ ...createInput, proof });
+    expect(lastBody().get("proof")).toBe(proof);
   });
 
   it("appends one secondary_source_urls entry per link, in order", async () => {
