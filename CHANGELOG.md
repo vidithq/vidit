@@ -2,16 +2,18 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## v0.6.6, 2026-10-11
 
 ### Changed
 
+- The roadmap lives in the GitHub Project, one epic issue per upcoming version; the vision moves to the README and the `planning/` folder is removed ([#529](https://github.com/vidithq/vidit/pull/529)).
 - The README, CONTRIBUTING, issue templates, planning files and promo pipeline guide are deduplicated and checked against the code ([#373](https://github.com/vidithq/vidit/pull/373)).
 - Dependabot waits a cooldown before opening a version-update PR (7 days for a major, 3 for a minor, 1 for a patch); security updates are unaffected ([#387](https://github.com/vidithq/vidit/pull/387)).
 - The events service is a package with one module per write verb; callers import it from the same place ([#371](https://github.com/vidithq/vidit/pull/371)).
 
 ### Fixed
 
+- Password forms stop input at 72 bytes and explain the limit in plain words, and `make install` installs the backend test tools so `make test` runs on a fresh machine ([#529](https://github.com/vidithq/vidit/pull/529)).
 - Local storage refuses a key that escapes its root on delete too, which clears the CodeQL path-injection alerts ([#525](https://github.com/vidithq/vidit/pull/525)).
 - The narrow-viewport smoke job no longer fails at random on the collection pages ([#374](https://github.com/vidithq/vidit/pull/374)).
 - The map detail panel shows only the selected event, and a failed load shows the error with a Retry control ([#357](https://github.com/vidithq/vidit/pull/357)).

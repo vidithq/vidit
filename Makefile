@@ -161,7 +161,7 @@ seed: mock-admin seed-detections
 	@echo "Done. admin@vidit.app exists and the synthetic archive's detections are in."
 
 install:
-	cd backend && uv sync
+	cd backend && uv sync --all-extras
 	cd frontend && npm install
 
 env:

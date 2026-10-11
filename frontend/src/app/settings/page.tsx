@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { PASSWORD_MIN_LENGTH, validatePasswordChange } from "@/lib/auth";
+import { PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH, validatePasswordChange } from "@/lib/auth";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
@@ -201,6 +201,7 @@ export default function SettingsPage() {
                 type="password"
                 required
                 minLength={PASSWORD_MIN_LENGTH}
+                maxLength={PASSWORD_MAX_BYTES}
                 autoComplete="new-password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
@@ -217,6 +218,7 @@ export default function SettingsPage() {
                 type="password"
                 required
                 minLength={PASSWORD_MIN_LENGTH}
+                maxLength={PASSWORD_MAX_BYTES}
                 autoComplete="new-password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}

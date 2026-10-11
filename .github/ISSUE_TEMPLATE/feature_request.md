@@ -20,7 +20,7 @@ What else did you weigh, and why did you rule it out?
 
 ## Milestone fit
 
-Which roadmap milestone fits, if any? See [`planning/roadmap.md`](../../planning/roadmap.md) for the milestones and the [GitHub Project](https://github.com/orgs/vidithq/projects/1) for the open work by version, including the Unscheduled items. Items in [`planning/roadmap.md`](../../planning/roadmap.md) → *Future considerations* carry a documented rationale and revisit trigger: check that your proposal is not already covered there.
+Which roadmap milestone fits, if any? The [GitHub Project](https://github.com/orgs/vidithq/projects/1) holds one issue of type Epic per version and the open work by version, including the Unscheduled items. The [future considerations epic](https://github.com/vidithq/vidit/issues/535) lists deferred items with a documented rationale and revisit trigger: check that your proposal is not already covered there.
 
 ## Anything else
 

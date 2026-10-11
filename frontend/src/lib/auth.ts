@@ -9,6 +9,9 @@ export const CSRF_HEADER = "X-CSRF-Token";
 
 // Mirrors `schemas/auth.PASSWORD_MIN_LENGTH`; change both.
 export const PASSWORD_MIN_LENGTH = 8;
+// Mirrors `schemas/auth.PASSWORD_MAX_BYTES`; change both. UTF-8 bytes (the bcrypt input limit). As
+// `maxLength` it caps UTF-16 units, which never outnumber UTF-8 bytes, so it never blocks a valid one.
+export const PASSWORD_MAX_BYTES = 72;
 
 export function readCsrfToken(): string | null {
   if (typeof document === "undefined") return null;
@@ -38,17 +41,27 @@ export function hasSessionCookie(): boolean {
 }
 
 /**
- * Client-side password-change guard: at least `PASSWORD_MIN_LENGTH` characters and a match
- * with the confirmation. Returns the message, or `null`. `label` names the field.
+ * Client-side new-password guard: at least `PASSWORD_MIN_LENGTH` characters and at most
+ * `PASSWORD_MAX_BYTES` UTF-8 bytes. Returns the message, or `null`. `label` names the field.
  */
+export function validateNewPassword(password: string, label = "Password"): string | null {
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    return `${label} must be at least ${PASSWORD_MIN_LENGTH} characters.`;
+  }
+  if (new TextEncoder().encode(password).length > PASSWORD_MAX_BYTES) {
+    return `${label} must be at most ${PASSWORD_MAX_BYTES} bytes. A plain letter, digit or symbol takes 1 byte; an accented letter or emoji takes 2 to 4.`;
+  }
+  return null;
+}
+
+/** `validateNewPassword` plus a match with the confirmation. */
 export function validatePasswordChange(
   password: string,
   confirm: string,
   label = "New password"
 ): string | null {
-  if (password.length < PASSWORD_MIN_LENGTH) {
-    return `${label} must be at least ${PASSWORD_MIN_LENGTH} characters.`;
-  }
+  const invalid = validateNewPassword(password, label);
+  if (invalid) return invalid;
   if (password !== confirm) {
     return `${label}s don't match.`;
   }

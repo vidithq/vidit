@@ -28,9 +28,9 @@
 # the semver keys, so it uses a flat 7 days. Cooldown applies to version
 # updates only, so security updates stay immediate.
 #
-# Reviewer / assignee fields are intentionally absent — the repo runs solo
-# right now (see `planning/roadmap.md` → *Behind Vidit*), and once
-# contributors join the assignment will flow through CODEOWNERS, not here.
+# Reviewer / assignee fields are intentionally absent: the repo runs solo
+# right now, and once contributors join the assignment will flow through
+# CODEOWNERS, not here.
 
 version: 2
 updates:

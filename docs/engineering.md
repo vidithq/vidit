@@ -178,7 +178,6 @@ vidit/
 │   └── scripts/              # build helpers and the palette-coverage check
 ├── docker/backup/            # backup cron image
 ├── docs/                     # this reference, built by MkDocs
-├── planning/                 # roadmap
 ├── video/                    # promo-as-code pipeline, see video/README.md
 └── .github/workflows/        # see GitHub Actions
 ```
@@ -255,13 +254,13 @@ The cap applies to the API process only. The import worker, the bot cron, and th
 
 Each validation rule has one backend home: the upload MIME allowlist in `services/storage.py` (the EXIF-strip set derives from the image allowlist), coordinate bounds in `services/events.validate_coordinates`, and password length in `schemas/auth.NewPassword` (`PASSWORD_MIN_LENGTH` characters, `PASSWORD_MAX_BYTES` UTF-8 bytes, the bcrypt input limit). Frontend enum types are generated from the OpenAPI spec into `lib/api-types.ts`.
 
-Every other frontend copy of a backend rule is hand-kept and listed below. Change both sides in the same PR. Frontend paths are under `frontend/src/`; backend modules are under `backend/app/`.
+Every other frontend copy of a backend rule or of the GitHub Project is hand-kept and listed below. Change both sides in the same PR. Frontend paths are under `frontend/src/`; backend modules are under `backend/app/`.
 
 | Frontend | Backend source | Drift breaks |
 |---|---|---|
 | `lib/mediaTypes.ts` | `storage.ALLOWED_IMAGE_TYPES`, `ALLOWED_VIDEO_TYPES` | picker accepts a file the API refuses |
 | `lib/coordinates.ts` | `events.validate_coordinates` | form accepts coordinates the API refuses |
-| `lib/auth.ts` `PASSWORD_MIN_LENGTH` (the byte limit shows the API's 422 message) | `schemas/auth.PASSWORD_MIN_LENGTH` | password hint disagrees with the 422 |
+| `lib/auth.ts` `PASSWORD_MIN_LENGTH`, `PASSWORD_MAX_BYTES` | `schemas/auth.PASSWORD_MIN_LENGTH`, `PASSWORD_MAX_BYTES` | password form accepts a password the API refuses, or refuses one it accepts |
 | `lib/auth.ts` CSRF cookie and header names; the cookie name again in `proxy.ts` (edge runtime) | `auth_cookies.CSRF_COOKIE`, `CSRF_HEADER` | every write is refused |
 | `lib/proofImages.ts` | `sanitize.PROOF_PLACEHOLDER_PREFIX`, `storage.safe_original_filename` | proof images lose their upload binding |
 | `lib/search.ts::AUTHOR_FILTER_RE` | `event_filters.AUTHOR_FILTER_PATTERN` | author filter parses differently |
@@ -282,6 +281,7 @@ Every other frontend copy of a backend rule is hand-kept and listed below. Chang
 | `lib/collections.ts::COLLECTION_TITLE_MAX_LEN`, `COLLECTION_DESCRIPTION_MAX_LEN` | `models/event.TITLE_MAX_LENGTH`, `schemas/collection.DESCRIPTION_MAX_LENGTH` | server refuses typed text |
 | `lib/proof.tsx::tiptapDocText` | `sanitize.tiptap_doc_text` | description counter disagrees with the server cap |
 | `lib/collections.ts::COLLECTABLE_STATUSES` | `event_filters.collectable_events` | picker offers rows the add verb refuses (409) |
+| `app/page.tsx::ROADMAP` | the issues of type Epic in the [GitHub Project](https://github.com/orgs/vidithq/projects/1): Version value, title, summary | landing roadmap promises a version the Project no longer plans |
 | `lib/users.ts::SOCIAL_HOSTS`, `SOCIAL_HANDLE_PATTERN` | `schemas/user.SOCIAL_PROFILE_HOSTS`, `SOCIAL_HANDLE_PATTERNS` | profile links the wrong host or hides an accepted handle |
 | `components/ui/ArchivedCopies.tsx::SNAPSHOT_HOSTS` | keys of `source_archive.PROVIDER_HOSTS` | pre-submit check disagrees with the server |
 | `lib/snapshots.ts` hosts and capture-path patterns | `source_archive._WAYBACK_REPLAY_RE`, `_ARCHIVE_TODAY_CAPTURE_RE`, `PROVIDER_HOSTS` | mis-paste check silently matches nothing |
