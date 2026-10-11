@@ -161,20 +161,27 @@ describe("batchCompletionBlockers", () => {
   // badged Ready that the Ready filter hides.
   describe("agrees with the server's readiness filter, shape for shape", () => {
     const proofWithImage = '<p>Cross-referenced.</p><img src="https://cdn.example.com/proof.jpg">';
-    const proofImageNested = '<ul><li><img src="https://cdn/x.jpg"></li></ul>';
+    const proofImageNested = '<ul><li><p>a</p><img alt="frame" src="https://cdn/x.jpg"></li></ul>';
     const proofTextOnly = "<p>No imagery.</p>";
-    // An `<img>` with no `src`: the server counts srcs, not tags, so it misses the floor.
-    const proofImageWithoutSrc = "<img>";
+    // The server counts srcs, not tags, and text can name the tag.
+    const proofImageWithoutSrc = '<img alt="src=&quot;x&quot;"><p>&lt;img src="y"&gt;</p>';
+    const proofImageWithSrcInAValue = '<img alt="x src=">';
+    const readyDetection = { ...importedDetection, proof: proofWithImage };
 
     const cases: [string, Parameters<typeof batchCompletionBlockers>[0], boolean][] = [
-      ["ready", importedDetection, true],
-      ["ready_with_a_nested_proof_image", { ...importedDetection, proof: proofImageNested }, true],
-      ["no_source_url", { ...importedDetection, source_url: null }, false],
-      ["blank_source_url", { ...importedDetection, source_url: " \t\n " }, false],
-      ["no_coordinates", { ...importedDetection, event_coords: null }, false],
-      ["no_source_media", { ...importedDetection, media: [] }, false],
-      ["no_proof_image", { ...importedDetection, proof: proofTextOnly }, false],
-      ["proof_image_without_a_src", { ...importedDetection, proof: proofImageWithoutSrc }, false],
+      ["ready", readyDetection, true],
+      ["ready_with_a_nested_proof_image", { ...readyDetection, proof: proofImageNested }, true],
+      ["no_source_url", { ...readyDetection, source_url: null }, false],
+      ["blank_source_url", { ...readyDetection, source_url: " \t\n " }, false],
+      ["no_coordinates", { ...readyDetection, event_coords: null }, false],
+      ["no_source_media", { ...readyDetection, media: [] }, false],
+      ["no_proof_image", { ...readyDetection, proof: proofTextOnly }, false],
+      ["proof_image_without_a_src", { ...readyDetection, proof: proofImageWithoutSrc }, false],
+      [
+        "proof_image_with_src_inside_a_value",
+        { ...readyDetection, proof: proofImageWithSrcInAValue },
+        false,
+      ],
       [
         "missing_everything_but_the_title",
         { event_coords: null, source_url: null, proof: proofTextOnly, media: [] },

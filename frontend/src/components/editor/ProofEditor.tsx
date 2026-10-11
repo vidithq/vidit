@@ -10,11 +10,17 @@ import {
   defaultStyleSpecs,
 } from "@blocknote/core";
 import {
+  FileCaptionButton,
   FilePanel,
   FilePanelController,
+  FilePreviewButton,
+  FileReplaceButton,
   FormattingToolbar,
   FormattingToolbarController,
   getFormattingToolbarItems,
+  NestBlockButton,
+  TextAlignButton,
+  UnnestBlockButton,
   UploadTab,
   useCreateBlockNote,
   useDictionary,
@@ -38,6 +44,9 @@ interface ProofEditorProps {
   onProofFilesChange?: (files: File[]) => void;
   /** Stored HTML to start from. Read once at mount: pair with a `key` on the parent to re-seed. */
   initialContent?: string | null;
+  /** The files `onProofFilesChange` last reported, read once at mount: a remount seeded with
+   *  `placeholder://` srcs still previews and reports them. */
+  initialProofFiles?: readonly File[];
   /** False for a body stored without images (a collection's description): no image block, no
    * upload path. */
   allowImages?: boolean;
@@ -58,14 +67,24 @@ const { paragraph, bulletListItem, numberedListItem, quote, divider, codeBlock, 
   defaultBlockSpecs;
 const { bold, italic, strike, code } = defaultStyleSpecs;
 
+const IMAGE_MIMES = ACCEPTED_IMAGE_MIME.split(",");
+
 // The picker and paste/drop read `fileBlockAccept`; BlockNote's default is `image/*`.
 const proofImage = {
   ...image,
   implementation: {
     ...image.implementation,
-    meta: { ...image.implementation.meta, fileBlockAccept: ACCEPTED_IMAGE_MIME.split(",") },
+    meta: { ...image.implementation.meta, fileBlockAccept: IMAGE_MIMES },
   },
 };
+
+// BlockNote turns a pasted or dropped file outside every block's `fileBlockAccept` into a `file`
+// block, which neither schema has: the insert throws in a floating promise and the paste or drop
+// does nothing visible. Refusing the transfer up front skips that path.
+function refusesFiles(transfer: DataTransfer | null, allowImages: boolean): boolean {
+  const files = Array.from(transfer?.files ?? []);
+  return files.some((f) => !allowImages || !IMAGE_MIMES.includes(f.type));
+}
 
 // The blocks and styles the server's `sanitize.py` tag allowlist stores (h2, h3, lists,
 // blockquote, pre, hr, img; strong, em, s, code); change both. Underline is left out: the server
@@ -112,20 +131,23 @@ const VIDIT_THEME = {
 
 // Alignment and nesting do not survive the server allowlist. The replace button opens
 // BlockNote's default file panel, whose Embed tab mints off-host image URLs the server refuses.
-const DROPPED_TOOLBAR_ITEMS = new Set([
-  "textAlignLeftButton",
-  "textAlignCenterButton",
-  "textAlignRightButton",
-  "nestBlockButton",
-  "unnestBlockButton",
-  "replaceFileButton",
+// With the preview off an image exports as a link, and a caption as `<figure>`, which the server
+// drops or flattens. Matched by component, not by BlockNote's item keys, so a key rename can't
+// let one back in.
+const DROPPED_TOOLBAR_BUTTONS = new Set<unknown>([
+  TextAlignButton,
+  NestBlockButton,
+  UnnestBlockButton,
+  FileReplaceButton,
+  FilePreviewButton,
+  FileCaptionButton,
 ]);
 
 function ProofFormattingToolbar({ blockTypeSelectItems }: FormattingToolbarProps) {
   return (
     <FormattingToolbar>
       {getFormattingToolbarItems(blockTypeSelectItems).filter(
-        (item) => !DROPPED_TOOLBAR_ITEMS.has(String(item.key)),
+        (item) => !DROPPED_TOOLBAR_BUTTONS.has(item.type),
       )}
     </FormattingToolbar>
   );
@@ -161,6 +183,7 @@ export default function ProofEditor({
   onChange,
   onProofFilesChange,
   initialContent,
+  initialProofFiles,
   allowImages = true,
   invalid = false,
 }: ProofEditorProps) {
@@ -170,49 +193,67 @@ export default function ProofEditor({
   const usedNamesRef = useRef<Set<string>>(new Set());
   const seedingRef = useRef(false);
 
+  const stage = (file: File) => {
+    usedNamesRef.current.add(file.name);
+    const placeholder = `${PROOF_PLACEHOLDER_PREFIX}${file.name}`;
+    stagedRef.current.push({ placeholder, previewUrl: URL.createObjectURL(file), file });
+    return placeholder;
+  };
+
+  const uploadFile = async (file: File) => {
+    const name = safeProofFilename(file.name, usedNamesRef.current);
+    if (name === null) throw new Error("Unusable filename");
+    // Upload under exactly `name` so the server's `safe_original_filename` reproduces the
+    // placeholder suffix (a File can't be renamed).
+    return stage(file.name === name ? file : new File([file], name, { type: file.type }));
+  };
+
   const editor = useCreateBlockNote({
     schema: allowImages ? SCHEMA_WITH_IMAGES : SCHEMA_TEXT_ONLY,
     links: { isValidLink: isSafeLinkHref },
-    uploadFile: async (file: File) => {
-      const name = safeProofFilename(file.name, usedNamesRef.current);
-      if (name === null) throw new Error("Unusable filename");
-      usedNamesRef.current.add(name);
-      // Upload under exactly `name` so the server's `safe_original_filename` reproduces the
-      // placeholder suffix (a File can't be renamed).
-      const staged = file.name === name ? file : new File([file], name, { type: file.type });
-      const placeholder = `${PROOF_PLACEHOLDER_PREFIX}${name}`;
-      stagedRef.current.push({
-        placeholder,
-        previewUrl: URL.createObjectURL(staged),
-        file: staged,
-      });
-      return placeholder;
-    },
+    uploadFile: allowImages ? uploadFile : undefined,
     resolveFileUrl: async (url: string) =>
       stagedRef.current.find((s) => s.placeholder === url)?.previewUrl ?? url,
+    pasteHandler: ({ event, defaultPasteHandler }) =>
+      refusesFiles(event.clipboardData, allowImages) || defaultPasteHandler(),
+    // Drop has no public hook. A direct editor prop runs before BlockNote's own drop plugin, and
+    // its drop cursor still clears on the event.
+    _tiptapOptions: {
+      editorProps: {
+        handleDOMEvents: {
+          drop: (_view, event) => {
+            if (!refusesFiles(event.dataTransfer, allowImages)) return false;
+            event.preventDefault();
+            return true;
+          },
+        },
+      },
+    },
   });
 
-  // Seed once; the parent re-keys to re-seed.
-  useEffect(() => {
-    if (!initialContent) return;
-    seedingRef.current = true;
-    editor.replaceBlocks(editor.document, editor.tryParseHTMLToBlocks(initialContent));
-    seedingRef.current = false;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor]);
-
-  // Revoke staged blob URLs on unmount so compose then navigate doesn't leak object URLs.
+  // Seed once; the parent re-keys to re-seed. The cleanup revokes the staged blob URLs (compose
+  // then navigate must not leak them) and empties the staging, so a dev double mount restages.
   useEffect(() => {
     const staged = stagedRef.current;
+    const usedNames = usedNamesRef.current;
+    initialProofFiles?.forEach(stage);
+    if (initialContent) {
+      seedingRef.current = true;
+      editor.replaceBlocks(editor.document, editor.tryParseHTMLToBlocks(initialContent));
+      seedingRef.current = false;
+    }
     return () => {
       for (const s of staged) URL.revokeObjectURL(s.previewUrl);
+      staged.length = 0;
+      usedNames.clear();
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
 
   const emit = () => {
     if (seedingRef.current) return;
     // BlockNote writes U+FFFC into an empty block so it survives its own round trip; it is not text.
-    const html = editor.blocksToHTMLLossy(editor.document).replaceAll("￼", "");
+    const html = editor.blocksToHTMLLossy(editor.document).replaceAll("\uFFFC", "");
     onChange(html);
     onProofFilesChange?.(referencedProofFiles(html, stagedRef.current));
   };

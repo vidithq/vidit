@@ -1,5 +1,6 @@
-import { act, render, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { en } from "@blocknote/core/locales";
 import type { useCreateBlockNote } from "@blocknote/react";
 
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
@@ -15,6 +16,12 @@ vi.mock("@blocknote/react", async (importOriginal) => {
     useCreateBlockNote: (...args: Parameters<typeof actual.useCreateBlockNote>) =>
       (editor = actual.useCreateBlockNote(...args)),
   };
+});
+
+// The toolbar positions itself from the selection's rects, which jsdom's Range does not implement.
+beforeAll(() => {
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
 });
 
 const png = (name: string) => new File(["x"], name, { type: "image/png" });
@@ -84,6 +91,34 @@ describe("ProofEditor", () => {
     expect(html).not.toContain("\uFFFC");
   });
 
+  it("keeps a staged image across a remount", async () => {
+    const first = vi.fn();
+    const mounted = render(<ProofEditor onChange={() => {}} onProofFilesChange={first} />);
+    const file = png("frame.png");
+    await act(async () => {
+      const url = (await editor.uploadFile!(file)) as string;
+      editor.replaceBlocks(editor.document, [{ type: "image", props: { url } }]);
+    });
+    await waitFor(() => expect(first).toHaveBeenLastCalledWith([file]));
+    const html = editor.blocksToHTMLLossy(editor.document);
+    mounted.unmount();
+
+    const second = vi.fn();
+    const { container } = render(
+      <ProofEditor
+        onChange={() => {}}
+        onProofFilesChange={second}
+        initialContent={html}
+        initialProofFiles={[file]}
+      />,
+    );
+    await waitFor(() => expect(container.querySelector("img")?.src).toMatch(/^blob:/));
+    act(() => {
+      editor.insertBlocks([{ type: "paragraph", content: "More" }], editor.document[0], "after");
+    });
+    await waitFor(() => expect(second).toHaveBeenLastCalledWith([file]));
+  });
+
   it("keeps an image out of a text-only body", async () => {
     const seed = '<p>Before</p><img src="https://cdn.test/p.jpg"><p>After</p>';
     const images = render(<ProofEditor onChange={() => {}} initialContent={seed} />).container;
@@ -94,5 +129,84 @@ describe("ProofEditor", () => {
     await waitFor(() => expect(textOnly).toHaveTextContent("After"));
     expect(images.querySelector('[data-content-type="image"]')).not.toBeNull();
     expect(textOnly.querySelector('[data-content-type="image"]')).toBeNull();
+  });
+
+  // jsdom has no DataTransfer: the fields BlockNote and the guard read.
+  const fileTransfer = (file: File) => ({
+    types: ["Files"],
+    files: [file],
+    items: [{ kind: "file", type: file.type, getAsFile: () => file }],
+    getData: () => "",
+  });
+
+  it.each([
+    ["an image into a text-only body", png("frame.png"), false],
+    ["a file outside the image allowlist", new File(["x"], "notes.pdf", { type: "application/pdf" }), true],
+  ])("ignores a pasted or dropped file: %s", async (_name, file, allowImages) => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <ProofEditor onChange={onChange} initialContent="<p>Kept</p>" allowImages={allowImages} />,
+    );
+    await waitFor(() => expect(container).toHaveTextContent("Kept"));
+    const body = container.querySelector<HTMLElement>(".bn-editor")!;
+
+    await act(async () => {
+      editor.setTextCursorPosition(editor.document[0], "end");
+      expect(fireEvent.paste(body, { clipboardData: fileTransfer(file) })).toBe(false);
+      expect(fireEvent.drop(body, { dataTransfer: fileTransfer(file) })).toBe(false);
+    });
+
+    expect(editor.document).toHaveLength(1);
+    expect(editor.document[0].type).toBe("paragraph");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  describe("formatting toolbar", () => {
+    const t = en.formatting_toolbar;
+    const dropped = [
+      t.align_left.tooltip,
+      t.align_center.tooltip,
+      t.align_right.tooltip,
+      t.nest.tooltip,
+      t.unnest.tooltip,
+      t.file_replace.tooltip.image,
+      t.file_preview_toggle.tooltip,
+      t.file_caption.tooltip,
+    ];
+
+    const toolbarLabels = async (container: HTMLElement, select: () => void) => {
+      await waitFor(() => expect(editor.document).toHaveLength(2));
+      act(select);
+      return Array.from(
+        container.ownerDocument.querySelectorAll(".bn-formatting-toolbar button"),
+        (b) => b.getAttribute("aria-label"),
+      );
+    };
+
+    it.each([
+      [
+        "selected text",
+        () => editor._tiptapEditor.commands.setTextSelection({ from: 4, to: 9 }),
+        t.bold.tooltip,
+      ],
+      [
+        "a selected image",
+        () => editor.setTextCursorPosition(editor.document[1]),
+        t.file_delete.tooltip.image,
+      ],
+    ])("offers nothing the server drops for %s", async (_name, select, kept) => {
+      const { container } = render(
+        <ProofEditor
+          onChange={() => {}}
+          initialContent='<p>Anchor points</p><img src="https://cdn.test/p.jpg">'
+        />,
+      );
+      const labels = await toolbarLabels(container, () => {
+        editor.focus();
+        select();
+      });
+      expect(labels).toContain(kept);
+      for (const label of dropped) expect(labels).not.toContain(label);
+    });
   });
 });
