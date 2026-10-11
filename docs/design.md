@@ -784,13 +784,7 @@ An image uploads at publish, not when it is picked:
 
 #### Storage
 
-The server stores the body in a `TEXT` column and sanitizes every write with nh3 in [`sanitize.py`](../backend/app/services/sanitize.py) against this allowlist:
-
-| Tags | Attributes kept |
-|---|---|
-| `p`, `h2`, `h3`, `strong`, `em`, `s`, `code`, `pre`, `ul`, `ol`, `li`, `blockquote`, `hr`, `br` | none |
-| `a` | `href`, when `safe_link_href` accepts it |
-| `img` (proofs only) | `src`, when `_safe_image_src` accepts it (the media host, or `placeholder://` before publish), and `alt` |
+The server stores the body in a `TEXT` column and sanitizes every write with nh3 in [`sanitize.py`](../backend/app/services/sanitize.py) on the [rich text rules](api.md#rich-text).
 
 A one-time Alembic migration converts stored Tiptap JSON (proofs, collection descriptions, and version snapshots) to this HTML. The migration is irreversible, and it drops underline.
 

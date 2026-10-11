@@ -10,7 +10,7 @@ from typing import Any
 
 PROOF_WITH_IMAGE = '<p>Cross-referenced.</p><img src="https://cdn.example.com/proof.jpg">'
 
-# Nested two levels down: the Python floor and the SQL pattern must both find it.
+# Nested one list level down: the Python floor and the SQL pattern must both find it.
 PROOF_IMAGE_NESTED = '<ul><li><p>a</p><img alt="frame" src="https://cdn/x.jpg"></li></ul>'
 
 PROOF_TEXT_ONLY = "<p>No imagery.</p>"

@@ -216,11 +216,11 @@ def test_create_rejects_video_proof_file(author, conflict, capture_source_tag):
 
 
 def test_create_rejects_a_proof_over_a_sanitiser_cap(author):
-    """A proof past the sanitiser's depth cap is ``invalid_proof`` before any S3 upload."""
+    """A proof past the sanitiser's tag-count cap is ``invalid_proof`` before any S3 upload."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
-        data=_form(proof="<blockquote>" * 40 + "x"),
+        data=_form(proof="<br>" * 10_001),
         files=_files(),
     )
     assert response.status_code == 400

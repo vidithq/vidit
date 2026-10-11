@@ -507,10 +507,10 @@ An event's `proof` and a collection's `description` are HTML strings. The server
 - **Attributes:** `href` on `a`, `src` and `alt` on `img`. Every other attribute is removed. The server adds no `rel` or `target`; the renderer adds them.
 - **Links:** an `href` must be an `http` or `https` URL with a host. A link whose `href` fails is kept as plain text.
 - **Images:** a `src` must be a relative path or a URL on the configured media host (see [`engineering.md`](engineering.md#particularities-non-obvious-behavior-found-during-development)). A `placeholder://<filename>` src is accepted on the event forms only. An image whose `src` fails is removed.
-- **Empty body:** a body with no text and no image is stored as `""`.
-- **Caps:** at most 200,000 characters, 10,000 `<` characters, and 32 levels of nesting. A body over a cap is `invalid_proof` or `invalid_description`.
+- **Empty body:** every U+FFFC character is removed. A body with no text and no image is stored as `""`.
+- **Caps:** at most 200,000 characters and 10,000 `<` characters. A body over a cap is `invalid_proof` or `invalid_description`.
 
-The plain-text projection (`sanitize.html_text`) measures the description cap and feeds `description_text` and search. It decodes entities, drops U+FFFC, and starts a new line at every `p`, `h2`, `h3`, `li`, `blockquote`, `pre`, `ul`, `ol` and `hr` boundary, at every `br`, and at every newline in the text. Each line is stripped, blank lines are dropped, and the rest join with `\n`.
+The plain-text projection (`sanitize.html_text`) measures the description cap and feeds `description_text` and search. It decodes entities and starts a new line at every `p`, `h2`, `h3`, `li`, `blockquote`, `pre`, `ul`, `ol` and `hr` boundary, at every `br`, and at every newline in the text. Each line is stripped, blank lines are dropped, and the rest join with `\n`.
 
 At publish, the server sanitizes the body first, uploads `proof_files`, and then rewrites each `placeholder://` src to the stored URL.
 

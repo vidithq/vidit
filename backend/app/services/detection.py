@@ -362,14 +362,6 @@ async def _store_media(
     return proof_image_urls
 
 
-def _proof_doc(detection: Detection, proof_image_urls: list[str]) -> str:
-    """The row's proof body: cleaned post text, then the proof images.
-
-    One writer for the body and the ``role=proof`` rows, so they cannot drift.
-    """
-    return html_from_text(detection.proof_text, image_srcs=proof_image_urls)
-
-
 async def _persist_one(
     db: Session,
     *,
@@ -391,7 +383,7 @@ async def _persist_one(
             # The declared footage source, distinct from the ``detected_from_url`` provenance.
             # NULL when none declared: the geolocate promotion requires it.
             source_url=detection.source_url,
-            proof=_proof_doc(detection, []),
+            proof=html_from_text(detection.proof_text),
             event_date=detection.event_date,
             source_posted_at=detection.source_posted_at,
             status=STATUS_DETECTED,
@@ -416,7 +408,7 @@ async def _persist_one(
 
         proof_image_urls = await _store_media(db, geo, resolved, uploaded_keys)
         if proof_image_urls:
-            geo.proof = _proof_doc(detection, proof_image_urls)
+            geo.proof = html_from_text(detection.proof_text, image_srcs=proof_image_urls)
         db.commit()
     except Exception:
         # Roll back before the sweep so an autoflush can't resurrect the half-added Media rows.
@@ -545,7 +537,7 @@ async def _upsert_one(
             db.flush()
             proof_image_urls = await _store_media(db, row, resolved, uploaded_keys)
             changed = True
-        doc = _proof_doc(detection, proof_image_urls)
+        doc = html_from_text(detection.proof_text, image_srcs=proof_image_urls)
         if row.proof != doc:
             row.proof = doc
             changed = True

@@ -134,7 +134,7 @@ async def geolocate(
     # Kept plus new uploads must land on exactly one (same rule as :func:`save_version`).
     swap = _plan_source_swap(geo, remove_media_ids=remove_media_ids, files=files)
 
-    proof_data = _sanitize_proof(proof_data, allow_placeholders=True)
+    proof_data = _sanitize_proof(proof_data)
 
     # Evidence floor against the post-geolocate state, before any S3 upload.
     _require_submission_media(swap.survivors > 0)

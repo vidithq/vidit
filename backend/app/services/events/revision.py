@@ -145,7 +145,7 @@ async def save_version(
     # Before any S3 work, so a refused swap files no version.
     swap = _plan_source_swap(geo, remove_media_ids=remove_media_ids or [], files=files)
 
-    proof_data = _sanitize_proof(proof_data, allow_placeholders=True)
+    proof_data = _sanitize_proof(proof_data)
 
     # The floor against the post-edit state (surviving media), before any S3 work.
     _require_submission_media(swap.survivors > 0)

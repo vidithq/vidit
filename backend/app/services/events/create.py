@@ -86,7 +86,7 @@ async def create_with_evidence(
 
     _require_submission_media(file is not None)
 
-    proof_data = _sanitize_proof(proof_data, allow_placeholders=True)
+    proof_data = _sanitize_proof(proof_data)
 
     # Check the rest of the floor before any upload to save the S3 round-trip.
     _require_proof_image(proof_data)

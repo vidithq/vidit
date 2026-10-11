@@ -44,7 +44,7 @@ from app.schemas.tag import TagRead
 from app.services.event_filters import collectable_events
 from app.services.pagination import keyset_after
 from app.services.permissions import ensure_owner
-from app.services.sanitize import html_text, sanitize_html_or_raise
+from app.services.sanitize import html_text, sanitize_html
 from app.services.thumbnails import pick_thumbnail, thumbnail_media_criteria
 
 
@@ -434,7 +434,10 @@ def _checked_description(description: str) -> _CheckedDescription:
     * Projection over :data:`schemas.collection.DESCRIPTION_MAX_LENGTH`,
       measured on text so bolding a word costs no characters.
     """
-    html = sanitize_html_or_raise(description, error=InvalidDescriptionError, allow_images=False)
+    try:
+        html = sanitize_html(description, allow_images=False)
+    except ValueError as exc:
+        raise InvalidDescriptionError(str(exc)) from exc
     text = html_text(html)
     if not text:
         raise InvalidDescriptionError("A description must not be empty")

@@ -11,13 +11,9 @@ import uuid
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event, EventGeolocator
 from tests.conftest import login_as
 from tests.events._helpers import _make_geo, client
+from tests.events._readiness_cases import PROOF_TEXT_ONLY, PROOF_WITH_IMAGE
 
 _URL = "/api/v1/events/batch-complete"
-
-# A detection's proof as the import leaves it. Uploaded URLs count toward the
-# proof-image floor like ``placeholder://`` srcs.
-_PROOF_WITH_IMAGE = '<p>Matched the treeline.</p><img src="https://cdn.example.com/annotation.jpg">'
-_PROOF_TEXT_ONLY = "<p>No image here.</p>"
 
 
 def _detection(db, author, *, proof: str | None = None, **kwargs) -> Event:
@@ -31,7 +27,7 @@ def _detection(db, author, *, proof: str | None = None, **kwargs) -> Event:
         with_media=kwargs.pop("with_media", True),
         **kwargs,
     )
-    geo.proof = _PROOF_WITH_IMAGE if proof is None else proof
+    geo.proof = PROOF_WITH_IMAGE if proof is None else proof
     db.commit()
     db.refresh(geo)
     return geo
@@ -124,7 +120,7 @@ def test_batch_complete_publishes_what_clears_the_floor(db, author, conflict, ca
     """A mixed selection: ready rows publish, the one missing proof stays a detection."""
     ready_one = _detection(db, author)
     ready_two = _detection(db, author)
-    imageless = _detection(db, author, proof=_PROOF_TEXT_ONLY)
+    imageless = _detection(db, author, proof=PROOF_TEXT_ONLY)
 
     response = client.post(
         _URL,

@@ -120,7 +120,7 @@ async def create_request(
 
     _require_submission_media(file is not None)
 
-    proof_data = _sanitize_proof(proof_data, allow_placeholders=True)
+    proof_data = _sanitize_proof(proof_data)
 
     geo = Event(
         owner_id=current_user.id,
@@ -237,7 +237,7 @@ async def update_request(
     # Before any S3 work, so a refused swap writes nothing.
     swap = _plan_source_swap(geo, remove_media_ids=remove_media_ids, files=files)
 
-    proof_data = _sanitize_proof(proof_data, allow_placeholders=True)
+    proof_data = _sanitize_proof(proof_data)
 
     _require_submission_media(swap.survivors > 0)
 

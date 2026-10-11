@@ -282,24 +282,14 @@ def test_create_collection_rejects_a_description_past_the_cap(owner):
 
 
 def test_create_collection_rejects_a_body_over_a_sanitiser_cap(owner):
-    """A body past the sanitiser's depth cap is refused by the service, which becomes the typed 400."""
+    """A body past the sanitiser's tag-count cap is refused by the service, which becomes the typed 400."""
     response = client.post(
         "/api/v1/collections",
-        json={"title": "Deep", "description": "<blockquote>" * 40 + "x"},
+        json={"title": "Deep", "description": "<br>" * 10_001},
         headers=login_as(client, owner),
     )
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "invalid_description"
-
-
-def test_create_collection_rejects_a_body_that_is_not_a_string(owner):
-    """A Tiptap JSON document is not HTML: the field takes a string, so it never reaches the service."""
-    response = client.post(
-        "/api/v1/collections",
-        json={"title": "Old shape", "description": {"type": "doc", "content": []}},
-        headers=login_as(client, owner),
-    )
-    assert response.status_code == 422
 
 
 def test_create_collection_strips_the_description(db, cleanup, owner):

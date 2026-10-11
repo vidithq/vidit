@@ -1,14 +1,8 @@
 """Server-side sanitisation of rich-text HTML (event proofs, collection descriptions).
 
-An attacker can bypass the editor and POST raw HTML (scripts, event handlers,
-``javascript:`` URLs, tracking-pixel image hosts), so :func:`sanitize_html`
-parses it with ``nh3`` (html5ever plus ammonia) against a tag and attribute
-allowlist and serialises the canonical result. Link and image URLs go through
-:func:`safe_link_href` and :func:`_safe_image_src`; a refused URL drops the
-attribute, and an image left without a ``src`` is dropped.
-
-The allowlists and URL predicates mirror the front end (`lib/proof.tsx`);
-a security fix to either side needs the other.
+The rules are in ``docs/api.md`` (Rich text). The allowlists and URL predicates
+mirror the front end (`lib/proof.tsx`); a security fix to either side needs the
+other.
 """
 
 import re
@@ -16,7 +10,6 @@ import secrets
 from collections.abc import Mapping
 from html import escape as html_escape
 from html.parser import HTMLParser
-from typing import Any
 from urllib.parse import urlparse
 
 import nh3
@@ -26,11 +19,10 @@ from app.services.storage import LOCAL_STORAGE_URL_PREFIX
 
 # Src scheme for a not-yet-uploaded proof image (``placeholder://<filename>``,
 # the file rides in the same multipart request). Intake resolves it before
-# storing, so no persisted doc carries one. Mirrored by `lib/proofImages.ts`.
+# storing, so no persisted body carries one. Mirrored by `lib/proofImages.ts`.
 PROOF_PLACEHOLDER_PREFIX = "placeholder://"
 
-# Every tag but ``img``, which only a proof carries. A tag outside the set is
-# unwrapped (its text stays); ``script`` and ``style`` lose their content too.
+# Every tag but ``img``, which only a proof carries.
 _TEXT_TAGS = frozenset(
     {
         "p",
@@ -52,17 +44,14 @@ _TEXT_TAGS = frozenset(
 )
 # ``"*"`` empties ammonia's default generic set (``lang``, ``title``).
 _ATTRIBUTES: dict[str, set[str]] = {"*": set(), "a": {"href"}, "img": {"src", "alt"}}
-_VOID_TAGS = frozenset({"img", "hr", "br"})
 
-# Blocks whose boundaries start a new line in :func:`html_text`.
 _LINE_TAGS = frozenset({"p", "h2", "h3", "li", "blockquote", "pre", "ul", "ol", "hr", "br"})
 
 # DoS guards, checked before parsing: html5ever's tree builder is quadratic in
 # nesting depth, so the tag count bounds parse time (10,000 nested tags parse
-# in about 0.1 s). A long writeup with ~20 images is well under all three.
+# in about 0.1 s). A long writeup with ~20 images is well under both.
 _MAX_LENGTH = 200_000
 _MAX_TAGS = 10_000
-_MAX_DEPTH = 32
 
 # Canonical output escapes ``"`` and ``>`` inside attribute values, so ``[^>]*``
 # spans exactly one tag and `` src="`` cannot occur inside a value. An ``a``
@@ -72,26 +61,14 @@ _BARE_IMG = re.compile(r'<img(?![^>]*\ssrc=")[^>]*>')
 _BARE_LINK = re.compile(r"<a>(.*?)</a>", re.DOTALL)
 
 # The editor writes U+FFFC into an empty block; it carries no text.
-_OBJECT_REPLACEMENT = "\ufffc"
+_OBJECT_REPLACEMENT = "￼"
 
 
-def _safe_image_src(value: Any, *, allow_placeholders: bool = False) -> str | None:
-    """Image src must be relative or point at the configured media host.
+def _safe_image_src(value: str, *, allow_placeholders: bool = False) -> str | None:
+    """The src if it is relative or on the configured media host, else ``None``.
 
-    - ``cloudfront_domain`` set (prod): only that host's https URLs pass.
-    - no CDN + ``s3``: only the bucket endpoint passes. Falling through to
-      "any https" would let a stored tracking pixel exfiltrate every viewer's
-      IP/UA.
-    - no CDN + ``local`` (dev): the local-storage prefix and any other https
-      pass.
-
-    ``allow_placeholders`` also admits ``placeholder://<filename>`` (intake
-    only). Ownership of a stored image is an intake question
-    (``evidence_intake._reject_foreign_proof_srcs``). Mirrored by
-    ``isSafeImageSrc`` (`lib/proof.tsx`).
+    Mirrored by ``isSafeImageSrc`` (`lib/proof.tsx`).
     """
-    if not isinstance(value, str):
-        return None
     if allow_placeholders and value.startswith(PROOF_PLACEHOLDER_PREFIX):
         # A bare prefix names no file; drop the image rather than 400 at intake.
         return value if len(value) > len(PROOF_PLACEHOLDER_PREFIX) else None
@@ -125,16 +102,11 @@ def _safe_image_src(value: Any, *, allow_placeholders: bool = False) -> str | No
     return value
 
 
-def safe_link_href(value: Any) -> str | None:
-    """The value if it is an explicit ``http(s)://`` URL, else ``None``.
+def safe_link_href(value: str) -> str | None:
+    """The value if it is an ``http(s)://`` URL with a host, else ``None``.
 
-    Rejects ``javascript:``, ``data:``, ``mailto:``, and schemeless paths.
-    The one link allowlist: applied at write time and again by source
-    archival. A value ``urlparse`` refuses (``http://[::1``) returns ``None``
-    instead of raising. Mirrored by ``isSafeLinkHref`` (`lib/proof.tsx`).
+    Mirrored by ``isSafeLinkHref`` (`lib/proof.tsx`).
     """
-    if not isinstance(value, str):
-        return None
     try:
         parsed = urlparse(value)
     except ValueError:
@@ -166,23 +138,6 @@ def _check_size(html: str) -> None:
         raise ValueError(f"Rich text exceeds max length ({_MAX_LENGTH} characters)")
     if html.count("<") > _MAX_TAGS:
         raise ValueError(f"Rich text exceeds max tag count ({_MAX_TAGS})")
-
-
-class _DepthProbe(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.depth = 0
-        self.max_depth = 0
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in _VOID_TAGS:
-            return
-        self.depth += 1
-        self.max_depth = max(self.max_depth, self.depth)
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag not in _VOID_TAGS:
-            self.depth -= 1
 
 
 def _clean(
@@ -228,88 +183,45 @@ def _clean(
 
 
 def sanitize_html(html: str, *, allow_images: bool = True, allow_placeholders: bool = False) -> str:
-    """The canonical, allowlisted form of a rich-text body.
-
-    Keeps ``p``, ``h2``, ``h3``, ``strong``, ``em``, ``s``, ``code``, ``pre``,
-    ``a[href]``, ``ul``, ``ol``, ``li``, ``blockquote``, ``hr``, ``br`` and
-    ``img[src, alt]``. Any other tag is unwrapped with its text kept; ``script``
-    and ``style`` lose their content too. A link whose href fails
-    :func:`safe_link_href` becomes text; an image whose src fails
-    :func:`_safe_image_src` is dropped. Raises ValueError over the size, tag
-    count or depth caps.
-
-    A body with no text (:func:`html_text`) and no image is ``""``, the empty
-    body. ``allow_images=False`` drops every image. ``allow_placeholders=True``
-    admits ``placeholder://`` srcs for the create paths (see
-    ``PROOF_PLACEHOLDER_PREFIX``).
-    """
+    """The canonical, allowlisted form of a rich-text body; raises ValueError over a cap."""
     _check_size(html)
     cleaned = _clean(html, allow_images=allow_images, allow_placeholders=allow_placeholders)
-    probe = _DepthProbe()
-    probe.feed(cleaned)
-    probe.close()
-    if probe.max_depth > _MAX_DEPTH:
-        raise ValueError(f"Rich text exceeds max depth ({_MAX_DEPTH})")
-    if not html_text(cleaned) and not extract_image_srcs(cleaned):
+    if "<img " not in cleaned and not html_text(cleaned):
         return ""
     return cleaned
-
-
-def sanitize_html_or_raise(
-    html: str,
-    *,
-    error: type[Exception],
-    allow_images: bool = True,
-    allow_placeholders: bool = False,
-) -> str:
-    """Sanitise a body, raising ``error`` where the sanitiser raises ``ValueError``.
-
-    Routers map typed service errors by ``code``
-    (``routers/_errors.raise_typed_error``), so the ValueError must become one
-    first. Callers: ``services/events/rules._sanitize_proof`` and
-    ``services/collections._checked_description``. ``error`` is a parameter so
-    each service owns its vocabulary without importing the other; the message
-    passes through unchanged.
-    """
-    try:
-        return sanitize_html(html, allow_images=allow_images, allow_placeholders=allow_placeholders)
-    except ValueError as exc:
-        raise error(str(exc)) from exc
 
 
 def rewrite_image_srcs(html: str, src_map: Mapping[str, str]) -> str:
     """A sanitised proof body with each image src in ``src_map`` swapped for its value.
 
-    Intake's ``placeholder://`` to stored-URL rewrite. The swap runs inside the
-    sanitiser, so the result stays canonical. Mapped URLs are ones storage
-    minted, so they skip the host check.
+    The swap runs inside the sanitiser, so the result stays canonical. Mapped
+    URLs are ones storage minted, so they skip the host check.
     """
     return _clean(html, allow_images=True, allow_placeholders=True, src_map=src_map)
 
 
-def _escape_attr(value: str) -> str:
-    # The escaping html5ever's serialiser applies, so the result stays canonical.
-    return value.replace("&", "&amp;").replace('"', "&quot;").replace(" ", "&nbsp;")
-
-
 def html_from_text(text: str, *, image_srcs: list[str] | None = None) -> str:
-    """One paragraph per non-blank line, then one ``img`` per src; empty input yields ``""``.
-
-    Wraps machine-detected text (``clean_proof_text``) into the proof shape.
-    ``image_srcs`` are URLs storage minted, so they skip the host check.
-    """
+    """One paragraph per non-blank line, then one ``img`` per src; empty input yields ``""``."""
     paragraphs = "".join(
         f"<p>{html_escape(line, quote=False)}</p>" for line in text.split("\n") if line.strip()
     )
-    images = "".join(f'<img src="{_escape_attr(src)}">' for src in image_srcs or [])
-    return sanitize_html(paragraphs, allow_images=False) + images
+    images = "".join(f'<img src="{html_escape(src)}">' for src in image_srcs or [])
+    return sanitize_html(paragraphs + images)
 
 
-class _TextProjection(HTMLParser):
-    def __init__(self) -> None:
+class _Reader(HTMLParser):
+    """One pass over a body: its text lines, image srcs and link hrefs."""
+
+    _URL_ATTRS = {"img": "src", "a": "href"}
+
+    def __init__(self, html: str) -> None:
         super().__init__(convert_charrefs=True)
         self.lines: list[str] = []
         self.current: list[str] = []
+        self.urls: dict[str, list[str]] = {"img": [], "a": []}
+        self.feed(html)
+        self.close()
+        self.flush()
 
     def flush(self) -> None:
         text = "".join(self.current)
@@ -319,68 +231,31 @@ class _TextProjection(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in _LINE_TAGS:
             self.flush()
+        if tag in self._URL_ATTRS:
+            wanted = self._URL_ATTRS[tag]
+            self.urls[tag].extend(v for name, v in attrs if name == wanted and v is not None)
 
     def handle_endtag(self, tag: str) -> None:
         if tag in _LINE_TAGS:
             self.flush()
 
     def handle_data(self, data: str) -> None:
-        self.current.append(data.replace(_OBJECT_REPLACEMENT, ""))
+        self.current.append(data)
 
 
 def html_text(html: str) -> str:
     """The plain-text projection of a sanitised rich-text body.
 
-    The one reader of a rich-text body as text: the search index
-    (``collections.description_text``, ``services/search._collection_tsvector``),
-    the card clamp, the share card, and the length cap in ``services/collections``.
-
-    Text concatenates with entities decoded and U+FFFC dropped. Every ``p``,
-    ``h2``, ``h3``, ``li``, ``blockquote``, ``pre``, ``ul``, ``ol`` and ``hr``
-    boundary and every ``br`` starts a new line, and so does a newline in the
-    text (``pre`` keeps its own). Lines are stripped, blank lines drop out, and
-    the rest join with ``\\n``.
-
     Mirrored by ``lib/proof.tsx::htmlText``; change both.
     """
-    parser = _TextProjection()
-    parser.feed(html)
-    parser.close()
-    parser.flush()
-    return "\n".join(parser.lines)
-
-
-class _UrlCollector(HTMLParser):
-    def __init__(self, tag: str, attr: str) -> None:
-        super().__init__(convert_charrefs=True)
-        self.tag = tag
-        self.attr = attr
-        self.values: list[str] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag != self.tag:
-            return
-        for name, value in attrs:
-            if name == self.attr and value is not None and value not in self.values:
-                self.values.append(value)
-
-
-def _collect(html: str, tag: str, attr: str) -> list[str]:
-    collector = _UrlCollector(tag, attr)
-    collector.feed(html)
-    collector.close()
-    return collector.values
+    return "\n".join(_Reader(html).lines)
 
 
 def extract_image_srcs(html: str) -> list[str]:
-    """Image srcs of a rich-text body (sanitised or not), in document order, deduped."""
-    return _collect(html, "img", "src")
+    """Image srcs of a rich-text body, in document order, deduped."""
+    return list(dict.fromkeys(_Reader(html).urls["img"]))
 
 
 def extract_link_hrefs(html: str) -> list[str]:
-    """Link hrefs of a rich-text body (sanitised or not), in document order, deduped.
-
-    Only ``http(s)`` hrefs come back: :func:`safe_link_href` is re-applied
-    because a row stored before a rule tightened is still readable.
-    """
-    return [href for href in _collect(html, "a", "href") if safe_link_href(href) is not None]
+    """Link hrefs of a rich-text body, in document order."""
+    return _Reader(html).urls["a"]

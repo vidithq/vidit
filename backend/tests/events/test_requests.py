@@ -294,7 +294,7 @@ def test_create_rejects_over_length_source_url(author):
 
 
 def test_create_rejects_unsanitisable_proof(author):
-    """A proof past the sanitiser's depth cap gets ``invalid_proof`` before any upload."""
+    """A proof past the sanitiser's tag-count cap gets ``invalid_proof`` before any upload."""
     response = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
@@ -302,7 +302,7 @@ def test_create_rejects_unsanitisable_proof(author):
             "title": "ok",
             "source_url": "https://example.com/post/1",
             "source_posted_at": "2026-05-01T12:00",
-            "proof": "<ul>" * 40,
+            "proof": "<br>" * 10_001,
         },
         files={"file": _tiny_jpeg()},
     )

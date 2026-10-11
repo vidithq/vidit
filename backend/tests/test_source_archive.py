@@ -25,7 +25,6 @@ from app.models.source_archive import SourceArchive
 from app.models.user import User
 from app.services import source_archive
 from app.services.auth import hash_password
-from app.services.sanitize import extract_link_hrefs
 
 SOURCE = "https://newsdesk.example/post/1234567890"
 PROOF_LINK = "https://example.org/report"
@@ -98,16 +97,6 @@ def _with_mirrors(db, event, *urls: str) -> Event:
 
 
 # ── link collection ────────────────────────────────────────────────────
-
-
-def test_extract_link_hrefs_reads_links_and_dedupes():
-    doc = _proof_doc(PROOF_LINK, PROOF_LINK, "https://example.org/other")
-    assert extract_link_hrefs(doc) == [PROOF_LINK, "https://example.org/other"]
-
-
-def test_extract_link_hrefs_drops_non_http_schemes():
-    doc = _proof_doc("javascript:alert(1)", PROOF_LINK)
-    assert extract_link_hrefs(doc) == [PROOF_LINK]
 
 
 def test_collect_links_orders_source_first_and_tags_origin(event):

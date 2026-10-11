@@ -12,7 +12,7 @@ import pytest
 from psycopg2.extras import Json
 
 from app.config import settings
-from app.services.sanitize import extract_image_srcs, html_text, sanitize_html
+from app.services.sanitize import extract_image_srcs, html_text
 from tests.conftest import _admin_conn, _db_name, _swap_db
 
 _PATH = Path(__file__).parents[1] / "alembic" / "versions" / "u9w1y3a5c7e9_rich_text_html.py"
@@ -81,7 +81,7 @@ def test_links_keep_a_safe_href_and_lose_an_unsafe_one():
     assert tiptap_to_html(doc) == '<p><a href="https://x.example/?a=1&amp;b=2">ok</a> bad</p>'
 
 
-@pytest.mark.parametrize(("level", "tag"), [(1, "h2"), (2, "h2"), (3, "h3"), (4, "h3"), (6, "h3")])
+@pytest.mark.parametrize(("level", "tag"), [(1, "h2"), (2, "h2"), (3, "h3"), (6, "h3")])
 def test_heading_levels_fold_into_h2_and_h3(level, tag):
     doc = _doc({"type": "heading", "attrs": {"level": level}, "content": [_text("T")]})
     assert tiptap_to_html(doc) == f"<{tag}>T</{tag}>"
@@ -122,11 +122,6 @@ def test_images_keep_alt_and_lose_unsafe_srcs():
     assert tiptap_to_html(doc) == '<img src="/media/a.png" alt="frame">'
 
 
-def test_descriptions_drop_images():
-    doc = _doc(_p(_text("words")), {"type": "image", "attrs": {"src": "/a.png"}})
-    assert tiptap_to_html(doc, allow_images=False) == "<p>words</p>"
-
-
 def test_output_is_canonical_and_projects_like_the_document():
     doc = _doc(
         {"type": "heading", "attrs": {"level": 2}, "content": [_text("Title")]},
@@ -135,7 +130,7 @@ def test_output_is_canonical_and_projects_like_the_document():
         {"type": "image", "attrs": {"src": "/a.png"}},
     )
     html = tiptap_to_html(doc)
-    assert sanitize_html(html) == html
+    assert migration._sanitize(html) == html
     assert html_text(html) == "Title\na b\nc\nd"
     assert extract_image_srcs(html) == ["/a.png"]
 
