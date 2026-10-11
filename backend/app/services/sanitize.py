@@ -50,7 +50,8 @@ _TEXT_TAGS = frozenset(
         "br",
     }
 )
-_ATTRIBUTES = {"a": {"href"}, "img": {"src", "alt"}}
+# ``"*"`` empties ammonia's default generic set (``lang``, ``title``).
+_ATTRIBUTES: dict[str, set[str]] = {"*": set(), "a": {"href"}, "img": {"src", "alt"}}
 _VOID_TAGS = frozenset({"img", "hr", "br"})
 
 # Blocks whose boundaries start a new line in :func:`html_text`.
@@ -69,6 +70,9 @@ _MAX_DEPTH = 32
 # links, so the lazy match pairs it with its own ``</a>``.
 _BARE_IMG = re.compile(r'<img(?![^>]*\ssrc=")[^>]*>')
 _BARE_LINK = re.compile(r"<a>(.*?)</a>", re.DOTALL)
+
+# The editor writes U+FFFC into an empty block; it carries no text.
+_OBJECT_REPLACEMENT = "\ufffc"
 
 
 def _safe_image_src(value: Any, *, allow_placeholders: bool = False) -> str | None:
@@ -217,7 +221,7 @@ def _clean(
         link_rel=None,
         url_schemes={"http", "https"},
     )
-    cleaned = _BARE_LINK.sub(r"\1", _BARE_IMG.sub("", cleaned))
+    cleaned = _BARE_LINK.sub(r"\1", _BARE_IMG.sub("", cleaned)).replace(_OBJECT_REPLACEMENT, "")
     if allow_placeholders:
         cleaned = cleaned.replace(marker, PROOF_PLACEHOLDER_PREFIX)
     return cleaned
@@ -234,7 +238,8 @@ def sanitize_html(html: str, *, allow_images: bool = True, allow_placeholders: b
     :func:`_safe_image_src` is dropped. Raises ValueError over the size, tag
     count or depth caps.
 
-    ``allow_images=False`` drops every image. ``allow_placeholders=True``
+    A body with no text (:func:`html_text`) and no image is ``""``, the empty
+    body. ``allow_images=False`` drops every image. ``allow_placeholders=True``
     admits ``placeholder://`` srcs for the create paths (see
     ``PROOF_PLACEHOLDER_PREFIX``).
     """
@@ -245,6 +250,8 @@ def sanitize_html(html: str, *, allow_images: bool = True, allow_placeholders: b
     probe.close()
     if probe.max_depth > _MAX_DEPTH:
         raise ValueError(f"Rich text exceeds max depth ({_MAX_DEPTH})")
+    if not html_text(cleaned) and not extract_image_srcs(cleaned):
+        return ""
     return cleaned
 
 
@@ -305,10 +312,9 @@ class _TextProjection(HTMLParser):
         self.current: list[str] = []
 
     def flush(self) -> None:
-        line = "".join(self.current).strip()
+        text = "".join(self.current)
         self.current.clear()
-        if line:
-            self.lines.append(line)
+        self.lines.extend(line.strip() for line in text.split("\n") if line.strip())
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in _LINE_TAGS:
@@ -319,7 +325,7 @@ class _TextProjection(HTMLParser):
             self.flush()
 
     def handle_data(self, data: str) -> None:
-        self.current.append(data)
+        self.current.append(data.replace(_OBJECT_REPLACEMENT, ""))
 
 
 def html_text(html: str) -> str:
@@ -329,10 +335,11 @@ def html_text(html: str) -> str:
     (``collections.description_text``, ``services/search._collection_tsvector``),
     the card clamp, the share card, and the length cap in ``services/collections``.
 
-    Text concatenates with entities decoded. Every ``p``, ``h2``, ``h3``,
-    ``li``, ``blockquote``, ``pre``, ``ul``, ``ol`` and ``hr`` boundary and
-    every ``br`` starts a new line. Lines are stripped, blank lines drop out,
-    and the rest join with ``\\n``.
+    Text concatenates with entities decoded and U+FFFC dropped. Every ``p``,
+    ``h2``, ``h3``, ``li``, ``blockquote``, ``pre``, ``ul``, ``ol`` and ``hr``
+    boundary and every ``br`` starts a new line, and so does a newline in the
+    text (``pre`` keeps its own). Lines are stripped, blank lines drop out, and
+    the rest join with ``\\n``.
 
     Mirrored by ``lib/proof.tsx::htmlText``; change both.
     """

@@ -15,8 +15,9 @@ The converter and the sanitiser config below are frozen copies, not imports:
 the app's sanitiser evolves, and a migration must produce the same rows on
 every run. The converter maps the editor's nodes and marks to the tags the
 sanitiser allows. ``heading`` levels 1 and 2 become ``h2`` and levels 3 and up
-become ``h3``. ``underline`` is dropped with its text kept. An unknown node
-keeps its text. The result then passes the frozen sanitiser, so every row is in
+become ``h3``. ``underline`` is dropped with its text kept. A newline inside a
+text node becomes ``br`` outside a code block, where HTML would collapse it.
+An unknown node keeps its text. The result then passes the frozen sanitiser, so every row is in
 the canonical form the app writes.
 
 Image srcs were host-checked at write time against the deployment's settings,
@@ -24,10 +25,10 @@ which a migration cannot read reliably. The frozen image check keeps every src
 any configuration admits (a relative path, or ``http`` / ``https``) and refuses
 the rest; the frozen link check is ``safe_link_href``.
 
-An empty document becomes ``""``, the empty body the app writes; both columns
-stay ``NOT NULL``. ``collections.description_text`` already holds the plain-text
-projection the HTML yields, so it is left as it is, and so is the search index
-built over it.
+A document with no text and no image becomes ``""``, the empty body the app
+writes; both columns stay ``NOT NULL``. ``collections.description_text``
+already holds the plain-text projection the HTML yields, so it is left as it
+is, and so is the search index built over it.
 
 The downgrade refuses: HTML does not map back to a Tiptap document without
 loss. Restore from a backup taken before the upgrade instead.
@@ -68,7 +69,7 @@ _TEXT_TAGS = frozenset(
         "br",
     }
 )
-_ATTRIBUTES = {"a": {"href"}, "img": {"src", "alt"}}
+_ATTRIBUTES: dict[str, set[str]] = {"*": set(), "a": {"href"}, "img": {"src", "alt"}}
 _BARE_IMG = re.compile(r'<img(?![^>]*\ssrc=")[^>]*>')
 _BARE_LINK = re.compile(r"<a>(.*?)</a>", re.DOTALL)
 
@@ -131,14 +132,22 @@ def _sanitize(html: str, *, allow_images: bool) -> str:
         link_rel=None,
         url_schemes={"http", "https"},
     )
-    return _BARE_LINK.sub(r"\1", _BARE_IMG.sub("", cleaned))
+    cleaned = _BARE_LINK.sub(r"\1", _BARE_IMG.sub("", cleaned)).replace("\ufffc", "")
+    # A body with no text and no image is the empty body.
+    text = re.sub(r"<[^>]*>", "", cleaned).replace("&nbsp;", " ")
+    if "<img " not in cleaned and not text.strip():
+        return ""
+    return cleaned
 
 
-def _text_html(node: dict[str, Any]) -> str:
+def _text_html(node: dict[str, Any], *, in_code: bool) -> str:
     text = node.get("text")
     if not isinstance(text, str):
         return ""
     html = escape(text, quote=False)
+    if not in_code:
+        # Outside ``pre`` HTML collapses a newline into a space, so it becomes a break.
+        html = html.replace("\n", "<br>")
     marks = node.get("marks")
     if not isinstance(marks, list):
         return html
@@ -158,14 +167,19 @@ def _text_html(node: dict[str, Any]) -> str:
     return html
 
 
-def _node_html(node: Any) -> str:
+def _node_html(node: Any, *, in_code: bool = False) -> str:
     if not isinstance(node, dict):
         return ""
     node_type = node.get("type")
     if node_type == "text":
-        return _text_html(node)
+        return _text_html(node, in_code=in_code)
     content = node.get("content")
-    inner = "".join(_node_html(c) for c in content) if isinstance(content, list) else ""
+    in_code = in_code or node_type == "codeBlock"
+    inner = (
+        "".join(_node_html(c, in_code=in_code) for c in content)
+        if isinstance(content, list)
+        else ""
+    )
     attrs = node.get("attrs") if isinstance(node.get("attrs"), dict) else {}
     if isinstance(node_type, str) and node_type in _BLOCK_TAGS:
         tag = _BLOCK_TAGS[node_type]
