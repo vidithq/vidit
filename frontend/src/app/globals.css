@@ -198,6 +198,19 @@
   }
 }
 
+/* BlockNote proof editor: headings and links read as they do in the rendered proof
+   (`lib/proof.tsx` TAG_CLASSES). */
+.bn-editor [data-content-type="heading"] h2 {
+  font-size: var(--text-xl);
+}
+.bn-editor [data-content-type="heading"] h3 {
+  font-size: var(--text-lg);
+}
+.bn-editor a {
+  color: var(--color-orange-400);
+  text-decoration: underline;
+}
+
 /* Custom scrollbar: follows the neutral scale, so it flips with the theme */
 * {
   scrollbar-width: thin;
