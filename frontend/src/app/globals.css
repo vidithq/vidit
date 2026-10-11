@@ -214,6 +214,10 @@
   list-style: disc;
   padding-left: 1.5em;
 }
+.ProseMirror a {
+  color: var(--color-orange-400);
+  text-decoration: underline;
+}
 .ProseMirror img {
   max-width: 100%;
   height: auto;
