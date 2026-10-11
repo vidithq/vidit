@@ -408,11 +408,11 @@ def test_text_splits_preformatted_lines():
 
 
 def test_sanitising_drops_the_object_replacement_character():
-    assert sanitize_html("<p>a￼b</p>") == "<p>ab</p>"
+    assert sanitize_html("<p>a\ufffcb</p>") == "<p>ab</p>"
 
 
 @pytest.mark.parametrize(
-    "html", ["<p></p>", "<p>￼</p>", "<p> &nbsp;</p><hr><br>", "<ul><li></li></ul>"]
+    "html", ["<p></p>", "<p>\ufffc</p>", "<p> &nbsp;</p><hr><br>", "<ul><li></li></ul>"]
 )
 def test_a_body_without_text_or_image_is_empty(html):
     assert sanitize_html(html) == ""

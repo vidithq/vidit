@@ -26,9 +26,9 @@ any configuration admits (a relative path, or ``http`` / ``https``) and refuses
 the rest; the frozen link check is ``safe_link_href``.
 
 A document with no text and no image becomes ``""``, the empty body the app
-writes; both columns stay ``NOT NULL``. ``collections.description_text``
-already holds the plain-text projection the HTML yields, so it is left as it
-is, and so is the search index built over it.
+writes; both columns stay ``NOT NULL``. ``collections.description_text`` and
+the search index over it are left as they are; the stored projection can differ
+from the HTML's in blank lines.
 
 The downgrade refuses: HTML does not map back to a Tiptap document without
 loss. Restore from a backup taken before the upgrade instead.
@@ -132,33 +132,51 @@ def _sanitize(html: str) -> str:
     return cleaned
 
 
+# A field of the wrong type reads as absent, so one malformed row cannot abort
+# the upgrade.
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _str(value: Any) -> str:
+    return value if isinstance(value, str) else ""
+
+
 def _text_html(node: dict[str, Any], *, in_code: bool) -> str:
-    html = escape(node.get("text", ""), quote=False)
+    html = escape(_str(node.get("text")), quote=False)
     if not in_code:
         # Outside ``pre`` HTML collapses a newline into a space, so it becomes a break.
         html = html.replace("\n", "<br>")
     # The first mark is the outermost tag.
-    for mark in reversed(node.get("marks", [])):
-        if mark["type"] == "link":
-            html = f'<a href="{escape(mark["attrs"]["href"])}">{html}</a>'
-        elif mark["type"] in _MARK_TAGS:
-            tag = _MARK_TAGS[mark["type"]]
+    for mark in map(_dict, reversed(_list(node.get("marks")))):
+        mark_type = _str(mark.get("type"))
+        if mark_type == "link":
+            href = escape(_str(_dict(mark.get("attrs")).get("href")))
+            html = f'<a href="{href}">{html}</a>'
+        elif mark_type in _MARK_TAGS:
+            tag = _MARK_TAGS[mark_type]
             html = f"<{tag}>{html}</{tag}>"
     return html
 
 
-def _node_html(node: dict[str, Any], *, in_code: bool = False) -> str:
-    node_type = node.get("type")
+def _node_html(node: Any, *, in_code: bool = False) -> str:
+    node = _dict(node)
+    node_type = _str(node.get("type"))
     if node_type == "text":
         return _text_html(node, in_code=in_code)
     in_code = in_code or node_type == "codeBlock"
-    inner = "".join(_node_html(c, in_code=in_code) for c in node.get("content", []))
-    attrs = node.get("attrs", {})
+    inner = "".join(_node_html(c, in_code=in_code) for c in _list(node.get("content")))
+    attrs = _dict(node.get("attrs"))
     if node_type in _BLOCK_TAGS:
         tag = _BLOCK_TAGS[node_type]
         return f"<{tag}>{inner}</{tag}>"
     if node_type == "heading":
-        tag = "h3" if attrs.get("level", 1) >= 3 else "h2"
+        level = attrs.get("level")
+        tag = "h3" if isinstance(level, int) and level >= 3 else "h2"
         return f"<{tag}>{inner}</{tag}>"
     if node_type == "codeBlock":
         return f"<pre><code>{inner}</code></pre>"
@@ -168,7 +186,7 @@ def _node_html(node: dict[str, Any], *, in_code: bool = False) -> str:
         return "<br>"
     if node_type == "image":
         src = attrs.get("src")
-        if src is None:
+        if not isinstance(src, str):
             return ""
         alt = attrs.get("alt")
         alt_attr = f' alt="{escape(alt)}"' if isinstance(alt, str) and alt else ""
@@ -177,7 +195,7 @@ def _node_html(node: dict[str, Any], *, in_code: bool = False) -> str:
     return inner
 
 
-def tiptap_to_html(doc: dict[str, Any]) -> str:
+def tiptap_to_html(doc: Any) -> str:
     """The sanitised HTML of a stored Tiptap document; ``""`` for an empty one."""
     return _sanitize(_node_html(doc))
 

@@ -82,7 +82,7 @@ _BARE_IMG = re.compile(r'<img(?:\s(?!src=)[a-z-]+="[^"]*")*>')
 _BARE_LINK = re.compile(r"<a>(.*?)</a>", re.DOTALL)
 
 # The editor writes U+FFFC into an empty block; it carries no text.
-_OBJECT_REPLACEMENT = "￼"
+_OBJECT_REPLACEMENT = "\ufffc"
 
 
 def _safe_image_src(value: str, *, allow_placeholders: bool = False) -> str | None:

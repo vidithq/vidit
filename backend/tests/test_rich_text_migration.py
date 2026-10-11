@@ -144,6 +144,17 @@ def test_newlines_inside_text_become_breaks_outside_code():
     assert tiptap_to_html(doc) == "<p>a<br><br>b</p><pre><code>c\nd</code></pre>"
 
 
+def test_malformed_fields_read_as_absent():
+    heading = {
+        "type": "heading",
+        "attrs": {"level": "3"},
+        "content": [_text("h", {"type": "link"}, {"type": ["bold"]}, "italic")],
+    }
+    doc = _doc(heading, {"type": "image", "attrs": {"src": 5}}, "junk", {"content": "x"})
+    assert tiptap_to_html(doc) == "<h2>h</h2>"
+    assert tiptap_to_html(None) == ""
+
+
 @pytest.mark.parametrize(
     "doc",
     [

@@ -6,7 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
-- Proofs and collection descriptions are written in a block editor with a slash menu, code blocks and drag-to-reorder, and are stored as sanitized HTML; existing bodies convert automatically and lose underline.
+- Proofs and collection descriptions are written in a block editor with a slash menu, code blocks and drag-to-reorder, and are stored as sanitized HTML. Existing bodies convert automatically; the conversion drops an ordered list's start number, a code block's language and an image's title, and a level 1 heading becomes a level 2 heading.
 
 ## v0.6.6, 2026-10-11
 
