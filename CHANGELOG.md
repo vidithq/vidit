@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Proofs and collection descriptions can link text to any http or https page from the editor toolbar, and links open in a new tab ([#541](https://github.com/vidithq/vidit/pull/541)).
+
 ## v0.6.6, 2026-10-11
 
 ### Changed
