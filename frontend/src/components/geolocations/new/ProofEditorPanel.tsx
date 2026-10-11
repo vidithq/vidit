@@ -14,14 +14,14 @@ const ProofEditor = dynamic(
 );
 
 interface ProofEditorPanelProps {
-  proof: Record<string, unknown> | null;
-  onChange: (proof: Record<string, unknown> | null) => void;
+  proof: string | null;
+  onChange: (proof: string) => void;
   /** Local inline images, uploaded as `proof_files[]` at publish. */
   onProofFilesChange?: (files: File[]) => void;
   invalid?: boolean;
 }
 
-/** The "Proof" section: the dynamically loaded Tiptap editor. */
+/** The "Proof" section: the dynamically loaded proof editor. */
 export function ProofEditorPanel({
   proof,
   onChange,
@@ -47,7 +47,7 @@ export function ProofEditorPanel({
         }
       />
 
-      {/* Tiptap reads `initialContent` once: seeding from the current `proof`
+      {/* The editor reads `initialContent` once: seeding from the current `proof`
           restores the draft when the panel remounts on a submit-type toggle. */}
       <ProofEditor
         initialContent={proof}

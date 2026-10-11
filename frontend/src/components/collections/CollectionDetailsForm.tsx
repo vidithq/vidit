@@ -16,14 +16,14 @@ import {
   type CollectionDescription,
   type PickableEvent,
 } from "@/lib/collections";
-import { tiptapDocText } from "@/lib/proof";
+import { htmlText } from "@/lib/proof";
 
-// Tiptap boots ProseMirror, which needs the DOM.
+// BlockNote needs the DOM.
 const ProofEditor = dynamic(() => import("@/components/editor/ProofEditor"), {
   ssr: false,
 });
 
-const EMPTY_DESCRIPTION: CollectionDescription = { type: "doc", content: [] };
+const EMPTY_DESCRIPTION: CollectionDescription = "";
 
 /**
  * The one form behind every collection write (`/collections/new` and
@@ -39,8 +39,8 @@ const EMPTY_DESCRIPTION: CollectionDescription = { type: "doc", content: [] };
  * `<CharCounter>` that turns red exactly when the submit starts refusing.
  *
  * **The description is written in `<ProofEditor>`** with `allowImages={false}`
- * (no upload path, and the server drops the node). The form holds the Tiptap
- * document, and its counter measures the plain-text projection (`tiptapDocText`),
+ * (no upload path, and the server drops the node). The form holds the HTML
+ * body, and its counter measures the plain-text projection (`htmlText`),
  * the reading the server caps, so markup costs nothing.
  *
  * The pending event set is rows, not ids, because the first card renders what
@@ -98,7 +98,7 @@ export function CollectionDetailsForm({
     setEvents((current) => current.filter((held) => held.id !== eventId));
 
   // Plain-text projection, as `services/collections` measures it server-side.
-  const descriptionText = tiptapDocText(description);
+  const descriptionText = htmlText(description);
   const titleOver = title.length > COLLECTION_TITLE_MAX_LEN;
   const descriptionOver =
     descriptionText.length > COLLECTION_DESCRIPTION_MAX_LEN;
@@ -142,7 +142,7 @@ export function CollectionDetailsForm({
 
         <div className="space-y-1.5">
           <span className="flex items-center justify-between gap-2">
-            {/* The editor is a ProseMirror div, not a form control, so the label
+            {/* The editor is a contenteditable div, not a form control, so the label
                 names it through `aria-labelledby` on the wrapper. */}
             <span id={descriptionId} className={FORM_LABEL}>
               Description

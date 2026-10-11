@@ -2443,9 +2443,7 @@ export interface components {
          */
         CollectionCreate: {
             /** Description */
-            description: {
-                [key: string]: unknown;
-            };
+            description: string | null;
             /** Event Ids */
             event_ids?: string[];
             /** Title */
@@ -2531,9 +2529,7 @@ export interface components {
              */
             created_at: string;
             /** Description */
-            description: {
-                [key: string]: unknown;
-            };
+            description: string | null;
             /** Description Text */
             description_text: string;
             /** Event Count */
@@ -2560,9 +2556,7 @@ export interface components {
          */
         CollectionUpdate: {
             /** Description */
-            description: {
-                [key: string]: unknown;
-            };
+            description: string | null;
             /** Title */
             title: string;
         };
@@ -2777,9 +2771,7 @@ export interface components {
             media: components["schemas"]["MediaRead"][];
             owner: components["schemas"]["AuthorRef"];
             /** Proof */
-            proof: {
-                [key: string]: unknown;
-            } | null;
+            proof: string | null;
             requested_by: components["schemas"]["AuthorRef"] | null;
             /** Secondary Source Urls */
             secondary_source_urls: string[];

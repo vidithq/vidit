@@ -1,8 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-// Stub the `next/dynamic` Tiptap loader (jsdom lacks the DOM APIs ProseMirror
-// needs) to assert the section header.
+// Stub the `next/dynamic` editor loader: only the section header is asserted.
 vi.mock("next/dynamic", () => ({
   default: () => function ProofEditorStub() {
     return null;

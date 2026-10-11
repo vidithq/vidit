@@ -20,14 +20,14 @@ import type {
  *  and update alike; change both. */
 export const COLLECTION_TITLE_MAX_LEN = 255;
 
-/** Counted on the plain-text projection of the document (`lib/proof.tsx::tiptapDocText`),
+/** Counted on the plain-text projection of the document (`lib/proof.tsx::htmlText`),
  *  so bolding a word costs no characters. Mirrors `schemas/collection.DESCRIPTION_MAX_LENGTH`,
  *  which `services/collections` applies to the same projection; change both. */
 export const COLLECTION_DESCRIPTION_MAX_LEN = 500;
 
 export type Collection = components["schemas"]["CollectionRead"];
 
-/** A Tiptap document like an event's proof body, minus images. A read carries it beside
+/** Sanitized HTML like an event's proof body, minus images. A read carries it beside
  *  `description_text`, its plain-text projection. */
 export type CollectionDescription = Collection["description"];
 

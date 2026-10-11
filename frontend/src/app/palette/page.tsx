@@ -209,7 +209,7 @@ const MOCK_DETECTION_READY: EventDetail = {
   id: "detection-ready",
   status: "detected",
   source_url: "https://t.me/channel/12345",
-  proof: { type: "doc", content: [{ type: "image", attrs: { src: "" } }] },
+  proof: '<img src="/local-storage/demo.jpg">',
   media: [
     {
       id: "m1",
