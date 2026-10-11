@@ -1,7 +1,7 @@
 """Multipart form-field parsers shared by the geolocation + request create routers.
 
-The ``{status, message}`` contract for malformed ``proof`` JSON, id arrays and
-ISO dates / times lives here once instead of per form.
+The ``{status, message}`` contract for malformed id arrays and ISO dates /
+times lives here once instead of per form.
 """
 
 import json
@@ -20,21 +20,6 @@ from app.services.event_filters import (
 # Cap on a JSON-array form field (tag_ids / conflict_ids / remove_media_ids):
 # bounds an attacker-sized array, which would become an unbounded SQL IN clause.
 MAX_ID_LIST_LENGTH = 100
-
-
-def parse_optional_json_object(raw: str | None, *, field: str) -> dict[str, Any] | None:
-    """Parse a JSON-object form field. ``None`` / empty → ``None``; 400 on garbage."""
-    if not raw:
-        return None
-    try:
-        value = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(
-            status_code=400, detail=f"Invalid JSON in '{field}': {exc.msg}"
-        ) from exc
-    if not isinstance(value, dict):
-        raise HTTPException(status_code=400, detail=f"'{field}' must be a JSON object")
-    return value
 
 
 def parse_json_id_list(raw: str | None, *, field: str, as_uuid: bool = False) -> list[Any]:

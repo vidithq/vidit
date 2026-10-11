@@ -179,7 +179,7 @@ def build_event_read(
     Coordinates are passed in (re-projected by the caller) so every response
     site builds an identical shape. Callers eager-load ``requested_by``,
     ``geolocators`` and their users. ``media`` carries only ``source`` rows
-    (proof images travel inside the proof JSON). ``thumbnail`` may be a proof
+    (proof images travel inside the proof HTML). ``thumbnail`` may be a proof
     image on a source-less event; callers wanting it non-null there must
     eager-load media with ``thumbnail_media_criteria``.
     """

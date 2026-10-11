@@ -44,7 +44,7 @@ from app.schemas.tag import TagRead
 from app.services.event_filters import collectable_events
 from app.services.pagination import keyset_after
 from app.services.permissions import ensure_owner
-from app.services.sanitize import sanitize_tiptap_doc_or_raise, tiptap_doc_text
+from app.services.sanitize import html_text, sanitize_html_or_raise
 from app.services.thumbnails import pick_thumbnail, thumbnail_media_criteria
 
 
@@ -411,40 +411,38 @@ def ensure_collectable(db: Session, *, event_ids: Sequence[uuid.UUID], user: Use
 
 
 class _CheckedDescription(NamedTuple):
-    """A description that passed the rules: the document and its text projection.
+    """A description that passed the rules: the sanitised HTML and its text projection.
 
     Written together (``description`` and ``description_text``) so they cannot
     disagree.
     """
 
-    doc: dict[str, Any]
+    html: str
     text: str
 
 
-def _checked_description(description: dict[str, Any]) -> _CheckedDescription:
+def _checked_description(description: str) -> _CheckedDescription:
     """Sanitise a description and judge it on the text it carries.
 
     Shared by create and update. Three refusals, all
     :class:`InvalidDescriptionError`:
 
-    * Not a Tiptap document the sanitiser accepts with ``allow_images=False``
-      (no upload path behind a description).
-    * Empty projection (:func:`services.sanitize.tiptap_doc_text`): blank
+    * Over a cap of the sanitiser, which runs with ``allow_images=False`` (no
+      upload path behind a description).
+    * Empty projection (:func:`services.sanitize.html_text`): blank
       paragraphs are a missing description.
     * Projection over :data:`schemas.collection.DESCRIPTION_MAX_LENGTH`,
       measured on text so bolding a word costs no characters.
     """
-    doc = sanitize_tiptap_doc_or_raise(
-        description, error=InvalidDescriptionError, allow_images=False
-    )
-    text = tiptap_doc_text(doc)
+    html = sanitize_html_or_raise(description, error=InvalidDescriptionError, allow_images=False)
+    text = html_text(html)
     if not text:
         raise InvalidDescriptionError("A description must not be empty")
     if len(text) > DESCRIPTION_MAX_LENGTH:
         raise InvalidDescriptionError(
             f"A description must be at most {DESCRIPTION_MAX_LENGTH} characters"
         )
-    return _CheckedDescription(doc=doc, text=text)
+    return _CheckedDescription(html=html, text=text)
 
 
 def create_collection(
@@ -452,15 +450,15 @@ def create_collection(
     *,
     owner: User,
     title: str,
-    description: dict[str, Any],
+    description: str,
     event_ids: Sequence[uuid.UUID] = (),
 ) -> Collection:
     """Open a collection for ``owner``, named, described, and holding ``event_ids``.
 
-    ``description`` is the raw Tiptap document, checked by
+    ``description`` is the raw HTML, checked by
     :func:`_checked_description` and stored with its projection (as in
     :func:`update_collection_details`), which keeps search and text-only
-    surfaces in step with the stored document.
+    surfaces in step with the stored body.
 
     ``event_ids`` join in the same transaction through
     :func:`ensure_collectable`, so one refusal takes the whole create with it.
@@ -470,7 +468,7 @@ def create_collection(
     collection = Collection(
         owner_id=owner.id,
         title=title,
-        description=checked.doc,
+        description=checked.html,
         description_text=checked.text,
     )
     db.add(collection)
@@ -490,19 +488,19 @@ def create_collection(
 
 
 def update_collection_details(
-    db: Session, *, collection: Collection, user: User, title: str, description: dict[str, Any]
+    db: Session, *, collection: Collection, user: User, title: str, description: str
 ) -> Collection:
     """Write ``collection``'s title and description. 403 for anyone but the owner.
 
     One verb for both fields so a rename never describes the old collection.
     ``description`` takes the same checks and pairing as
     :func:`create_collection`. Ownership is settled first: a stranger gets a
-    403 whatever the document.
+    403 whatever the body.
     """
     ensure_owner(collection, user)
     checked = _checked_description(description)
     collection.title = title
-    collection.description = checked.doc
+    collection.description = checked.html
     collection.description_text = checked.text
     db.commit()
     db.refresh(collection)

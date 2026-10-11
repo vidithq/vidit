@@ -1,6 +1,5 @@
 import uuid
 from datetime import date, datetime
-from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -10,10 +9,10 @@ from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
 
 # Cap on a collection description, measured on its plain-text projection
-# (``services/sanitize.tiptap_doc_text``), not the markup. Its own constant,
+# (``services/sanitize.html_text``), not the markup. Its own constant,
 # separate from the bio's. Mirrored by
 # ``frontend/src/lib/collections.ts::COLLECTION_DESCRIPTION_MAX_LEN``.
-# ``services/collections`` measures documents against it.
+# ``services/collections`` measures descriptions against it.
 DESCRIPTION_MAX_LENGTH = 500
 
 # Events one create may shelve: a ceiling on the body so a runaway request
@@ -25,13 +24,13 @@ class CollectionWrite(BaseModel):
     """The fields a collection carries, as a create or an update sends them.
 
     One pair for both bodies so caps and blank rules can't drift. Both are
-    required. ``description`` is a raw JSON Tiptap document; what it may carry
+    required. ``description`` is raw HTML; what it may carry
     and what counts as blank or over-long live in ``services/collections``,
     beside the write (the layering the event proof takes).
     """
 
     title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH)
-    description: dict[str, Any]
+    description: str
 
     @field_validator("title")
     @classmethod
@@ -88,9 +87,9 @@ class CollectionCoverTile(BaseModel):
 class CollectionRead(BaseModel):
     """One collection as every read surface renders it.
 
-    ``title`` and ``description`` (a Tiptap document) are the owner's two
+    ``title`` and ``description`` (sanitised HTML) are the owner's two
     required fields. ``description_text`` is its plain-text projection
-    (``services/sanitize.tiptap_doc_text``) for surfaces without rich text
+    (``services/sanitize.html_text``) for surfaces without rich text
     (card clamp, share card, snippet).
 
     ``event_count``, ``first_date`` and ``last_date`` are computed at read time
@@ -112,7 +111,7 @@ class CollectionRead(BaseModel):
     id: uuid.UUID
     owner: AuthorRef
     title: str
-    description: dict[str, Any]
+    description: str
     description_text: str
     cover: list[CollectionCoverTile]
     tags: list[TagRead]

@@ -3,11 +3,11 @@
 Every write that attaches files to an event funnels through
 :func:`attach_evidence_and_commit`: validate the batch, upload the source file
 and proof images to S3 with key tracking, attach one ``Media`` row per file,
-rewrite the proof doc's ``placeholder://`` srcs, drop proof rows the doc no
+rewrite the proof body's ``placeholder://`` srcs, drop proof rows the doc no
 longer references, then commit-or-sweep. Event services own only their
 type-specific rules.
 
-Proof images travel inside the multipart submit: the Tiptap doc references a
+Proof images travel inside the multipart submit: the proof HTML references a
 not-yet-uploaded file as ``placeholder://<filename>`` and the file arrives in
 ``proof_files``. Matching is by sanitised original filename; a placeholder
 with no file, or a file no placeholder references, is a 400 and nothing
@@ -34,7 +34,11 @@ from app.models.event import Event
 from app.models.media import Media
 from app.services import versions
 from app.services.evidence_processing import EvidenceProcessingError
-from app.services.sanitize import PROOF_PLACEHOLDER_PREFIX, extract_image_srcs
+from app.services.sanitize import (
+    PROOF_PLACEHOLDER_PREFIX,
+    extract_image_srcs,
+    rewrite_image_srcs,
+)
 from app.services.storage import (
     derivative_key,
     get_storage,
@@ -98,7 +102,7 @@ EVIDENCE_INTAKE_ERROR_STATUS: dict[str, int] = {
 
 
 def _match_proof_files(
-    proof_doc: dict[str, Any] | None, proof_files: list[UploadFile]
+    proof_doc: str | None, proof_files: list[UploadFile]
 ) -> list[tuple[str, UploadFile]]:
     """Pair each ``placeholder://<filename>`` src with its uploaded file.
 
@@ -137,7 +141,7 @@ def _match_proof_files(
     return pairs
 
 
-def _displayed_proof_srcs(doc: dict[str, Any] | None) -> set[str]:
+def _displayed_proof_srcs(doc: str) -> set[str]:
     """The already-uploaded proof-image URLs a proof body displays (placeholders excluded)."""
     return {s for s in extract_image_srcs(doc) if not s.startswith(PROOF_PLACEHOLDER_PREFIX)}
 
@@ -238,34 +242,16 @@ def prune_unreferenced_proof_media(db: Session, event: Event) -> tuple[list[str]
     return _drop_unreferenced_proof_media(db, event, kept)
 
 
-def _rewrite_image_srcs(doc: dict[str, Any], mapping: dict[str, str]) -> None:
-    """Swap image srcs per ``mapping``, in place, across the whole tree."""
-
-    def walk(node: Any) -> None:
-        if not isinstance(node, dict):
-            return
-        if node.get("type") == "image":
-            attrs = node.get("attrs")
-            if isinstance(attrs, dict) and attrs.get("src") in mapping:
-                attrs["src"] = mapping[attrs["src"]]
-        content = node.get("content")
-        if isinstance(content, list):
-            for child in content:
-                walk(child)
-
-    walk(doc)
-
-
 async def attach_evidence_and_commit(
     db: Session,
     *,
     event: Event,
     source_files: list[UploadFile],
-    proof_doc: dict[str, Any] | None,
+    proof_doc: str | None,
     proof_files: list[UploadFile],
     sweep_context: str,
 ) -> None:
-    """Upload + attach an event's evidence, rewrite its proof doc, commit.
+    """Upload + attach an event's evidence, rewrite its proof body, commit.
 
     ``event`` must already be flushed (its id feeds the S3 keys and the
     ``Media`` FK), and the caller must delete AND flush any replaced ``source``
@@ -273,7 +259,7 @@ async def attach_evidence_and_commit(
 
     * ``source_files`` (0 or 1, the caller enforces it) land as
       ``Media(role='source')`` under ``uploads/<event>/``.
-    * ``proof_doc`` is the sanitised incoming Tiptap document, or ``None`` to
+    * ``proof_doc`` is the sanitised incoming proof HTML, or ``None`` to
       keep ``event.proof``. Its ``placeholder://`` srcs are matched to
       ``proof_files`` (see :func:`_match_proof_files`), uploaded without
       derivatives, rewritten to public URLs, and get ``Media(role='proof')``
@@ -396,8 +382,7 @@ async def attach_evidence_and_commit(
                 uploaded_keys.extend(result.derivative_keys)
 
         if proof_doc is not None:
-            _rewrite_image_srcs(proof_doc, src_by_placeholder)
-            event.proof = proof_doc
+            event.proof = rewrite_image_srcs(proof_doc, src_by_placeholder)
 
         # Inside the try so a commit failure also sweeps orphans.
         db.commit()

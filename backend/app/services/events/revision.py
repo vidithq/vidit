@@ -50,7 +50,7 @@ async def save_version(
     event_date: date | None,
     event_time: time | None,
     source_posted_at: datetime | None,
-    proof_data: dict | None,
+    proof_data: str | None,
     tag_ids: list,
     conflict_ids: list,
     is_graphic: bool = False,
