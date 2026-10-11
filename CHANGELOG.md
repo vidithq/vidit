@@ -7,6 +7,12 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 ### Added
 
 - Proofs and collection descriptions can link text to any http or https page from the editor toolbar, and links open in a new tab ([#541](https://github.com/vidithq/vidit/pull/541)).
+- The proof editor offers H2, numbered lists, quotes, strikethrough, underline, inline code and code blocks, and pasted Markdown arrives formatted ([#541](https://github.com/vidithq/vidit/pull/541)).
+- The API serves each proof, version and collection description as Markdown beside its JSON (`proof_markdown`, `description_markdown`) ([#541](https://github.com/vidithq/vidit/pull/541)).
+
+### Changed
+
+- One definition of the allowed rich-text formats drives the editor, the server sanitizer and the read view, and a test fails when they drift ([#541](https://github.com/vidithq/vidit/pull/541)).
 
 ## v0.6.6, 2026-10-11
 

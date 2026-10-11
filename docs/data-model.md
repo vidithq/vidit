@@ -905,7 +905,7 @@ The table holds the copies as they stand. On a `geolocated` event, the edit that
 ## Design decisions
 
 ### Why JSONB for `proof`?
-Tiptap, the rich editor, serializes content as ProseMirror JSON. Storing that JSON as-is in a JSONB column avoids conversion. PostgreSQL indexes and queries JSONB natively.
+Tiptap, the rich editor, serializes content as ProseMirror JSON. Storing that JSON as-is in a JSONB column avoids conversion. PostgreSQL indexes and queries JSONB natively. What a document may hold is the [rich-text contract](design.md#rich-text), the same for `events.proof` and `collections.description`. Each of its formats has one CommonMark equivalent, so the API serves a Markdown projection beside the JSON (`proof_markdown`, `description_markdown`) without storing a second copy.
 
 ### Why `event_tags` and not an array column on `events`?
 This is a many-to-many relationship: a geolocation can carry several tags, and a tag can appear on many geolocations. The `event_tags` junction table is the standard solution. It supports efficient filtering (`WHERE tag_id = X`) and indexing on both sides. The alternative, a `tag_ids[]` array on `events`, would make filters more complex and less performant at scale.

@@ -469,7 +469,7 @@ Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/
 | `event_date` | `YYYY-MM-DD`. Blank stores NULL | opt | opt | opt | opt | opt |
 | `event_time` | `HH:MM`, UTC. Blank stores NULL. Independent of `event_date` | opt | opt | opt | opt | opt |
 | `source_posted_at` | `YYYY-MM-DDTHH:MM`, read as UTC: when the source posted the media | req | req | keep | req | keep |
-| `proof` | Serialized Tiptap document, sanitized server-side. A `placeholder://<filename>` src resolves against `proof_files`; an already-uploaded URL passes through. A `link` mark keeps only `href`, an absolute `http(s)` URL of at most 2000 bytes; any other link loses its mark and keeps its text | opt | opt | opt | opt | opt |
+| `proof` | Serialized Tiptap document, sanitized server-side against the [rich-text contract](design.md#rich-text): a node, mark or attribute outside it is dropped, and a heading level outside 2 and 3 moves to the nearest one. A `placeholder://<filename>` src resolves against `proof_files`; an already-uploaded URL passes through. A `link` mark keeps only `href`, an absolute `http(s)` URL of at most 2000 bytes; any other link loses its mark and keeps its text | opt | opt | opt | opt | opt |
 | `tag_ids` | JSON array of tag ids. Replaces the tag set | floor | opt | opt | floor | floor |
 | `conflict_ids` | JSON array of [conflict](#conflicts) ids. Replaces the conflict set | floor | opt | opt | floor | floor |
 | `is_graphic` | `true` when the footage shows death, injury or human remains. Defaults to `false`. Ratchets: `false` never clears a set flag; only [`PATCH /admin/events/{id}/moderation`](#patch-admineventsidmoderation) clears it | opt | opt | opt | opt | opt |
@@ -773,6 +773,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
     { "url": "https://archive.ph/aBcDe", "provider": "archive_today" }
   ],
   "proof": { "type": "doc", "content": [] },
+  "proof_markdown": "",
   "event_date": "2026-03-15",
   "event_time": "14:30:00",
   "source_posted_at": "2026-03-14T18:05:00Z",
@@ -827,6 +828,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 | `version_no` | `1` until the owner corrects the event, then one higher per [correction](#post-eventsidversions) |
 | `geolocated_at` | When the row became `geolocated`; `null` before publication |
 | `close_reason`, `before_closed_status` | `null` while the event is open |
+| `proof_markdown` | A read-only CommonMark projection of `proof`, generated from the stored document on every read: GFM `~~` for strikethrough, inline `<u>` for underline, `![alt](src)` for an image. `null` when `proof` is. Writes take `proof` only |
 | `media` | The `source` attachment only. A `proof` image lives inline in the `proof` document as a URL |
 | `thumbnail` | The card thumbnail, on the rule of [`GET /events`](#get-events) |
 | `is_graphic` | `true` when the footage is flagged as showing death, injury or human remains |
@@ -1069,6 +1071,7 @@ The event's superseded versions, newest first. Public, like the event. The live 
       "note": "Coordinates were off by a block.",
       "created_at": "2026-03-18T11:20:00Z",
       "redacted": false,
+      "proof_markdown": "",
       "snapshot": {
         "title": "Strike on depot, Donetsk",
         "source_url": "https://t.me/channel/12345",
@@ -1104,6 +1107,7 @@ The event's superseded versions, newest first. Public, like the event. The live 
 - `edited_by` is the analyst whose edit superseded that version, `null` once their account is erased. `note` is their optional line, `null` when they left none. `created_at` is when the edit happened.
 - `redacted` is `true` on a version an admin [blanked](#post-admineventsidversionsversion_noredact). It keeps its number, `created_at` and `edited_by`, and serves `{}` as `snapshot` with `note` `null`.
 - `snapshot` carries the editable fields as they stood. Tags and conflicts carry their names beside their ids. `source_media` and `proof_media` carry each media whole, because the row may be gone. `archives` lists the archived copies held at that version, one per link, sorted by `original_url`.
+- `proof_markdown` is the Markdown projection of `snapshot.proof`, on the terms of [`GET /events/{id}`](#get-eventsid). It is `null` when the snapshot holds no proof, a redacted version included.
 - Every snapshot names `source_url` and `source_media`. A snapshot filed before another field was versioned omits that field; read it from the live row.
 
 **Errors:**
@@ -1451,6 +1455,7 @@ One collection's header: owner, title, description, tags, item count, and the da
     ]
   },
   "description_text": "Strikes and their aftermath at the plant, 2025 to 2026.",
+  "description_markdown": "Strikes and their aftermath at the plant, 2025 to 2026.",
   "cover": [
     { "url": "https://…/uploads/geo/…jpg", "media_type": "image", "role": "source" },
     { "url": "https://…/uploads/geo/…mp4", "media_type": "video", "role": "source" }
@@ -1471,6 +1476,7 @@ All computed fields are computed per read over the events the collection shows, 
 | Field | Meaning |
 |---|---|
 | `description_text` | The description's plain-text projection |
+| `description_markdown` | The description's read-only CommonMark projection, on the terms of `proof_markdown` on [`GET /events/{id}`](#get-eventsid) |
 | `event_count` | How many events the collection shows |
 | `first_date`, `last_date` | The smallest and largest `event_date` among them; both `null` when none carries a date |
 | `cover` | Zero to four tiles, in item order, skipping graphic items, each the item's card media (an image preferred over a clip). `media_type` is `image` or `video`. `role` is `source` or `proof`; a `proof` `url` has no `_hero` / `_thumb` derivatives, so read it as is |

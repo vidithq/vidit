@@ -610,7 +610,7 @@ Opening one is [`/collections/new`](../frontend/src/app/collections/new/page.tsx
 
 - Both sit behind `useRequireAuth` and compose `PageShell` over [`<CollectionDetailsForm>`](../frontend/src/components/collections/CollectionDetailsForm.tsx): three `Card` sections, **Details**, **Events in this collection**, and **Add events**, then the Save / Cancel row. Only the verb on the button differs. The edit page carries no subtitle; the Title field names the collection.
 - **Details** is the title over the description, each with the shared `remaining / cap` [`<CharCounter>`](../frontend/src/components/ui/CharCounter.tsx) against `COLLECTION_TITLE_MAX_LEN` and `COLLECTION_DESCRIPTION_MAX_LEN`. Submit refuses a blank or over-long value on either. Both fields ride every write and are the only writable fields.
-- The description field is [`<ProofEditor>`](../frontend/src/components/editor/ProofEditor.tsx) under `allowImages={false}`: bold, italic, headings, lists, and links, no images, since nothing on this form uploads and the server drops the node. It wears the field box, the `focus-within` accent border, and `FORM_INVALID_FIELD` on refusal, with its label and counter on the row above. The counter measures `tiptapDocText` ([`lib/proof.tsx`](../frontend/src/lib/proof.tsx)), the projection the server caps, so markup costs nothing.
+- The description field is [`<ProofEditor>`](../frontend/src/components/editor/ProofEditor.tsx) under `allowImages={false}`: every format of the [rich-text contract](#rich-text) except images, since nothing on this form uploads and the server drops the node. It wears the field box, the `focus-within` accent border, and `FORM_INVALID_FIELD` on refusal, with its label and counter on the row above. The counter measures `tiptapDocText` ([`lib/proof.tsx`](../frontend/src/lib/proof.tsx)), the projection the server caps, so markup costs nothing.
 - `/collections/new` has two entry points: the profile section (beside its heading and in its first-run state) and the add-to-collection panel, which passes `?event={id}`. With the parameter the page opens holding that event, the create carries it ([`POST /collections`](api.md#post-collections)), and the page returns to the event. Without it the page opens the collection it created. Cancel and Back return to where the reader came from.
 - `/collections/{id}/edit` is owner only. A non-owner gets the backend's 403 stated before the form, with a link to the collection. The save writes the difference: the details through `PATCH`, then one `PUT` per added row and one `DELETE` per removed row, in that order, stopping at the first refusal and naming the act that failed. Saving returns to the collection.
 
@@ -698,13 +698,98 @@ Section order mirrors the detail page: Title → **Source media** → **Location
 
 **The detections queue is a list, and the work happens in review mode.** `/profile/{username}/detections` is a dense list, one [`DetectionQueueRow`](../frontend/src/components/detections/DetectionQueueRow.tsx) per detection: a thumbnail, the title, the event date, the source host, and one state badge. The badge describes the evidence, not completeness (`batchCompletionBlockers` in [`lib/events.ts`](../frontend/src/lib/events.ts), which mirrors the server floor in `services/events/batch._publish_detection`; `detection_ready_predicate` is that same floor in SQL, which is what the filter below pages on, and the three are held to one table of detection shapes by their tests). It reads **Ready to review** when the machine found everything it could and the detection is waiting on the judgment a review supplies, the conflict and the capture source, so it takes `<Pill>`'s outline `secondary` tone rather than the filled accent: a detection that still needs two picks must not read as a finished one. Otherwise it names the missing piece, or counts them (*Missing: 2 pieces*) once several names would outgrow a dense row. A [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) narrows the queue to ready or incomplete detections. It is a query, not a view filter: picking an option refetches with [`readiness`](api.md#get-eventsdetections), so the server cuts the page out of the filtered set and the row count, the page count and the empty line all describe that set. A page-local filter answers about the ten rows on screen while the reader takes it as an answer about the queue, which on an import of several hundred detections ordered newest first is how "0 of 10 on this page" gets read as "none of my work carries any evidence". Beside the bar, `ready_total` and `incomplete_total` state the whole queue's split under every option and on every page, so the one number an analyst wants after an import needs no paging to find. Its labels are one word each, so a `<FieldHelp>` `?` beside the bar says what Ready and Incomplete select, once for the page, and that is where both badges' meaning lives: the rows themselves carry a label and nothing to hover, and the pieces a detection is missing are named in place by the form. There are no inline controls: the whole row is one click, to the edit form, which is where a detection missing evidence gets its manual pass. The click opens a review pass starting at that detection, since reaching a detection through the queue is working the queue. Pagination sits at the foot, as on every list.
 
-**The proof editor links text through its toolbar.** [`<ProofEditor>`](../frontend/src/components/editor/ProofEditor.tsx) serves the proof body and a collection's description. Its **Link** control opens a URL row under the toolbar, composed of `<Input>` and ghost `<Button>`s: **Apply**, **Remove** (shown when the selection holds a link), and **Cancel**. Enter applies and Escape cancels. With text selected, Apply links that text; at a bare caret it inserts the URL as its own linked text. The row accepts an absolute `http` or `https` URL only, the rule [`isSafeLinkHref`](../frontend/src/lib/proof.tsx) applies, and outlines the field with `FORM_INVALID_FIELD` for anything else. A typed or pasted `https://` URL links on its own (autolink). A click on a link in the editor places the caret on it to edit it, rather than opening it.
+**The proof editor links text through its toolbar.** [`<ProofEditor>`](../frontend/src/components/editor/ProofEditor.tsx) serves the proof body and a collection's description. Its **Link** control opens a URL row under the toolbar, composed of `<Input>` and ghost `<Button>`s: **Apply**, **Remove** (shown when the selection holds a link), and **Cancel**. Enter applies and Escape cancels. With text selected, Apply links that text; at a bare caret it inserts the URL as its own linked text. The row accepts an absolute `http` or `https` URL only, the rule [`isSafeLinkHref`](../frontend/src/lib/richText.ts) applies, and outlines the field with `FORM_INVALID_FIELD` for anything else. A typed or pasted `https://` URL links on its own (autolink). A click on a link in the editor places the caret on it to edit it, rather than opening it.
 
 **Reviewing is the same form on the same route, one detection at a time.** A queue row and a detection under review open one surface, [`EventEditForm`](../frontend/src/components/geolocations/edit/EventEditForm.tsx) at `/events/{id}/edit`, with the same sections in the same order and every field editable in both cases, the proof editor included. A review pass is that URL carrying `?queue=1`: one address per detection, so a reload keeps its place, the address bar says which detection is open, and the browser's Back steps back one detection. Every entry from the queue page sets the flag, a row click included, so a pass starts wherever the reader entered it; the bare URL stays reachable by hand for a single detection. *Start reviewing* points at `/profile/{username}/detections/review`, which reads the queue and hands over to the first detection's URL, replacing itself in history so Back from that detection lands on the queue list.
 
 With the flag set on a detection the reader owns, the page reads the owner's queue, places the detection in it, and adds the pass's own chrome to the header cluster: the position (*Detection n of m*) and **Skip**, beside the **Close** the form always carries and the utilities. The three verbs a pass uses sit together, above the fields they dispose of. Submitting runs the single-row [`POST /events/{id}/geolocate`](api.md#post-eventsidgeolocate) transition behind the form's confirm and then opens the next detection instead of returning to the queue; closing, behind its own required-reason panel, hands over the same way; **Skip** hands over without writing. Past the last detection the pass ends on the queue list. The position is read off the live queue, so a detection just published or closed is out of both the count and the walk, and a detection the queue no longer holds carries no position at all: the page is a plain edit again.
 
 **Required by default.** No field carries a `required` or an `optional` marker: per-field markers make the form a legend to decode, and two guides say the same thing better. The readiness tick-list under the actions names every unmet requirement of the publish path you are aiming at, and a clicked action outlines the missing fields in place. On submit, [`IncompleteFormNotice`](../frontend/src/components/ui/IncompleteFormNotice.tsx) lists every unmet field at once (not the first miss) above the action, and outlines each missing field in place (`FORM_INVALID_FIELD`). The forms set `noValidate`, so this notice, not native one-bubble-at-a-time validation, owns the feedback. It is shared across geolocation, request, and detection submit, each computing its own required set (detection is a superset of create; request is a subset). One content rule: a geolocation's proof must contain an image (`proofHasImage`), the source-to-satellite cross-reference. Detection-submit is a single **Submit** behind a confirm: a `detected` row is machine output nobody has vouched for, so submit applies the whole form and publishes it as `geolocated` in one step, after which every change to it is a version on a public record. The confirm **arms the button in place** rather than replacing it with a confirm pair: the label reads *Confirm submit*, the button takes `ARMED_RING`, and the second click writes. Nothing is inserted and nothing moves, so the second click lands where the first one did, and the button keeps focus, so Enter twice submits. It disarms on its own after a few seconds, on Escape, and on any click or focus landing elsewhere ([`useConfirmAction`](../frontend/src/hooks/useConfirmAction.ts) owns all of it). What the second click costs is in the `?` beside the button, and the armed state announces itself in a sibling live region, the shape every copy control uses, so no control renames itself mid-gesture.
+
+### Rich text
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`frontend`"]:::spec
+    l2["`backend`"]:::shared
+    l3["`the one definition, thick-bordered`"]:::core
+    l4[("`generated, checked in`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  ext["`**RICH_TEXT_EXTENSIONS**
+  lib/richText.ts: StarterKit, Image, H2 and H3, http(s) links`"]:::core
+
+  subgraph frontend [Frontend]
+    direction TB
+    editor["`**ProofEditor**
+    toolbar, typing shortcuts`"]:::spec
+    paste["`**MarkdownPaste**
+    Markdown text in, narrowed to the contract`"]:::spec
+    render["`**renderProof**
+    @tiptap/static-renderer`"]:::spec
+  end
+
+  gate["`**richText.test.ts**
+  drift gate: fails when the JSON differs`"]:::spec
+  json[("`**rich_text_contract.json**
+  node and mark names, kept attrs, heading levels`")]:::store
+
+  subgraph backend [Backend]
+    direction TB
+    sanitize["`**sanitize_tiptap_doc**
+    drops what the contract lacks, checks URLs`"]:::shared
+    md["`**tiptap_doc_markdown**
+    proof_markdown, description_markdown`"]:::shared
+  end
+
+  ext --> editor
+  ext --> paste
+  ext --> render
+  ext -->|"richTextContract()"| gate --> json --> sanitize --> md
+```
+
+**Proof content is this CommonMark-equivalent subset, nothing else.** A proof body and a collection description hold the formats in the table below and no others. Each format maps to one CommonMark construct, so the [Markdown projection](api.md#get-eventsid) of a document loses nothing. Colour, alignment, tables, embeds, and every other format are outside the contract: a request for one is a request to change this rule.
+
+| Format | Write it with | Markdown projection |
+|---|---|---|
+| Paragraph, hard line break | typing, Shift+Enter | text, a trailing `\` |
+| Heading, levels 2 and 3 | **H2**, **H3**, `## `, `### ` | `## `, `### ` |
+| Bold, italic, strikethrough | **B**, **I**, **S** | `**`, `*`, `~~` (GFM) |
+| Underline | Ctrl+U or Cmd+U | inline `<u>` |
+| Inline code, code block | **Code**, **Code block**, a backtick pair, three backticks | a code span, a fenced block |
+| Bulleted and numbered lists | **List**, **1. List**, `- `, `1. ` | `- `, `1. ` |
+| Quote | **Quote**, `> ` | `> ` |
+| Horizontal rule | `---` | `---` |
+| Link, `http` or `https` only | **Link**, a typed or pasted URL | `[text](url)` |
+| Image hosted by Vidit, proofs only | **+ Image** | `![alt](src)` |
+
+**One definition feeds every reader and writer.** `RICH_TEXT_EXTENSIONS` in [`lib/richText.ts`](../frontend/src/lib/richText.ts) is the contract. The editor, Markdown paste, and the read view all run these extensions, so a format the editor writes is a format the read view paints. `richTextContract()` projects the extensions' schema to [`rich_text_contract.json`](../backend/app/services/rich_text_contract.json): the node and mark names, the attributes each keeps, and the heading levels. The server sanitizer loads that file and drops everything outside it. [`richText.test.ts`](../frontend/src/lib/richText.test.ts) fails when the file and the extensions disagree; `npx vitest run -u src/lib/richText.test.ts` rewrites the file. A backend test requires a Markdown projection in [`rich_text_markdown.py`](../backend/app/services/rich_text_markdown.py) for every type the file names.
+
+**The toolbar carries the common formats.** [`<ProofEditor>`](../frontend/src/components/editor/ProofEditor.tsx) groups its toggles, split by a divider: **B**, **I**, **S**, **Code**; **H2**, **H3**; **List**, **1. List**, **Quote**, **Code block**; then **Link** and, on a proof, **+ Image**. Each toggle is the shared `TOOL` shape, painted `TOOL_ON` while its format is active at the caret. Underline and the horizontal rule have no toggle. The Markdown shortcuts in the table apply while typing.
+
+**Pasted Markdown arrives formatted.** A plain-text paste that reads as Markdown goes through Tiptap's Markdown parser ([`markdownPaste.ts`](../frontend/src/components/editor/markdownPaste.ts)). It reads as Markdown when a line opens a heading, list, quote, fence, or rule, or when it holds `**strong**` text, a code span, or an `http(s)` link. The parsed document is then narrowed to the contract:
+
+- An image drops, since a proof image enters through **+ Image**, which stages its upload.
+- A link to any other scheme loses its mark and keeps its text.
+- A heading level outside 2 and 3 moves to the nearest one.
+- A soft line break becomes a hard break, so the published body keeps the lines the editor shows.
+
+A paste that carries HTML, and any paste into a code block, keeps Tiptap's default handling. Storage stays Tiptap JSON.
+
+**The read view is the static renderer.** [`renderProof`](../frontend/src/lib/proof.tsx) renders through `@tiptap/static-renderer` with the same extensions. The classes each extension sets in `lib/richText.ts` style the editor surface and the read view alike. Two overrides re-check the stored URLs, since a row stored before a rule tightened is still readable:
+
+- A link renders only for an `isSafeLinkHref` href, always with `target="_blank"`, `rel="noopener noreferrer nofollow ugc"`, and `TEXT_LINK`.
+- An image renders only for an `isSafeImageSrc` src, as the enlargeable [`ProofImage`](../frontend/src/components/event/ProofImage.tsx).
+
+A stored document that ProseMirror refuses renders as its plain-text lines.
 
 ### Field help (`?`)
 
