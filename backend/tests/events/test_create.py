@@ -13,6 +13,7 @@ from PIL import Image
 from app.models.event import Event
 from app.models.media import Media
 from app.services.evidence_processing import UNREADABLE_IMAGE_MESSAGE
+from app.services.sanitize import extract_image_srcs
 from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
 from tests.events._helpers import (
@@ -154,19 +155,14 @@ def test_list_rejects_malformed_date_filter(author):
 def test_create_rejects_too_many_proof_files(author, conflict, capture_source_tag):
     """A proof batch past ``max_proof_images_per_event`` is rejected before upload (caps
     Pillow + S3 work per request)."""
-    doc = {
-        "type": "doc",
-        "content": [
-            {"type": "image", "attrs": {"src": f"placeholder://p-{i}.jpg"}} for i in range(11)
-        ],
-    }
+    doc = "".join(f'<img src="placeholder://p-{i}.jpg">' for i in range(11))
     files = [("file", ("tiny.jpg", TINY_JPEG, "image/jpeg"))]
     files += [("proof_files", (f"p-{i}.jpg", TINY_JPEG, "image/jpeg")) for i in range(11)]
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
         data=_form(
-            proof=json.dumps(doc),
+            proof=doc,
             tag_ids=json.dumps([str(capture_source_tag.id)]),
             conflict_ids=json.dumps([str(conflict.id)]),
         ),
@@ -199,15 +195,12 @@ def test_create_rejects_disallowed_file_type(author, conflict, capture_source_ta
 
 def test_create_rejects_video_proof_file(author, conflict, capture_source_tag):
     """A proof part must be an image: a video could never render in the proof body."""
-    doc = {
-        "type": "doc",
-        "content": [{"type": "image", "attrs": {"src": "placeholder://clip.mp4"}}],
-    }
+    doc = '<img src="placeholder://clip.mp4">'
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
         data=_form(
-            proof=json.dumps(doc),
+            proof=doc,
             tag_ids=json.dumps([str(capture_source_tag.id)]),
             conflict_ids=json.dumps([str(conflict.id)]),
         ),
@@ -222,29 +215,26 @@ def test_create_rejects_video_proof_file(author, conflict, capture_source_tag):
     assert "image required" in detail["message"]
 
 
-def test_create_rejects_invalid_proof_json(author):
-    """Invalid Tiptap proof JSON → 400 before any S3 upload."""
+def test_create_rejects_a_proof_over_a_sanitiser_cap(author):
+    """A proof past the sanitiser's depth cap is ``invalid_proof`` before any S3 upload."""
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
-        data=_form(proof="{not valid json"),
+        data=_form(proof="<blockquote>" * 40 + "x"),
         files=_files(),
     )
     assert response.status_code == 400
-    assert "proof" in response.json()["detail"].lower()
+    assert response.json()["detail"]["code"] == "invalid_proof"
 
 
 def test_create_rejects_proof_without_image(author, conflict, capture_source_tag):
     """A proof body with no inline image 400s before any upload."""
-    doc = {
-        "type": "doc",
-        "content": [{"type": "paragraph", "content": [{"type": "text", "text": "words only"}]}],
-    }
+    doc = "<p>words only</p>"
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
         data=_form(
-            proof=json.dumps(doc),
+            proof=doc,
             tag_ids=json.dumps([str(capture_source_tag.id)]),
             conflict_ids=json.dumps([str(conflict.id)]),
         ),
@@ -383,10 +373,10 @@ def test_create_succeeds_with_full_floor(
     # ``media`` carries only the source; the proof image travels in the doc.
     assert len(body["media"]) == 1
     assert body["media"][0]["role"] == "source"
-    srcs = [node["attrs"]["src"] for node in body["proof"]["content"] if node["type"] == "image"]
+    srcs = extract_image_srcs(body["proof"])
     assert len(srcs) == 1
     assert srcs[0].startswith("http")  # placeholder rewritten to the landed URL
-    assert "placeholder://" not in json.dumps(body["proof"])
+    assert "placeholder://" not in body["proof"]
 
     import uuid as _uuid
 

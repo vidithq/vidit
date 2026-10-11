@@ -26,6 +26,7 @@ from app.models.media import Media
 from app.models.user import User
 from app.services.auth import hash_password
 from app.services.detection import Outcome, backfill_from_archive, persist_detections
+from app.services.sanitize import extract_image_srcs, html_text
 from app.services.source_archive import stage_source_snapshot
 from app.services.storage import get_storage
 from app.services.tweet_ingest import (
@@ -180,15 +181,15 @@ def _publish_the_default_pair(db, owner: User) -> None:
 
 
 async def test_assemble_injects_proof_images_into_proof_doc(db, owner):
-    # Proof media persist as role=proof rows and as image nodes in the proof JSON.
+    # Proof media persist as role=proof rows and as images in the proof HTML.
     from app.models.media import Media as MediaRow
 
     detection = _detection(proof_media=[_img(), _img()])
     outcome = await _persist(db, owner=owner, detections=[detection], fetch_media=_image_fetcher)
     geo = _row(db, outcome.created[0])
-    image_nodes = [n for n in geo.proof["content"] if n.get("type") == "image"]
-    assert len(image_nodes) == 2
-    assert all(str(n["attrs"]["src"]).startswith("http") for n in image_nodes)
+    srcs = extract_image_srcs(geo.proof)
+    assert len(srcs) == 2
+    assert all(src.startswith("http") for src in srcs)
     proof_rows = db.query(MediaRow).filter(MediaRow.event_id == geo.id, MediaRow.role == "proof")
     assert proof_rows.count() == 2
 
@@ -201,7 +202,7 @@ async def test_proof_video_is_skipped_not_orphaned(db, owner):
     )
     geo = _row(db, outcome.created[0])
     assert db.query(Media).filter(Media.event_id == geo.id).count() == 0
-    assert [n for n in geo.proof["content"] if n.get("type") == "image"] == []
+    assert extract_image_srcs(geo.proof) == []
 
 
 async def test_proof_image_kept_when_mixed_with_video(db, owner):
@@ -215,7 +216,7 @@ async def test_proof_image_kept_when_mixed_with_video(db, owner):
     geo = _row(db, outcome.created[0])
     proof_rows = db.query(Media).filter(Media.event_id == geo.id, Media.role == "proof").all()
     assert len(proof_rows) == 1 and proof_rows[0].media_type == "image"
-    assert len([n for n in geo.proof["content"] if n.get("type") == "image"]) == 1
+    assert len(extract_image_srcs(geo.proof)) == 1
 
 
 async def test_assemble_persists_detected_row(db, owner):
@@ -234,7 +235,7 @@ async def test_assemble_persists_detected_row(db, owner):
     assert geo.source_url == "https://x.com/src/status/9"
     assert geo.source_posted_at == datetime(2025, 11, 11, 9, 0, tzinfo=UTC)
     assert geo.event_date == date(2025, 11, 12)
-    assert geo.proof and geo.proof["type"] == "doc" and geo.proof["content"]
+    assert geo.proof.startswith("<p>")
 
     media = db.query(Media).filter(Media.event_id == geo.id).all()
     assert len(media) == 1
@@ -611,7 +612,7 @@ async def test_detected_detection_is_upserted_in_place(db, owner):
     assert row.source_url == "https://t.me/channel/42"
     assert row.source_posted_at == datetime(2025, 11, 11, 9, 0, tzinfo=UTC)
     assert [link.url for link in row.source_links] == ["https://www.youtube.com/watch?v=M1"]
-    assert row.proof["content"][0]["content"][0]["text"] == "Depot hit, Shebekino"
+    assert html_text(row.proof).split("\n")[0] == "Depot hit, Shebekino"
     media = db.query(Media).filter(Media.event_id == row.id).all()
     assert [m.role for m in media] == ["source"]
 
@@ -644,7 +645,7 @@ async def test_a_re_import_whose_fetch_comes_back_short_keeps_the_stored_media(d
     assert {(m.role, m.storage_url, m.sha256) for m in row.media} == before
     for key in keys:
         assert key is not None and stored_bytes(key)
-    assert [n["attrs"]["src"] for n in row.proof["content"] if n.get("type") == "image"] == [
+    assert extract_image_srcs(row.proof) == [
         url for role, url, _sha in sorted(before) if role == "proof"
     ]
 
@@ -722,12 +723,12 @@ async def test_upsert_replaces_source_media_and_sweeps_the_old_objects(db, owner
 
 
 async def test_upsert_rewrites_proof_media_and_the_nodes_that_carry_it(db, owner):
-    # The proof doc and the media rows must move together, or the doc points at a swept object.
+    # The proof body and the media rows must move together, or the body points at a swept object.
     await _persist(
         db, owner=owner, detections=[_detection(proof_media=[_img()])], fetch_media=_image_fetcher
     )
     stored = db.query(Event).filter(Event.owner_id == owner.id).one()
-    old_src = stored.proof["content"][-1]["attrs"]["src"]
+    old_src = extract_image_srcs(stored.proof)[-1]
 
     async def other_image(_parsed: ParsedMedia) -> tuple[bytes, str]:
         return OTHER_JPEG, "image/jpeg"
@@ -739,7 +740,7 @@ async def test_upsert_rewrites_proof_media_and_the_nodes_that_carry_it(db, owner
 
     db.expire_all()
     row = db.query(Event).filter(Event.owner_id == owner.id).one()
-    new_src = row.proof["content"][-1]["attrs"]["src"]
+    new_src = extract_image_srcs(row.proof)[-1]
     assert new_src != old_src
     rows = db.query(Media).filter(Media.event_id == row.id).all()
     assert [m.storage_url for m in rows] == [new_src]
@@ -880,7 +881,7 @@ async def test_over_cap_media_is_skipped_and_detection_still_persists(db, owner,
     assert outcome.warnings == {SOURCE_FOOTAGE_MISSING: 1}
     row = _row(db, outcome.created[0])
     assert db.query(Media).filter(Media.event_id == row.id).count() == 0
-    assert not [node for node in row.proof["content"] if node.get("type") == "image"]
+    assert not extract_image_srcs(row.proof)
 
 
 async def test_failed_detection_is_isolated_not_lost(db, owner, monkeypatch):

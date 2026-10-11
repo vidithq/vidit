@@ -16,20 +16,11 @@ _URL = "/api/v1/events/batch-complete"
 
 # A detection's proof as the import leaves it. Uploaded URLs count toward the
 # proof-image floor like ``placeholder://`` srcs.
-_PROOF_WITH_IMAGE = {
-    "type": "doc",
-    "content": [
-        {"type": "paragraph", "content": [{"type": "text", "text": "Matched the treeline."}]},
-        {"type": "image", "attrs": {"src": "https://cdn.example.com/annotation.jpg"}},
-    ],
-}
-_PROOF_TEXT_ONLY = {
-    "type": "doc",
-    "content": [{"type": "paragraph", "content": [{"type": "text", "text": "No image here."}]}],
-}
+_PROOF_WITH_IMAGE = '<p>Matched the treeline.</p><img src="https://cdn.example.com/annotation.jpg">'
+_PROOF_TEXT_ONLY = "<p>No image here.</p>"
 
 
-def _detection(db, author, *, proof: dict | None = None, **kwargs) -> Event:
+def _detection(db, author, *, proof: str | None = None, **kwargs) -> Event:
     """A machine detection as the import leaves it, tagless (the batch supplies the tags)."""
     geo = _make_geo(
         db,

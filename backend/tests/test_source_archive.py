@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from html import escape
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -61,24 +62,10 @@ def owner(db):
     db.commit()
 
 
-def _proof_doc(*hrefs: str) -> dict:
-    """A Tiptap document whose paragraph carries one link mark per href."""
-    return {
-        "type": "doc",
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "see this",
-                        "marks": [{"type": "link", "attrs": {"href": href}}],
-                    }
-                    for href in hrefs
-                ],
-            }
-        ],
-    }
+def _proof_doc(*hrefs: str) -> str:
+    """An HTML proof whose paragraph carries one link per href."""
+    links = "".join(f'<a href="{escape(href)}">see this</a>' for href in hrefs)
+    return f"<p>{links}</p>"
 
 
 @pytest.fixture
@@ -113,7 +100,7 @@ def _with_mirrors(db, event, *urls: str) -> Event:
 # ── link collection ────────────────────────────────────────────────────
 
 
-def test_extract_link_hrefs_reads_link_marks_and_dedupes():
+def test_extract_link_hrefs_reads_links_and_dedupes():
     doc = _proof_doc(PROOF_LINK, PROOF_LINK, "https://example.org/other")
     assert extract_link_hrefs(doc) == [PROOF_LINK, "https://example.org/other"]
 

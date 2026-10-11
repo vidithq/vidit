@@ -45,14 +45,8 @@ STORED_PROOF_URL = "http://localhost:8000/local-storage/proof/u/stored.jpg"
 OTHER_EVENT_PROOF_URL = "http://localhost:8000/local-storage/proof/u/other-event.jpg"
 
 
-def _proof_doc(src: str) -> dict:
-    return {
-        "type": "doc",
-        "content": [
-            {"type": "paragraph", "content": [{"type": "text", "text": "Cross-reference."}]},
-            {"type": "image", "attrs": {"src": src}},
-        ],
-    }
+def _proof_doc(src: str) -> str:
+    return f'<p>Cross-reference.</p><img src="{src}">'
 
 
 def _published(db, author, conflict, capture_source_tag, *, proof_url=STORED_PROOF_URL, **kwargs):
@@ -88,7 +82,7 @@ def _form(conflict, capture_source_tag, **overrides):
         "lng": "30.0",
         "event_date": "2026-05-02",
         "source_posted_at": "2026-05-01T12:00",
-        "proof": json.dumps(_proof_doc(STORED_PROOF_URL)),
+        "proof": _proof_doc(STORED_PROOF_URL),
         "tag_ids": json.dumps([str(capture_source_tag.id)]),
         "conflict_ids": json.dumps([str(conflict.id)]),
     }
@@ -652,7 +646,7 @@ def test_save_version_holds_the_published_floor(db, author, conflict, capture_so
         data=_form(
             conflict,
             capture_source_tag,
-            proof=json.dumps({"type": "doc", "content": []}),
+            proof="<p>No image.</p>",
         ),
     )
     assert response.status_code == 400
@@ -1011,12 +1005,11 @@ def test_proof_image_cap_counts_what_the_new_body_displays(
     monkeypatch.setattr(settings, "max_proof_images_per_event", 1)
     geo = _published(db, author, conflict, capture_source_tag)
 
-    doc = _proof_doc(STORED_PROOF_URL)
-    doc["content"].append({"type": "image", "attrs": {"src": "placeholder://proof-1.jpg"}})
+    doc = _proof_doc(STORED_PROOF_URL) + '<img src="placeholder://proof-1.jpg">'
     response = _save_version(
         geo.id,
         author,
-        data=_form(conflict, capture_source_tag, proof=json.dumps(doc)),
+        data=_form(conflict, capture_source_tag, proof=doc),
         files=[proof_file_part()],
     )
     assert response.status_code == 422, response.text
@@ -1068,9 +1061,7 @@ def test_save_version_rejects_a_proof_image_belonging_to_another_event(
     response = _save_version(
         geo.id,
         author,
-        data=_form(
-            conflict, capture_source_tag, proof=json.dumps(_proof_doc(OTHER_EVENT_PROOF_URL))
-        ),
+        data=_form(conflict, capture_source_tag, proof=_proof_doc(OTHER_EVENT_PROOF_URL)),
     )
     assert response.status_code == 400, response.text
     assert response.json()["detail"]["code"] == "invalid_file"
@@ -1101,17 +1092,8 @@ def test_a_proof_body_may_cite_the_events_own_source_media(
     source_row.storage_url = "http://localhost:8000/local-storage/uploads/e/source.jpg"
     db.commit()
 
-    body = {
-        "type": "doc",
-        "content": [
-            {"type": "paragraph", "content": [{"type": "text", "text": "The frame."}]},
-            {"type": "image", "attrs": {"src": STORED_PROOF_URL}},
-            {"type": "image", "attrs": {"src": source_row.storage_url}},
-        ],
-    }
-    response = _save_version(
-        geo.id, author, data=_form(conflict, capture_source_tag, proof=json.dumps(body))
-    )
+    body = f'<p>The frame.</p><img src="{STORED_PROOF_URL}"><img src="{source_row.storage_url}">'
+    response = _save_version(geo.id, author, data=_form(conflict, capture_source_tag, proof=body))
     assert response.status_code == 200, response.text
 
     db.expire_all()
@@ -1133,14 +1115,7 @@ def test_a_proof_body_may_cite_a_source_media_a_correction_superseded(
     superseded_id = str(superseded.id)
     db.commit()
 
-    body = {
-        "type": "doc",
-        "content": [
-            {"type": "paragraph", "content": [{"type": "text", "text": "The frame."}]},
-            {"type": "image", "attrs": {"src": STORED_PROOF_URL}},
-            {"type": "image", "attrs": {"src": superseded_url}},
-        ],
-    }
+    body = f'<p>The frame.</p><img src="{STORED_PROOF_URL}"><img src="{superseded_url}">'
     assert (
         _save_version(
             geo.id,
@@ -1148,7 +1123,7 @@ def test_a_proof_body_may_cite_a_source_media_a_correction_superseded(
             data=_form(
                 conflict,
                 capture_source_tag,
-                proof=json.dumps(body),
+                proof=body,
                 remove_media_ids=json.dumps([superseded_id]),
             ),
             files=[_source_part()],
@@ -1163,7 +1138,7 @@ def test_a_proof_body_may_cite_a_source_media_a_correction_superseded(
     response = _save_version(
         geo.id,
         author,
-        data=_form(conflict, capture_source_tag, title="Second correction", proof=json.dumps(body)),
+        data=_form(conflict, capture_source_tag, title="Second correction", proof=body),
     )
     assert response.status_code == 200, response.text
 
@@ -1433,7 +1408,7 @@ def test_redact_frees_the_image_only_that_version_displayed(
     remaining = db.query(Media).filter(Media.event_id == geo.id, Media.role == "proof").all()
     assert len(remaining) == 1
     assert remaining[0].storage_url != STORED_PROOF_URL
-    assert remaining[0].storage_url in json.dumps(db.get(Event, geo.id).proof)
+    assert remaining[0].storage_url in db.get(Event, geo.id).proof
 
 
 def test_redaction_keeps_a_superseded_source_the_live_proof_still_shows(
@@ -1459,14 +1434,7 @@ def test_redaction_keeps_a_superseded_source_the_live_proof_still_shows(
     stored_object.parent.mkdir(parents=True, exist_ok=True)
     stored_object.write_bytes(TINY_JPEG)
 
-    body = {
-        "type": "doc",
-        "content": [
-            {"type": "paragraph", "content": [{"type": "text", "text": "The frame."}]},
-            {"type": "image", "attrs": {"src": STORED_PROOF_URL}},
-            {"type": "image", "attrs": {"src": superseded_url}},
-        ],
-    }
+    body = f'<p>The frame.</p><img src="{STORED_PROOF_URL}"><img src="{superseded_url}">'
     assert (
         _save_version(
             geo.id,
@@ -1474,7 +1442,7 @@ def test_redaction_keeps_a_superseded_source_the_live_proof_still_shows(
             data=_form(
                 conflict,
                 capture_source_tag,
-                proof=json.dumps(body),
+                proof=body,
                 remove_media_ids=json.dumps([superseded_id]),
             ),
             files=[_source_part()],

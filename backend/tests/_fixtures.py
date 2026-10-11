@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import settings
-from app.services.sanitize import tiptap_doc_from_text, tiptap_doc_text
+from app.services.sanitize import html_from_text, html_text
 from app.services.tweet_ingest.records import TweetRecord
 
 
@@ -77,12 +77,12 @@ def tweet_record(**kw: Any) -> TweetRecord:
 
 
 def collection_description(text: str = "What this shelf holds.") -> dict[str, Any]:
-    """The Tiptap description and its plain-text projection a ``collections`` row stores.
+    """The HTML description and its plain-text projection a ``collections`` row stores.
 
     Spread it into the constructor: ``Collection(..., **collection_description("…"))``.
     """
-    doc = tiptap_doc_from_text(text)
-    return {"description": doc, "description_text": tiptap_doc_text(doc)}
+    html = html_from_text(text)
+    return {"description": html, "description_text": html_text(html)}
 
 
 def tiny_jpeg(filename: str = "tiny.jpg") -> tuple[str, bytes, str]:

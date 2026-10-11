@@ -1,4 +1,4 @@
-"""Collections endpoints: owner CRUD with title and Tiptap description (blank and 500-char
+"""Collections endpoints: owner CRUD with title and HTML description (blank and 500-char
 refusals measured on the plain-text projection), ``event_ids`` on create (all-or-nothing),
 idempotent membership verbs, chronological paging, admin withholding and takedown, reports,
 user and event collection lists, the card mosaic, the derived tag union, and GDPR hard delete."""
@@ -31,16 +31,16 @@ from app.models.user import User
 from app.schemas.collection import DESCRIPTION_MAX_LENGTH, MAX_CREATE_EVENTS
 from app.services import collections as collections_service
 from app.services.auth import hash_password
-from app.services.sanitize import tiptap_doc_from_text
+from app.services.sanitize import html_from_text
 from tests._fixtures import collection_description
 from tests.conftest import login_as
 
 client = TestClient(app)
 
 
-def _doc(text: str) -> dict:
-    """A description write body: the Tiptap document for ``text``, one paragraph per line (``sanitize.tiptap_doc_from_text``)."""
-    return tiptap_doc_from_text(text)
+def _doc(text: str) -> str:
+    """A description write body: the HTML for ``text``, one paragraph per line (``sanitize.html_from_text``)."""
+    return html_from_text(text)
 
 
 @pytest.fixture(autouse=True)
@@ -245,14 +245,13 @@ def test_create_collection_rejects_a_blank_title(owner, title):
 @pytest.mark.parametrize(
     "description",
     [
-        {"type": "doc", "content": []},
-        {"type": "doc", "content": [{"type": "paragraph"}]},
-        {
-            "type": "doc",
-            "content": [{"type": "paragraph", "content": [{"type": "text", "text": "   "}]}],
-        },
-        # A document whose only node carries no text: empty projection, so a missing description.
-        {"type": "doc", "content": [{"type": "horizontalRule"}]},
+        "",
+        "<p></p>",
+        "<p>   </p><p>&nbsp;</p>",
+        # A body whose only element carries no text: empty projection, so a missing description.
+        "<hr>",
+        # Text the sanitiser drops with its tag.
+        "<script>alert(1)</script>",
     ],
 )
 def test_create_collection_rejects_a_blank_description(owner, description):
@@ -282,22 +281,22 @@ def test_create_collection_rejects_a_description_past_the_cap(owner):
     assert str(DESCRIPTION_MAX_LENGTH) in detail["message"]
 
 
-def test_create_collection_rejects_an_object_that_is_not_a_document(owner):
-    """A JSON object the sanitiser will not read as a document is refused by the service, which becomes the typed 400."""
+def test_create_collection_rejects_a_body_over_a_sanitiser_cap(owner):
+    """A body past the sanitiser's depth cap is refused by the service, which becomes the typed 400."""
     response = client.post(
         "/api/v1/collections",
-        json={"title": "Loose node", "description": {"type": "paragraph"}},
+        json={"title": "Deep", "description": "<blockquote>" * 40 + "x"},
         headers=login_as(client, owner),
     )
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "invalid_description"
 
 
-def test_create_collection_rejects_a_body_that_is_not_an_object(owner):
-    """The old plain-text body is not a document: the field takes an object, so it never reaches the service."""
+def test_create_collection_rejects_a_body_that_is_not_a_string(owner):
+    """A Tiptap JSON document is not HTML: the field takes a string, so it never reaches the service."""
     response = client.post(
         "/api/v1/collections",
-        json={"title": "Plain text", "description": "Strikes on the rail corridor."},
+        json={"title": "Old shape", "description": {"type": "doc", "content": []}},
         headers=login_as(client, owner),
     )
     assert response.status_code == 422
@@ -322,41 +321,10 @@ def test_create_collection_strips_the_description(db, cleanup, owner):
 def test_create_collection_keeps_bold_italic_and_a_bullet_list(db, cleanup, owner):
     """A description follows the proof allowlist: marks and lists survive the write."""
     _, collection_ids, _ = cleanup
-    description = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [
-                    {"type": "text", "text": "Strikes on ", "marks": [{"type": "italic"}]},
-                    {"type": "text", "text": "Kupiansk", "marks": [{"type": "bold"}]},
-                ],
-            },
-            {
-                "type": "bulletList",
-                "content": [
-                    {
-                        "type": "listItem",
-                        "content": [
-                            {
-                                "type": "paragraph",
-                                "content": [{"type": "text", "text": "Rail corridor"}],
-                            }
-                        ],
-                    },
-                    {
-                        "type": "listItem",
-                        "content": [
-                            {
-                                "type": "paragraph",
-                                "content": [{"type": "text", "text": "Depot"}],
-                            }
-                        ],
-                    },
-                ],
-            },
-        ],
-    }
+    description = (
+        "<p><em>Strikes on </em><strong>Kupiansk</strong></p>"
+        "<ul><li><p>Rail corridor</p></li><li><p>Depot</p></li></ul>"
+    )
     response = client.post(
         "/api/v1/collections",
         json={"title": "Formatted", "description": description},
@@ -370,32 +338,20 @@ def test_create_collection_keeps_bold_italic_and_a_bullet_list(db, cleanup, owne
 
 
 def test_create_collection_drops_an_image_from_the_description(db, cleanup, owner):
-    """Images are not allowed in a description (no upload path): the node is dropped, the rest stands."""
+    """Images are not allowed in a description (no upload path): the image is dropped, the rest stands."""
     _, collection_ids, _ = cleanup
     response = client.post(
         "/api/v1/collections",
         json={
             "title": "No pictures",
-            "description": {
-                "type": "doc",
-                "content": [
-                    {"type": "image", "attrs": {"src": "/media/proof.jpg"}},
-                    {
-                        "type": "paragraph",
-                        "content": [{"type": "text", "text": "Words only."}],
-                    },
-                ],
-            },
+            "description": '<img src="/media/proof.jpg"><p>Words only.</p>',
         },
         headers=login_as(client, owner),
     )
     assert response.status_code == 201
     body = response.json()
     collection_ids.append(uuid.UUID(body["id"]))
-    assert body["description"] == {
-        "type": "doc",
-        "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Words only."}]}],
-    }
+    assert body["description"] == "<p>Words only.</p>"
     assert body["description_text"] == "Words only."
 
 
