@@ -157,8 +157,8 @@ const LINE_TAGS = new Set(["p", "h2", "h3", "li", "blockquote", "pre", "hr", "ul
  * (fills `collections.description_text`, which the search index reads and
  * `services/collections` measures its 500-character cap on); change both.
  *
- * Concatenate the text (entities decoded), start a new line at every block boundary and `<br>`,
- * strip each line, drop blank lines, join with `\n`. The collection description counter
+ * Concatenate the text (entities decoded, U+FFFC dropped), start a new line at every block
+ * boundary, `<br>` and newline in the text, strip each line, drop blank lines, join with `\n`. The collection description counter
  * measures this string, so a divergence lets a body through that the server 422s, or refuses
  * one it would take.
  */
@@ -174,7 +174,13 @@ export function htmlText(html: string | null): string {
   const walk = (nodes: DOMNode[]): void => {
     for (const node of nodes) {
       if (isText(node)) {
-        current += node.data;
+        node.data
+          .replaceAll("￼", "")
+          .split("\n")
+          .forEach((part, i) => {
+            if (i > 0) flush();
+            current += part;
+          });
       } else if (isElement(node)) {
         if (node.name === "br") {
           flush();

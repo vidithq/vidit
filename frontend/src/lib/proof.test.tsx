@@ -194,6 +194,14 @@ describe("htmlText", () => {
     expect(htmlText("<p>First.</p><p>Second.</p>")).toBe("First.\nSecond.");
   });
 
+  // Same inputs and outputs as the backend's `html_text` cases.
+  it("breaks at newlines in text, drops blank lines and U+FFFC", () => {
+    expect(htmlText("<p>a\n\nb</p>")).toBe("a\nb");
+    expect(htmlText("<pre><code>x\n  y\n\nz</code></pre>")).toBe("x\ny\nz");
+    expect(htmlText("<p>a<br>b</p><ul><li><p>c</p></li></ul>")).toBe("a\nb\nc");
+    expect(htmlText("<p>￼</p><p>d &amp; e</p>")).toBe("d & e");
+  });
+
   it("concatenates the runs of one paragraph, marks and links included", () => {
     expect(
       htmlText('<p>Strikes on <strong>Kupiansk</strong> in <a href="https://x.com">March</a>.</p>'),
