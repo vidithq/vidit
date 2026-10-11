@@ -114,7 +114,7 @@ function parserOptions({ gateImages }: ProofRenderOptions): HTMLReactParserOptio
           </a>
         );
       }
-      if (!(name in TAG_CLASSES)) return <>{children()}</>;
+      if (!Object.hasOwn(TAG_CLASSES, name)) return <>{children()}</>;
 
       const inPre =
         name === "code" && isElement(node.parent) && node.parent.name === "pre";

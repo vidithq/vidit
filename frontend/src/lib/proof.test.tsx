@@ -81,9 +81,10 @@ describe("renderProof", () => {
 
   it("renders only the text of a tag outside the allowlist", () => {
     const container = renderHtml(
-      '<div><span style="color:red">safe</span><iframe src="https://evil.com"></iframe></div>',
+      '<div><span style="color:red">safe</span><iframe src="https://evil.com"></iframe>' +
+        "<constructor>!</constructor></div>",
     );
-    expect(container.firstElementChild!.innerHTML).toBe("safe");
+    expect(container.firstElementChild!.innerHTML).toBe("safe!");
   });
 
   it("renders an image with lazy loading and no-referrer, skipping one without a src", () => {
