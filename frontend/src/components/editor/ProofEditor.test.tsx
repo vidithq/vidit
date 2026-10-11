@@ -1,4 +1,4 @@
-import { act, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { en } from "@blocknote/core/locales";
 import type { useCreateBlockNote } from "@blocknote/react";
@@ -101,6 +101,36 @@ describe("ProofEditor", () => {
     await waitFor(() => expect(textOnly).toHaveTextContent("After"));
     expect(images.querySelector('[data-content-type="image"]')).not.toBeNull();
     expect(textOnly.querySelector('[data-content-type="image"]')).toBeNull();
+  });
+
+  // jsdom has no DataTransfer: the fields BlockNote and the guard read.
+  const fileTransfer = (file: File) => ({
+    types: ["Files"],
+    files: [file],
+    items: [{ kind: "file", type: file.type, getAsFile: () => file }],
+    getData: () => "",
+  });
+
+  it.each([
+    ["an image into a text-only body", png("frame.png"), false],
+    ["a file outside the image allowlist", new File(["x"], "notes.pdf", { type: "application/pdf" }), true],
+  ])("ignores a pasted or dropped file: %s", async (_name, file, allowImages) => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <ProofEditor onChange={onChange} initialContent="<p>Kept</p>" allowImages={allowImages} />,
+    );
+    await waitFor(() => expect(container).toHaveTextContent("Kept"));
+    const body = container.querySelector<HTMLElement>(".bn-editor")!;
+
+    await act(async () => {
+      editor.setTextCursorPosition(editor.document[0], "end");
+      expect(fireEvent.paste(body, { clipboardData: fileTransfer(file) })).toBe(false);
+      expect(fireEvent.drop(body, { dataTransfer: fileTransfer(file) })).toBe(false);
+    });
+
+    expect(editor.document).toHaveLength(1);
+    expect(editor.document[0].type).toBe("paragraph");
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   describe("formatting toolbar", () => {

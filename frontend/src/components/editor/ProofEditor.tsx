@@ -64,14 +64,24 @@ const { paragraph, bulletListItem, numberedListItem, quote, divider, codeBlock, 
   defaultBlockSpecs;
 const { bold, italic, strike, code } = defaultStyleSpecs;
 
+const IMAGE_MIMES = ACCEPTED_IMAGE_MIME.split(",");
+
 // The picker and paste/drop read `fileBlockAccept`; BlockNote's default is `image/*`.
 const proofImage = {
   ...image,
   implementation: {
     ...image.implementation,
-    meta: { ...image.implementation.meta, fileBlockAccept: ACCEPTED_IMAGE_MIME.split(",") },
+    meta: { ...image.implementation.meta, fileBlockAccept: IMAGE_MIMES },
   },
 };
+
+// BlockNote turns a pasted or dropped file outside every block's `fileBlockAccept` into a `file`
+// block, which neither schema has: the insert throws in a floating promise and the paste or drop
+// does nothing visible. Refusing the transfer up front skips that path.
+function refusesFiles(transfer: DataTransfer | null, allowImages: boolean): boolean {
+  const files = Array.from(transfer?.files ?? []);
+  return files.some((f) => !allowImages || !IMAGE_MIMES.includes(f.type));
+}
 
 // The blocks and styles the server's `sanitize.py` tag allowlist stores (h2, h3, lists,
 // blockquote, pre, hr, img; strong, em, s, code); change both. Underline is left out: the server
@@ -179,26 +189,43 @@ export default function ProofEditor({
   const usedNamesRef = useRef<Set<string>>(new Set());
   const seedingRef = useRef(false);
 
+  const uploadFile = async (file: File) => {
+    const name = safeProofFilename(file.name, usedNamesRef.current);
+    if (name === null) throw new Error("Unusable filename");
+    usedNamesRef.current.add(name);
+    // Upload under exactly `name` so the server's `safe_original_filename` reproduces the
+    // placeholder suffix (a File can't be renamed).
+    const staged = file.name === name ? file : new File([file], name, { type: file.type });
+    const placeholder = `${PROOF_PLACEHOLDER_PREFIX}${name}`;
+    stagedRef.current.push({
+      placeholder,
+      previewUrl: URL.createObjectURL(staged),
+      file: staged,
+    });
+    return placeholder;
+  };
+
   const editor = useCreateBlockNote({
     schema: allowImages ? SCHEMA_WITH_IMAGES : SCHEMA_TEXT_ONLY,
     links: { isValidLink: isSafeLinkHref },
-    uploadFile: async (file: File) => {
-      const name = safeProofFilename(file.name, usedNamesRef.current);
-      if (name === null) throw new Error("Unusable filename");
-      usedNamesRef.current.add(name);
-      // Upload under exactly `name` so the server's `safe_original_filename` reproduces the
-      // placeholder suffix (a File can't be renamed).
-      const staged = file.name === name ? file : new File([file], name, { type: file.type });
-      const placeholder = `${PROOF_PLACEHOLDER_PREFIX}${name}`;
-      stagedRef.current.push({
-        placeholder,
-        previewUrl: URL.createObjectURL(staged),
-        file: staged,
-      });
-      return placeholder;
-    },
+    uploadFile: allowImages ? uploadFile : undefined,
     resolveFileUrl: async (url: string) =>
       stagedRef.current.find((s) => s.placeholder === url)?.previewUrl ?? url,
+    pasteHandler: ({ event, defaultPasteHandler }) =>
+      refusesFiles(event.clipboardData, allowImages) || defaultPasteHandler(),
+    // Drop has no public hook. A direct editor prop runs before BlockNote's own drop plugin, and
+    // its drop cursor still clears on the event.
+    _tiptapOptions: {
+      editorProps: {
+        handleDOMEvents: {
+          drop: (_view, event) => {
+            if (!refusesFiles(event.dataTransfer, allowImages)) return false;
+            event.preventDefault();
+            return true;
+          },
+        },
+      },
+    },
   });
 
   // Seed once; the parent re-keys to re-seed.
