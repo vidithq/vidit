@@ -15,14 +15,14 @@ import { FLOATING_CONTROL, HOVER_REVEAL } from "@/components/ui/styles";
  * zoom target; on hover it floats the gallery tiles' action cluster (download, expand), revealed
  * by `HOVER_REVEAL` (always visible on touch).
  *
- * Its own client component because the renderer (`lib/proof.tsx`) is server-safe markup: the open
- * state here keeps a proof body a server render with one interactive leaf.
+ * Its own component because the renderer (`lib/proof.tsx`) is static markup: the open state here
+ * is the one interactive leaf of a proof body.
  *
  * Plain `<img>` on purpose: a proof image has unknown natural dimensions from an arbitrary
  * allowlisted host, which `next/image` cannot size. Lazy and no-referrer hints cover the load
  * discipline. `src` is validated by the caller. The `span` + `inline-block` wrappers keep the
  * hover cluster's positioning context on the picture alone; the node is block level in the
- * document (`renderBlock` in [`lib/proof.tsx`](../../lib/proof.tsx) is the only place it renders),
+ * document (`renderProof` in [`lib/proof.tsx`](../../lib/proof.tsx) is the only place it renders),
  * so it never nests in a paragraph.
  *
  * The viewer portals to `document.body` ([`MediaLightbox`](../ui/MediaLightbox.tsx)), so a

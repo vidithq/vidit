@@ -1,0 +1,40 @@
+{
+  "headingLevels": [
+    2,
+    3
+  ],
+  "marks": {
+    "bold": [],
+    "code": [],
+    "italic": [],
+    "link": [
+      "href"
+    ],
+    "strike": [],
+    "underline": []
+  },
+  "nodes": {
+    "blockquote": [],
+    "bulletList": [],
+    "codeBlock": [
+      "language"
+    ],
+    "doc": [],
+    "hardBreak": [],
+    "heading": [
+      "level"
+    ],
+    "horizontalRule": [],
+    "image": [
+      "alt",
+      "src",
+      "title"
+    ],
+    "listItem": [],
+    "orderedList": [
+      "start"
+    ],
+    "paragraph": [],
+    "text": []
+  }
+}

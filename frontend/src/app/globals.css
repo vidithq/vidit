@@ -198,21 +198,13 @@
   }
 }
 
-/* Tiptap editor styles */
+/* Tiptap editor surface. Block formats take their classes from `lib/richText.ts`, shared with
+   the read view. */
 .ProseMirror {
   min-height: 200px;
 }
 .ProseMirror p {
   margin: 0.5em 0;
-}
-.ProseMirror h3 {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin: 0.75em 0 0.25em;
-}
-.ProseMirror ul {
-  list-style: disc;
-  padding-left: 1.5em;
 }
 .ProseMirror a {
   color: var(--color-orange-400);

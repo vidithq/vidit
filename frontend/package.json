@@ -17,10 +17,13 @@
   },
   "dependencies": {
     "@sentry/nextjs": "^11.2.0",
+    "@tiptap/core": "^3.31.4",
     "@tiptap/extension-image": "^3.31.4",
+    "@tiptap/markdown": "^3.31.4",
     "@tiptap/pm": "^3.31.4",
     "@tiptap/react": "^3.31.4",
     "@tiptap/starter-kit": "^3.31.4",
+    "@tiptap/static-renderer": "^3.31.4",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "fflate": "^0.8.3",

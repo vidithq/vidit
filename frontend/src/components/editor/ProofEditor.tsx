@@ -1,38 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Image from "@tiptap/extension-image";
+import { useEditor, EditorContent, type ChainedCommands } from "@tiptap/react";
 
 import { Button, TAP_STEP } from "@/components/ui/Button";
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { cn } from "@/lib/cn";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
-import { isSafeLinkHref } from "@/lib/proof";
 import { PROOF_PLACEHOLDER_PREFIX, safeProofFilename } from "@/lib/proofImages";
-
-// Links are http(s) only, the rule the renderer applies (`lib/proof.tsx::isSafeLinkHref`, mirrored
-// by `services/sanitize.py::safe_link_href`). StarterKit v3 registers Link with linkify's wider
-// protocol set (mailto, tel, ...), so an autolinked `mailto:` would look like a link and be
-// stripped at publish. `protocols` can only widen, so the narrowing goes through `isAllowedUri`,
-// which paste, autolink, `setLink` and render consult. A typed `https://...` still links; a bare
-// `example.com` or email address doesn't. `openOnClick: false` so a click in the editor places the
-// caret on a link to edit it instead of leaving the page.
-//
-// Underline is off: StarterKit v3 registers it (Cmd/Ctrl+U), but the backend sanitizer drops the
-// mark (`services/sanitize.py`, `_ALLOWED_MARKS` = bold / italic / strike / code / link) and the
-// renderer can't paint it (`lib/proof.tsx`, `applyMarks`), so an underlined run would silently
-// lose its formatting at publish. Change only together with those two mirrors.
-const PROOF_STARTER_KIT = StarterKit.configure({
-  underline: false,
-  link: {
-    isAllowedUri: (url) => isSafeLinkHref(url),
-    openOnClick: false,
-    autolink: true,
-  },
-});
+import { HEADING_LEVELS, isSafeLinkHref, RICH_TEXT_EXTENSIONS } from "@/lib/richText";
 
 interface ProofEditorProps {
   onChange: (json: Record<string, unknown>) => void;
@@ -94,6 +71,90 @@ export function resolveProofDoc(
   return { doc, files };
 }
 
+// One shape for every toolbar control plus the two state paints, with the phone tap step
+// `<Button>` takes (the resting control is about 24px tall).
+const TOOL = `inline-flex items-center px-2 py-1 rounded text-xs ${TAP_STEP}`;
+const TOOL_ON = "bg-neutral-600 text-white";
+const TOOL_OFF = "text-neutral-400 hover:bg-neutral-700";
+const TOOL_DIVIDER = <div className="w-px h-4 bg-neutral-700 mx-1" />;
+
+/** One toolbar toggle per format, in groups split by a divider. Underline (Ctrl/Cmd+U) and the
+ * horizontal rule (`---`) are keyboard-only; every Markdown shortcut StarterKit knows (`## `,
+ * `1. `, `> `, three backticks) also works while typing. */
+type Format = {
+  label: string;
+  title: string;
+  className?: string;
+  active: [string, Record<string, unknown>?];
+  toggle: (chain: ChainedCommands) => ChainedCommands;
+};
+
+const FORMAT_GROUPS: Format[][] = [
+  [
+    {
+      label: "B",
+      title: "Bold",
+      className: "font-bold",
+      active: ["bold"],
+      toggle: (c) => c.toggleBold(),
+    },
+    {
+      label: "I",
+      title: "Italic",
+      className: "italic",
+      active: ["italic"],
+      toggle: (c) => c.toggleItalic(),
+    },
+    {
+      label: "S",
+      title: "Strikethrough",
+      className: "line-through",
+      active: ["strike"],
+      toggle: (c) => c.toggleStrike(),
+    },
+    {
+      label: "Code",
+      title: "Inline code",
+      className: "font-mono",
+      active: ["code"],
+      toggle: (c) => c.toggleCode(),
+    },
+  ],
+  HEADING_LEVELS.map((level): Format => ({
+    label: `H${level}`,
+    title: `Heading ${level}`,
+    active: ["heading", { level }],
+    toggle: (c) => c.toggleHeading({ level }),
+  })),
+  [
+    {
+      label: "List",
+      title: "Bulleted list",
+      active: ["bulletList"],
+      toggle: (c) => c.toggleBulletList(),
+    },
+    {
+      label: "1. List",
+      title: "Numbered list",
+      active: ["orderedList"],
+      toggle: (c) => c.toggleOrderedList(),
+    },
+    {
+      label: "Quote",
+      title: "Quote",
+      active: ["blockquote"],
+      toggle: (c) => c.toggleBlockquote(),
+    },
+    {
+      label: "Code block",
+      title: "Code block",
+      className: "font-mono",
+      active: ["codeBlock"],
+      toggle: (c) => c.toggleCodeBlock(),
+    },
+  ],
+];
+
 /**
  * The Tiptap proof editor with proof-at-publish image handling. "+ Image" holds a picked file
  * locally: it inserts an image node with a blob-URL src for preview and remembers the file under a
@@ -106,12 +167,6 @@ export function resolveProofDoc(
  * `allowImages={false}` removes that control for a body stored under the same allowlist minus
  * images (a collection's description): one editor, so marks, lists and link rules stay the same.
  */
-// One shape for every toolbar control plus the two state paints, with the phone tap step
-// `<Button>` takes (the resting control is about 24px tall).
-const TOOL = `inline-flex items-center px-2 py-1 rounded text-xs ${TAP_STEP}`;
-const TOOL_ON = "bg-neutral-600 text-white";
-const TOOL_OFF = "text-neutral-400 hover:bg-neutral-700";
-
 export default function ProofEditor({
   onChange,
   onProofFilesChange,
@@ -138,7 +193,7 @@ export default function ProofEditor({
 
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: [PROOF_STARTER_KIT, Image],
+    extensions: RICH_TEXT_EXTENSIONS,
     content: initialContent ?? undefined,
     editorProps: {
       attributes: {
@@ -231,42 +286,27 @@ export default function ProofEditor({
       )}
     >
       <div className="flex items-center gap-1 px-2 py-1 border-b border-neutral-700 flex-wrap">
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleBold().run()}
-          className={`${TOOL} font-bold ${
-            editor.isActive("bold") ? TOOL_ON : TOOL_OFF
-          }`}
-        >
-          B
-        </button>
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-          className={`${TOOL} italic ${
-            editor.isActive("italic") ? TOOL_ON : TOOL_OFF
-          }`}
-        >
-          I
-        </button>
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-          className={`${TOOL} ${
-            editor.isActive("heading", { level: 3 }) ? TOOL_ON : TOOL_OFF
-          }`}
-        >
-          H3
-        </button>
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-          className={`${TOOL} ${
-            editor.isActive("bulletList") ? TOOL_ON : TOOL_OFF
-          }`}
-        >
-          List
-        </button>
+        {FORMAT_GROUPS.map((group, i) => (
+          <div key={i} className="contents">
+            {i > 0 && TOOL_DIVIDER}
+            {group.map((format) => (
+              <button
+                key={format.label}
+                type="button"
+                title={format.title}
+                onClick={() => format.toggle(editor.chain().focus()).run()}
+                className={cn(
+                  TOOL,
+                  format.className,
+                  editor.isActive(...format.active) ? TOOL_ON : TOOL_OFF,
+                )}
+              >
+                {format.label}
+              </button>
+            ))}
+          </div>
+        ))}
+        {TOOL_DIVIDER}
         <button
           type="button"
           title="Link the selected text (http or https URL)"
@@ -284,7 +324,7 @@ export default function ProofEditor({
         </button>
         {allowImages && (
           <>
-            <div className="w-px h-4 bg-neutral-700 mx-1" />
+            {TOOL_DIVIDER}
             {/* Holds the picked file locally (blob preview plus retained File); upload happens at publish. */}
             <label
               className={`${TOOL} ${TOOL_OFF} cursor-pointer`}

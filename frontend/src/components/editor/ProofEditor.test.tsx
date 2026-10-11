@@ -65,8 +65,29 @@ describe("ProofEditor", () => {
     // stage a file the server drops. Marks, list and link controls stay: one editor serves both.
     render(<ProofEditor onChange={() => {}} allowImages={false} />);
     expect(screen.queryByText("+ Image")).not.toBeInTheDocument();
-    for (const label of ["B", "I", "H3", "List", "Link"]) {
+    for (const label of ["B", "I", "S", "Code", "H2", "H3", "List", "1. List", "Quote", "Code block", "Link"]) {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+    }
+  });
+
+  it("toggles each format through its own command", () => {
+    render(<ProofEditor onChange={() => {}} />);
+    const expected: Array<[string, string, unknown[]]> = [
+      ["B", "toggleBold", []],
+      ["I", "toggleItalic", []],
+      ["S", "toggleStrike", []],
+      ["Code", "toggleCode", []],
+      ["H2", "toggleHeading", [{ level: 2 }]],
+      ["H3", "toggleHeading", [{ level: 3 }]],
+      ["List", "toggleBulletList", []],
+      ["1. List", "toggleOrderedList", []],
+      ["Quote", "toggleBlockquote", []],
+      ["Code block", "toggleCodeBlock", []],
+    ];
+    for (const [label, command, args] of expected) {
+      stub.calls.length = 0;
+      fireEvent.click(screen.getByRole("button", { name: label }));
+      expect(stub.calls).toEqual([["focus", []], [command, args]]);
     }
   });
 

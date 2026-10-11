@@ -5,10 +5,14 @@ tracking-pixel image hosts, off-domain links), so `sanitize_tiptap_doc` walks
 the tree against an allowlist of nodes, marks, and attrs and drops the rest.
 Depth and node-count caps bound recursion and storage cost.
 
-The allowlists and URL predicates mirror the front end
-(`lib/proof.tsx`, `ProofEditor.tsx`); a security fix to either side needs the other.
+The allowlist is ``rich_text_contract.json``, generated from the editor's
+extensions (``frontend/src/lib/richText.ts``) and checked against them by the
+frontend test suite. The URL predicates are hand-kept mirrors of the same
+module; a security fix to either side needs the other.
 """
 
+import json
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -21,24 +25,15 @@ from app.services.storage import LOCAL_STORAGE_URL_PREFIX
 # storing, so no persisted doc carries one. Mirrored by `lib/proofImages.ts`.
 PROOF_PLACEHOLDER_PREFIX = "placeholder://"
 
-# Tiptap StarterKit nodes + Image (see `ProofEditor.tsx`).
-_ALLOWED_NODES: dict[str, set[str]] = {
-    "doc": set(),
-    "paragraph": set(),
-    "text": set(),
-    "heading": {"level"},
-    "blockquote": set(),
-    "bulletList": set(),
-    "orderedList": {"start"},
-    "listItem": set(),
-    "codeBlock": {"language"},
-    "hardBreak": set(),
-    "horizontalRule": set(),
-    "image": {"src", "alt", "title"},
+_CONTRACT = json.loads(Path(__file__).with_name("rich_text_contract.json").read_text())
+# Node and mark type to the attrs it keeps.
+ALLOWED_NODES: dict[str, frozenset[str]] = {
+    name: frozenset(attrs) for name, attrs in _CONTRACT["nodes"].items()
 }
-
-# StarterKit marks + link (href checked in _sanitize_mark).
-_ALLOWED_MARKS: set[str] = {"bold", "italic", "strike", "code", "link"}
+ALLOWED_MARKS: dict[str, frozenset[str]] = {
+    name: frozenset(attrs) for name, attrs in _CONTRACT["marks"].items()
+}
+HEADING_LEVELS: tuple[int, ...] = tuple(sorted(_CONTRACT["headingLevels"]))
 
 # DoS guards: a long writeup with ~20 images is well under both.
 _MAX_DEPTH = 32
@@ -319,14 +314,14 @@ def _sanitize_node(
     if not isinstance(node, dict):
         return None
     node_type = node.get("type")
-    if not isinstance(node_type, str) or node_type not in _ALLOWED_NODES:
+    if not isinstance(node_type, str) or node_type not in ALLOWED_NODES:
         return None
     if node_type == "image" and not allow_images:
         return None
 
     cleaned: dict[str, Any] = {"type": node_type}
 
-    allowed_attrs = _ALLOWED_NODES[node_type]
+    allowed_attrs = ALLOWED_NODES[node_type]
     raw_attrs = node.get("attrs")
     if isinstance(raw_attrs, dict) and allowed_attrs:
         clean_attrs = _sanitize_attrs(
@@ -337,7 +332,12 @@ def _sanitize_node(
         if clean_attrs:
             cleaned["attrs"] = clean_attrs
 
+    if node_type == "heading":
+        cleaned.setdefault("attrs", {}).setdefault("level", HEADING_LEVELS[0])
+
     text = node.get("text")
+    if node_type == "text" and not (isinstance(text, str) and text):
+        return None  # ProseMirror refuses a text node with no text
     if isinstance(text, str):
         cleaned["text"] = text
 
@@ -373,7 +373,7 @@ def _sanitize_mark(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
     mark_type = raw.get("type")
-    if mark_type not in _ALLOWED_MARKS:
+    if not isinstance(mark_type, str) or mark_type not in ALLOWED_MARKS:
         return None
     if mark_type == "link":
         attrs = raw.get("attrs")
@@ -384,11 +384,23 @@ def _sanitize_mark(raw: Any) -> dict[str, Any] | None:
             return None
         # href only: the renderer sets target and rel itself, so no stored value can change them.
         return {"type": "link", "attrs": {"href": href}}
-    return {"type": mark_type}
+    cleaned: dict[str, Any] = {"type": mark_type}
+    raw_attrs = raw.get("attrs")
+    if isinstance(raw_attrs, dict) and ALLOWED_MARKS[mark_type]:
+        clean_attrs = _sanitize_attrs(
+            mark_type, raw_attrs, ALLOWED_MARKS[mark_type], allow_placeholders=False
+        )
+        if clean_attrs:
+            cleaned["attrs"] = clean_attrs
+    return cleaned
 
 
 def _sanitize_attrs(
-    node_type: str, raw_attrs: dict[str, Any], allowed: set[str], *, allow_placeholders: bool
+    node_type: str,
+    raw_attrs: dict[str, Any],
+    allowed: frozenset[str],
+    *,
+    allow_placeholders: bool,
 ) -> dict[str, Any] | None:
     """Returns the cleaned attr dict, or None if the whole node should be dropped."""
     cleaned: dict[str, Any] = {}
@@ -401,8 +413,9 @@ def _sanitize_attrs(
                 return None  # unsafe image: drop the node
             cleaned[key] = safe
         elif node_type == "heading" and key == "level":
-            if isinstance(value, int) and 1 <= value <= 6:
-                cleaned[key] = value
+            # A level outside the contract (a pasted H1, an old H4) moves to the nearest one.
+            level = value if isinstance(value, int) and not isinstance(value, bool) else 0
+            cleaned[key] = min(max(level, HEADING_LEVELS[0]), HEADING_LEVELS[-1])
         elif isinstance(value, (str, int, type(None))):
             cleaned[key] = value
     return cleaned

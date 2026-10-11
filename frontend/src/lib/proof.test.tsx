@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isSafeLinkHref, proofHasImage, renderProof, tiptapDocText } from "./proof";
+import { proofHasImage, renderProof, tiptapDocText } from "./proof";
 
 const doc = (...content: Record<string, unknown>[]) => ({
   type: "doc",
@@ -114,15 +114,38 @@ describe("renderProof", () => {
     expect(container).toHaveTextContent("relative");
   });
 
-  it("clamps heading levels into h1–h6 and defaults to h3", () => {
+  it("renders the contract's heading levels and any other level as h2", () => {
     const heading = (level: unknown) => ({
       type: "heading",
       attrs: { level },
       content: [text("h")],
     });
-    expect(renderDoc(doc(heading(9))).querySelector("h6")).not.toBeNull();
-    expect(renderDoc(doc(heading(0))).querySelector("h1")).not.toBeNull();
-    expect(renderDoc(doc(heading("2"))).querySelector("h3")).not.toBeNull();
+    expect(renderDoc(doc(heading(2))).querySelector("h2")).not.toBeNull();
+    expect(renderDoc(doc(heading(3))).querySelector("h3")).not.toBeNull();
+    for (const level of [1, 9, 0, "3"]) {
+      const container = renderDoc(doc(heading(level)));
+      expect(container.querySelector("h2")).toHaveTextContent("h");
+      expect(container.querySelectorAll("h1, h3, h4, h5, h6")).toHaveLength(0);
+    }
+  });
+
+  it("renders underline, blockquote and a code block's language class", () => {
+    const container = renderDoc(
+      doc(
+        paragraph(text("under", [{ type: "underline" }])),
+        { type: "blockquote", content: [paragraph(text("quoted"))] },
+        { type: "codeBlock", attrs: { language: "py" }, content: [text("x = 1")] },
+      ),
+    );
+    expect(container.querySelector("u")).toHaveTextContent("under");
+    expect(container.querySelector("blockquote p")).toHaveTextContent("quoted");
+    expect(container.querySelector("pre code")).toHaveClass("language-py");
+  });
+
+  it("falls back to plain text for a document ProseMirror refuses", () => {
+    // An empty text node is invalid ProseMirror; a stored one must not blank the page.
+    const container = renderDoc(doc(paragraph(text("kept")), paragraph(text(""))));
+    expect(container).toHaveTextContent("kept");
   });
 
   it("renders images with lazy loading and no-referrer, skipping missing src", () => {
@@ -379,39 +402,5 @@ describe("tiptapDocText", () => {
   it("gives an image no text of its own", () => {
     const image = { type: "image", attrs: { src: "https://x/y.jpg" } };
     expect(tiptapDocText(doc(image, paragraph(text("Caption"))))).toBe("Caption");
-  });
-});
-
-describe("isSafeLinkHref", () => {
-  // The editor mints links against this rule and the renderer re-applies it, so a link the editor
-  // allows is one `services/sanitize.py::safe_link_href` keeps.
-  it("accepts absolute http(s) URLs with a host", () => {
-    expect(isSafeLinkHref("https://x.com/user/status/1")).toBe(true);
-    expect(isSafeLinkHref("http://localhost:8000/p")).toBe(true);
-    expect(isSafeLinkHref("HTTPS://X.COM/a")).toBe(true);
-  });
-
-  it("rejects the other protocols linkify registers by default", () => {
-    for (const url of [
-      "mailto:analyst@example.com",
-      "tel:+33123456789",
-      "sms:+33123456789",
-      "ftp://files.example.com/x",
-      "xmpp:analyst@example.com",
-    ]) {
-      expect(isSafeLinkHref(url)).toBe(false);
-    }
-  });
-
-  it("rejects a scheme-less value, an email, and a smuggled javascript: scheme", () => {
-    expect(isSafeLinkHref("example.com/a")).toBe(false);
-    expect(isSafeLinkHref("analyst@example.com")).toBe(false);
-    expect(isSafeLinkHref("javascript:alert(1)")).toBe(false);
-    expect(isSafeLinkHref("java\nscript:alert(1)")).toBe(false);
-    expect(isSafeLinkHref("https://")).toBe(false);
-  });
-
-  it("rejects an href past the 2000-byte ceiling the server applies", () => {
-    expect(isSafeLinkHref("https://example.com/" + "x".repeat(2000))).toBe(false);
   });
 });

@@ -52,7 +52,7 @@ def test_unknown_mark_dropped():
                         "text": "x",
                         "marks": [
                             {"type": "bold"},
-                            {"type": "underline"},
+                            {"type": "highlight"},
                         ],
                     }
                 ],
@@ -78,19 +78,98 @@ def test_unknown_attr_dropped():
     assert cleaned["content"][0]["attrs"] == {"level": 2}
 
 
-def test_heading_level_out_of_range_dropped():
+@pytest.mark.parametrize(
+    ("attrs", "level"),
+    [
+        ({"level": 99}, 3),
+        ({"level": 4}, 3),
+        ({"level": 1}, 2),
+        ({"level": "3"}, 2),
+        ({"level": True}, 2),
+        ({}, 2),
+        (None, 2),
+    ],
+)
+def test_heading_level_moves_into_the_contract(attrs, level):
+    node: dict = {"type": "heading", "content": [{"type": "text", "text": "x"}]}
+    if attrs is not None:
+        node["attrs"] = attrs
+    cleaned = sanitize_tiptap_doc({"type": "doc", "content": [node]})
+    assert cleaned["content"][0]["attrs"] == {"level": level}
+
+
+def test_text_node_without_text_dropped():
     doc = {
         "type": "doc",
         "content": [
             {
-                "type": "heading",
-                "attrs": {"level": 99},
-                "content": [{"type": "text", "text": "x"}],
+                "type": "paragraph",
+                "content": [
+                    {"type": "text", "text": ""},
+                    {"type": "text"},
+                    {"type": "text", "text": "kept"},
+                ],
             }
         ],
     }
     cleaned = sanitize_tiptap_doc(doc)
-    assert "attrs" not in cleaned["content"][0]
+    assert cleaned["content"][0]["content"] == [{"type": "text", "text": "kept"}]
+
+
+def test_every_starter_kit_format_passes():
+    doc = {
+        "type": "doc",
+        "content": [
+            {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "h"}]},
+            {
+                "type": "paragraph",
+                "content": [
+                    {"type": "text", "text": "m", "marks": [{"type": mark}]}
+                    for mark in ("bold", "italic", "strike", "code", "underline")
+                ]
+                + [{"type": "hardBreak"}],
+            },
+            {
+                "type": "orderedList",
+                "attrs": {"start": 3, "type": "a"},
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {"type": "paragraph", "content": [{"type": "text", "text": "i"}]}
+                        ],
+                    }
+                ],
+            },
+            {"type": "bulletList", "content": [{"type": "listItem", "content": []}]},
+            {"type": "blockquote", "content": [{"type": "paragraph"}]},
+            {
+                "type": "codeBlock",
+                "attrs": {"language": "py"},
+                "content": [{"type": "text", "text": "x"}],
+            },
+            {"type": "horizontalRule"},
+        ],
+    }
+    cleaned = sanitize_tiptap_doc(doc)
+    assert [node["type"] for node in cleaned["content"]] == [
+        "heading",
+        "paragraph",
+        "orderedList",
+        "bulletList",
+        "blockquote",
+        "codeBlock",
+        "horizontalRule",
+    ]
+    assert [m["marks"][0]["type"] for m in cleaned["content"][1]["content"][:5]] == [
+        "bold",
+        "italic",
+        "strike",
+        "code",
+        "underline",
+    ]
+    # The list's `type` is a schema attribute the contract drops.
+    assert cleaned["content"][2]["attrs"] == {"start": 3}
 
 
 def test_image_javascript_url_drops_node():
