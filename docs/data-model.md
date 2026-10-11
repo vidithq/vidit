@@ -905,7 +905,7 @@ The table holds the copies as they stand. On a `geolocated` event, the edit that
 ## Design decisions
 
 ### Why HTML for `proof` and `description`?
-The rich editor reads and writes HTML, so the column stores the sanitized HTML it sends and the renderer reads it back without a conversion. The sanitizer serializes a canonical form, so two writes of the same body compare equal, and SQL can test for an image with a pattern: the [detections readiness filter](api.md#get-eventsdetections) matches `<img [^>]*src="` on `events.proof` (`services/events/readiness.py`), the verdict `sanitize.extract_image_srcs` gives in Python.
+The rich editor reads and writes HTML, so the column stores the sanitized HTML it sends and the renderer reads it back without a conversion. The sanitizer serializes a canonical form, so two writes of the same body compare equal, and SQL can test for an image with a pattern: the [detections readiness filter](api.md#get-eventsdetections) walks the attribute tokens of each `img` in `events.proof` for a `src` (`services/events/readiness.py`), the verdict `sanitize.extract_image_srcs` gives in Python.
 
 ### Why `event_tags` and not an array column on `events`?
 This is a many-to-many relationship: a geolocation can carry several tags, and a tag can appear on many geolocations. The `event_tags` junction table is the standard solution. It supports efficient filtering (`WHERE tag_id = X`) and indexing on both sides. The alternative, a `tag_ids[]` array on `events`, would make filters more complex and less performant at scale.

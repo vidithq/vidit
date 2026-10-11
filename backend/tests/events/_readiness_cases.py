@@ -18,6 +18,8 @@ PROOF_TEXT_ONLY = "<p>No imagery.</p>"
 # The sanitiser drops a src-less image, but a row written past it can hold one, and text
 # can name the tag. The three implementations most easily disagree on these.
 PROOF_IMAGE_WITHOUT_SRC = '<img alt="src=&quot;x&quot;"><p>&lt;img src="y"&gt;</p>'
+# `` src="`` spelled inside another attribute's value.
+PROOF_IMAGE_WITH_SRC_IN_A_VALUE = '<img alt="x src=">'
 
 # name -> (``_make_geo`` overrides on top of a plain detection, ready?)
 READINESS_CASES: dict[str, tuple[dict[str, Any], bool]] = {
@@ -42,6 +44,10 @@ READINESS_CASES: dict[str, tuple[dict[str, Any], bool]] = {
     "no_proof_image": ({"with_media": True, "proof": PROOF_TEXT_ONLY}, False),
     "proof_image_without_a_src": (
         {"with_media": True, "proof": PROOF_IMAGE_WITHOUT_SRC},
+        False,
+    ),
+    "proof_image_with_src_inside_a_value": (
+        {"with_media": True, "proof": PROOF_IMAGE_WITH_SRC_IN_A_VALUE},
         False,
     ),
     "missing_everything_but_the_title": (

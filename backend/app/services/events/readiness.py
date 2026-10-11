@@ -12,10 +12,11 @@ from app.models.media import Media
 
 # Proof-image leg as a regex over the stored HTML, the same verdict as
 # :func:`sanitize.extract_image_srcs` on a canonical body: ``<img`` there is
-# always markup (text escapes ``<``), ``>`` inside a value is escaped, and the
-# sanitiser drops an image without a ``src``. ``placeholder://`` srcs never
-# persist, so no prefix test is needed.
-_PROOF_IMAGE_PATTERN = '<img [^>]*src="'
+# always markup (text escapes ``<``), and every attribute is a `` name="value"``
+# token whose value escapes ``"``, so walking the tokens finds a real ``src``
+# and never one spelled inside a value. ``placeholder://`` srcs never persist,
+# so no prefix test is needed.
+_PROOF_IMAGE_PATTERN = r'<img(\s[a-z-]+="[^"]*")*\ssrc="'
 
 
 # Queue filter values of ``GET /events/detections`` (422 on anything else);

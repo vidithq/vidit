@@ -73,11 +73,12 @@ _PLAIN_TAG_REST = re.compile(
     r"[\t\n\f\r ]*+/?>"
 )
 
-# Canonical output escapes ``"`` and ``>`` inside attribute values, so ``[^>]*``
-# spans exactly one tag and `` src="`` cannot occur inside a value. An ``a``
-# carries only ``href``, so a bare ``<a>`` lost it; the parser never nests
-# links, so the lazy match pairs it with its own ``</a>``.
-_BARE_IMG = re.compile(r'<img(?![^>]*\ssrc=")[^>]*>')
+# Canonical output quotes every attribute value and escapes ``"``, ``<`` and
+# ``>`` inside it, so a tag reads as a run of `` name="value"`` tokens and a
+# value cannot fake a ``src`` token. An ``a`` carries only ``href``, so a bare
+# ``<a>`` lost it; the parser never nests links, so the lazy match pairs it
+# with its own ``</a>``.
+_BARE_IMG = re.compile(r'<img(?:\s(?!src=)[a-z-]+="[^"]*")*>')
 _BARE_LINK = re.compile(r"<a>(.*?)</a>", re.DOTALL)
 
 # The editor writes U+FFFC into an empty block; it carries no text.

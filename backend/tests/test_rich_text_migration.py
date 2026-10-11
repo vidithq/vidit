@@ -117,6 +117,7 @@ def test_images_keep_alt_and_lose_unsafe_srcs():
         {"type": "image", "attrs": {"src": "/media/a.png", "alt": "frame", "title": None}},
         {"type": "image", "attrs": {"src": "javascript:alert(1)"}},
         {"type": "image", "attrs": {"src": "//evil.example/p.gif"}},
+        {"type": "image", "attrs": {"src": "javascript:x", "alt": "x src="}},
         {"type": "image", "attrs": {}},
     )
     assert tiptap_to_html(doc) == '<img src="/media/a.png" alt="frame">'

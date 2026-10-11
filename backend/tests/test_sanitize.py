@@ -182,8 +182,15 @@ def test_refused_image_is_removed_not_left_bare():
     assert sanitize_html(html) == "<p>x</p><p>y</p>"
 
 
-def test_image_without_src_is_removed():
-    assert sanitize_html('<img alt="a"><img>') == ""
+@pytest.mark.parametrize("html", ['<img alt="a"><img>', '<img alt="x src=">'])
+def test_image_without_src_is_removed(html):
+    assert sanitize_html(html) == ""
+
+
+def test_markup_characters_in_an_attribute_value_keep_the_image():
+    out = sanitize_html('<img alt="a>b" src="/m.png">')
+    assert out == '<img alt="a&gt;b" src="/m.png">'
+    assert extract_image_srcs(out) == ["/m.png"]
 
 
 def test_relative_image_passes():

@@ -70,7 +70,7 @@ _TAGS = frozenset(
     }
 )
 _ATTRIBUTES: dict[str, set[str]] = {"*": set(), "a": {"href"}, "img": {"src", "alt"}}
-_BARE_IMG = re.compile(r'<img(?![^>]*\ssrc=")[^>]*>')
+_BARE_IMG = re.compile(r'<img(?:\s(?!src=)[a-z-]+="[^"]*")*>')
 _BARE_LINK = re.compile(r"<a>(.*?)</a>", re.DOTALL)
 
 _BLOCK_TAGS = {
