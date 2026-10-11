@@ -210,6 +210,11 @@
   color: var(--color-orange-400);
   text-decoration: underline;
 }
+/* A wheel that reaches the end of the slash menu would scroll the page, which moves the
+   anchor and flips the menu under the pointer. */
+.bn-suggestion-menu {
+  overscroll-behavior: contain;
+}
 
 /* Custom scrollbar: follows the neutral scale, so it flips with the theme */
 * {
