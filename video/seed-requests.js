@@ -26,6 +26,7 @@
 // a `/geolocations` or top-level `/requests` call comes back.
 
 const { Blob } = require("node:buffer");
+const { proofText } = require("./proof-html");
 
 const API = "http://localhost:8000/api/v1";
 
@@ -130,21 +131,6 @@ async function fetchStoredMedia(storageUrl) {
   const buf = Buffer.from(await res.arrayBuffer());
   const type = res.headers.get("content-type") || "application/octet-stream";
   return { buf, type };
-}
-
-// The detection's proof body as plain text. The proof is a Tiptap document, and
-// the import writes the thread's own words into it, which is the text the
-// request title is built from.
-function proofText(proof) {
-  const out = [];
-  const walk = (node) => {
-    if (!node || typeof node !== "object") return;
-    if (typeof node.text === "string") out.push(node.text);
-    if (node.type === "paragraph") out.push("\n");
-    for (const child of node.content || []) walk(child);
-  };
-  walk(proof);
-  return out.join("");
 }
 
 function titleFromTweetText(text, fallback) {

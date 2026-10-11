@@ -60,6 +60,7 @@
 // Usage: VIDIT_DEMO_PASSWORD=… node record-v05b.js
 
 const fs = require("fs");
+const { proofImageCount } = require("./proof-html");
 const path = require("path");
 const { spawn } = require("child_process");
 const {
@@ -130,12 +131,6 @@ const recordClip = createRecorder({
 const api = (auth, method, pathname, body) => apiCall(API, auth, method, pathname, body);
 
 // ─── the draft the review beat opens ─────────────────────────────────────
-
-function proofImageCount(node) {
-  if (!node || typeof node !== "object") return 0;
-  const here = node.type === "image" ? 1 : 0;
-  return here + (node.content || []).reduce((sum, c) => sum + proofImageCount(c), 0);
-}
 
 // The server's cap on the proof body, mirroring `max_proof_images_per_event`
 // in backend/app/config.py. A draft over it is refused at publish, which on

@@ -50,6 +50,7 @@
 // Usage: node record-v05.js        (the instance must already be running)
 
 const fs = require("fs");
+const { proofText } = require("./proof-html");
 const path = require("path");
 const {
   wait,
@@ -140,19 +141,13 @@ async function publicGet(pathname) {
   return res.json();
 }
 
-function proofLength(doc) {
-  const walk = (n) =>
-    (n.text ? n.text.length : 0) + (n.content || []).reduce((a, c) => a + walk(c), 0);
-  return doc ? walk(doc) : 0;
-}
-
 async function verifyTarget() {
   const event = await publicGet(`/events/${TARGET_EVENT}`);
   const media = (Array.isArray(event.media) ? event.media : [event.media]).filter(Boolean);
   const problems = [];
   if (!media.some((m) => m.role === "source")) problems.push("no source media");
   if (!event.event_coords) problems.push("no coordinates");
-  if (proofLength(event.proof) < 200) problems.push("proof too short to read on camera");
+  if (proofText(event.proof).length < 200) problems.push("proof too short to read on camera");
   if (!event.source_url) problems.push("no source link");
   // `archived_source` is the copy of the SOURCE link specifically, which is
   // the one the detail beat frames. An event can carry a copy of a secondary
