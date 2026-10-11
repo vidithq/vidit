@@ -52,6 +52,10 @@ _LINE_TAGS = frozenset({"p", "h2", "h3", "li", "blockquote", "pre", "ul", "ol", 
 # in about 0.1 s). A long writeup with ~20 images is well under both.
 _MAX_LENGTH = 200_000
 _MAX_TAGS = 10_000
+# The read view (html-react-parser) recurses per level and overflows the
+# browser stack near 2,500 nested tags, which the tag cap alone allows.
+_MAX_DEPTH = 32
+_VOID_TAGS = frozenset({"img", "br", "hr"})
 
 # Canonical output escapes ``"`` and ``>`` inside attribute values, so ``[^>]*``
 # spans exactly one tag and `` src="`` cannot occur inside a value. An ``a``
@@ -186,7 +190,10 @@ def sanitize_html(html: str, *, allow_images: bool = True, allow_placeholders: b
     """The canonical, allowlisted form of a rich-text body; raises ValueError over a cap."""
     _check_size(html)
     cleaned = _clean(html, allow_images=allow_images, allow_placeholders=allow_placeholders)
-    if "<img " not in cleaned and not html_text(cleaned):
+    reader = _Reader(cleaned)
+    if reader.max_depth > _MAX_DEPTH:
+        raise ValueError(f"Rich text exceeds max nesting depth ({_MAX_DEPTH})")
+    if "<img " not in cleaned and not reader.lines:
         return ""
     return cleaned
 
@@ -219,6 +226,8 @@ class _Reader(HTMLParser):
         self.lines: list[str] = []
         self.current: list[str] = []
         self.urls: dict[str, list[str]] = {"img": [], "a": []}
+        self.depth = 0
+        self.max_depth = 0
         self.feed(html)
         self.close()
         self.flush()
@@ -229,6 +238,9 @@ class _Reader(HTMLParser):
         self.lines.extend(line.strip() for line in text.split("\n") if line.strip())
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag not in _VOID_TAGS:
+            self.depth += 1
+            self.max_depth = max(self.max_depth, self.depth)
         if tag in _LINE_TAGS:
             self.flush()
         if tag in self._URL_ATTRS:
@@ -236,6 +248,8 @@ class _Reader(HTMLParser):
             self.urls[tag].extend(v for name, v in attrs if name == wanted and v is not None)
 
     def handle_endtag(self, tag: str) -> None:
+        if tag not in _VOID_TAGS:
+            self.depth -= 1
         if tag in _LINE_TAGS:
             self.flush()
 

@@ -271,6 +271,12 @@ def test_excessive_tag_count_rejected_before_parsing():
         sanitize_html("<p>x</p>" * 6_000)
 
 
+def test_deep_nesting_rejected_but_nested_lists_pass():
+    assert sanitize_html("<ul><li><p>" * 10 + "x" + "</p></li></ul>" * 10)
+    with pytest.raises(ValueError, match="max nesting depth"):
+        sanitize_html("<blockquote>" * 40 + "x" + "</blockquote>" * 40)
+
+
 def test_excessive_length_rejected():
     with pytest.raises(ValueError, match="max length"):
         sanitize_html("x" * 200_001)
