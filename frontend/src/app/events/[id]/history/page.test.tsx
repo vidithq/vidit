@@ -55,7 +55,7 @@ function baseEvent(versionNo: number): EventDetail {
     source_url: "https://t.me/channel/12345",
     secondary_source_urls: [],
     archived_secondary_sources: [],
-    proof: { type: "doc", content: [] },
+    proof: "",
     created_at: "2026-06-01T10:00:00Z",
     geolocated_at: "2026-06-01T10:00:00Z",
     closed_at: null,
@@ -97,7 +97,7 @@ const snapshot = (title: string): Record<string, unknown> => ({
   secondary_source_urls: [],
   tags: [],
   conflicts: [],
-  proof: { type: "doc", content: [] },
+  proof: "",
   proof_media: [],
 });
 

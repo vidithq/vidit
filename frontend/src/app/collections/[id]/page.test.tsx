@@ -79,17 +79,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   id: "c1",
   owner: OWNER,
   title: "Kupiansk rail corridor",
-  description: {
-    type: "doc",
-    content: [
-      {
-        type: "paragraph",
-        content: [
-          { type: "text", text: "Three days of strikes on the eastern approach." },
-        ],
-      },
-    ],
-  },
+  description: "<p>Three days of strikes on the eastern approach.</p>",
   description_text: "Three days of strikes on the eastern approach.",
   cover: [],
   tags: [],
@@ -178,33 +168,7 @@ describe("CollectionPage", () => {
   it("prints the description whole, through the proof renderer", async () => {
     mockReads(
       collection({
-        description: {
-          type: "doc",
-          content: [
-            {
-              type: "paragraph",
-              content: [
-                { type: "text", text: "Three days of " },
-                { type: "text", text: "strikes", marks: [{ type: "bold" }] },
-                { type: "text", text: "." },
-              ],
-            },
-            {
-              type: "bulletList",
-              content: [
-                {
-                  type: "listItem",
-                  content: [
-                    {
-                      type: "paragraph",
-                      content: [{ type: "text", text: "The eastern approach." }],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
+        description: "<p>Three days of <strong>strikes</strong>.</p><ul><li><p>The eastern approach.</p></li></ul>",
       }),
     );
 

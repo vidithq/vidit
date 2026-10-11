@@ -132,7 +132,7 @@ const nextConfig = {
   //
   // A full resource CSP (script-src / style-src / img-src, etc.) is a
   // deliberate follow-up, not included here: Next's inline bootstrap scripts,
-  // the maplibre worker/blob usage in the map view, and Tiptap's proof editor
+  // the maplibre worker/blob usage in the map view, and the BlockNote proof editor
   // all need directives worked out carefully, and getting them wrong breaks
   // the app rather than just narrowing it. This only locks down framing.
   async headers() {

@@ -1,113 +1,164 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
-import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Image from "@tiptap/extension-image";
+import "@blocknote/mantine/style.css";
 
-import { TAP_STEP } from "@/components/ui/Button";
+import { useEffect, useRef } from "react";
+import {
+  BlockNoteSchema,
+  createHeadingBlockSpec,
+  defaultBlockSpecs,
+  defaultInlineContentSpecs,
+  defaultStyleSpecs,
+} from "@blocknote/core";
+import {
+  FilePanel,
+  FilePanelController,
+  FormattingToolbar,
+  FormattingToolbarController,
+  getFormattingToolbarItems,
+  UploadTab,
+  useCreateBlockNote,
+  useDictionary,
+  type FilePanelProps,
+  type FormattingToolbarProps,
+} from "@blocknote/react";
+import { BlockNoteView } from "@blocknote/mantine";
+
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
+import { FIELD_TEXT } from "@/components/ui/Input";
 import { cn } from "@/lib/cn";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
+import { isSafeLinkHref, proofImageSrcs } from "@/lib/proof";
 import { PROOF_PLACEHOLDER_PREFIX, safeProofFilename } from "@/lib/proofImages";
 
-/** A link the proof pipeline carries end to end: an absolute http(s) URL. Exported for its test. */
-export const isProofLinkUri = (url: string): boolean => /^https?:\/\//i.test(url);
-
-// Links are http(s) only, like both sanitisers downstream (`services/sanitize.py::safe_link_href`,
-// `lib/proof.tsx::isSafeLinkHref`). StarterKit v3 registers Link with linkify's wider protocol set
-// (mailto, tel, ...) and autolink on, so an autolinked `mailto:` would look like a link and be
-// stripped at publish. `protocols` can only widen, so the narrowing goes through `isAllowedUri`,
-// which paste, autolink and render consult. A typed `https://...` still links; a bare
-// `example.com` or email address doesn't. Change only together with those two mirrors.
-//
-// Underline is off: StarterKit v3 registers it (Cmd/Ctrl+U), but the backend sanitizer drops the
-// mark (`services/sanitize.py`, `_ALLOWED_MARKS` = bold / italic / strike / code / link) and the
-// renderer can't paint it (`lib/proof.tsx`, `applyMarks`), so an underlined run would silently
-// lose its formatting at publish. Change only together with those two mirrors.
-const PROOF_STARTER_KIT = StarterKit.configure({
-  underline: false,
-  link: { isAllowedUri: isProofLinkUri },
-});
-
 interface ProofEditorProps {
-  onChange: (json: Record<string, unknown>) => void;
+  onChange: (html: string) => void;
   /** The proof body's inline images, kept locally while typing and uploaded at publish (as
-   * `proof_files[]`). Fires on every add or removal so the parent stages exactly the files the doc
+   * `proof_files[]`). Fires on every change so the parent stages exactly the files the body
    * still references. */
   onProofFilesChange?: (files: File[]) => void;
-  // Optional initial Tiptap doc (a draft). Read once at construction: pair with a `key` on the parent to re-seed.
-  initialContent?: Record<string, unknown> | null;
-  /** Whether the body may carry images. False drops the "+ Image" control for a surface with no
-   * upload path (a collection's description is stored with `sanitize_tiptap_doc(allow_images=False)`). */
+  /** Stored HTML to start from. Read once at mount: pair with a `key` on the parent to re-seed. */
+  initialContent?: string | null;
+  /** False for a body stored without images (a collection's description): no image block, no
+   * upload path. */
   allowImages?: boolean;
   /** Red invalid outline on the editor's box (FORM_INVALID_FIELD) for a caller whose submit refuses the body. */
   invalid?: boolean;
 }
 
-// `previewUrl` is the `blob:` URL of a picked "+ Image" file; `emit`'s src
-// rewrite matches on the string alone.
-type ImageEntry = { previewUrl: string; placeholder: string; file: File };
+type StagedImage = { placeholder: string; previewUrl: string; file: File };
 
-type ImageNode = { attrs: Record<string, unknown>; content?: unknown[] };
-
-/** Depth-first walk calling `visit` on every Tiptap image node. Shared by `resolveProofDoc` and
- * `emit`, the only places that inspect image srcs. */
-function walkImageNodes(node: unknown, visit: (n: ImageNode) => void): void {
-  if (typeof node !== "object" || node === null) return;
-  const n = node as { type?: string; attrs?: Record<string, unknown>; content?: unknown[] };
-  if (n.type === "image" && n.attrs && typeof n.attrs.src === "string") {
-    visit(n as ImageNode);
-  }
-  if (Array.isArray(n.content)) n.content.forEach((c) => walkImageNodes(c, visit));
+/** The staged files the emitted HTML still references as an `<img src>`: a deleted image drops
+ *  its file. */
+export function referencedProofFiles(html: string, staged: readonly StagedImage[]): File[] {
+  const srcs = new Set(proofImageSrcs(html));
+  return staged.filter((s) => srcs.has(s.placeholder)).map((s) => s.file);
 }
 
-/** The core of `emit`, pure so the `previewUrl` to file matching (and its identical-content
- * collision fix) is testable without a Tiptap editor. Rewrites live-preview srcs in a copy of
- * `json` back to `placeholder://` and returns the files the doc still references (a deleted image
- * drops its file). */
-export function resolveProofDoc(
-  json: Record<string, unknown>,
-  entries: ImageEntry[]
-): { doc: Record<string, unknown>; files: File[] } {
-  const byPreviewUrl = new Map(entries.map((e) => [e.previewUrl, e]));
-  const referenced = new Set<string>();
+const { paragraph, bulletListItem, numberedListItem, quote, divider, codeBlock, image } =
+  defaultBlockSpecs;
+const { bold, italic, strike, code } = defaultStyleSpecs;
 
-  // Deep-clone first: mutating Tiptap's own JSON corrupts its document state.
-  const doc = structuredClone(json);
-  walkImageNodes(doc, (n) => {
-    const src = n.attrs.src as string;
-    const entry = byPreviewUrl.get(src);
-    if (entry) {
-      n.attrs.src = entry.placeholder;
-      referenced.add(entry.placeholder);
-    } else if (src.startsWith(PROOF_PLACEHOLDER_PREFIX)) {
-      referenced.add(src);
-    }
-  });
+// The picker and paste/drop read `fileBlockAccept`; BlockNote's default is `image/*`.
+const proofImage = {
+  ...image,
+  implementation: {
+    ...image.implementation,
+    meta: { ...image.implementation.meta, fileBlockAccept: ACCEPTED_IMAGE_MIME.split(",") },
+  },
+};
 
-  const files = entries.filter((e) => referenced.has(e.placeholder)).map((e) => e.file);
-  return { doc, files };
+// The blocks and styles the server's `sanitize.py` tag allowlist stores (h2, h3, lists,
+// blockquote, pre, hr, img; strong, em, s, code); change both. Underline is left out: the server
+// drops `<u>`.
+const TEXT_BLOCKS = {
+  paragraph,
+  heading: createHeadingBlockSpec({ levels: [2, 3], defaultLevel: 2, allowToggleHeadings: false }),
+  bulletListItem,
+  numberedListItem,
+  quote,
+  divider,
+  codeBlock,
+};
+const STYLES = { bold, italic, strike, code };
+
+const SCHEMA_WITH_IMAGES = BlockNoteSchema.create({
+  blockSpecs: { ...TEXT_BLOCKS, image: proofImage },
+  inlineContentSpecs: defaultInlineContentSpecs,
+  styleSpecs: STYLES,
+});
+
+const SCHEMA_TEXT_ONLY = BlockNoteSchema.create({
+  blockSpecs: TEXT_BLOCKS,
+  inlineContentSpecs: defaultInlineContentSpecs,
+  styleSpecs: STYLES,
+});
+
+// The neutral scale and accent as CSS variables, so the editor follows the reader's theme and
+// accent like every Tailwind utility does (`globals.css` remaps both).
+const VIDIT_THEME = {
+  colors: {
+    editor: { text: "var(--color-neutral-300)", background: "var(--color-neutral-800)" },
+    menu: { text: "var(--color-neutral-200)", background: "var(--color-neutral-900)" },
+    tooltip: { text: "var(--color-neutral-200)", background: "var(--color-neutral-800)" },
+    hovered: { text: "var(--color-neutral-100)", background: "var(--color-neutral-800)" },
+    selected: { text: "var(--color-neutral-950)", background: "var(--color-orange-400)" },
+    disabled: { text: "var(--color-neutral-500)", background: "var(--color-neutral-900)" },
+    shadow: "#000000",
+    border: "var(--color-neutral-700)",
+    sideMenu: "var(--color-neutral-500)",
+  },
+  borderRadius: 6,
+  fontFamily: "var(--font-sans)",
+};
+
+// Alignment and nesting do not survive the server allowlist. The replace button opens
+// BlockNote's default file panel, whose Embed tab mints off-host image URLs the server refuses.
+const DROPPED_TOOLBAR_ITEMS = new Set([
+  "textAlignLeftButton",
+  "textAlignCenterButton",
+  "textAlignRightButton",
+  "nestBlockButton",
+  "unnestBlockButton",
+  "replaceFileButton",
+]);
+
+function ProofFormattingToolbar({ blockTypeSelectItems }: FormattingToolbarProps) {
+  return (
+    <FormattingToolbar>
+      {getFormattingToolbarItems(blockTypeSelectItems).filter(
+        (item) => !DROPPED_TOOLBAR_ITEMS.has(String(item.key)),
+      )}
+    </FormattingToolbar>
+  );
+}
+
+// Upload only: images must live on the media host, so the Embed (URL) tab is gone.
+function UploadOnlyFilePanel({ blockId }: FilePanelProps) {
+  const dict = useDictionary();
+  return (
+    <FilePanel
+      blockId={blockId}
+      tabs={[
+        {
+          name: dict.file_panel.upload.title,
+          tabPanel: <UploadTab blockId={blockId} setLoading={() => {}} />,
+        },
+      ]}
+    />
+  );
 }
 
 /**
- * The Tiptap proof editor with proof-at-publish image handling. "+ Image" holds a picked file
- * locally: it inserts an image node with a blob-URL src for preview and remembers the file under a
- * `placeholder://<filename>` key. Emitted JSON rewrites those srcs back to `placeholder://`, so the
- * stored document never carries a blob URL. Nothing touches S3 until the parent submits: it reads
- * the still-referenced files via `onProofFilesChange` and posts them as `proof_files[]`, where the
- * server matches each file to its placeholder by filename (see `docs/data-model.md`, media,
- * "Upload timing").
+ * The BlockNote proof editor, HTML in and out. A picked image never leaves the browser while
+ * typing: BlockNote's upload hook stages the file and stores `placeholder://<filename>` as the
+ * block's URL, and `resolveFileUrl` previews it from a blob URL. The parent posts the files still
+ * referenced as `proof_files[]` at publish, where the server matches each to its placeholder by
+ * filename (see `docs/design.md`, rich text).
  *
- * `allowImages={false}` removes that control for a body stored under the same allowlist minus
- * images (a collection's description): one editor, so marks, lists and link rules stay the same.
+ * `allowImages={false}` drops the image block for a body stored without images (a collection's
+ * description): one editor, so marks, lists and link rules stay the same.
  */
-// One shape for every toolbar control plus the two state paints, with the phone tap step
-// `<Button>` takes (the resting control is about 24px tall).
-const TOOL = `inline-flex items-center px-2 py-1 rounded text-xs ${TAP_STEP}`;
-const TOOL_ON = "bg-neutral-600 text-white";
-const TOOL_OFF = "text-neutral-400 hover:bg-neutral-700";
-
 export default function ProofEditor({
   onChange,
   onProofFilesChange,
@@ -115,140 +166,79 @@ export default function ProofEditor({
   allowImages = true,
   invalid = false,
 }: ProofEditorProps) {
-  // Files staged locally, keyed by blob URL. A ref so the `onUpdate` closure sees the live map without re-creating the editor.
-  const entriesRef = useRef<ImageEntry[]>([]);
-  // Filenames claimed this session, so two picks of `IMG.jpg` don't share a placeholder (the server
-  // rejects a duplicate proof filename).
+  const stagedRef = useRef<StagedImage[]>([]);
+  // Filenames claimed this session, so two picks of `IMG.jpg` don't share a placeholder (the
+  // server rejects a duplicate proof filename).
   const usedNamesRef = useRef<Set<string>>(new Set());
+  const seedingRef = useRef(false);
 
-  // Rewrite blob srcs to `placeholder://` in a copy of the emitted doc and report the copy plus its
-  // files (matching lives in `resolveProofDoc`). A ref keeps `onUpdate` stable.
-  const emit = useCallback(
-    (json: Record<string, unknown>) => {
-      const { doc, files } = resolveProofDoc(json, entriesRef.current);
-      onChange(doc);
-      onProofFilesChange?.(files);
+  const editor = useCreateBlockNote({
+    schema: allowImages ? SCHEMA_WITH_IMAGES : SCHEMA_TEXT_ONLY,
+    links: { isValidLink: isSafeLinkHref },
+    uploadFile: async (file: File) => {
+      const name = safeProofFilename(file.name, usedNamesRef.current);
+      if (name === null) throw new Error("Unusable filename");
+      usedNamesRef.current.add(name);
+      // Upload under exactly `name` so the server's `safe_original_filename` reproduces the
+      // placeholder suffix (a File can't be renamed).
+      const staged = file.name === name ? file : new File([file], name, { type: file.type });
+      const placeholder = `${PROOF_PLACEHOLDER_PREFIX}${name}`;
+      stagedRef.current.push({
+        placeholder,
+        previewUrl: URL.createObjectURL(staged),
+        file: staged,
+      });
+      return placeholder;
     },
-    [onChange, onProofFilesChange],
-  );
-
-  const editor = useEditor({
-    immediatelyRender: false,
-    extensions: [PROOF_STARTER_KIT, Image],
-    content: initialContent ?? undefined,
-    editorProps: {
-      attributes: {
-        class:
-          "prose prose-invert prose-sm max-w-none min-h-[200px] px-3 py-2 focus:outline-hidden",
-      },
-    },
-    onUpdate({ editor }) {
-      emit(editor.getJSON());
-    },
+    resolveFileUrl: async (url: string) =>
+      stagedRef.current.find((s) => s.placeholder === url)?.previewUrl ?? url,
   });
+
+  // Seed once; the parent re-keys to re-seed.
+  useEffect(() => {
+    if (!initialContent) return;
+    seedingRef.current = true;
+    editor.replaceBlocks(editor.document, editor.tryParseHTMLToBlocks(initialContent));
+    seedingRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
 
   // Revoke staged blob URLs on unmount so compose then navigate doesn't leak object URLs.
   useEffect(() => {
-    const entries = entriesRef.current;
+    const staged = stagedRef.current;
     return () => {
-      for (const e of entries) URL.revokeObjectURL(e.previewUrl);
+      for (const s of staged) URL.revokeObjectURL(s.previewUrl);
     };
   }, []);
 
-  const pickImage = (file: File) => {
-    if (!editor) return;
-    const name = safeProofFilename(file.name, usedNamesRef.current);
-    if (name === null) return; // unusable filename, skip rather than stage junk
-    usedNamesRef.current.add(name);
-    // Upload under exactly `name` so the server's `safe_original_filename` reproduces the placeholder
-    // suffix; rebuild the File when the name differs (a File can't be renamed).
-    const staged =
-      file.name === name ? file : new File([file], name, { type: file.type });
-    const blobUrl = URL.createObjectURL(staged);
-    entriesRef.current.push({
-      previewUrl: blobUrl,
-      placeholder: `${PROOF_PLACEHOLDER_PREFIX}${name}`,
-      file: staged,
-    });
-    // The blob URL is the live-preview src; `emit` swaps it for the placeholder in everything leaving here.
-    editor.chain().focus().setImage({ src: blobUrl }).run();
+  const emit = () => {
+    if (seedingRef.current) return;
+    // BlockNote writes U+FFFC into an empty block so it survives its own round trip; it is not text.
+    const html = editor.blocksToHTMLLossy(editor.document).replaceAll("￼", "");
+    onChange(html);
+    onProofFilesChange?.(referencedProofFiles(html, stagedRef.current));
   };
 
-  if (!editor) return null;
-
   return (
-    // The field box every other input wears: same border and fill, the accent focus border `<Input>`
-    // takes (via `focus-within`: focus lands on the inner ProseMirror surface), and
-    // `FORM_INVALID_FIELD` when flagged.
     <div
       className={cn(
-        "border border-neutral-700 rounded-sm bg-neutral-800 focus-within:border-orange-500",
+        "border border-neutral-700 rounded-sm bg-neutral-800 focus-within:border-orange-500 py-2",
+        FIELD_TEXT,
         invalid && FORM_INVALID_FIELD,
       )}
     >
-      <div className="flex items-center gap-1 px-2 py-1 border-b border-neutral-700 flex-wrap">
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleBold().run()}
-          className={`${TOOL} font-bold ${
-            editor.isActive("bold") ? TOOL_ON : TOOL_OFF
-          }`}
-        >
-          B
-        </button>
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-          className={`${TOOL} italic ${
-            editor.isActive("italic") ? TOOL_ON : TOOL_OFF
-          }`}
-        >
-          I
-        </button>
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-          className={`${TOOL} ${
-            editor.isActive("heading", { level: 3 }) ? TOOL_ON : TOOL_OFF
-          }`}
-        >
-          H3
-        </button>
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-          className={`${TOOL} ${
-            editor.isActive("bulletList") ? TOOL_ON : TOOL_OFF
-          }`}
-        >
-          List
-        </button>
-        {allowImages && (
-          <>
-            <div className="w-px h-4 bg-neutral-700 mx-1" />
-            {/* Holds the picked file locally (blob preview plus retained File); upload happens at publish. */}
-            <label
-              className={`${TOOL} ${TOOL_OFF} cursor-pointer`}
-              title="Add a proof image (uploaded when you publish)"
-            >
-              + Image
-              <input
-                type="file"
-                accept={ACCEPTED_IMAGE_MIME}
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  // Reset so re-picking the same file still fires onChange.
-                  e.target.value = "";
-                  if (file) pickImage(file);
-                }}
-              />
-            </label>
-          </>
-        )}
-      </div>
-
-      <EditorContent editor={editor} />
+      <BlockNoteView
+        editor={editor}
+        theme={VIDIT_THEME}
+        // BlockNote pins 16px on its root; inherit the field text size instead.
+        className="[&_.bn-default-styles]:[font-size:inherit] [&_.bn-editor]:min-h-[184px]"
+        formattingToolbar={false}
+        filePanel={false}
+        onChange={emit}
+      >
+        <FormattingToolbarController formattingToolbar={ProofFormattingToolbar} />
+        <FilePanelController filePanel={UploadOnlyFilePanel} />
+      </BlockNoteView>
     </div>
   );
 }

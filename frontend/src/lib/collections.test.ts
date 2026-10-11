@@ -39,17 +39,7 @@ const COLLECTION: Collection = {
   id: "c1",
   owner: { id: "u1", username: "ana", avatar_url: null },
   title: "Kupiansk rail corridor",
-  description: {
-    type: "doc",
-    content: [
-      {
-        type: "paragraph",
-        content: [
-          { type: "text", text: "Three days of strikes on the eastern approach." },
-        ],
-      },
-    ],
-  },
+  description: "<p>Three days of strikes on the eastern approach.</p>",
   description_text: "Three days of strikes on the eastern approach.",
   cover: [],
   tags: [],
@@ -107,10 +97,7 @@ describe("collection paths", () => {
 
 describe("collection writes", () => {
   /** A description as the write bodies carry it: one plain-text paragraph. */
-  const doc = (text: string) => ({
-    type: "doc",
-    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
-  });
+  const doc = (text: string) => `<p>${text}</p>`;
 
   it("opens a collection under a title and a description", async () => {
     await createCollection(

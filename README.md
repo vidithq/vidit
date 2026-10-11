@@ -3,7 +3,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Live demo](https://img.shields.io/badge/live-vidit.app-orange)](https://vidit.app)
 
-A web platform for OSINT/GEOINT analysts to archive, reference, and visualize geolocations of armed-conflict events. Interactive map, structured submission flow (coords + source + media + Tiptap proof + tags), community requests, and analyst profiles.
+A web platform for OSINT/GEOINT analysts to archive, reference, and visualize geolocations of armed-conflict events. Interactive map, structured submission flow (coords + source + media + rich-text proof + tags), community requests, and analyst profiles.
 
 Live at **[vidit.app](https://vidit.app)** (beta).
 
@@ -28,7 +28,7 @@ flowchart LR
   subgraph doors [Four ways work comes in]
     direction TB
     hand["`**/submit**
-    one form: coordinates, source, media, tags, and a Tiptap proof`"]:::spec
+    one form: coordinates, source, media, tags, and a rich-text proof`"]:::spec
     bot["`**tag @ViditBot on X**`"]:::spec
     paste["`**paste one of your own posts**`"]:::spec
     arch["`**bulk import your X export**`"]:::spec

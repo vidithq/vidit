@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- Proofs and collection descriptions are written in a block editor with a slash menu, code blocks and drag-to-reorder, and are stored as sanitized HTML; existing bodies convert automatically and lose underline.
+
 ## v0.6.6, 2026-10-11
 
 ### Changed

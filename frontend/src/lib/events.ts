@@ -175,7 +175,7 @@ export interface EventEditInput {
   /** ISO UTC `YYYY-MM-DDTHH:MM`. Required on publish; omitted on `saveVersion` when
    *  empty so the row keeps its instant. */
   source_posted_at: string;
-  proof?: Record<string, unknown> | null;
+  proof?: string | null;
   /** Replaces the tag set wholesale. */
   tag_ids: string[];
   /** Replaces the conflict set wholesale. */
@@ -200,7 +200,7 @@ function appendSharedEventFields(
     secondary_source_urls?: string[];
     secondary_snapshot_urls?: string[];
     source_posted_at: string;
-    proof?: Record<string, unknown> | null;
+    proof?: string | null;
     capture_source_lat?: number;
     capture_source_lng?: number;
     event_time?: string;
@@ -237,7 +237,7 @@ function appendSharedEventFields(
   if (input.source_posted_at) {
     fd.append("source_posted_at", input.source_posted_at);
   }
-  if (input.proof) fd.append("proof", JSON.stringify(input.proof));
+  if (input.proof) fd.append("proof", input.proof);
   if (input.tag_ids && input.tag_ids.length > 0) {
     fd.append("tag_ids", JSON.stringify(input.tag_ids));
   }
@@ -493,7 +493,7 @@ export function snapshotToEventView(
           wikidata_id: null,
         }
     ),
-    proof: (snapshot.proof as Record<string, unknown> | null | undefined) ?? null,
+    proof: (snapshot.proof as string | null | undefined) ?? null,
   };
 }
 
@@ -567,7 +567,7 @@ export function changedFields(version: EventDetail, previous: EventDetail): stri
   );
   flag(
     VERSION_FIELD_LABELS.proof,
-    JSON.stringify(version.proof ?? null) !== JSON.stringify(previous.proof ?? null)
+    (version.proof ?? null) !== (previous.proof ?? null)
   );
   flag(VERSION_FIELD_LABELS.is_graphic, version.is_graphic !== previous.is_graphic);
   return changed;
@@ -589,7 +589,7 @@ export interface EventVersionFormState {
   eventTime: string;
   sourcePostedAt: string;
   isGraphic: boolean;
-  proof: Record<string, unknown> | null;
+  proof: string | null;
   tagIds: string[];
   conflictIds: string[];
   secondarySourceUrls: string[];
@@ -779,7 +779,7 @@ export interface EventRequestInput {
   secondary_source_urls?: string[];
   /** Snapshot per mirror, index-aligned. */
   secondary_snapshot_urls?: string[];
-  proof?: Record<string, unknown> | null;
+  proof?: string | null;
   /** Optional approximate guess: both halves or neither. */
   lat?: number;
   lng?: number;
@@ -1007,7 +1007,7 @@ export async function awaitImportJob(
 export function batchCompletionBlockers(geo: {
   event_coords: unknown | null;
   source_url: string | null;
-  proof: Record<string, unknown> | null;
+  proof: string | null;
   media: readonly Pick<Media, "role">[];
 }): string[] {
   // In the server's check order.
@@ -1070,7 +1070,7 @@ export interface EventFieldsState {
   sourceUrl: string;
   /** ISO datetime (datetime-local value, UTC). Required. */
   sourcePostedAt: string;
-  proof: Record<string, unknown> | null;
+  proof: string | null;
   /** Source-media count after staging (kept existing + newly staged). */
   mediaCount: number;
   hasConflictTag: boolean;

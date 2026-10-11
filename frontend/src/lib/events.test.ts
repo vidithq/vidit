@@ -17,10 +17,7 @@ const complete: EventFieldsState = {
   lng: "37.8",
   sourceUrl: "https://t.me/c/1",
   sourcePostedAt: "2026-01-01T00:00",
-  proof: {
-    type: "doc",
-    content: [{ type: "image", attrs: { src: "https://x/y.jpg" } }],
-  },
+  proof: '<img src="https://x/y.jpg">',
   mediaCount: 2,
   hasConflictTag: true,
   hasCaptureSourceTag: true,
@@ -69,7 +66,7 @@ describe("missingEventFields", () => {
     expect(
       labels({
         ...complete,
-        proof: { type: "doc", content: [{ type: "paragraph" }] },
+        proof: "<p></p>",
       })
     ).toEqual(["Proof image"]);
   });
@@ -111,10 +108,7 @@ describe("batchCompletionBlockers", () => {
   const importedDetection = {
     event_coords: { lat: 48.5, lng: 37.8 },
     source_url: "https://x.com/a/status/1",
-    proof: {
-      type: "doc",
-      content: [{ type: "image", attrs: { src: "https://x/y.jpg" } }],
-    },
+    proof: '<img src="https://x/y.jpg">',
     media: [{ role: "source" as const }],
   };
 
@@ -126,7 +120,7 @@ describe("batchCompletionBlockers", () => {
     expect(
       batchCompletionBlockers({
         ...importedDetection,
-        proof: { type: "doc", content: [{ type: "paragraph" }] },
+        proof: "<p></p>",
       })
     ).toEqual(["Proof image"]);
   });
@@ -166,33 +160,11 @@ describe("batchCompletionBlockers", () => {
   // and the SQL `services/events.detection_ready_predicate`): a disagreement shows as a row
   // badged Ready that the Ready filter hides.
   describe("agrees with the server's readiness filter, shape for shape", () => {
-    const proofWithImage = {
-      type: "doc",
-      content: [
-        { type: "paragraph", content: [{ type: "text", text: "Cross-referenced." }] },
-        { type: "image", attrs: { src: "https://cdn.example.com/proof.jpg" } },
-      ],
-    };
-    const proofImageNested = {
-      type: "doc",
-      content: [
-        {
-          type: "bulletList",
-          content: [
-            {
-              type: "listItem",
-              content: [{ type: "image", attrs: { src: "https://cdn/x.jpg" } }],
-            },
-          ],
-        },
-      ],
-    };
-    const proofTextOnly = {
-      type: "doc",
-      content: [{ type: "paragraph", content: [{ type: "text", text: "No imagery." }] }],
-    };
-    // An image node with no `src`: the server counts srcs, not nodes, so it misses the floor.
-    const proofImageWithoutSrc = { type: "doc", content: [{ type: "image" }] };
+    const proofWithImage = '<p>Cross-referenced.</p><img src="https://cdn.example.com/proof.jpg">';
+    const proofImageNested = '<ul><li><img src="https://cdn/x.jpg"></li></ul>';
+    const proofTextOnly = "<p>No imagery.</p>";
+    // An `<img>` with no `src`: the server counts srcs, not tags, so it misses the floor.
+    const proofImageWithoutSrc = "<img>";
 
     const cases: [string, Parameters<typeof batchCompletionBlockers>[0], boolean][] = [
       ["ready", importedDetection, true],
