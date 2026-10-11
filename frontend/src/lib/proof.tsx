@@ -11,13 +11,10 @@ import parse, {
 import { ProofImage } from "@/components/event/ProofImage";
 import { TEXT_LINK } from "@/components/ui/styles";
 
-/** Mirrors `storage.LOCAL_STORAGE_URL_PREFIX` (dev backend media mount): the one non-https
- * origin a proof image may carry, only in a build that pins no media host. */
+/** Mirrors `storage.LOCAL_STORAGE_URL_PREFIX`; change both. */
 const LOCAL_STORAGE_URL_PREFIX = "http://localhost:8000/local-storage/";
 
-/** Mirrors backend `sanitize.safe_link_href`; change both. Defense in depth: only an explicit
- * http(s) URL with a hostname becomes an anchor href (rejects `javascript:`, `data:`,
- * `mailto:`, relative). The backend sanitizer is the source of truth. */
+/** Mirrors backend `sanitize.safe_link_href`; change both. */
 export function isSafeLinkHref(href: string): boolean {
   let parsed: URL;
   try {
@@ -31,15 +28,8 @@ export function isSafeLinkHref(href: string): boolean {
   );
 }
 
-/** Mirrors backend `sanitize._safe_image_src`; change both. A proof image is a relative path
- * or an https URL on this deployment's media host, so a persisted
- * `<img src="https://attacker/pixel.gif">` can't exfiltrate a viewer's IP/UA.
- * `NEXT_PUBLIC_MEDIA_HOST` is that host (inlined at build, the same pin `next.config.mjs`
- * gives `next/image`). With no media host set it keeps the dev shape: any https host plus
- * the local-storage prefix.
- *
- * Normalise like a browser (WHATWG) first: strip tab/CR/LF and treat `\` as `/`, so `/\host`,
- * `/<TAB>/host` and `//host` reduce to `//host`. */
+/** Mirrors backend `sanitize._safe_image_src`; change both. Normalises like a browser (WHATWG)
+ * first, so `/\host` and `/<TAB>/host` reduce to the protocol-relative `//host`. */
 function isSafeImageSrc(src: string): boolean {
   const normalized = src.replace(/[\t\r\n]/g, "").replace(/\\/g, "/");
   if (normalized.slice(0, 2) === "//") return false;
@@ -84,9 +74,9 @@ interface ProofRenderOptions {
 }
 
 // Type tags, not class checks: the parser's ESM and CJS builds load separate copies of the node
-// classes.
+// classes. A script or style node is typed apart from "tag", so it drops with its text.
 const isElement = (node: unknown): node is Element =>
-  ["tag", "script", "style"].includes((node as { type?: string } | null)?.type ?? "");
+  (node as { type?: string } | null)?.type === "tag";
 const isText = (node: DOMNode): node is Text => node.type === "text";
 
 function containsImage(node: Element): boolean {
@@ -152,16 +142,8 @@ export function renderProof(
 
 const LINE_TAGS = new Set(["p", "h2", "h3", "li", "blockquote", "pre", "hr", "ul", "ol"]);
 
-/**
- * Plain-text projection of a proof or description body. Mirrors backend `sanitize.html_text`
- * (fills `collections.description_text`, which the search index reads and
- * `services/collections` measures its 500-character cap on); change both.
- *
- * Concatenate the text (entities decoded, U+FFFC dropped), start a new line at every block
- * boundary, `<br>` and newline in the text, strip each line, drop blank lines, join with `\n`. The collection description counter
- * measures this string, so a divergence lets a body through that the server 422s, or refuses
- * one it would take.
- */
+/** Mirrors backend `sanitize.html_text`; change both. The description counter measures this
+ *  string against the server's cap, so a divergence lets a body through that the server 422s. */
 export function htmlText(html: string | null): string {
   if (!html) return "";
   const lines: string[] = [];
@@ -175,7 +157,6 @@ export function htmlText(html: string | null): string {
     for (const node of nodes) {
       if (isText(node)) {
         node.data
-          .replaceAll("￼", "")
           .split("\n")
           .forEach((part, i) => {
             if (i > 0) flush();

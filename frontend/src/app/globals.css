@@ -199,7 +199,7 @@
 }
 
 /* BlockNote proof editor: headings and links read as they do in the rendered proof
-   (`lib/proof.tsx` TAG_CLASSES). */
+   (`lib/proof.tsx` TAG_CLASSES, and `TEXT_LINK` for links). */
 .bn-editor [data-content-type="heading"] h2 {
   font-size: var(--text-xl);
 }
@@ -208,6 +208,8 @@
 }
 .bn-editor a {
   color: var(--color-orange-400);
+}
+.bn-editor a:hover {
   text-decoration: underline;
 }
 /* A wheel that reaches the end of the slash menu would scroll the page, which moves the
