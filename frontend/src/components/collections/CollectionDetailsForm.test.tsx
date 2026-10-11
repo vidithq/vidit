@@ -65,7 +65,7 @@ describe("CollectionDetailsForm", () => {
     expect(descriptionField()).toHaveAttribute("data-allow-images", "false");
   });
 
-  it("hands back the document the editor emitted, not a string", async () => {
+  it("hands back the HTML the editor emitted", async () => {
     await renderForm();
     fill("March strikes", "Strikes on the corridor through March.");
     fireEvent.click(submit());
@@ -77,7 +77,7 @@ describe("CollectionDetailsForm", () => {
     );
   });
 
-  it("counts the document's text, so marking a word up costs nothing", async () => {
+  it("counts the description's text, so marking a word up costs nothing", async () => {
     await renderForm();
     fill("March strikes", "Twelve chars");
 
@@ -109,7 +109,7 @@ describe("CollectionDetailsForm", () => {
     expect(descriptionField()).toHaveAttribute("data-invalid", "true");
   });
 
-  it("opens an edit on the collection's own document", async () => {
+  it("opens an edit on the collection's own description", async () => {
     await renderForm({
       initialTitle: "Kupiansk rail corridor",
       initialDescription: textHtml("Three days of strikes."),

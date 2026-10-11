@@ -6,7 +6,7 @@
 //    different name is a `proof_files_mismatch` 400.
 
 /** Src scheme for a not-yet-uploaded proof image; intake rewrites each to the stored URL,
- *  so a persisted doc never carries one. */
+ *  so a persisted body never carries one. */
 export const PROOF_PLACEHOLDER_PREFIX = "placeholder://";
 
 // Backend `storage.ORIGINAL_FILENAME_MAX_LEN`.

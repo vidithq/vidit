@@ -154,7 +154,7 @@ describe("EditCollectionPage", () => {
     expect(screen.getByLabelText("Title")).toHaveValue(
       "Kupiansk rail corridor",
     );
-    // Seeded with the collection's document; `find` because the form loads it through `next/dynamic`.
+    // Seeded with the collection's description; `find` because the form loads it through `next/dynamic`.
     expect(
       await screen.findByRole("textbox", { name: "Description" }),
     ).toHaveValue("Three days of strikes on the eastern approach.");

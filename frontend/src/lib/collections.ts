@@ -20,7 +20,7 @@ import type {
  *  and update alike; change both. */
 export const COLLECTION_TITLE_MAX_LEN = 255;
 
-/** Counted on the plain-text projection of the document (`lib/proof.tsx::htmlText`),
+/** Counted on the plain-text projection of the description HTML (`lib/proof.tsx::htmlText`),
  *  so bolding a word costs no characters. Mirrors `schemas/collection.DESCRIPTION_MAX_LENGTH`,
  *  which `services/collections` applies to the same projection; change both. */
 export const COLLECTION_DESCRIPTION_MAX_LEN = 500;
