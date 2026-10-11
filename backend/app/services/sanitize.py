@@ -56,6 +56,22 @@ _MAX_TAGS = 10_000
 # browser stack near 2,500 nested tags, which the tag cap alone allows.
 _MAX_DEPTH = 32
 _VOID_TAGS = frozenset({"img", "br", "hr"})
+# html5ever reopens each active formatting element (b, code, em, font, ...; an
+# ``a`` never stacks) in every new block, and keeps at most three copies of a
+# tag with identical attributes, so N unclosed tags with distinct attributes and
+# M blocks build N x M nodes (50 KB built 1.2 GB). Capping the distinct tags
+# bounds that list at three copies each: at the cap, the tag-count limit costs
+# about 0.05 s and 64 MB. Two tags count as one only when their source text is
+# identical and fits ``_PLAIN_TAG_REST``, a span html5ever reads the same way;
+# any other formatting tag counts on its own.
+_MAX_FORMATTING_TAGS = 16
+_FORMATTING_TAG = re.compile(
+    r"<(?:b|big|code|em|font|i|nobr|s|small|strike|strong|tt|u)(?=[\t\n\f\r />])", re.IGNORECASE
+)
+_PLAIN_TAG_REST = re.compile(
+    r"""(?:[\t\n\f\r ]++[^\t\n\f\r />"'<=]++(?:=(?:"[^"]*+"|'[^']*+'|[^\t\n\f\r >"'<=`]++))?)*+"""
+    r"[\t\n\f\r ]*+/?>"
+)
 
 # Canonical output escapes ``"`` and ``>`` inside attribute values, so ``[^>]*``
 # spans exactly one tag and `` src="`` cannot occur inside a value. An ``a``
@@ -142,6 +158,18 @@ def _check_size(html: str) -> None:
         raise ValueError(f"Rich text exceeds max length ({_MAX_LENGTH} characters)")
     if html.count("<") > _MAX_TAGS:
         raise ValueError(f"Rich text exceeds max tag count ({_MAX_TAGS})")
+    distinct: set[str] = set()
+    unparsed = 0
+    for tag in _FORMATTING_TAG.finditer(html):
+        rest = _PLAIN_TAG_REST.match(html, tag.end())
+        if rest is None:
+            unparsed += 1
+        else:
+            distinct.add(html[tag.start() : rest.end()])
+        if len(distinct) + unparsed > _MAX_FORMATTING_TAGS:
+            raise ValueError(
+                f"Rich text exceeds max distinct formatting tags ({_MAX_FORMATTING_TAGS})"
+            )
 
 
 def _clean(

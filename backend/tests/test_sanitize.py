@@ -1,3 +1,4 @@
+import time
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 
@@ -275,6 +276,38 @@ def test_deep_nesting_rejected_but_nested_lists_pass():
     assert sanitize_html("<ul><li><p>" * 10 + "x" + "</p></li></ul>" * 10)
     with pytest.raises(ValueError, match="max nesting depth"):
         sanitize_html("<blockquote>" * 40 + "x" + "</blockquote>" * 40)
+
+
+def test_distinct_formatting_tags_rejected_before_parsing():
+    # Each distinct unclosed tag is reopened in every block: unbounded, this
+    # 50 KB body built 4.5 million nodes (1.2 GB, 1.6 s) in the parser.
+    html = "<p>" + "".join(f"<font a={i}>" for i in range(3000)) + "</p>" + "<p>x</p>" * 1500
+    started = time.perf_counter()
+    with pytest.raises(ValueError, match="max distinct formatting tags"):
+        sanitize_html(html)
+    assert time.perf_counter() - started < 0.1
+
+
+def test_repeated_formatting_tags_count_once():
+    code = '<pre><code class="language-text" data-language="text">x</code></pre>'
+    html = "<p>" + "<strong>a</strong><em>b</em><code>c</code>" * 100 + "</p>" + code * 50
+    assert sanitize_html(html)
+
+
+@pytest.mark.parametrize(
+    "tag",
+    [
+        '<font a=">{i}">',  # a quoted ``>`` does not end the tag
+        "<font a={i}>",
+        "<FONT a={i}>",
+        "<b\na={i}>",
+        "<i/a={i}>",
+    ],
+)
+def test_each_distinct_formatting_spelling_counts(tag):
+    sanitize_html("".join(tag.format(i=i) for i in range(16)))
+    with pytest.raises(ValueError, match="max distinct formatting tags"):
+        sanitize_html("".join(tag.format(i=i) for i in range(17)))
 
 
 def test_excessive_length_rejected():
