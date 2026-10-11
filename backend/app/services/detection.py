@@ -484,7 +484,7 @@ async def _upsert_one(
     """Overwrite an open detection's import-owned state; ``True`` when anything moved.
 
     Rewrites title, coordinate, event date, source URL and mirrors, both post instants, proof
-    document and media. Keeps id, owner, created and detected times, provenance, and archived
+    body and media. Keeps id, owner, created and detected times, provenance, and archived
     copies an analyst recorded (:func:`source_archive.reconcile_source_archive` re-files or
     drops only the source copy when the source URL moves).
 
@@ -537,9 +537,9 @@ async def _upsert_one(
             db.flush()
             proof_image_urls = await _store_media(db, row, resolved, uploaded_keys)
             changed = True
-        doc = html_from_text(detection.proof_text, image_srcs=proof_image_urls)
-        if row.proof != doc:
-            row.proof = doc
+        proof = html_from_text(detection.proof_text, image_srcs=proof_image_urls)
+        if row.proof != proof:
+            row.proof = proof
             changed = True
         if not changed:
             # Nothing dirtied. Roll back to drop the row lock the re-read took.

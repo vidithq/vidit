@@ -149,13 +149,13 @@ async def test_consolidated_backfill_matches_contract(db, owner, tmp_path):
         assert source_rows.count() == 0, typology
 
     # Media roles + proof-image injection, per typology.
-    # referenceless: 2 proof images, both injected into the proof doc.
+    # referenceless: 2 proof images, both injected into the proof.
     [ref] = _rows_for(db, owner, "referenceless_annotation")
     assert _media_roles(db, ref) == {"proof": 2}
     assert _proof_image_count(ref) == 2
 
     # self_video: the only media is a video and nothing declared a source, so it fills the
-    # source slot; the proof doc stays empty and the video survives as evidence.
+    # source slot; the proof stays empty and the video survives as evidence.
     [sv] = _rows_for(db, owner, "self_video_no_signal")
     assert _media_roles(db, sv) == {"source": 1}
     assert _proof_image_count(sv) == 0

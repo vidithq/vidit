@@ -90,7 +90,7 @@ def create_event(
     conflict_ids: str | None = Form(None),
     # Graphic-content declaration; an omitting client submits unflagged.
     is_graphic: bool = Form(False),
-    # Exactly one source file; proof images resolve against the doc's placeholders.
+    # Exactly one source file; proof images resolve against the proof's placeholders.
     file: UploadFile = File(...),
     proof_files: list[UploadFile] | None = File(None),
     current_user: User = Depends(get_current_user),

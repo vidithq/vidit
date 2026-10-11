@@ -180,7 +180,7 @@ def _publish_the_default_pair(db, owner: User) -> None:
     db.commit()
 
 
-async def test_assemble_injects_proof_images_into_proof_doc(db, owner):
+async def test_assemble_injects_proof_images_into_the_proof(db, owner):
     # Proof media persist as role=proof rows and as images in the proof HTML.
     from app.models.media import Media as MediaRow
 
@@ -722,7 +722,7 @@ async def test_upsert_replaces_source_media_and_sweeps_the_old_objects(db, owner
         stored_bytes(old_key)
 
 
-async def test_upsert_rewrites_proof_media_and_the_nodes_that_carry_it(db, owner):
+async def test_upsert_rewrites_proof_media_and_the_body_that_carries_it(db, owner):
     # The proof body and the media rows must move together, or the body points at a swept object.
     await _persist(
         db, owner=owner, detections=[_detection(proof_media=[_img()])], fetch_media=_image_fetcher

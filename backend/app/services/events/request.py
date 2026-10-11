@@ -156,7 +156,7 @@ async def create_request(
         db,
         event=geo,
         source_files=[file],
-        proof_doc=proof_data,
+        proof_html=proof_data,
         proof_files=proof_files,
         sweep_context="event request create rollback",
     )
@@ -276,7 +276,7 @@ async def update_request(
         db,
         event=geo,
         source_files=files,
-        proof_doc=proof_data,
+        proof_html=proof_data,
         proof_files=proof_files,
         sweep_context=f"event {geo.id} request edit rollback",
     )

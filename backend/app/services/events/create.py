@@ -125,7 +125,7 @@ async def create_with_evidence(
         db,
         event=geo,
         source_files=[file],
-        proof_doc=proof_data,
+        proof_html=proof_data,
         proof_files=proof_files,
         sweep_context="event create rollback",
     )

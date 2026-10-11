@@ -786,8 +786,6 @@ An image uploads at publish, not when it is picked:
 
 The server stores the body in a `TEXT` column and sanitizes every write with nh3 in [`sanitize.py`](../backend/app/services/sanitize.py) on the [rich text rules](api.md#rich-text).
 
-A one-time Alembic migration converts stored Tiptap JSON (proofs, collection descriptions, and version snapshots) to this HTML. The migration is irreversible, and it drops underline.
-
 #### The read view
 
 [`renderProof`](../frontend/src/lib/proof.tsx) parses the stored HTML with html-react-parser and renders only allowlisted tags, each with its class from `TAG_CLASSES`. Any other tag renders its children only. Every attribute is dropped except:

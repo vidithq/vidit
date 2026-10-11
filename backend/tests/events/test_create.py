@@ -155,14 +155,14 @@ def test_list_rejects_malformed_date_filter(author):
 def test_create_rejects_too_many_proof_files(author, conflict, capture_source_tag):
     """A proof batch past ``max_proof_images_per_event`` is rejected before upload (caps
     Pillow + S3 work per request)."""
-    doc = "".join(f'<img src="placeholder://p-{i}.jpg">' for i in range(11))
+    proof = "".join(f'<img src="placeholder://p-{i}.jpg">' for i in range(11))
     files = [("file", ("tiny.jpg", TINY_JPEG, "image/jpeg"))]
     files += [("proof_files", (f"p-{i}.jpg", TINY_JPEG, "image/jpeg")) for i in range(11)]
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
         data=_form(
-            proof=doc,
+            proof=proof,
             tag_ids=json.dumps([str(capture_source_tag.id)]),
             conflict_ids=json.dumps([str(conflict.id)]),
         ),
@@ -195,12 +195,12 @@ def test_create_rejects_disallowed_file_type(author, conflict, capture_source_ta
 
 def test_create_rejects_video_proof_file(author, conflict, capture_source_tag):
     """A proof part must be an image: a video could never render in the proof body."""
-    doc = '<img src="placeholder://clip.mp4">'
+    proof = '<img src="placeholder://clip.mp4">'
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
         data=_form(
-            proof=doc,
+            proof=proof,
             tag_ids=json.dumps([str(capture_source_tag.id)]),
             conflict_ids=json.dumps([str(conflict.id)]),
         ),
@@ -229,12 +229,12 @@ def test_create_rejects_a_proof_over_a_sanitiser_cap(author):
 
 def test_create_rejects_proof_without_image(author, conflict, capture_source_tag):
     """A proof body with no inline image 400s before any upload."""
-    doc = "<p>words only</p>"
+    proof = "<p>words only</p>"
     response = client.post(
         "/api/v1/events",
         headers=login_as(client, author),
         data=_form(
-            proof=doc,
+            proof=proof,
             tag_ids=json.dumps([str(capture_source_tag.id)]),
             conflict_ids=json.dumps([str(conflict.id)]),
         ),
@@ -370,7 +370,7 @@ def test_create_succeeds_with_full_floor(
     # The creator is the owner AND the first geolocator (durable credit).
     assert body["owner"]["username"] == author.username
     assert [g["username"] for g in body["geolocators"]] == [author.username]
-    # ``media`` carries only the source; the proof image travels in the doc.
+    # ``media`` carries only the source; the proof image travels in the proof HTML.
     assert len(body["media"]) == 1
     assert body["media"][0]["role"] == "source"
     srcs = extract_image_srcs(body["proof"])

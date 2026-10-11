@@ -38,7 +38,7 @@ from tests.conftest import login_as
 client = TestClient(app)
 
 
-def _doc(text: str) -> str:
+def _description(text: str) -> str:
     """A description write body: the HTML for ``text``, one paragraph per line (``sanitize.html_from_text``)."""
     return html_from_text(text)
 
@@ -210,7 +210,7 @@ def test_create_collection_returns_an_empty_shelf(db, cleanup, owner):
         "/api/v1/collections",
         json={
             "title": "Zaporizhzhia plant",
-            "description": _doc("Strikes and their aftermath at the plant, 2025 to 2026."),
+            "description": _description("Strikes and their aftermath at the plant, 2025 to 2026."),
         },
         headers=login_as(client, owner),
     )
@@ -227,7 +227,7 @@ def test_create_collection_returns_an_empty_shelf(db, cleanup, owner):
 
 
 def test_create_collection_requires_auth():
-    body = {"title": "Anon", "description": _doc("Nobody's shelf.")}
+    body = {"title": "Anon", "description": _description("Nobody's shelf.")}
     assert client.post("/api/v1/collections", json=body).status_code == 401
 
 
@@ -236,7 +236,7 @@ def test_create_collection_rejects_a_blank_title(owner, title):
     """A title of nothing, spaces included, is a missing title."""
     response = client.post(
         "/api/v1/collections",
-        json={"title": title, "description": _doc("A described shelf with no name.")},
+        json={"title": title, "description": _description("A described shelf with no name.")},
         headers=login_as(client, owner),
     )
     assert response.status_code == 422
@@ -271,7 +271,7 @@ def test_create_collection_rejects_a_description_past_the_cap(owner):
         "/api/v1/collections",
         json={
             "title": "Long-winded",
-            "description": _doc("x" * (DESCRIPTION_MAX_LENGTH + 1)),
+            "description": _description("x" * (DESCRIPTION_MAX_LENGTH + 1)),
         },
         headers=login_as(client, owner),
     )
@@ -299,7 +299,7 @@ def test_create_collection_strips_the_description(db, cleanup, owner):
         "/api/v1/collections",
         json={
             "title": "Trimmed",
-            "description": _doc("  Strikes on the rail corridor.  "),
+            "description": _description("  Strikes on the rail corridor.  "),
         },
         headers=login_as(client, owner),
     )
@@ -363,7 +363,7 @@ def test_create_collection_opens_it_on_the_picked_events(db, cleanup, owner):
         "/api/v1/collections",
         json={
             "title": "Kupiansk rail corridor",
-            "description": _doc("Three days of strikes on the corridor."),
+            "description": _description("Three days of strikes on the corridor."),
             "event_ids": [str(first.id), str(second.id)],
         },
         headers=login_as(client, owner),
@@ -394,7 +394,7 @@ def test_create_collection_refuses_a_foreign_event_and_lands_nothing(db, cleanup
         "/api/v1/collections",
         json={
             "title": "Somebody else's work",
-            "description": _doc("A shelf built out of another analyst's rows."),
+            "description": _description("A shelf built out of another analyst's rows."),
             "event_ids": [str(theirs.id)],
         },
         headers=login_as(client, owner),
@@ -412,7 +412,7 @@ def test_create_collection_refuses_an_ineligible_event_and_lands_nothing(db, cle
         "/api/v1/collections",
         json={
             "title": "Mixed pick",
-            "description": _doc("One row that stands and one that is only an ask."),
+            "description": _description("One row that stands and one that is only an ask."),
             "event_ids": [str(good.id), str(asked.id)],
         },
         headers=login_as(client, owner),
@@ -430,7 +430,7 @@ def test_create_collection_refuses_an_unknown_event(db, owner):
         "/api/v1/collections",
         json={
             "title": "Phantom",
-            "description": _doc("A shelf pointing at an id no event carries."),
+            "description": _description("A shelf pointing at an id no event carries."),
             "event_ids": [str(uuid.uuid4())],
         },
         headers=login_as(client, owner),
@@ -446,7 +446,7 @@ def test_create_collection_caps_the_event_ids(db, owner):
         "/api/v1/collections",
         json={
             "title": "Runaway",
-            "description": _doc("More ids than one create may carry."),
+            "description": _description("More ids than one create may carry."),
             "event_ids": [str(uuid.uuid4()) for _ in range(MAX_CREATE_EVENTS + 1)],
         },
         headers=login_as(client, owner),
@@ -464,7 +464,7 @@ def test_create_collection_collapses_duplicate_event_ids(db, cleanup, owner):
         "/api/v1/collections",
         json={
             "title": "Doubled",
-            "description": _doc("The same row, sent twice."),
+            "description": _description("The same row, sent twice."),
             "event_ids": [str(event.id), str(event.id)],
         },
         headers=login_as(client, owner),
@@ -490,7 +490,7 @@ def test_update_collection_writes_both_fields_and_is_owner_only(db, cleanup, own
         f"/api/v1/collections/{collection.id}",
         json={
             "title": "Operation reconstruction",
-            "description": _doc("Every strike of the operation, in the order they landed."),
+            "description": _description("Every strike of the operation, in the order they landed."),
         },
         headers=login_as(client, owner),
     )
@@ -502,7 +502,7 @@ def test_update_collection_writes_both_fields_and_is_owner_only(db, cleanup, own
 
     theirs = client.patch(
         f"/api/v1/collections/{collection.id}",
-        json={"title": "Hijacked", "description": _doc("Somebody else's words.")},
+        json={"title": "Hijacked", "description": _description("Somebody else's words.")},
         headers=login_as(client, stranger),
     )
     assert theirs.status_code == 403
@@ -519,7 +519,7 @@ def test_update_collection_rejects_a_blank_description(db, cleanup, owner):
 
     response = client.patch(
         f"/api/v1/collections/{collection.id}",
-        json={"title": "Still named", "description": _doc("  ")},
+        json={"title": "Still named", "description": _description("  ")},
         headers=login_as(client, owner),
     )
     assert response.status_code == 400
@@ -536,7 +536,7 @@ def test_update_collection_rejects_a_blank_title(db, cleanup, owner):
 
     response = client.patch(
         f"/api/v1/collections/{collection.id}",
-        json={"title": "   ", "description": _doc("Still described.")},
+        json={"title": "   ", "description": _description("Still described.")},
         headers=login_as(client, owner),
     )
     assert response.status_code == 422

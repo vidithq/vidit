@@ -61,7 +61,7 @@ def owner(db):
     db.commit()
 
 
-def _proof_doc(*hrefs: str) -> str:
+def _proof_html(*hrefs: str) -> str:
     """An HTML proof whose paragraph carries one link per href."""
     links = "".join(f'<a href="{escape(href)}">see this</a>' for href in hrefs)
     return f"<p>{links}</p>"
@@ -73,7 +73,7 @@ def event(db, owner):
         owner_id=owner.id,
         title="Archived event",
         source_url=SOURCE,
-        proof=_proof_doc(PROOF_LINK),
+        proof=_proof_html(PROOF_LINK),
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
     )
@@ -112,7 +112,7 @@ def test_collect_links_drops_a_url_the_parse_refuses(db, owner):
         owner_id=owner.id,
         title="Bad link",
         source_url=SOURCE,
-        proof=_proof_doc("mailto:someone@example.com"),
+        proof=_proof_html("mailto:someone@example.com"),
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
     )
@@ -130,7 +130,7 @@ def test_collect_links_drops_an_oversized_url(db, owner):
         owner_id=owner.id,
         title="Long link",
         source_url=SOURCE,
-        proof=_proof_doc(oversized),
+        proof=_proof_html(oversized),
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
     )
@@ -147,7 +147,7 @@ def test_collect_links_attributes_a_shared_link_to_the_source(db, owner):
         owner_id=owner.id,
         title="Cited source",
         source_url=SOURCE,
-        proof=_proof_doc(SOURCE),
+        proof=_proof_html(SOURCE),
         status=STATUS_DETECTED,
         detected_at=datetime.now(UTC),
     )

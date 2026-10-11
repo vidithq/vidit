@@ -253,7 +253,7 @@ async def save_version(
         db,
         event=geo,
         source_files=files,
-        proof_doc=proof_data,
+        proof_html=proof_data,
         proof_files=proof_files,
         sweep_context=f"event {geo.id} save_version rollback",
     )

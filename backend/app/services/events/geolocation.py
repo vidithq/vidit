@@ -183,7 +183,7 @@ async def geolocate(
         db,
         event=geo,
         source_files=files,
-        proof_doc=proof_data,
+        proof_html=proof_data,
         proof_files=proof_files,
         sweep_context=f"event {geo.id} geolocate rollback",
     )

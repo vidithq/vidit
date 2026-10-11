@@ -90,9 +90,9 @@ def _apply_source_removals(db: Session, swap: SourceSwap) -> None:
     db.flush()
 
 
-def _require_proof_image(proof_doc: str | None) -> None:
+def _require_proof_image(proof: str | None) -> None:
     """Require at least one image in the proof, uploaded or ``placeholder://``."""
-    if proof_doc is None or not extract_image_srcs(proof_doc):
+    if proof is None or not extract_image_srcs(proof):
         raise ProofImageRequiredError("At least one proof image is required")
 
 

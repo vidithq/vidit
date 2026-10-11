@@ -45,7 +45,7 @@ STORED_PROOF_URL = "http://localhost:8000/local-storage/proof/u/stored.jpg"
 OTHER_EVENT_PROOF_URL = "http://localhost:8000/local-storage/proof/u/other-event.jpg"
 
 
-def _proof_doc(src: str) -> str:
+def _proof_html(src: str) -> str:
     return f'<p>Cross-reference.</p><img src="{src}">'
 
 
@@ -56,7 +56,7 @@ def _published(db, author, conflict, capture_source_tag, *, proof_url=STORED_PRO
         author=author,
         status=STATUS_GEOLOCATED,
         with_media=True,
-        proof=_proof_doc(proof_url),
+        proof=_proof_html(proof_url),
         tags=[capture_source_tag],
         conflicts=[conflict],
         **kwargs,
@@ -82,7 +82,7 @@ def _form(conflict, capture_source_tag, **overrides):
         "lng": "30.0",
         "event_date": "2026-05-02",
         "source_posted_at": "2026-05-01T12:00",
-        "proof": _proof_doc(STORED_PROOF_URL),
+        "proof": _proof_html(STORED_PROOF_URL),
         "tag_ids": json.dumps([str(capture_source_tag.id)]),
         "conflict_ids": json.dumps([str(conflict.id)]),
     }
@@ -398,7 +398,7 @@ def test_save_version_is_geolocated_only(db, author, conflict, capture_source_ta
             author=author,
             status=status,
             with_media=True,
-            proof=_proof_doc(STORED_PROOF_URL),
+            proof=_proof_html(STORED_PROOF_URL),
             tags=[capture_source_tag],
             conflicts=[conflict],
         )
@@ -1005,11 +1005,11 @@ def test_proof_image_cap_counts_what_the_new_body_displays(
     monkeypatch.setattr(settings, "max_proof_images_per_event", 1)
     geo = _published(db, author, conflict, capture_source_tag)
 
-    doc = _proof_doc(STORED_PROOF_URL) + '<img src="placeholder://proof-1.jpg">'
+    proof = _proof_html(STORED_PROOF_URL) + '<img src="placeholder://proof-1.jpg">'
     response = _save_version(
         geo.id,
         author,
-        data=_form(conflict, capture_source_tag, proof=doc),
+        data=_form(conflict, capture_source_tag, proof=proof),
         files=[proof_file_part()],
     )
     assert response.status_code == 422, response.text
@@ -1061,7 +1061,7 @@ def test_save_version_rejects_a_proof_image_belonging_to_another_event(
     response = _save_version(
         geo.id,
         author,
-        data=_form(conflict, capture_source_tag, proof=_proof_doc(OTHER_EVENT_PROOF_URL)),
+        data=_form(conflict, capture_source_tag, proof=_proof_html(OTHER_EVENT_PROOF_URL)),
     )
     assert response.status_code == 400, response.text
     assert response.json()["detail"]["code"] == "invalid_file"
