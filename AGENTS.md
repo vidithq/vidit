@@ -7,7 +7,7 @@ Setup, PR flow, and conventions live in [`README.md`](README.md) and [`CONTRIBUT
 | Content | Home | Not allowed in |
 |---|---|---|
 | Vision (problem, persona, principles) | `README.md` | `docs/`, source code |
-| Roadmap / version milestones / work tracker / priorities | [GitHub Project](https://github.com/orgs/vidithq/projects/1) (issues in `vidithq/vidit`; one `Epic:` issue per Version value carries that version's title, summary and design) | `docs/`, source code |
+| Roadmap / version milestones / work tracker / priorities | [GitHub Project](https://github.com/orgs/vidithq/projects/1) (issues in `vidithq/vidit`; one issue of type Epic per Version value, with the version's open issues as sub-issues, carries that version's title, summary and design) | `docs/`, source code |
 | Reference (API, schema, ops, design) | `docs/*.md` | GitHub Project |
 | Release history | `CHANGELOG.md` | `docs/`, GitHub Project |
 | Contribution flow + doc-sync rule | `CONTRIBUTING.md` | scattered |
