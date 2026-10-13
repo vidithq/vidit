@@ -9,7 +9,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { TEXT_LINK } from "@/components/ui/styles";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
@@ -28,7 +27,7 @@ const FILTERS: { value: DetectionReadiness; label: string }[] = [
 
 /** The empty line per filter, naming the set that came back empty. */
 const NOTHING_HERE: Record<DetectionReadiness, string> = {
-  all: "No detections to submit.",
+  all: "Nothing left to review.",
   ready: "No ready detections.",
   incomplete: "No incomplete detections.",
 };
@@ -70,30 +69,8 @@ export default function DetectionsPage() {
   } else if (!data) {
     listBody = <p className="text-sm text-neutral-500">Loading…</p>;
   } else if (data.ready_total + data.incomplete_total === 0) {
-    // Empty queue regardless of filter: show the import pitch.
-    listBody = (
-      <EmptyState
-        variant="plain"
-        lead={NOTHING_HERE.all}
-        cta={
-          <>
-            <Link href="/submit?import=1" className={buttonClasses("primary")}>
-              Import your work
-            </Link>
-            <Link href={`/profile/${username}`} className={`text-xs ${TEXT_LINK}`}>
-              Back to profile
-            </Link>
-          </>
-        }
-      >
-        New detections land here after you import your archive, paste a post
-        URL, or tag the bot on a geolocation tweet. The{" "}
-        <Link href="/import" className={TEXT_LINK}>
-          import guide
-        </Link>{" "}
-        covers the three.
-      </EmptyState>
-    );
+    // Reached once the last detection is submitted: nothing links here while the queue is empty.
+    listBody = <EmptyState variant="boxed">{NOTHING_HERE.all}</EmptyState>;
   } else {
     const totalPages = Math.max(1, Math.ceil(data.total / data.per_page));
     listBody = (
