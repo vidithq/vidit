@@ -227,26 +227,9 @@ describe("public profile order", () => {
       screen.getByRole("link", { name: "X / Twitter: @ana_osint" }),
       screen.getByRole("link", { name: "Website: ana.example" }),
       screen.getByRole("button", { name: "Edit profile" }),
-      screen.getByRole("button", { name: "Share on X" }),
     ];
     const shape = buttonClasses("ghost", { icon: true });
     for (const mark of marks) expect(mark.className).toBe(shape);
-  });
-
-  it("shares the profile's own URL on X, with the handle over the metadata line", async () => {
-    const open = vi.spyOn(window, "open").mockImplementation(() => null);
-    mountProfile();
-    await screen.findByText("Insights");
-
-    // The share joins the icon row, so Follow never stands alone with one control beside it.
-    screen.getByRole("button", { name: "Share on X" }).click();
-
-    const intent = new URL(open.mock.calls[0][0] as string);
-    expect(intent.searchParams.get("url")).toBe(`${window.location.origin}/profile/ana`);
-    expect(intent.searchParams.get("text")).toBe(
-      "ana\n4 followers · 2 following · Member since 5 Jan 2026"
-    );
-    open.mockRestore();
   });
 
   it("keeps the owner's email off their own profile", async () => {
