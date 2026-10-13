@@ -2,13 +2,13 @@
 
 import { Pencil } from "lucide-react";
 
-import { formatDate } from "@/lib/format";
-import type { PublicProfile } from "@/lib/users";
+import { profileMetaSegments, type PublicProfile } from "@/lib/users";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { FileManager } from "@/components/ui/FileManager";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
+import ShareOnX from "@/components/share/ShareOnX";
 import FollowButton from "./FollowButton";
 import { LinkedAccountsLine } from "./LinkedAccounts";
 import type { ProfileEditState } from "./useProfileEdit";
@@ -60,11 +60,7 @@ export function ProfileTitle({
  */
 export function ProfileIdentity({ profile }: { profile: PublicProfile }) {
   const bio = profile.bio?.trim() || null;
-  const segments = [
-    `${profile.followers_count} follower${profile.followers_count === 1 ? "" : "s"}`,
-    `${profile.following_count} following`,
-    `Member since ${formatDate(profile.created_at)}`,
-  ];
+  const segments = profileMetaSegments(profile);
 
   return (
     <div className="space-y-1">
@@ -85,8 +81,9 @@ export function ProfileIdentity({ profile }: { profile: PublicProfile }) {
   );
 }
 
-/** The header action cluster: the icon row (linked accounts, then Edit profile on your own
- * profile), and Follow on someone else's or the save pair while editing. The marks sit right of
+/** The header action cluster: the icon row (linked accounts, Edit profile on your own profile, then
+ * Share on X, last like the event page's utilities), and Follow on someone else's or the save pair
+ * while editing. The marks sit right of
  * the title, where pages keep controls that act on their subject: ghost icon buttons throughout,
  * Edit profile included. `gap-1.5` matches the event page's action cluster; the cluster's `gap-2`
  * separates the row from the far-right button. It wraps and right-aligns, so on a phone marks and
@@ -117,6 +114,10 @@ export function ProfileActions({
               <Pencil size={14} />
             </Button>
           )}
+          <ShareOnX
+            path={`/profile/${profile.username}`}
+            lines={[profile.username, profileMetaSegments(profile).join(" · ")]}
+          />
         </div>
       )}
       {isOwn

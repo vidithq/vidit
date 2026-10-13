@@ -1,5 +1,6 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
+import { formatDate } from "./format";
 import type { ExternalLinks, User } from "@/types";
 
 /** Payload for `PATCH /users/me`. `undefined` omits (preserves the column); `null` or an
@@ -151,4 +152,14 @@ export function displayLinkValue(
   }
 
   return trimmed;
+}
+
+/** The metadata line under the handle and in the profile's X share: followers, following, member
+ *  since. Zero values print. */
+export function profileMetaSegments(profile: PublicProfile): string[] {
+  return [
+    `${profile.followers_count} follower${profile.followers_count === 1 ? "" : "s"}`,
+    `${profile.following_count} following`,
+    `Member since ${formatDate(profile.created_at)}`,
+  ];
 }
