@@ -3216,7 +3216,8 @@ export interface components {
          *     say what the detections ended with (``source_footage_missing``,
          *     ``source_fetch_failed``, ``source_date_unknown``, ``duplicate_media``;
          *     fetch-failed may fill on a later import). ``reason`` is the refusal when no
-         *     detection was produced (``coords_missing``, ``coords_invalid``), else null.
+         *     detection was produced (``coords_missing``, ``coords_invalid``,
+         *     ``thread_truncated``), else null.
          *     ``failed`` counts detections that raised mid-persist.
          */
         TweetImportRead: {

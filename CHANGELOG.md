@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- When X fails to serve part of a thread, or the coordinate sits above the posts the bot reads, the bot and the post import say the thread was only partly read instead of reporting no coordinate (PRLINK).
+
 ## v0.6.7, 2026-10-11
 
 ### Changed

@@ -64,6 +64,10 @@ FOOTAGE_UNUSABLE = "footage_unusable"
 # ``COORDS_MISSING`` sharpened for a caller that asked for a request: the thread
 # names a source but has no footage. Only on :attr:`Resolution.request_refusals`.
 REQUEST_NOT_POSSIBLE = "request_not_possible"
+# ``COORDS_MISSING`` on a thread the acquisition read only in part
+# (``acquire.AcquiredThread.truncated``): the coordinate may sit in a post it
+# never read. Raised by ``AcquiredThread.resolve``, never by the scan.
+THREAD_TRUNCATED = "thread_truncated"
 
 # What a created detection still needs from its owner: warnings, not refusals.
 # The first three are what the engine could not settle; the last four are what
@@ -99,6 +103,7 @@ REFUSAL_MESSAGES: dict[str, str] = {
     POST_UNREADABLE: "Post not readable on X (age-restricted, withheld or gone)",
     FOOTAGE_UNUSABLE: "Footage too large or unreadable. Open the request by hand",
     REQUEST_NOT_POSSIBLE: "No coordinate and no footage. Attach the clip to open a request",
+    THREAD_TRUNCATED: "Could not read the whole thread. Try again from the coordinate post",
 }
 
 
