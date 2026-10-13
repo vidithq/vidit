@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import Link from "next/link";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
 import type { ArchivedLink, EventDetail } from "@/types";
@@ -217,12 +216,7 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
           opened the request (`requested_by`). */}
       {!compact && geo.requested_by && (
         <DetailRow label="Requested by" concept="requested_by" compact={compact}>
-          <Link
-            href={`/profile/${geo.requested_by.username}`}
-            className={`text-sm ${TEXT_LINK} truncate`}
-          >
-            @{geo.requested_by.username}
-          </Link>
+          <AuthorByline author={geo.requested_by} prefix={false} className="text-sm" />
         </DetailRow>
       )}
       {!compact && (

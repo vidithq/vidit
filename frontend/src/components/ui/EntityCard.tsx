@@ -162,7 +162,7 @@ function AuthorLink({ username }: { username: string }) {
       href={`/profile/${username}`}
       className={`relative z-20 font-medium ${TEXT_LINK}`}
     >
-      @{username}
+      {username}
     </Link>
   );
 }

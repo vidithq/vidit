@@ -78,7 +78,7 @@ export function CollectionTags({ collection }: { collection: Collection }) {
  * items cover. Shared by the card and the page header. Each segment stays on one
  * line, so the row wraps between segments at 375px.
  *
- * `owner` leads with the byline (`by @user`), for search results.
+ * `owner` leads with the byline (`by user`), for search results.
  */
 export function CollectionMetaLine({
   collection,

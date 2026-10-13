@@ -368,7 +368,7 @@ function SearchPageBody() {
                 </span>
               )}
               {!loading && results && values.author.trim() && (
-                <span> by <span className="text-neutral-300 font-medium">@{values.author.trim()}</span></span>
+                <span> by <span className="text-neutral-300 font-medium">{values.author.trim()}</span></span>
               )}
             </span>
           </div>
