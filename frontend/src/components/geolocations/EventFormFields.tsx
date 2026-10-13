@@ -321,6 +321,7 @@ export function EventFormFields({
         graphicLocked={row?.is_graphic ?? false}
         sourceUrlLocked={sourceUrlLocked}
         detectedFromUrl={showProvenance ? row?.detected_from_url : undefined}
+        openedAsRequest={!!row?.requested_by}
         detectedFromSnapshotUrl={detectedFromSnapshotUrl}
         setDetectedFromSnapshotUrl={setDetectedFromSnapshotUrl}
         archivedDetectedFrom={row?.archived_detected_from ?? null}
