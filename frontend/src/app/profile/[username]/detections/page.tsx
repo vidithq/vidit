@@ -5,17 +5,14 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { DetectionQueueRow } from "@/components/detections/DetectionQueueRow";
-import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { useReviewPass } from "@/contexts/ReviewPassContext";
 import {
   detectionsPath,
   type DetectionReadiness,
@@ -44,10 +41,6 @@ export default function DetectionsPage() {
   const isOwn = !!user && user.username === username;
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<DetectionReadiness>("all");
-  // The list ends a pass: it keeps the pass's publications for this visit and empties the pass.
-  const { published, clear: clearPass } = useReviewPass();
-  const [recap] = useState(published);
-  useEffect(() => clearPass(), [clearPass]);
 
   // The endpoint scopes to `current_user` and ignores the URL username: send a non-owner to their own profile.
   useEffect(() => {
@@ -172,25 +165,6 @@ export default function DetectionsPage() {
         ) : undefined
       }
     >
-      {recap.length > 0 && (
-        <Card as="section">
-          <div className="space-y-1">
-            <SectionEyebrow title="Published this pass" margin="none" />
-            <p className="text-xs text-neutral-500">
-              Each one now reads on its event page, where you correct it.
-            </p>
-          </div>
-          <ul className="space-y-1.5 text-sm">
-            {recap.map((event) => (
-              <li key={event.id}>
-                <Link href={`/events/${event.id}`} className={TEXT_LINK}>
-                  {event.title}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
       {listBody}
     </PageShell>
   );

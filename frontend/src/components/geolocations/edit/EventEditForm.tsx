@@ -22,7 +22,6 @@ import { Button } from "@/components/ui/Button";
 import { closeActionLabel, CloseEventForm } from "@/components/event/CloseEventForm";
 import { useEventActions } from "@/components/event/useEventActions";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
-import { useReviewPass } from "@/contexts/ReviewPassContext";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { Input } from "@/components/ui/Input";
@@ -79,7 +78,6 @@ export function EventEditForm({
 }) {
   const router = useRouter();
   const { refresh: refreshDetectionCount } = useDetectionsCount();
-  const { record: recordPublished } = useReviewPass();
   // Read off the row so the page and the form cannot disagree about the mode.
   const editingPublished = geo.status === "geolocated";
   const finish = queue?.onAdvance ?? (() => router.push(redirectTo));
@@ -145,12 +143,9 @@ export function EventEditForm({
         err instanceof ApiError && err.code === "nothing_changed"
           ? err.message || nothingChangedMessage(geo.version_no)
           : undefined,
-      onSuccess: (published) => {
+      onSuccess: () => {
         // The badge counts `detected` rows, which only submit changes.
-        if (!editingPublished) {
-          refreshDetectionCount();
-          recordPublished({ id: published.id, title: published.title });
-        }
+        if (!editingPublished) refreshDetectionCount();
         finish();
       },
     }

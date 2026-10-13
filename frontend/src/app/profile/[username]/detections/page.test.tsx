@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { FIELD_HELP } from "@/lib/fieldHelp";
 
@@ -15,15 +15,6 @@ vi.mock("@/hooks/useRequireAuth", () => ({
 const useApiResource = vi.fn();
 vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => useApiResource(path),
-}));
-
-const pass = vi.hoisted(() => ({
-  published: [] as { id: string; title: string }[],
-  record: vi.fn(),
-  clear: vi.fn(),
-}));
-vi.mock("@/contexts/ReviewPassContext", () => ({
-  useReviewPass: () => pass,
 }));
 
 import type { EventDetail } from "@/types";
@@ -191,43 +182,5 @@ describe("DetectionsPage queue filter", () => {
 
     expect(screen.getByText("No detections to submit.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Ready" })).not.toBeInTheDocument();
-  });
-});
-
-describe("DetectionsPage pass recap", () => {
-  beforeEach(() => {
-    pass.clear.mockReset();
-    pass.published = [];
-  });
-
-  it("ends a pass on the geolocations it published, each linking to its event page", () => {
-    pass.published = [
-      { id: "e1", title: "Strike near Bakhmut" },
-      { id: "e2", title: "Convoy on the M03" },
-    ];
-    useApiResource.mockReturnValue({
-      data: payload({ items: [], total: 0, ready_total: 0, incomplete_total: 0 }),
-      error: null,
-    });
-    render(<DetectionsPage />);
-
-    expect(screen.getByText("Published this pass")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Strike near Bakhmut" })).toHaveAttribute(
-      "href",
-      "/events/e1"
-    );
-    expect(screen.getByRole("link", { name: "Convoy on the M03" })).toHaveAttribute(
-      "href",
-      "/events/e2"
-    );
-    // The list takes the recap, so the next pass starts empty.
-    expect(pass.clear).toHaveBeenCalled();
-  });
-
-  it("shows no recap when the pass published nothing", () => {
-    useApiResource.mockReturnValue({ data: payload(), error: null });
-    render(<DetectionsPage />);
-
-    expect(screen.queryByText("Published this pass")).not.toBeInTheDocument();
   });
 });
