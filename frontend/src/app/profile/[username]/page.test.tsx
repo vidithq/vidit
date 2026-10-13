@@ -232,6 +232,20 @@ describe("public profile order", () => {
     for (const mark of marks) expect(mark.className).toBe(shape);
   });
 
+  it("keeps the owner's email off their own profile", async () => {
+    useAuth.mockReturnValue({
+      user: { id: "u1", username: "ana", email: "ana@example.test" },
+      loading: false,
+      logout: vi.fn(),
+      refresh: vi.fn(),
+    });
+    mountProfile();
+    await screen.findByText("Insights");
+
+    // Account information lives on the settings page, not on a page anyone can open.
+    expect(screen.queryByText("ana@example.test")).toBeNull();
+  });
+
   it("names each chart by what it counts, in words that need no tooltip", async () => {
     mountProfile();
     await screen.findByText("Insights");
@@ -428,7 +442,7 @@ describe("public profile edit mode", () => {
     ).toBeTruthy();
     // One place to read a linked account per mode: buttons give way to inputs.
     expect(screen.queryByRole("link", { name: /X \/ Twitter/ })).toBeNull();
-    // The saved bio is not printed under the handle; the owner's email keeps the slot.
-    expect(container.querySelector("h1 + div")?.textContent).toBe("ana@example.test");
+    // The saved bio is not printed under the handle: the identity block drops out.
+    expect(container.querySelector("h1 + div")).toBeNull();
   });
 });

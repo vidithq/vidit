@@ -95,20 +95,11 @@ export default function ProfilePage() {
   // (`ProfileActions`), then the coverage map, Insights, recent submissions, open requests, sign out.
   // The detections entry is the exception: pending work, so it stays above the fold on the owner's profile.
   // Editing collapses the page to the form alone (bio and linked-accounts inputs contiguous, so Save stays on screen).
-  const bio = edit.editing ? null : profile.bio?.trim() || null;
-  const ownerEmail = isOwn ? currentUser?.email : undefined;
   return (
     <PageShell
       back
       title={<ProfileTitle profile={profile} edit={edit} />}
-      // View mode always shows the metadata line; editing drops it, so the slot carries only the account email.
-      subtitle={
-        <ProfileIdentity
-          bio={bio}
-          email={ownerEmail}
-          meta={edit.editing ? null : profile}
-        />
-      }
+      subtitle={edit.editing ? undefined : <ProfileIdentity profile={profile} />}
       actions={<ProfileActions profile={profile} isOwn={isOwn} edit={edit} />}
     >
       <ProfileHeaderEditFields profile={profile} edit={edit} />

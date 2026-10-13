@@ -46,56 +46,41 @@ export function ProfileTitle({
 }
 
 /**
- * The lines under the handle: the analyst's own framing (bio), then account metadata, then the
- * account's email on your own profile. `<PageShell>` owns the slot and its
- * `[overflow-wrap:anywhere]`, which keeps a bio holding a bare URL or an email inside the frame on
- * a phone.
+ * The lines under the handle: the analyst's own framing (bio), then account metadata. `<PageShell>`
+ * owns the slot and its `[overflow-wrap:anywhere]`, which keeps a bio holding a bare URL inside the
+ * frame on a phone. Edit mode drops the block.
  *
  * The bio: empty renders nothing; a link is plain text that breaks where it must; long wraps
  * rather than clamps (`BIO_MAX_LEN` caps it at 500, and an ellipsis would hide the analyst's
  * framing). Typed line breaks collapse into the flow here and stay in the edit field.
  *
- * `meta` is the followers / following / member-since line, secondary text rather than tiles (the
- * work figures live in the Insights card). Zero values print. Each segment holds together so the
- * row wraps between segments at 375 px. `null` drops the line, as edit mode does.
- *
- * One `space-y-1` on the wrapper owns the spacing, so a line that drops out leaves no gap.
+ * The metadata is the followers / following / member-since line, secondary text rather than tiles
+ * (the work figures live in the Insights card). Zero values print. Each segment holds together so
+ * the row wraps between segments at 375 px.
  */
-export function ProfileIdentity({
-  bio,
-  email,
-  meta,
-}: {
-  bio: string | null;
-  email?: string;
-  meta: PublicProfile | null;
-}) {
-  const segments = meta
-    ? [
-        `${meta.followers_count} follower${meta.followers_count === 1 ? "" : "s"}`,
-        `${meta.following_count} following`,
-        `Member since ${formatDate(meta.created_at)}`,
-      ]
-    : [];
+export function ProfileIdentity({ profile }: { profile: PublicProfile }) {
+  const bio = profile.bio?.trim() || null;
+  const segments = [
+    `${profile.followers_count} follower${profile.followers_count === 1 ? "" : "s"}`,
+    `${profile.following_count} following`,
+    `Member since ${formatDate(profile.created_at)}`,
+  ];
 
   return (
     <div className="space-y-1">
       {bio && <p>{bio}</p>}
-      {segments.length > 0 && (
-        <p className="flex flex-wrap items-center text-xs text-neutral-500">
-          {segments.map((segment, i) => (
-            <span key={segment} className="whitespace-nowrap">
-              {i > 0 && (
-                <span aria-hidden="true" className="px-1.5 text-neutral-700">
-                  ·
-                </span>
-              )}
-              {segment}
-            </span>
-          ))}
-        </p>
-      )}
-      {email && <p className="text-xs text-neutral-500">{email}</p>}
+      <p className="flex flex-wrap items-center text-xs text-neutral-500">
+        {segments.map((segment, i) => (
+          <span key={segment} className="whitespace-nowrap">
+            {i > 0 && (
+              <span aria-hidden="true" className="px-1.5 text-neutral-700">
+                ·
+              </span>
+            )}
+            {segment}
+          </span>
+        ))}
+      </p>
     </div>
   );
 }

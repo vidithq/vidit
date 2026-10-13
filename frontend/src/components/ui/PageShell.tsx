@@ -74,7 +74,7 @@ export function PageShell({
           <div className="basis-56 grow min-w-0 space-y-2">
             <h1 className="text-xl font-medium text-neutral-100">{title}</h1>
             {subtitle && (
-              // The owner's email is one unbreakable token.
+              // A bio can hold a bare URL, one unbreakable token.
               <div className="text-sm text-neutral-400 wrap-anywhere">
                 {subtitle}
               </div>
