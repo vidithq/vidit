@@ -36,6 +36,11 @@ vi.mock("@/contexts/DetectionsContext", () => ({
   useDetectionsCount: () => ({ count: 2, refresh: vi.fn() }),
 }));
 
+const recordPublished = vi.hoisted(() => vi.fn());
+vi.mock("@/contexts/ReviewPassContext", () => ({
+  useReviewPass: () => ({ published: [], record: recordPublished, clear: vi.fn() }),
+}));
+
 // Every read the surface makes, by path: the row, the review queue, the taxonomy.
 vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => ({
@@ -201,6 +206,7 @@ function closeDetection(reason: string) {
 
 beforeEach(() => {
   push.mockReset();
+  recordPublished.mockReset();
   geolocateMock.mockReset();
   saveVersionMock.mockReset();
   updateRequestMock.mockReset();
@@ -219,6 +225,13 @@ beforeEach(() => {
 });
 
 describe("the detection edit surface", () => {
+  it("labels the provenance link Detected from", () => {
+    render(<EditEventPage />);
+
+    expect(screen.getByText("Detected from")).toBeInTheDocument();
+    expect(screen.queryByText("Requested from")).toBeNull();
+  });
+
   it("renders the form under a bare title, with Submit alone at the foot", () => {
     render(<EditEventPage />);
 
@@ -299,6 +312,18 @@ describe("a review pass over the queue", () => {
     expect(geolocateMock.mock.calls[0][0]).toBe("d1");
     await waitFor(() =>
       expect(push).toHaveBeenCalledWith("/events/d2/edit?queue=1")
+    );
+  });
+
+  it("records each published detection for the recap that ends the pass", async () => {
+    render(<EditEventPage />);
+    await submitDetection();
+
+    await waitFor(() =>
+      expect(recordPublished).toHaveBeenCalledWith({
+        id: "d1",
+        title: "Strike near Bakhmut",
+      })
     );
   });
 
@@ -454,6 +479,16 @@ describe("editing a published geolocation", () => {
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
     expect(geolocateMock).not.toHaveBeenCalled();
     await waitFor(() => expect(push).toHaveBeenCalledWith("/events/d1"));
+    // A version publishes nothing new, so no review pass hears of it.
+    expect(recordPublished).not.toHaveBeenCalled();
+  });
+
+  it("labels the provenance link of a fulfilled bot-opened request Requested from", () => {
+    row = publishedFixture({ requested_by: { id: "u2", username: "bo" } });
+    render(<EditEventPage />);
+
+    expect(screen.getByText("Requested from")).toBeInTheDocument();
+    expect(screen.queryByText("Detected from")).toBeNull();
   });
 
   it("keeps the seconds of an untouched source post time and event time", async () => {
@@ -615,6 +650,14 @@ describe("editing an open request", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save request" }));
     await waitFor(() => expect(updateRequestMock).toHaveBeenCalledTimes(1));
     expect(updateRequestMock.mock.calls[0][1].source_posted_at).toBe("");
+  });
+
+  it("labels the post the bot opened the request from Requested from", () => {
+    row = requestFixture({ detected_from_url: "https://x.com/analyst/status/1" });
+    render(<EditEventPage />);
+
+    expect(screen.getByText("Requested from")).toBeInTheDocument();
+    expect(screen.queryByText("Detected from")).toBeNull();
   });
 
   it("covers the footage of a flagged request behind the age gate", () => {
