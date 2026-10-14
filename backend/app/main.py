@@ -24,6 +24,7 @@ from app.routers import (
     collections,
     conflicts,
     events,
+    notifications,
     search,
     social,
     tags,
@@ -217,6 +218,7 @@ for _event_router in events.routers:
     app.include_router(_event_router, prefix="/api/v1/events", tags=["events"])
 app.include_router(collections.router, prefix="/api/v1/collections", tags=["collections"])
 app.include_router(conflicts.router, prefix="/api/v1/conflicts", tags=["conflicts"])
+app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["notifications"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
 app.include_router(social.router, prefix="/api/v1", tags=["social"])
 app.include_router(tags.router, prefix="/api/v1/tags", tags=["tags"])

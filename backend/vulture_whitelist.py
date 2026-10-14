@@ -73,6 +73,11 @@ requests  # schemas/search.py SearchTotals + SearchResponse (reader-vocabulary g
 discord  # schemas/user.py UserRead
 website  # schemas/user.py UserRead
 github  # schemas/user.py UserRead
+unread  # schemas/notification.py NotificationRead
+display_defaults  # schemas/preferences.py UserPreferencesRead
+palette  # schemas/preferences.py, read through model_dump
+theme  # schemas/preferences.py, read through model_dump
+help_tooltips  # schemas/preferences.py, read through model_dump
 start_year  # models/conflict.py + schemas/conflict.py ConflictRead (wire field)
 end_year  # models/conflict.py + schemas/conflict.py ConflictRead (wire field)
 geolocated_count  # schemas/user.py UserStatsRead (wire field)

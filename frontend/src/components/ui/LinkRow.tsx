@@ -5,7 +5,7 @@ import { FORM_LABEL } from "./form-styles";
 import { OutboundLink } from "./OutboundLink";
 
 // "icon + label + value" link row (the About page's guide, legal and contact
-// channels).
+// channels; the Notifications feed).
 //
 // - `href` present: a link; the value reads orange with the orange-border hover.
 // - `href` absent: a <div>; the value stays neutral (names a destination without

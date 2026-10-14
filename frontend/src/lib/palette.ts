@@ -13,8 +13,9 @@
  */
 
 import { createAttributePreference } from "./attributePreference";
+import type { components } from "./api-types";
 
-export type PaletteId = "orange" | "blue" | "emerald" | "violet" | "rose";
+export type PaletteId = components["schemas"]["DisplayPreferences"]["palette"];
 
 export interface PaletteOption {
   id: PaletteId;
@@ -26,6 +27,7 @@ export interface PaletteOption {
   map: { base: string; rampMid: string; rampHigh: string; detected: string };
 }
 
+// One entry per backend schemas/preferences.PaletteId, each with its globals.css block; change both.
 export const PALETTES: readonly PaletteOption[] = [
   {
     id: "orange",
@@ -84,6 +86,7 @@ export const PALETTES: readonly PaletteOption[] = [
   },
 ] as const;
 
+// Mirrors backend schemas/preferences.DISPLAY_DEFAULTS; change both.
 export const DEFAULT_PALETTE: PaletteId = "orange";
 
 export const PALETTE_EVENT = "vidit:palette-changed";

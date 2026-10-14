@@ -89,6 +89,7 @@ erDiagram
         BOOLEAN is_admin
         TIMESTAMPTZ email_verified_at "nullable"
         TIMESTAMPTZ last_seen_at "nullable, throttled activity stamp"
+        TIMESTAMPTZ notifications_read_at "nullable, last-read marker"
         TIMESTAMPTZ deleted_at "nullable, soft-delete"
         INTEGER token_version "session-invalidation counter"
         TEXT bio "nullable, profile blurb"
@@ -275,6 +276,22 @@ erDiagram
         TIMESTAMPTZ created_at
     }
 
+    notifications {
+        UUID id PK
+        UUID user_id FK "the recipient"
+        VARCHAR kind "request_fulfilled | new_follower"
+        UUID actor_id FK "nullable, who acted"
+        UUID event_id FK "nullable, what it concerns"
+        TIMESTAMPTZ created_at
+    }
+
+    user_preferences {
+        UUID user_id PK
+        JSONB notification_overrides "per-kind, per-channel overrides only"
+        JSONB display "palette, theme, help_tooltips"
+        TIMESTAMPTZ updated_at
+    }
+
     bot_mentions {
         UUID id PK
         VARCHAR mention_tweet_id "UNIQUE, X snowflake"
@@ -349,6 +366,10 @@ erDiagram
     events ||--o{ collection_events : "event_id"
     users ||--o{ follows : "follower_id"
     users ||--o{ follows : "followed_id"
+    users ||--o{ notifications : "user_id"
+    users |o--o{ notifications : "actor_id"
+    events |o--o{ notifications : "event_id"
+    users ||--o| user_preferences : "user_id"
     users ||--o{ archive_import_jobs : "owner_id"
     events ||--o{ source_archives : "event_id"
 ```
@@ -370,6 +391,7 @@ erDiagram
 | `is_admin` | `BOOLEAN` | NOT NULL, default `false`. The system flips this to `true` automatically on login or registration if the email matches `ADMIN_EMAILS`. |
 | `email_verified_at` | `TIMESTAMPTZ` | nullable. Audit stamp written once by the registration confirmation (to `created_at`) and read by no code path. Every account the registration flow creates carries it. |
 | `last_seen_at` | `TIMESTAMPTZ` | nullable. The instant of the account's most recent authenticated request. `dependencies.get_current_user` rewrites it once the stored value is older than `LAST_SEEN_THROTTLE` (15 minutes), so a session costs one UPDATE per window. `POST /auth/login` and `POST /auth/confirm-registration` stamp it when they issue cookies. The admin onboarding table reads it as the account's activity, falling back to the newest `login` auth event while it is NULL. |
+| `notifications_read_at` | `TIMESTAMPTZ` | nullable. The last-read marker of the [notification feed](#notifications): rows created after it are unread. `POST /notifications/read` moves it forward only, and never past the current time. NULL means the analyst never opened the feed, so every row is unread. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks the user as soft-deleted: login is rejected, the profile returns 404, and public reads filter the row out. Soft-deleting a user cascades to soft-delete every event they own. Hard-delete, the GDPR escape hatch, drops the user row, the events they own, and their contributor rows, and sweeps S3. Because the owner is always among an event's geolocators, hard-delete never leaves a `geolocated` event with zero geolocators. |
 | `token_version` | `INTEGER` | NOT NULL, default `0`. A monotonic session-invalidation counter. The session JWT embeds this value as a `tv` claim, and `get_current_user` returns 401 on a mismatch. The system bumps this counter on logout, password change, password reset, and soft-delete, which invalidates every outstanding JWT for the user at once. A JWT with no `tv` claim also returns 401. |
 | `bio` | `TEXT` | nullable. A short plain-text blurb shown on the public profile. Analysts edit it through `PATCH /users/me`. The API layer caps it at 500 characters. There is no database constraint, so changing the cap does not require a migration. |
@@ -689,6 +711,45 @@ Indexes:
 - `ix_follows_followed_id` on `(followed_id)`. The PK indexes the forward direction, who is X following, on its leading column. Without this index, the reverse direction, who follows X, the query that powers `followers_count` on every profile load, would full-scan.
 
 `ON DELETE CASCADE` applies to both FKs. Hard-deleting an analyst drops every edge on either side, so a deleted user cannot keep ghost followers or ghost followings. Soft-deleted users (`users.deleted_at IS NOT NULL`) keep their edges. The public profile returns 404 regardless, and resurrecting an account should resurrect its graph.
+
+---
+
+### `notifications`
+
+One thing that happened to an analyst, shown in their feed at [`GET /notifications`](api.md#notifications). The action that causes it writes the row in its own transaction.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The recipient. |
+| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
+| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller or the follower. |
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable. The event the row concerns; NULL for `new_follower`. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. Compared with `users.notifications_read_at` to decide unread. |
+
+Indexes:
+
+- `ix_notifications_user_created_at` on `(user_id, created_at, id)`. Backs the feed's keyset walk and the unread count.
+- `ix_notifications_actor_id` on `(actor_id)` and `ix_notifications_event_id` on `(event_id)`. Back the cascades when an actor or an event is hard-deleted.
+
+Every foreign key cascades, so a hard-deleted recipient, actor or event takes its rows with it. A soft delete or a takedown keeps the row and hides it at read time: the feed and the count skip a row whose event has `deleted_at` or `hidden_at` set, or whose actor has `deleted_at` set. Undoing the takedown shows the row again.
+
+`new_follower` is written once per follower: an unfollow and re-follow finds the earlier row and writes none.
+
+---
+
+### `user_preferences`
+
+One analyst's stored preferences, read and written through [`/users/me/preferences`](api.md#get-usersmepreferences). The first write creates the row, and a missing row reads as the defaults.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `user_id` | `UUID` | PK, FK → `users.id` ON DELETE CASCADE |
+| `notification_overrides` | `JSONB` | NOT NULL, default `'{}'::jsonb`. `{kind: {channel: bool}}`, holding only the values that differ from the kind's default in `NOTIFICATION_KINDS`. A write equal to the default removes the key, so a changed default reaches every analyst who never moved that switch. |
+| `display` | `JSONB` | NOT NULL, default `'{}'::jsonb`. `palette`, `theme` and `help_tooltips`, each present once written. A missing key reads as the default in `schemas/preferences.DISPLAY_DEFAULTS`. |
+| `updated_at` | `TIMESTAMPTZ` | NOT NULL, stamped on every write |
+
+A stored value the API no longer accepts, such as a retired kind or palette, reads as its default.
 
 ---
 

@@ -1321,6 +1321,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Notifications
+         * @description Your notifications, newest first, capped at 100 per page (``Link: rel="next"`` cursor).
+         *
+         *     Reading the feed does not move the last-read marker; ``POST /notifications/read`` does.
+         */
+        get: operations["list_notifications_api_v1_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Notifications Read
+         * @description Advance your last-read marker to ``up_to``. It never moves backwards.
+         */
+        post: operations["mark_notifications_read_api_v1_notifications_read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Unread Count
+         * @description How many visible notifications are newer than your last-read marker.
+         */
+        get: operations["get_unread_count_api_v1_notifications_unread_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search": {
         parameters: {
             query?: never;
@@ -1476,6 +1538,30 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/me/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Preferences
+         * @description Your display and notification preferences, each beside its default.
+         */
+        get: operations["get_my_preferences_api_v1_users_me_preferences_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update My Preferences
+         * @description Change some of your preferences; omitted fields keep their value.
+         */
+        patch: operations["update_my_preferences_api_v1_users_me_preferences_patch"];
         trace?: never;
     };
     "/api/v1/users/{username}": {
@@ -2691,6 +2777,33 @@ export interface components {
             /** Lng */
             lng: number;
         };
+        /** DisplayPreferences */
+        DisplayPreferences: {
+            /** Help Tooltips */
+            help_tooltips: boolean;
+            /**
+             * Palette
+             * @enum {string}
+             */
+            palette: "orange" | "blue" | "emerald" | "violet" | "rose";
+            /**
+             * Theme
+             * @enum {string}
+             */
+            theme: "dark" | "light";
+        };
+        /**
+         * DisplayPreferencesUpdate
+         * @description An omitted field is left as stored; ``null`` clears the stored value.
+         */
+        DisplayPreferencesUpdate: {
+            /** Help Tooltips */
+            help_tooltips?: boolean | null;
+            /** Palette */
+            palette?: ("orange" | "blue" | "emerald" | "violet" | "rose") | null;
+            /** Theme */
+            theme?: ("dark" | "light") | null;
+        };
         /**
          * EventCloseRequest
          * @description Body for ``POST /events/{id}/close``. The reason is required because a
@@ -2921,6 +3034,75 @@ export interface components {
             sha256?: string | null;
             /** Storage Url */
             storage_url: string;
+        };
+        /** NotificationEventRef */
+        NotificationEventRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * NotificationMarkerUpdate
+         * @description Body for ``POST /notifications/read``: the ``created_at`` of the newest
+         *     row the reader was shown.
+         */
+        NotificationMarkerUpdate: {
+            /**
+             * Up To
+             * Format: date-time
+             */
+            up_to: string;
+        };
+        /** NotificationPreferenceRead */
+        NotificationPreferenceRead: {
+            /** Channels */
+            channels: {
+                [key: string]: boolean;
+            };
+            /** Defaults */
+            defaults: {
+                [key: string]: boolean;
+            };
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "request_fulfilled" | "new_follower";
+        };
+        /**
+         * NotificationRead
+         * @description One feed row. ``actor`` and ``event`` are null on a kind that names
+         *     neither; ``unread`` compares ``created_at`` with the last-read marker.
+         */
+        NotificationRead: {
+            actor: components["schemas"]["AuthorRef"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            event: components["schemas"]["NotificationEventRef"] | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "request_fulfilled" | "new_follower";
+            /** Unread */
+            unread: boolean;
+        };
+        /** NotificationUnreadCount */
+        NotificationUnreadCount: {
+            /** Count */
+            count: number;
         };
         /**
          * PaginatedEventDetails
@@ -3243,6 +3425,32 @@ export interface components {
         TweetImportRequest: {
             /** Url */
             url: string;
+        };
+        /**
+         * UserPreferencesRead
+         * @description Effective values, each beside the default it falls back to.
+         *     ``notifications`` lists every registered kind in registry order.
+         */
+        UserPreferencesRead: {
+            display: components["schemas"]["DisplayPreferences"];
+            display_defaults: components["schemas"]["DisplayPreferences"];
+            /** Notifications */
+            notifications: components["schemas"]["NotificationPreferenceRead"][];
+        };
+        /**
+         * UserPreferencesUpdate
+         * @description Body for ``PATCH /users/me/preferences``. Each ``notifications`` entry
+         *     sets channels of one kind; a value equal to the default drops the
+         *     override.
+         */
+        UserPreferencesUpdate: {
+            display?: components["schemas"]["DisplayPreferencesUpdate"] | null;
+            /** Notifications */
+            notifications?: {
+                [key: string]: {
+                    [key: string]: boolean;
+                };
+            } | null;
         };
         /**
          * UserProfile
@@ -5376,6 +5584,105 @@ export interface operations {
             };
         };
     };
+    list_notifications_api_v1_notifications_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor from a Link: rel=next header */
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_notifications_read_api_v1_notifications_read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationMarkerUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_unread_count_api_v1_notifications_unread_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationUnreadCount"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     search_api_v1_search_get: {
         parameters: {
             query?: {
@@ -5644,6 +5951,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_preferences_api_v1_users_me_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserPreferencesRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_my_preferences_api_v1_users_me_preferences_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserPreferencesUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserPreferencesRead"];
                 };
             };
             /** @description Validation Error */

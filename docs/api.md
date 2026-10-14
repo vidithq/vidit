@@ -131,10 +131,16 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | PATCH | `/users/me` | 🔒 | Edit your bio and external links |
 | PUT | `/users/me/avatar` | 🔒 | Upload your profile picture (multipart) |
 | DELETE | `/users/me/avatar` | 🔒 | Remove your profile picture |
+| GET | `/users/me/preferences` | 🔒 | Your display and notification preferences, each beside its default |
+| PATCH | `/users/me/preferences` | 🔒 | Change some of your preferences |
 | GET | `/users/{username}/events` | 🌐 | List an analyst's published geolocations |
 | GET | `/users/{username}/collections` | 🌐 | List an analyst's collections |
 | POST | `/users/{username}/follow` | 🔒 | Follow (idempotent; self-follow → 400) |
 | DELETE | `/users/{username}/follow` | 🔒 | Unfollow (idempotent; unknown user → 404) |
+| **Notifications** | | | |
+| GET | `/notifications` | 🔒 | Your notifications, newest first (cursor-paged) |
+| GET | `/notifications/unread-count` | 🔒 | How many notifications are newer than your last-read marker |
+| POST | `/notifications/read` | 🔒 | Advance your last-read marker |
 | **Timeline** | | | |
 | GET | `/timeline` | 🔒 | Activity feed from followed analysts |
 | **Webhooks** | | | |
@@ -211,6 +217,11 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `PATCH /users/me` | 30/min |
 | `PUT`/`DELETE /users/me/avatar` | 20/min |
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
+| `GET /users/me/preferences` | 120/min |
+| `PATCH /users/me/preferences` | 60/min |
+| **Notifications** | |
+| `GET /notifications`, `GET /notifications/unread-count` | 120/min |
+| `POST /notifications/read` | 60/min |
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
@@ -969,7 +980,7 @@ Correct an open request in place. Owner only, and only while `requested`. **No v
 
 ### `POST /events/{id}/geolocate` 🔒
 
-Give an event a vouched location: `requested` | `detected` → `geolocated`, writing your whole edited form in one transaction under a row lock. A concurrent geolocate on the same row serializes, and the loser gets 409. A `detected` row is owner-only, and this is the only write to it. A `requested` event is answerable by anyone, and you become its `owner` (`requested_by` keeps the original poster).
+Give an event a vouched location: `requested` | `detected` → `geolocated`, writing your whole edited form in one transaction under a row lock. A concurrent geolocate on the same row serializes, and the loser gets 409. A `detected` row is owner-only, and this is the only write to it. A `requested` event is answerable by anyone, and you become its `owner` (`requested_by` keeps the original poster). When you fulfil someone else's request, the same transaction writes a `request_fulfilled` [notification](#notifications) for them.
 
 **Request body (`multipart/form-data`):** the [event form](#event-form-fields), **geolocate** column. The [evidence floor](#evidence-floor) applies to the post-geolocate state. Rules specific to this path:
 
@@ -1695,6 +1706,60 @@ Remove your profile picture. Clears `users.avatar_url` and deletes the stored ob
 
 ---
 
+### `GET /users/me/preferences` 🔒
+
+Your display and notification preferences. Each value is the one in effect: your stored choice, or the default when you have none. An account that never saved a preference has no stored row and reads the defaults.
+
+**Response 200:**
+```json
+{
+  "display": { "palette": "rose", "theme": "light", "help_tooltips": true },
+  "display_defaults": { "palette": "orange", "theme": "dark", "help_tooltips": true },
+  "notifications": [
+    { "kind": "request_fulfilled", "channels": { "email": false }, "defaults": { "email": true } },
+    { "kind": "new_follower", "channels": { "email": false }, "defaults": { "email": false } }
+  ]
+}
+```
+
+`notifications` lists every registered notification kind, in registry order. `channels` holds the delivery channels besides the in-app feed, which is always on and has no switch. Vidit sends no notification email; the `email` values record the choice.
+
+| Field | Values |
+|-------|--------|
+| `display.palette` | `orange`, `blue`, `emerald`, `violet`, `rose` |
+| `display.theme` | `dark`, `light` |
+| `display.help_tooltips` | `true` shows the `?` field help |
+| `notifications[].kind` | `request_fulfilled`, `new_follower` |
+| `notifications[].channels` | `email` |
+
+---
+
+### `PATCH /users/me/preferences` 🔒
+
+Change some of your preferences. The first write creates your stored row.
+
+**Body** (every field optional):
+```json
+{
+  "display": { "theme": "light", "palette": null },
+  "notifications": { "request_fulfilled": { "email": false } }
+}
+```
+
+- In `display`, an omitted field keeps its stored value, and `null` clears it so it reads the default again.
+- In `notifications`, each entry sets channels of one kind. A value equal to the kind's default drops your override, so only differences from the defaults are stored, and a later change of a default reaches you if you never moved that switch.
+
+The body rejects unknown fields, unknown kinds, unknown channels, and display values outside the table above.
+
+**Response 200:** the updated preferences, in the shape of [`GET /users/me/preferences`](#get-usersmepreferences).
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 422 | An unknown field, kind, channel or display value |
+
+---
+
 ### `GET /users/{username}/events`
 
 An analyst's published geolocations: live rows with `status = "geolocated"` only, newest event date first. `total` counts the same set, and so does `geolocations_count` on [`GET /users/{username}`](#get-usersusername). Offset-paged; [Pagination](#pagination) gives the ordering and cap.
@@ -1722,7 +1787,7 @@ One analyst's collections, newest first. A reader gets the collections that show
 
 ### `POST /users/{username}/follow` 🔒
 
-Follow another analyst. Idempotent: re-following returns 204.
+Follow another analyst. Idempotent: re-following returns 204. The first follow writes a `new_follower` [notification](#notifications) for the followed analyst; an unfollow and re-follow does not write a second one.
 
 **Response 204:** no body.
 
@@ -1744,6 +1809,103 @@ Unfollow another analyst. Idempotent. An unknown username returns 404.
 | Code | Case |
 |------|------|
 | 404 | Target user not found or soft-deleted |
+
+---
+
+## Notifications
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`an action that emits a row`"]:::spec
+    l2["`an endpoint that reads or moves the marker`"]:::shared
+    l3["`the read-time filter`"]:::core
+    l4[("`a stored value`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  geolocate["`**POST /events/{id}/geolocate**
+  on a request: request_fulfilled to the analyst who opened it`"]:::spec
+  follow["`**POST /users/{username}/follow**
+  new_follower to the followed analyst, once per follower`"]:::spec
+  rows[("`**notifications**
+  written in the action's transaction`")]:::store
+  visible["`**_visible_rows**
+  hides a row whose event is deleted or hidden, or whose actor is soft-deleted`"]:::core
+  feed["`**GET /notifications**
+  newest first, each row marked unread or not`"]:::shared
+  count["`**GET /notifications/unread-count**
+  drives the sidebar dot`"]:::shared
+  read["`**POST /notifications/read**
+  up_to: the newest row shown`"]:::shared
+  marker[("`**users.notifications_read_at**
+  the last-read marker`")]:::store
+
+  geolocate --> rows
+  follow --> rows
+  rows --> visible
+  visible --> feed
+  visible --> count
+  read --> marker
+  marker --> count
+  marker --> feed
+```
+
+An action that concerns another analyst writes a [`notifications`](data-model.md#notifications) row in its own transaction, so a rolled-back action leaves no row. Nobody is notified of their own action. Every read passes the same filter: a row whose event is soft-deleted or taken down, or whose actor is soft-deleted, is hidden from the feed and the count, including when that happens after the row was written. The marker moves only through `POST /notifications/read`, which the feed page calls with the newest row it shows. Rows newer than the marker are unread.
+
+| Kind | Emitted when | `actor` | `event` |
+|------|--------------|---------|---------|
+| `request_fulfilled` | Another analyst geolocates a request you opened | the fulfiller | the request |
+| `new_follower` | An analyst follows you for the first time | the follower | null |
+
+### `GET /notifications` 🔒
+
+Your notifications, newest first. Cursor-paged; [Pagination](#pagination) gives the cap and the `Link` header. Reading the feed does not move the marker.
+
+**Query params:** `limit` and `cursor`, see [Pagination](#pagination).
+
+**Response 200:**
+```json
+[
+  {
+    "id": "6f1c…",
+    "kind": "request_fulfilled",
+    "created_at": "2026-10-12T09:00:00Z",
+    "actor": { "id": "a41e…", "username": "bo", "avatar_url": null },
+    "event": { "id": "9b2d…", "title": "Strike on the depot" },
+    "unread": true
+  }
+]
+```
+
+---
+
+### `GET /notifications/unread-count` 🔒
+
+The number of visible notifications newer than your last-read marker. Every notification counts while you have never opened the feed.
+
+**Response 200:** `{ "count": 2 }`
+
+---
+
+### `POST /notifications/read` 🔒
+
+Advance your last-read marker to `up_to`. The marker never moves backwards and never past the current time, so a repeated or late call changes nothing.
+
+**Body:** `{ "up_to": "2026-10-12T09:00:00Z" }`. The timestamp must carry a UTC offset.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 422 | `up_to` missing, unparseable, or without an offset |
 
 ---
 
@@ -2149,6 +2311,7 @@ One Account Activity delivery.
 | [`GET /events`](#get-events) | cursor | `created_at DESC, id DESC`; `created_at ASC, id ASC` with `sort=oldest` | 100 | 100 |
 | `GET /admin/invite-codes` | cursor | `created_at DESC, id DESC` | 100 | 100 |
 | [`GET /events/{id}/versions`](#get-eventsidversions) | cursor | `version_no DESC` | 50 | 100 |
+| [`GET /notifications`](#get-notifications) | cursor | `created_at DESC, id DESC` | 100 | 100 |
 | [`GET /collections/{id}/events`](#get-collectionsidevents) | cursor | `event_date, event_time, created_at, id` ascending; a missing date or time sorts last | 100 | 100 |
 | [`GET /users/{username}/events`](#get-usersusernameevents) | offset | `event_date DESC`, then `created_at DESC, id DESC` | 20 | 100 |
 | [`GET /users/{username}/collections`](#get-usersusernamecollections) | offset | newest first | 20 | 100 |

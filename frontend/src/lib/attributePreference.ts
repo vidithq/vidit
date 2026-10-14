@@ -1,10 +1,10 @@
 /**
- * A browser-local string preference reflected onto `<html data-*>`, shared by the accent
- * palette and the theme: a validated `localStorage` value mirrored onto a root `dataset`
- * attribute CSS keys off, and broadcast on a custom event so every `useClientPreference`
- * reader in the tab updates (the native `storage` event only fires in other tabs). It lives
- * in `localStorage` rather than the profile: it follows the browser, costs no request, and
- * works logged out.
+ * A string preference reflected onto `<html data-*>`, shared by the accent palette and the
+ * theme: a validated `localStorage` value mirrored onto a root `dataset` attribute CSS keys
+ * off, and broadcast on a custom event so every `useClientPreference` reader in the tab updates
+ * (the native `storage` event only fires in other tabs). The signed-in analyst's value lives on
+ * the server and follows the account (`lib/preferences.ts`); `localStorage` is the cache the
+ * pre-paint inline script reads, and the value a signed-out reader keeps.
  */
 
 export interface AttributePreference<T extends string> {

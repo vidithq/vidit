@@ -17,13 +17,61 @@ import {
 import { Input } from "@/components/ui/Input";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import { useHelpHidden } from "@/hooks/useHelpHidden";
-import { setHelpHidden } from "@/lib/helpPreference";
 import { usePalette } from "@/hooks/usePalette";
-import { PALETTES, setPalette } from "@/lib/palette";
+import { PALETTES } from "@/lib/palette";
 import { useTheme } from "@/hooks/useTheme";
-import { setTheme } from "@/lib/theme";
+import { useApiResource } from "@/hooks/useApiResource";
+import { NOTIFICATION_KIND_COPY } from "@/lib/notifications";
+import {
+  PREFERENCES_PATH,
+  saveDisplay,
+  updatePreferences,
+  type UserPreferences,
+} from "@/lib/preferences";
 
+const SAVE_FAILED = "Could not save to your account. Try again.";
 
+/** One row per registered kind, each with its email switch. The backend drops an override
+ *  equal to the default, so a switch moved back stores nothing. */
+function NotificationsCard() {
+  const { data, error } = useApiResource<UserPreferences>(PREFERENCES_PATH);
+  const [saved, setSaved] = useState<UserPreferences | null>(null);
+  const toggle = useMutation(
+    (kind: keyof typeof NOTIFICATION_KIND_COPY, email: boolean) =>
+      updatePreferences({ notifications: { [kind]: { email } } }),
+    { fallback: SAVE_FAILED, onSuccess: (prefs) => setSaved(prefs) }
+  );
+  const prefs = saved ?? data;
+
+  return (
+    <Card>
+      <div className="space-y-1">
+        <SectionEyebrow title="Notifications" margin="none" />
+        <p className="text-xs text-neutral-500">
+          Every notification appears in your Notifications feed. Vidit does not send
+          notification emails today; the switches below save which kinds you want by email.
+        </p>
+      </div>
+      {(error || toggle.error) && (
+        <div className={FORM_ERROR_BANNER}>{toggle.error ?? error}</div>
+      )}
+      {prefs?.notifications.map((row, i) => {
+        const copy = NOTIFICATION_KIND_COPY[row.kind];
+        const email = row.channels.email ?? false;
+        return (
+          <ToggleRow
+            key={row.kind}
+            label={`${copy.label} by email`}
+            description={`${copy.setting} Default: ${row.defaults.email ? "on" : "off"}.`}
+            on={email}
+            onToggle={() => toggle.run(row.kind, !email)}
+            className={i > 0 ? "border-t border-neutral-800 pt-4" : ""}
+          />
+        );
+      })}
+    </Card>
+  );
+}
 
 export default function SettingsPage() {
   const { user, loading } = useRequireAuth();
@@ -35,6 +83,7 @@ export default function SettingsPage() {
   const helpHidden = useHelpHidden();
   const palette = usePalette();
   const theme = useTheme();
+  const display = useMutation(saveDisplay, { fallback: SAVE_FAILED });
 
   const changePassword = useMutation(
     () =>
@@ -100,9 +149,12 @@ export default function SettingsPage() {
           <div className="space-y-1">
             <SectionEyebrow title="Display" margin="none" />
             <p className="text-xs text-neutral-500">
-              Preferences stored in this browser.
+              Saved to your account and applied wherever you sign in.
             </p>
           </div>
+          {display.error && (
+            <div className={FORM_ERROR_BANNER}>{display.error}</div>
+          )}
           {/* `<ToggleRow>` makes the whole row the switch, so a thumb on the label still toggles. The divider is this card's. */}
           <ToggleRow
             label="Show help tooltips"
@@ -114,14 +166,14 @@ export default function SettingsPage() {
               </>
             }
             on={!helpHidden}
-            onToggle={() => setHelpHidden(!helpHidden)}
+            onToggle={() => display.run({ help_tooltips: helpHidden })}
           />
 
           <ToggleRow
             label="Light mode"
             description="Switch the interface and map to a light background. Dark by default."
             on={theme === "light"}
-            onToggle={() => setTheme(theme === "light" ? "dark" : "light")}
+            onToggle={() => display.run({ theme: theme === "light" ? "dark" : "light" })}
             className="border-t border-neutral-800 pt-4"
           />
 
@@ -143,7 +195,7 @@ export default function SettingsPage() {
                   aria-checked={palette === p.id}
                   aria-label={p.label}
                   title={p.label}
-                  onClick={() => setPalette(p.id)}
+                  onClick={() => display.run({ palette: p.id })}
                   style={{ backgroundColor: p.swatch }}
                   // `ICON_TAP_STEP`: the phone floor for small icon controls (the swatch is a 24px disc).
                   className={`${ICON_TAP_STEP} sm:size-6 rounded-full transition-transform hover:scale-110 ${
@@ -156,6 +208,8 @@ export default function SettingsPage() {
             </div>
           </div>
         </Card>
+
+        <NotificationsCard />
 
         <Card>
           <div className="space-y-1">
