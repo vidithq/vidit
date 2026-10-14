@@ -85,7 +85,7 @@ An amend + force-push to fix a missing sign-off often re-triggers only the DCO c
 
 ## Doc-sync rule
 
-- **New work?** Open an issue in `vidithq/vidit`, set its type (Feature, Debt, Task, Bug), and add it to the [GitHub Project](https://github.com/orgs/vidithq/projects/1) with Priority, Version, and Area set.
+- **New work?** Open an issue in `vidithq/vidit`, set its type (Feature, Debt, Task, Bug), and add it to the [GitHub Project](https://github.com/orgs/vidithq/projects/1) with Version and Area set. Within a version, the item's position in the project view sets its order.
 - **Item shipped?** Put `Closes #N` in the PR description so the merge closes the issue. Add an entry to [`CHANGELOG.md`](CHANGELOG.md) under `## Unreleased`, in its Keep a Changelog group: one line that states the outcome for a user, operator or contributor in plain words, followed by the PR link in parentheses. Leave out file paths and mechanism details; the PR carries them. CI rejects a line over 300 characters.
 - **Item descoped?** Set its Version to Unscheduled. Rejected → close the issue as not planned.
 
