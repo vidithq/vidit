@@ -8,6 +8,7 @@ import type { ArchivedLink, EventDetail } from "@/types";
 import { formatDate, formatInstant, safeHostname } from "@/lib/format";
 import { formatCoordinates } from "@/lib/coordinates";
 import { conflictLabel } from "@/lib/conflicts";
+import { provenanceLabel } from "@/lib/events";
 import { renderProof } from "@/lib/proof";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import {
@@ -175,13 +176,10 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
           compact={compact}
         />
       )}
-      {/* The post a machine import read this row from, distinct from Source (the footage origin). The
-          bot writes it on requests as well as detections, and the label follows `requested_by`, the
-          stamp that survives fulfilment, so it doesn't flip to "Detected from" once someone geolocates
-          the row. */}
+      {/* The post a machine import read this row from, distinct from Source (the footage origin). */}
       {geo.detected_from_url && (
         <DetailRow
-          label={geo.requested_by ? "Requested from" : "Detected from"}
+          label={provenanceLabel(!!geo.requested_by)}
           concept="detected_from"
           compact={compact}
         >

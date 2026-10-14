@@ -168,19 +168,21 @@ describe("DetectionsPage queue filter", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Ready" }));
     expect(screen.getByText("No ready detections.")).toBeInTheDocument();
-    // The queue is not empty, so no import pitch and the toggle stays.
-    expect(screen.queryByText("No detections to submit.")).not.toBeInTheDocument();
+    // The queue is not empty, so the toggle stays.
+    expect(screen.queryByText("Nothing left to review.")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Incomplete" })).toBeInTheDocument();
   });
 
-  it("keeps the import pitch for a queue that is genuinely empty", () => {
+  it("reduces an emptied queue to one line, with no import pitch or link", () => {
     useApiResource.mockReturnValue({
       data: payload({ items: [], total: 0, ready_total: 0, incomplete_total: 0 }),
       error: null,
     });
     render(<DetectionsPage />);
 
-    expect(screen.getByText("No detections to submit.")).toBeInTheDocument();
+    expect(screen.getByText("Nothing left to review.")).toBeInTheDocument();
+    // The header's back arrow returns to the profile; the list adds no control of its own.
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Ready" })).not.toBeInTheDocument();
   });
 });

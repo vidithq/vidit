@@ -19,7 +19,7 @@ import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Switch } from "@/components/ui/Switch";
-import { MAX_SECONDARY_SOURCE_LINKS } from "@/lib/events";
+import { MAX_SECONDARY_SOURCE_LINKS, provenanceLabel } from "@/lib/events";
 import { LockedHint } from "./LockedHint";
 import { LockedUrl } from "./LockedUrl";
 
@@ -65,6 +65,8 @@ interface DetailsFieldsProps {
   /** A machine detection's provenance, the post it was imported from. Shown
    *  read-only (the one immutable field). */
   detectedFromUrl?: string | null;
+  /** The row carries `requested_by`: the link reads "Requested from". */
+  openedAsRequest?: boolean;
   /** Posted as `detected_from_snapshot_url`. Only the published-row edit passes
    *  the pair; without the setter the locked field renders bare. */
   detectedFromSnapshotUrl?: string;
@@ -99,6 +101,7 @@ export function DetailsFields({
   graphicLocked = false,
   sourceUrlLocked = false,
   detectedFromUrl,
+  openedAsRequest = false,
   detectedFromSnapshotUrl = "",
   setDetectedFromSnapshotUrl,
   archivedDetectedFrom = null,
@@ -281,7 +284,7 @@ export function DetailsFields({
       {detectedFromUrl && (
         <div className="space-y-1.5">
           <span className={FORM_LABEL}>
-            Detected from <FieldHelp concept="detected_from" />
+            {provenanceLabel(openedAsRequest)} <FieldHelp concept="detected_from" />
             <LockedHint>provenance, can&apos;t change</LockedHint>
           </span>
           <LockedUrl

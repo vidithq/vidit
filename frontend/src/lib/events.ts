@@ -1021,6 +1021,13 @@ export function batchCompletionBlockers(geo: {
   return missing;
 }
 
+/** The label of the provenance link (`detected_from_url`). The bot writes that link on requests as
+ *  well as detections; `requested_by` survives fulfilment, so a bot-opened request keeps its label
+ *  once someone geolocates it. */
+export function provenanceLabel(openedAsRequest: boolean): string {
+  return openedAsRequest ? "Requested from" : "Detected from";
+}
+
 /** `POST /events/{id}/close`: withdraw a request, reject a detection, or retract a
  *  geolocation (owner-only). The reason is public, so required; closing is terminal. */
 export function closeEvent(id: string, closeReason: string): Promise<EventDetail> {
