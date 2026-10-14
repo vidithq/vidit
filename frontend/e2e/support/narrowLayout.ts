@@ -94,14 +94,20 @@ export async function expectNoHorizontalOverflow(page: Page): Promise<void> {
  * made on one axis. It is preceded by a scroll, so a control below the fold is
  * measured where a reader would meet it rather than failing for being further
  * down a long form.
+ *
+ * The scroll and the measure retry together: a block that mounts late (the
+ * description editor is a client-only dynamic import, slow on CI's cold dev
+ * compile) can push the control back out of view after one scroll.
  */
 export async function expectControlInsideViewport(
   page: Page,
   control: Locator,
 ): Promise<void> {
   await expect(control).toBeVisible();
-  await control.scrollIntoViewIfNeeded();
-  await expect(control).toBeInViewport({ ratio: 1 });
+  await expect(async () => {
+    await control.scrollIntoViewIfNeeded();
+    await expect(control).toBeInViewport({ ratio: 1, timeout: 1_000 });
+  }).toPass();
 }
 
 /** The visible editable fields rendering under the floor, read once. */
