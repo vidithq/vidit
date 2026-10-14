@@ -57,6 +57,7 @@ const item = (id: string, lat: number | null): EventListItem => ({
   event_date: "2026-03-14",
   event_coords: lat === null ? null : { lat, lng: 37.6 },
   before_closed_status: null,
+  requested_at: null,
   conflicts: [],
   is_graphic: false,
   media: null,

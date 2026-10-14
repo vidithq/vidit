@@ -13,7 +13,7 @@ from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
 from app.models.conflict import Conflict
-from app.models.event import STATUS_DETECTED, Event
+from app.models.event import STATUS_DETECTED, STATUS_REQUESTED, Event
 from app.models.tag import Tag
 from app.services.event_filters import parse_bbox
 from tests.events._helpers import WORLD_BBOX, _make_geo, client
@@ -184,6 +184,33 @@ def test_list_filters_by_bbox(db, author):
     ids = {row["id"] for row in response.json()}
     assert str(inside.id) in ids
     assert str(outside.id) not in ids
+
+
+def test_list_filters_requests_by_location_guess(db, author):
+    guessed = _make_geo(db, author=author, status=STATUS_REQUESTED)
+    blind = _make_geo(db, author=author, status=STATUS_REQUESTED, lat=None, lng=None)
+    base = f"/api/v1/events?view=requested&author={author.username}"
+
+    with_guess = client.get(f"{base}&has_coords=true")
+    without_guess = client.get(f"{base}&has_coords=false")
+    either = client.get(base)
+
+    assert [row["id"] for row in with_guess.json()] == [str(guessed.id)]
+    assert [row["id"] for row in without_guess.json()] == [str(blind.id)]
+    assert {row["id"] for row in either.json()} == {str(guessed.id), str(blind.id)}
+
+
+def test_list_carries_requested_at(db, author):
+    request = _make_geo(db, author=author, status=STATUS_REQUESTED)
+    geo = _make_geo(db, author=author)
+
+    requested = client.get(f"/api/v1/events?view=requested&author={author.username}").json()
+    located = client.get(f"/api/v1/events?author={author.username}").json()
+
+    assert [row["id"] for row in requested] == [str(request.id)]
+    assert datetime.fromisoformat(requested[0]["requested_at"]) == request.requested_at
+    assert [row["id"] for row in located] == [str(geo.id)]
+    assert located[0]["requested_at"] is None
 
 
 def test_list_honours_limit(db, author):

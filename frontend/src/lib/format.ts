@@ -8,6 +8,16 @@ export function formatDate(input: string): string {
   });
 }
 
+export const DAY_MS = 86_400_000;
+
+/** How long something opened at `since` (an ISO instant) has been open, in whole days:
+ * "Open today", "Open 1 day", "Open 12 days". */
+export function formatOpenAge(since: string): string {
+  const days = Math.max(0, Math.floor((Date.now() - new Date(since).getTime()) / DAY_MS));
+  if (days === 0) return "Open today";
+  return `Open ${days} day${days === 1 ? "" : "s"}`;
+}
+
 /** `2026-03` → "Mar 2026"; an unparsable key renders as-is. */
 export function formatMonth(period: string): string {
   const [year, month] = period.split("-");

@@ -29,6 +29,7 @@ from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import build_event_list, build_event_read
 from app.schemas.event import (
     EventList,
+    EventListSort,
     PaginatedEventDetails,
 )
 from app.services.event_filters import (
@@ -47,6 +48,7 @@ from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_cursor,
     encode_cursor,
+    keyset_after,
     keyset_before,
     next_link,
     page_size,
@@ -227,11 +229,13 @@ def list_events(
     submitted_from: str | None = None,
     submitted_to: str | None = None,
     author: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
+    has_coords: bool | None = Query(None, description="true: with a location; false: without"),
+    sort: EventListSort = Query("newest"),
     limit: int = Query(MAX_PAGE_SIZE, ge=1),
     cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
     db: Session = Depends(get_db),
 ):
-    """Newest-first cards for one lifecycle view.
+    """Cards for one lifecycle view, newest or oldest first.
 
     ``view=located`` (default) is the catalog; ``view=requested`` the open-call
     queue. Two steps (ids, then full rows) so eager-loads can't inflate the
@@ -239,7 +243,8 @@ def list_events(
 
     Capped at 100 rows however large ``limit`` is; the ``Link: rel="next"``
     cursor is present exactly when a next page holds a row. Ordering is
-    ``created_at DESC, id DESC``, total, so a walk can't duplicate or skip rows.
+    ``created_at, id``, descending for ``sort=newest`` and ascending for
+    ``sort=oldest``. Both are total, so a walk can't duplicate or skip rows.
     """
     if view not in VIEWS:
         raise HTTPException(
@@ -262,13 +267,25 @@ def list_events(
         submitted_to=submitted_to,
         author=author,
         bbox=bbox,
+        has_coords=has_coords,
     )
 
+    oldest = sort == "oldest"
+    order = (
+        (Event.created_at.asc(), Event.id.asc())
+        if oldest
+        else (Event.created_at.desc(), Event.id.desc())
+    )
     if cursor is not None:
-        id_query = id_query.filter(keyset_before(Event.created_at, Event.id, decode_cursor(cursor)))
+        after = decode_cursor(cursor)
+        id_query = id_query.filter(
+            keyset_after((Event.created_at, Event.id), after)
+            if oldest
+            else keyset_before(Event.created_at, Event.id, after)
+        )
 
     # One row past the page decides whether a ``Link: rel="next"`` goes out.
-    window = id_query.order_by(Event.created_at.desc(), Event.id.desc()).limit(size + 1).all()
+    window = id_query.order_by(*order).limit(size + 1).all()
     keys, has_next = take_page(window, size)
 
     if not keys:
@@ -297,7 +314,7 @@ def list_events(
         )
         .filter(Event.id.in_(ids))
         # Same ordering as the id window, so the page matches the cursor.
-        .order_by(Event.created_at.desc(), Event.id.desc())
+        .order_by(*order)
         .all()
     )
 

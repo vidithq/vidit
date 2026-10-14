@@ -282,6 +282,7 @@ def apply_filters(
     author: str | None = None,
     media: list[str] | None = None,
     bbox: str | None = None,
+    has_coords: bool | None = None,
 ) -> SAQuery:
     """Apply the standard event filter set to a query.
 
@@ -297,6 +298,9 @@ def apply_filters(
     list, all-match (AND) across lists. ``conflict`` matches the ``conflicts`` referential (its
     own join, so a same-named free tag can't poison it); ``capture_source`` pins the tag's
     category for the same reason; ``tag`` matches any category.
+
+    ``has_coords`` splits on ``event_coords``: ``True`` keeps rows with a point (a request's
+    location guess), ``False`` the blind ones, ``None`` both.
     """
     query = query.filter(*visible_events(), view_predicate(view))
 
@@ -339,6 +343,11 @@ def apply_filters(
 
     if bbox:
         query = query.filter(bbox_predicate(parse_bbox(bbox)))
+
+    if has_coords is not None:
+        query = query.filter(
+            Event.event_coords.isnot(None) if has_coords else Event.event_coords.is_(None)
+        )
 
     return query
 

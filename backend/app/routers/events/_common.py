@@ -129,6 +129,7 @@ def build_event_list(
         is_graphic=geo.is_graphic,
         status=geo.status,
         before_closed_status=geo.before_closed_status,
+        requested_at=geo.requested_at,
         owner=geo.owner,
         media=thumbnail_media(geo),
         tags=geo.tags,

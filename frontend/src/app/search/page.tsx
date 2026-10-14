@@ -102,6 +102,8 @@ function SearchPageBody() {
     captureSources: searchParams.getAll("capture_source"),
     tags: searchParams.getAll("tag"),
     mediaTypes: searchParams.getAll("media"),
+    // The search groups serve no location-guess predicate, so the panel never offers it here.
+    locationGuess: [],
     // A crafted URL can carry anything; the shared gate keeps an ineligible value from 422ing
     // every fetch.
     author: (() => {

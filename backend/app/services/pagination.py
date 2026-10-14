@@ -12,7 +12,8 @@ the query; this module bounds a page and links to the next one.
 
 The cursor is keyset, not offset, so rows inserted mid-walk neither duplicate
 nor skip. Most lists page on ``(created_at, id)`` under
-``ORDER BY created_at DESC, id DESC`` (``id`` makes the order total). A list
+``ORDER BY created_at DESC, id DESC`` (``id`` makes the order total);
+``GET /events?sort=oldest`` walks the same pair ascending. A list
 with a unique ordinal pages on that (:func:`encode_ordinal_cursor`, a version
 history on ``version_no``). A collection's items page on
 ``event_date, event_time, created_at, id`` ascending
@@ -157,7 +158,7 @@ def decode_chronological_cursor(cursor: str) -> tuple[date, time, datetime, uuid
 
 
 def keyset_after(
-    columns: Sequence[ColumnElement[Any]], cursor: tuple[Any, ...]
+    columns: Sequence[ColumnElement[Any] | InstrumentedAttribute[Any]], cursor: tuple[Any, ...]
 ) -> ColumnElement[bool]:
     """Predicate for the rows after ``cursor`` under an ascending ORDER BY.
 
