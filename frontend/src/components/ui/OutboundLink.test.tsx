@@ -5,6 +5,17 @@ import { OutboundLink } from "./OutboundLink";
 
 const UNKNOWN = "https://example.org/a/very/long/path?q=1";
 
+function openWarning(ugc = false) {
+  render(
+    <OutboundLink href={UNKNOWN} ugc={ugc}>
+      site
+    </OutboundLink>,
+  );
+  const link = screen.getByRole("link", { name: "site" });
+  const followed = fireEvent.click(link);
+  return { link, followed };
+}
+
 describe("OutboundLink", () => {
   it("opens a known host in a new tab in one click", () => {
     render(<OutboundLink href="https://t.me/channel/4">post</OutboundLink>);
@@ -15,45 +26,58 @@ describe("OutboundLink", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("holds a click on an unknown host and shows the full URL", () => {
-    render(<OutboundLink href={UNKNOWN}>site</OutboundLink>);
-    const a = screen.getByRole("link", { name: "site" });
-    expect(fireEvent.click(a)).toBe(false);
+  it("holds a click on an unknown host in a modal dialog naming the host", () => {
+    const { followed } = openWarning();
+    expect(followed).toBe(false);
     const dialog = screen.getByRole("dialog", { name: "Leave Vidit?" });
-    expect(dialog).toHaveTextContent(UNKNOWN);
+    expect(dialog).toHaveAttribute("aria-modal", "true");
     expect(dialog).toHaveTextContent("example.org");
-    expect(a).toHaveAttribute("aria-expanded", "true");
   });
 
-  it("leaves through an explicit confirmation", () => {
-    render(<OutboundLink href={UNKNOWN} ugc>site</OutboundLink>);
-    fireEvent.click(screen.getByRole("link", { name: "site" }));
-    const confirm = screen.getByRole("link", { name: "Open link" });
-    expect(confirm).toHaveAttribute("href", UNKNOWN);
-    expect(confirm).toHaveAttribute("target", "_blank");
-    expect(confirm).toHaveAttribute("rel", "noopener noreferrer nofollow ugc");
+  it("makes the full URL the only way on, and offers no other confirm", () => {
+    openWarning(true);
+    const url = screen.getByRole("link", { name: UNKNOWN });
+    expect(url).toHaveAttribute("href", UNKNOWN);
+    expect(url).toHaveAttribute("target", "_blank");
+    expect(url).toHaveAttribute("rel", "noopener noreferrer nofollow ugc");
+    expect(screen.queryByRole("link", { name: /open link/i })).toBeNull();
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Cancel"]);
+  });
+
+  it("puts initial focus on Cancel and keeps Tab inside the dialog", () => {
+    openWarning();
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    const url = screen.getByRole("link", { name: UNKNOWN });
+    expect(cancel).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(url).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(cancel).toHaveFocus();
   });
 
   it("asks on a middle click too", () => {
     render(<OutboundLink href={UNKNOWN}>site</OutboundLink>);
     const a = screen.getByRole("link", { name: "site" });
-    expect(fireEvent(a, new MouseEvent("auxclick", { bubbles: true, cancelable: true, button: 1 }))).toBe(
-      false,
-    );
+    const event = new MouseEvent("auxclick", { bubbles: true, cancelable: true, button: 1 });
+    expect(fireEvent(a, event)).toBe(false);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("closes on Cancel and on Escape", () => {
-    render(<OutboundLink href={UNKNOWN}>site</OutboundLink>);
-    const a = screen.getByRole("link", { name: "site" });
-    fireEvent.click(a);
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  it.each([
+    ["Cancel", () => fireEvent.click(screen.getByRole("button", { name: "Cancel" }))],
+    ["Escape", () => fireEvent.keyDown(window, { key: "Escape" })],
+    ["a backdrop click", () => fireEvent.click(screen.getByRole("dialog"))],
+  ])("closes on %s and returns focus to the link", (_, dismiss) => {
+    const { link } = openWarning();
+    dismiss();
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(a).toHaveFocus();
+    expect(link).toHaveFocus();
+  });
 
-    fireEvent.click(a);
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByRole("dialog")).toBeNull();
+  it("keeps a click inside the card from closing it", () => {
+    openWarning();
+    fireEvent.click(screen.getByText(/outside the sites Vidit opens directly/));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("routes a link to Vidit inside the app", () => {

@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useId, useRef, type ComponentPropsWithoutRef, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useState, type ComponentPropsWithoutRef, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 
-import { usePinnedPopover } from "@/hooks/usePinnedPopover";
 import { httpHostname, linkKind } from "@/lib/outbound";
-import { Button, buttonClasses } from "./Button";
-import { POPOVER_SURFACE } from "./styles";
+import { Button } from "./Button";
+import { Card } from "./Card";
+import { MediaOverlay } from "./MediaLightbox";
+import { TEXT_LINK } from "./styles";
 
 type OutboundLinkProps = Omit<
   ComponentPropsWithoutRef<"a">,
@@ -25,8 +25,8 @@ type OutboundLinkProps = Omit<
  *
  * - Vidit's own domain routes in the app through `next/link`.
  * - A known host opens in a new tab in one click.
- * - Any other host opens a popover that shows the full URL and waits for an explicit
- *   confirmation. Middle and modifier clicks ask too.
+ * - Any other host opens a centred dialog over the blurred page. The full URL in it is the
+ *   only way on, so the reader reads the address to leave. Middle and modifier clicks ask too.
  * - A value that is not an http(s) URL renders as its text.
  */
 export function OutboundLink({ href, children, ugc = false, ...rest }: OutboundLinkProps) {
@@ -62,72 +62,60 @@ function ConfirmedLink({
   children,
   ...rest
 }: Omit<OutboundLinkProps, "ugc"> & { rel: string }) {
-  const { open, placed, close, anchorProps, popoverProps } = usePinnedPopover<HTMLAnchorElement>({
-    hover: false,
-  });
-  const titleId = useId();
-  const confirmRef = useRef<HTMLAnchorElement>(null);
+  const [open, setOpen] = useState(false);
+  const close = () => setOpen(false);
 
-  useEffect(() => {
-    if (placed) confirmRef.current?.focus({ preventScroll: true });
-  }, [placed]);
-
-  const cancel = () => {
-    close();
-    anchorProps.ref.current?.focus();
+  const ask = (e: MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Safari does not focus a clicked link; the overlay returns focus to whatever holds it now.
+    e.currentTarget.focus();
+    setOpen(true);
   };
 
   return (
     <>
       <a
         {...rest}
-        {...anchorProps}
         href={href}
         target="_blank"
         rel={rel}
         aria-haspopup="dialog"
-        aria-expanded={open}
+        onClick={ask}
         onAuxClick={(e) => {
-          if (e.button === 1) anchorProps.onClick(e);
+          if (e.button === 1) ask(e);
         }}
       >
         {children}
       </a>
-      {open &&
-        createPortal(
-          <span
-            {...popoverProps}
-            role="dialog"
-            aria-labelledby={titleId}
-            className={`${POPOVER_SURFACE} block w-80 max-w-[calc(100vw-16px)] p-3 space-y-2 text-xs text-neutral-400`}
-          >
-            <span id={titleId} className="block text-sm font-medium text-neutral-100">
+      {open && (
+        <MediaOverlay variant="dialog" label="Leave Vidit?" onClose={close}>
+          <Card className="w-[min(28rem,calc(100vw-3rem))] space-y-3 border-orange-500/40 text-sm">
+            <h2 className="text-base font-semibold text-neutral-100">
               Leave Vidit?
-            </span>
-            <span className="block">
-              This link goes to {httpHostname(href)}, outside the sites Vidit opens directly. Check
-              the full address first.
-            </span>
-            <span className="block break-all font-mono text-neutral-200">{href}</span>
-            <span className="flex justify-end gap-2 pt-1">
-              <Button variant="ghost" onClick={cancel}>
+            </h2>
+            <p className="text-neutral-400">
+              This link goes to {httpHostname(href)}, outside the sites Vidit opens directly. Read
+              the full address, then select it to continue.
+            </p>
+            <a
+              href={href}
+              target="_blank"
+              rel={rel}
+              // Closing in the click itself would unmount the anchor before the browser follows it.
+              onClick={() => setTimeout(close, 0)}
+              className={`block break-all font-mono text-xs ${TEXT_LINK}`}
+            >
+              {href}
+            </a>
+            <div className="flex justify-end">
+              <Button variant="ghost" data-overlay-close="" onClick={close}>
                 Cancel
               </Button>
-              <a
-                ref={confirmRef}
-                href={href}
-                target="_blank"
-                rel={rel}
-                // Closing in the click itself would unmount the anchor before the browser follows it.
-                onClick={() => setTimeout(close, 0)}
-                className={buttonClasses("primary")}
-              >
-                Open link
-              </a>
-            </span>
-          </span>,
-          document.body,
-        )}
+            </div>
+          </Card>
+        </MediaOverlay>
+      )}
     </>
   );
 }

@@ -7,7 +7,6 @@ import { HelpCircle } from "lucide-react";
 import { useHelpHidden } from "@/hooks/useHelpHidden";
 import { usePinnedPopover } from "@/hooks/usePinnedPopover";
 import { FIELD_HELP, type Concept } from "@/lib/fieldHelp";
-import { POPOVER_SURFACE } from "./styles";
 
 /**
  * A `?` help affordance next to a field or section: a one-line explanation on
@@ -60,7 +59,7 @@ export function FieldHelp({
             {...popoverProps}
             role="tooltip"
             id={tooltipId}
-            className={`${POPOVER_SURFACE} w-max max-w-xs px-3 py-2 text-xs text-neutral-300 leading-relaxed font-normal normal-case tracking-normal`}
+            className="z-[2000] w-max max-w-xs px-3 py-2 rounded-md bg-neutral-800 border border-neutral-700 text-xs text-neutral-300 leading-relaxed font-normal normal-case tracking-normal shadow-lg"
           >
             {text}
           </span>,

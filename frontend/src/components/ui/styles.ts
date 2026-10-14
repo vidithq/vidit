@@ -57,12 +57,6 @@ export const HOVER_REVEAL =
 // of no return (`DANGER_CONFIRM` in ./Button). Pair with `useConfirmAction`.
 export const ARMED_RING = "bg-neutral-800 ring-1 ring-neutral-500";
 
-// The floating panel an anchored popover paints (<FieldHelp>'s tooltip, <OutboundLink>'s
-// confirmation): above every map panel and the sidebar, on the raised neutral plate. Width,
-// padding and text stay at the call site.
-export const POPOVER_SURFACE =
-  "z-[2000] rounded-md bg-neutral-800 border border-neutral-700 shadow-lg";
-
 // Amber "check this, you're not blocked" surface, the warning counterpart to the
 // red error banners. Colour only; radius, padding and layout stay at the call
 // site.

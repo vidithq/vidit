@@ -759,7 +759,7 @@ export default function PalettePage() {
 
           <Item
             name="<FieldHelp>"
-            usage="The one hover text in the app: a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). Registry-only: every instance of a concept reads the same words, so the `?` takes the concept key and nothing else. The bubble paints POPOVER_SURFACE, the plate every anchored popover shares."
+            usage="The one hover text in the app: a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). Registry-only: every instance of a concept reads the same words, so the `?` takes the concept key and nothing else."
           >
             <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
               Coordinates <FieldHelp concept="coordinates" />
@@ -842,14 +842,14 @@ export default function PalettePage() {
 
           <Item
             name="<OutboundLink>"
-            usage="Every link whose href is an absolute http(s) URL renders through it; a raw external <a> anywhere else is a review blocker. The parsed hostname decides the click (lib/outbound.ts, exact host or subdomain, never a substring): Vidit's own domain routes in the app through next/link, a known host (the archives, x.com, t.me, youtube.com, github.com and the few others the app links to by design) opens in a new tab in one click, and any other host opens a popover on POPOVER_SURFACE that shows the full URL and waits for Open link. Middle and modifier clicks ask too. rel is always noopener noreferrer; ugc adds nofollow ugc for what an analyst wrote (proof bodies, collection descriptions, bios). Paint comes from the caller's className, so a source host, an icon button and a row all keep their look."
+            usage="Every link whose href is an absolute http(s) URL renders through it; a raw external <a> anywhere else is a review blocker. The parsed hostname decides the click (lib/outbound.ts, exact host or subdomain, never a substring): Vidit's own domain routes in the app through next/link, a known host (the archives, x.com, t.me, youtube.com, github.com and the few others the app links to by design) opens in a new tab in one click, and any other host opens a centred dialog: MediaOverlay's dialog variant (theme-canvas dim plus blur, focus trapped, Escape and backdrop click close, focus back on the link) around a <Card> with an accent border. The full URL is the only way on, styled as TEXT_LINK, so the reader reads the address to leave; Cancel is the one button and takes the initial focus. Middle and modifier clicks ask too. rel is always noopener noreferrer; ugc adds nofollow ugc for what an analyst wrote (proof bodies, collection descriptions, bios). Paint comes from the caller's className, so a source host, an icon button and a row all keep their look."
           >
             <Variant label="known host: one click">
               <OutboundLink href="https://t.me/some_channel/4242" className={TEXT_LINK}>
                 t.me/some_channel/4242
               </OutboundLink>
             </Variant>
-            <Variant label="unknown host: click to see the confirmation">
+            <Variant label="unknown host: click to open the warning dialog">
               <OutboundLink href="https://example.org/analysis/strike-site" ugc className={TEXT_LINK}>
                 example.org/analysis/strike-site
               </OutboundLink>
@@ -1036,7 +1036,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<MediaLightbox>" usage="The one media viewer, mounted by MediaGallery, MediaManager (through FileManager's shared MediaOverlay shell) and a proof body's images, so the viewer can't drift into per-surface copies. Backdrop click or Escape closes; the content click is stopped so the player's controls stay usable. Takes either a persisted Media (images view at hero) or a plain {src, kind} for a staged object URL or a proof image. The corner MediaDownloadButton is for images: a clip plays in <VideoPlayer>, whose control bar already carries one. MediaLightboxBody alone renders the sized media for a caller that already owns a shell.">
+          <Item name="<MediaLightbox>" usage="The one media viewer, mounted by MediaGallery, MediaManager (through FileManager's shared MediaOverlay shell) and a proof body's images, so the viewer can't drift into per-surface copies. MediaOverlay's dialog variant (dimmed, blurred theme canvas, no corner controls, focus on the content's data-overlay-close control) is OutboundLink's warning shell. Backdrop click or Escape closes; the content click is stopped so the player's controls stay usable. Takes either a persisted Media (images view at hero) or a plain {src, kind} for a staged object URL or a proof image. The corner MediaDownloadButton is for images: a clip plays in <VideoPlayer>, whose control bar already carries one. MediaLightboxBody alone renders the sized media for a caller that already owns a shell.">
             <PaletteMediaLightbox />
           </Item>
 

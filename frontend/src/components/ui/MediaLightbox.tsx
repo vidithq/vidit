@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
 import { VideoPlayer } from "@/components/ui/VideoPlayer";
 import { FLOATING_CONTROL } from "@/components/ui/styles";
+import { cn } from "@/lib/cn";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { Media } from "@/types";
 
@@ -17,7 +18,8 @@ import type { Media } from "@/types";
  * clip.
  *
  *   `MediaOverlay`      backdrop, dialog semantics, Escape, corner controls;
- *                       takes arbitrary children (`FileManager` shares it).
+ *                       takes arbitrary children (`FileManager` and
+ *                       `OutboundLink` share it).
  *   `MediaLightboxBody` the media at viewer size, from a source.
  *   `MediaLightbox`     the two composed, plus the download control.
  *
@@ -118,6 +120,11 @@ const FOCUSABLE =
  * wraps) and returns to the previous element on unmount. Hand-rolled: one
  * dialog with one exit.
  *
+ * **Variant.** `media` dims to near black under the corner controls, so pixels
+ * read at full contrast. `dialog` dims and blurs the page in the theme's own
+ * canvas and draws no corner controls: the content carries its own exit,
+ * marked `data-overlay-close` so focus lands on it.
+ *
  * **Layer.** Portalled to `document.body` at a z-index above every floating
  * surface (map panels 1000, sidebar 1100, banner 1200). `fixed` resolves
  * against a transformed ancestor (a proof body, the map's detail panel), so
@@ -127,10 +134,12 @@ export function MediaOverlay({
   label,
   actions,
   onClose,
+  variant = "media",
   children,
 }: {
   /** Accessible name for the dialog. */
   label: string;
+  variant?: "media" | "dialog";
   /** Extra corner controls, rendered left of the close button. */
   actions?: ReactNode;
   onClose: () => void;
@@ -180,7 +189,10 @@ export function MediaOverlay({
       role="dialog"
       aria-modal="true"
       aria-label={label}
-      className="fixed inset-0 z-1500 bg-black/85 safe-pt safe-pr safe-pb safe-pl"
+      className={cn(
+        "fixed inset-0 z-1500 safe-pt safe-pr safe-pb safe-pl",
+        variant === "media" ? "bg-black/85" : "bg-neutral-950/60 backdrop-blur-sm",
+      )}
       onClick={onClose}
     >
       {/* The backdrop fills the screen with the safe-area insets as padding, so a
@@ -198,20 +210,22 @@ export function MediaOverlay({
           onClick={(e) => e.stopPropagation()}
         >
           {children}
-          <div className="absolute -top-3 -right-3 z-10 flex items-center gap-1">
-            {actions}
-            <Button
-              icon
-              variant="ghost"
-              className={FLOATING_CONTROL}
-              aria-label="Close"
-              title="Close"
-              data-overlay-close=""
-              onClick={onClose}
-            >
-              <X size={16} />
-            </Button>
-          </div>
+          {variant === "media" && (
+            <div className="absolute -top-3 -right-3 z-10 flex items-center gap-1">
+              {actions}
+              <Button
+                icon
+                variant="ghost"
+                className={FLOATING_CONTROL}
+                aria-label="Close"
+                title="Close"
+                data-overlay-close=""
+                onClick={onClose}
+              >
+                <X size={16} />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </div>,
