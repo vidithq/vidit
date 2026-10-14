@@ -28,6 +28,7 @@ function openRequest(id: string): EventListItem {
     title: `Where is this ${id}`,
     status: "requested",
     before_closed_status: null,
+    requested_at: null,
     event_coords: null,
     event_date: null,
     is_graphic: false,

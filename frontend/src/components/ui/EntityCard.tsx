@@ -107,6 +107,8 @@ interface EntityCardBaseProps {
   /** The row the surface currently stands on: accent border, marked current. */
   selected?: boolean;
   date?: string;
+  /** How long the entity has been open ("Open 3 days"), after the date in the meta line. */
+  age?: string;
   coords?: { lat: number; lng: number } | null;
   /** `url` is null on a sourceless machine detection ("To confirm" label). */
   source?: { url: string | null };
@@ -183,6 +185,7 @@ export function EntityCard({
   selectLabel,
   selected = false,
   date,
+  age,
   coords,
   source,
   tags,
@@ -280,6 +283,7 @@ export function EntityCard({
               </span>
             )}
             {date && <span>{formatDate(date)}</span>}
+            {age && <span>{age}</span>}
             {coords && <CoordsMeta coords={coords} />}
             {source && (
               <span className="relative z-20">

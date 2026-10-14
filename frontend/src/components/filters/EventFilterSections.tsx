@@ -19,11 +19,12 @@ import { Pill } from "@/components/ui/Pill";
 import type { Concept } from "@/lib/fieldHelp";
 
 /**
- * The event filter panel, shared by the map overlay and the search page: one component owns the
- * section list (Status, Conflict, Capture source, Source media, the surface's date sections, Tags,
- * Author), so a vocabulary change lands on both. Surfaces differ in their date controls (injected
- * via `dateSections`) and in `sections`, the subset they offer (the search page's Collections
- * group is narrowed by `author` alone).
+ * The event filter panel, shared by the map overlay, the search page and the Requests board: one
+ * component owns the section list (Status, Conflict, Capture source, Source media, Location guess,
+ * the surface's date sections, Tags, Author), so a vocabulary change lands on all three. Surfaces
+ * differ in their date controls (injected via `dateSections`) and in `sections`, the subset they
+ * offer (the search page's Collections group is narrowed by `author` alone, and only the board
+ * offers Location guess).
  *
  * State stays surface-owned: this component takes one `values` object and emits patches.
  * `buildActiveFilterPills` derives the matching pill entries from the same shape so the
@@ -37,6 +38,8 @@ export interface EventFilterValues {
   captureSources: string[];
   tags: string[];
   mediaTypes: string[];
+  /** `LOCATION_GUESS_OPTIONS` values; read through `hasCoordsFilter`. */
+  locationGuess: string[];
   author: string;
 }
 
@@ -46,6 +49,7 @@ export const EMPTY_EVENT_FILTERS: EventFilterValues = {
   captureSources: [],
   tags: [],
   mediaTypes: [],
+  locationGuess: [],
   author: "",
 };
 
@@ -57,10 +61,11 @@ export type EventFilterSectionName =
   | "conflict"
   | "capture_source"
   | "source_media"
+  | "location_guess"
   | "tags"
   | "author";
 
-/** The whole stack in render order: the default when a surface names no subset. */
+/** The default stack in render order. `location_guess` is opt-in: only `GET /events` serves it. */
 export const ALL_FILTER_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
   "status",
   "conflict",
@@ -103,6 +108,21 @@ const AUTHOR_SUGGEST_DEBOUNCE_MS = 250;
 // The free-tag bucket is unbounded: show this many, the rest behind "Show all". Selected tags past
 // the cut always show.
 const TAGS_PREVIEW = 8;
+
+// Location-guess options: a request carrying a guessed point, or a blind one.
+const LOCATION_GUESS_OPTIONS: ReadonlyArray<[string, string]> = [
+  ["guessed", "With a guess"],
+  ["blind", "No guess"],
+];
+const LOCATION_GUESS_LABELS: Record<string, string> = Object.fromEntries(LOCATION_GUESS_OPTIONS);
+const locationGuessLabel = (value: string) => LOCATION_GUESS_LABELS[value] ?? value;
+
+/** The `has_coords` value for the picked location-guess chips: undefined when none or both are
+ * picked, since either way every row matches. */
+export function hasCoordsFilter(locationGuess: string[]): boolean | undefined {
+  if (locationGuess.length !== 1) return undefined;
+  return locationGuess[0] === "guessed";
+}
 
 // Fixed media-presence options (Media.media_type values).
 const MEDIA_TYPES: ReadonlyArray<[string, string]> = [
@@ -162,6 +182,11 @@ export function buildActiveFilterPills(
       label: capitalize(n),
       onRemove: () => drop("mediaTypes", n),
     })),
+    ...values.locationGuess.map((n) => ({
+      key: `location:${n}`,
+      label: locationGuessLabel(n),
+      onRemove: () => drop("locationGuess", n),
+    })),
   ];
 }
 
@@ -206,6 +231,7 @@ export function hasAnyFilter(
     values.captureSources.length > 0 ||
     values.tags.length > 0 ||
     values.mediaTypes.length > 0 ||
+    values.locationGuess.length > 0 ||
     !!values.author.trim() ||
     eventWindowActive(windows) ||
     addedWindowActive(windows)
@@ -370,6 +396,22 @@ export function EventFilterSections({
             options={MEDIA_TYPES.map(([value, label]) => ({ id: value, name: value, label }))}
             selected={values.mediaTypes}
             onToggle={(n) => toggleIn("mediaTypes", n)}
+          />
+        </FilterSection>
+      )}
+
+      {offers("location_guess") && (
+        <FilterSection
+          title="Location guess"
+          summary={chipSummary(values.locationGuess.map(locationGuessLabel))}
+          active={values.locationGuess.length > 0}
+          open={!!openSections["Location guess"]}
+          onToggle={() => toggleSection("Location guess")}
+        >
+          <ChipBucket
+            options={LOCATION_GUESS_OPTIONS.map(([value, label]) => ({ id: value, name: value, label }))}
+            selected={values.locationGuess}
+            onToggle={(n) => toggleIn("locationGuess", n)}
           />
         </FilterSection>
       )}

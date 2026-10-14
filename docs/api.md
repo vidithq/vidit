@@ -542,7 +542,7 @@ The error table every event form endpoint shares. Each endpoint section names wh
 
 ### `GET /events`
 
-List one lifecycle view, newest first, as `EventList` cards (no full proof).
+List one lifecycle view, newest or oldest first, as `EventList` cards (no full proof).
 
 **Query params:**
 | Param | Type | Description |
@@ -556,6 +556,8 @@ List one lifecycle view, newest first, as `EventList` cards (no full proof).
 | `event_date_from` / `event_date_to` | date (YYYY-MM-DD) | Inclusive event-date range. Malformed values return 422. |
 | `submitted_from` / `submitted_to` | date (YYYY-MM-DD) | Inclusive submission-date range. Malformed values return 422. |
 | `author` | string | Exact, case-insensitive match on owner username (pick real handles via [`GET /search/authors`](#get-searchauthors)). Restricted to `[A-Za-z0-9_-]{1,50}`; any other character returns 422. |
+| `has_coords` | bool | `true` keeps rows with an `event_coords` point (on the `requested` view, a request carrying a location guess); `false` keeps rows without one. Omit it for both. |
+| `sort` | string | `newest` (default) orders by `created_at DESC, id DESC`; `oldest` orders by `created_at ASC, id ASC`. Both orders are total, so a cursor walk serves every row once. Anything else → 422. |
 | `limit` | int | Rows per page. See [Pagination](#pagination). |
 | `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. See [Pagination](#pagination). |
 
@@ -570,6 +572,7 @@ List one lifecycle view, newest first, as `EventList` cards (no full proof).
     "is_graphic": false,
     "status": "geolocated",
     "before_closed_status": null,
+    "requested_at": null,
     "owner": { "id": "uuid", "username": "kalush" },
     "media": {
       "id": "uuid",
@@ -590,7 +593,7 @@ List one lifecycle view, newest first, as `EventList` cards (no full proof).
 
 **Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
-`event_coords` is `null` on a coordinate-less `requested` row. `is_graphic` is `true` when the author, or an admin overriding the author, flagged the footage as showing death, injury or human remains. A withheld event (`hidden_at` set, see [`GET /events/{id}`](#get-eventsid)) never appears. `media` is the card thumbnail: the event's `source` attachment, else its first `proof` image, else `null`; a proof video is never picked. `backend/app/services/thumbnails.py` holds that rule for every card surface. `conflicts` uses the `ConflictRead` shape of [`GET /conflicts`](#get-conflicts).
+`event_coords` is `null` on a coordinate-less `requested` row. `requested_at` is when the row entered `requested`, and `null` on a row that was never a request; the Requests board counts a request's age from it. `is_graphic` is `true` when the author, or an admin overriding the author, flagged the footage as showing death, injury or human remains. A withheld event (`hidden_at` set, see [`GET /events/{id}`](#get-eventsid)) never appears. `media` is the card thumbnail: the event's `source` attachment, else its first `proof` image, else `null`; a proof video is never picked. `backend/app/services/thumbnails.py` holds that rule for every card surface. `conflicts` uses the `ConflictRead` shape of [`GET /conflicts`](#get-conflicts).
 
 ---
 
@@ -2143,7 +2146,7 @@ One Account Activity delivery.
 
 | Endpoint | Scheme | Order | Default | Max |
 |---|---|---|---|---|
-| [`GET /events`](#get-events) | cursor | `created_at DESC, id DESC` | 100 | 100 |
+| [`GET /events`](#get-events) | cursor | `created_at DESC, id DESC`; `created_at ASC, id ASC` with `sort=oldest` | 100 | 100 |
 | `GET /admin/invite-codes` | cursor | `created_at DESC, id DESC` | 100 | 100 |
 | [`GET /events/{id}/versions`](#get-eventsidversions) | cursor | `version_no DESC` | 50 | 100 |
 | [`GET /collections/{id}/events`](#get-collectionsidevents) | cursor | `event_date, event_time, created_at, id` ascending; a missing date or time sorts last | 100 | 100 |

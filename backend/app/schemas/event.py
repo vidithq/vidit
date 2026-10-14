@@ -1,6 +1,6 @@
 import uuid
 from datetime import date, datetime, time
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -15,6 +15,9 @@ from app.schemas.conflict import ConflictRead
 from app.schemas.media import MediaRead
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
+
+# ``GET /events?sort=``: ``created_at`` then ``id``, descending or ascending.
+EventListSort = Literal["newest", "oldest"]
 
 
 class PresignedUploadRead(BaseModel):
@@ -290,6 +293,9 @@ class EventList(BaseModel):
     status: EventStatus
     # Tells a withdrawn request, rejected detection and retracted geolocation apart.
     before_closed_status: BeforeClosedStatus | None
+    # When the row entered ``requested``: the requests board's age signal. NULL on a row
+    # that was never a request.
+    requested_at: datetime | None
     owner: AuthorRef
     # Card thumbnail (``services.thumbnails``), None when neither exists. One
     # media keeps the list light; ``EventRead.media`` has the full set. No

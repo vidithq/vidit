@@ -1,5 +1,5 @@
 import { apiFetch } from "./api";
-import type { components } from "@/lib/api-types";
+import type { components, operations } from "@/lib/api-types";
 import { archiveTooLarge } from "./archive";
 import { cleanNumber, inBounds } from "./coordinates";
 import { toDatetimeLocalUTC } from "./format";
@@ -100,12 +100,23 @@ export interface EventListParams {
   view?: EventView;
   /** One status or several (repeated `?status=`, any-match). */
   status?: EventStatus | EventStatus[];
-  tag?: string;
+  /** Repeated, any-match within a list and AND across lists. */
+  conflict?: string[];
+  captureSource?: string[];
+  tag?: string[];
   author?: string;
+  /** `true` keeps rows with a location (a request's guess), `false` the blind ones. */
+  hasCoords?: boolean;
+  sort?: EventListSort;
   limit?: number;
   /** Cursor of the next page, from a `Link: rel="next"` header. */
   cursor?: string | null;
 }
+
+/** `GET /events?sort=`: `created_at` descending (`newest`, the server default) or ascending. */
+export type EventListSort = NonNullable<
+  NonNullable<operations["list_events_api_v1_events_get"]["parameters"]["query"]>["sort"]
+>;
 
 /** Build the `GET /events` query. The response caps at 100 rows; read further with the
  *  previous page's `cursor`. */
@@ -117,8 +128,12 @@ export function eventListPath(params: EventListParams = {}): string {
       search.append("status", status);
     }
   }
-  if (params.tag) search.set("tag", params.tag);
+  params.conflict?.forEach((name) => search.append("conflict", name));
+  params.captureSource?.forEach((name) => search.append("capture_source", name));
+  params.tag?.forEach((name) => search.append("tag", name));
   if (params.author) search.set("author", params.author);
+  if (params.hasCoords !== undefined) search.set("has_coords", String(params.hasCoords));
+  if (params.sort) search.set("sort", params.sort);
   if (params.limit !== undefined) search.set("limit", String(params.limit));
   if (params.cursor) search.set("cursor", params.cursor);
   const qs = search.toString();

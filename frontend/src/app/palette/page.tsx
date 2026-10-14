@@ -1360,7 +1360,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EntityCard variant=compact>: request" usage="/requests + search results">
+          <Item name="<EntityCard variant=compact>: request" usage="/requests + search results. On /requests, `age` adds how long the request has been open to the meta line, counted from requested_at.">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="compact"
@@ -1369,6 +1369,7 @@ export default function PalettePage() {
                 badge={<StatusBadge status="requested" />}
                 author={{ username: "analyst" }}
                 date="2026-05-01"
+                age="Open 12 days"
                 source={{ url: "https://t.me/channel/4242" }}
                 tags={MOCK_TAGS}
               />

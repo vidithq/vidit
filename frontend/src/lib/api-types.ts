@@ -798,7 +798,7 @@ export interface paths {
         };
         /**
          * List Events
-         * @description Newest-first cards for one lifecycle view.
+         * @description Cards for one lifecycle view, newest or oldest first.
          *
          *     ``view=located`` (default) is the catalog; ``view=requested`` the open-call
          *     queue. Two steps (ids, then full rows) so eager-loads can't inflate the
@@ -806,7 +806,8 @@ export interface paths {
          *
          *     Capped at 100 rows however large ``limit`` is; the ``Link: rel="next"``
          *     cursor is present exactly when a next page holds a row. Ordering is
-         *     ``created_at DESC, id DESC``, total, so a walk can't duplicate or skip rows.
+         *     ``created_at, id``, descending for ``sort=newest`` and ascending for
+         *     ``sort=oldest``. Both are total, so a walk can't duplicate or skip rows.
          */
         get: operations["list_events_api_v1_events_get"];
         put?: never;
@@ -2717,6 +2718,8 @@ export interface components {
             is_graphic: boolean;
             media: components["schemas"]["MediaRead"] | null;
             owner: components["schemas"]["AuthorRef"];
+            /** Requested At */
+            requested_at: string | null;
             /**
              * Status
              * @enum {string}
@@ -4667,6 +4670,9 @@ export interface operations {
                 submitted_from?: string | null;
                 submitted_to?: string | null;
                 author?: string | null;
+                /** @description true: with a location; false: without */
+                has_coords?: boolean | null;
+                sort?: "newest" | "oldest";
                 limit?: number;
                 /** @description Opaque cursor from a Link: rel=next header */
                 cursor?: string | null;

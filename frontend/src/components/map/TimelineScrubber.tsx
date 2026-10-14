@@ -5,6 +5,7 @@ import { Pause, Play, RotateCcw } from "lucide-react";
 
 import type { MapPoint } from "@/types";
 import { cn } from "@/lib/cn";
+import { DAY_MS } from "@/lib/format";
 import { ICON_TAP_STEP } from "@/components/ui/Button";
 import { FIELD_TEXT } from "@/components/ui/Input";
 
@@ -31,7 +32,6 @@ const msToIso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
 const BIN_COUNT = 48;
-const DAY_MS = 86_400_000;
 // One bin advances per tick while playing: about 14 s for a full sweep.
 const PLAY_INTERVAL_MS = 280;
 

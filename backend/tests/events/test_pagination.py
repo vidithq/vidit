@@ -148,6 +148,40 @@ def test_detections_offset_pager_walks_the_whole_queue(db, author):
     assert set(walked) == created
 
 
+def test_list_oldest_sort_walks_the_whole_set_ascending(db, author):
+    """``sort=oldest`` pages ascending on the same pair: every row once, in order."""
+    base = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
+    created = []
+    for minute in range(7):
+        geo = _make_geo(db, author=author)
+        geo.created_at = base + timedelta(minutes=minute)
+        created.append(str(geo.id))
+    db.commit()
+
+    pages = _walk(f"{_LIST}?limit=3&sort=oldest&author={author.username}")
+
+    assert [len(page) for page in pages] == [3, 3, 1]
+    assert [row_id for page in pages for row_id in page] == created
+
+
+def test_list_oldest_sort_breaks_created_at_ties_on_id(db, author):
+    """Rows sharing a ``created_at`` page by ``id``, so the walk stays total."""
+    stamp = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
+    rows = [_make_geo(db, author=author) for _ in range(5)]
+    for geo in rows:
+        geo.created_at = stamp
+    db.commit()
+
+    pages = _walk(f"{_LIST}?limit=2&sort=oldest&author={author.username}")
+
+    walked = [row_id for page in pages for row_id in page]
+    assert walked == sorted((str(geo.id) for geo in rows), key=uuid.UUID)
+
+
+def test_list_rejects_an_unknown_sort():
+    assert client.get(f"{_LIST}?sort=random").status_code == 422
+
+
 def test_list_rejects_malformed_paging_params(author):
     for query in ("limit=abc", "limit=0", "limit=-1", "limit=1.5"):
         response = client.get(f"{_LIST}?{query}")
