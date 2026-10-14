@@ -5,7 +5,7 @@ import { TEXT_LINK } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
 
 /**
- * The "by @user" assembly for the detail subtitles, the map side panel header
+ * The "by user" assembly for the detail subtitles, the map side panel header
  * and the detail body's Author row. Text size and colour stay at the call site;
  * `size` scales the gap for the dense panel header; `avatar` leads with the
  * profile picture where the byline is the page's author signature.

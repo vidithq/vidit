@@ -180,7 +180,7 @@ export default async function CollectionOpenGraphImage({
             {collectionMetaSegments(collection).join("  ·  ")}
           </div>
           <div style={{ display: "flex", marginTop: "14px", fontSize: "24px", color: OG_COLOR.muted }}>
-            @{ogTruncate(collection.owner.username, HANDLE_MAX)}
+            {ogTruncate(collection.owner.username, HANDLE_MAX)}
           </div>
         </div>
 

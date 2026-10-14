@@ -12,7 +12,7 @@ export function ActionReceipt({
   children,
 }: {
   mode: "soft" | "hard";
-  /** Inline nodes before the mode badge (the @username / title). */
+  /** Inline nodes before the mode badge (the username / title). */
   header: ReactNode;
   /** Detail lines under the header. */
   children?: ReactNode;
@@ -39,7 +39,7 @@ export function PurgeReceipt({ purge }: { purge: AdminPurgeDetectedResponse }) {
   return (
     <ActionReceipt
       mode="hard"
-      header={<span className="font-medium">@{purge.username}</span>}
+      header={<span className="font-medium">{purge.username}</span>}
     >
       <div className="text-neutral-500">
         {`Purged ${purge.deleted_events} detection${

@@ -160,7 +160,7 @@ describe("EventDetailBody", () => {
     expect(screen.getByText("Source media")).toBeInTheDocument();
     expect(screen.getByText("Details")).toBeInTheDocument();
     expect(screen.getByText("Requested by")).toBeInTheDocument();
-    const requesterLink = screen.getByRole("link", { name: "@poster" });
+    const requesterLink = screen.getByRole("link", { name: "poster" });
     expect(requesterLink).toHaveAttribute("href", "/profile/poster");
     expect(screen.getByText("Author")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "ana" })).toHaveAttribute(

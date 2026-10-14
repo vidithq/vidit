@@ -31,7 +31,7 @@ export async function generateMetadata({
 
   const profile = read.status === "ok" ? read.data : null;
   const handle = ogTruncate(profile?.username ?? username, 40);
-  const title = `@${handle} on Vidit`;
+  const title = `${handle} on Vidit`;
 
   // `geolocations_count` is the published-geolocation figure the card (GEOLOCATED) and Insights both name.
   const counts = profile

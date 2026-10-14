@@ -77,7 +77,7 @@ export default async function EventOpenGraphImage({
   const event = read.data;
   const coords = event.event_coords;
   const byline = [
-    `@${ogTruncate(event.owner.username, 24)}`,
+    ogTruncate(event.owner.username, 24),
     event.event_date ? formatDate(event.event_date) : null,
   ]
     .filter(Boolean)

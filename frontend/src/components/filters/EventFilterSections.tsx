@@ -428,7 +428,7 @@ export function EventFilterSections({
                   title="Remove the author filter"
                   onClick={() => onPatch({ author: "" })}
                 >
-                  @{values.author.trim()}
+                  {values.author.trim()}
                 </Pill>
               </div>
             )}
@@ -452,7 +452,7 @@ export function EventFilterSections({
               <div className="flex flex-wrap gap-1.5">
                 {authorSuggestions.map((name) => (
                   <Pill key={name} onClick={() => commitAuthor(name)}>
-                    @{name}
+                    {name}
                   </Pill>
                 ))}
               </div>

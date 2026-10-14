@@ -816,7 +816,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AuthorByline>" usage="The 'by @user' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots. link=false drops the anchor for a slot that is already one click (a version-history row under its stretched link), where a nested link is a target the mouse and the keyboard disagree about.">
+          <Item name="<AuthorByline>" usage="The 'by user' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots. link=false drops the anchor for a slot that is already one click (a version-history row under its stretched link), where a nested link is a target the mouse and the keyboard disagree about.">
             <Variant label="avatar (detail-page signature)">
               <span className="text-sm text-neutral-400">
                 <AuthorByline author={MOCK_DETAIL.owner} avatar />
@@ -1522,10 +1522,10 @@ function PaletteMediaLightbox() {
 }
 
 function PaletteActiveFilterPills() {
-  const [active, setActive] = useState(["Russo-Ukrainian War", "dashcam", "by @ana-demo"]);
+  const [active, setActive] = useState(["Russo-Ukrainian War", "dashcam", "by ana-demo"]);
   if (active.length === 0)
     return (
-      <button className="text-[11px] text-neutral-500" onClick={() => setActive(["Russo-Ukrainian War", "dashcam", "by @ana-demo"])}>
+      <button className="text-[11px] text-neutral-500" onClick={() => setActive(["Russo-Ukrainian War", "dashcam", "by ana-demo"])}>
         All removed. Reset the demo
       </button>
     );
