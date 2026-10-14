@@ -139,7 +139,7 @@ export function UserActionsCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm text-neutral-100 inline-flex items-center gap-1.5">
-            @{user.username}
+            {user.username}
             {user.is_admin && (
               <Pill className="uppercase tracking-wider">admin</Pill>
             )}
@@ -253,20 +253,20 @@ export function UserActionsCard({
         >
           {dangerMode === "hard" ? (
             <p>
-              <strong>Hard delete is irreversible.</strong> Drops @
+              <strong>Hard delete is irreversible.</strong> Drops{" "}
               {user.username}, every geolocation they authored, their media, and
               S3 objects.{" "}
               {!confirmDanger.armed && "Click “Confirm” to proceed."}
             </p>
           ) : dangerMode === "soft" ? (
             <p>
-              Soft-deleting will hide @{user.username} from public reads and
+              Soft-deleting will hide {user.username} from public reads and
               cascade-hide every geolocation they authored.{" "}
               {!confirmDanger.armed && "Click “Confirm” to proceed."}
             </p>
           ) : (
             <p>
-              Purging drops every <strong>detection</strong> @
+              Purging drops every <strong>detection</strong>{" "}
               {user.username} owns (rows + media, dismissed detections included, so
               the sweep can exceed the counter), and keeps the account, its
               geolocations and its requests. The broken-archive repair.{" "}

@@ -51,7 +51,7 @@ export async function generateMetadata({
     [
       ...collectionMetaSegments(collection),
       collection.description_text,
-      `Filed by @${collection.owner.username} on Vidit.`,
+      `Filed by ${collection.owner.username} on Vidit.`,
     ]
       .filter(Boolean)
       .join(" · "),

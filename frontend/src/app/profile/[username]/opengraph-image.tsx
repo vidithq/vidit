@@ -83,7 +83,7 @@ function NotFoundCard({ username }: { username: string }) {
           No analyst here
         </div>
         <div style={{ display: "flex", marginTop: "20px", fontSize: "30px", color: OG_COLOR.muted }}>
-          {ogTruncate(`@${username}`, 40)} has no profile on Vidit.
+          {ogTruncate(username, 40)} has no profile on Vidit.
         </div>
       </div>
     </OgCard>
@@ -134,7 +134,7 @@ export default async function ProfileOpenGraphImage({
           <Avatar src={avatar} username={profile.username} />
           <div style={{ display: "flex", flexDirection: "column", marginLeft: "40px" }}>
             <div style={{ display: "flex", fontSize: "62px", color: OG_COLOR.text }}>
-              @{ogTruncate(profile.username, HANDLE_MAX)}
+              {ogTruncate(profile.username, HANDLE_MAX)}
             </div>
             {profile.bio ? (
               <div

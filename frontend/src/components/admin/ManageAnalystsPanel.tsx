@@ -124,7 +124,7 @@ export function ManageAnalystsPanel() {
       {lastDelete && (
         <ActionReceipt
           mode={lastDelete.mode}
-          header={<span className="font-medium">@{lastDelete.username}</span>}
+          header={<span className="font-medium">{lastDelete.username}</span>}
         >
           <div className="text-neutral-500">
             {lastDelete.mode === "hard"

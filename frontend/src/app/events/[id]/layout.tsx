@@ -53,7 +53,7 @@ export async function generateMetadata({
         ? formatCoordinates(event.event_coords.lat, event.event_coords.lng)
         : null,
       event.event_date ? formatDate(event.event_date) : null,
-      `Filed by @${event.owner.username} on Vidit.`,
+      `Filed by ${event.owner.username} on Vidit.`,
     ]
       .filter(Boolean)
       .join(" · "),

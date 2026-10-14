@@ -165,7 +165,7 @@ function InviteCodeRow({
                 : undefined
             }
           >
-            @{redeemer.username}
+            {redeemer.username}
           </span>
         ) : (
           <span className="text-neutral-600">—</span>
