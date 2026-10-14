@@ -72,6 +72,17 @@ describe("PreferencesSync", () => {
     expect(window.localStorage.getItem("vidit:theme")).toBe("light");
   });
 
+  it("touches neither side when the payload carries no stored values", async () => {
+    session.apiFetch.mockResolvedValue([]);
+    session.user = { id: "u1" };
+    render(<PreferencesSync />);
+
+    await waitFor(() => expect(session.apiFetch).toHaveBeenCalledTimes(1));
+    await flush();
+    expect(patchBodies()).toEqual([]);
+    expect(window.localStorage.getItem("vidit:theme")).toBe("light");
+  });
+
   it("uploads nothing when neither side saved a value", async () => {
     window.localStorage.clear();
     session.apiFetch.mockResolvedValue(serverWith({}));

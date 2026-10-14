@@ -41,7 +41,11 @@ function NotificationsCard() {
       updatePreferences({ notifications: { [kind]: { email } } }),
     { fallback: SAVE_FAILED, onSuccess: (prefs) => setSaved(prefs) }
   );
-  const prefs = saved ?? data;
+  // Tolerates a missing or partial payload, and a kind this build has no wording for.
+  const notifications = (saved ?? data)?.notifications;
+  const rows = (Array.isArray(notifications) ? notifications : []).filter(
+    (row) => row.kind in NOTIFICATION_KIND_COPY
+  );
 
   return (
     <Card>
@@ -55,14 +59,14 @@ function NotificationsCard() {
       {(error || toggle.error) && (
         <div className={FORM_ERROR_BANNER}>{toggle.error ?? error}</div>
       )}
-      {prefs?.notifications.map((row, i) => {
+      {rows.map((row, i) => {
         const copy = NOTIFICATION_KIND_COPY[row.kind];
-        const email = row.channels.email ?? false;
+        const email = row.channels?.email ?? false;
         return (
           <ToggleRow
             key={row.kind}
             label={`${copy.label} by email`}
-            description={`${copy.setting} Default: ${row.defaults.email ? "on" : "off"}.`}
+            description={`${copy.setting} Default: ${row.defaults?.email ? "on" : "off"}.`}
             on={email}
             onToggle={() => toggle.run(row.kind, !email)}
             className={i > 0 ? "border-t border-neutral-800 pt-4" : ""}

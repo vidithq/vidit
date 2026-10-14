@@ -8,6 +8,8 @@
  * the suite through the same drift gate every other reader goes through.
  */
 import type { Collection } from "@/lib/collections";
+import type { UnreadCount } from "@/lib/notifications";
+import type { UserPreferences } from "@/lib/preferences";
 import type {
   Conflict,
   EventDetail,
@@ -248,6 +250,28 @@ export const EMPTY_DETECTIONS = {
   ready_total: 0,
   incomplete_total: 0,
 };
+
+/** The signed-in analyst's preferences with nothing saved: every value its default. */
+export const DEFAULT_PREFERENCES: UserPreferences = {
+  display: { palette: "orange", theme: "dark", help_tooltips: true },
+  display_defaults: { palette: "orange", theme: "dark", help_tooltips: true },
+  display_stored: { palette: null, theme: null, help_tooltips: null },
+  notifications: [
+    {
+      kind: "request_fulfilled",
+      channels: { email: true },
+      defaults: { email: true },
+    },
+    {
+      kind: "new_follower",
+      channels: { email: false },
+      defaults: { email: false },
+    },
+  ],
+};
+
+/** Nothing unread, as the sidebar's notification row reads it. */
+export const NO_UNREAD: UnreadCount = { count: 0 };
 
 /**
  * A maplibre style with nothing in it. The map still mounts, sizes itself and

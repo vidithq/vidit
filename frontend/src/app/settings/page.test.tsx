@@ -113,4 +113,17 @@ describe("SettingsPage", () => {
       { notifications: { request_fulfilled: { email: false } } },
     ]);
   });
+
+  it.each([[[]], [{}], [{ notifications: [{ kind: "retired_kind" }] }]])(
+    "renders without switches on a partial preferences payload (%j)",
+    async (payload) => {
+      api.apiFetch.mockReset().mockResolvedValue(payload);
+      render(<SettingsPage />);
+
+      await waitFor(() => expect(api.apiFetch).toHaveBeenCalled());
+      expect(screen.getByRole("heading", { name: "Notifications" })).toBeInTheDocument();
+      expect(screen.queryByRole("switch", { name: /by email/ })).toBeNull();
+      expect(screen.getByRole("button", { name: "Update password" })).toBeInTheDocument();
+    },
+  );
 });

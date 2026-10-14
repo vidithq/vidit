@@ -34,10 +34,10 @@ let localChanges = 0;
  *  account instead, so a choice made before the account stored it is kept. */
 export async function syncDisplay(signal: AbortSignal): Promise<void> {
   const started = localChanges;
-  const { display_stored: stored } = await apiFetch<UserPreferences>(PREFERENCES_PATH, {
-    signal,
-  });
-  if (signal.aborted || started !== localChanges) return;
+  const body = await apiFetch<UserPreferences | undefined>(PREFERENCES_PATH, { signal });
+  // A payload without the stored values says nothing either way, so neither side is touched.
+  const stored = body?.display_stored;
+  if (!stored || signal.aborted || started !== localChanges) return;
 
   const upload: DisplayPreferencesUpdate = {};
   const localPalette = getSavedPalette();
