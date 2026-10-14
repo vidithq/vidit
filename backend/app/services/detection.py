@@ -945,7 +945,7 @@ async def import_pasted_post(
     return await persist_detections(
         db,
         owner=owner,
-        resolution=resolve_threads([acquired.records]),
+        resolution=acquired.resolve(),
         via="paste",
         fetch_media=fetch_cdn_media,
     )

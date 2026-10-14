@@ -7,7 +7,8 @@ content of its own stops at one hop. A post of only mentions is a pointer (the
 bare ``@ViditBot`` tag under the analyst's own thread), so the climb follows
 same-author parents until one carries a coordinate, then reads one post further
 for footage if that post has no media, capped at :data:`_BARE_TAG_MAX_CLIMB`
-fetches. The thread stays inside one author.
+fetches. The thread stays inside one author. A read that stopped short of the
+coordinate search is flagged (:attr:`AcquiredThread.truncated`).
 """
 
 from __future__ import annotations
@@ -18,9 +19,10 @@ from typing import Any
 import httpx
 
 from .chase import chase_thread
-from .errors import TweetImportError
+from .errors import TweetFetchFailed, TweetNotAccessible
 from .extract import is_mentions_only, scan_coords
 from .records import QuotedTweet, SourceLink, TweetRecord, expand_shortlinks
+from .resolve import COORDS_MISSING, THREAD_TRUNCATED, Resolution, resolve_threads
 from .syndication import extract_media, extract_source_links, fetch_syndication
 from .urls import normalise_tweet_url
 
@@ -96,10 +98,29 @@ class AcquiredThread:
     ``records`` is the thread ``resolve_threads`` reads, parents first (the head
     carries the provenance). ``post`` is the record for the id the caller
     named, whose author the paste checks against the caller's linked handle.
+
+    ``truncated`` says the search for the coordinate stopped before the thread
+    ended: a same-author parent fetch failed (``TweetFetchFailed``, retries
+    spent), or the bare-tag climb spent :data:`_BARE_TAG_MAX_CLIMB` with a
+    parent still unread. A gone or restricted parent is an end, not a cut.
     """
 
     records: list[TweetRecord]
     post: TweetRecord
+    truncated: bool = False
+
+    def resolve(self, *, with_requests: bool = False) -> Resolution:
+        """``resolve_threads`` over :attr:`records`, with a truncated read's refusal named.
+
+        A truncated thread that finds no coordinate refuses ``THREAD_TRUNCATED``
+        instead of ``COORDS_MISSING``, and drafts no request: the coordinate
+        may sit in a post the read never reached, and the analyst's next tag
+        reads it.
+        """
+        resolution = resolve_threads([self.records], with_requests=with_requests)
+        if self.truncated and resolution.reason == COORDS_MISSING:
+            return Resolution(refusals={THREAD_TRUNCATED: 1})
+        return resolution
 
 
 def _self_reply_parent(
@@ -109,13 +130,14 @@ def _self_reply_parent(
 
     One fetch. The guard runs on the fetched handle (authoritative), which stops
     an analyst claiming a geolocation posted under someone else's footage.
-    Fail-soft: a failure reads as no parent.
+    A gone or restricted parent reads as no parent. Raises ``TweetFetchFailed``
+    when X would not serve it, which the caller records as a truncated read.
     """
     if post.in_reply_to_status_id is None:
         return None
     try:
         parent = record_by_id(post.in_reply_to_status_id, handle=post.handle, client=client)
-    except TweetImportError:
+    except TweetNotAccessible:
         return None
     if parent.handle.lower() != post.handle.lower():
         return None
@@ -124,8 +146,9 @@ def _self_reply_parent(
 
 # Parent fetches a bare tag may spend: the source reply, the coordinate post,
 # and the footage post above it. It bounds the shared syndication budget; a
-# climb that finds no coordinate keeps what it read (``coords_missing``). A
-# coordinate met on the last fetch ends the read, so no footage post is fetched.
+# climb that spends it with no coordinate keeps what it read, flagged truncated
+# (``thread_truncated``). A coordinate met on the last fetch ends the read, so
+# no footage post is fetched.
 _BARE_TAG_MAX_CLIMB = 3
 
 
@@ -152,8 +175,11 @@ def _carries_coordinate(record: TweetRecord) -> bool:
     return bool(scan.coords) or scan.out_of_bounds
 
 
-def _climb_to_coords(post: TweetRecord, *, client: httpx.Client | None = None) -> list[TweetRecord]:
-    """The same-author posts above a bare tag, earliest first.
+def _climb_to_coords(
+    post: TweetRecord, *, client: httpx.Client | None = None
+) -> tuple[list[TweetRecord], bool]:
+    """The same-author posts above a bare tag, earliest first, and whether the
+    climb was cut before it met a coordinate (:attr:`AcquiredThread.truncated`).
 
     One fetch per parent, within :data:`_BARE_TAG_MAX_CLIMB`. The climb stops at
     the first parent carrying a coordinate. If it has media, the read ends.
@@ -169,20 +195,32 @@ def _climb_to_coords(post: TweetRecord, *, client: httpx.Client | None = None) -
     current = post
     remaining = _BARE_TAG_MAX_CLIMB
     anchored = False
-    while remaining > 0 and not anchored:
+    truncated = False
+    while not anchored:
+        if remaining == 0:
+            truncated = current.in_reply_to_status_id is not None
+            break
         remaining -= 1
-        parent = _self_reply_parent(current, client=client)
+        try:
+            parent = _self_reply_parent(current, client=client)
+        except TweetFetchFailed:
+            truncated = True
+            break
         if parent is None:
             break
         climbed.append(parent)
         current = parent
         anchored = _carries_coordinate(parent)
     if anchored and not current.media and remaining > 0:
-        above = _self_reply_parent(current, client=client)
+        try:
+            above = _self_reply_parent(current, client=client)
+        except TweetFetchFailed:
+            # The coordinate is read; a lost footage post only leaves the slot empty.
+            above = None
         if above is not None and above.media and not _carries_coordinate(above):
             climbed.append(above)
     climbed.reverse()
-    return climbed
+    return climbed, truncated
 
 
 def acquire_from_post(post: TweetRecord, *, client: httpx.Client | None = None) -> AcquiredThread:
@@ -191,15 +229,20 @@ def acquire_from_post(post: TweetRecord, *, client: httpx.Client | None = None) 
     A post with content takes one hop; a bare tag (:func:`_is_bare_tag`) takes
     the climb (:func:`_climb_to_coords`). Split from :func:`acquire_thread` so a
     caller can settle an ownership rule on ``post`` before anything more is
-    fetched. Both legs are fail-soft.
+    fetched. Both legs are fail-soft: a parent X would not serve ends the read
+    and flags it truncated.
     """
+    truncated = False
     if _is_bare_tag(post):
-        above = _climb_to_coords(post, client=client)
+        above, truncated = _climb_to_coords(post, client=client)
     else:
-        parent = _self_reply_parent(post, client=client)
+        try:
+            parent = _self_reply_parent(post, client=client)
+        except TweetFetchFailed:
+            parent, truncated = None, True
         above = [parent] if parent is not None else []
     records = chase_thread([*above, post], client=client)
-    return AcquiredThread(records=records, post=post)
+    return AcquiredThread(records=records, post=post, truncated=truncated)
 
 
 def acquire_thread(

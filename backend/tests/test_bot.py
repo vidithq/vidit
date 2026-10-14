@@ -39,6 +39,7 @@ from app.services.tweet_ingest import (
     SOURCE_DATE_UNKNOWN,
     SOURCE_FETCH_FAILED,
     SOURCE_FOOTAGE_MISSING,
+    THREAD_TRUNCATED,
     WARNING_MESSAGES,
     tags_bot,
 )
@@ -76,6 +77,11 @@ OWN_FOLLOW_UP_ID = "9100000000000000025"
 ORPHAN_REPLY_ID = "9100000000000000026"
 # Absent from ``BODIES``, so the mock answers 404.
 UNREADABLE_PARENT_ID = "9100000000000000027"
+# A bare tag under the analyst's source reply, whose coordinate post X will not
+# serve (the mock answers 503): the climb is cut, not finished.
+CUT_BARE_TAG_ID = "9100000000000000028"
+CUT_SOURCE_REPLY_ID = "9100000000000000029"
+DOWN_PARENT_ID = "9100000000000000030"
 SOURCE_ID = "9100000000000000042"
 # Request branch: a mirror post with footage and no coordinate. REPOST is the
 # same mirror posted twice, OTHER a second analyst mirroring the same clip.
@@ -271,6 +277,21 @@ BODIES = {
         "text": "@other_analyst @viditbot agreed, that is the tower",
         "in_reply_to_status_id_str": UNREADABLE_PARENT_ID,
     },
+    CUT_BARE_TAG_ID: {
+        "id_str": CUT_BARE_TAG_ID,
+        "created_at": "2026-03-13T08:35:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "@ViditBot",
+        "in_reply_to_status_id_str": CUT_SOURCE_REPLY_ID,
+    },
+    CUT_SOURCE_REPLY_ID: {
+        "id_str": CUT_SOURCE_REPLY_ID,
+        "created_at": "2026-03-13T08:30:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "Source: https://t.co/src",
+        "entities": _SOURCE_ENTITIES,
+        "in_reply_to_status_id_str": DOWN_PARENT_ID,
+    },
     SOURCE_ID: {
         "id_str": SOURCE_ID,
         "created_at": "2026-03-10T09:00:00.000Z",
@@ -322,6 +343,8 @@ def _syndication_client(fetched: list[str] | None = None) -> httpx.Client:
         if tweet_id == TOMBSTONE_ID:
             # X's 200-with-no-tweet for a login-gated post (age-restricted, withheld).
             return httpx.Response(200, json={"__typename": "TweetTombstone", "tombstone": {}})
+        if tweet_id == DOWN_PARENT_ID:
+            return httpx.Response(503)
         body = BODIES.get(tweet_id)
         if body is None:
             return httpx.Response(404)
@@ -846,6 +869,23 @@ async def test_a_bare_tag_under_an_untagged_parent_still_climbs(db, linked_owner
     ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == BARE_TAG_ID).one()
     assert ledger.outcome == "created"
     assert posted
+
+
+async def test_a_climb_cut_by_a_parent_x_will_not_serve_says_so(db, linked_owner):
+    # "No coordinate" would send the analyst to edit a post that was fine.
+    outcome, _, posted, _ = await _run(
+        db, [CUT_BARE_TAG_ID], parent_of={CUT_BARE_TAG_ID: CUT_SOURCE_REPLY_ID}
+    )
+
+    assert outcome.no_detection == 1
+    assert outcome.requests_opened == 0
+    assert db.query(Event).filter(Event.owner_id == linked_owner.id).all() == []
+    (payload,) = posted
+    text = payload["text"]
+    assert isinstance(text, str)
+    assert text.startswith(f"\u274c Nothing saved\n\u26a0 {REFUSAL_MESSAGES[THREAD_TRUNCATED]}\n")
+    ledger = db.query(BotMention).filter(BotMention.mention_tweet_id == CUT_BARE_TAG_ID).one()
+    assert ledger.outcome == "no_detection"
 
 
 async def test_a_follow_up_under_the_analysts_own_tagged_post_inherits(db, linked_owner):

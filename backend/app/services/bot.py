@@ -23,14 +23,17 @@ tag is ledgered ``inherited`` without acquiring, answering or billing.
 The grammar lives in the shared engine, not here. Acquisition is
 :func:`tweet_ingest.acquire_thread` (the tagged post plus the same author's
 parent; a bare tag climbs the same author's parents to the coordinate post, plus
-the footage post above it). ``tweet_ingest.resolve_threads`` reads the thread
-and ``detection.persist_detections`` writes it, owned by the account
-``detection.linked_owner`` maps the author's handle to (the bot never mints
-users: an unknown handle is ledgered ``no_account``). A thread with footage and
-a source link but no coordinate opens a ``requested`` row through
-``detection.open_request`` instead of ``coords_missing``; one that branch cannot
-serve is refused ``request_not_possible``. This module is orchestration: the X
-API, the reply, the ledger, the budget and the webhook drain.
+the footage post above it). ``AcquiredThread.resolve`` reads the thread
+through ``tweet_ingest.resolve_threads`` and ``detection.persist_detections``
+writes it, owned by the account ``detection.linked_owner`` maps the author's
+handle to (the bot never mints users: an unknown handle is ledgered
+``no_account``). A thread with footage and a source link but no coordinate
+opens a ``requested`` row through ``detection.open_request`` instead of
+``coords_missing``; one that branch cannot serve is refused
+``request_not_possible``. A coordinate-less thread whose read was cut short (a
+parent X would not serve, or the climb's cap) is refused ``thread_truncated``
+and opens nothing. This module is orchestration: the X API, the reply, the
+ledger, the budget and the webhook drain.
 
 Response model: the reply is the only gesture (a like would signal nothing the
 reply does not, and was the most expensive call). Replies open with the
@@ -75,7 +78,6 @@ from app.services.tweet_ingest import (
     acquire_thread,
     fetch_cdn_media,
     record_by_id,
-    resolve_threads,
     tags_bot,
 )
 from app.services.x_api import (
@@ -441,7 +443,7 @@ async def _process_mention(
         # failure reply answers, instead of ``failed`` + a false Sentry alert.
         return "no_detection", 0, None, POST_UNREADABLE
     # Only the bot asks for the engine's request-draft exit.
-    resolution = resolve_threads([acquired.records], with_requests=True)
+    resolution = acquired.resolve(with_requests=True)
     if owner is None:
         # The engine runs, writing nothing, so ``no_account`` marks only
         # mentions where a link would have produced a detection or request.

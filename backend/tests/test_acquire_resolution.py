@@ -8,7 +8,13 @@ import httpx
 import pytest
 
 import app.services.tweet_ingest.chase.telegram as telegram_mod
-from app.services.tweet_ingest import TweetNotAccessible, acquire_thread, resolve_threads
+from app.services.tweet_ingest import (
+    COORDS_MISSING,
+    THREAD_TRUNCATED,
+    TweetNotAccessible,
+    acquire_thread,
+    resolve_threads,
+)
 from app.services.tweet_ingest.records import ChasedPost, ChaseResult
 from app.services.tweet_ingest.syndication import (
     _cache_clear,
@@ -41,6 +47,8 @@ def test_extract_source_links_empty_without_entities():
 
 _POST_ID = "1940000000000000301"
 _PARENT_ID = "1940000000000000302"
+_COORD_TEXT = "POV: 57.567596, 39.935483"
+_EARLIER_COORD_TEXT = "Earlier: 48.012345, 37.802411"
 
 
 def _body(tweet_id: str, *, handle: str, text: str, reply_to: str | None = None) -> dict:
@@ -55,13 +63,17 @@ def _body(tweet_id: str, *, handle: str, text: str, reply_to: str | None = None)
     return body
 
 
-def _client(bodies: dict[str, dict], seen: list[str] | None = None) -> httpx.Client:
-    """A syndication transport serving ``bodies`` by tweet id, 404 elsewhere."""
+def _client(
+    bodies: dict[str, dict], seen: list[str] | None = None, *, down: frozenset[str] = frozenset()
+) -> httpx.Client:
+    """A syndication transport serving ``bodies`` by tweet id, 503 for ``down``, 404 elsewhere."""
 
     def handler(req: httpx.Request) -> httpx.Response:
         tweet_id = req.url.params.get("id", "")
         if seen is not None:
             seen.append(tweet_id)
+        if tweet_id in down:
+            return httpx.Response(503)
         body = bodies.get(tweet_id)
         return httpx.Response(200, json=body) if body is not None else httpx.Response(404)
 
@@ -139,6 +151,29 @@ def test_acquire_thread_unreadable_parent_degrades_to_the_post_alone():
     with _client(bodies) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
     assert acquired.records == [acquired.post]
+    # Gone is an end of the thread, not a cut: the refusal stays ``coords_missing``.
+    assert acquired.truncated is False
+    assert acquired.resolve().reason == COORDS_MISSING
+
+
+def test_a_parent_x_will_not_serve_truncates_the_one_hop_read():
+    bodies = {_POST_ID: _body(_POST_ID, handle="analyst", text="reply", reply_to=_PARENT_ID)}
+    with _client(bodies, down=frozenset({_PARENT_ID})) as client:
+        acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
+    assert acquired.records == [acquired.post]
+    assert acquired.truncated is True
+    assert acquired.resolve().reason == THREAD_TRUNCATED
+
+
+def test_a_truncated_read_that_holds_a_coordinate_still_detects():
+    bodies = {_POST_ID: _body(_POST_ID, handle="analyst", text=_COORD_TEXT, reply_to=_PARENT_ID)}
+    with _client(bodies, down=frozenset({_PARENT_ID})) as client:
+        acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
+    assert acquired.truncated is True
+    resolution = acquired.resolve()
+    assert resolution.reason is None
+    [detection] = resolution.detections
+    assert detection.coordinate.lat == pytest.approx(57.567596)
 
 
 def test_acquire_thread_raises_when_the_post_itself_is_unreadable():
@@ -150,8 +185,6 @@ def test_acquire_thread_raises_when_the_post_itself_is_unreadable():
 # so it re-anchors on the coordinate post instead of reading one hop and refusing.
 
 _CLIMB_IDS = [f"19400000000000005{n:02d}" for n in range(6)]
-_COORD_TEXT = "POV: 57.567596, 39.935483"
-_EARLIER_COORD_TEXT = "Earlier: 48.012345, 37.802411"
 
 
 def _photo() -> list[dict]:
@@ -270,7 +303,55 @@ def test_a_coordinate_further_up_than_the_cap_is_never_fetched():
         acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
     assert seen == _CLIMB_IDS[:4]
     assert [r.tweet_id for r in acquired.records] == list(reversed(_CLIMB_IDS[:4]))
-    assert resolve_threads([acquired.records]).reason == "coords_missing"
+    # The coordinate may sit above the cap, so the refusal says the read was cut.
+    assert acquired.truncated is True
+    assert acquired.resolve().reason == THREAD_TRUNCATED
+
+
+def test_a_climb_that_spends_the_cap_on_the_whole_thread_is_not_truncated():
+    # The third parent opens the thread: nothing is left unread, so no coordinate is missed.
+    bodies = _chain(texts=["@viditbot", "one", "two", "three"])
+    with _client(bodies) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert len(acquired.records) == 4
+    assert acquired.truncated is False
+    assert acquired.resolve().reason == COORDS_MISSING
+
+
+def test_a_complete_climb_with_no_coordinate_refuses_coords_missing():
+    bodies = _chain(texts=["@viditbot", "one", "two"])
+    with _client(bodies) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert len(acquired.records) == 3
+    assert acquired.truncated is False
+    assert acquired.resolve().reason == COORDS_MISSING
+
+
+def test_a_parent_x_will_not_serve_mid_climb_truncates_the_read(retry_sleeps):
+    # The coordinate post is down: the climb keeps what it read and says it was cut.
+    bodies = _chain(texts=["@viditbot", "Source: https://example.org/clip", _COORD_TEXT])
+    seen: list[str] = []
+    with _client(bodies, seen, down=frozenset({_CLIMB_IDS[2]})) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    # The fetch was retried before the climb gave up on it.
+    assert seen == [_CLIMB_IDS[0], _CLIMB_IDS[1], _CLIMB_IDS[2], _CLIMB_IDS[2], _CLIMB_IDS[2]]
+    assert retry_sleeps
+    assert [r.tweet_id for r in acquired.records] == [_CLIMB_IDS[1], _CLIMB_IDS[0]]
+    assert acquired.truncated is True
+    resolution = acquired.resolve(with_requests=True)
+    assert resolution.reason == THREAD_TRUNCATED
+    assert resolution.requests == []
+    assert resolution.request_reason is None
+
+
+def test_a_footage_read_x_will_not_serve_leaves_the_detection_untouched():
+    # The coordinate is already read: the lost footage post above it cuts nothing.
+    bodies = _chain(texts=["@viditbot", _COORD_TEXT, "the footage above"])
+    with _client(bodies, down=frozenset({_CLIMB_IDS[2]})) as client:
+        acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
+    assert [r.tweet_id for r in acquired.records] == [_CLIMB_IDS[1], _CLIMB_IDS[0]]
+    assert acquired.truncated is False
+    assert len(acquired.resolve().detections) == 1
 
 
 def test_the_cap_bounds_the_footage_read_too():
