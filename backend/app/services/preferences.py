@@ -20,23 +20,25 @@ from app.models.user_preferences import UserPreferences
 from app.schemas.preferences import (
     DISPLAY_DEFAULTS,
     DisplayPreferences,
+    DisplayPreferencesUpdate,
     NotificationPreferenceRead,
     UserPreferencesRead,
     UserPreferencesUpdate,
 )
 
 
-def _effective_display(stored: dict[str, Any]) -> DisplayPreferences:
-    effective = DISPLAY_DEFAULTS.model_dump()
+def _valid_stored_display(stored: dict[str, Any]) -> dict[str, Any]:
+    defaults = DISPLAY_DEFAULTS.model_dump()
+    valid = {}
     for key, value in stored.items():
-        if key not in effective:
+        if key not in defaults:
             continue
         try:
-            DisplayPreferences.model_validate({**effective, key: value})
+            DisplayPreferences.model_validate({**defaults, key: value})
         except ValidationError:
             continue
-        effective[key] = value
-    return DisplayPreferences.model_validate(effective)
+        valid[key] = value
+    return valid
 
 
 def _build_read(row: UserPreferences | None) -> UserPreferencesRead:
@@ -51,9 +53,13 @@ def _build_read(row: UserPreferences | None) -> UserPreferencesRead:
         notifications.append(
             NotificationPreferenceRead(kind=kind, channels=channels, defaults=dict(defaults))
         )
+    stored_display = _valid_stored_display(row.display if row is not None else {})
     return UserPreferencesRead(
-        display=_effective_display(row.display if row is not None else {}),
+        display=DisplayPreferences.model_validate(
+            {**DISPLAY_DEFAULTS.model_dump(), **stored_display}
+        ),
         display_defaults=DISPLAY_DEFAULTS,
+        display_stored=DisplayPreferencesUpdate.model_validate(stored_display),
         notifications=notifications,
     )
 

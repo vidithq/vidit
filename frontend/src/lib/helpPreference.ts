@@ -12,6 +12,13 @@ export function getHelpHidden(): boolean {
   return window.localStorage.getItem(KEY) === "1";
 }
 
+/** The choice this browser saved, or `null` when it saved none. */
+export function getSavedHelpHidden(): boolean | null {
+  if (typeof window === "undefined") return null;
+  const stored = window.localStorage.getItem(KEY);
+  return stored === "1" ? true : stored === "0" ? false : null;
+}
+
 export function setHelpHidden(hidden: boolean): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(KEY, hidden ? "1" : "0");

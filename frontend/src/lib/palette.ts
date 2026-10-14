@@ -105,6 +105,7 @@ const pref = createAttributePreference<PaletteId>({
 
 /** The stored accent palette, or the default when absent / invalid. */
 export const getPalette = pref.get;
+export const getSavedPalette = pref.saved;
 export const setPalette = pref.set;
 
 export function paletteMapColors(id: PaletteId): PaletteOption["map"] {

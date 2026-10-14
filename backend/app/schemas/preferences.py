@@ -40,10 +40,13 @@ class NotificationPreferenceRead(BaseModel):
 
 class UserPreferencesRead(BaseModel):
     """Effective values, each beside the default it falls back to.
-    ``notifications`` lists every registered kind in registry order."""
+    ``display_stored`` holds only the display values the account has saved
+    (``null`` where it has none), so a client can tell a saved value from a
+    default. ``notifications`` lists every registered kind in registry order."""
 
     display: DisplayPreferences
     display_defaults: DisplayPreferences
+    display_stored: DisplayPreferencesUpdate
     notifications: list[NotificationPreferenceRead]
 
 

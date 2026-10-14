@@ -19,6 +19,7 @@ client = TestClient(app)
 _PATH = "/api/v1/users/me/preferences"
 
 _DEFAULT_DISPLAY = {"palette": "orange", "theme": "dark", "help_tooltips": True}
+_NOTHING_STORED = {"palette": None, "theme": None, "help_tooltips": None}
 
 
 @pytest.fixture
@@ -58,6 +59,7 @@ def test_get_without_a_row_returns_the_defaults(db, user):
     body = response.json()
     assert body["display"] == _DEFAULT_DISPLAY
     assert body["display_defaults"] == _DEFAULT_DISPLAY
+    assert body["display_stored"] == _NOTHING_STORED
     assert body["notifications"] == [
         {"kind": "request_fulfilled", "channels": {"email": True}, "defaults": {"email": True}},
         {"kind": "new_follower", "channels": {"email": False}, "defaults": {"email": False}},
@@ -81,6 +83,7 @@ def test_patch_creates_the_row_and_stores_only_overrides(db, user):
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["display"] == {**_DEFAULT_DISPLAY, "theme": "light"}
+    assert body["display_stored"] == {**_NOTHING_STORED, "theme": "light"}
     assert body["notifications"][0]["channels"] == {"email": False}
 
     row = _stored(db, user)
@@ -139,6 +142,7 @@ def test_stale_stored_values_read_as_defaults(db, user):
     login_as(client, user)
     body = client.get(_PATH).json()
     assert body["display"] == {**_DEFAULT_DISPLAY, "theme": "light"}
+    assert body["display_stored"] == {**_NOTHING_STORED, "theme": "light"}
     assert [n["kind"] for n in body["notifications"]] == ["request_fulfilled", "new_follower"]
     assert body["notifications"][1]["channels"] == {"email": False}
 

@@ -15,15 +15,25 @@ vi.mock("@/contexts/AuthContext", () => ({
 
 import PreferencesSync from "./PreferencesSync";
 
-const SERVER = {
-  display: { palette: "blue", theme: "light", help_tooltips: false },
-};
+const NOTHING_STORED = { palette: null, theme: null, help_tooltips: null };
+
+function serverWith(stored: Record<string, unknown>) {
+  return { display_stored: { ...NOTHING_STORED, ...stored } };
+}
+
+function patchBodies(): unknown[] {
+  return session.apiFetch.mock.calls
+    .filter(([, init]) => init?.method === "PATCH")
+    .map(([, init]) => JSON.parse(init.body));
+}
+
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("PreferencesSync", () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.localStorage.setItem("vidit:palette", "rose");
-    window.localStorage.setItem("vidit:theme", "dark");
+    window.localStorage.setItem("vidit:theme", "light");
     session.user = null;
     session.apiFetch.mockReset();
   });
@@ -35,24 +45,50 @@ describe("PreferencesSync", () => {
     expect(window.localStorage.getItem("vidit:palette")).toBe("rose");
   });
 
-  it("lets the server value win after sign-in and rewrites the local cache", async () => {
-    session.apiFetch.mockResolvedValue(SERVER);
+  it("lets a value the account saved win and rewrites the local cache", async () => {
+    session.apiFetch.mockResolvedValue(
+      serverWith({ palette: "blue", theme: "dark", help_tooltips: false }),
+    );
     const { rerender } = render(<PreferencesSync />);
 
     session.user = { id: "u1" };
     rerender(<PreferencesSync />);
 
     await waitFor(() => expect(window.localStorage.getItem("vidit:palette")).toBe("blue"));
-    expect(window.localStorage.getItem("vidit:theme")).toBe("light");
+    expect(window.localStorage.getItem("vidit:theme")).toBe("dark");
     expect(window.localStorage.getItem("vidit:help-hidden")).toBe("1");
     expect(document.documentElement.dataset.palette).toBe("blue");
+    expect(patchBodies()).toEqual([]);
+  });
+
+  it("writes the browser's own value up where the account saved none", async () => {
+    session.apiFetch.mockResolvedValue(serverWith({ palette: "violet" }));
+    session.user = { id: "u1" };
+    render(<PreferencesSync />);
+
+    await waitFor(() => expect(patchBodies()).toEqual([{ display: { theme: "light" } }]));
+    // The saved palette still wins; the unsaved theme keeps this browser's choice.
+    expect(window.localStorage.getItem("vidit:palette")).toBe("violet");
+    expect(window.localStorage.getItem("vidit:theme")).toBe("light");
+  });
+
+  it("uploads nothing when neither side saved a value", async () => {
+    window.localStorage.clear();
+    session.apiFetch.mockResolvedValue(serverWith({}));
+    session.user = { id: "u1" };
+    render(<PreferencesSync />);
+
+    await waitFor(() => expect(session.apiFetch).toHaveBeenCalledTimes(1));
+    await flush();
+    expect(patchBodies()).toEqual([]);
+    expect(window.localStorage.getItem("vidit:theme")).toBeNull();
   });
 
   it("does not undo a change made while the pull was in flight", async () => {
-    let answer: (value: typeof SERVER) => void = () => {};
+    let answer: (value: unknown) => void = () => {};
     session.apiFetch.mockImplementation((_path: string, init?: RequestInit) =>
       init?.method === "PATCH"
-        ? Promise.resolve(SERVER)
+        ? Promise.resolve({})
         : new Promise((resolve) => {
             answer = resolve;
           }),
@@ -61,10 +97,10 @@ describe("PreferencesSync", () => {
     render(<PreferencesSync />);
 
     await saveDisplay({ palette: "emerald" });
-    answer(SERVER);
+    answer(serverWith({ palette: "blue", theme: "dark" }));
+    await flush();
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(window.localStorage.getItem("vidit:palette")).toBe("emerald");
-    expect(window.localStorage.getItem("vidit:theme")).toBe("dark");
+    expect(window.localStorage.getItem("vidit:theme")).toBe("light");
   });
 });

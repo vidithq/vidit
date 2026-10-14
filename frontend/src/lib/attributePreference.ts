@@ -10,6 +10,8 @@
 export interface AttributePreference<T extends string> {
   /** The stored value, or the fallback when absent / invalid / server-side. */
   get(): T;
+  /** The value this browser saved, or `null` when it saved none (or an invalid one). */
+  saved(): T | null;
   set(value: T): void;
 }
 
@@ -24,10 +26,14 @@ export function createAttributePreference<T extends string>(config: {
 }): AttributePreference<T> {
   const { key, attribute, event, fallback, isValid } = config;
 
-  function get(): T {
-    if (typeof window === "undefined") return fallback;
+  function saved(): T | null {
+    if (typeof window === "undefined") return null;
     const stored = window.localStorage.getItem(key);
-    return isValid(stored) ? stored : fallback;
+    return isValid(stored) ? stored : null;
+  }
+
+  function get(): T {
+    return saved() ?? fallback;
   }
 
   // Reflect without persisting. The pre-paint reflection is the inline script in the root layout.
@@ -43,5 +49,5 @@ export function createAttributePreference<T extends string>(config: {
     window.dispatchEvent(new Event(event));
   }
 
-  return { get, set };
+  return { get, saved, set };
 }

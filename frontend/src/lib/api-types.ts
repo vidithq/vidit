@@ -3429,11 +3429,14 @@ export interface components {
         /**
          * UserPreferencesRead
          * @description Effective values, each beside the default it falls back to.
-         *     ``notifications`` lists every registered kind in registry order.
+         *     ``display_stored`` holds only the display values the account has saved
+         *     (``null`` where it has none), so a client can tell a saved value from a
+         *     default. ``notifications`` lists every registered kind in registry order.
          */
         UserPreferencesRead: {
             display: components["schemas"]["DisplayPreferences"];
             display_defaults: components["schemas"]["DisplayPreferences"];
+            display_stored: components["schemas"]["DisplayPreferencesUpdate"];
             /** Notifications */
             notifications: components["schemas"]["NotificationPreferenceRead"][];
         };

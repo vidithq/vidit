@@ -31,6 +31,7 @@ function preferences(requestFulfilledEmail = true): UserPreferences {
   return {
     display: DISPLAY,
     display_defaults: DISPLAY,
+    display_stored: { palette: null, theme: null, help_tooltips: null },
     notifications: [
       {
         kind: "request_fulfilled",

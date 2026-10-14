@@ -1715,6 +1715,7 @@ Your display and notification preferences. Each value is the one in effect: your
 {
   "display": { "palette": "rose", "theme": "light", "help_tooltips": true },
   "display_defaults": { "palette": "orange", "theme": "dark", "help_tooltips": true },
+  "display_stored": { "palette": "rose", "theme": "light", "help_tooltips": null },
   "notifications": [
     { "kind": "request_fulfilled", "channels": { "email": false }, "defaults": { "email": true } },
     { "kind": "new_follower", "channels": { "email": false }, "defaults": { "email": false } }
@@ -1722,7 +1723,7 @@ Your display and notification preferences. Each value is the one in effect: your
 }
 ```
 
-`notifications` lists every registered notification kind, in registry order. `channels` holds the delivery channels besides the in-app feed, which is always on and has no switch. Vidit sends no notification email; the `email` values record the choice.
+`display_stored` holds only the display values your account has saved, `null` where it has none, so a client can tell a saved value from a default. `notifications` lists every registered notification kind, in registry order. `channels` holds the delivery channels besides the in-app feed, which is always on and has no switch. Vidit sends no notification email; the `email` values record the choice.
 
 | Field | Values |
 |-------|--------|
