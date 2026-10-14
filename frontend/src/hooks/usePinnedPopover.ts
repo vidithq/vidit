@@ -8,20 +8,24 @@ import {
   type CSSProperties,
 } from "react";
 
-/** Pin, dismiss and placement for an anchored popover (`FieldHelp`): shown from JS hover state
- * (not CSS `group-hover`, which a surrounding `.group` could trigger), pinned on click (touch
- * doesn't hover), closed by outside-click, Escape, scroll, resize or pointer-leave.
+/** Pin, dismiss and placement for an anchored popover (`FieldHelp`, `OutboundLink`): shown from
+ * JS hover state (not CSS `group-hover`, which a surrounding `.group` could trigger), pinned on
+ * click (touch doesn't hover), closed by outside-click, Escape, scroll, resize or pointer-leave.
+ * `hover: false` opens on click alone: the popover asks for a decision, so it must not appear
+ * under a pointer passing by, and `wrapperProps` carries nothing but its ref.
  *
  * Renders in a portal with `position: fixed` (`popoverStyle`) so an `overflow` ancestor can't
  * clip it: the placement effect measures it, places it under the anchor, flips above on bottom
  * overflow, clamps left/right, and keeps it hidden until measured. Callers spread
  * `wrapperProps` / `anchorProps` / `popoverProps` on their own markup. */
-export function usePinnedPopover() {
+export function usePinnedPopover<A extends HTMLElement = HTMLButtonElement>({
+  hover = true,
+}: { hover?: boolean } = {}) {
   const [pinned, setPinned] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const wrapperRef = useRef<HTMLSpanElement>(null);
-  const anchorRef = useRef<HTMLButtonElement>(null);
+  const anchorRef = useRef<A>(null);
   const popoverRef = useRef<HTMLSpanElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -71,7 +75,8 @@ export function usePinnedPopover() {
     if (!open) return;
     const onPointer = (e: MouseEvent) => {
       const t = e.target as Node;
-      if (!wrapperRef.current?.contains(t) && !popoverRef.current?.contains(t)) close();
+      const inside = [wrapperRef, anchorRef, popoverRef].some((r) => r.current?.contains(t));
+      if (!inside) close();
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
@@ -100,24 +105,29 @@ export function usePinnedPopover() {
   return {
     open,
     pinned,
+    placed: coords !== null,
     close,
-    wrapperProps: {
-      ref: wrapperRef,
-      // Hover lives on the wrapper (the popover is portaled out). Leaving un-pins; touch never
-      // fires mouseleave, so a tapped pin stays until an outside tap.
-      onMouseEnter: () => {
-        cancelClose();
-        setHovered(true);
-      },
-      onMouseLeave: () => {
-        setPinned(false);
-        scheduleClose();
-      },
-    },
+    wrapperProps: hover
+      ? {
+          ref: wrapperRef,
+          // Hover lives on the wrapper (the popover is portaled out). Leaving un-pins; touch
+          // never fires mouseleave, so a tapped pin stays until an outside tap.
+          onMouseEnter: () => {
+            cancelClose();
+            setHovered(true);
+          },
+          onMouseLeave: () => {
+            setPinned(false);
+            scheduleClose();
+          },
+        }
+      : { ref: wrapperRef },
     anchorProps: {
       ref: anchorRef,
-      onFocus: () => setHovered(true),
-      onBlur: () => setHovered(false),
+      ...(hover && {
+        onFocus: () => setHovered(true),
+        onBlur: () => setHovered(false),
+      }),
       onClick: (e: React.MouseEvent) => {
         // The anchor often sits in a clickable card or label: don't bubble the click.
         e.preventDefault();

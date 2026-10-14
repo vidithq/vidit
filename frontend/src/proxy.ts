@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const CANONICAL_HOST = "vidit.app";
+import { VIDIT_HOST as CANONICAL_HOST } from "@/lib/outbound";
 
 // Mirrors `CSRF_COOKIE` in `lib/auth.ts`; change both. Inlined because `lib/auth.ts` touches
 // `document.cookie`, absent in the edge runtime. The backend sets and clears it with the

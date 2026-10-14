@@ -13,6 +13,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
+import { OutboundLink } from "@/components/ui/OutboundLink";
 import { Pill } from "@/components/ui/Pill";
 import { PageFrame } from "@/components/ui/PageFrame";
 import { buttonClasses } from "@/components/ui/Button";
@@ -167,14 +168,12 @@ export default function LandingPage() {
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-base text-neutral-400 leading-relaxed">
             Vidit is the{" "}
-            <a
+            <OutboundLink
               href={GITHUB_URL}
-              target="_blank"
-              rel="noopener noreferrer"
               className={TEXT_LINK}
             >
               open source
-            </a>{" "}
+            </OutboundLink>{" "}
             platform where OSINT/GEOINT analysts publish, archive and share
             geolocated events from armed conflicts.
           </p>
@@ -271,14 +270,12 @@ export default function LandingPage() {
                     {body}
                   </p>
                   {link && (
-                    <a
+                    <OutboundLink
                       href={link.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
                       className={`mt-2 inline-block text-[13px] ${TEXT_LINK}`}
                     >
                       {link.label} →
-                    </a>
+                    </OutboundLink>
                   )}
                 </div>
               </li>

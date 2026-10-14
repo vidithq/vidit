@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { htmlText, proofHasImage, renderProof } from "./proof";
 
@@ -29,6 +29,29 @@ describe("renderProof", () => {
     expect(a).toHaveAttribute("href", "https://example.com/post");
     expect(a).toHaveAttribute("target", "_blank");
     expect(a).toHaveAttribute("rel", "noopener noreferrer nofollow ugc");
+  });
+
+  it("asks before a link to an unknown host leaves, showing the full URL", () => {
+    renderHtml('<p><a href="https://example.com/post?id=7">source</a></p>');
+    fireEvent.click(screen.getByRole("link", { name: "source" }));
+    expect(screen.getByRole("dialog", { name: "Leave Vidit?" })).toHaveTextContent(
+      "https://example.com/post?id=7",
+    );
+  });
+
+  it("opens a link to a known host in one click", () => {
+    renderHtml('<p><a href="https://web.archive.org/web/2026/https://t.me/c/1">copy</a></p>');
+    const a = screen.getByRole("link", { name: "copy" });
+    expect(a).not.toHaveAttribute("aria-haspopup");
+    fireEvent.click(a);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("keeps a link to Vidit itself in the app", () => {
+    renderHtml('<p><a href="https://vidit.app/events/42#map">event</a></p>');
+    const a = screen.getByRole("link", { name: "event" });
+    expect(a).toHaveAttribute("href", "/events/42#map");
+    expect(a).not.toHaveAttribute("target");
   });
 
   it("drops the attributes a stored link carries besides href", () => {

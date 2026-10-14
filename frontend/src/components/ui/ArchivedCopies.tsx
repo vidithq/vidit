@@ -5,8 +5,9 @@ import { Archive, ArchiveRestore, ExternalLink } from "lucide-react";
 import type { ArchivedLink } from "@/types";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { OutboundLink } from "@/components/ui/OutboundLink";
 import { WARNING_CALLOUT } from "@/components/ui/styles";
-import { ARCHIVE_TODAY_HOSTS, snapshotArchivesAnotherLink, WAYBACK_HOST } from "@/lib/snapshots";
+import { SNAPSHOT_HOSTS, snapshotArchivesAnotherLink, WAYBACK_HOST } from "@/lib/snapshots";
 
 interface ArchivedCopiesProps {
   copy: ArchivedLink | null;
@@ -46,15 +47,6 @@ const SAVE_PAGE_LABEL = PROVIDER_LABELS.wayback;
 function savePageUrl(url: string): string {
   return `https://${WAYBACK_HOST}/save/${encodeURI(url)}`;
 }
-
-/** Every host a snapshot may live on. Mirrors the keys of `PROVIDER_HOSTS` in
- *  `services/source_archive.py`; change both. The archive.today domains come
- *  from `lib/snapshots.ts`. */
-export const SNAPSHOT_HOSTS = [
-  WAYBACK_HOST,
-  ...ARCHIVE_TODAY_HOSTS,
-  "ghostarchive.org",
-];
 
 /** The three services behind those hosts, short enough for the placeholder. */
 const SNAPSHOT_SERVICES = [WAYBACK_HOST, "archive.today", "ghostarchive.org"];
@@ -129,16 +121,14 @@ function ArchivedCopyLink({ copy, describes }: { copy: ArchivedLink; describes: 
   const provider: string | undefined = PROVIDER_LABELS[copy.provider];
   const label = provider ? `${provider} copy of ${describes}` : `Archived copy of ${describes}`;
   return (
-    <a
+    <OutboundLink
       href={copy.url}
-      target="_blank"
-      rel="noopener noreferrer"
       aria-label={label}
       title={label}
       className={buttonClasses("ghost", { icon: true })}
     >
       <ArchiveMark size={14} />
-    </a>
+    </OutboundLink>
   );
 }
 
@@ -265,16 +255,14 @@ function SavePageDoor({
   }
   const label = `Open the ${SAVE_PAGE_LABEL} for ${describes}`;
   return (
-    <a
+    <OutboundLink
       href={savePageUrl(target)}
-      target="_blank"
-      rel="noopener noreferrer"
       aria-label={label}
       title={label}
       className={buttonClasses("ghost", { icon: true })}
     >
       <ExternalLink size={14} />
-    </a>
+    </OutboundLink>
   );
 }
 

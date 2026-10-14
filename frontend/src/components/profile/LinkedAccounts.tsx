@@ -8,6 +8,7 @@ import type { ExternalLinks } from "@/types";
 import { DiscordGlyph, GitHubGlyph, XGlyph } from "@/components/ui/BrandGlyphs";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { FIELD_TEXT } from "@/components/ui/Input";
+import { OutboundLink } from "@/components/ui/OutboundLink";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_LABEL } from "@/components/ui/form-styles";
@@ -136,17 +137,15 @@ export function LinkedAccountsLine({ profile }: { profile: PublicProfile }) {
         const href = resolveLinkHref(key, value);
         if (!href) return [];
         return [
-          <a
+          <OutboundLink
             key={key}
             href={href}
-            target="_blank"
-            rel="noopener noreferrer"
             aria-label={name}
             title={name}
             className={buttonClasses("ghost", { icon: true })}
           >
             <Icon size={14} />
-          </a>,
+          </OutboundLink>,
         ];
       })}
     </>

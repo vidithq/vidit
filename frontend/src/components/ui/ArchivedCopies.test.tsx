@@ -8,8 +8,8 @@ import {
   isSnapshotUrl,
   PRIMARY_SOURCE_DESCRIPTION,
   SNAPSHOT_HINT,
-  SNAPSHOT_HOSTS,
 } from "./ArchivedCopies";
+import { SNAPSHOT_HOSTS } from "@/lib/snapshots";
 
 /** The two states of one link's archive affordance: a copy exists, or it does not. */
 describe("ArchivedCopies", () => {

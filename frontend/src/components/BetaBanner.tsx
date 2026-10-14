@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { isAuthRoute } from "@/lib/auth-routes";
 import { Pill } from "@/components/ui/Pill";
+import { OutboundLink } from "@/components/ui/OutboundLink";
 
 // Baked in by next.config.mjs (`resolveBuildVersion`): the deploy ref's
 // `git describe --tags --always --dirty`, or "dev" with no git history.
@@ -38,15 +39,13 @@ export default function BetaBanner({ inline = false }: { inline?: boolean }) {
     >
       <Pill tone="accent" className="gap-2 tracking-tight backdrop-blur-xs">
         <span>Beta · {displayVersion}</span>
-        <a
+        <OutboundLink
           href={REPORT_URL}
-          target="_blank"
-          rel="noopener noreferrer"
           title="Report a bug in our Discord"
           className="pointer-events-auto text-orange-300 hover:text-orange-100 transition-colors border-l border-orange-500/30 pl-2 -mr-0.5"
         >
           Report a bug
-        </a>
+        </OutboundLink>
       </Pill>
     </div>
   );

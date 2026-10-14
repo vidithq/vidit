@@ -1,13 +1,17 @@
 "use client";
 
+import { Fragment } from "react";
 import { Pencil } from "lucide-react";
 
 import { formatDate } from "@/lib/format";
+import { splitLinks } from "@/lib/outbound";
 import type { PublicProfile } from "@/lib/users";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { FileManager } from "@/components/ui/FileManager";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
+import { OutboundLink } from "@/components/ui/OutboundLink";
+import { TEXT_LINK } from "@/components/ui/styles";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
 import FollowButton from "./FollowButton";
 import { LinkedAccountsLine } from "./LinkedAccounts";
@@ -50,9 +54,9 @@ export function ProfileTitle({
  * owns the slot and its `[overflow-wrap:anywhere]`, which keeps a bio holding a bare URL inside the
  * frame on a phone. Edit mode drops the block.
  *
- * The bio: empty renders nothing; a link is plain text that breaks where it must; long wraps
- * rather than clamps (`BIO_MAX_LEN` caps it at 500, and an ellipsis would hide the analyst's
- * framing). Typed line breaks collapse into the flow here and stay in the edit field.
+ * The bio: empty renders nothing; an http(s) URL in it links through `<OutboundLink>` and breaks
+ * where it must; long wraps rather than clamps (`BIO_MAX_LEN` caps it at 500, and an ellipsis
+ * would hide the analyst's framing). Typed line breaks collapse into the flow here and stay in the edit field.
  *
  * The metadata is the followers / following / member-since line, secondary text rather than tiles
  * (the work figures live in the Insights card). Zero values print. Each segment holds together so
@@ -68,7 +72,19 @@ export function ProfileIdentity({ profile }: { profile: PublicProfile }) {
 
   return (
     <div className="space-y-1">
-      {bio && <p>{bio}</p>}
+      {bio && (
+        <p>
+          {splitLinks(bio).map(({ text, href }, i) =>
+            href ? (
+              <OutboundLink key={i} href={href} ugc className={TEXT_LINK}>
+                {text}
+              </OutboundLink>
+            ) : (
+              <Fragment key={i}>{text}</Fragment>
+            ),
+          )}
+        </p>
+      )}
       <p className="flex flex-wrap items-center text-xs text-neutral-500">
         {segments.map((segment, i) => (
           <span key={segment} className="whitespace-nowrap">

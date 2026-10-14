@@ -393,9 +393,27 @@ describe("public profile identity", () => {
     withProfile({ bio: "Notes at https://a-very-long-domain-name.example/analyst/notes" });
     mountProfile();
 
-    const line = screen.getByText(/Notes at https/);
+    const line = screen.getByText(/Notes at/);
     // The link breaks where it must; PageShell's subtitle slot owns the anywhere-break so a token cannot scroll a phone sideways.
     expect(line.closest(".wrap-anywhere")).not.toBeNull();
+  });
+
+  it("links every URL in the bio and leaves the sentence around it as text", () => {
+    withProfile({ bio: "Threads on https://x.com/ana, notes at https://notes.example/ana." });
+    mountProfile();
+
+    expect(screen.getByRole("link", { name: "https://x.com/ana" })).toHaveAttribute(
+      "href",
+      "https://x.com/ana",
+    );
+    // An unknown host still links, through the confirmation.
+    expect(screen.getByRole("link", { name: "https://notes.example/ana" })).toHaveAttribute(
+      "aria-haspopup",
+      "dialog",
+    );
+    expect(screen.getByText(/notes at/).textContent).toBe(
+      "Threads on https://x.com/ana, notes at https://notes.example/ana.",
+    );
   });
 });
 

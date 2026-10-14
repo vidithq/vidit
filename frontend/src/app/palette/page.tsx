@@ -41,6 +41,7 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { LinkRow } from "@/components/ui/LinkRow";
+import { OutboundLink } from "@/components/ui/OutboundLink";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
 import { ActivityHeatmap } from "@/components/ui/ActivityHeatmap";
 import { SourceHostBar } from "@/components/ui/SourceHostBar";
@@ -758,7 +759,7 @@ export default function PalettePage() {
 
           <Item
             name="<FieldHelp>"
-            usage="The one hover text in the app: a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). Registry-only: every instance of a concept reads the same words, so the `?` takes the concept key and nothing else."
+            usage="The one hover text in the app: a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). Registry-only: every instance of a concept reads the same words, so the `?` takes the concept key and nothing else. The bubble paints POPOVER_SURFACE, the plate every anchored popover shares."
           >
             <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
               Coordinates <FieldHelp concept="coordinates" />
@@ -836,6 +837,22 @@ export default function PalettePage() {
               <span className="text-xs text-neutral-400">
                 <AuthorByline author={MOCK_DETAIL.owner} prefix={false} link={false} />
               </span>
+            </Variant>
+          </Item>
+
+          <Item
+            name="<OutboundLink>"
+            usage="Every link whose href is an absolute http(s) URL renders through it; a raw external <a> anywhere else is a review blocker. The parsed hostname decides the click (lib/outbound.ts, exact host or subdomain, never a substring): Vidit's own domain routes in the app through next/link, a known host (the archives, x.com, t.me, youtube.com, github.com and the few others the app links to by design) opens in a new tab in one click, and any other host opens a popover on POPOVER_SURFACE that shows the full URL and waits for Open link. Middle and modifier clicks ask too. rel is always noopener noreferrer; ugc adds nofollow ugc for what an analyst wrote (proof bodies, collection descriptions, bios). Paint comes from the caller's className, so a source host, an icon button and a row all keep their look."
+          >
+            <Variant label="known host: one click">
+              <OutboundLink href="https://t.me/some_channel/4242" className={TEXT_LINK}>
+                t.me/some_channel/4242
+              </OutboundLink>
+            </Variant>
+            <Variant label="unknown host: click to see the confirmation">
+              <OutboundLink href="https://example.org/analysis/strike-site" ugc className={TEXT_LINK}>
+                example.org/analysis/strike-site
+              </OutboundLink>
             </Variant>
           </Item>
 

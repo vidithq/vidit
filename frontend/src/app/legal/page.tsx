@@ -5,6 +5,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { TEXT_LINK } from "@/components/ui/styles";
+import { OutboundLink } from "@/components/ui/OutboundLink";
 
 // Public legal notice (see `PUBLIC_PREFIXES` in `proxy.ts`). The publisher is non-professional under LCEN article
 // 6-III-2, so only the hosting providers are named, plus a contact address; the maintainer's identity is held by the hosts.
@@ -88,9 +89,9 @@ export default function LegalPage() {
               <br />
               {host.address}
               <br />
-              <a href={host.site} className={TEXT_LINK}>
+              <OutboundLink href={host.site} className={TEXT_LINK}>
                 {host.site}
-              </a>
+              </OutboundLink>
             </p>
           ))}
         </Card>

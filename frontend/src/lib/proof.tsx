@@ -9,6 +9,7 @@ import parse, {
 } from "html-react-parser";
 
 import { ProofImage } from "@/components/event/ProofImage";
+import { OutboundLink } from "@/components/ui/OutboundLink";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 /** Mirrors `storage.LOCAL_STORAGE_URL_PREFIX`; change both. */
@@ -104,14 +105,9 @@ function parserOptions({ gateImages }: ProofRenderOptions): HTMLReactParserOptio
         const href = attribs.href;
         if (!href || !isSafeLinkHref(href)) return <>{children()}</>;
         return (
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer nofollow ugc"
-            className={TEXT_LINK}
-          >
+          <OutboundLink href={href} ugc className={TEXT_LINK}>
             {children()}
-          </a>
+          </OutboundLink>
         );
       }
       if (!Object.hasOwn(TAG_CLASSES, name)) return <>{children()}</>;

@@ -3,6 +3,7 @@
 import { Check, Copy, ExternalLink } from "lucide-react";
 
 import { Button, buttonClasses } from "@/components/ui/Button";
+import { OutboundLink } from "@/components/ui/OutboundLink";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { formatCoordinates, mapsUrl } from "@/lib/coordinates";
 
@@ -36,16 +37,14 @@ export function CoordinateActions({
   return (
     <span className="inline-flex items-center gap-0.5">
       {point ? (
-        <a
+        <OutboundLink
           href={mapsUrl(point.lat, point.lng)}
-          target="_blank"
-          rel="noopener noreferrer"
           aria-label={MAP_LINK}
           title={MAP_LINK}
           className={buttonClasses("ghost", { icon: true })}
         >
           <ExternalLink size={14} />
-        </a>
+        </OutboundLink>
       ) : (
         <Button icon variant="ghost" disabled aria-label={NO_MAP_LINK} title={NO_MAP_LINK}>
           <ExternalLink size={14} />
