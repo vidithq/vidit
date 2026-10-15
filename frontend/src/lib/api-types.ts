@@ -1781,7 +1781,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Unsubscribe Email Page
+         * @description Send a mail client that opens the ``List-Unsubscribe`` URL to the confirmation page.
+         *
+         *     Changes nothing: a mail scanner opens links too. The page posts the token back here once
+         *     the reader confirms.
+         */
+        get: operations["unsubscribe_email_page_api_v1_notifications_unsubscribe_get"];
         put?: never;
         /**
          * Unsubscribe Email
@@ -7903,6 +7910,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationUnreadCount"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unsubscribe_email_page_api_v1_notifications_unsubscribe_get: {
+        parameters: {
+            query: {
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
