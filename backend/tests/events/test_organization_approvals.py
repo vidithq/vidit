@@ -234,6 +234,28 @@ def test_org_admins_who_hold_credit_are_not_asked(db, author, make_user, make_or
     assert [user_id for (user_id,) in asked] == [outsider.id]
 
 
+def test_the_organization_approvals_page_by_cursor_and_skip_unreadable_events(
+    db, author, make_user, make_org
+):
+    acting = make_user()
+    org = make_org(admins=[acting])
+    events = [_published(db, author) for _ in range(4)]
+    for geo in events:
+        assert _approve(geo, acting, org).status_code == 201
+    events[0].hidden_at = datetime.now(UTC)
+    events[1].deleted_at = datetime.now(UTC)
+    db.commit()
+
+    client.cookies.clear()
+    first = client.get(f"{_ORGS}/{org.slug}/approvals", params={"limit": 1})
+    assert first.status_code == 200, first.text
+    next_url = first.headers["Link"].split(";")[0].strip("<>")
+    second = client.get(next_url)
+    assert "Link" not in second.headers
+    walked = [item["event"]["id"] for item in first.json() + second.json()]
+    assert walked == [str(events[3].id), str(events[2].id)]
+
+
 def test_only_an_org_admin_approves_in_its_name(db, author, make_user, make_org):
     admin, member = make_user(), make_user()
     org = make_org(admins=[admin], members=[member])
