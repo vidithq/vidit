@@ -161,7 +161,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/notifications` | 🔒 | Your notifications, newest first (cursor-paged) |
 | GET | `/notifications/unread-count` | 🔒 | How many notifications you have not been shown |
 | POST | `/notifications/read` | 🔒 | Mark the notifications the feed showed you read |
-| POST | `/notifications/unsubscribe` | 🌐 | Turn off one kind of notification email, named by a signed token |
+| GET/POST | `/notifications/unsubscribe` | 🌐 | Send to the confirmation page / turn off one kind of notification email, named by a signed token |
 | **Organizations** | | | |
 | GET | `/organizations/{slug}` | 🌐 | An organization's public profile |
 | GET | `/organizations/{slug}/members` | 🌐 | Its members, org-admins first |
@@ -275,7 +275,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | **Notifications** | |
 | `GET /notifications`, `GET /notifications/unread-count` | 120/min |
 | `POST /notifications/read` | 60/min |
-| `POST /notifications/unsubscribe` | 30/min (anonymous allowed) |
+| `GET`/`POST /notifications/unsubscribe` | 30/min (anonymous allowed) |
 | **Organizations** | |
 | `GET /organizations/{slug}`, `GET /organizations/{slug}/members`, `GET /organizations/{slug}/approvals` | 120/min |
 | `PATCH /organizations/{slug}` | 30/min |
@@ -2675,6 +2675,8 @@ Turn off the email switch of one notification kind for the account a signed toke
 | Code | Case |
 |------|------|
 | 400 | `invalid_unsubscribe_token`: the token does not verify, or names no notification kind |
+
+`GET` on the same URL, which a mail client without one-click support opens, changes nothing: it answers 303 to the `/unsubscribe/notifications` page, which names the kind and turns its email off once the reader confirms, so a mail scanner that opens the link turns nothing off.
 
 ---
 
