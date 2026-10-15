@@ -47,7 +47,8 @@ const PUBLIC_PREFIXES = [
   "/resend-confirmation",
   "/forgot-password",
   "/reset-password",
-  // The unsubscribe link of a product update email: the signed token stands in for a session.
+  // The unsubscribe links of product update and notification emails: the signed token stands
+  // in for a session.
   "/unsubscribe",
 ];
 

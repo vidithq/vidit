@@ -181,3 +181,17 @@ export function describeNotification(n: Notification): { text: string; href: str
       };
   }
 }
+
+/** Turn off one kind of notification email, named by the signed token of its unsubscribe link.
+ *  Works without a session. */
+export function unsubscribeFromNotificationEmail(token: string): Promise<void> {
+  return apiFetch<void>(`${NOTIFICATIONS_PATH}/unsubscribe?token=${encodeURIComponent(token)}`, {
+    method: "POST",
+  });
+}
+
+/** The kind a notification unsubscribe token names (`<user>.<kind>.<signature>`), or null. */
+export function unsubscribeTokenKind(token: string): NotificationKind | null {
+  const kind = token.split(".")[1];
+  return kind && kind in NOTIFICATION_KIND_COPY ? (kind as NotificationKind) : null;
+}

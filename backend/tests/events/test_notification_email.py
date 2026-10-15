@@ -12,6 +12,7 @@ from app.models.notification import NOTIFICATION_KINDS, Notification, Notificati
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
 from app.services import email, notification_delivery, product_update_consent
+from app.services.preferences import email_unsubscribe_token
 from tests.conftest import login_as
 from tests.events._helpers import client
 from tests.events.test_requests import _geolocate_fulfilment, _make_request
@@ -392,3 +393,17 @@ def test_the_one_click_unsubscribe_turns_off_that_kind_by_email_only(
     )
     product_token = product_update_consent.unsubscribe_token(author.id)
     assert client.post(path, params={"token": product_token}).status_code == 400
+
+
+def test_opening_the_unsubscribe_url_confirms_first_and_changes_nothing(db, author):
+    token = email_unsubscribe_token(author.id, "request_fulfilled")
+    client.cookies.clear()
+    response = client.get(
+        "/api/v1/notifications/unsubscribe", params={"token": token}, follow_redirects=False
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].startswith(
+        f"{settings.frontend_url}/unsubscribe/notifications?token="
+    )
+    db.expire_all()
+    assert db.get(UserPreferences, author.id) is None
