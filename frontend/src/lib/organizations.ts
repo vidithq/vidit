@@ -57,7 +57,7 @@ export function updateOrganization(
 
 export function setOrganizationReviewRequestAudience(
   slug: string,
-  audience: Organization["review_request_audience"],
+  audience: NonNullable<Organization["review_request_audience"]>,
 ): Promise<Organization> {
   return apiFetch<Organization>(organizationPath(slug), {
     method: "PATCH",

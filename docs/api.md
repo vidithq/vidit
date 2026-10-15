@@ -2767,7 +2767,7 @@ An organization's public profile. Anonymous callers are allowed.
 }
 ```
 
-`review_request_audience` is who may send the organization a [review request](#review-requests): `following` (an analyst any live org-admin follows), `everyone` or `nobody`. `viewer_role` is your role, null when you are not a member or not signed in. `viewer_invited` is true while you hold a pending invite. `viewer_can_manage` is true for an org-admin and for a site admin.
+`review_request_audience` is who may send the organization a [review request](#review-requests): `following` (an analyst any live org-admin follows), `everyone` or `nobody`. It is shown to the organization's org-admins and to site admins only, and is `null` for anyone else. `viewer_role` is your role, null when you are not a member or not signed in. `viewer_invited` is true while you hold a pending invite. `viewer_can_manage` is true for an org-admin and for a site admin.
 
 ---
 
