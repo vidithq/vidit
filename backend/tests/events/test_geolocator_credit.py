@@ -450,6 +450,22 @@ def test_erasure_hands_over_a_retracted_event_too(db, admin_user, author, second
     assert db.get(Event, geo.id).owner_id == second_user.id
 
 
+def test_erasure_purges_a_soft_deleted_event_instead_of_handing_it_over(
+    db, admin_user, author, second_user
+):
+    geo = _published(db, author)
+    _credit(db, geo, second_user)
+    geo.deleted_at = datetime.now(UTC)
+    db.commit()
+    geo_id = geo.id
+
+    body = _erase(admin_user, author)
+    assert (body["cascaded_geolocations"], body["transferred_events"]) == (1, 0)
+    db.expire_all()
+    assert db.get(Event, geo_id) is None
+    assert _notifications(db, second_user) == []
+
+
 def test_erasure_deletes_an_event_with_no_live_co_geolocator(db, admin_user, author, make_user):
     alone = _published(db, author).id
     with_banned = _published(db, author)

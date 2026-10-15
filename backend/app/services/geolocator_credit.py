@@ -272,20 +272,23 @@ def remove(db: Session, *, geo: Event, actor: User, username: str) -> None:
 
 
 def hand_over_owned_events(db: Session, *, owner: User, events: Sequence[Event]) -> set[uuid.UUID]:
-    """Pass each of ``events`` that another live analyst is credited on to the earliest of them.
+    """Pass each live one of ``events`` that another live analyst is credited on to the earliest
+    of them.
 
     The erasure step of ``admin.hard_delete_user``: the heir becomes ``owner_id`` and receives
     an ``ownership_transferred`` notification, which names no actor. A soft-deleted
-    co-geolocator is skipped. Returns the ids handed over; the caller deletes the rest. Does
+    co-geolocator is skipped, and a soft-deleted event is never handed over, so the erasure
+    purges it with its media. Returns the ids handed over; the caller deletes the rest. Does
     not commit.
     """
-    if not events:
+    live = [geo for geo in events if geo.deleted_at is None]
+    if not live:
         return set()
     heirs = db.execute(
         select(EventGeolocator.event_id, EventGeolocator.user_id)
         .join(User, User.id == EventGeolocator.user_id)
         .where(
-            EventGeolocator.event_id.in_([geo.id for geo in events]),
+            EventGeolocator.event_id.in_([geo.id for geo in live]),
             EventGeolocator.user_id != owner.id,
             User.deleted_at.is_(None),
         )
@@ -293,7 +296,7 @@ def hand_over_owned_events(db: Session, *, owner: User, events: Sequence[Event])
         .distinct(EventGeolocator.event_id)
     ).all()
     heir_by_event = {event_id: user_id for event_id, user_id in heirs}
-    for geo in events:
+    for geo in live:
         heir_id = heir_by_event.get(geo.id)
         if heir_id is None:
             continue
