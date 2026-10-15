@@ -738,6 +738,23 @@ All three pages are client components, so their `generateMetadata` lives on the 
 
 The renderer publishes what it fetches as a public image, so every picture a card draws goes through one guarded read, `ogImageDataUri` in [`_og/data.ts`](../frontend/src/app/_og/data.ts) (guards also in [`lib/og.ts`](../frontend/src/lib/og.ts)), which inlines the body as a data URI rather than handing Satori a remote `<img src>`. The read accepts only an https dotted hostname, refuses address literals and local suffixes, and refuses a host whose DNS answer holds any private, loopback, link-local, or multicast address, judged in the connector so the socket uses the address the guard checked. It follows no redirect, holds a 2 s budget and a 2 MB ceiling, and accepts only PNG, JPEG, and GIF. A refused read falls back to the drawing without a picture (the handle monogram, a blank mosaic tile) and logs one `og image skipped:` warning naming the reason and the picture's host and path. `users.avatar_url` and cover tile URLs are server-minted on the media host, so the guard is defense in depth.
 
+### Email
+
+Every email shares one layout, [`services/email_layout.py`](../backend/app/services/email_layout.py), the second surface after the share cards that renders outside the app. Mail clients read no class names from the site and strip most CSS, so the layout carries its own inline styles: a table-based single column 600px wide, a system font stack, and the hex values below. The mechanism and the queue are in [`engineering.md`](engineering.md#email).
+
+| Part | Light (default) | Dark (`prefers-color-scheme: dark`) |
+|---|---|---|
+| Page | `#f4f2ef`, the light theme's warm canvas | `#0a0a0a`, `neutral-950` |
+| Card | `#ffffff` | `#171717`, `neutral-900` |
+| Text | `#232323`, the light theme's `neutral-100` | `#f5f5f5` |
+| Inline link | `#c2410c`, `orange-700` | `#fb923c`, `orange-400` |
+| Action button | `#c2410c` fill, white label | unchanged |
+
+- **Light by default.** A client that ignores the dark media query, such as Gmail, gets the light layout and applies its own dark inversion to it. Apple Mail applies the dark values.
+- **The header** is the accent `V` mark, a PNG served by the frontend at `/icon/android-192` with a transparent background, beside the word Vidit in text. The word carries the brand when a client blocks images.
+- **The action button** is a solid `orange-700` fill, the one place the accent fills a control. A mail client cannot render the tinted-on-dark recipe reliably, and `orange-700` keeps a white label above the 4.5:1 contrast ratio. Under the button, the same URL is printed as a link for a client that drops the button.
+- **The footer** links to Settings and the legal notice.
+
 ### Buttons
 
 There is one primitive: [`<Button>`](../frontend/src/components/ui/Button.tsx), shape and colour in a single unit at one size (no size scale). It has five variants on two axes: tone (accent or danger) and emphasis (filled, outline, text):

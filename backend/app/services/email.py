@@ -4,22 +4,37 @@ One ``httpx`` call to ``POST /emails``, no ``resend`` SDK.
 
 ``EMAIL_PROVIDER=resend`` needs ``RESEND_API_KEY`` and ``EMAIL_FROM``.
 
-``send`` raises ``EmailSendError`` on any non-2xx or transport error. Callers
-swallow and log: ``/auth/forgot-password`` answers 204 either way (a 500 would
-disclose user existence), and ``/auth/register`` must still insert the pending
-registration during a Resend outage.
+Every builder renders through ``email_layout``, so each message carries an
+HTML part and a plain-text part with the same content.
+
+``send`` raises ``EmailSendError`` on any non-2xx or transport error, and its
+subclass ``EmailRejectedError`` when the provider answered with a refusal, so
+the message was certainly not sent. Callers swallow and log:
+``/auth/forgot-password`` answers 204 either way (a 500 would disclose user
+existence), and ``/auth/register`` must still insert the pending registration
+during a Resend outage.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
 
 import httpx
 
 from app.config import settings
+from app.services.email_layout import (
+    Action,
+    Block,
+    Content,
+    app_url,
+    render_html,
+    render_text,
+    settings_url,
+)
 from app.services.tweet_ingest import WARNING_MESSAGES
 
 logger = logging.getLogger(__name__)
@@ -29,12 +44,29 @@ class EmailSendError(RuntimeError):
     """Raised when the email provider rejected the message or was unreachable."""
 
 
+class EmailRejectedError(EmailSendError):
+    """Raised when the provider answered and refused the message."""
+
+
 @dataclass(frozen=True)
 class Email:
     to: str
     subject: str
     text: str
-    html: str | None = None
+    html: str
+    headers: Mapping[str, str] = field(default_factory=dict)
+
+
+def _compose(
+    *, to: str, subject: str, content: Content, headers: Mapping[str, str] | None = None
+) -> Email:
+    return Email(
+        to=to,
+        subject=subject,
+        text=render_text(content),
+        html=render_html(content, subject=subject),
+        headers=dict(headers or {}),
+    )
 
 
 _RESEND_ENDPOINT = "https://api.resend.com/emails"
@@ -47,13 +79,17 @@ def _from_address() -> str:
 
 
 def _send_console(email: Email) -> None:
+    headers = "".join(f"{name}: {value}\n" for name, value in email.headers.items())
     body = (
-        f"\n--- DEV EMAIL ({settings.email_provider}) ---\n"
+        f"\n=== DEV EMAIL ({settings.email_provider}) ===\n"
         f"From: {_from_address()}\n"
         f"To:   {email.to}\n"
-        f"Subj: {email.subject}\n\n"
+        f"Subj: {email.subject}\n"
+        f"{headers}\n"
         f"{email.text}\n"
-        f"--- end ---\n"
+        f"=== HTML part ===\n"
+        f"{email.html}"
+        f"=== end ===\n"
     )
     # print, not logger.info: LOG_LEVEL cannot drop it, the reset link never
     # becomes a Sentry breadcrumb, and it prints as one block.
@@ -62,16 +98,17 @@ def _send_console(email: Email) -> None:
 
 def _send_resend(email: Email) -> None:
     if not settings.resend_api_key:
-        raise EmailSendError("RESEND_API_KEY is empty but EMAIL_PROVIDER=resend")
+        raise EmailRejectedError("RESEND_API_KEY is empty but EMAIL_PROVIDER=resend")
 
     payload: dict[str, object] = {
         "from": _from_address(),
         "to": [email.to],
         "subject": email.subject,
         "text": email.text,
+        "html": email.html,
     }
-    if email.html is not None:
-        payload["html"] = email.html
+    if email.headers:
+        payload["headers"] = dict(email.headers)
 
     try:
         with httpx.Client(timeout=10.0) as client:
@@ -86,7 +123,9 @@ def _send_resend(email: Email) -> None:
     if resp.status_code >= 300:
         # No body in the message: Resend echoes the recipient address, which
         # would defeat anti-enumeration.
-        raise EmailSendError(f"Resend returned {resp.status_code} (see Resend dashboard for body)")
+        raise EmailRejectedError(
+            f"Resend returned {resp.status_code} (see Resend dashboard for body)"
+        )
 
 
 def send(email: Email) -> None:
@@ -102,21 +141,18 @@ def send(email: Email) -> None:
 
 def password_reset_email(*, to: str, link: str) -> Email:
     ttl = settings.password_reset_token_minutes
-    return Email(
+    return _compose(
         to=to,
         subject="Reset your Vidit password",
-        text=(
-            "Someone (hopefully you) asked to reset the password on the Vidit\n"
-            "account associated with this address.\n"
-            "\n"
-            f"To set a new password, follow this link within the next {ttl} minutes:\n"
-            "\n"
-            f"  {link}\n"
-            "\n"
-            "If you didn't request a reset, ignore this email: your password is\n"
-            "unchanged. The link only works once.\n"
-            "\n"
-            "— Vidit\n"
+        content=Content(
+            heading="Reset your password",
+            blocks=[
+                "Someone asked to reset the password on the Vidit account that uses this "
+                f"address. To set a new password, follow the link within {ttl} minutes.",
+            ],
+            action=Action("Set a new password", link),
+            note="If you did not ask for a reset, ignore this email: your password is "
+            "unchanged. The link works once.",
         ),
     )
 
@@ -127,28 +163,29 @@ def password_changed_email(*, to: str) -> Email:
     No IP / UA / geo (they confuse a travelling owner). The forgot-password
     link is the recovery surface, not a deep link into change-password.
     """
-    return Email(
+    return _compose(
         to=to,
         subject="Your Vidit password was changed",
-        text=(
-            "This is a heads-up that the password on your Vidit account was just\n"
-            "changed.\n"
-            "\n"
-            "If it was you, no action needed.\n"
-            "\n"
-            "If you didn't change your password, your account may be compromised.\n"
-            "Recover the account by resetting the password here:\n"
-            "\n"
-            "  https://vidit.app/forgot-password\n"
-            "\n"
-            "— Vidit\n"
+        content=Content(
+            heading="Your password was changed",
+            blocks=[
+                "The password on your Vidit account was just changed. If it was you, "
+                "you have nothing to do.",
+                "If you did not change it, your account may be compromised. Recover it by "
+                "resetting the password.",
+            ],
+            action=Action("Reset your password", app_url("/forgot-password")),
         ),
     )
 
 
 def detections_link(username: str) -> str:
     """The absolute URL of an analyst's own Detections queue."""
-    return f"{settings.frontend_url.rstrip('/')}/profile/{username}/detections"
+    return app_url(f"/profile/{username}/detections")
+
+
+def _plural(count: int, noun: str) -> str:
+    return f"{count} {noun}{'s' if count != 1 else ''}"
 
 
 def archive_import_complete_email(
@@ -162,55 +199,52 @@ def archive_import_complete_email(
     detections_link: str,
 ) -> Email:
     # The four counts are disjoint. Only the headline is unconditional.
-    lines = [f"  {created} new detection{'s' if created != 1 else ''} created"]
+    counts = [f"{_plural(created, 'new detection')} created"]
     if updated:
-        lines.append(f"  {updated} existing detection{'s' if updated != 1 else ''} updated")
+        counts.append(f"{_plural(updated, 'existing detection')} updated")
     if skipped:
-        lines.append(f"  {skipped} left as {'they are' if skipped != 1 else 'it is'} (skipped)")
+        counts.append(f"{skipped} left as {'they are' if skipped != 1 else 'it is'} (skipped)")
     if failed:
-        lines.append(f"  {failed} could not be imported")
+        counts.append(f"{failed} could not be imported")
     # Warnings cut across two of the four buckets, so they get their own
     # heading. Wording comes from ``tweet_ingest.WARNING_MESSAGES``, shared with
     # the bot reply and the import panel; the email counts detections, not posts.
     raised = warnings or {}
-    flagged = [
-        f"  {raised[code]} detection{'s' if raised[code] != 1 else ''}: {message}"
+    flagged = tuple(
+        f"{_plural(raised[code], 'detection')}: {message}"
         for code, message in WARNING_MESSAGES.items()
         if raised.get(code)
-    ]
-    review = ("\nWhat to look at first:\n\n" + "\n".join(flagged) + "\n") if flagged else ""
-    counts = "\n".join(lines)
-    return Email(
+    )
+    blocks: list[Block] = ["Your X archive finished importing.", tuple(counts)]
+    if flagged:
+        blocks += ["What to look at first:", flagged]
+    blocks.append(
+        "Each detection is attributed to you. Review them and geolocate the ones you vouch for."
+    )
+    return _compose(
         to=to,
         subject="Your X archive import is done",
-        text=(
-            "Your X archive finished importing:\n"
-            "\n"
-            f"{counts}\n"
-            f"{review}"
-            "\n"
-            "Each detection is attributed to you; review them and\n"
-            "geolocate the ones you vouch for:\n"
-            "\n"
-            f"  {detections_link}\n"
-            "\n"
-            "— Vidit\n"
+        content=Content(
+            heading="Your archive import is done",
+            blocks=blocks,
+            action=Action("Review your detections", detections_link),
         ),
     )
 
 
 def archive_import_failed_email(*, to: str) -> Email:
-    return Email(
+    return _compose(
         to=to,
         subject="Your X archive import failed",
-        text=(
-            "Something went wrong while importing your X archive and the\n"
-            "import stopped. Anything imported before the failure is kept, and\n"
-            "re-uploading the same archive skips it and continues from there.\n"
-            "If it keeps failing, reach out on the Discord linked from the\n"
-            "site footer.\n"
-            "\n"
-            "— Vidit\n"
+        content=Content(
+            heading="Your archive import failed",
+            blocks=[
+                "Something went wrong while importing your X archive and the import stopped. "
+                "Anything imported before the failure is kept, and uploading the same archive "
+                "again skips it and continues from there.",
+            ],
+            action=Action("Upload the archive again", app_url("/import")),
+            note="If it keeps failing, reach out on the Discord linked from the site footer.",
         ),
     )
 
@@ -221,37 +255,36 @@ def completion_digest_email(*, to: str, count: int, link: str) -> Email:
     Thin on purpose: no titles, since the queue is the source of truth.
     """
     plural = "s" if count != 1 else ""
-    return Email(
+    return _compose(
         to=to,
         subject=f"{count} Vidit detection{plural} awaiting completion",
-        text=(
-            f"You have {count} imported detection{plural} that hasn't been published\n"
-            "yet. Each one is waiting on the two calls only you can make: which\n"
-            "conflict it belongs to, and what the footage was shot with.\n"
-            "\n"
-            "The queue publishes a page at a time: pick the conflict once for\n"
-            "the selection, set the capture source per row, publish.\n"
-            "\n"
-            f"  {link}\n"
-            "\n"
-            "— Vidit\n"
+        content=Content(
+            heading=f"{_plural(count, 'detection')} awaiting completion",
+            blocks=[
+                f"You have {_plural(count, 'imported detection')} not published yet. Each one "
+                "waits on the two calls only you can make: which conflict it belongs to, and "
+                "what the footage was shot with.",
+                "The queue publishes a page at a time: pick the conflict once for the "
+                "selection, set the capture source per row, publish.",
+            ],
+            action=Action("Open your detections", link),
         ),
     )
 
 
 def admin_reports_link() -> str:
     """The absolute URL of the admin console report queue."""
-    return f"{settings.frontend_url.rstrip('/')}/admin"
+    return app_url("/admin")
 
 
 def event_link(event_id: str) -> str:
     """The absolute URL of one event's page (served for every status)."""
-    return f"{settings.frontend_url.rstrip('/')}/events/{event_id}"
+    return app_url(f"/events/{event_id}")
 
 
 def collection_link(collection_id: str) -> str:
     """The absolute URL of one collection's page (404 for non-admins when withheld)."""
-    return f"{settings.frontend_url.rstrip('/')}/collections/{collection_id}"
+    return app_url(f"/collections/{collection_id}")
 
 
 def content_report_email(
@@ -271,50 +304,82 @@ def content_report_email(
     ``reporter`` is a username or ``anonymous``. ``target`` is ``event`` or
     ``collection`` and names every line that describes the thing.
     """
-    detail_block = f"Details:\n\n{details}\n\n" if details else ""
     label = target.capitalize()
-    return Email(
+    blocks: list[Block] = [
+        f"A viewer reported {'an' if target[0] in 'aeiou' else 'a'} {target} on Vidit.",
+        (
+            f"{label}: {target_title}",
+            f"{label} id: {target_id}",
+            f"Reason: {reason}",
+            f"Reporter: {reporter}",
+            f"Filed: {created_at.isoformat()}",
+        ),
+    ]
+    if details:
+        blocks += ["Details:", details]
+    blocks.append(f"The reported {target}: {target_link}")
+    return _compose(
         to=to,
         subject=f"Vidit content report: {reason}",
-        text=(
-            f"A viewer reported {'an' if target[0] in 'aeiou' else 'a'} {target} on Vidit.\n"
-            "\n"
-            f"{label}:    {target_title}\n"
-            f"{label} id: {target_id}\n"
-            f"Reason:   {reason}\n"
-            f"Reporter: {reporter}\n"
-            f"Filed:    {created_at.isoformat()}\n"
-            "\n"
-            f"{detail_block}"
-            "Resolve it from the admin console:\n"
-            "\n"
-            f"  {admin_reports_link()}\n"
-            "\n"
-            f"The reported {target}:\n"
-            "\n"
-            f"  {target_link}\n"
-            "\n"
-            "— Vidit\n"
+        content=Content(
+            heading="New content report",
+            blocks=blocks,
+            action=Action("Resolve it in the admin console", admin_reports_link()),
         ),
     )
 
 
 def registration_confirmation_email(*, to: str, link: str) -> Email:
-    return Email(
+    return _compose(
         to=to,
         subject="Confirm your Vidit registration",
-        text=(
-            "Welcome to Vidit. To finish creating your account, confirm this\n"
-            "email address by following the link below within the next 24 hours:\n"
-            "\n"
-            f"  {link}\n"
-            "\n"
-            "Until you click the link, no account exists; the registration is\n"
-            "held aside, waiting on you. If you don't confirm, it expires and\n"
-            "the address is released back to the pool.\n"
-            "\n"
-            "If you didn't try to register on Vidit, you can ignore this email.\n"
-            "\n"
-            "— Vidit\n"
+        content=Content(
+            heading="Confirm your email address",
+            blocks=[
+                "Welcome to Vidit. To finish creating your account, confirm this email "
+                "address within the next 24 hours.",
+                "Until you follow the link, no account exists: the registration is held "
+                "aside. If you do not confirm, it expires and the address is released.",
+            ],
+            action=Action("Confirm your address", link),
+            note="If you did not register on Vidit, ignore this email.",
         ),
+    )
+
+
+def _notification_email(
+    *, to: str, subject: str, blocks: list[Block], action: Action, setting: str
+) -> Email:
+    """A notification: what happened, a link to it, and the switch that sent it."""
+    return _compose(
+        to=to,
+        subject=subject,
+        content=Content(
+            heading=subject,
+            blocks=blocks,
+            action=action,
+            note=f"You get this email because “{setting}” is on. Change it in your "
+            f"notification settings: {settings_url()}",
+        ),
+        headers={"List-Unsubscribe": f"<{settings_url()}>"},
+    )
+
+
+def request_fulfilled_email(*, to: str, actor: str, event_id: str, event_title: str) -> Email:
+    return _notification_email(
+        to=to,
+        subject=f"{actor} geolocated your request",
+        blocks=[f"{actor} answered your request “{event_title}” with a geolocation."],
+        action=Action("View the geolocation", event_link(event_id)),
+        setting="Request fulfilled by email",
+    )
+
+
+def new_follower_email(*, to: str, actor: str) -> Email:
+    return _notification_email(
+        to=to,
+        subject=f"{actor} follows you on Vidit",
+        blocks=[f"{actor} now follows your work on Vidit."],
+        action=Action("View their profile", app_url(f"/profile/{actor}")),
+        setting="New follower by email",
     )
