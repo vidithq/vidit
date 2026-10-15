@@ -4182,7 +4182,8 @@ export interface components {
          *     ``viewer_can_manage`` is true for an org-admin or a site admin: it gates
          *     the profile edit and the member management on the page.
          *     ``review_request_audience`` is who may send the organization a review
-         *     request, set by its org-admins.
+         *     request, set by its org-admins: shown to them and to site admins only, null
+         *     for anyone else, so the setting is not read off the page.
          */
         OrganizationRead: {
             /** Avatar Url */
@@ -4207,11 +4208,8 @@ export interface components {
             member_count: number;
             /** Name */
             name: string;
-            /**
-             * Review Request Audience
-             * @enum {string}
-             */
-            review_request_audience: "following" | "everyone" | "nobody";
+            /** Review Request Audience */
+            review_request_audience: ("following" | "everyone" | "nobody") | null;
             /** Slug */
             slug: string;
             /**

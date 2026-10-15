@@ -32,7 +32,8 @@ class OrganizationRead(BaseModel):
     ``viewer_can_manage`` is true for an org-admin or a site admin: it gates
     the profile edit and the member management on the page.
     ``review_request_audience`` is who may send the organization a review
-    request, set by its org-admins.
+    request, set by its org-admins: shown to them and to site admins only, null
+    for anyone else, so the setting is not read off the page.
     """
 
     id: uuid.UUID
@@ -44,7 +45,7 @@ class OrganizationRead(BaseModel):
     external_links: dict[str, str | None]
     created_at: datetime
     member_count: int
-    review_request_audience: ReviewRequestAudience
+    review_request_audience: ReviewRequestAudience | None
     viewer_role: OrganizationRole | None = None
     viewer_invited: bool = False
     viewer_can_manage: bool = False

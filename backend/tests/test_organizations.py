@@ -550,3 +550,12 @@ def test_a_site_admin_names_an_org_admin_for_an_organization_left_without_one(
 
     login_as(client, heir)
     assert client.post(path, json={"username": heir.username}).status_code == 403
+
+
+def test_the_review_request_audience_shows_to_managers_only(org, org_admin, make_user):
+    client.cookies.clear()
+    assert client.get(_org(org["slug"])).json()["review_request_audience"] is None
+    login_as(client, make_user())
+    assert client.get(_org(org["slug"])).json()["review_request_audience"] is None
+    login_as(client, org_admin)
+    assert client.get(_org(org["slug"])).json()["review_request_audience"] == "following"

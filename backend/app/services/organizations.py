@@ -344,7 +344,7 @@ def build_read(db: Session, org: Organization, *, viewer: User | None) -> Organi
         external_links=org.external_links or {},
         created_at=org.created_at,
         member_count=_live_members(db, org.id).count(),
-        review_request_audience=org.review_request_audience,
+        review_request_audience=org.review_request_audience if can_manage else None,
         viewer_role=role,
         viewer_invited=invited,
         viewer_can_manage=can_manage,

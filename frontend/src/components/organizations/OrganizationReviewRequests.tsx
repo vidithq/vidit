@@ -58,7 +58,8 @@ export function OrganizationReviewRequests({
         <SegmentedControl
           aria-label="Accept review requests from"
           options={ORGANIZATION_AUDIENCE_OPTIONS}
-          value={org.review_request_audience}
+          // Mirrors backend user_preferences.REVIEW_REQUEST_AUDIENCE_DEFAULT; change both.
+          value={org.review_request_audience ?? "following"}
           onChange={(value) => void audience.run(value)}
         />
       </div>
