@@ -8,6 +8,7 @@ import { formatDate } from "@/lib/format";
 import { setOrganizationReviewRequestAudience, type Organization } from "@/lib/organizations";
 import {
   ORGANIZATION_AUDIENCE_OPTIONS,
+  REVIEW_REQUEST_AUDIENCE_DEFAULT,
   organizationReviewRequestsPath,
   type OrganizationReviewRequest,
   type ReviewRequestAudience,
@@ -58,8 +59,7 @@ export function OrganizationReviewRequests({
         <SegmentedControl
           aria-label="Accept review requests from"
           options={ORGANIZATION_AUDIENCE_OPTIONS}
-          // Mirrors backend user_preferences.REVIEW_REQUEST_AUDIENCE_DEFAULT; change both.
-          value={org.review_request_audience ?? "following"}
+          value={org.review_request_audience ?? REVIEW_REQUEST_AUDIENCE_DEFAULT}
           onChange={(value) => void audience.run(value)}
         />
       </div>

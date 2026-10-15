@@ -12,6 +12,7 @@ from app.database import Base
 # nobody. Value-domain source of truth; ``ck_user_preferences_review_request_audience`` pins it
 # at the DB (keep the two in step).
 ReviewRequestAudience = Literal["following", "everyone", "nobody"]
+# Mirrored by the frontend's lib/reviewRequests REVIEW_REQUEST_AUDIENCE_DEFAULT; change both.
 REVIEW_REQUEST_AUDIENCE_DEFAULT: ReviewRequestAudience = "following"
 
 
