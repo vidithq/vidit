@@ -324,6 +324,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/organizations/{slug}/admins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Appoint Organization Admin
+         * @description Make a live analyst an org-admin of the organization, joining it if needed, with audit.
+         */
+        post: operations["appoint_organization_admin_api_v1_admin_organizations__slug__admins_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/product-updates": {
         parameters: {
             query?: never;
@@ -4044,6 +4064,14 @@ export interface components {
             count: number;
         };
         /**
+         * OrganizationAdminAppoint
+         * @description Body for ``POST /admin/organizations/{slug}/admins``: the analyst to make org-admin.
+         */
+        OrganizationAdminAppoint: {
+            /** Username */
+            username: string;
+        };
+        /**
          * OrganizationApprovalRead
          * @description One approval an org-admin placed in an organization's name, with the event it covers,
          *     for ``GET /organizations/{slug}/approvals``.
@@ -5545,6 +5573,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrganizationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    appoint_organization_admin_api_v1_admin_organizations__slug__admins_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationAdminAppoint"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationMemberRead"];
                 };
             };
             /** @description Validation Error */

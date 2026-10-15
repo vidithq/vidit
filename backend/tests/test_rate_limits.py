@@ -631,6 +631,13 @@ _DOCUMENTED_LIMITS = [
         "admin",
         {"json": {"name": "Probe", "slug": "probe-org", "admin_username": "nobody-at-all"}},
     ),
+    _Case(
+        "post",
+        "/api/v1/admin/organizations/no-such-org/admins",
+        30,
+        "admin",
+        {"json": {"username": "nobody"}},
+    ),
     _Case("get", f"/api/v1/events/{_MISSING_ID}/approvals", 120),
     _Case(
         "post", f"/api/v1/events/{_MISSING_ID}/approvals", 60, "user", {"json": {"version_no": 1}}

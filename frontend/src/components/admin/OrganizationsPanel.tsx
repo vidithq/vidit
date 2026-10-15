@@ -7,6 +7,7 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import {
   ADMIN_ORGANIZATIONS_PATH,
+  appointOrganizationAdmin,
   createOrganization,
   organizationPath,
   type AdminOrganization,
@@ -34,10 +35,45 @@ const FIELDS: { key: Exclude<keyof Draft, "bio">; label: string; placeholder: st
   { key: "admin_username", label: "First org-admin (username)", placeholder: "username" },
 ];
 
+/** A flagged organization's way back: name a live analyst its org-admin. */
+function AppointAdmin({ slug, onDone }: { slug: string; onDone: () => void }) {
+  const [username, setUsername] = useState("");
+  const appoint = useMutation(() => appointOrganizationAdmin(slug, username.trim()), {
+    fallback: "Could not name the org-admin",
+    onSuccess: () => {
+      setUsername("");
+      onDone();
+    },
+  });
+  return (
+    <form
+      className="flex w-full flex-wrap items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void appoint.run();
+      }}
+    >
+      <Input
+        variant="compact"
+        aria-label={`New org-admin of ${slug} (username)`}
+        value={username}
+        onChange={(e) => setUsername(e.target.value)}
+        placeholder="username"
+        className="min-w-0 flex-1"
+      />
+      <Button type="submit" variant="secondary" disabled={!username.trim() || appoint.loading}>
+        Name org-admin
+      </Button>
+      {appoint.error && <div className={`${FORM_ERROR_BANNER} w-full`}>{appoint.error}</div>}
+    </form>
+  );
+}
+
 /** Create an organization and name its first org-admin, who joins at once. The picture and the
  * links are set afterwards on the organization page, where a site admin can edit like an
  * org-admin. Below the form, every organization with its counts; one left without a live
- * org-admin (its last one erased with no member to inherit) leads the list, flagged. */
+ * org-admin (its last one erased with no member to inherit) leads the list, flagged, with a
+ * field to name its new org-admin. */
 export function OrganizationsPanel() {
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [created, setCreated] = useState<Organization | null>(null);
@@ -137,7 +173,12 @@ export function OrganizationsPanel() {
               <span className="text-xs text-neutral-500">
                 {org.member_count} member{org.member_count === 1 ? "" : "s"}
               </span>
-              {org.admin_count === 0 && <Pill tone="danger">No org-admin</Pill>}
+              {org.admin_count === 0 && (
+                <>
+                  <Pill tone="danger">No org-admin</Pill>
+                  <AppointAdmin slug={org.slug} onDone={list.refetch} />
+                </>
+              )}
             </li>
           ))}
         </ul>

@@ -190,6 +190,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/admin/invite-codes/{id}` | 🛡️ | Drop the row of an invite code no account was created from |
 | GET | `/admin/users` | 🛡️ | Substring search on username/email |
 | POST/GET | `/admin/organizations` | 🛡️ | Create an organization with its first org-admin / list organizations, flagging those without one |
+| POST | `/admin/organizations/{slug}/admins` | 🛡️ | Name a live analyst org-admin of an organization |
 | DELETE | `/admin/users/{id}` | 🛡️ | Soft delete (default) or `?hard=true` GDPR erasure |
 | DELETE | `/admin/users/{id}/detected-events` | 🛡️ | Purge every detection the user owns, account untouched |
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
@@ -287,7 +288,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | **Product updates** | |
 | `POST /product-updates/unsubscribe` | 30/min (anonymous allowed) |
 | **Admin** 🛡️ | |
-| `POST /admin/invite-codes` · `POST /admin/organizations` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
+| `POST /admin/invite-codes` · `POST /admin/organizations` · `POST /admin/organizations/{slug}/admins` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
 | `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` · `PATCH /admin/collections/{id}/moderation` · `DELETE /admin/collections/{id}` | 60/hour |
 | `POST /admin/x-handle-requests/{id}/approve` · `POST /admin/x-handle-requests/{id}/decline` | 60/hour |
@@ -2727,7 +2728,7 @@ An organization is a collective with its own public profile. [`data-model.md`](d
 - **Entry:** by invitation only. An org-admin invites an analyst who follows them and whom they follow, and the invitee accepts or declines.
 - **Leaving:** a member leaves with `DELETE /organizations/{slug}/members/{their username}`. The last live org-admin can neither leave, be removed, nor be demoted: promote another member first.
 - **Soft-deleted accounts:** a soft-deleted member drops out of the member list, the member count, and the last-admin count.
-- **Erasure of the last org-admin:** when [`DELETE /admin/users/{id}`](#delete-adminusersid) removes, in either mode, the last live org-admin of an organization that keeps a live member, the earliest-joined live member becomes org-admin in the same transaction and receives an `organization_admin_inherited` notification, which names nobody. An organization with no live member left keeps no admin, and [`GET /admin/organizations`](#get-adminorganizations) flags it.
+- **Erasure of the last org-admin:** when [`DELETE /admin/users/{id}`](#delete-adminusersid) removes, in either mode, the last live org-admin of an organization that keeps a live member, the earliest-joined live member becomes org-admin in the same transaction and receives an `organization_admin_inherited` notification, which names nobody. An organization with no live member left keeps no admin, [`GET /admin/organizations`](#get-adminorganizations) flags it, and a site admin names its next org-admin with [`POST /admin/organizations/{slug}/admins`](#post-adminorganizationsslugadmins).
 
 Organization errors use the typed envelope:
 
@@ -3235,6 +3236,19 @@ Create an organization and name its first org-admin, who joins at once without a
 Every organization with its live member and org-admin counts, those without a live org-admin first, then by name.
 
 **Response 200:** a list of `{ "slug", "name", "member_count", "admin_count", "created_at" }`. `admin_count` 0 flags an organization left without an org-admin.
+
+### `POST /admin/organizations/{slug}/admins` 🛡️
+
+Make a live analyst an org-admin of the organization: the way back for one left without an org-admin. A member is promoted; anyone else joins as an org-admin without an invite, and a pending invite of theirs is dropped. Audited as `organization_admin_appointed` (target `organization_id`, `slug`, `user_id`). Nobody is notified.
+
+**Request body:** `{ "username": "ana" }`
+
+**Response 201:** the member, `{ "user", "role": "admin", "joined_at" }`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `organization_not_found`, or `user_not_found` for an unknown or soft-deleted analyst |
 
 ### `GET /admin/reports` 🛡️
 

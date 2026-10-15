@@ -117,3 +117,12 @@ export function removeOrganizationMember(slug: string, username: string): Promis
     { method: "DELETE" },
   );
 }
+
+/** A site admin makes the live analyst `username` an org-admin of the organization, joining it
+ *  if needed: the way back for an organization left without one. */
+export function appointOrganizationAdmin(slug: string, username: string): Promise<OrganizationMember> {
+  return apiFetch<OrganizationMember>(
+    `${ADMIN_ORGANIZATIONS_PATH}/${encodeURIComponent(slug)}/admins`,
+    { method: "POST", body: JSON.stringify({ username }) },
+  );
+}
