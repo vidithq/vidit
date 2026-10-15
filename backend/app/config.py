@@ -1,7 +1,7 @@
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 DEFAULT_JWT_SECRET = "changeme-in-production"
@@ -77,8 +77,8 @@ class Settings(BaseSettings):
     # worker pass sends before it turns to its other queues. With the
     # notification cap this must stay below ``email_provider_daily_quota``, so
     # the remainder is left to the auth emails.
-    product_update_email_daily_cap: int = 30
-    product_update_email_batch_size: int = 10
+    product_update_email_daily_cap: int = Field(30, ge=1)
+    product_update_email_batch_size: int = Field(10, ge=1)
     email_provider_daily_quota: int = 100
 
     # Web Push (services/push.py). The private key is the base64url raw P-256
@@ -192,6 +192,18 @@ class Settings(BaseSettings):
                 f"non-local host (got {host!r}). A non-local deployment must "
                 f"set COOKIE_SECURE=true so the session cookie is never sent "
                 f"over plaintext."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_api_url(self) -> "Settings":
+        # COOKIE_SECURE marks a deployment: a localhost API_URL there would put a dead
+        # one-click unsubscribe URL in every email.
+        host = urlparse(self.api_url).hostname
+        if self.cookie_secure and (host is None or host.lower() in LOCAL_DB_HOSTS):
+            raise ValueError(
+                f"API_URL must name the public API when COOKIE_SECURE is true (got "
+                f"{self.api_url!r}): the unsubscribe links in emails post to it."
             )
         return self
 
