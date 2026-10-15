@@ -11,6 +11,7 @@ import {
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
@@ -21,14 +22,15 @@ interface MemberRowProps {
   /** The signed-in analyst's username, null when anonymous. */
   viewer: string | null;
   canManage: boolean;
+  /** The row is the organization's only org-admin, whom the server never demotes or removes. */
+  lastAdmin: boolean;
   onChanged: () => void;
 }
 
 /** One member: the byline, the role, and the controls the viewer holds over the row. A manager
  * flips the role and removes; anyone leaves from their own row. Removing and leaving take a
- * two-click confirm. The last org-admin's refusal comes back from the server as the row's
- * error. */
-function MemberRow({ slug, member, viewer, canManage, onChanged }: MemberRowProps) {
+ * two-click confirm. The last org-admin's row offers neither, and says why. */
+function MemberRow({ slug, member, viewer, canManage, lastAdmin, onChanged }: MemberRowProps) {
   const username = member.user.username;
   const isSelf = viewer === username;
   const nextRole = member.role === "admin" ? "member" : "admin";
@@ -63,12 +65,13 @@ function MemberRow({ slug, member, viewer, canManage, onChanged }: MemberRowProp
           </Pill>
         </span>
         <span className="flex flex-wrap items-center gap-1.5">
-          {canManage && (
+          {lastAdmin && (isSelf || canManage) && <FieldHelp concept="last_org_admin" />}
+          {canManage && !lastAdmin && (
             <Button variant="ghost" onClick={() => void roleChange.run()} disabled={busy}>
               {nextRole === "admin" ? "Make org-admin" : "Make member"}
             </Button>
           )}
-          {(isSelf || canManage) && (
+          {(isSelf || canManage) && !lastAdmin && (
             <Button
               ref={removeRef}
               variant="danger"
@@ -100,6 +103,8 @@ export function OrganizationMembers({
   canManage: boolean;
   onChanged: () => void;
 }) {
+  // Mirrors backend organizations._guard_last_admin; change both.
+  const admins = members.filter((m) => m.role === "admin").length;
   return (
     <Card as="section">
       <SectionEyebrow title="Members" margin="none" />
@@ -111,6 +116,7 @@ export function OrganizationMembers({
             member={member}
             viewer={viewer}
             canManage={canManage}
+            lastAdmin={member.role === "admin" && admins === 1}
             onChanged={onChanged}
           />
         ))}
