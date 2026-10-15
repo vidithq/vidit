@@ -488,6 +488,9 @@ def test_losing_credit_drops_the_requests_the_analyst_sent(db, author, make_user
     assert response.status_code == 204, response.text
 
     assert [r["requester"]["username"] for r in _open(geo, target)] == [author.username]
+    db.expire_all()
+    left = db.query(ReviewRequest).filter_by(event_id=geo.id, requester_id=co.id).one()
+    assert (left.status, left.resolved_at is not None) == ("withdrawn", True)
 
 
 def test_a_request_emails_the_target_and_a_decline_emails_only_on_opt_in(
