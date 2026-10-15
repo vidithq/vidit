@@ -2225,7 +2225,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Push Subscriptions
+         * @description The devices registered for your push notifications, newest first.
+         */
+        get: operations["list_push_subscriptions_api_v1_users_me_push_subscriptions_get"];
         put?: never;
         /**
          * Register Push Subscription
@@ -8711,6 +8715,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PushConfigRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_push_subscriptions_api_v1_users_me_push_subscriptions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushSubscriptionRead"][];
                 };
             };
             /** @description Validation Error */

@@ -147,6 +147,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/users/me/preferences` | 🔒 | Your display and notification preferences, each beside its default |
 | PATCH | `/users/me/preferences` | 🔒 | Change some of your preferences |
 | GET | `/users/me/push-config` | 🔒 | The key a browser subscribes to push notifications with |
+| GET | `/users/me/push-subscriptions` | 🔒 | The devices registered for your push notifications, newest first |
 | POST | `/users/me/push-subscriptions` | 🔒 | Register this browser for push notifications |
 | DELETE | `/users/me/push-subscriptions/{id}` | 🔒 | Stop push notifications to one of your devices |
 | GET | `/users/me/x-handle` | 🔒 | The X handle bound to your account, and your change request |
@@ -265,6 +266,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `GET /users/me/preferences` | 120/min |
 | `PATCH /users/me/preferences` | 60/min |
 | `GET /users/me/push-config` | 60/min |
+| `GET /users/me/push-subscriptions` | 120/min |
 | `POST /users/me/push-subscriptions`, `DELETE /users/me/push-subscriptions/{id}` | 30/min |
 | `GET /users/me/x-handle` | 120/min |
 | `PUT /users/me/x-handle-request` | 10/hour |
@@ -2293,6 +2295,14 @@ The key a browser needs to subscribe to push notifications from this deployment.
 ```
 
 `public_key` is the VAPID application server key, base64url-encoded. It is `null` when the deployment sends no push notifications.
+
+---
+
+### `GET /users/me/push-subscriptions` 🔒
+
+The devices registered for your push notifications, newest first. Each item has the shape of the [`POST /users/me/push-subscriptions`](#post-usersmepush-subscriptions) response, and never carries the endpoint.
+
+A password change or a password reset deletes every device of the account.
 
 ---
 

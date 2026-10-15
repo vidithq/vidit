@@ -133,6 +133,17 @@ def get_push_config(
     return PushConfigRead(public_key=push_service.public_key())
 
 
+@router.get("/me/push-subscriptions", response_model=list[PushSubscriptionRead])
+@limiter.limit("120/minute")
+def list_push_subscriptions(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[PushSubscription]:
+    """The devices registered for your push notifications, newest first."""
+    return push_service.list_devices(db, user=current_user)
+
+
 @router.post(
     "/me/push-subscriptions",
     response_model=PushSubscriptionRead,

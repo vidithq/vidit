@@ -117,6 +117,24 @@ def unregister(db: Session, *, user: User, subscription_id: uuid.UUID) -> bool:
     return deleted > 0
 
 
+def list_devices(db: Session, *, user: User) -> list[PushSubscription]:
+    """``user``'s devices, newest first."""
+    return (
+        db.query(PushSubscription)
+        .filter(PushSubscription.user_id == user.id)
+        .order_by(PushSubscription.created_at.desc(), PushSubscription.id)
+        .all()
+    )
+
+
+def forget_devices(db: Session, *, user: User) -> None:
+    """Drop every device of ``user``, at a password change or reset, so a device registered
+    under the old password stops receiving pushes. The caller commits."""
+    db.query(PushSubscription).filter(PushSubscription.user_id == user.id).delete(
+        synchronize_session=False
+    )
+
+
 def has_device(db: Session, *, user_id: uuid.UUID) -> bool:
     return (
         db.query(PushSubscription.id).filter(PushSubscription.user_id == user_id).first()

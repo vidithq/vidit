@@ -13,6 +13,7 @@ import type { User } from "@/types";
 import { ApiError, apiFetch } from "@/lib/api";
 import { hasSessionCookie } from "@/lib/auth";
 import { clearDisplay } from "@/lib/preferences";
+import { forgetThisPushDevice } from "@/lib/push";
 
 interface AuthContextType {
   user: User | null;
@@ -108,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    await forgetThisPushDevice();
     try {
       await apiFetch("/auth/logout", { method: "POST" });
     } catch {

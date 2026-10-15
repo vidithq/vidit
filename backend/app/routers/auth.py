@@ -42,7 +42,7 @@ from app.schemas.recovery import (
     ResetPasswordRequest,
 )
 from app.schemas.user import UserRead
-from app.services import audit, auth_tokens, email, registration
+from app.services import audit, auth_tokens, email, push, registration
 from app.services.audit import rate_limit_key
 from app.services.auth import (
     DUMMY_PASSWORD_HASH,
@@ -444,6 +444,7 @@ def reset_password(
     # A reset may mean the user never controlled the logged-in devices, so
     # invalidate every outstanding JWT now, not at `exp`.
     bump_token_version(user)
+    push.forget_devices(db, user=user)
     audit.log_auth_event(
         db,
         event=EVENT_PASSWORD_RESET_COMPLETED,
@@ -486,6 +487,7 @@ def change_password(
     # Bumping `token_version` 401s every JWT minted before now, including this
     # request's; the fresh cookie below keeps this device logged in.
     bump_token_version(current_user)
+    push.forget_devices(db, user=current_user)
     audit.log_auth_event(
         db,
         event=EVENT_PASSWORD_CHANGED,

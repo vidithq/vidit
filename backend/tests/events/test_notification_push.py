@@ -16,11 +16,12 @@ from py_vapid.utils import b64urlencode
 from pywebpush import WebPushException
 
 from app.config import settings
+from app.models.auth_token import PURPOSE_PASSWORD_RESET
 from app.models.notification import NOTIFICATION_KINDS, Notification, NotificationDelivery
 from app.models.push_subscription import PushSubscription
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
-from app.services import email, notification_delivery, push
+from app.services import auth_tokens, email, notification_delivery, push
 from tests.conftest import login_as
 from tests.events._helpers import client
 from tests.events.test_requests import _geolocate_fulfilment, _make_request
@@ -198,6 +199,44 @@ def test_delete_drops_only_your_own_device(db, author, second_user):
     headers = login_as(client, author)
     response = client.delete(f"{_SUBSCRIPTIONS}/{device_id}", headers=headers)
     assert response.status_code == 204
+    assert _devices(db, author) == []
+
+
+def test_list_shows_only_your_devices_newest_first_without_endpoints(db, author, second_user):
+    older = _subscription()
+    older_id = _register(author, older).json()["id"]
+    newer_id = _register(author).json()["id"]
+    _register(second_user)
+
+    response = client.get(_SUBSCRIPTIONS, headers=login_as(client, author))
+    assert response.status_code == 200, response.text
+    assert [d["id"] for d in response.json()] == [newer_id, older_id]
+    assert older["endpoint"] not in response.text
+
+
+def test_a_password_change_forgets_every_device(db, author, second_user):
+    _register(author)
+    _register(author)
+    _register(second_user)
+    response = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "password123", "new_password": "newpassword456"},
+        headers=login_as(client, author),
+    )
+    assert response.status_code == 204, response.text
+    assert _devices(db, author) == []
+    assert len(_devices(db, second_user)) == 1
+
+
+def test_a_password_reset_forgets_every_device(db, author):
+    _register(author)
+    raw = auth_tokens.mint(db, user_id=author.id, purpose=PURPOSE_PASSWORD_RESET, ttl_minutes=15)
+    db.commit()
+    client.cookies.clear()
+    response = client.post(
+        "/api/v1/auth/reset-password", json={"token": raw, "new_password": "newpassword456"}
+    )
+    assert response.status_code == 204, response.text
     assert _devices(db, author) == []
 
 
