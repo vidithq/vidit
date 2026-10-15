@@ -11,6 +11,7 @@ import { ACCENT_SURFACE } from "@/components/ui/styles";
 import { ICON_TAP_STEP } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { Dot } from "@/components/ui/Dot";
+import { OutboundLink } from "@/components/ui/OutboundLink";
 import {
   DiscordGlyph,
   GitHubGlyph,
@@ -364,36 +365,30 @@ export default function Sidebar() {
           </Link>
           {showLabels && (
             <div className="flex items-center gap-1 ml-auto pr-1 animate-label-in">
-              <a
+              <OutboundLink
                 href={GITHUB_URL}
-                target="_blank"
-                rel="noopener noreferrer"
                 title="Vidit on GitHub"
                 aria-label="Vidit on GitHub"
                 className={BRAND_LINK_CLASS}
               >
                 <GitHubGlyph />
-              </a>
-              <a
+              </OutboundLink>
+              <OutboundLink
                 href={X_URL}
-                target="_blank"
-                rel="noopener noreferrer"
                 title="Vidit on X"
                 aria-label="Vidit on X"
                 className={BRAND_LINK_CLASS}
               >
                 <XGlyph />
-              </a>
-              <a
+              </OutboundLink>
+              <OutboundLink
                 href={DISCORD_URL}
-                target="_blank"
-                rel="noopener noreferrer"
                 title="Vidit Discord"
                 aria-label="Vidit Discord"
                 className={BRAND_LINK_CLASS}
               >
                 <DiscordGlyph />
-              </a>
+              </OutboundLink>
             </div>
           )}
         </div>
