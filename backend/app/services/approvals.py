@@ -283,7 +283,8 @@ def _revoker_role(db: Session, row: EventApproval, actor: User) -> ApprovalRevok
 
     An analyst's approval: its reviewer, then a site admin. An organization's approval: its
     current org-admins (its reviewer among them), then a site admin. A reviewer who is no longer
-    an org-admin no longer acts in the organization's name.
+    an org-admin no longer acts in the organization's name. Mirrored by the frontend's
+    ApprovalsSection Revoke control; change both.
     """
     if row.organization_id is None:
         if row.reviewer_id == actor.id:
