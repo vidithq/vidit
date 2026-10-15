@@ -4,9 +4,10 @@ An emitter adds its row to the caller's session and never commits, so the row
 lands in the transaction of the action it reports. For each channel the
 recipient can receive on (a verified address for email, a registered device for
 push) whose switch for the kind is on, a ``notification_deliveries`` row joins
-it for the worker to send. An actor whose actions queued
-``settings.notification_email_daily_cap_per_actor`` emails in the trailing day
-queues no more: the row still reaches the feed and push. Reads hide a
+it for the worker to send. An actor who queued
+``settings.notification_email_daily_cap_per_actor`` emails of the kinds they send straight at
+someone (:data:`ACTOR_CAPPED_KINDS`) in the trailing day queues no more of them: the row still
+reaches the feed and push. Reads hide a
 row whose event is soft-deleted or taken down, or whose actor is soft-deleted or
 deactivated, whenever that happened.
 """
@@ -55,12 +56,21 @@ ACTOR_EMAIL_WINDOW = timedelta(hours=24)
 REINVITE_QUIET_PERIOD = timedelta(days=7)
 
 
+# The kinds an analyst sends straight at another analyst, whose emails the per-actor cap counts
+# and limits. Fan-out an action sets off for everyone concerned (a new version's re-approval
+# requests, an approval's notices) is neither counted nor capped.
+ACTOR_CAPPED_KINDS: frozenset[NotificationKind] = frozenset(
+    {"co_geolocator_invite", "organization_invite", "review_request_received"}
+)
+
+
 def _actor_email_capped(db: Session, actor_id: uuid.UUID) -> bool:
     queued = (
         db.query(func.count(NotificationDelivery.id))
         .join(Notification, NotificationDelivery.notification_id == Notification.id)
         .filter(
             Notification.actor_id == actor_id,
+            Notification.kind.in_(ACTOR_CAPPED_KINDS),
             NotificationDelivery.channel == "email",
             NotificationDelivery.created_at >= datetime.now(UTC) - ACTOR_EMAIL_WINDOW,
         )
@@ -93,7 +103,11 @@ def _emit(
         return
     reachable: dict[NotificationChannel, bool] = {
         "email": has_verified_email(recipient)
-        and (actor_id is None or not _actor_email_capped(db, actor_id)),
+        and (
+            actor_id is None
+            or kind not in ACTOR_CAPPED_KINDS
+            or not _actor_email_capped(db, actor_id)
+        ),
         "push": push.has_device(db, user_id=recipient_id),
     }
     for channel, can_receive in reachable.items():
