@@ -47,7 +47,8 @@ def list_notifications(
     if has_next:
         last = rows[-1]
         response.headers["Link"] = next_link(request, encode_cursor(last.created_at, last.id))
-    return [notifications_service.build_read(row) for row in rows]
+    pending = notifications_service.pending_invites(db, user=current_user, rows=rows)
+    return [notifications_service.build_read(row, pending=pending) for row in rows]
 
 
 @router.get("/unread-count", response_model=NotificationUnreadCount)

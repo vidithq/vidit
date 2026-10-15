@@ -65,7 +65,7 @@ export const FIELD_HELP = {
     label: "Who requested this?",
   },
   author: {
-    text: "The analyst who owns this entry on Vidit: the geolocation's submitter, or the analyst who opened it while it is a request. Not necessarily whoever filmed or posted the source.",
+    text: "The analysts credited with this entry on Vidit. The first owns it: the geolocation's submitter, or the analyst who opened it while it is a request. Any others are geolocators the owner invited, credited without edit rights. Not necessarily whoever filmed or posted the source.",
     label: "Who is the author?",
   },
   section_location: {

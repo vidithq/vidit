@@ -122,11 +122,32 @@ def _new_follower(n: Notification, to: str) -> email.Email:
     return email.new_follower_email(to=to, actor=n.actor.username)
 
 
+def _co_geolocator_invite(n: Notification, to: str) -> email.Email:
+    return email.co_geolocator_invite_email(
+        to=to, actor=n.actor.username, event_id=str(n.event.id), event_title=n.event.title
+    )
+
+
+def _co_geolocator_removed(n: Notification, to: str) -> email.Email:
+    return email.co_geolocator_removed_email(
+        to=to, actor=n.actor.username, event_id=str(n.event.id), event_title=n.event.title
+    )
+
+
+def _ownership_transferred(n: Notification, to: str) -> email.Email:
+    return email.ownership_transferred_email(
+        to=to, event_id=str(n.event.id), event_title=n.event.title
+    )
+
+
 _EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Email]] = {
     "request_fulfilled": _request_fulfilled,
     "new_follower": _new_follower,
     "x_handle_request_approved": lambda _n, to: email.x_handle_request_approved_email(to=to),
     "x_handle_request_declined": lambda _n, to: email.x_handle_request_declined_email(to=to),
+    "co_geolocator_invite": _co_geolocator_invite,
+    "co_geolocator_removed": _co_geolocator_removed,
+    "ownership_transferred": _ownership_transferred,
 }
 
 
@@ -184,11 +205,39 @@ _X_HANDLE_DECLINED_PUSH = push.PushMessage(
     path="/settings",
 )
 
+
+def _co_geolocator_invite_push(n: Notification) -> push.PushMessage:
+    return push.PushMessage(
+        title=f"{n.actor.username} invites you to share a geolocation",
+        body=n.event.title,
+        path=f"/events/{n.event.id}",
+    )
+
+
+def _co_geolocator_removed_push(n: Notification) -> push.PushMessage:
+    return push.PushMessage(
+        title=f"{n.actor.username} removed you from a geolocation",
+        body=n.event.title,
+        path=f"/events/{n.event.id}",
+    )
+
+
+def _ownership_transferred_push(n: Notification) -> push.PushMessage:
+    return push.PushMessage(
+        title="A geolocation you share is now yours",
+        body=n.event.title,
+        path=f"/events/{n.event.id}",
+    )
+
+
 _PUSH_BUILDERS: dict[NotificationKind, Callable[[Notification], push.PushMessage]] = {
     "request_fulfilled": _request_fulfilled_push,
     "new_follower": _new_follower_push,
     "x_handle_request_approved": lambda _n: _X_HANDLE_APPROVED_PUSH,
     "x_handle_request_declined": lambda _n: _X_HANDLE_DECLINED_PUSH,
+    "co_geolocator_invite": _co_geolocator_invite_push,
+    "co_geolocator_removed": _co_geolocator_removed_push,
+    "ownership_transferred": _ownership_transferred_push,
 }
 
 

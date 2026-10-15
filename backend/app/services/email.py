@@ -411,6 +411,42 @@ def x_handle_request_declined_email(*, to: str) -> Email:
     )
 
 
+def co_geolocator_invite_email(*, to: str, actor: str, event_id: str, event_title: str) -> Email:
+    return _notification_email(
+        to=to,
+        subject=f"{actor} invites you to share a geolocation",
+        blocks=[
+            f"{actor} invites you to be credited as a geolocator of “{event_title}”. "
+            "Accept or decline on the geolocation's page. Editing and closing stay with the owner."
+        ],
+        action=Action("View the invitation", event_link(event_id)),
+        setting="Geolocator invitation by email",
+    )
+
+
+def co_geolocator_removed_email(*, to: str, actor: str, event_id: str, event_title: str) -> Email:
+    return _notification_email(
+        to=to,
+        subject=f"{actor} removed you from a geolocation",
+        blocks=[f"{actor} removed you from the geolocators of “{event_title}”."],
+        action=Action("View the geolocation", event_link(event_id)),
+        setting="Credit removed by email",
+    )
+
+
+def ownership_transferred_email(*, to: str, event_id: str, event_title: str) -> Email:
+    return _notification_email(
+        to=to,
+        subject="A geolocation you share is now yours",
+        blocks=[
+            f"You now own “{event_title}”: the account of its previous owner was removed. "
+            "You can edit, correct and close it."
+        ],
+        action=Action("View the geolocation", event_link(event_id)),
+        setting="Ownership transferred by email",
+    )
+
+
 def product_update_email(
     *,
     to: str,

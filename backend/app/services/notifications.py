@@ -14,10 +14,10 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Query, Session, aliased, contains_eager
 
-from app.models.event import Event
+from app.models.event import Event, EventGeolocatorInvite
 from app.models.notification import (
     Notification,
     NotificationChannel,
@@ -113,6 +113,36 @@ def notify_x_handle_request_outcome(
     )
 
 
+def notify_co_geolocator_invite(db: Session, *, event: Event, invitee_id: uuid.UUID) -> None:
+    """Tell ``invitee_id`` that the owner of ``event`` invites them to share its credit."""
+    _emit(
+        db,
+        recipient_id=invitee_id,
+        kind="co_geolocator_invite",
+        actor_id=event.owner_id,
+        event_id=event.id,
+    )
+
+
+def notify_co_geolocator_removed(db: Session, *, event: Event, removed_id: uuid.UUID) -> None:
+    """Tell ``removed_id`` that the owner of ``event`` took their credit off it."""
+    _emit(
+        db,
+        recipient_id=removed_id,
+        kind="co_geolocator_removed",
+        actor_id=event.owner_id,
+        event_id=event.id,
+    )
+
+
+def notify_ownership_transferred(db: Session, *, event: Event, heir_id: uuid.UUID) -> None:
+    """Tell ``heir_id`` that ``event`` is now theirs because its owner's account was erased.
+
+    No actor: the row must not name the erased analyst.
+    """
+    _emit(db, recipient_id=heir_id, kind="ownership_transferred", event_id=event.id)
+
+
 def _visible_rows(db: Session, user: User) -> Query[Notification]:
     """``user``'s rows whose event and actor a reader may still see."""
     return (
@@ -153,7 +183,22 @@ def list_feed(
     )
 
 
-def build_read(row: Notification) -> NotificationRead:
+def pending_invites(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.UUID]:
+    """The events among ``rows``' invitations that still wait for ``user``'s answer."""
+    event_ids = {r.event_id for r in rows if r.kind == "co_geolocator_invite" and r.event_id}
+    if not event_ids:
+        return set()
+    return set(
+        db.scalars(
+            select(EventGeolocatorInvite.event_id).where(
+                EventGeolocatorInvite.user_id == user.id,
+                EventGeolocatorInvite.event_id.in_(event_ids),
+            )
+        )
+    )
+
+
+def build_read(row: Notification, *, pending: set[uuid.UUID]) -> NotificationRead:
     return NotificationRead(
         id=row.id,
         kind=row.kind,
@@ -161,6 +206,7 @@ def build_read(row: Notification) -> NotificationRead:
         actor=AuthorRef.model_validate(row.actor) if row.actor is not None else None,
         event=NotificationEventRef.model_validate(row.event) if row.event is not None else None,
         read_at=row.read_at,
+        invite_pending=row.kind == "co_geolocator_invite" and row.event_id in pending,
     )
 
 

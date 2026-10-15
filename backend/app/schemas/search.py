@@ -50,6 +50,8 @@ class SearchEventHit(BaseModel):
     # ``detected`` rows surface marked, as everywhere else.
     status: EventStatus
     owner: AuthorRef
+    # See ``EventRead.geolocators``; the card's byline.
+    geolocators: list[AuthorRef]
     # Picked card thumbnail (at most one row, ``services.thumbnails``). A list
     # for wire stability; the card renders ``media[0]``.
     media: list[MediaRead]

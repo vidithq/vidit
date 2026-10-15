@@ -7,12 +7,14 @@ directly: they are the input boundary for query parameters. Date parsing lives h
 """
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass, fields
 from datetime import date, timedelta
+from typing import Any
 
 from fastapi import HTTPException
 from geoalchemy2.functions import ST_MakeEnvelope, ST_Within
-from sqlalchemy import ColumnElement, and_, func, or_
+from sqlalchemy import ColumnElement, Select, and_, func, or_, select
 from sqlalchemy.orm import Query as SAQuery
 
 from app.models.conflict import Conflict
@@ -22,6 +24,7 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     STATUS_REQUESTED,
     Event,
+    EventGeolocator,
 )
 from app.models.media import Media
 from app.models.tag import Tag
@@ -64,6 +67,21 @@ def published_events() -> ColumnElement[bool]:
     ``detected`` as their own tallies and sums them into ``total_events``.
     """
     return Event.status == STATUS_GEOLOCATED
+
+
+def credited_to(user_ids: Iterable[Any] | Select[Any]) -> ColumnElement[bool]:
+    """The predicate for an event credited to any of ``user_ids``: owned, or geolocated with them.
+
+    The one home of authorship on the read side. The profile count and feed, the profile stats,
+    the follow feed, the ``?author=`` filter and the collection add verb all match through it, so
+    an analyst who accepted a credit finds the event wherever their own work is listed. The
+    owner leg carries the states without geolocator rows (``detected``, ``requested``); on a
+    ``geolocated`` row the owner is a geolocator too.
+    """
+    return or_(
+        Event.owner_id.in_(user_ids),
+        Event.geolocators.any(EventGeolocator.user_id.in_(user_ids)),
+    )
 
 
 def collectable_events() -> ColumnElement[bool]:
@@ -134,16 +152,16 @@ def owner_username_matches(author: str) -> ColumnElement[bool]:
     Exact, not substring: ``?author=ana`` must not sweep in every handle containing "ana".
     Callers gate ``author`` through :data:`AUTHOR_FILTER_PATTERN`.
 
-    A predicate rather than a query leg because the event groups reach the owner off
-    ``Event.owner`` and the collections group off ``Collection.owner``
+    A predicate rather than a query leg because the event groups match it on every credited
+    analyst (:func:`apply_author_filter`) and the collections group on ``Collection.owner``
     (``services/search.search_collections``); one home keeps them matching alike.
     """
     return func.lower(User.username) == author.lower()
 
 
 def apply_author_filter(query: SAQuery, author: str) -> SAQuery:
-    """Join the event's owner and match the username with the shared predicate."""
-    return query.join(Event.owner).filter(owner_username_matches(author))
+    """Keep the events credited to the analyst the username names (:func:`credited_to`)."""
+    return query.filter(credited_to(select(User.id).where(owner_username_matches(author))))
 
 
 def view_predicate(view: str):

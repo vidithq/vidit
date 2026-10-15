@@ -53,6 +53,7 @@ const eventHit = (): SearchEventHit => ({
   is_graphic: false,
   status: "geolocated",
   owner: OWNER,
+  geolocators: [],
   media: [],
   tags: [],
 });

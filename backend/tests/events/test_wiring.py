@@ -8,6 +8,7 @@ from __future__ import annotations
 from app.routers.events import (
     batch,
     duplicates,
+    geolocators,
     import_archive,
     import_tweet,
     item,
@@ -27,6 +28,7 @@ def test_router_mount_order_is_pinned():
         import_archive.router,
         write.router,
         batch.router,
+        geolocators.router,
         item.router,
     )
     assert routers[-1] is item.router

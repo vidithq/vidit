@@ -2,17 +2,20 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { CircleX, History, MapPin, Pencil } from "lucide-react";
+import { CircleX, History, MapPin, Pencil, Users } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { useApiResource } from "@/hooks/useApiResource";
 import { COLLECTABLE_STATUSES, CollectionIcon } from "@/lib/collections";
 import { eventHistoryHref, hasPublishedRecord } from "@/lib/events";
+import { geolocatorInvitesPath, type GeolocatorInvite } from "@/lib/geolocatorCredit";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ACCENT_SURFACE } from "@/components/ui/styles";
 import { closeActionLabel, CloseEventForm } from "@/components/event/CloseEventForm";
+import { GeolocatorInviteCard, GeolocatorsPanel } from "@/components/event/GeolocatorCredit";
 import ShareButtons from "@/components/event/ShareButtons";
 import { useReportContent } from "@/components/report/useReportContent";
 import type { EventDetail } from "@/types";
@@ -32,7 +35,10 @@ import type { EventDetail } from "@/types";
  *    (overwrites it) on both detail pages; on the event page also shelving the row on one of the
  *    author's collections (writes no version) and editing a published geolocation (files a
  *    version); on both pages closing the row, which is how an author takes work back. Nothing here
- *    destroys a row: closing keeps it readable with its reason, and removal is an admin act.
+ *    destroys a row: closing keeps it readable with its reason, and removal is an admin act. A
+ *    co-geolocator shares two of these on a published row: shelving it on their own collections
+ *    and the geolocators panel (the owner invites and removes there, a co-geolocator leaves).
+ *    An analyst the owner invited gets the invitation card among the panels instead.
  *
  * The hook returns nodes rather than rendering them (like `useReportContent`) because the row and
  * the panels its triggers open land in different slots: `actions` goes in `PageShell`'s `actions`
@@ -65,17 +71,19 @@ const TIERS: Record<
     close: boolean;
     history: boolean;
     utilities: boolean;
+    credit: boolean;
   }
 > = {
-  event:   { flow: false, collect: true,  editRequest: true,  saveVersion: true,  close: true,  history: true,  utilities: true },
-  request: { flow: true,  collect: false, editRequest: true,  saveVersion: false, close: true,  history: false, utilities: true },
-  panel:   { flow: false, collect: false, editRequest: false, saveVersion: false, close: false, history: false, utilities: false },
-  edit:    { flow: false, collect: false, editRequest: false, saveVersion: false, close: false, history: false, utilities: false },
+  event:   { flow: false, collect: true,  editRequest: true,  saveVersion: true,  close: true,  history: true,  utilities: true,  credit: true },
+  request: { flow: true,  collect: false, editRequest: true,  saveVersion: false, close: true,  history: false, utilities: true,  credit: false },
+  panel:   { flow: false, collect: false, editRequest: false, saveVersion: false, close: false, history: false, utilities: false, credit: false },
+  edit:    { flow: false, collect: false, editRequest: false, saveVersion: false, close: false, history: false, utilities: false, credit: false },
 };
 
 // Ties the menu entry to the panel it opens (`aria-controls`; they are not DOM siblings).
 const CLOSE_FORM_ID = "close-request-form";
 const COLLECT_PANEL_ID = "add-to-collection-panel";
+const CREDIT_PANEL_ID = "geolocators-panel";
 
 export interface EventActionsOptions {
   /** The row to act on. Null while it loads: both nodes come back null. */
@@ -103,18 +111,30 @@ export function useEventActions({
   const report = useReportContent("event", event?.id ?? "");
   const [closing, setClosing] = useState(false);
   const [collecting, setCollecting] = useState(false);
+  const [crediting, setCrediting] = useState(false);
+
+  const tiers = event ? TIERS[surface] : null;
+  const isAuthor = !!event && user?.id === event.owner.id;
+  const isGeolocator = !!event && event.geolocators.some((g) => g.id === user?.id);
+  // Mirrors backend geolocator_credit._require_published; change both.
+  const sharesCredit = !!tiers?.credit && event?.status === "geolocated";
+  // Only a signed-in reader outside the credit can hold an invitation, so only they ask.
+  const invitation = useApiResource<GeolocatorInvite[]>(
+    event && user && sharesCredit && !isAuthor && !isGeolocator
+      ? geolocatorInvitesPath(event.id)
+      : null,
+  );
 
   // This hook survives a client navigation between rows, so per-event state follows the row, not
   // the mount: otherwise the next row opens with the previous one's close panel open.
   useEffect(() => {
     setClosing(false);
     setCollecting(false);
+    setCrediting(false);
   }, [event?.id]);
 
-  if (!event) return { actions: null, panels: null };
+  if (!event || !tiers) return { actions: null, panels: null };
 
-  const tiers = TIERS[surface];
-  const isAuthor = user?.id === event.owner.id;
   const isOpenRequest = event.status === "requested";
 
   // Tier 3. Every owner verb is an icon button in the row, like the flow action and utilities beside
@@ -132,7 +152,9 @@ export function useEventActions({
   // collection may hold (`services/event_filters.collectable_events`): a request is an ask and a
   // closed row was taken back, so the control is absent rather than offered and refused.
   const canCollect =
-    isAuthor && tiers.collect && COLLECTABLE_STATUSES.includes(event.status);
+    (isAuthor || isGeolocator) && tiers.collect && COLLECTABLE_STATUSES.includes(event.status);
+  const canManageCredit = (isAuthor || isGeolocator) && sharesCredit;
+  const invited = (invitation.data?.length ?? 0) > 0;
 
   // A surface whose tiers are all off, or off for this row, gets nothing rather than an empty row:
   // the wrapper is an item in the host's cluster, so an empty one prints a gap beside the host's
@@ -141,6 +163,7 @@ export function useEventActions({
     !tiers.utilities &&
     !(tiers.flow && isOpenRequest) &&
     !canCollect &&
+    !canManageCredit &&
     !canEditRequest &&
     !canSaveVersion &&
     !canClose;
@@ -173,6 +196,20 @@ export function useEventActions({
             className={collecting ? ACCENT_SURFACE : ""}
           >
             <CollectionIcon size={14} />
+          </Button>
+        )}
+        {canManageCredit && (
+          <Button
+            icon
+            variant="ghost"
+            onClick={() => setCrediting((open) => !open)}
+            aria-controls={CREDIT_PANEL_ID}
+            aria-expanded={crediting}
+            aria-label="Geolocators"
+            title="Geolocators"
+            className={crediting ? ACCENT_SURFACE : ""}
+          >
+            <Users size={14} />
           </Button>
         )}
         {canEditRequest && (
@@ -248,6 +285,23 @@ export function useEventActions({
     // replace each other: each is its own titled card.
     panels: (
       <>
+        {invited && (
+          <GeolocatorInviteCard
+            event={event}
+            onAnswered={() => {
+              invitation.refetch();
+              onChanged?.();
+            }}
+          />
+        )}
+        {canManageCredit && crediting && (
+          <div id={CREDIT_PANEL_ID}>
+            <Card as="section">
+              <SectionEyebrow title="Geolocators" margin="none" />
+              <GeolocatorsPanel event={event} onChanged={() => onChanged?.()} />
+            </Card>
+          </div>
+        )}
         {canCollect && collecting && (
           <div id={COLLECT_PANEL_ID}>
             <Card as="section">

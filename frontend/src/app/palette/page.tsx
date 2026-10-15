@@ -817,7 +817,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<AuthorByline>" usage="The 'by user' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots. link=false drops the anchor for a slot that is already one click (a version-history row under its stretched link), where a nested link is a target the mouse and the keyboard disagree about.">
+          <Item name="<AuthorByline>" usage="The 'by user' assembly: detail-page subtitles, map panel header, detail body Author row. size=xs for the dense panel; prefix=false when the slot's label already says Author; avatar leads with the profile picture on the detail-page signature slots. coAuthors credits more analysts after the lead (the geolocators an event shares, from creditProps), joined by creditSeparator: ana, bo and cy. link=false drops the anchor for a slot that is already one click (a version-history row under its stretched link), where a nested link is a target the mouse and the keyboard disagree about.">
             <Variant label="avatar (detail-page signature)">
               <span className="text-sm text-neutral-400">
                 <AuthorByline author={MOCK_DETAIL.owner} avatar />
@@ -831,6 +831,15 @@ export default function PalettePage() {
             <Variant label='size="xs" (panel header)'>
               <span className="text-xs text-neutral-400">
                 <AuthorByline author={MOCK_DETAIL.owner} size="xs" />
+              </span>
+            </Variant>
+            <Variant label="coAuthors (shared credit)">
+              <span className="text-sm text-neutral-400">
+                <AuthorByline
+                  author={MOCK_DETAIL.owner}
+                  coAuthors={[{ username: "bo" }, { username: "cy" }]}
+                  avatar
+                />
               </span>
             </Variant>
             <Variant label="link={false} (inside a row-wide link)">
@@ -1362,7 +1371,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EntityCard variant=compact>: geoloc" usage="Lists (profile recent submissions)">
+          <Item name="<EntityCard variant=compact>: geoloc" usage="Lists (profile recent submissions). coAuthors prints every geolocator the event credits after the owner.">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="compact"
@@ -1370,6 +1379,7 @@ export default function PalettePage() {
                 title={MOCK_CARD_GEO.title}
                 badge={<StatusBadge status="geolocated" />}
                 author={MOCK_CARD_GEO.owner}
+                coAuthors={[{ username: "bo" }]}
                 date={MOCK_CARD_GEO.event_date}
                 coords={{ lat: 48.0159, lng: 37.8024 }}
                 tags={MOCK_CARD_GEO.tags}

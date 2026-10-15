@@ -9,6 +9,7 @@ import { EventPageBody } from "@/components/event/EventPageBody";
 import { useEventActions } from "@/components/event/useEventActions";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
+import { creditProps } from "@/lib/geolocatorCredit";
 
 export default function EventPage() {
   const params = useParams();
@@ -37,7 +38,7 @@ export default function EventPage() {
       title={geo.title}
       subtitle={
         <span className="flex flex-wrap items-center gap-2">
-          <AuthorByline author={geo.owner} avatar />
+          <AuthorByline {...creditProps(geo)} avatar />
           {/* Version 1 says nothing. */}
           {geo.version_no > 1 && (
             <Pill tone="neutral" title={`Version ${geo.version_no}`}>

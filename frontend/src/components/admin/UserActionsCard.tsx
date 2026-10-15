@@ -255,7 +255,8 @@ export function UserActionsCard({
             <p>
               <strong>Hard delete is irreversible.</strong> Drops{" "}
               {user.username}, every geolocation they authored, their media, and
-              S3 objects.{" "}
+              S3 objects. A geolocation another analyst shares the credit of passes
+              to that analyst instead, with its media.{" "}
               {!confirmDanger.armed && "Click “Confirm” to proceed."}
             </p>
           ) : dangerMode === "soft" ? (

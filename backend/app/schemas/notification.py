@@ -17,7 +17,9 @@ class NotificationEventRef(BaseModel):
 
 class NotificationRead(BaseModel):
     """One feed row. ``actor`` and ``event`` are null on a kind that names
-    neither; ``read_at`` is null until the feed has shown the row."""
+    neither; ``read_at`` is null until the feed has shown the row.
+    ``invite_pending`` is true on a ``co_geolocator_invite`` row whose
+    invitation still waits for the reader's answer."""
 
     id: uuid.UUID
     kind: NotificationKind
@@ -25,6 +27,7 @@ class NotificationRead(BaseModel):
     actor: AuthorRef | None
     event: NotificationEventRef | None
     read_at: datetime | None
+    invite_pending: bool
 
 
 class NotificationUnreadCount(BaseModel):

@@ -26,7 +26,7 @@ from app.schemas.admin import (
     AdminInviteCodeRead,
     AdminInviteRedeemerRead,
 )
-from app.services import versions
+from app.services import geolocator_credit, versions
 from app.services.auth import bump_token_version, generate_invite_code, invite_code_status
 from app.services.evidence_intake import (
     collect_event_media_keys,
@@ -653,28 +653,40 @@ def hard_delete_user(
     actor_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> dict[str, Any]:
-    """GDPR-grade erasure: drop the user, every event they own, and every S3 object referenced
-    by the cascade.
+    """GDPR-grade erasure: drop the user, the events only they are credited on, and every S3
+    object referenced by the cascade.
 
     Order matters:
 
-    1. Capture S3 keys upfront (media of all roles across their events, plus the account's
-       avatar): the cascade would drop those rows before we could read them.
-    2. Delete each event manually: ``owner_id`` carries no ``ON DELETE CASCADE``. Each
+    1. Lock the owned events and hand each one another live analyst is credited on to the
+       earliest of them (:func:`services.geolocator_credit.hand_over_owned_events`), with an
+       ``ownership_transferred`` notification. A handed-over event keeps its media, versions
+       and files, the erased user's uploads included.
+    2. Capture S3 keys of the events left (media of all roles), plus the account's avatar: the
+       cascade would drop those rows before we could read them.
+    3. Delete each event left manually: ``owner_id`` carries no ``ON DELETE CASCADE``. Each
        ``db.delete`` cascades to that row's media, contributor rows and tags.
-    3. Delete the user. ``auth_tokens``, their collections (and memberships) and their
-       contributor rows on other people's events cascade-drop; ``admin_events.actor_id`` and
-       ``invite_codes.used_by`` flip to NULL (migration f1a3b5c7d9e0), so invite-code rows
-       outlive the user as audit trail.
-    4. Commit, then sweep S3 (see :func:`services.storage.sweep_keys`).
+    4. Delete the user. ``auth_tokens``, their collections (and memberships), their
+       invitations and their contributor rows on other people's events cascade-drop;
+       ``admin_events.actor_id`` and ``invite_codes.used_by`` flip to NULL (migration
+       f1a3b5c7d9e0), so invite-code rows outlive the user as audit trail.
+    5. Commit, then sweep S3 (see :func:`services.storage.sweep_keys`).
     """
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise UserNotFoundError("User not found")
 
-    # 1. Capture every S3 key the user's events reference, plus their profile picture (personal
-    # data on the same erasure request, referenced by nothing else once the row is gone).
-    geolocations = db.query(Event).filter(Event.owner_id == user.id).all()
+    # 1. The lock serializes with an invitation being accepted on the same event.
+    owned = db.query(Event).filter(Event.owner_id == user.id).with_for_update().all()
+    handed_over = geolocator_credit.hand_over_owned_events(db, owner=user, events=owned)
+    geolocations = [geo for geo in owned if geo.id not in handed_over]
+    # The new owners must reach Postgres before the user row goes, or deleting it would
+    # null ``owner_id`` on the rows it no longer owns.
+    db.flush()
+
+    # 2. Capture every S3 key the deleted events reference, plus their profile picture
+    # (personal data on the same erasure request, referenced by nothing else once the row is
+    # gone).
     geo_media_keys: list[str] = []
     for geo in geolocations:
         geo_media_keys.extend(collect_event_media_keys(db, geo))
@@ -684,20 +696,21 @@ def hard_delete_user(
         "user_id": str(user.id),
         "username": user.username,
         "geolocation_count": len(geolocations),
+        "transferred_count": len(handed_over),
         "media_count": len(geo_media_keys),
     }
 
-    # 2. Drop events manually so their cascades fire before the user row goes.
+    # 3. Drop events manually so their cascades fire before the user row goes.
     for geo in geolocations:
         db.delete(geo)
 
-    # 3. Drop the user row.
+    # 4. Drop the user row.
     db.delete(user)
 
     log_admin_event(db, actor_id=actor_id, action="user_hard_deleted", target=target)
     db.commit()
 
-    # 4. Best-effort S3 sweep, after the DB transaction is durable.
+    # 5. Best-effort S3 sweep, after the DB transaction is durable.
     sweep_keys(
         geo_media_keys + ([avatar_key] if avatar_key else []),
         context=f"user {user_id} hard-delete",

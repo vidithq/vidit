@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { creditProps } from "@/lib/geolocatorCredit";
 
 /** How many catalogue rows the panel shows. */
 const RECENT_LIMIT = 10;
@@ -56,7 +57,7 @@ export function CatalogueFeedPanel() {
               detailHref={`/events/${row.id}`}
               variant="compact"
               title={row.title}
-              author={row.owner}
+              {...creditProps(row)}
               badge={<StatusBadge status={row.status} />}
               date={row.event_date ?? undefined}
               tags={row.tags}

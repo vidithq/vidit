@@ -9,7 +9,8 @@ from app.models.event import Event
 from app.models.follow import Follow
 from app.models.user import User
 from app.services import notifications
-from app.services.event_filters import published_events, visible_events
+from app.services.event_filters import credited_to, published_events, visible_events
+from app.services.geolocator_credit import CREDIT_LOAD
 from app.services.thumbnails import thumbnail_media_criteria
 
 
@@ -84,7 +85,7 @@ def get_timeline(
     if not followed_ids:
         return {"items": [], "total": 0}
 
-    where_clause = and_(Event.owner_id.in_(followed_ids), *visible_events(), published_events())
+    where_clause = and_(credited_to(followed_ids), *visible_events(), published_events())
     total = db.query(func.count(Event.id)).filter(where_clause).scalar() or 0
     window = (
         db.query(
@@ -98,6 +99,7 @@ def get_timeline(
             selectinload(Event.tags),
             selectinload(Event.conflicts),
             selectinload(Event.media.and_(thumbnail_media_criteria())),
+            CREDIT_LOAD,
         )
         .filter(where_clause)
         .order_by(Event.created_at.desc(), Event.id.desc())

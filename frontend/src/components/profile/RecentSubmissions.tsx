@@ -11,6 +11,7 @@ import { profileSearchHref } from "@/lib/search";
 import type { PublicProfile } from "@/lib/users";
 import type { components } from "@/lib/api-types";
 import type { EventListItem } from "@/types";
+import { creditProps } from "@/lib/geolocatorCredit";
 
 /** One card in the recent-submissions list, the compact shape the located catalogue and requested
  * queue use. The endpoint serves published work only (`geolocated`). */
@@ -64,7 +65,7 @@ export function RecentSubmissions({
             <EntityCard
               key={entry.id}
               variant="compact"
-              author={{ username: profile.username }}
+              {...creditProps(entry)}
               detailHref={`/events/${entry.id}`}
               title={entry.title}
               badge={entry.status ? <StatusBadge status={entry.status} /> : undefined}

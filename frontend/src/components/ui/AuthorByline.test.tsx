@@ -17,4 +17,15 @@ describe("<AuthorByline>", () => {
     expect(screen.queryByRole("link")).toBeNull();
     expect(container.textContent).toBe("ana");
   });
+
+  it("credits co-authors after the lead, each linked", () => {
+    const { container } = render(
+      <AuthorByline
+        author={{ username: "ana" }}
+        coAuthors={[{ username: "bo" }, { username: "cy" }]}
+      />,
+    );
+    expect(container.textContent).toBe("by ana, bo and cy");
+    expect(screen.getByRole("link", { name: "cy" })).toHaveAttribute("href", "/profile/cy");
+  });
 });

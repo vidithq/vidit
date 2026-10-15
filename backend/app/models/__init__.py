@@ -7,7 +7,7 @@ from app.models.bot_webhook_event import BotWebhookEvent
 from app.models.collection import Collection, CollectionEvent
 from app.models.conflict import Conflict, event_conflicts
 from app.models.content_report import ContentReport
-from app.models.event import Event, EventGeolocator, EventVersion
+from app.models.event import Event, EventGeolocator, EventGeolocatorInvite, EventVersion
 from app.models.follow import Follow
 from app.models.invite_code import InviteCode
 from app.models.media import Media
@@ -39,6 +39,7 @@ __all__ = [
     "Follow",
     "Event",
     "EventGeolocator",
+    "EventGeolocatorInvite",
     "EventVersion",
     "InviteCode",
     "Media",

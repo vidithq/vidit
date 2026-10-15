@@ -25,6 +25,7 @@ import { ProofSection } from "@/components/ui/ProofSection";
 import { Pill } from "@/components/ui/Pill";
 import { TEXT_LINK } from "@/components/ui/styles";
 import type { Concept } from "@/lib/fieldHelp";
+import { creditProps } from "@/lib/geolocatorCredit";
 
 /** The body's data shape: an `EventDetail` as-is. Every lifecycle state shares it: a coordless
  * `requested` row carries a null `event_coords`, and the missing detected-from and requested-by
@@ -221,7 +222,7 @@ function DetailRows({ geo, compact }: { geo: EventDetailBodyData; compact: boole
       )}
       {!compact && (
         <DetailRow label="Author" concept="author" compact={compact}>
-          <AuthorByline author={geo.owner} prefix={false} className="text-sm" />
+          <AuthorByline {...creditProps(geo)} prefix={false} className="text-sm" />
         </DetailRow>
       )}
     </>

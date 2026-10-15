@@ -53,6 +53,7 @@ import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 
 import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
+import { creditProps } from "@/lib/geolocatorCredit";
 
 // The type picker: the two event groups are one "Events" entry (the filters only apply to
 // events); results still render as two groups.
@@ -557,7 +558,7 @@ function EventResult({ hit }: { hit: SearchEventHit }) {
       badge={<StatusBadge status={hit.status} />}
       media={hit.media[0]}
       isGraphic={hit.is_graphic}
-      author={hit.owner}
+      {...creditProps(hit)}
       date={hit.event_date ?? undefined}
       coords={{ lat: hit.lat, lng: hit.lng }}
       tags={hit.tags}

@@ -12,6 +12,7 @@ import { StatusBadge } from "@/components/event/StatusBadge";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { buttonClasses } from "@/components/ui/Button";
 import type { components } from "@/lib/api-types";
+import { creditProps } from "@/lib/geolocatorCredit";
 
 /** Shape of `GET /timeline`: the paginated-events envelope `RecentSubmissions` reads. */
 type PaginatedTimeline = components["schemas"]["PaginatedEvents"];
@@ -61,7 +62,7 @@ export default function TimelinePage() {
                 }
                 media={entry.media ?? undefined}
                 isGraphic={entry.is_graphic}
-                author={entry.owner}
+                {...creditProps(entry)}
                 date={entry.event_date ?? undefined}
                 coords={entry.event_coords}
                 tags={entry.tags}
