@@ -221,6 +221,25 @@ def test_a_geolocator_cannot_be_asked(db, author, make_user):
         assert _code(response) == "target_is_geolocator"
 
 
+@pytest.mark.parametrize("departure", ["left", "removed"])
+def test_a_former_geolocator_neither_approves_nor_is_asked(db, author, make_user, departure):
+    geo = _published(db, author)
+    former = make_user(audience="everyone")
+    db.add(EventGeolocator(event_id=geo.id, user_id=former.id))
+    db.commit()
+    leaver = former if departure == "left" else author
+    response = client.delete(
+        f"{_EVENTS}/{geo.id}/geolocators/{former.username}", headers=login_as(client, leaver)
+    )
+    assert response.status_code == 204, response.text
+
+    refused = _approve(geo, former, 1)
+    assert (refused.status_code, _code(refused)) == (403, "geolocator_cannot_approve")
+    asked = _request(geo, author, former)
+    assert (asked.status_code, _code(asked)) == (403, "target_is_geolocator")
+    assert former.username not in _targets(geo, author, q=former.username)
+
+
 def test_unknown_target_and_unpublished_event(db, author, make_user):
     geo = _published(db, author)
     response = _request(geo, author, "nobody-here")
