@@ -5,8 +5,8 @@ from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
 from app.schemas.notification import (
-    NotificationMarkerUpdate,
     NotificationRead,
+    NotificationReadUpdate,
     NotificationUnreadCount,
 )
 from app.services import notifications as notifications_service
@@ -34,7 +34,7 @@ def list_notifications(
 ) -> list[NotificationRead]:
     """Your notifications, newest first, capped at 100 per page (``Link: rel="next"`` cursor).
 
-    Reading the feed does not move the last-read marker; ``POST /notifications/read`` does.
+    Listing marks nothing read; ``POST /notifications/read`` does.
     """
     size = page_size(limit)
     window = notifications_service.list_feed(
@@ -47,7 +47,7 @@ def list_notifications(
     if has_next:
         last = rows[-1]
         response.headers["Link"] = next_link(request, encode_cursor(last.created_at, last.id))
-    return [notifications_service.build_read(row, user=current_user) for row in rows]
+    return [notifications_service.build_read(row) for row in rows]
 
 
 @router.get("/unread-count", response_model=NotificationUnreadCount)
@@ -57,7 +57,7 @@ def get_unread_count(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> NotificationUnreadCount:
-    """How many visible notifications are newer than your last-read marker."""
+    """How many visible notifications you have not been shown yet."""
     return NotificationUnreadCount(count=notifications_service.unread_count(db, user=current_user))
 
 
@@ -65,10 +65,10 @@ def get_unread_count(
 @limiter.limit("60/minute")
 def mark_notifications_read(
     request: Request,
-    body: NotificationMarkerUpdate,
+    body: NotificationReadUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Advance your last-read marker to ``up_to``. It never moves backwards."""
-    notifications_service.mark_read(current_user, up_to=body.up_to)
+    """Mark the listed notifications read. Ids that are not yours change nothing."""
+    notifications_service.mark_read(db, user=current_user, ids=body.ids)
     db.commit()

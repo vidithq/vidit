@@ -73,7 +73,6 @@ requests  # schemas/search.py SearchTotals + SearchResponse (reader-vocabulary g
 discord  # schemas/user.py UserRead
 website  # schemas/user.py UserRead
 github  # schemas/user.py UserRead
-unread  # schemas/notification.py NotificationRead
 display_defaults  # schemas/preferences.py UserPreferencesRead
 display_stored  # schemas/preferences.py UserPreferencesRead
 palette  # schemas/preferences.py, read through model_dump

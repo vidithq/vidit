@@ -19,6 +19,12 @@ export function getSavedHelpHidden(): boolean | null {
   return stored === "1" ? true : stored === "0" ? false : null;
 }
 
+export function clearHelpHidden(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(KEY);
+  window.dispatchEvent(new Event(HELP_PREF_EVENT));
+}
+
 export function setHelpHidden(hidden: boolean): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(KEY, hidden ? "1" : "0");

@@ -1,5 +1,5 @@
 """Stored notifications: the two emitters, the feed's visibility rules, the
-unread count and the last-read marker."""
+unread count and per-row read state."""
 
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ def test_fulfilment_by_another_analyst_notifies_the_requester(
     assert items[0]["kind"] == "request_fulfilled"
     assert items[0]["actor"]["username"] == second_user.username
     assert items[0]["event"] == {"id": str(request.id), "title": "Fulfilled from a request"}
-    assert items[0]["unread"] is True
+    assert items[0]["read_at"] is None
 
 
 def test_self_fulfilment_notifies_nobody(db, author, conflict, capture_source_tag):
@@ -151,39 +151,48 @@ def test_rows_cascade_with_a_hard_deleted_event(db, author, second_user):
     assert _rows(db, author) == []
 
 
-def test_marker_advances_the_unread_count_and_never_moves_back(db, author, second_user):
+def _mark(user: User, *rows: Notification | uuid.UUID):
+    headers = login_as(client, user)
+    ids = [str(r.id if isinstance(r, Notification) else r) for r in rows]
+    return client.post(_READ, headers=headers, json={"ids": ids})
+
+
+def test_read_marks_only_the_rows_shown(db, author, second_user):
     now = datetime.now(UTC)
     older = _notify(db, recipient=author, actor=second_user, created_at=now - timedelta(hours=2))
     newer = _notify(db, recipient=author, actor=second_user, created_at=now - timedelta(hours=1))
     assert _unread(author) == 2
 
-    headers = login_as(client, author)
-    response = client.post(_READ, headers=headers, json={"up_to": older.created_at.isoformat()})
-    assert response.status_code == 204
+    assert _mark(author, older).status_code == 204
     assert _unread(author) == 1
-    assert [item["unread"] for item in _feed(author)] == [True, False]
+    feed = _feed(author)
+    assert [item["id"] for item in feed] == [str(newer.id), str(older.id)]
+    assert feed[0]["read_at"] is None
+    assert feed[1]["read_at"] is not None
 
-    client.post(_READ, headers=headers, json={"up_to": newer.created_at.isoformat()})
+    _mark(author, newer, older)
     assert _unread(author) == 0
 
-    client.post(_READ, headers=headers, json={"up_to": older.created_at.isoformat()})
-    assert _unread(author) == 0
 
-
-def test_marker_never_passes_now(db, author, second_user):
-    headers = login_as(client, author)
-    future = datetime.now(UTC) + timedelta(days=1)
-    assert (
-        client.post(_READ, headers=headers, json={"up_to": future.isoformat()}).status_code == 204
-    )
-    _notify(db, recipient=author, actor=second_user)
+def test_a_row_that_commits_late_stays_unread(db, author, second_user):
+    """Its ``created_at`` predates a row already read; per-row state keeps it unread."""
+    now = datetime.now(UTC)
+    shown = _notify(db, recipient=author, actor=second_user, created_at=now)
+    _mark(author, shown)
+    _notify(db, recipient=author, actor=second_user, created_at=now - timedelta(minutes=5))
     assert _unread(author) == 1
 
 
-def test_marker_rejects_a_naive_timestamp(author):
-    headers = login_as(client, author)
-    response = client.post(_READ, headers=headers, json={"up_to": "2026-05-01T12:00:00"})
-    assert response.status_code == 422
+def test_read_leaves_another_analysts_rows_alone(db, author, second_user):
+    row = _notify(db, recipient=author, actor=second_user)
+    assert _mark(second_user, row).status_code == 204
+    assert _unread(author) == 1
+
+
+def test_read_takes_one_page_of_ids_at_most(author):
+    assert _mark(author).status_code == 422
+    too_many = [uuid.uuid4() for _ in range(101)]
+    assert _mark(author, *too_many).status_code == 422
 
 
 def test_feed_pages_with_a_cursor(db, author, second_user):

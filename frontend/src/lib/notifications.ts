@@ -14,11 +14,11 @@ export function notificationsPath(cursor: string | null): string {
     : NOTIFICATIONS_PATH;
 }
 
-/** Advance the last-read marker to the newest row the reader was shown. */
-export function markNotificationsRead(upTo: string): Promise<void> {
+/** Mark the rows the feed displayed read (one page of ids at most, as the backend caps it). */
+export function markNotificationsRead(ids: string[]): Promise<void> {
   return apiFetch<void>(`${NOTIFICATIONS_PATH}/read`, {
     method: "POST",
-    body: JSON.stringify({ up_to: upTo }),
+    body: JSON.stringify({ ids }),
   });
 }
 

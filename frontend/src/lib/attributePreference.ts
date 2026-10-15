@@ -13,6 +13,8 @@ export interface AttributePreference<T extends string> {
   /** The value this browser saved, or `null` when it saved none (or an invalid one). */
   saved(): T | null;
   set(value: T): void;
+  /** Forget the saved value and drop the attribute, so the page reads the fallback. */
+  clear(): void;
 }
 
 export function createAttributePreference<T extends string>(config: {
@@ -49,5 +51,12 @@ export function createAttributePreference<T extends string>(config: {
     window.dispatchEvent(new Event(event));
   }
 
-  return { get, saved, set };
+  function clear(): void {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(key);
+    delete document.documentElement.dataset[attribute];
+    window.dispatchEvent(new Event(event));
+  }
+
+  return { get, saved, set, clear };
 }

@@ -32,7 +32,7 @@ const fulfilled: Notification = {
   created_at: "2026-10-12T09:00:00Z",
   actor: { id: "u2", username: "bo", avatar_url: null },
   event: { id: "e1", title: "Strike on the depot" },
-  unread: true,
+  read_at: null,
 };
 const follower: Notification = {
   id: "n1",
@@ -40,7 +40,7 @@ const follower: Notification = {
   created_at: "2026-10-10T09:00:00Z",
   actor: { id: "u3", username: "cy", avatar_url: null },
   event: null,
-  unread: false,
+  read_at: "2026-10-11T09:00:00Z",
 };
 
 function serve(items: Notification[]) {
@@ -72,18 +72,18 @@ describe("NotificationsPage", () => {
     expect(screen.getByRole("heading", { name: "Earlier" })).toBeInTheDocument();
   });
 
-  it("advances the marker to the newest row shown, then refreshes the dot", async () => {
+  it("marks the unread rows it shows read, then refreshes the dot", async () => {
     serve([fulfilled, follower]);
     render(<NotificationsPage />);
 
     await waitFor(() => expect(api.refresh).toHaveBeenCalled());
     expect(api.apiFetch).toHaveBeenCalledWith("/notifications/read", {
       method: "POST",
-      body: JSON.stringify({ up_to: "2026-10-12T09:00:00Z" }),
+      body: JSON.stringify({ ids: ["n2"] }),
     });
   });
 
-  it("leaves the marker alone when nothing is unread", async () => {
+  it("marks nothing when every row is already read", async () => {
     serve([follower]);
     render(<NotificationsPage />);
 

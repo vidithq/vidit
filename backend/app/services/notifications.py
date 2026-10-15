@@ -1,4 +1,4 @@
-"""Stored notifications: emitting a row, the feed, and the last-read marker.
+"""Stored notifications: emitting a row, the feed, and per-row read state.
 
 An emitter adds its row to the caller's session and never commits, so the row
 lands in the transaction of the action it reports. Reads hide a row whose event
@@ -107,27 +107,32 @@ def list_feed(
     )
 
 
-def build_read(row: Notification, *, user: User) -> NotificationRead:
-    marker = user.notifications_read_at
+def build_read(row: Notification) -> NotificationRead:
     return NotificationRead(
         id=row.id,
         kind=row.kind,
         created_at=row.created_at,
         actor=AuthorRef.model_validate(row.actor) if row.actor is not None else None,
         event=NotificationEventRef.model_validate(row.event) if row.event is not None else None,
-        unread=marker is None or row.created_at > marker,
+        read_at=row.read_at,
     )
 
 
 def unread_count(db: Session, *, user: User) -> int:
-    query = _visible_rows(db, user)
-    if user.notifications_read_at is not None:
-        query = query.filter(Notification.created_at > user.notifications_read_at)
-    return query.with_entities(func.count(Notification.id)).scalar() or 0
+    return (
+        _visible_rows(db, user)
+        .filter(Notification.read_at.is_(None))
+        .with_entities(func.count(Notification.id))
+        .scalar()
+        or 0
+    )
 
 
-def mark_read(user: User, *, up_to: datetime) -> None:
-    """Advance the marker to ``up_to``, never backwards and never past now."""
-    target = min(up_to, datetime.now(UTC))
-    if user.notifications_read_at is None or target > user.notifications_read_at:
-        user.notifications_read_at = target
+def mark_read(db: Session, *, user: User, ids: list[uuid.UUID]) -> None:
+    """Stamp ``read_at`` on the listed rows ``user`` owns. Another analyst's id
+    and an already-read row are left as they are."""
+    db.query(Notification).filter(
+        Notification.id.in_(ids),
+        Notification.user_id == user.id,
+        Notification.read_at.is_(None),
+    ).update({Notification.read_at: datetime.now(UTC)}, synchronize_session=False)

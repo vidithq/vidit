@@ -1,4 +1,4 @@
-"""add notifications, user_preferences and users.notifications_read_at
+"""add notifications and user_preferences
 
 Revision ID: w1y3a5c7e9g1
 Revises: u9w1y3a5c7e9
@@ -13,9 +13,11 @@ because not every kind names both. Each one cascades, so a hard-deleted actor
 or event takes its rows along. A soft delete or a takedown is filtered at read
 time instead, so undoing it brings the row back.
 
-``users.notifications_read_at`` is the last-read marker. Rows created after it
-are unread; NULL means the analyst never opened the feed, so every row is
-unread.
+``notifications.read_at`` is the read state, one per row: the feed sets it on
+the rows it showed, and NULL is unread. A single per-user marker compared with
+``created_at`` would hide a row whose action flushed before a slow upload and
+committed after the marker moved past it. A partial index on ``user_id`` where
+``read_at IS NULL`` backs the unread count.
 
 ``user_preferences`` holds one row per analyst, created on the first write.
 ``notification_overrides`` stores only the per-kind, per-channel values that
@@ -46,6 +48,7 @@ def upgrade() -> None:
         sa.Column("actor_id", sa.Uuid(), nullable=True),
         sa.Column("event_id", sa.Uuid(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("read_at", sa.DateTime(timezone=True), nullable=True),
         sa.CheckConstraint(
             "kind IN ('request_fulfilled', 'new_follower')",
             name="ck_notifications_kind_valid",
@@ -60,13 +63,14 @@ def upgrade() -> None:
         "notifications",
         ["user_id", "created_at", "id"],
     )
+    op.create_index(
+        "ix_notifications_user_unread",
+        "notifications",
+        ["user_id"],
+        postgresql_where=sa.text("read_at IS NULL"),
+    )
     op.create_index("ix_notifications_actor_id", "notifications", ["actor_id"])
     op.create_index("ix_notifications_event_id", "notifications", ["event_id"])
-
-    op.add_column(
-        "users",
-        sa.Column("notifications_read_at", sa.DateTime(timezone=True), nullable=True),
-    )
 
     op.create_table(
         "user_preferences",
@@ -91,8 +95,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("user_preferences")
-    op.drop_column("users", "notifications_read_at")
     op.drop_index("ix_notifications_event_id", table_name="notifications")
     op.drop_index("ix_notifications_actor_id", table_name="notifications")
+    op.drop_index("ix_notifications_user_unread", table_name="notifications")
     op.drop_index("ix_notifications_user_created_at", table_name="notifications")
     op.drop_table("notifications")

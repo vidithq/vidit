@@ -1332,7 +1332,7 @@ export interface paths {
          * List Notifications
          * @description Your notifications, newest first, capped at 100 per page (``Link: rel="next"`` cursor).
          *
-         *     Reading the feed does not move the last-read marker; ``POST /notifications/read`` does.
+         *     Listing marks nothing read; ``POST /notifications/read`` does.
          */
         get: operations["list_notifications_api_v1_notifications_get"];
         put?: never;
@@ -1354,7 +1354,7 @@ export interface paths {
         put?: never;
         /**
          * Mark Notifications Read
-         * @description Advance your last-read marker to ``up_to``. It never moves backwards.
+         * @description Mark the listed notifications read. Ids that are not yours change nothing.
          */
         post: operations["mark_notifications_read_api_v1_notifications_read_post"];
         delete?: never;
@@ -1372,7 +1372,7 @@ export interface paths {
         };
         /**
          * Get Unread Count
-         * @description How many visible notifications are newer than your last-read marker.
+         * @description How many visible notifications you have not been shown yet.
          */
         get: operations["get_unread_count_api_v1_notifications_unread_count_get"];
         put?: never;
@@ -3045,18 +3045,6 @@ export interface components {
             /** Title */
             title: string;
         };
-        /**
-         * NotificationMarkerUpdate
-         * @description Body for ``POST /notifications/read``: the ``created_at`` of the newest
-         *     row the reader was shown.
-         */
-        NotificationMarkerUpdate: {
-            /**
-             * Up To
-             * Format: date-time
-             */
-            up_to: string;
-        };
         /** NotificationPreferenceRead */
         NotificationPreferenceRead: {
             /** Channels */
@@ -3076,7 +3064,7 @@ export interface components {
         /**
          * NotificationRead
          * @description One feed row. ``actor`` and ``event`` are null on a kind that names
-         *     neither; ``unread`` compares ``created_at`` with the last-read marker.
+         *     neither; ``read_at`` is null until the feed has shown the row.
          */
         NotificationRead: {
             actor: components["schemas"]["AuthorRef"] | null;
@@ -3096,8 +3084,17 @@ export interface components {
              * @enum {string}
              */
             kind: "request_fulfilled" | "new_follower";
-            /** Unread */
-            unread: boolean;
+            /** Read At */
+            read_at: string | null;
+        };
+        /**
+         * NotificationReadUpdate
+         * @description Body for ``POST /notifications/read``: the rows the feed displayed, at
+         *     most one page.
+         */
+        NotificationReadUpdate: {
+            /** Ids */
+            ids: string[];
         };
         /** NotificationUnreadCount */
         NotificationUnreadCount: {
@@ -5633,7 +5630,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["NotificationMarkerUpdate"];
+                "application/json": components["schemas"]["NotificationReadUpdate"];
             };
         };
         responses: {

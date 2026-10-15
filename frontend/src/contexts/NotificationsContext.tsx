@@ -8,9 +8,9 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { UNREAD_COUNT_PATH, type UnreadCount } from "@/lib/notifications";
 
 interface NotificationsValue {
-  /** Notifications newer than the last-read marker; 0 when logged out or none. */
+  /** Notifications not yet shown in the feed; 0 when logged out or none. */
   unread: number;
-  /** Re-fetch after the feed advances the marker so the sidebar dot clears. */
+  /** Re-fetch after the feed marks rows read so the sidebar dot clears. */
   refresh: () => void;
 }
 

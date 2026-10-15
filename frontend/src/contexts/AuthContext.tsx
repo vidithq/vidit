@@ -12,6 +12,7 @@ import {
 import type { User } from "@/types";
 import { ApiError, apiFetch } from "@/lib/api";
 import { hasSessionCookie } from "@/lib/auth";
+import { clearDisplay } from "@/lib/preferences";
 
 interface AuthContextType {
   user: User | null;
@@ -112,6 +113,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     stateVersion.current += 1;
     setUser(null);
+    // The display cache belongs to the account leaving; the next one on this browser starts clean.
+    clearDisplay();
     // Hard navigate here, not in each caller: consistent destination, and it wipes in-memory
     // state (map, filters, caches) so the next session starts clean.
     if (typeof window !== "undefined") {

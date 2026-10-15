@@ -139,8 +139,8 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/users/{username}/follow` | 🔒 | Unfollow (idempotent; unknown user → 404) |
 | **Notifications** | | | |
 | GET | `/notifications` | 🔒 | Your notifications, newest first (cursor-paged) |
-| GET | `/notifications/unread-count` | 🔒 | How many notifications are newer than your last-read marker |
-| POST | `/notifications/read` | 🔒 | Advance your last-read marker |
+| GET | `/notifications/unread-count` | 🔒 | How many notifications you have not been shown |
+| POST | `/notifications/read` | 🔒 | Mark the notifications the feed showed you read |
 | **Timeline** | | | |
 | GET | `/timeline` | 🔒 | Activity feed from followed analysts |
 | **Webhooks** | | | |
@@ -1825,7 +1825,7 @@ flowchart LR
   subgraph legend [Legend]
     direction LR
     l1["`an action that emits a row`"]:::spec
-    l2["`an endpoint that reads or moves the marker`"]:::shared
+    l2["`an endpoint that reads the rows or marks them read`"]:::shared
     l3["`the read-time filter`"]:::core
     l4[("`a stored value`")]:::store
     l1 ~~~ l2 ~~~ l3 ~~~ l4
@@ -1840,25 +1840,25 @@ flowchart LR
   visible["`**_visible_rows**
   hides a row whose event is deleted or hidden, or whose actor is soft-deleted`"]:::core
   feed["`**GET /notifications**
-  newest first, each row marked unread or not`"]:::shared
+  newest first, each row with its read_at`"]:::shared
   count["`**GET /notifications/unread-count**
   drives the sidebar dot`"]:::shared
   read["`**POST /notifications/read**
-  up_to: the newest row shown`"]:::shared
-  marker[("`**users.notifications_read_at**
-  the last-read marker`")]:::store
+  ids: the rows the feed showed`"]:::shared
+  readat[("`**notifications.read_at**
+  per row; NULL is unread`")]:::store
 
   geolocate --> rows
   follow --> rows
   rows --> visible
   visible --> feed
   visible --> count
-  read --> marker
-  marker --> count
-  marker --> feed
+  read --> readat
+  readat --> count
+  readat --> feed
 ```
 
-An action that concerns another analyst writes a [`notifications`](data-model.md#notifications) row in its own transaction, so a rolled-back action leaves no row. Nobody is notified of their own action. Every read passes the same filter: a row whose event is soft-deleted or taken down, or whose actor is soft-deleted, is hidden from the feed and the count, including when that happens after the row was written. The marker moves only through `POST /notifications/read`, which the feed page calls with the newest row it shows. Rows newer than the marker are unread.
+An action that concerns another analyst writes a [`notifications`](data-model.md#notifications) row in its own transaction, so a rolled-back action leaves no row. Nobody is notified of their own action. Every read passes the same filter: a row whose event is soft-deleted or taken down, or whose actor is soft-deleted, is hidden from the feed and the count, including when that happens after the row was written. Read state is per row: `read_at` is NULL until `POST /notifications/read` names the row, which the feed page does for the unread rows it shows. A row whose action commits after the feed was read stays unread, whatever its `created_at`.
 
 | Kind | Emitted when | `actor` | `event` |
 |------|--------------|---------|---------|
@@ -1867,7 +1867,7 @@ An action that concerns another analyst writes a [`notifications`](data-model.md
 
 ### `GET /notifications` 🔒
 
-Your notifications, newest first. Cursor-paged; [Pagination](#pagination) gives the cap and the `Link` header. Reading the feed does not move the marker.
+Your notifications, newest first. Cursor-paged; [Pagination](#pagination) gives the cap and the `Link` header. Listing marks nothing read.
 
 **Query params:** `limit` and `cursor`, see [Pagination](#pagination).
 
@@ -1880,7 +1880,7 @@ Your notifications, newest first. Cursor-paged; [Pagination](#pagination) gives 
     "created_at": "2026-10-12T09:00:00Z",
     "actor": { "id": "a41e…", "username": "bo", "avatar_url": null },
     "event": { "id": "9b2d…", "title": "Strike on the depot" },
-    "unread": true
+    "read_at": null
   }
 ]
 ```
@@ -1889,7 +1889,7 @@ Your notifications, newest first. Cursor-paged; [Pagination](#pagination) gives 
 
 ### `GET /notifications/unread-count` 🔒
 
-The number of visible notifications newer than your last-read marker. Every notification counts while you have never opened the feed.
+The number of visible notifications whose `read_at` is NULL.
 
 **Response 200:** `{ "count": 2 }`
 
@@ -1897,16 +1897,16 @@ The number of visible notifications newer than your last-read marker. Every noti
 
 ### `POST /notifications/read` 🔒
 
-Advance your last-read marker to `up_to`. The marker never moves backwards and never past the current time, so a repeated or late call changes nothing.
+Mark the listed notifications read by setting their `read_at`. Only your own rows change: an id that is another analyst's, unknown, or already read changes nothing, so a repeated call is harmless.
 
-**Body:** `{ "up_to": "2026-10-12T09:00:00Z" }`. The timestamp must carry a UTC offset.
+**Body:** `{ "ids": ["6f1c…"] }`, 1 to 100 ids, one page of the feed.
 
 **Response 204:** no body.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 422 | `up_to` missing, unparseable, or without an offset |
+| 422 | `ids` missing, empty, longer than 100, or holding a value that is not a UUID |
 
 ---
 

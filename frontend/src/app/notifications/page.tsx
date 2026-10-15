@@ -51,21 +51,25 @@ function NotificationRows({ title, rows }: { title: string; rows: Notification[]
   );
 }
 
-/** The signed-in analyst's notifications, newest first. Opening the page advances the
- *  last-read marker to the newest row shown, which clears the sidebar dot. */
+/** The signed-in analyst's notifications, newest first. The unread rows the page shows are
+ *  marked read, which clears the sidebar dot; they stay under New until the next visit. */
 export default function NotificationsPage() {
   const { user, loading: authLoading } = useRequireAuth();
   const { refresh } = useUnreadNotifications();
   const { items, error, loading, loadingMore, hasMore, loadMore } =
     useCursorList<Notification>(notificationsPath);
 
-  const newestUnread = items[0]?.unread ? items[0].created_at : null;
+  // The unread rows loaded so far, as one key, so a later page marks its own rows.
+  const shownUnread = items
+    .filter((n) => n.read_at === null)
+    .map((n) => n.id)
+    .join(",");
   useEffect(() => {
-    if (!newestUnread) return;
-    markNotificationsRead(newestUnread)
+    if (!shownUnread) return;
+    markNotificationsRead(shownUnread.split(","))
       .then(refresh)
       .catch(() => {});
-  }, [newestUnread, refresh]);
+  }, [shownUnread, refresh]);
 
   if (authLoading || !user) return <PageLoading />;
 
@@ -81,8 +85,8 @@ export default function NotificationsPage() {
         </EmptyState>
       ) : (
         <>
-          <NotificationRows title="New" rows={items.filter((n) => n.unread)} />
-          <NotificationRows title="Earlier" rows={items.filter((n) => !n.unread)} />
+          <NotificationRows title="New" rows={items.filter((n) => n.read_at === null)} />
+          <NotificationRows title="Earlier" rows={items.filter((n) => n.read_at !== null)} />
           {hasMore && (
             <div className="flex justify-center">
               <Button variant="secondary" onClick={loadMore} disabled={loadingMore}>

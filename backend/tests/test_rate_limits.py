@@ -539,7 +539,7 @@ _DOCUMENTED_LIMITS = [
         "/api/v1/notifications/read",
         60,
         "user",
-        {"json": {"up_to": "2026-01-01T00:00:00Z"}},
+        {"json": {"ids": [str(_MISSING_ID)]}},
     ),
     # The create stores a row per request; the other probes 404 after the limiter.
     _Case(

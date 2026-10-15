@@ -107,6 +107,7 @@ const pref = createAttributePreference<PaletteId>({
 export const getPalette = pref.get;
 export const getSavedPalette = pref.saved;
 export const setPalette = pref.set;
+export const clearPalette = pref.clear;
 
 export function paletteMapColors(id: PaletteId): PaletteOption["map"] {
   return (PALETTES.find((p) => p.id === id) ?? PALETTES[0]).map;

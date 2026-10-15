@@ -62,6 +62,7 @@ describe("PreferencesSync", () => {
   });
 
   it("writes the browser's own value up where the account saved none", async () => {
+    window.localStorage.setItem("vidit:display-owner", "u1");
     session.apiFetch.mockResolvedValue(serverWith({ palette: "violet" }));
     session.user = { id: "u1" };
     render(<PreferencesSync />);
@@ -70,6 +71,33 @@ describe("PreferencesSync", () => {
     // The saved palette still wins; the unsaved theme keeps this browser's choice.
     expect(window.localStorage.getItem("vidit:palette")).toBe("violet");
     expect(window.localStorage.getItem("vidit:theme")).toBe("light");
+  });
+
+  it("adopts a cache that carries no owner and tags it with the account", async () => {
+    session.apiFetch.mockResolvedValue(serverWith({}));
+    session.user = { id: "u1" };
+    render(<PreferencesSync />);
+
+    await waitFor(() =>
+      expect(patchBodies()).toEqual([{ display: { palette: "rose", theme: "light" } }]),
+    );
+    expect(window.localStorage.getItem("vidit:display-owner")).toBe("u1");
+  });
+
+  it("never uploads another account's cache, and clears it for this one", async () => {
+    window.localStorage.setItem("vidit:display-owner", "someone-else");
+    window.localStorage.setItem("vidit:help-hidden", "1");
+    session.apiFetch.mockResolvedValue(serverWith({ palette: "blue" }));
+    session.user = { id: "u1" };
+    render(<PreferencesSync />);
+
+    await waitFor(() => expect(window.localStorage.getItem("vidit:palette")).toBe("blue"));
+    await flush();
+    expect(patchBodies()).toEqual([]);
+    expect(window.localStorage.getItem("vidit:theme")).toBeNull();
+    expect(window.localStorage.getItem("vidit:help-hidden")).toBeNull();
+    expect(document.documentElement.dataset.theme).toBeUndefined();
+    expect(window.localStorage.getItem("vidit:display-owner")).toBe("u1");
   });
 
   it("touches neither side when the payload carries no stored values", async () => {
@@ -107,7 +135,7 @@ describe("PreferencesSync", () => {
     session.user = { id: "u1" };
     render(<PreferencesSync />);
 
-    await saveDisplay({ palette: "emerald" });
+    await saveDisplay("u1", { palette: "emerald" });
     answer(serverWith({ palette: "blue", theme: "dark" }));
     await flush();
 

@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Literal, get_args
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -53,6 +53,11 @@ class Notification(Base):
         default=lambda: datetime.now(UTC),
         nullable=False,
     )
+    # Set when the feed shows this row to its recipient; NULL is unread. Per
+    # row rather than one marker: ``created_at`` is stamped at flush, and an
+    # action that commits late would otherwise land behind a marker already
+    # moved past it.
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     actor = relationship("User", foreign_keys=[actor_id])
     event = relationship("Event")
@@ -62,8 +67,14 @@ class Notification(Base):
             "kind IN ('request_fulfilled', 'new_follower')",
             name="ck_notifications_kind_valid",
         ),
-        # The feed walk and the unread count, both newest first per recipient.
+        # The feed walk, newest first per recipient.
         Index("ix_notifications_user_created_at", "user_id", "created_at", "id"),
+        # The unread count.
+        Index(
+            "ix_notifications_user_unread",
+            "user_id",
+            postgresql_where=text("read_at IS NULL"),
+        ),
         # Back the cascades of a hard-deleted actor or event.
         Index("ix_notifications_actor_id", "actor_id"),
         Index("ix_notifications_event_id", "event_id"),

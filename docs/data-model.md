@@ -89,7 +89,6 @@ erDiagram
         BOOLEAN is_admin
         TIMESTAMPTZ email_verified_at "nullable"
         TIMESTAMPTZ last_seen_at "nullable, throttled activity stamp"
-        TIMESTAMPTZ notifications_read_at "nullable, last-read marker"
         TIMESTAMPTZ deleted_at "nullable, soft-delete"
         INTEGER token_version "session-invalidation counter"
         TEXT bio "nullable, profile blurb"
@@ -283,6 +282,7 @@ erDiagram
         UUID actor_id FK "nullable, who acted"
         UUID event_id FK "nullable, what it concerns"
         TIMESTAMPTZ created_at
+        TIMESTAMPTZ read_at "nullable, NULL is unread"
     }
 
     user_preferences {
@@ -391,7 +391,6 @@ erDiagram
 | `is_admin` | `BOOLEAN` | NOT NULL, default `false`. The system flips this to `true` automatically on login or registration if the email matches `ADMIN_EMAILS`. |
 | `email_verified_at` | `TIMESTAMPTZ` | nullable. Audit stamp written once by the registration confirmation (to `created_at`) and read by no code path. Every account the registration flow creates carries it. |
 | `last_seen_at` | `TIMESTAMPTZ` | nullable. The instant of the account's most recent authenticated request. `dependencies.get_current_user` rewrites it once the stored value is older than `LAST_SEEN_THROTTLE` (15 minutes), so a session costs one UPDATE per window. `POST /auth/login` and `POST /auth/confirm-registration` stamp it when they issue cookies. The admin onboarding table reads it as the account's activity, falling back to the newest `login` auth event while it is NULL. |
-| `notifications_read_at` | `TIMESTAMPTZ` | nullable. The last-read marker of the [notification feed](#notifications): rows created after it are unread. `POST /notifications/read` moves it forward only, and never past the current time. NULL means the analyst never opened the feed, so every row is unread. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks the user as soft-deleted: login is rejected, the profile returns 404, and public reads filter the row out. Soft-deleting a user cascades to soft-delete every event they own. Hard-delete, the GDPR escape hatch, drops the user row, the events they own, and their contributor rows, and sweeps S3. Because the owner is always among an event's geolocators, hard-delete never leaves a `geolocated` event with zero geolocators. |
 | `token_version` | `INTEGER` | NOT NULL, default `0`. A monotonic session-invalidation counter. The session JWT embeds this value as a `tv` claim, and `get_current_user` returns 401 on a mismatch. The system bumps this counter on logout, password change, password reset, and soft-delete, which invalidates every outstanding JWT for the user at once. A JWT with no `tv` claim also returns 401. |
 | `bio` | `TEXT` | nullable. A short plain-text blurb shown on the public profile. Analysts edit it through `PATCH /users/me`. The API layer caps it at 500 characters. There is no database constraint, so changing the cap does not require a migration. |
@@ -725,11 +724,13 @@ One thing that happened to an analyst, shown in their feed at [`GET /notificatio
 | `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
 | `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller or the follower. |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable. The event the row concerns; NULL for `new_follower`. |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. Compared with `users.notifications_read_at` to decide unread. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. Orders the feed. |
+| `read_at` | `TIMESTAMPTZ` | nullable. Set by `POST /notifications/read` on the rows the feed showed; NULL is unread. Read state is per row because `created_at` is stamped at flush: an action that flushes its row and commits after a slow upload would land behind a single read marker already moved past it. |
 
 Indexes:
 
-- `ix_notifications_user_created_at` on `(user_id, created_at, id)`. Backs the feed's keyset walk and the unread count.
+- `ix_notifications_user_created_at` on `(user_id, created_at, id)`. Backs the feed's keyset walk.
+- `ix_notifications_user_unread`: partial index on `(user_id) WHERE read_at IS NULL`. Backs the unread count.
 - `ix_notifications_actor_id` on `(actor_id)` and `ix_notifications_event_id` on `(event_id)`. Back the cascades when an actor or an event is hard-deleted.
 
 Every foreign key cascades, so a hard-deleted recipient, actor or event takes its rows with it. A soft delete or a takedown keeps the row and hides it at read time: the feed and the count skip a row whose event has `deleted_at` or `hidden_at` set, or whose actor has `deleted_at` set. Undoing the takedown shows the row again.

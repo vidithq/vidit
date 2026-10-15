@@ -87,7 +87,11 @@ export default function SettingsPage() {
   const helpHidden = useHelpHidden();
   const palette = usePalette();
   const theme = useTheme();
-  const display = useMutation(saveDisplay, { fallback: SAVE_FAILED });
+  const display = useMutation(
+    (change: Parameters<typeof saveDisplay>[1]) =>
+      user ? saveDisplay(user.id, change) : Promise.resolve(undefined),
+    { fallback: SAVE_FAILED }
+  );
 
   const changePassword = useMutation(
     () =>

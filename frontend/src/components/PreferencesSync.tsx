@@ -15,7 +15,7 @@ export default function PreferencesSync() {
   useEffect(() => {
     if (!userId) return;
     const controller = new AbortController();
-    syncDisplay(controller.signal).catch(() => {});
+    syncDisplay(userId, controller.signal).catch(() => {});
     return () => controller.abort();
   }, [userId]);
 

@@ -39,11 +39,6 @@ class User(Base):
     # refreshes it once per ``LAST_SEEN_THROTTLE`` window; login and
     # register-confirm stamp it too. NULL if no request since the column landed.
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # The last-read marker: notifications created after it are unread. NULL
-    # until the analyst first opens the feed.
-    notifications_read_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
     # Soft-delete: NULL = live. Auth checks reject soft-deleted users and public
     # reads filter them; it cascade-soft-deletes their geolocations.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
