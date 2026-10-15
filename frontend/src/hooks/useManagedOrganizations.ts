@@ -8,13 +8,13 @@ import {
 
 const NONE: OrganizationRef[] = [];
 
-/** The organizations the signed-in analyst is an org-admin of, the ones they act for (approve,
+/** The organizations the signed-in analyst is an org manager of, the ones they act for (approve,
  *  answer a review request, revoke an approval). Empty while loading and when signed out. */
-export function useAdministeredOrganizations(): OrganizationRef[] {
+export function useManagedOrganizations(): OrganizationRef[] {
   const { user } = useAuth();
   const { data } = useApiResource<OrganizationMembership[]>(
     user ? userOrganizationsPath(user.username) : null,
   );
   if (!data) return NONE;
-  return data.filter((m) => m.role === "admin").map((m) => m.organization);
+  return data.filter((m) => m.role === "manager").map((m) => m.organization);
 }

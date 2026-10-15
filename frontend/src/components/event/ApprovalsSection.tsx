@@ -5,7 +5,7 @@ import Link from "next/link";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/hooks/useAdmin";
-import { useAdministeredOrganizations } from "@/hooks/useAdministeredOrganizations";
+import { useManagedOrganizations } from "@/hooks/useManagedOrganizations";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import {
@@ -40,7 +40,7 @@ export function ApprovalState({ approval }: { approval: Approval }) {
   return <Pill tone="neutral">Outdated</Pill>;
 }
 
-/** One review: who placed it (an organization signs with its name, its acting org-admin
+/** One review: who placed it (an organization signs with its name, its acting org manager
  *  beside it, or "on behalf of" it once that account is erased) and when, its note, and, once
  *  revoked, the public reason. */
 export function ApprovalRow({
@@ -111,7 +111,7 @@ export function ChangesSinceApproval({
   eventId: string;
   event?: EventDetail;
   approvedVersion: number;
-  /** Who approved `approvedVersion`: the reader, or an organization they administer. */
+  /** Who approved `approvedVersion`: the reader, or an organization they manage. */
   approver?: string;
 }) {
   const live = useApiResource<EventDetail>(event ? null : `/events/${eventId}`);
@@ -138,8 +138,8 @@ const NOTE_FIELD_ID = "approval-note";
 
 /**
  * The approvals of one version of a published event. On the live version an analyst outside the
- * event's geolocators approves it, as themselves or as an org-admin for each organization they
- * administer; the reviewer, an org-admin of the organization, or a site admin revokes a review
+ * event's geolocators approves it, as themselves or as an org manager for each organization they
+ * manage; the reviewer, an org manager of the organization, or a site admin revokes a review
  * with a public reason. A filed version (`live` false) lists the reviews it held and takes no
  * new one. `onApproved` runs after an approval lands, which resolves review requests.
  */
@@ -156,7 +156,7 @@ export function ApprovalsSection({
 }) {
   const { user } = useAuth();
   const { isAdmin } = useAdmin();
-  const administered = useAdministeredOrganizations();
+  const managed = useManagedOrganizations();
   const approvals = useApiResource<Approval[]>(approvalsPath(event.id, versionNo));
   const [note, setNote] = useState("");
   const [revoking, setRevoking] = useState<string | null>(null);
@@ -181,10 +181,10 @@ export function ApprovalsSection({
   );
 
   const rows = approvals.data ?? [];
-  const administeredSlugs = new Set(administered.map((o) => o.slug));
+  const managedSlugs = new Set(managed.map((o) => o.slug));
   const eligible = live && canApprove(event, user?.id, rows);
   const forOrganizations = live
-    ? administered.filter((o) => canApprove(event, user?.id, rows, o.slug))
+    ? managed.filter((o) => canApprove(event, user?.id, rows, o.slug))
     : [];
   const mine = useApiResource<Approval[]>(
     eligible && user && event.version_no > 1
@@ -211,7 +211,7 @@ export function ApprovalsSection({
                   revoking !== approval.id &&
                   (isAdmin ||
                     (approval.organization
-                      ? administeredSlugs.has(approval.organization.slug)
+                      ? managedSlugs.has(approval.organization.slug)
                       : approval.reviewer?.id === user?.id))
                     ? () => {
                         write.reset();
@@ -292,7 +292,7 @@ export function ApprovalsSection({
           </div>
           <p className="text-xs text-neutral-500">
             An approval covers this version only. A new version asks you, or the
-            organization&apos;s org-admins, to approve again.
+            organization&apos;s org managers, to approve again.
           </p>
         </div>
       )}

@@ -22,10 +22,10 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 /**
- * The organization's review requests, for its org-admins and site admins: who may send one (the
+ * The organization's review requests, for its org managers and site admins: who may send one (the
  * organization's audience, which they set here), and the open requests, oldest first. An
- * org-admin declines a request here, or approves it in the organization's name from the event
- * page. A site admin who is not an org-admin reads the list without answering.
+ * org manager declines a request here, or approves it in the organization's name from the event
+ * page. A site admin who is not an org manager reads the list without answering.
  */
 export function OrganizationReviewRequests({
   org,
@@ -42,7 +42,7 @@ export function OrganizationReviewRequests({
     { fallback: "Could not change who can send review requests", onSuccess: onChanged },
   );
   const rows = requests.data ?? [];
-  const canAnswer = org.viewer_role === "admin";
+  const canAnswer = org.viewer_role === "manager";
   const error = audience.error ?? requests.error;
 
   return (

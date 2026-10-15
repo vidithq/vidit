@@ -28,7 +28,7 @@ export function organizationApprovalsPath(slug: string, cursor: string | null): 
 // Keyed by the generated revoker values, so a value the backend adds fails the type-check.
 const REVOKED_BY: Record<Revoker, string> = {
   reviewer: "Revoked",
-  organization_admin: "Revoked by an org-admin",
+  organization_manager: "Revoked by an org manager",
   site_admin: "Revoked by a site admin",
 };
 
@@ -67,7 +67,7 @@ export function approveLabel(versionNo: number, organization?: OrganizationRef |
 }
 
 /** Approve `versionNo`, the version the reader has on screen, as the reader or, as its
- *  org-admin, for the organization `organization` (a slug); the backend answers 409 when the
+ *  org manager, for the organization `organization` (a slug); the backend answers 409 when the
  *  live version moved on since. */
 export function approveEvent(
   eventId: string,
@@ -97,7 +97,7 @@ export function revokeApproval(
 }
 
 /** Whether `userId` may approve the live version of `event`, given its reviews: as themselves,
- *  or, with `organization` (a slug of an organization they administer), in its name.
+ *  or, with `organization` (a slug of an organization they manage), in its name.
  *  Mirrors backend services/approvals.approve (published only, never a geolocator, one review
  *  per analyst and version, one standing approval per organization and version); change both. */
 export function canApprove(

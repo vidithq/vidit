@@ -290,7 +290,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
       defaults: { email: false, push: false },
     },
     {
-      kind: "organization_admin_inherited",
+      kind: "organization_manager_inherited",
       channels: { email: true, push: true },
       defaults: { email: true, push: true },
     },
@@ -318,7 +318,7 @@ export const X_HANDLE_WITH_DECLINED_REQUEST: XHandleState = {
   },
 };
 
-/** Slug of the organization the signed-in analyst administers. */
+/** Slug of the organization the signed-in analyst manages. */
 export const ORGANIZATION_SLUG = "open-source-watch";
 
 export const ORGANIZATION: Organization = {
@@ -332,7 +332,7 @@ export const ORGANIZATION: Organization = {
   created_at: "2025-03-01T09:00:00Z",
   member_count: 2,
   review_request_audience: "following",
-  viewer_role: "admin",
+  viewer_role: "manager",
   viewer_invited: false,
   viewer_can_manage: true,
 };
@@ -340,7 +340,7 @@ export const ORGANIZATION: Organization = {
 export const ORGANIZATION_MEMBERS: OrganizationMember[] = [
   {
     user: { id: SIGNED_IN_USER.id, username: SIGNED_IN_USER.username, avatar_url: null },
-    role: "admin",
+    role: "manager",
     joined_at: "2025-03-01T09:00:00Z",
   },
   {
@@ -415,7 +415,7 @@ export const ORGANIZATION_APPROVALS: OrganizationApproval[] = [
   { event: { id: EVENT_ID, title: EVENT.title }, approval: EVENT_APPROVALS[1] },
 ];
 
-/** One open request to the organization, which its org-admin can decline. */
+/** One open request to the organization, which its org manager can decline. */
 export const ORGANIZATION_REVIEW_REQUESTS: OrganizationReviewRequest[] = [
   {
     event: { id: EVENT_ID, title: EVENT.title },

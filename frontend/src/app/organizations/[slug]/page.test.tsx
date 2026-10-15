@@ -46,7 +46,7 @@ const ORG: Organization = {
 const MEMBERS: OrganizationMember[] = [
   {
     user: { id: "u1", username: "lead", avatar_url: null },
-    role: "admin",
+    role: "manager",
     joined_at: "2026-01-01T00:00:00Z",
   },
   {
@@ -130,7 +130,7 @@ describe("OrganizationPage", () => {
     expect(screen.getByRole("heading", { name: "Open Source Watch" })).toBeInTheDocument();
     expect(screen.getByText("2 members")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "lead" })).toHaveAttribute("href", "/profile/lead");
-    expect(screen.getByText("Org-admin")).toBeInTheDocument();
+    expect(screen.getByText("Org manager")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Remove|Leave|Make/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit profile" })).toBeNull();
     expect(screen.queryByText("Invites")).toBeNull();
@@ -173,45 +173,45 @@ describe("OrganizationPage", () => {
     expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
   });
 
-  it("gives an org-admin the role controls, the invites and the edit", () => {
+  it("gives an org manager the role controls, the invites and the edit", () => {
     signIn("lead");
-    serve({ ...ORG, viewer_role: "admin", viewer_can_manage: true });
+    serve({ ...ORG, viewer_role: "manager", viewer_can_manage: true });
     render(<OrganizationPage />);
 
-    expect(screen.getByRole("button", { name: "Make org-admin" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Make org manager" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
     expect(screen.getByText("Invites")).toBeInTheDocument();
     expect(screen.getByLabelText("Analyst")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Edit profile" })).toBeInTheDocument();
   });
 
-  it("offers the last org-admin neither leave nor demotion, and says why", () => {
+  it("offers the last org manager neither leave nor demotion, and says why", () => {
     signIn("lead");
-    serve({ ...ORG, viewer_role: "admin", viewer_can_manage: true });
+    serve({ ...ORG, viewer_role: "manager", viewer_can_manage: true });
     render(<OrganizationPage />);
 
     expect(screen.queryByRole("button", { name: "Make member" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Leave" })).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Why can the last org-admin not leave?" }),
+      screen.getByRole("button", { name: "Why can the last org manager not leave?" }),
     ).toBeInTheDocument();
   });
 
-  it("lets one of two org-admins leave or be demoted", () => {
+  it("lets one of two org managers leave or be demoted", () => {
     signIn("lead");
-    const second = { ...MEMBERS[1], role: "admin" as const };
-    serve({ ...ORG, viewer_role: "admin", viewer_can_manage: true }, [MEMBERS[0], second]);
+    const second = { ...MEMBERS[1], role: "manager" as const };
+    serve({ ...ORG, viewer_role: "manager", viewer_can_manage: true }, [MEMBERS[0], second]);
     render(<OrganizationPage />);
 
     expect(screen.getAllByRole("button", { name: "Make member" })).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Leave" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Why can the last org-admin not leave?" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Why can the last org manager not leave?" })).toBeNull();
   });
 
   it("saves the organization's profile without refreshing the reader's own account", async () => {
     const refreshAuth = vi.fn();
     useAuth.mockReturnValue({ user: { id: "x", username: "lead" }, loading: false, refresh: refreshAuth });
-    const refetch = serve({ ...ORG, viewer_role: "admin", viewer_can_manage: true });
+    const refetch = serve({ ...ORG, viewer_role: "manager", viewer_can_manage: true });
     render(<OrganizationPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Edit profile" }));
@@ -221,15 +221,15 @@ describe("OrganizationPage", () => {
     expect(refreshAuth).not.toHaveBeenCalled();
   });
 
-  it("gives an org-admin the open review requests and the audience control", async () => {
+  it("gives an org manager the open review requests and the audience control", async () => {
     signIn("lead");
-    const refetch = serve({ ...ORG, viewer_role: "admin", viewer_can_manage: true });
+    const refetch = serve({ ...ORG, viewer_role: "manager", viewer_can_manage: true });
     render(<OrganizationPage />);
 
     expect(screen.getByText("Review requests")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Port fire" })).toHaveAttribute("href", "/events/e2");
     expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "People our org-admins follow" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "People our org managers follow" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );

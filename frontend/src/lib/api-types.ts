@@ -309,13 +309,13 @@ export interface paths {
         };
         /**
          * List Organizations
-         * @description Every organization with its live member and org-admin counts, those without an org-admin first.
+         * @description Every organization with its live member and org manager counts, those without an org manager first.
          */
         get: operations["list_organizations_api_v1_admin_organizations_get"];
         put?: never;
         /**
          * Create Organization
-         * @description Create an organization and name its first org-admin, who joins without an invite.
+         * @description Create an organization and name its first org manager, who joins without an invite.
          */
         post: operations["create_organization_api_v1_admin_organizations_post"];
         delete?: never;
@@ -324,7 +324,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/organizations/{slug}/admins": {
+    "/api/v1/admin/organizations/{slug}/managers": {
         parameters: {
             query?: never;
             header?: never;
@@ -334,10 +334,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Appoint Organization Admin
-         * @description Make a live analyst an org-admin of the organization, joining it if needed, with audit.
+         * Appoint Organization Manager
+         * @description Make a live analyst an org manager of the organization, joining it if needed, with audit.
          */
-        post: operations["appoint_organization_admin_api_v1_admin_organizations__slug__admins_post"];
+        post: operations["appoint_organization_manager_api_v1_admin_organizations__slug__managers_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1296,7 +1296,7 @@ export interface paths {
         /**
          * Approve Event
          * @description Approve the live version of a published geolocation you are not credited on, as
-         *     yourself or, as its org-admin, for an organization.
+         *     yourself or, as its org manager, for an organization.
          */
         post: operations["approve_event_api_v1_events__geolocation_id__approvals_post"];
         delete?: never;
@@ -1316,7 +1316,7 @@ export interface paths {
         put?: never;
         /**
          * Revoke Approval
-         * @description Revoke an approval with a public reason: your own, your organization's as its org-admin,
+         * @description Revoke an approval with a public reason: your own, your organization's as its org manager,
          *     or any as a site admin.
          */
         post: operations["revoke_approval_api_v1_events__geolocation_id__approvals__approval_id__revoke_post"];
@@ -1605,7 +1605,7 @@ export interface paths {
         /**
          * List Review Requests
          * @description Open review requests on this event: all of them for its geolocators, those addressed to
-         *     you or to an organization you administer otherwise.
+         *     you or to an organization you manage otherwise.
          */
         get: operations["list_review_requests_api_v1_events__geolocation_id__review_requests_get"];
         put?: never;
@@ -1632,7 +1632,7 @@ export interface paths {
         put?: never;
         /**
          * Decline Review Request
-         * @description Decline a review request addressed to you, or to an organization you administer.
+         * @description Decline a review request addressed to you, or to an organization you manage.
          */
         post: operations["decline_review_request_api_v1_events__geolocation_id__review_requests__request_id__decline_post"];
         delete?: never;
@@ -1824,8 +1824,8 @@ export interface paths {
         head?: never;
         /**
          * Update Organization
-         * @description Edit an organization's bio, links and review request audience. Org-admins and site
-         *     admins only.
+         * @description Edit an organization's bio, links and review request audience. Org managers and site
+         *     managers only.
          */
         patch: operations["update_organization_api_v1_organizations__slug__patch"];
         trace?: never;
@@ -1944,13 +1944,13 @@ export interface paths {
         };
         /**
          * List Organization Invites
-         * @description Pending invites, newest first. Org-admins and site admins only.
+         * @description Pending invites, newest first. Org managers and site admins only.
          */
         get: operations["list_organization_invites_api_v1_organizations__slug__invites_get"];
         put?: never;
         /**
          * Create Organization Invite
-         * @description Invite an analyst in mutual follow with you. Org-admins only.
+         * @description Invite an analyst in mutual follow with you. Org managers only.
          */
         post: operations["create_organization_invite_api_v1_organizations__slug__invites_post"];
         delete?: never;
@@ -1971,7 +1971,7 @@ export interface paths {
         post?: never;
         /**
          * Cancel Organization Invite
-         * @description Withdraw a pending invite. Org-admins and site admins only.
+         * @description Withdraw a pending invite. Org managers and site admins only.
          */
         delete: operations["cancel_organization_invite_api_v1_organizations__slug__invites__invite_id__delete"];
         options?: never;
@@ -1988,7 +1988,7 @@ export interface paths {
         };
         /**
          * List Organization Members
-         * @description An organization's members, org-admins first, then by join date.
+         * @description An organization's members, org managers first, then by join date.
          */
         get: operations["list_organization_members_api_v1_organizations__slug__members_get"];
         put?: never;
@@ -2011,14 +2011,14 @@ export interface paths {
         post?: never;
         /**
          * Remove Organization Member
-         * @description Remove a member, or leave with your own username. The last org-admin cannot leave.
+         * @description Remove a member, or leave with your own username. The last org manager cannot leave.
          */
         delete: operations["remove_organization_member_api_v1_organizations__slug__members__username__delete"];
         options?: never;
         head?: never;
         /**
          * Update Organization Member
-         * @description Change a member's role. Org-admins and site admins only; the last org-admin keeps the role.
+         * @description Change a member's role. Org managers and site admins only; the last org manager keeps the role.
          */
         patch: operations["update_organization_member_api_v1_organizations__slug__members__username__patch"];
         trace?: never;
@@ -2032,8 +2032,8 @@ export interface paths {
         };
         /**
          * List Organization Review Requests
-         * @description Open review requests addressed to the organization, oldest first. Org-admins and site
-         *     admins only.
+         * @description Open review requests addressed to the organization, oldest first. Org managers and site
+         *     managers only.
          */
         get: operations["list_organization_review_requests_api_v1_organizations__slug__review_requests_get"];
         put?: never;
@@ -2791,17 +2791,17 @@ export interface components {
         };
         /**
          * AdminOrganizationRead
-         * @description One row of ``GET /admin/organizations``. ``admin_count`` 0 flags an
-         *     organization left without a live org-admin.
+         * @description One row of ``GET /admin/organizations``. ``manager_count`` 0 flags an
+         *     organization left without a live org manager.
          */
         AdminOrganizationRead: {
-            /** Admin Count */
-            admin_count: number;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
+            /** Manager Count */
+            manager_count: number;
             /** Member Count */
             member_count: number;
             /** Name */
@@ -2920,7 +2920,7 @@ export interface components {
         /**
          * ApprovalCreate
          * @description Body of ``POST /events/{id}/approvals``: the version you read, an optional note, and the
-         *     slug of the organization you approve for as its org-admin (your own approval without it).
+         *     slug of the organization you approve for as its org manager (your own approval without it).
          */
         ApprovalCreate: {
             /** Note */
@@ -2935,11 +2935,11 @@ export interface components {
          * @description One review of one version of an event.
          *
          *     ``organization`` is the organization the review was placed for, with
-         *     ``reviewer`` the org-admin who placed it; null for an analyst's own review.
+         *     ``reviewer`` the org manager who placed it; null for an analyst's own review.
          *     ``reviewer`` is null on an organization's review once the account of the
-         *     org-admin who placed it is erased: the review stays the organization's.
+         *     org manager who placed it is erased: the review stays the organization's.
          *     ``current`` is true while the review covers the live version and is not
-         *     revoked. ``revoked_as`` says who revoked it: the reviewer, an org-admin of
+         *     revoked. ``revoked_as`` says who revoked it: the reviewer, an org manager of
          *     the organization, or a site admin.
          */
         ApprovalRead: {
@@ -2962,7 +2962,7 @@ export interface components {
             /** Revoke Reason */
             revoke_reason: string | null;
             /** Revoked As */
-            revoked_as: ("reviewer" | "organization_admin" | "site_admin") | null;
+            revoked_as: ("reviewer" | "organization_manager" | "site_admin") | null;
             /** Revoked At */
             revoked_at: string | null;
             /**
@@ -4011,7 +4011,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_admin_inherited" | "re_approve_requested" | "approval_received" | "review_request_received" | "review_request_declined";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "review_request_received" | "review_request_declined";
         };
         /**
          * NotificationRead
@@ -4047,7 +4047,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_admin_inherited" | "re_approve_requested" | "approval_received" | "review_request_received" | "review_request_declined";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred" | "organization_invite" | "organization_invite_accepted" | "organization_manager_inherited" | "re_approve_requested" | "approval_received" | "review_request_received" | "review_request_declined";
             organization: components["schemas"]["OrganizationRef"] | null;
             /** Read At */
             read_at: string | null;
@@ -4071,16 +4071,8 @@ export interface components {
             count: number;
         };
         /**
-         * OrganizationAdminAppoint
-         * @description Body for ``POST /admin/organizations/{slug}/admins``: the analyst to make org-admin.
-         */
-        OrganizationAdminAppoint: {
-            /** Username */
-            username: string;
-        };
-        /**
          * OrganizationApprovalRead
-         * @description One approval an org-admin placed in an organization's name, with the event it covers,
+         * @description One approval an org manager placed in an organization's name, with the event it covers,
          *     for ``GET /organizations/{slug}/approvals``.
          */
         OrganizationApprovalRead: {
@@ -4091,15 +4083,15 @@ export interface components {
          * OrganizationCreate
          * @description Body for ``POST /admin/organizations``.
          *
-         *     ``admin_username`` names the first org-admin, who joins at once without an
+         *     ``manager_username`` names the first org manager, who joins at once without an
          *     invite.
          */
         OrganizationCreate: {
-            /** Admin Username */
-            admin_username: string;
             /** Bio */
             bio?: string | null;
             external_links?: components["schemas"]["ExternalLinks"] | null;
+            /** Manager Username */
+            manager_username: string;
             /** Name */
             name: string;
             /** Review Request Audience */
@@ -4119,7 +4111,7 @@ export interface components {
         };
         /**
          * OrganizationInviteRead
-         * @description One pending invite, for the org-admin's list.
+         * @description One pending invite, for the org manager's list.
          */
         OrganizationInviteRead: {
             /**
@@ -4136,8 +4128,16 @@ export interface components {
             user: components["schemas"]["AuthorRef"];
         };
         /**
+         * OrganizationManagerAppoint
+         * @description Body for ``POST /admin/organizations/{slug}/managers``: the analyst to make org manager.
+         */
+        OrganizationManagerAppoint: {
+            /** Username */
+            username: string;
+        };
+        /**
          * OrganizationMemberRead
-         * @description One member on the organization page, admins first.
+         * @description One member on the organization page, org managers first.
          */
         OrganizationMemberRead: {
             /**
@@ -4149,7 +4149,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "admin" | "member";
+            role: "manager" | "member";
             user: components["schemas"]["AuthorRef"];
         };
         /**
@@ -4161,7 +4161,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "admin" | "member";
+            role: "manager" | "member";
         };
         /**
          * OrganizationMembershipRead
@@ -4178,7 +4178,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "admin" | "member";
+            role: "manager" | "member";
         };
         /**
          * OrganizationRead
@@ -4186,10 +4186,10 @@ export interface components {
          *
          *     ``viewer_role`` is the caller's role, null for a non-member or an anonymous
          *     caller. ``viewer_invited`` is true while the caller holds a pending invite.
-         *     ``viewer_can_manage`` is true for an org-admin or a site admin: it gates
+         *     ``viewer_can_manage`` is true for an org manager or a site admin: it gates
          *     the profile edit and the member management on the page.
          *     ``review_request_audience`` is who may send the organization a review
-         *     request, set by its org-admins: shown to them and to site admins only, null
+         *     request, set by its org managers: shown to them and to site admins only, null
          *     for anyone else, so the setting is not read off the page.
          */
         OrganizationRead: {
@@ -4230,7 +4230,7 @@ export interface components {
              */
             viewer_invited: boolean;
             /** Viewer Role */
-            viewer_role?: ("admin" | "member") | null;
+            viewer_role?: ("manager" | "member") | null;
             /** X Handle */
             x_handle: string | null;
         };
@@ -4257,7 +4257,7 @@ export interface components {
         };
         /**
          * OrganizationUpdate
-         * @description Body for ``PATCH /organizations/{slug}``: the fields an org-admin edits,
+         * @description Body for ``PATCH /organizations/{slug}``: the fields an org manager edits,
          *     under the rules of ``PATCH /users/me``, and who may send the organization a
          *     review request. ``name``, ``slug`` and ``x_handle`` stay with the site
          *     admin.
@@ -5598,7 +5598,7 @@ export interface operations {
             };
         };
     };
-    appoint_organization_admin_api_v1_admin_organizations__slug__admins_post: {
+    appoint_organization_manager_api_v1_admin_organizations__slug__managers_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -5611,7 +5611,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OrganizationAdminAppoint"];
+                "application/json": components["schemas"]["OrganizationManagerAppoint"];
             };
         };
         responses: {

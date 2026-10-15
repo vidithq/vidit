@@ -34,10 +34,10 @@ function audienceOptions(labels: Record<ReviewRequestAudience, string>) {
 export const REVIEW_REQUEST_AUDIENCE_OPTIONS = audienceOptions(AUDIENCE_LABELS);
 
 /** The organization page's choices for who may send the organization a review request.
- *  `following` admits an analyst any org-admin follows. */
+ *  `following` admits an analyst any org manager follows. */
 export const ORGANIZATION_AUDIENCE_OPTIONS = audienceOptions({
   ...AUDIENCE_LABELS,
-  following: "People our org-admins follow",
+  following: "People our org managers follow",
 });
 
 /** Open requests on an event: every one for its geolocators, the reader's own otherwise. */
@@ -51,7 +51,7 @@ export function reviewRequestTargetsPath(eventId: string, query: string): string
   return `/events/${eventId}/review-request-targets?q=${encodeURIComponent(query)}`;
 }
 
-/** The open requests addressed to an organization (its org-admins and site admins). */
+/** The open requests addressed to an organization (its org managers and site admins). */
 export function organizationReviewRequestsPath(slug: string): string {
   return `/organizations/${encodeURIComponent(slug)}/review-requests`;
 }
