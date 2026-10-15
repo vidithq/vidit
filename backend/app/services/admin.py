@@ -594,12 +594,14 @@ def soft_delete_user(
     *,
     actor_id: uuid.UUID,
     user_id: uuid.UUID,
-) -> tuple[User, int]:
+) -> tuple[User, int, int]:
     """Mark a user as removed-from-public-view + cascade to their submissions.
 
-    Returns ``(user, cascaded_geolocations)``: the count of live (``deleted_at IS NULL``) events
-    flipped in this call. Idempotent on an already-deleted user (same timestamp, no audit row,
-    count zero).
+    An owned event another live analyst is credited on passes to the earliest of them first
+    (:func:`services.geolocator_credit.hand_over_owned_events`), as on erasure, so shared work
+    stays published. Returns ``(user, cascaded_geolocations, transferred_events)``: the live
+    (``deleted_at IS NULL``) events flipped and the events handed over in this call. Idempotent
+    on an already-deleted user (same timestamp, no audit row, counts zero).
 
     Requests and geolocations are one table, so a single cascade covers both.
     """
@@ -607,7 +609,18 @@ def soft_delete_user(
     if user is None:
         raise UserNotFoundError("User not found")
     if user.deleted_at is not None:
-        return user, 0
+        return user, 0, 0
+
+    # The lock serializes with an invitation being accepted on the same event. Taken before
+    # ``deleted_at`` is set, so the hand-over sees these as live.
+    owned = (
+        db.query(Event)
+        .filter(Event.owner_id == user.id, Event.deleted_at.is_(None))
+        .with_for_update()
+        .all()
+    )
+    handed_over = geolocator_credit.hand_over_owned_events(db, owner=user, events=owned)
+    db.flush()
 
     now = datetime.now(UTC)
     user.deleted_at = now
@@ -641,12 +654,13 @@ def soft_delete_user(
             "user_id": str(user.id),
             "username": user.username,
             "cascaded_geolocations": cascaded_geolocations,
+            "transferred_events": len(handed_over),
             "freed_x_handle": freed_x_handle,
         },
     )
     db.commit()
     db.refresh(user)
-    return user, cascaded_geolocations
+    return user, cascaded_geolocations, len(handed_over)
 
 
 def hard_delete_user(
