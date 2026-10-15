@@ -31,7 +31,6 @@ from app.models.event import (
     SOURCE_URL_MAX_LENGTH,
     TITLE_MAX_LENGTH,
     Event,
-    EventGeolocator,
 )
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
@@ -66,6 +65,7 @@ from app.services import events as events_service
 from app.services import reports as reports_service
 from app.services import versions as versions_service
 from app.services.evidence_intake import EvidenceIntakeError
+from app.services.geolocator_credit import CREDIT_LOAD
 from app.services.pagination import (
     decode_ordinal_cursor,
     encode_ordinal_cursor,
@@ -73,7 +73,6 @@ from app.services.pagination import (
     page_size,
     take_page,
 )
-from app.services.permissions import ensure_owner
 from app.services.source_archive import SnapshotRejected
 from app.services.thumbnails import thumbnail_media_criteria
 
@@ -86,7 +85,7 @@ _DETAIL_LOADS = (
     selectinload(Event.media.and_(thumbnail_media_criteria())),
     selectinload(Event.tags),
     selectinload(Event.conflicts),
-    selectinload(Event.geolocators).joinedload(EventGeolocator.user),
+    CREDIT_LOAD,
     # ``build_event_read`` reads this set; without it, a lazy query per event.
     selectinload(Event.archives),
     selectinload(Event.source_links),
@@ -607,11 +606,12 @@ def list_event_collections(
 ):
     """Your collections, each saying whether this event is already on it.
 
-    The add-to-collection popover's read, owner-only. Empty collections are
-    listed. 404 on a soft-deleted or withheld event, 403 when not yours.
+    The add-to-collection popover's read, for an analyst credited on the event
+    (its owner or a co-geolocator). Empty collections are listed. 404 on a
+    soft-deleted or withheld event, 403 when you are not credited.
     """
     geo = resolve_live_event(db, geolocation_id)
-    ensure_owner(geo, current_user)
+    collections_service.ensure_credited(db, event_id=geo.id, user=current_user)
     return CollectionMembershipList(
         items=collections_service.list_memberships(db, owner=current_user, event_id=geo.id)
     )

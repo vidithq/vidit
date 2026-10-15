@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Notification } from "@/lib/notifications";
@@ -33,6 +33,7 @@ const fulfilled: Notification = {
   actor: { id: "u2", username: "bo", avatar_url: null },
   event: { id: "e1", title: "Strike on the depot" },
   read_at: null,
+  invite_pending: false,
 };
 const follower: Notification = {
   id: "n1",
@@ -41,6 +42,7 @@ const follower: Notification = {
   actor: { id: "u3", username: "cy", avatar_url: null },
   event: null,
   read_at: "2026-10-11T09:00:00Z",
+  invite_pending: false,
 };
 
 function serve(items: Notification[]) {
@@ -89,6 +91,35 @@ describe("NotificationsPage", () => {
 
     await screen.findByRole("link", { name: /cy followed you/ });
     expect(api.apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("answers a pending geolocator invitation from its row, then reloads the feed", async () => {
+    const invite: Notification = {
+      ...follower,
+      id: "n3",
+      kind: "co_geolocator_invite",
+      event: { id: "e9", title: "Bridge strike" },
+      invite_pending: true,
+    };
+    serve([invite, { ...invite, id: "n4", invite_pending: false }]);
+    render(<NotificationsPage />);
+
+    expect(
+      await screen.findAllByRole("link", {
+        name: /cy invited you to share the credit of: Bridge strike/,
+      }),
+    ).toHaveLength(2);
+    // Only the row still waiting for an answer carries the buttons.
+    expect(screen.getAllByRole("button", { name: "Accept" })).toHaveLength(1);
+    const loads = api.apiFetchPage.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+
+    await waitFor(() =>
+      expect(api.apiFetch).toHaveBeenCalledWith("/events/e9/geolocator-invites/accept", {
+        method: "POST",
+      }),
+    );
+    await waitFor(() => expect(api.apiFetchPage.mock.calls.length).toBeGreaterThan(loads));
   });
 
   it("explains the empty feed", async () => {

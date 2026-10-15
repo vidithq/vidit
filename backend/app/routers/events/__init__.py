@@ -10,6 +10,7 @@ catch-all would shadow the literal-path GETs (``/points``,
 from app.routers.events import (
     batch,
     duplicates,
+    geolocators,
     import_archive,
     import_tweet,
     item,
@@ -24,5 +25,6 @@ routers = (
     import_archive.router,
     write.router,
     batch.router,
+    geolocators.router,
     item.router,
 )

@@ -22,7 +22,6 @@ from app.models.event import (
     STATUS_DETECTED,
     STATUS_GEOLOCATED,
     Event,
-    EventGeolocator,
 )
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
@@ -44,6 +43,7 @@ from app.services.event_filters import (
     visible_events,
 )
 from app.services.events import DETECTION_READINESS, detection_ready_predicate
+from app.services.geolocator_credit import CREDIT_LOAD
 from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_cursor,
@@ -311,6 +311,7 @@ def list_events(
             selectinload(Event.tags),
             selectinload(Event.conflicts),
             selectinload(Event.media.and_(thumbnail_media_criteria())),
+            CREDIT_LOAD,
         )
         .filter(Event.id.in_(ids))
         # Same ordering as the id window, so the page matches the cursor.
@@ -406,7 +407,7 @@ def list_detections(
             selectinload(Event.tags),
             selectinload(Event.conflicts),
             selectinload(Event.media.and_(thumbnail_media_criteria())),
-            selectinload(Event.geolocators).joinedload(EventGeolocator.user),
+            CREDIT_LOAD,
             selectinload(Event.archives),
             selectinload(Event.source_links),
         )

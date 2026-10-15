@@ -62,6 +62,7 @@ const SUBMISSION: EventListItem = {
   event_coords: { lat: 48.5, lng: 37.8 },
   before_closed_status: null,
   requested_at: null,
+  geolocators: [],
   conflicts: [],
   is_graphic: false,
   media: null,

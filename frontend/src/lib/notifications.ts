@@ -44,15 +44,29 @@ export const NOTIFICATION_KIND_COPY: Record<
     label: "X handle change declined",
     setting: "An admin declines the X handle you requested.",
   },
+  co_geolocator_invite: {
+    label: "Geolocator invitation",
+    setting: "Someone invites you to share the credit of their geolocation.",
+  },
+  co_geolocator_removed: {
+    label: "Credit removed",
+    setting: "The owner of a geolocation removes you from its geolocators.",
+  },
+  ownership_transferred: {
+    label: "Ownership transferred",
+    setting: "A geolocation you share passes to you because its owner's account was removed.",
+  },
 };
 
 /** The feed row's sentence and destination. */
 export function describeNotification(n: Notification): { text: string; href: string } {
   const actor = n.actor?.username ?? "Someone";
+  const title = n.event?.title ?? "";
+  const eventHref = n.event ? `/events/${n.event.id}` : "/notifications";
   switch (n.kind) {
     case "request_fulfilled":
       return {
-        text: `${actor} geolocated your request: ${n.event?.title ?? ""}`,
+        text: `${actor} geolocated your request: ${title}`,
         href: n.event ? `/events/${n.event.id}` : "/requests",
       };
     case "new_follower":
@@ -66,6 +80,21 @@ export function describeNotification(n: Notification): { text: string; href: str
       return {
         text: "An admin declined your X handle request. Settings shows why.",
         href: "/settings",
+      };
+    case "co_geolocator_invite":
+      return {
+        text: `${actor} invited you to share the credit of: ${title}`,
+        href: eventHref,
+      };
+    case "co_geolocator_removed":
+      return {
+        text: `${actor} removed you from the geolocators of: ${title}`,
+        href: eventHref,
+      };
+    case "ownership_transferred":
+      return {
+        text: `You now own: ${title}. Its previous owner's account was removed.`,
+        href: eventHref,
       };
   }
 }

@@ -29,6 +29,7 @@ function openRequest(id: string): EventListItem {
     status: "requested",
     before_closed_status: null,
     requested_at: null,
+    geolocators: [],
     event_coords: null,
     event_date: null,
     is_graphic: false,

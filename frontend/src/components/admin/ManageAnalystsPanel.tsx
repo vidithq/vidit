@@ -130,9 +130,9 @@ export function ManageAnalystsPanel() {
             {lastDelete.mode === "hard"
               ? `Dropped ${lastDelete.cascaded_geolocations} geolocation${
                   lastDelete.cascaded_geolocations === 1 ? "" : "s"
-                }, swept ${lastDelete.media_count} media row${
-                  lastDelete.media_count === 1 ? "" : "s"
-                } (source + proof roles).`
+                }, handed ${lastDelete.transferred_events} to a co-geolocator, swept ${
+                  lastDelete.media_count
+                } media row${lastDelete.media_count === 1 ? "" : "s"} (source + proof roles).`
               : `Cascade-hid ${lastDelete.cascaded_geolocations} geolocation${
                   lastDelete.cascaded_geolocations === 1 ? "" : "s"
                 }.`}

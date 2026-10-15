@@ -107,7 +107,13 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/{id}/versions/{version_no}` | 🌐 | One superseded version, by its number |
 | POST | `/events/{id}/close` | 🔒 | Withdraw, reject or retract an event, owner only (→ `closed`) |
 | GET | `/events/detections` | 🔒 | Your `detected` events awaiting a geolocate (paginated, filterable on readiness) |
-| GET | `/events/{id}/collections` | 🔒 | Your collections, each saying whether this event is on it (owner only) |
+| GET | `/events/{id}/collections` | 🔒 | Your collections, each saying whether this event is on it (credited analysts only) |
+| GET | `/events/{id}/geolocator-invites` | 🔒 | Pending invitations to share the event's credit: all for the owner, yours otherwise |
+| POST | `/events/{id}/geolocator-invites` | 🔒 | Invite an analyst to share a published event's credit, owner only |
+| DELETE | `/events/{id}/geolocator-invites/{username}` | 🔒 | Withdraw a pending invitation, owner only |
+| POST | `/events/{id}/geolocator-invites/accept` | 🔒 | Accept your invitation and join the event's geolocators |
+| POST | `/events/{id}/geolocator-invites/decline` | 🔒 | Decline your invitation |
+| DELETE | `/events/{id}/geolocators/{username}` | 🔒 | Remove a co-geolocator (owner), or leave as one |
 | **Collections** | | | |
 | POST | `/collections` | 🔒 | Open a collection (title, description, and the events it holds) |
 | POST | `/collections/{id}/report` | 🌐 | Report a collection for moderation (anonymous allowed) |
@@ -209,7 +215,9 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /events/batch-complete` | 10/min |
 | `POST /events/{id}/close` | 60/min |
 | `POST /events/{id}/report` | 10/hour (per IP only, anonymous allowed) |
-| `GET /events/{id}/collections` | 120/min |
+| `GET /events/{id}/collections`, `GET /events/{id}/geolocator-invites` | 120/min |
+| `POST /events/{id}/geolocator-invites` | 30/hour |
+| `DELETE /events/{id}/geolocator-invites/{username}`, `POST /events/{id}/geolocator-invites/accept`, `POST /events/{id}/geolocator-invites/decline`, `DELETE /events/{id}/geolocators/{username}` | 60/min |
 | **Collections** | |
 | `GET /collections/{id}`, `GET /collections/{id}/events` | 120/min |
 | `POST /collections`, `PATCH /collections/{id}`, `DELETE /collections/{id}` | 30/min |
@@ -587,7 +595,7 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
 | `bbox` | string | `south,west,north,east` (four comma-separated floats). 422 on malformed input; latitudes in [-90, 90], longitudes in [-180, 180], south ≤ north, west ≤ east. |
 | `event_date_from` / `event_date_to` | date (YYYY-MM-DD) | Inclusive event-date range. Malformed values return 422. |
 | `submitted_from` / `submitted_to` | date (YYYY-MM-DD) | Inclusive submission-date range. Malformed values return 422. |
-| `author` | string | Exact, case-insensitive match on owner username (pick real handles via [`GET /search/authors`](#get-searchauthors)). Restricted to `[A-Za-z0-9_-]{1,50}`; any other character returns 422. |
+| `author` | string | Exact, case-insensitive match on the username of any analyst the event credits: its owner or one of its [geolocators](#shared-credit) (pick real handles via [`GET /search/authors`](#get-searchauthors)). Restricted to `[A-Za-z0-9_-]{1,50}`; any other character returns 422. |
 | `has_coords` | bool | `true` keeps rows with an `event_coords` point (on the `requested` view, a request carrying a location guess); `false` keeps rows without one. Omit it for both. |
 | `sort` | string | `newest` (default) orders by `created_at DESC, id DESC`; `oldest` orders by `created_at ASC, id ASC`. Both orders are total, so a cursor walk serves every row once. Anything else → 422. |
 | `limit` | int | Rows per page. See [Pagination](#pagination). |
@@ -606,6 +614,7 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
     "before_closed_status": null,
     "requested_at": null,
     "owner": { "id": "uuid", "username": "kalush" },
+    "geolocators": [{ "id": "uuid", "username": "kalush" }],
     "media": {
       "id": "uuid",
       "role": "source",
@@ -625,7 +634,7 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
 
 **Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
-`event_coords` is `null` on a coordinate-less `requested` row. `requested_at` is when the row entered `requested`, and `null` on a row that was never a request; the Requests board counts a request's age from it. `is_graphic` is `true` when the author, or an admin overriding the author, flagged the footage as showing death, injury or human remains. A withheld event (`hidden_at` set, see [`GET /events/{id}`](#get-eventsid)) never appears. `media` is the card thumbnail: the event's `source` attachment, else its first `proof` image, else `null`; a proof video is never picked. `backend/app/services/thumbnails.py` holds that rule for every card surface. `conflicts` uses the `ConflictRead` shape of [`GET /conflicts`](#get-conflicts).
+`event_coords` is `null` on a coordinate-less `requested` row. `geolocators` is the event's credit line, as on [`GET /events/{id}`](#get-eventsid). `requested_at` is when the row entered `requested`, and `null` on a row that was never a request; the Requests board counts a request's age from it. `is_graphic` is `true` when the author, or an admin overriding the author, flagged the footage as showing death, injury or human remains. A withheld event (`hidden_at` set, see [`GET /events/{id}`](#get-eventsid)) never appears. `media` is the card thumbnail: the event's `source` attachment, else its first `proof` image, else `null`; a proof video is never picked. `backend/app/services/thumbnails.py` holds that rule for every card surface. `conflicts` uses the `ConflictRead` shape of [`GET /conflicts`](#get-conflicts).
 
 ---
 
@@ -873,7 +882,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 | `archived_detected_from` | The archived copy of `detected_from_url`, on the same terms; `null` for a human submit |
 | `detected_via` | The ingest entry that produced a machine detection: `bot`, `paste` or `archive`. Stamped once at creation; `null` for a human submit and for machine rows older than the field |
 | `requested_by` | The analyst who opened the request; `null` on a directly created event |
-| `geolocators` | Who vouched the location, oldest first; empty until the first geolocate |
+| `geolocators` | Who vouched the location, oldest first: the owner and every analyst who accepted an [invitation](#shared-credit). Empty until the first geolocate. A soft-deleted analyst is left out |
 | `version_no` | `1` until the owner corrects the event, then one higher per [correction](#post-eventsidversions) |
 | `geolocated_at` | When the row became `geolocated`; `null` before publication |
 | `close_reason`, `before_closed_status` | `null` while the event is open |
@@ -1179,7 +1188,7 @@ One superseded version by its number, the read behind a `/events/{id}/vN` addres
 
 ### `GET /events/{id}/collections` 🔒
 
-Your collections, each saying whether this event is already on it. Owner only, since only an event's owner may put it on a collection. Empty collections are listed; withheld collections are not.
+Your collections, each saying whether this event is already on it. Only an analyst the event credits, its owner or a [co-geolocator](#shared-credit), may put it on a collection, so anyone else gets a 403. Empty collections are listed; withheld collections are not.
 
 **Response 200:**
 ```json
@@ -1196,7 +1205,7 @@ Thinner than [`CollectionRead`](#get-collectionsid): no description, mosaic or d
 **Errors:**
 | Code | Case |
 |------|------|
-| 403 | Not your event |
+| 403 | The event does not credit you |
 | 404 | Unknown, soft-deleted or withheld event |
 
 ---
@@ -1228,6 +1237,150 @@ Closing is terminal, so the reason is required. Only `DELETE /admin/events/{id}`
 | 404 | Event not found (including soft-deleted) |
 | 409 | `invalid_state`: the row is already `closed` |
 | 422 | `close_reason` missing or over 2000 characters |
+
+---
+
+## Shared credit
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`an endpoint or admin action`"]:::spec
+    l2["`a service function`"]:::core
+    l3[("`a stored table`")]:::store
+    l4["`a read surface`"]:::shared
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  invite["`**POST /events/{id}/geolocator-invites**
+  owner only, geolocated only`"]:::spec
+  answer["`**POST /events/{id}/geolocator-invites/accept**
+  the invitee`"]:::spec
+  drop["`**POST /events/{id}/geolocator-invites/decline**
+  or the owner's **DELETE /events/{id}/geolocator-invites/{username}**`"]:::spec
+  remove["`**DELETE /events/{id}/geolocators/{username}**
+  the owner removes, a co-geolocator leaves`"]:::spec
+  erase["`**DELETE /admin/users/{id}?hard=true**`"]:::spec
+  accept["`**accept**
+  deletes the invitation, credits the invitee, calls revoke_approvals_on_join`"]:::core
+  handover["`**hand_over_owned_events**
+  owner_id moves to the earliest live co-geolocator`"]:::core
+  invites[("`**event_geolocator_invites**
+  pending only`")]:::store
+  credits[("`**event_geolocators**
+  the credit`")]:::store
+  credited["`**credited_to**
+  profile, stats, timeline, author filter, collections`"]:::shared
+
+  invite --> invites
+  drop --> invites
+  answer --> accept
+  accept --> invites
+  accept --> credits
+  remove --> credits
+  erase --> handover
+  handover --> credits
+  credits --> credited
+```
+
+An event's geolocators are the analysts it credits. The owner is always one of them; any other is an analyst the owner invited who accepted. Credit grants no write right: editing, filing a version, closing and inviting stay with the owner. Every read that lists an analyst's work matches any credited analyst: the profile count and feed, the profile stats, the follow feed, the `author` filter of [`GET /events`](#get-events) and [`GET /search`](#get-search), the author typeahead, and the collection add check.
+
+- **Invitation.** The owner of a `geolocated` event invites an analyst by username. The invitation waits in `event_geolocator_invites`, and the invitee receives a `co_geolocator_invite` [notification](#notifications). An event holds at most 10 geolocators and pending invitations together (`MAX_EVENT_GEOLOCATORS` in [`services/geolocator_credit.py`](../backend/app/services/geolocator_credit.py)).
+- **Answer.** Accepting deletes the invitation and credits the invitee in one transaction, which also revokes the invitee's own approvals of the event (`revoke_approvals_on_join`). Declining or a withdrawal deletes the invitation.
+- **Removal.** The owner removes a co-geolocator, who receives a `co_geolocator_removed` notification, or a co-geolocator leaves. The owner cannot leave. The removed analyst's collections drop the event in the same transaction.
+- **Erasure.** A hard delete of the owner's account hands the event to the earliest live co-geolocator; see [`DELETE /admin/users/{id}`](#delete-adminusersid).
+
+Every write locks the event row first, so an invitation, its answer and an erasure on the same event serialize. A soft-deleted or withheld event answers 404 on every route below.
+
+### `GET /events/{id}/geolocator-invites` 🔒
+
+Pending invitations on the event, oldest first. The owner reads every one; anyone else reads only their own, so an empty list means you hold none. An invitee whose account is soft-deleted is left out.
+
+**Response 200:**
+```json
+[
+  { "user": { "id": "uuid", "username": "bo", "avatar_url": null }, "created_at": "2026-10-15T09:00:00Z" }
+]
+```
+
+---
+
+### `POST /events/{id}/geolocator-invites` 🔒
+
+Invite an analyst to share the event's credit. Owner only, on a `geolocated` event.
+
+**Body:** `{ "username": "bo" }`, 1 to 50 characters, matched exactly.
+
+**Response 201:** the new invitation, in the shape of the list above.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | You do not own the event |
+| 404 | `user_not_found`: no live analyst has that username |
+| 409 | `invalid_state`: the event is not `geolocated`. `already_geolocator`: the analyst is credited already, you included. `already_invited`: an invitation is pending. `too_many_geolocators`: the event holds 10 geolocators and invitations |
+
+---
+
+### `DELETE /events/{id}/geolocator-invites/{username}` 🔒
+
+Withdraw a pending invitation. Owner only.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | You do not own the event |
+| 404 | `invite_not_found`: no pending invitation for that username |
+
+---
+
+### `POST /events/{id}/geolocator-invites/accept` 🔒
+
+Accept your invitation: you join the event's geolocators.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `invite_not_found`: you hold no pending invitation on the event |
+| 409 | `invalid_state`: the event left `geolocated` after the invitation. The invitation stays, and declining it still works |
+
+---
+
+### `POST /events/{id}/geolocator-invites/decline` 🔒
+
+Decline your invitation.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `invite_not_found`: you hold no pending invitation on the event |
+
+---
+
+### `DELETE /events/{id}/geolocators/{username}` 🔒
+
+Take a co-geolocator's credit off the event. The owner removes anyone but themselves; a co-geolocator removes only themselves.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | You do not own the event and the username is not yours |
+| 404 | `geolocator_not_found`: the username is not a geolocator of the event |
+| 409 | `owner_cannot_leave`: the username is the owner's |
 
 ---
 
@@ -1320,7 +1473,7 @@ Full-text discovery across four result groups: `geolocations` (located view: `ge
 
 ### `GET /search/authors`
 
-Username typeahead for the `author` filter, which is an exact match. Case-insensitive substring over live users, prefix matches first, then alphabetical, capped at 8. `q` takes the `[A-Za-z0-9_-]{1,50}` rule of `?author=`: empty returns an empty list, and any other character is a 422.
+Username typeahead for the `author` filter, which is an exact match. Case-insensitive substring over live users credited on at least one live event, prefix matches first, then alphabetical, capped at 8. `q` takes the `[A-Za-z0-9_-]{1,50}` rule of `?author=`: empty returns an empty list, and any other character is a 422.
 
 **Response 200:**
 ```json
@@ -1406,7 +1559,7 @@ Ongoing-conflict names and dates derive from Wikipedia's "List of ongoing armed 
 
 ## Collections
 
-A collection is a named set of one analyst's own events, shown on the owner's public profile. [`data-model.md`](data-model.md#collections) describes the storage. On the wire:
+A collection is a named set of events one analyst is credited on, as owner or as a [co-geolocator](#shared-credit), shown on the owner's public profile. [`data-model.md`](data-model.md#collections) describes the storage. On the wire:
 
 - **Title:** required, 1 to 255 characters after stripping surrounding whitespace.
 - **Description:** required, an HTML string sanitized on the [rich text](#rich-text) rules. An `img` is removed.
@@ -1436,7 +1589,7 @@ Open a collection, holding the events you pick.
 | Code | Case |
 |------|------|
 | 400 | `invalid_description` |
-| 403 | One of `event_ids` belongs to someone else |
+| 403 | One of `event_ids` does not credit you |
 | 404 | `event_not_found`: an id no event carries |
 | 409 | `event_not_collectable`: an event's state is not one a collection shows |
 | 422 | Title empty or over 255 characters; `description` not a string; or more than 500 `event_ids` |
@@ -1563,16 +1716,16 @@ The collection's items, in the order the events happened. Cursor-paged; [Paginat
 
 ### `PUT /collections/{id}/events/{event_id}` 🔒
 
-Put one of your events on one of your collections. Idempotent: an event already on it returns 204 and writes no second row.
+Put an event that credits you on one of your collections: one you own, or one you share as a [co-geolocator](#shared-credit). Idempotent: an event already on it returns 204 and writes no second row.
 
-Three refusals, in this order: the collection is not yours (403); the event is not yours (403); the event's state is not one a collection shows (409).
+Three refusals, in this order: the collection is not yours (403); the event does not credit you (403); the event's state is not one a collection shows (409). Losing your credit on an event takes it off your collections.
 
 **Response 204:** no body.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 403 | The collection or the event belongs to someone else |
+| 403 | The collection belongs to someone else, or the event does not credit you |
 | 404 | `collection_not_found`, or `event_not_found` |
 | 409 | `event_not_collectable` |
 
@@ -1621,7 +1774,7 @@ Public profile of an analyst.
 
 `bio` and `external_links` are set through [`PATCH /users/me`](#patch-usersme); `avatar_url` through `PUT` / `DELETE /users/me/avatar`. Defaults are `null` / `null` / `{}`. `is_following` is `true` only when you are signed in and follow this user. Email is never on this shape.
 
-`geolocations_count` counts live rows with `status = "geolocated"`, the same set as `total` on [`GET /users/{username}/events`](#get-usersusernameevents). For all live work, detections included, read `total_events` on [`GET /users/{username}/stats`](#get-usersusernamestats).
+`geolocations_count` counts live rows with `status = "geolocated"` that credit the analyst, as owner or as a [co-geolocator](#shared-credit), the same set as `total` on [`GET /users/{username}/events`](#get-usersusernameevents). For all live work, detections included, read `total_events` on [`GET /users/{username}/stats`](#get-usersusernamestats).
 
 **Errors:**
 | Code | Case |
@@ -1650,7 +1803,7 @@ Aggregated shape of an analyst's work, computed over existing columns.
 }
 ```
 
-Every field describes one population: the analyst's visible events (`deleted_at IS NULL`, `hidden_at IS NULL`) in `geolocated` or `detected`. That set is `total_events`. `requested` and `closed` rows take part in no aggregate.
+Every field describes one population: the visible events (`deleted_at IS NULL`, `hidden_at IS NULL`) in `geolocated` or `detected` that credit the analyst, as owner or as a [co-geolocator](#shared-credit). That set is `total_events`. `requested` and `closed` rows take part in no aggregate.
 
 - `top_conflicts` and `capture_sources` hold at most 5 entries, ordered by count descending, then name.
 - `source_hosts` groups the set by the host of `source_url`, lowercased, with a leading `www.` removed. At most 5 entries, ordered by count descending, then host. `other_hosts_count` counts events on any further host. `no_source_count` counts events whose `source_url` is null or has no readable host. The five counts plus those two add up to `total_events`.
@@ -1762,7 +1915,7 @@ Your display and notification preferences. Each value is the one in effect: your
 | `display.palette` | `orange`, `blue`, `emerald`, `violet`, `rose` |
 | `display.theme` | `dark`, `light` |
 | `display.help_tooltips` | `true` shows the `?` field help |
-| `notifications[].kind` | `request_fulfilled`, `new_follower`, `x_handle_request_approved`, `x_handle_request_declined` |
+| `notifications[].kind` | `request_fulfilled`, `new_follower`, `x_handle_request_approved`, `x_handle_request_declined`, `co_geolocator_invite`, `co_geolocator_removed`, `ownership_transferred` |
 | `notifications[].channels` | `email`, `push` |
 
 ---
@@ -1948,7 +2101,7 @@ The request does not check whether another account holds the handle: the admin's
 
 ### `GET /users/{username}/events`
 
-An analyst's published geolocations: live rows with `status = "geolocated"` only, newest event date first. `total` counts the same set, and so does `geolocations_count` on [`GET /users/{username}`](#get-usersusername). Offset-paged; [Pagination](#pagination) gives the ordering and cap.
+An analyst's published geolocations: live rows with `status = "geolocated"` that credit them, as owner or as a [co-geolocator](#shared-credit), newest event date first. `total` counts the same set, and so does `geolocations_count` on [`GET /users/{username}`](#get-usersusername). Offset-paged; [Pagination](#pagination) gives the ordering and cap.
 
 **Query params:** `page` and `per_page`, see [Pagination](#pagination).
 
@@ -2022,6 +2175,8 @@ flowchart LR
   new_follower to the followed analyst, once per follower`"]:::spec
   xhandle["`**POST /admin/x-handle-requests/{id}/approve** and **/decline**
   x_handle_request_approved or _declined to the requester`"]:::spec
+  credit["`**geolocator_credit**
+  co_geolocator_invite, co_geolocator_removed, ownership_transferred`"]:::spec
   rows[("`**notifications**
   written in the action's transaction`")]:::store
   visible["`**_visible_rows**
@@ -2042,6 +2197,7 @@ flowchart LR
   geolocate --> rows
   follow --> rows
   xhandle --> rows
+  credit --> rows
   rows --> visible
   visible --> feed
   visible --> count
@@ -2064,6 +2220,9 @@ When your push switch for the kind is on and you registered at least one device,
 | `new_follower` | An analyst follows you for the first time | the follower | null |
 | `x_handle_request_approved` | An admin approves your [X handle request](#put-usersmex-handle-request) | null | null |
 | `x_handle_request_declined` | An admin declines your X handle request | null | null |
+| `co_geolocator_invite` | The owner of a published event invites you to share its credit | the owner | the event |
+| `co_geolocator_removed` | The owner of an event removes you from its geolocators | the owner | the event |
+| `ownership_transferred` | An event you share passes to you because its owner's account was erased | null | the event |
 
 ### `GET /notifications` 🔒
 
@@ -2080,10 +2239,13 @@ Your notifications, newest first. Cursor-paged; [Pagination](#pagination) gives 
     "created_at": "2026-10-12T09:00:00Z",
     "actor": { "id": "a41e…", "username": "bo", "avatar_url": null },
     "event": { "id": "9b2d…", "title": "Strike on the depot" },
-    "read_at": null
+    "read_at": null,
+    "invite_pending": false
   }
 ]
 ```
+
+`invite_pending` is `true` on a `co_geolocator_invite` row whose invitation still waits for your answer, and `false` on every other row. The feed page shows the accept and decline controls on that row.
 
 ---
 
@@ -2114,7 +2276,7 @@ Mark the listed notifications read by setting their `read_at`. Only your own row
 
 ### `GET /timeline` 🔒
 
-Geolocations by analysts you follow, newest submission first. Published work only, the set [`GET /users/{username}/events`](#get-usersusernameevents) serves. Offset-paged (see [Pagination](#pagination)).
+Geolocations crediting analysts you follow, newest submission first. Published work only, the set [`GET /users/{username}/events`](#get-usersusernameevents) serves. Offset-paged (see [Pagination](#pagination)).
 
 **Query params:** `page` and `per_page`, see [Pagination](#pagination).
 
@@ -2269,7 +2431,7 @@ Case-insensitive substring match on username or email. Empty `q` returns `[]`. C
 Remove a user. Both modes invalidate the points cache. Audited as `user_soft_deleted` or `user_hard_deleted`.
 
 - **Soft delete** (default) sets `users.deleted_at` and soft-deletes every live event the user owns. The user can no longer log in (an opaque 401, like wrong credentials), and their profile answers 404. Idempotent: a repeat keeps the original timestamp.
-- **Hard delete** (`?hard=true`, GDPR erasure) drops the user row, every event and [collection](#collections) they owned, then sweeps their storage objects (event media of both roles and the profile picture). Invite codes they issued or used survive with the reference set to NULL. The DB commits before the storage sweep.
+- **Hard delete** (`?hard=true`, GDPR erasure) drops the user row, every event and [collection](#collections) they owned, then sweeps their storage objects (event media of both roles and the profile picture). An owned event that credits another live analyst is kept instead: it passes to the earliest of them by credit time, with its media, versions and files, and that analyst receives an `ownership_transferred` notification that does not name the erased user. A soft-deleted co-geolocator is skipped. Invite codes they issued or used survive with the reference set to NULL. The DB commits before the storage sweep.
 
 **Response 200:**
 ```json
@@ -2279,11 +2441,12 @@ Remove a user. Both modes invalidate the points cache. Audited as `user_soft_del
   "mode": "soft",
   "deleted_at": "2026-05-09T16:45:00Z",
   "cascaded_geolocations": 5,
+  "transferred_events": 0,
   "media_count": 0
 }
 ```
 
-`cascaded_geolocations` counts every event the user owned, whatever its status. For `mode = "hard"`, `deleted_at` is `null` and `media_count` counts the files swept.
+`cascaded_geolocations` counts every event the user owned, whatever its status, less the ones handed over. `transferred_events` counts the events handed to a co-geolocator, `0` on a soft delete. For `mode = "hard"`, `deleted_at` is `null` and `media_count` counts the files swept.
 
 ### `DELETE /admin/users/{id}/detected-events` 🛡️
 

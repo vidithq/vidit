@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 import { MapPin } from "lucide-react";
 
@@ -10,6 +10,7 @@ import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { Pill } from "@/components/ui/Pill";
 import { Avatar } from "@/components/ui/Avatar";
+import { creditSeparator } from "@/components/ui/AuthorByline";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 
 // One card for every catalogue entity (geolocated / detected geolocation,
@@ -101,6 +102,8 @@ interface EntityCardBaseProps {
   /** Omitted on a surface that names one analyst once in its header (a
    *  collection's item list). */
   author?: { username: string };
+  /** Credited beside `author` on an event several geolocators share. */
+  coAuthors?: { username: string }[];
   /** Fixed height floor so catalogue rows match whatever slots they fill. Off,
    *  the row stands on its media column and the text centres against it. */
   uniformHeight?: boolean;
@@ -169,6 +172,20 @@ function AuthorLink({ username }: { username: string }) {
   );
 }
 
+function AuthorLinks({ authors }: { authors: { username: string }[] }) {
+  return (
+    <>
+      by{" "}
+      {authors.map((a, index) => (
+        <Fragment key={a.username}>
+          {creditSeparator(index, authors.length)}
+          <AuthorLink username={a.username} />
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
 const SHELL =
   "relative flex gap-3 p-3 bg-neutral-900 border border-neutral-800 rounded-md";
 
@@ -180,6 +197,7 @@ export function EntityCard({
   media,
   isGraphic = false,
   author,
+  coAuthors = [],
   action,
   onSelect,
   selectLabel,
@@ -229,7 +247,7 @@ export function EntityCard({
           <div className="flex flex-col leading-tight">
             {author && (
               <span className="text-[11px] text-neutral-500">
-                by <AuthorLink username={author.username} />
+                <AuthorLinks authors={[author, ...coAuthors]} />
               </span>
             )}
             <span className="text-[11px] text-neutral-500 inline-flex items-center gap-2">
@@ -279,7 +297,7 @@ export function EntityCard({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500">
             {author && (
               <span>
-                by <AuthorLink username={author.username} />
+                <AuthorLinks authors={[author, ...coAuthors]} />
               </span>
             )}
             {date && <span>{formatDate(date)}</span>}

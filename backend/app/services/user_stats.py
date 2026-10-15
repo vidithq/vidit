@@ -1,8 +1,9 @@
 """Aggregate an analyst's live events into the profile stats payload.
 
-One population for every field: the analyst's visible events (``deleted_at IS
-NULL AND hidden_at IS NULL``) in :data:`COUNTED_STATUSES`. No two figures on
-the card describe different sets.
+One population for every field: the visible events (``deleted_at IS NULL AND
+hidden_at IS NULL``) in :data:`COUNTED_STATUSES` credited to the analyst
+(:func:`services.event_filters.credited_to`). No two figures on the card
+describe different sets.
 """
 
 import uuid
@@ -17,7 +18,7 @@ from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
 from app.models.media import Media
 from app.models.tag import Tag, event_tags
 from app.schemas.user import ActivityBucket, TagCount, UserStatsRead
-from app.services.event_filters import visible_events
+from app.services.event_filters import credited_to, visible_events
 from app.services.sanitize import normalised_host
 
 # Work the profile vouches for. ``requested`` (open call for help) and
@@ -52,7 +53,7 @@ def _month_keys(earliest: date, latest: date) -> list[str]:
 
 def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
     live = (
-        Event.owner_id == user_id,
+        credited_to([user_id]),
         Event.status.in_(COUNTED_STATUSES),
         *visible_events(),
     )

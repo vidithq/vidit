@@ -158,6 +158,12 @@ export default function PrivacyPage() {
               from all public view; permanent deletion, which also erases the
               stored files, is carried out on request.
             </li>
+            <li>
+              A geolocation credited to several analysts belongs to the record
+              of each. When its owner&apos;s account is permanently deleted, it
+              passes to the analyst credited earliest and stays published with
+              its files, including those the deleted account uploaded.
+            </li>
           </ul>
         </Card>
 

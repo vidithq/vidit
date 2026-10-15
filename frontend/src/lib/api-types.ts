@@ -452,8 +452,9 @@ export interface paths {
          * Delete User Admin
          * @description Remove a user account. Default soft (sets `users.deleted_at` and
          *     cascade-soft-deletes their submissions); `?hard=true` is GDPR erasure
-         *     (drops the row, their geolocations and S3 objects). Both paths invalidate
-         *     the points cache.
+         *     (drops the row, their geolocations and S3 objects, and hands a co-credited
+         *     event to its earliest live co-geolocator). Both paths invalidate the points
+         *     cache.
          */
         delete: operations["delete_user_admin_api_v1_admin_users__user_id__delete"];
         options?: never;
@@ -1274,8 +1275,9 @@ export interface paths {
          * List Event Collections
          * @description Your collections, each saying whether this event is already on it.
          *
-         *     The add-to-collection popover's read, owner-only. Empty collections are
-         *     listed. 404 on a soft-deleted or withheld event, 403 when not yours.
+         *     The add-to-collection popover's read, for an analyst credited on the event
+         *     (its owner or a co-geolocator). Empty collections are listed. 404 on a
+         *     soft-deleted or withheld event, 403 when you are not credited.
          */
         get: operations["list_event_collections_api_v1_events__geolocation_id__collections_get"];
         put?: never;
@@ -1317,6 +1319,111 @@ export interface paths {
          */
         post: operations["geolocate_event_api_v1_events__geolocation_id__geolocate_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{geolocation_id}/geolocator-invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Geolocator Invites
+         * @description Pending invitations to share this event's credit: all of them for the owner, your own
+         *     otherwise.
+         */
+        get: operations["list_geolocator_invites_api_v1_events__geolocation_id__geolocator_invites_get"];
+        put?: never;
+        /**
+         * Invite Geolocator
+         * @description Invite an analyst to share this published event's credit (owner only).
+         */
+        post: operations["invite_geolocator_api_v1_events__geolocation_id__geolocator_invites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{geolocation_id}/geolocator-invites/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Geolocator Invite
+         * @description Accept your invitation: you join this event's geolocators.
+         */
+        post: operations["accept_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites_accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{geolocation_id}/geolocator-invites/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline Geolocator Invite
+         * @description Decline your invitation.
+         */
+        post: operations["decline_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites_decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{geolocation_id}/geolocator-invites/{username}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Withdraw Geolocator Invite
+         * @description Withdraw a pending invitation (owner only).
+         */
+        delete: operations["withdraw_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites__username__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{geolocation_id}/geolocators/{username}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Geolocator
+         * @description Take a co-geolocator's credit off this event: the owner removes one, or you leave.
+         */
+        delete: operations["remove_geolocator_api_v1_events__geolocation_id__geolocators__username__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2281,6 +2388,11 @@ export interface components {
              */
             mode: "soft" | "hard";
             /**
+             * Transferred Events
+             * @default 0
+             */
+            transferred_events: number;
+            /**
              * User Id
              * Format: uuid
              */
@@ -3096,6 +3208,8 @@ export interface components {
             event_coords: components["schemas"]["CoordsRead"] | null;
             /** Event Date */
             event_date: string | null;
+            /** Geolocators */
+            geolocators: components["schemas"]["AuthorRef"][];
             /**
              * Id
              * Format: uuid
@@ -3255,6 +3369,26 @@ export interface components {
              */
             email: string;
         };
+        /**
+         * GeolocatorInviteCreate
+         * @description Body of ``POST /events/{id}/geolocator-invites``: who to invite.
+         */
+        GeolocatorInviteCreate: {
+            /** Username */
+            username: string;
+        };
+        /**
+         * GeolocatorInviteRead
+         * @description One pending invitation to share an event's geolocation credit.
+         */
+        GeolocatorInviteRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            user: components["schemas"]["AuthorRef"];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -3333,12 +3467,14 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred";
         };
         /**
          * NotificationRead
          * @description One feed row. ``actor`` and ``event`` are null on a kind that names
          *     neither; ``read_at`` is null until the feed has shown the row.
+         *     ``invite_pending`` is true on a ``co_geolocator_invite`` row whose
+         *     invitation still waits for the reader's answer.
          */
         NotificationRead: {
             actor: components["schemas"]["AuthorRef"] | null;
@@ -3353,11 +3489,13 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Invite Pending */
+            invite_pending: boolean;
             /**
              * Kind
              * @enum {string}
              */
-            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined";
+            kind: "request_fulfilled" | "new_follower" | "x_handle_request_approved" | "x_handle_request_declined" | "co_geolocator_invite" | "co_geolocator_removed" | "ownership_transferred";
             /** Read At */
             read_at: string | null;
         };
@@ -3661,6 +3799,8 @@ export interface components {
         SearchEventHit: {
             /** Event Date */
             event_date: string | null;
+            /** Geolocators */
+            geolocators: components["schemas"]["AuthorRef"][];
             /**
              * Id
              * Format: uuid
@@ -6111,6 +6251,202 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EventRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_geolocator_invites_api_v1_events__geolocation_id__geolocator_invites_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeolocatorInviteRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invite_geolocator_api_v1_events__geolocation_id__geolocator_invites_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeolocatorInviteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeolocatorInviteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites_accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites_decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites__username__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+                username: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_geolocator_api_v1_events__geolocation_id__geolocators__username__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                geolocation_id: string;
+                username: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
