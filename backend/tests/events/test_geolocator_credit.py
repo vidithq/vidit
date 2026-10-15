@@ -512,6 +512,51 @@ def test_erasure_purges_a_soft_deleted_event_instead_of_handing_it_over(
     assert _notifications(db, second_user) == []
 
 
+def _ban(admin: User, user: User) -> dict:
+    response = client.delete(f"/api/v1/admin/users/{user.id}", headers=login_as(client, admin))
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_a_ban_hands_co_credited_events_over_and_hides_the_rest(
+    db, admin_user, author, second_user
+):
+    shared = _published(db, author)
+    _credit(db, shared, second_user)
+    alone = _published(db, author)
+
+    body = _ban(admin_user, author)
+    assert (body["cascaded_geolocations"], body["transferred_events"]) == (1, 1)
+
+    db.expire_all()
+    kept = db.get(Event, shared.id)
+    assert (kept.owner_id, kept.deleted_at) == (second_user.id, None)
+    assert db.get(Event, alone.id).deleted_at is not None
+    assert _notifications(db, second_user) == [("ownership_transferred", None, shared.id)]
+
+
+def test_erasure_after_a_ban_hands_over_what_the_ban_hid(db, admin_user, author, second_user):
+    """An event the ban hid before co-credited work was handed over at ban time (its
+    ``deleted_at`` is the owner's) passes on erasure; one deleted on its own is purged."""
+    geo = _published(db, author)
+    _credit(db, geo, second_user)
+    removed = _published(db, author)
+    _credit(db, removed, second_user)
+    banned_at = datetime.now(UTC)
+    author.deleted_at = banned_at
+    geo.deleted_at = banned_at
+    removed.deleted_at = banned_at - timedelta(days=1)
+    db.commit()
+    geo_id, removed_id = geo.id, removed.id
+
+    body = _erase(admin_user, author)
+    assert (body["cascaded_geolocations"], body["transferred_events"]) == (1, 1)
+    db.expire_all()
+    kept = db.get(Event, geo_id)
+    assert (kept.owner_id, kept.deleted_at) == (second_user.id, None)
+    assert db.get(Event, removed_id) is None
+
+
 def test_erasure_deletes_an_event_with_no_live_co_geolocator(db, admin_user, author, make_user):
     alone = _published(db, author).id
     with_banned = _published(db, author)

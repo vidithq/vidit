@@ -302,13 +302,21 @@ def hand_over_owned_events(db: Session, *, owner: User, events: Sequence[Event])
     """Pass each live one of ``events`` that another live analyst is credited on to the earliest
     of them.
 
-    The erasure step of ``admin.hard_delete_user``: the heir becomes ``owner_id`` and receives
-    an ``ownership_transferred`` notification, which names no actor. A soft-deleted
-    co-geolocator is skipped, and a soft-deleted event is never handed over, so the erasure
-    purges it with its media. Returns the ids handed over; the caller deletes the rest. Does
-    not commit.
+    The step of ``admin.soft_delete_user`` and ``admin.hard_delete_user`` that keeps shared
+    work published: the heir becomes ``owner_id`` and receives an ``ownership_transferred``
+    notification, which names no actor. A soft-deleted co-geolocator is skipped. An event
+    soft-deleted with ``owner``'s own ban (its ``deleted_at`` is the owner's) counts as live and
+    is restored on hand-over; one soft-deleted on its own never passes, so the erasure purges it
+    with its media. Returns the ids handed over; the caller deletes or hides the rest. Does not
+    commit.
     """
-    live = [geo for geo in events if geo.deleted_at is None]
+    banned_with_owner = owner.deleted_at
+    live = [
+        geo
+        for geo in events
+        if geo.deleted_at is None
+        or (banned_with_owner is not None and geo.deleted_at == banned_with_owner)
+    ]
     if not live:
         return set()
     heirs = db.execute(
@@ -328,5 +336,6 @@ def hand_over_owned_events(db: Session, *, owner: User, events: Sequence[Event])
         if heir_id is None:
             continue
         geo.owner_id = heir_id
+        geo.deleted_at = None
         notifications.notify_ownership_transferred(db, event=geo, heir_id=heir_id)
     return set(heir_by_event)

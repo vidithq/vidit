@@ -160,9 +160,10 @@ export default function PrivacyPage() {
             </li>
             <li>
               A geolocation credited to several analysts belongs to the record
-              of each. When its owner&apos;s account is permanently deleted, it
-              passes to the analyst credited earliest and stays published with
-              its files, including those the deleted account uploaded.
+              of each. When its owner&apos;s account is deleted or permanently
+              deleted, it passes to the analyst credited earliest and stays
+              published with its files, including those the deleted account
+              uploaded.
             </li>
           </ul>
         </Card>
