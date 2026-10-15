@@ -23,6 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.invite_code import InviteCode
+from app.models.organization import Organization
 from app.models.pending_registration import PendingRegistration
 from app.models.user import User
 from app.schemas.admin import InviteCodeStatus
@@ -347,9 +348,14 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
         # Copy the invite's X handle (bot-attribution link). Fail-soft if the
         # handle was taken since mint: registration still succeeds and the
         # admin x-handle endpoint repairs it.
-        if db.query(User).filter(User.x_handle == invite.x_handle).first() is not None:
+        taken = (
+            db.query(User.id).filter(User.x_handle == invite.x_handle).first() is not None
+            or db.query(Organization.id).filter(Organization.x_handle == invite.x_handle).first()
+            is not None
+        )
+        if taken:
             logger.warning(
-                "Invite %s bound x_handle %s but a user already carries it; "
+                "Invite %s bound x_handle %s but a user or organization already carries it; "
                 "account %s created without the link",
                 invite.id,
                 invite.x_handle,

@@ -144,6 +144,34 @@ def test_site_admin_creates_an_organization_with_its_first_admin(db, org, site_a
     assert audit.target["slug"] == org["slug"]
 
 
+def test_analysts_and_organizations_share_one_x_handle_namespace(
+    db, org, site_admin, org_admin, make_user
+):
+    headers = login_as(client, site_admin)
+    analyst = make_user()
+    taken = client.patch(
+        f"/api/v1/admin/users/{analyst.id}/x-handle",
+        json={"x_handle": org["x_handle"]},
+        headers=headers,
+    )
+    assert (taken.status_code, _code(taken)) == (409, "x_handle_conflict")
+
+    handle = f"an{uuid.uuid4().hex[:8]}"
+    analyst.x_handle = handle
+    db.commit()
+    refused = client.post(
+        _ADMIN_CREATE,
+        headers=headers,
+        json={
+            "name": "Mirror",
+            "slug": f"mirror-{uuid.uuid4().hex[:6]}",
+            "x_handle": handle,
+            "admin_username": org_admin.username,
+        },
+    )
+    assert (refused.status_code, _code(refused)) == (409, "x_handle_conflict")
+
+
 def test_create_is_site_admin_only(make_user, org_admin):
     headers = login_as(client, make_user())
     response = client.post(

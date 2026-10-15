@@ -245,6 +245,12 @@ def create_organization(db: Session, *, actor: User, body: OrganizationCreate) -
         is not None
     ):
         raise XHandleConflictError("X handle already linked to another organization")
+    # Analysts and organizations share one X handle namespace.
+    if (
+        body.x_handle is not None
+        and db.query(User.id).filter(User.x_handle == body.x_handle).first() is not None
+    ):
+        raise XHandleConflictError("X handle already linked to an analyst")
 
     org = Organization(
         slug=body.slug, name=body.name, x_handle=body.x_handle, created_by_id=actor.id
