@@ -7,6 +7,24 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
 
+class RevokedPushEndpoint(Base):
+    """A device its analyst revoked, by the SHA-256 of its endpoint, so a browser that still
+    holds the subscription cannot register it again by itself (``resync``). Enabling push on
+    that browser again clears the row. Only the hash is kept: the endpoint is a bearer URL."""
+
+    __tablename__ = "revoked_push_endpoints"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    endpoint_sha256: Mapped[str] = mapped_column(String(64), primary_key=True)
+    revoked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+
 class PushSubscription(Base):
     """One browser or installed app registered for Web Push by ``user_id``.
 

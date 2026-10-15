@@ -71,7 +71,9 @@ const PUSH_STATE_LINE: Record<PushDeviceState, string> = {
 
 /** This device's push state and the control that turns it on or off. The kind switches below
  *  it apply to every device of the account. */
-function PushDevice() {
+/** `resyncKey` changes after a password change, which deleted every device on the server:
+ *  this browser registers again and the list reloads. */
+function PushDevice({ resyncKey }: { resyncKey: number }) {
   const config = useApiResource<PushConfig>(PUSH_CONFIG_PATH);
   const [state, setState] = useState<PushDeviceState | null>(null);
   const settled = config.data !== null || config.error !== null;
@@ -99,13 +101,18 @@ function PushDevice() {
       .then((id) => {
         if (!live) return;
         setThisId(id);
+        // A revoked device dropped its subscription: push is off here until enabled again.
+        if (id === null) setState("off");
         refetchDevices();
       })
       .catch(() => undefined);
     return () => {
       live = false;
     };
-  }, [state, refetchDevices]);
+  }, [state, refetchDevices, resyncKey]);
+  useEffect(() => {
+    if (resyncKey > 0) refetchDevices();
+  }, [resyncKey, refetchDevices]);
   const change = useMutation(
     (enable: boolean) =>
       enable && config.data?.public_key ? enablePush(config.data.public_key) : disablePush(),
@@ -169,7 +176,7 @@ function PushDevice() {
 
 /** One row per registered kind and channel, email first, then push. The backend drops an
  *  override equal to the default, so a switch moved back stores nothing. */
-function NotificationsCard() {
+function NotificationsCard({ pushResyncKey }: { pushResyncKey: number }) {
   const { data, error } = useApiResource<UserPreferences>(PREFERENCES_PATH);
   const [saved, setSaved] = useState<UserPreferences | null>(null);
   const toggle = useMutation(
@@ -246,7 +253,7 @@ function NotificationsCard() {
         onToggle={() => consent.run(!productUpdates)}
         className="border-t border-neutral-800 pt-4"
       />
-      <PushDevice />
+      <PushDevice resyncKey={pushResyncKey} />
       {switches("push")}
     </Card>
   );
@@ -259,6 +266,7 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [success, setSuccess] = useState(false);
+  const [passwordChanges, setPasswordChanges] = useState(0);
   const helpHidden = useHelpHidden();
   const palette = usePalette();
   const theme = useTheme();
@@ -284,6 +292,7 @@ export default function SettingsPage() {
         setNewPassword("");
         setConfirmPassword("");
         setSuccess(true);
+        setPasswordChanges((n) => n + 1);
       },
     }
   );
@@ -393,7 +402,7 @@ export default function SettingsPage() {
           </div>
         </Card>
 
-        <NotificationsCard />
+        <NotificationsCard pushResyncKey={passwordChanges} />
 
         <Card>
           <div className="space-y-1">

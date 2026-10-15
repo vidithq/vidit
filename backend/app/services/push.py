@@ -8,6 +8,7 @@ one, and a failure is logged by subscription id and status only.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import uuid
@@ -26,7 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.notification import DeliveryOutcome
-from app.models.push_subscription import PushSubscription
+from app.models.push_subscription import PushSubscription, RevokedPushEndpoint
 from app.models.user import User
 from app.schemas.push import PushSubscriptionCreate
 
@@ -87,6 +88,14 @@ def public_key() -> str | None:
     return b64urlencode(raw)
 
 
+class DeviceRevokedError(Exception):
+    code = "device_revoked"
+
+
+def _endpoint_sha256(endpoint: str) -> str:
+    return hashlib.sha256(endpoint.encode()).hexdigest()
+
+
 def register(
     db: Session, *, user: User, body: PushSubscriptionCreate, user_agent: str | None
 ) -> PushSubscription:
@@ -94,8 +103,17 @@ def register(
 
     Registering a known endpoint again refreshes its keys, and moves it to
     ``user`` when the browser signed in to another account. Past
-    :data:`MAX_DEVICES_PER_USER`, the oldest devices of ``user`` go.
+    :data:`MAX_DEVICES_PER_USER`, the oldest devices of ``user`` go. A ``resync`` of a device
+    ``user`` revoked raises :class:`DeviceRevokedError`; an explicit registration clears the
+    revocation.
     """
+    revoked = db.query(RevokedPushEndpoint).filter(
+        RevokedPushEndpoint.user_id == user.id,
+        RevokedPushEndpoint.endpoint_sha256 == _endpoint_sha256(body.endpoint),
+    )
+    if body.resync and revoked.first() is not None:
+        raise DeviceRevokedError("This device was revoked; enable push on it again")
+    revoked.delete(synchronize_session=False)
     values = {
         "user_id": user.id,
         "p256dh": body.keys.p256dh,
@@ -132,14 +150,27 @@ def register(
 
 
 def unregister(db: Session, *, user: User, subscription_id: uuid.UUID) -> bool:
-    """Drop one of ``user``'s devices; False when ``user`` has no such device.
-    The caller commits."""
-    deleted = (
+    """Revoke one of ``user``'s devices: drop it and remember its endpoint, so the browser
+    cannot bring it back by itself. False when ``user`` has no such device. The caller
+    commits."""
+    row = (
         db.query(PushSubscription)
         .filter(PushSubscription.id == subscription_id, PushSubscription.user_id == user.id)
-        .delete(synchronize_session=False)
+        .one_or_none()
     )
-    return deleted > 0
+    if row is None:
+        return False
+    db.execute(
+        insert(RevokedPushEndpoint)
+        .values(
+            user_id=user.id,
+            endpoint_sha256=_endpoint_sha256(row.endpoint),
+            revoked_at=datetime.now(UTC),
+        )
+        .on_conflict_do_nothing()
+    )
+    db.delete(row)
+    return True
 
 
 def list_devices(db: Session, *, user: User) -> list[PushSubscription]:

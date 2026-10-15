@@ -240,6 +240,21 @@ def test_a_password_reset_forgets_every_device(db, author):
     assert _devices(db, author) == []
 
 
+def test_a_revoked_device_stays_revoked_until_enabled_again(db, author):
+    body = _subscription()
+    device_id = _register(author, body).json()["id"]
+    headers = login_as(client, author)
+    assert client.delete(f"{_SUBSCRIPTIONS}/{device_id}", headers=headers).status_code == 204
+
+    resync = _register(author, {**body, "resync": True})
+    assert (resync.status_code, resync.json()["detail"]["code"]) == (409, "device_revoked")
+    assert _devices(db, author) == []
+    assert body["endpoint"] not in resync.text
+
+    assert _register(author, body).status_code == 201
+    assert _register(author, {**body, "resync": True}).status_code == 201
+
+
 def test_push_routes_require_a_session():
     client.cookies.clear()
     assert client.get(_CONFIG).status_code == 401
