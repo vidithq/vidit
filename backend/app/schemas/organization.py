@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.organization import OrganizationRole
+from app.models.user_preferences import ReviewRequestAudience
 from app.schemas.admin import normalize_x_handle
 from app.schemas.user import AuthorRef, UserUpdate
 
@@ -30,6 +31,8 @@ class OrganizationRead(BaseModel):
     caller. ``viewer_invited`` is true while the caller holds a pending invite.
     ``viewer_can_manage`` is true for an org-admin or a site admin: it gates
     the profile edit and the member management on the page.
+    ``review_request_audience`` is who may send the organization a review
+    request, set by its org-admins.
     """
 
     id: uuid.UUID
@@ -41,6 +44,7 @@ class OrganizationRead(BaseModel):
     external_links: dict[str, str | None]
     created_at: datetime
     member_count: int
+    review_request_audience: ReviewRequestAudience
     viewer_role: OrganizationRole | None = None
     viewer_invited: bool = False
     viewer_can_manage: bool = False
@@ -100,8 +104,11 @@ class OrganizationMemberUpdate(BaseModel):
 
 class OrganizationUpdate(UserUpdate):
     """Body for ``PATCH /organizations/{slug}``: the fields an org-admin edits,
-    under the rules of ``PATCH /users/me``. ``name``, ``slug`` and ``x_handle``
-    stay with the site admin."""
+    under the rules of ``PATCH /users/me``, and who may send the organization a
+    review request. ``name``, ``slug`` and ``x_handle`` stay with the site
+    admin."""
+
+    review_request_audience: ReviewRequestAudience | None = None
 
 
 class OrganizationCreate(OrganizationUpdate):

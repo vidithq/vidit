@@ -27,7 +27,7 @@ from app.models.notification import (
     NotificationDelivery,
     NotificationKind,
 )
-from app.models.organization import OrganizationInvite
+from app.models.organization import OrganizationInvite, OrganizationMember
 from app.models.review_request import ReviewRequest
 from app.models.user import User
 from app.schemas.notification import NotificationEventRef, NotificationRead
@@ -205,10 +205,12 @@ def notify_approval_received(
     *,
     event: Event,
     reviewer_id: uuid.UUID,
+    organization_id: uuid.UUID | None = None,
     requester_ids: Collection[uuid.UUID] = (),
 ) -> None:
     """Tell the owner of ``event``, and every geolocator whose review request the approval
-    resolved (``requester_ids``), that ``reviewer_id`` approved its live version."""
+    resolved (``requester_ids``), that ``reviewer_id`` approved its live version, for
+    ``organization_id`` when set."""
     for recipient_id in {event.owner_id, *requester_ids}:
         _emit(
             db,
@@ -216,56 +218,85 @@ def notify_approval_received(
             kind="approval_received",
             actor_id=reviewer_id,
             event_id=event.id,
+            organization_id=organization_id,
         )
 
 
 def notify_review_request_received(
-    db: Session, *, event: Event, requester_id: uuid.UUID, target_id: uuid.UUID
+    db: Session,
+    *,
+    event: Event,
+    requester_id: uuid.UUID,
+    recipient_ids: Collection[uuid.UUID],
+    organization_id: uuid.UUID | None = None,
 ) -> None:
-    """Tell ``target_id`` that ``requester_id`` asks them to review ``event``."""
-    _emit(
-        db,
-        recipient_id=target_id,
-        kind="review_request_received",
-        actor_id=requester_id,
-        event_id=event.id,
-    )
+    """Tell the target that ``requester_id`` asks them to review ``event``: one analyst, or the
+    org-admins of ``organization_id``."""
+    for recipient_id in recipient_ids:
+        _emit(
+            db,
+            recipient_id=recipient_id,
+            kind="review_request_received",
+            actor_id=requester_id,
+            event_id=event.id,
+            organization_id=organization_id,
+        )
 
 
 def notify_review_request_declined(
-    db: Session, *, event: Event, requester_id: uuid.UUID, target_id: uuid.UUID
+    db: Session,
+    *,
+    event: Event,
+    requester_id: uuid.UUID,
+    target_id: uuid.UUID,
+    organization_id: uuid.UUID | None = None,
 ) -> None:
-    """Tell ``requester_id`` that ``target_id`` declined to review ``event``."""
+    """Tell ``requester_id`` that ``target_id`` declined to review ``event``, for
+    ``organization_id`` when set."""
     _emit(
         db,
         recipient_id=requester_id,
         kind="review_request_declined",
         actor_id=target_id,
         event_id=event.id,
+        organization_id=organization_id,
     )
 
 
 def notify_re_approve_requested(
     db: Session, *, event: Event, editor_id: uuid.UUID, superseded_version: int
 ) -> None:
-    """Ask every analyst whose approval of ``superseded_version`` stood to review the new one.
+    """Ask every analyst whose own approval of ``superseded_version`` stood to review the new
+    one, and every live org-admin of an organization whose approval of it stood.
 
     A revoked approval asks nothing.
     """
-    reviewer_ids = db.scalars(
-        select(EventApproval.reviewer_id).where(
+    # Imported here: services/organizations imports this module.
+    from app.services.organizations import live_admin_ids
+
+    recipients: list[tuple[uuid.UUID, uuid.UUID | None]] = []
+    for reviewer_id, organization_id in db.execute(
+        select(EventApproval.reviewer_id, EventApproval.organization_id).where(
             EventApproval.event_id == event.id,
             EventApproval.version_no == superseded_version,
             EventApproval.revoked_at.is_(None),
         )
-    ).all()
-    for reviewer_id in reviewer_ids:
+    ).tuples():
+        if organization_id is None:
+            recipients.append((reviewer_id, None))
+        else:
+            recipients.extend(
+                (admin_id, organization_id)
+                for admin_id in db.scalars(live_admin_ids(organization_id))
+            )
+    for recipient_id, organization_id in recipients:
         _emit(
             db,
-            recipient_id=reviewer_id,
+            recipient_id=recipient_id,
             kind="re_approve_requested",
             actor_id=editor_id,
             event_id=event.id,
+            organization_id=organization_id,
         )
 
 
@@ -326,23 +357,57 @@ def pending_invites(db: Session, *, user: User, rows: list[Notification]) -> set
     )
 
 
+def _administered(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.UUID]:
+    """The organizations named by ``rows`` that ``user`` is an org-admin of now."""
+    org_ids = {r.organization_id for r in rows if r.organization_id is not None}
+    if not org_ids:
+        return set()
+    return set(
+        db.scalars(
+            select(OrganizationMember.organization_id).where(
+                OrganizationMember.user_id == user.id,
+                OrganizationMember.role == "admin",
+                OrganizationMember.organization_id.in_(org_ids),
+            )
+        )
+    )
+
+
+# A review request's key in the feed: the event, the requester, and the organization it targets
+# (None for one addressed to the reader). There is one open request per requester, target and
+# event.
+RequestKey = tuple[uuid.UUID, uuid.UUID, uuid.UUID | None]
+
+
 def open_review_requests(
     db: Session, *, user: User, rows: list[Notification]
-) -> dict[tuple[uuid.UUID, uuid.UUID], uuid.UUID]:
-    """The open review request behind each of ``rows``' ``review_request_received`` rows, keyed
-    by ``(event_id, requester_id)``: there is one open request per requester, target and
-    event."""
-    event_ids = {r.event_id for r in rows if r.kind == "review_request_received" and r.event_id}
-    if not event_ids:
+) -> dict[RequestKey, uuid.UUID]:
+    """The open review request behind each of ``rows``' ``review_request_received`` rows: one
+    addressed to ``user``, or to an organization ``user`` is an org-admin of now."""
+    received = [r for r in rows if r.kind == "review_request_received" and r.event_id]
+    if not received:
         return {}
+    event_ids = {r.event_id for r in received}
+    org_ids = _administered(db, user=user, rows=received)
     found = db.execute(
-        select(ReviewRequest.event_id, ReviewRequest.requester_id, ReviewRequest.id).where(
-            ReviewRequest.target_user_id == user.id,
+        select(
+            ReviewRequest.event_id,
+            ReviewRequest.requester_id,
+            ReviewRequest.target_organization_id,
+            ReviewRequest.id,
+        ).where(
+            or_(
+                ReviewRequest.target_user_id == user.id,
+                ReviewRequest.target_organization_id.in_(org_ids),
+            ),
             ReviewRequest.status == "open",
             ReviewRequest.event_id.in_(event_ids),
         )
     ).tuples()
-    return {(event_id, requester_id): request_id for event_id, requester_id, request_id in found}
+    return {
+        (event_id, requester_id, org_id): request_id
+        for event_id, requester_id, org_id, request_id in found
+    }
 
 
 # The kinds whose feed row offers to approve the event's live version.
@@ -350,10 +415,15 @@ _APPROVE_OFFER_KINDS: frozenset[NotificationKind] = frozenset(
     {"re_approve_requested", "review_request_received"}
 )
 
+# An approval offer's key: the event, and the organization the reader would approve for (None
+# for their own approval).
+OfferKey = tuple[uuid.UUID, uuid.UUID | None]
+
 
 class ReapprovalOffer(NamedTuple):
     """What a re-approval row offers: the live version to approve, and the latest earlier
-    version ``user``'s approval still stands on, the base of the change list."""
+    version the approval (the reader's own, or the organization's) still stands on, the base of
+    the change list."""
 
     live_version: int
     approved_version: int | None
@@ -361,47 +431,69 @@ class ReapprovalOffer(NamedTuple):
 
 def reapproval_offers(
     db: Session, *, user: User, rows: list[Notification]
-) -> dict[uuid.UUID, ReapprovalOffer]:
+) -> dict[OfferKey, ReapprovalOffer]:
     """The offer of each event among ``rows``' re-approval and review requests that ``user``
-    can approve now: published, not credited to them, and not yet reviewed by them at the live
-    version.
+    can approve now, as themselves or for the organization the row names: published, not
+    credited to them, and not yet approved at the live version (by them, or by the organization,
+    which they must still administer).
 
     Callers eager-load ``Notification.event``.
     """
-    candidates = {
-        r.event.id: r.event.version_no
+    administered = _administered(db, user=user, rows=rows)
+    candidates: dict[OfferKey, int] = {
+        (r.event.id, r.organization_id): r.event.version_no
         for r in rows
         if r.kind in _APPROVE_OFFER_KINDS
         and r.event is not None
         and r.event.status == STATUS_GEOLOCATED
         and r.event.owner_id != user.id
+        and (r.organization_id is None or r.organization_id in administered)
     }
     if not candidates:
         return {}
+    event_ids = {event_id for event_id, _ in candidates}
     credited = set(
         db.scalars(
             select(EventGeolocator.event_id).where(
                 EventGeolocator.user_id == user.id,
-                EventGeolocator.event_id.in_(candidates),
+                EventGeolocator.event_id.in_(event_ids),
             )
         )
     )
-    reviewed: set[tuple[uuid.UUID, int]] = set()
-    standing: dict[uuid.UUID, int] = {}
-    for event_id, version, revoked_at in db.execute(
-        select(EventApproval.event_id, EventApproval.version_no, EventApproval.revoked_at).where(
-            EventApproval.reviewer_id == user.id,
-            EventApproval.event_id.in_(candidates),
+    blocked: set[OfferKey] = set()
+    standing: dict[OfferKey, int] = {}
+    for event_id, org_id, version, revoked_at in db.execute(
+        select(
+            EventApproval.event_id,
+            EventApproval.organization_id,
+            EventApproval.version_no,
+            EventApproval.revoked_at,
+        ).where(
+            EventApproval.event_id.in_(event_ids),
+            or_(
+                and_(
+                    EventApproval.reviewer_id == user.id,
+                    EventApproval.organization_id.is_(None),
+                ),
+                EventApproval.organization_id.in_(administered),
+            ),
         )
     ).tuples():
-        reviewed.add((event_id, version))
+        key = (event_id, org_id)
+        live = candidates.get(key)
+        if live is None:
+            continue
+        # An analyst reviews a version once, revoked included; an organization's revoked
+        # approval can be placed again.
+        if version == live and (org_id is None or revoked_at is None):
+            blocked.add(key)
         # Mirrored by the frontend's lib/approvals.standingApprovalBefore; change both.
-        if revoked_at is None and version < candidates[event_id]:
-            standing[event_id] = max(version, standing.get(event_id, 0))
+        if revoked_at is None and version < live:
+            standing[key] = max(version, standing.get(key, 0))
     return {
-        event_id: ReapprovalOffer(version, standing.get(event_id))
-        for event_id, version in candidates.items()
-        if event_id not in credited and (event_id, version) not in reviewed
+        key: ReapprovalOffer(version, standing.get(key))
+        for key, version in candidates.items()
+        if key[0] not in credited and key not in blocked
     }
 
 
@@ -409,11 +501,11 @@ def build_read(
     row: Notification,
     *,
     pending: set[uuid.UUID],
-    offers: dict[uuid.UUID, ReapprovalOffer],
-    review_requests: dict[tuple[uuid.UUID, uuid.UUID], uuid.UUID],
+    offers: dict[OfferKey, ReapprovalOffer],
+    review_requests: dict[RequestKey, uuid.UUID],
 ) -> NotificationRead:
     review_request_id = (
-        review_requests.get((row.event_id, row.actor_id))
+        review_requests.get((row.event_id, row.actor_id, row.organization_id))
         if row.kind == "review_request_received"
         and row.event_id is not None
         and row.actor_id is not None
@@ -421,7 +513,11 @@ def build_read(
     )
     # A resolved review request offers nothing, though the event may still be approvable.
     offers_approval = row.kind == "re_approve_requested" or review_request_id is not None
-    offer = offers.get(row.event_id) if offers_approval and row.event_id is not None else None
+    offer = (
+        offers.get((row.event_id, row.organization_id))
+        if offers_approval and row.event_id is not None
+        else None
+    )
     return NotificationRead(
         id=row.id,
         kind=row.kind,

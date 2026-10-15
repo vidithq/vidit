@@ -2,11 +2,21 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.user_preferences import REVIEW_REQUEST_AUDIENCE_DEFAULT, ReviewRequestAudience
 
 # Value-domain source of truth for a member's role: the ORM column, the Read
 # schemas and the generated frontend type derive from it, and
@@ -36,6 +46,14 @@ class Organization(Base):
     external_links: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, nullable=False, server_default="{}"
     )
+    # Who may send the organization a review request, set by its org-admins. ``following``
+    # admits an analyst whom at least one live org-admin follows.
+    review_request_audience: Mapped[ReviewRequestAudience] = mapped_column(
+        String(20),
+        default=REVIEW_REQUEST_AUDIENCE_DEFAULT,
+        server_default=text(f"'{REVIEW_REQUEST_AUDIENCE_DEFAULT}'"),
+        nullable=False,
+    )
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -43,6 +61,13 @@ class Organization(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
         nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "review_request_audience IN ('following', 'everyone', 'nobody')",
+            name="ck_organizations_review_request_audience",
+        ),
     )
 
 

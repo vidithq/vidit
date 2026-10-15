@@ -18,9 +18,11 @@ vi.mock("@/hooks/useApiResource", () => ({
 }));
 
 const apiFetch = vi.fn();
+const apiFetchPage = vi.fn();
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   apiFetch: (...args: unknown[]) => apiFetch(...args),
+  apiFetchPage: (...args: unknown[]) => apiFetchPage(...args),
 }));
 
 import OrganizationPage from "./page";
@@ -35,6 +37,7 @@ const ORG: Organization = {
   external_links: { website: "https://example.org" },
   created_at: "2026-01-01T00:00:00Z",
   member_count: 2,
+  review_request_audience: "following",
   viewer_role: null,
   viewer_invited: false,
   viewer_can_manage: false,
@@ -53,6 +56,38 @@ const MEMBERS: OrganizationMember[] = [
   },
 ];
 
+const APPROVAL = {
+  event: { id: "e1", title: "Bridge strike" },
+  approval: {
+    id: "a1",
+    version_no: 2,
+    verdict: "approve" as const,
+    reviewer: { id: "u1", username: "lead", avatar_url: null },
+    organization: { slug: "osw", name: "Open Source Watch", avatar_url: null },
+    note: "Skyline matches",
+    created_at: "2026-10-15T09:00:00Z",
+    current: true,
+    revoked_at: null,
+    revoke_reason: null,
+    revoked_as: null,
+  },
+};
+
+const OPEN_REQUEST = {
+  event: { id: "e2", title: "Port fire" },
+  request: {
+    id: "r1",
+    event_id: "e2",
+    version_no: 1,
+    requester: { id: "u3", username: "cy", avatar_url: null },
+    target: null,
+    target_organization: { slug: "osw", name: "Open Source Watch", avatar_url: null },
+    status: "open" as const,
+    created_at: "2026-10-15T09:00:00Z",
+    resolved_at: null,
+  },
+};
+
 function serve(org: Organization) {
   const refetch = vi.fn();
   useApiResource.mockImplementation((path: string | null) => {
@@ -60,8 +95,17 @@ function serve(org: Organization) {
     if (path === "/organizations/osw/members") {
       return { data: MEMBERS, error: null, loading: false, refetch };
     }
+    if (path === "/organizations/osw/review-requests") {
+      return { data: [OPEN_REQUEST], error: null, loading: false, refetch };
+    }
     return { data: [], error: null, loading: false, refetch };
   });
+  apiFetchPage.mockImplementation((path: string) =>
+    Promise.resolve({
+      items: path === "/organizations/osw/approvals" ? [APPROVAL] : [],
+      nextCursor: null,
+    }),
+  );
   return refetch;
 }
 
@@ -90,6 +134,20 @@ describe("OrganizationPage", () => {
     expect(screen.queryByRole("button", { name: /Remove|Leave|Make/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit profile" })).toBeNull();
     expect(screen.queryByText("Invites")).toBeNull();
+    expect(screen.queryByText("Review requests")).toBeNull();
+  });
+
+  it("lists the approvals placed in the organization's name", async () => {
+    signIn(null);
+    serve(ORG);
+    render(<OrganizationPage />);
+
+    expect(await screen.findByRole("link", { name: "Bridge strike" })).toHaveAttribute(
+      "href",
+      "/events/e1",
+    );
+    expect(screen.getByText("Skyline matches")).toBeInTheDocument();
+    expect(screen.getByText("Current")).toBeInTheDocument();
   });
 
   it("lets an invited analyst accept", async () => {
@@ -126,5 +184,37 @@ describe("OrganizationPage", () => {
     expect(screen.getByText("Invites")).toBeInTheDocument();
     expect(screen.getByLabelText("Analyst")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Edit profile" })).toBeInTheDocument();
+  });
+
+  it("gives an org-admin the open review requests and the audience control", async () => {
+    signIn("lead");
+    const refetch = serve({ ...ORG, viewer_role: "admin", viewer_can_manage: true });
+    render(<OrganizationPage />);
+
+    expect(screen.getByText("Review requests")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Port fire" })).toHaveAttribute("href", "/events/e2");
+    expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "People our org-admins follow" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Everyone" }));
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith("/organizations/osw", {
+        method: "PATCH",
+        body: JSON.stringify({ review_request_audience: "everyone" }),
+      }),
+    );
+    await waitFor(() => expect(refetch).toHaveBeenCalled());
+  });
+
+  it("shows a site admin the requests without the answer", () => {
+    signIn("mod");
+    serve({ ...ORG, viewer_can_manage: true });
+    render(<OrganizationPage />);
+
+    expect(screen.getByRole("link", { name: "Port fire" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
   });
 });

@@ -13,15 +13,15 @@ ReviewRequestStatus = Literal["open", "approved", "declined"]
 
 
 class ReviewRequest(Base):
-    """A geolocator of an event asks an analyst to review it.
+    """A geolocator of an event asks an analyst or an organization to review it.
 
     Open until the target approves the event (any version) or declines. The row stays once
     resolved, so the requester sees the outcome. ``version_no`` is the live version when the
     request was sent.
 
-    The target is one analyst (``target_user_id``). The column is nullable and
-    ``ck_review_requests_one_target`` requires it, so an organization target can join as a
-    sibling column under a widened check.
+    The target is one analyst (``target_user_id``) or one organization
+    (``target_organization_id``), never both: ``ck_review_requests_one_target``. Any org-admin of
+    the organization answers for it.
     """
 
     __tablename__ = "review_requests"
@@ -37,6 +37,9 @@ class ReviewRequest(Base):
     target_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True
     )
+    target_organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True
+    )
     status: Mapped[ReviewRequestStatus] = mapped_column(
         String(20), nullable=False, default="open", server_default=text("'open'")
     )
@@ -49,6 +52,8 @@ class ReviewRequest(Base):
 
     requester = relationship("User", foreign_keys=[requester_id])
     target_user = relationship("User", foreign_keys=[target_user_id])
+    target_organization = relationship("Organization")
+    event = relationship("Event")
 
     __table_args__ = (
         CheckConstraint(
@@ -57,7 +62,10 @@ class ReviewRequest(Base):
         CheckConstraint(
             "(status = 'open') = (resolved_at IS NULL)", name="ck_review_requests_resolved"
         ),
-        CheckConstraint("target_user_id IS NOT NULL", name="ck_review_requests_one_target"),
+        CheckConstraint(
+            "num_nonnulls(target_user_id, target_organization_id) = 1",
+            name="ck_review_requests_one_target",
+        ),
         # One open request per requester, target and event.
         Index(
             "uq_review_requests_open",
@@ -66,6 +74,21 @@ class ReviewRequest(Base):
             "requester_id",
             unique=True,
             postgresql_where=text("status = 'open'"),
+        ),
+        Index(
+            "uq_review_requests_open_organization",
+            "event_id",
+            "target_organization_id",
+            "requester_id",
+            unique=True,
+            postgresql_where=text("status = 'open' AND target_organization_id IS NOT NULL"),
+        ),
+        # The organization's open requests, and the cascade of a deleted organization.
+        Index(
+            "ix_review_requests_target_organization_id",
+            "target_organization_id",
+            "status",
+            postgresql_where=text("target_organization_id IS NOT NULL"),
         ),
         # The target's open requests, and the cascade of an erased target.
         Index("ix_review_requests_target_user_id", "target_user_id", "status"),

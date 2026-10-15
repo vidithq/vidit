@@ -3,13 +3,14 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_current_user_optional, get_db
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers._errors import raise_typed_error
+from app.schemas.approval import OrganizationApprovalRead
 from app.schemas.organization import (
     OrganizationInviteCreate,
     OrganizationInviteRead,
@@ -18,9 +19,20 @@ from app.schemas.organization import (
     OrganizationRead,
     OrganizationUpdate,
 )
+from app.schemas.review_request import OrganizationReviewRequestRead
 from app.schemas.user import AuthorRef
+from app.services import approvals as approvals_service
 from app.services import organizations as organizations_service
+from app.services import review_requests as review_requests_service
 from app.services import users as users_service
+from app.services.pagination import (
+    MAX_PAGE_SIZE,
+    decode_cursor,
+    encode_cursor,
+    next_link,
+    page_size,
+    take_page,
+)
 
 router = APIRouter()
 
@@ -64,6 +76,52 @@ def list_organization_members(
     return organizations_service.list_members(db, org)
 
 
+@router.get("/{slug}/approvals", response_model=list[OrganizationApprovalRead])
+@authenticated_read_quota
+@limiter.limit("120/minute")
+def list_organization_approvals(
+    request: Request,
+    response: Response,
+    slug: str,
+    limit: int = Query(MAX_PAGE_SIZE, ge=1),
+    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
+    db: Session = Depends(get_db),
+) -> list[OrganizationApprovalRead]:
+    """The approvals placed in the organization's name, newest first, revoked ones included,
+    capped at 100 per page (``Link: rel="next"`` cursor)."""
+    with _typed_errors():
+        org = organizations_service.get_by_slug(db, slug)
+    size = page_size(limit)
+    window = approvals_service.list_for_organization(
+        db,
+        org=org,
+        limit=size,
+        cursor=decode_cursor(cursor) if cursor is not None else None,
+    )
+    rows, has_next = take_page(window, size)
+    if has_next:
+        last = rows[-1]
+        response.headers["Link"] = next_link(request, encode_cursor(last.created_at, last.id))
+    return [approvals_service.build_organization_read(row) for row in rows]
+
+
+@router.get("/{slug}/review-requests", response_model=list[OrganizationReviewRequestRead])
+@limiter.limit("60/minute")
+def list_organization_review_requests(
+    request: Request,
+    slug: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[OrganizationReviewRequestRead]:
+    """Open review requests addressed to the organization, oldest first. Org-admins and site
+    admins only."""
+    with _typed_errors():
+        org = organizations_service.get_by_slug(db, slug)
+        organizations_service.require_manager(db, org, current_user)
+    rows = review_requests_service.list_open_for_organization(db, org=org)
+    return [review_requests_service.build_organization_read(row) for row in rows]
+
+
 @router.patch("/{slug}", response_model=OrganizationRead)
 @limiter.limit("30/minute")
 def update_organization(
@@ -73,11 +131,12 @@ def update_organization(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> OrganizationRead:
-    """Edit an organization's bio and links. Org-admins and site admins only."""
+    """Edit an organization's bio, links and review request audience. Org-admins and site
+    admins only."""
     with _typed_errors():
         org = organizations_service.get_by_slug(db, slug)
         organizations_service.require_manager(db, org, current_user)
-    users_service.apply_profile_update(org, body)
+    organizations_service.apply_update(org, body)
     db.commit()
     db.refresh(org)
     return organizations_service.build_read(db, org, viewer=current_user)

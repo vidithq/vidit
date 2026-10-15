@@ -91,6 +91,7 @@ function NotificationRows({
                   eventId={n.event.id}
                   requestId={n.review_request_id}
                   versionNo={n.reapprove_version}
+                  organization={n.organization}
                   onAnswered={onChanged}
                 />
               ) : (
@@ -100,6 +101,7 @@ function NotificationRows({
                     eventId={n.event.id}
                     versionNo={n.reapprove_version}
                     approvedVersion={n.approved_version}
+                    organization={n.organization}
                     onApproved={onChanged}
                   />
                 )

@@ -89,7 +89,7 @@ def _targets(geo: Event, requester: User, q: str = "") -> list[str]:
     login_as(client, requester)
     response = client.get(f"{_EVENTS}/{geo.id}/review-request-targets", params={"q": q})
     assert response.status_code == 200, response.text
-    return [u["username"] for u in response.json()]
+    return [u["username"] for u in response.json()["analysts"]]
 
 
 def _code(response) -> str:
