@@ -102,6 +102,10 @@ export const NOTIFICATION_KIND_COPY: Record<
     label: "Review request declined",
     setting: "An analyst or an organization you asked declines to review your geolocation.",
   },
+  organization_approval_removed: {
+    label: "Organization approval removed",
+    setting: "An organization that approved your geolocation is removed from Vidit.",
+  },
 };
 
 /** The feed row's sentence and destination. */
@@ -177,6 +181,11 @@ export function describeNotification(n: Notification): { text: string; href: str
     case "review_request_declined":
       return {
         text: `${actor} declined${n.organization ? ` for ${organization}` : ""} to review: ${title}`,
+        href: eventHref,
+      };
+    case "organization_approval_removed":
+      return {
+        text: `${n.organization_name ?? "An organization"} was removed from Vidit; its approval of ${title} is gone`,
         href: eventHref,
       };
   }

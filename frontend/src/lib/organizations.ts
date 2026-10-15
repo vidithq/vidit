@@ -118,6 +118,13 @@ export function removeOrganizationMember(slug: string, username: string): Promis
   );
 }
 
+/** A site admin deletes the organization with everything in its name. */
+export function deleteOrganization(slug: string): Promise<void> {
+  return apiFetch<void>(`${ADMIN_ORGANIZATIONS_PATH}/${encodeURIComponent(slug)}`, {
+    method: "DELETE",
+  });
+}
+
 /** A site admin makes the live analyst `username` an org manager of the organization, joining it
  *  if needed: the way back for an organization left without one. */
 export function appointOrganizationManager(slug: string, username: string): Promise<OrganizationMember> {

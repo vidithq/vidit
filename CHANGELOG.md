@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- A site admin can delete an organization from the admin panel after typing its slug; its memberships, invites, review requests and approvals go with it, and each event owner who loses its approval is notified.
 - An org manager approves and revokes approvals in an organization's name, a geolocator can ask an organization for a review that any org manager answers, and the organization page lists its approvals and open requests ([#574](https://github.com/vidithq/vidit/pull/574)).
 - A geolocator can ask an analyst to review a geolocation; the analyst approves or declines from their notifications or the event page, and Settings chooses who may send you requests: people you follow, everyone or nobody ([#573](https://github.com/vidithq/vidit/pull/573)).
 - Analysts outside a geolocation's credit approve it one version at a time; any new version, an archive-only save included, asks reviewers to approve again, and a revoked approval keeps its public reason ([#572](https://github.com/vidithq/vidit/pull/572)).

@@ -600,6 +600,7 @@ flowchart TB
 - **Approvals.** `OrganizationApprovals` lists the approvals placed in the organization's name, newest first, with **Load more** past a page: each row is the event's title, linked, over the event page's own `ApprovalRow`, so the acting org manager, the state pill, the note and a revocation's reason read the same in both places.
 - **Review requests.** `OrganizationReviewRequests` shows to managers. Its first row is **Accept review requests from**, the Settings row's `<SegmentedControl>` with the organization's labels (**People our org managers follow**, **Everyone**, **Nobody**), saved on change. Under it, the open requests addressed to the organization, oldest first: the event, linked, and who asked when. An org manager gets **Decline** on each; approving happens on the event page, as the organization. A site admin who is not an org manager reads the list without the answer.
 - **Invites.** `OrganizationInvites` shows to managers. An org manager gets a `<Select>` of the analysts the server accepts, with one line saying the list holds mutual follows only; a site admin who is not an org manager sees the pending invites without the picker. Each pending invite withdraws with one ghost button.
+- **Deletion.** Only a site admin deletes an organization, from the admin panel's Organizations list (`OrganizationsPanel`). **Delete** opens a `WARNING_CALLOUT` that says what goes with the organization, a field for its slug, and the danger button, which stays disabled until the typed slug matches and then takes `DANGER_CONFIRM`.
 
 ### Collections
 

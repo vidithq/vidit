@@ -1,4 +1,4 @@
-"""Organizations: the site admin's create, the public reads, and membership.
+"""Organizations: the site admin's create and delete, the public reads, and membership.
 
 Entry is by invitation only. An org manager invites an analyst in mutual follow
 with them, and the invitee accepts or declines. Every write that can remove an
@@ -14,12 +14,15 @@ from sqlalchemy import ColumnExpressionArgument, Select, case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from app.models.approval import EventApproval
+from app.models.event import Event
 from app.models.organization import (
     Organization,
     OrganizationInvite,
     OrganizationMember,
     OrganizationRole,
 )
+from app.models.review_request import ReviewRequest
 from app.models.user import User
 from app.schemas.organization import (
     AdminOrganizationRead,
@@ -34,6 +37,7 @@ from app.schemas.organization import (
 from app.schemas.user import AuthorRef
 from app.services import admin as admin_service
 from app.services import notifications, social
+from app.services.storage import avatar_key_of, sweep_keys
 from app.services.users import apply_profile_update
 
 
@@ -308,6 +312,64 @@ def appoint_manager(
     return OrganizationMemberRead(
         user=AuthorRef.model_validate(user), role=member.role, joined_at=member.joined_at
     )
+
+
+def delete_organization(db: Session, *, actor: User, slug: str) -> dict[str, object]:
+    """Delete the organization ``slug`` and everything in its name, with audit. Site admin only
+    (the router's guard).
+
+    In one transaction, after locking the organization row: the approvals given in its name,
+    the review requests addressed to it, its pending invites, its memberships, then the row
+    itself (the notifications naming it cascade with it). The owner of each event that loses a
+    standing approval receives one ``organization_approval_removed`` notification per event.
+    After the commit, the picture is swept from storage. 404 ``organization_not_found``.
+    """
+    org = get_by_slug(db, slug, lock=True)
+    affected = list(
+        db.execute(
+            select(Event.id, Event.owner_id)
+            .join(EventApproval, EventApproval.event_id == Event.id)
+            .where(EventApproval.organization_id == org.id, EventApproval.revoked_at.is_(None))
+            .distinct()
+        ).tuples()
+    )
+    avatar_key = avatar_key_of(org.avatar_url)
+    approvals = (
+        db.query(EventApproval)
+        .filter(EventApproval.organization_id == org.id)
+        .delete(synchronize_session=False)
+    )
+    requests = (
+        db.query(ReviewRequest)
+        .filter(ReviewRequest.target_organization_id == org.id)
+        .delete(synchronize_session=False)
+    )
+    db.query(OrganizationInvite).filter(OrganizationInvite.organization_id == org.id).delete(
+        synchronize_session=False
+    )
+    members = (
+        db.query(OrganizationMember)
+        .filter(OrganizationMember.organization_id == org.id)
+        .delete(synchronize_session=False)
+    )
+    target: dict[str, object] = {
+        "organization_id": str(org.id),
+        "slug": org.slug,
+        "name": org.name,
+        "approvals_removed": approvals,
+        "review_requests_removed": requests,
+        "members_removed": members,
+    }
+    name = org.name
+    db.delete(org)
+    db.flush()
+    notifications.notify_organization_approval_removed(db, organization_name=name, events=affected)
+    admin_service.log_admin_event(
+        db, actor_id=actor.id, action="organization_deleted", target=target
+    )
+    db.commit()
+    sweep_keys([avatar_key] if avatar_key else [], context=f"organization {slug} delete")
+    return target
 
 
 def apply_update(org: Organization, body: OrganizationUpdate) -> None:

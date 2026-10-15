@@ -631,6 +631,7 @@ _DOCUMENTED_LIMITS = [
         "admin",
         {"json": {"name": "Probe", "slug": "probe-org", "manager_username": "nobody-at-all"}},
     ),
+    _Case("delete", "/api/v1/admin/organizations/no-such-org", 30, "admin"),
     _Case(
         "post",
         "/api/v1/admin/organizations/no-such-org/managers",

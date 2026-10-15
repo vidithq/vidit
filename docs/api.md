@@ -191,6 +191,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/admin/users` | 🛡️ | Substring search on username/email |
 | POST/GET | `/admin/organizations` | 🛡️ | Create an organization with its first org manager / list organizations, flagging those without one |
 | POST | `/admin/organizations/{slug}/managers` | 🛡️ | Name a live analyst org manager of an organization |
+| DELETE | `/admin/organizations/{slug}` | 🛡️ | Delete an organization with its memberships, invites, review requests and approvals |
 | DELETE | `/admin/users/{id}` | 🛡️ | Soft delete (default) or `?hard=true` GDPR erasure |
 | DELETE | `/admin/users/{id}/detected-events` | 🛡️ | Purge every detection the user owns, account untouched |
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
@@ -288,7 +289,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | **Product updates** | |
 | `POST /product-updates/unsubscribe` | 30/min (anonymous allowed) |
 | **Admin** 🛡️ | |
-| `POST /admin/invite-codes` · `POST /admin/organizations` · `POST /admin/organizations/{slug}/managers` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
+| `POST /admin/invite-codes` · `POST /admin/organizations` · `POST /admin/organizations/{slug}/managers` · `DELETE /admin/organizations/{slug}` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `DELETE /admin/events/{id}` | 60/hour |
 | `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` · `PATCH /admin/collections/{id}/moderation` · `DELETE /admin/collections/{id}` | 60/hour |
 | `POST /admin/x-handle-requests/{id}/approve` · `POST /admin/x-handle-requests/{id}/decline` | 60/hour |
@@ -2253,7 +2254,7 @@ Your display and notification preferences. Each value is the one in effect: your
 | `display.palette` | `orange`, `blue`, `emerald`, `violet`, `rose` |
 | `display.theme` | `dark`, `light` |
 | `display.help_tooltips` | `true` shows the `?` field help |
-| `notifications[].kind` | `request_fulfilled`, `new_follower`, `x_handle_request_approved`, `x_handle_request_declined`, `co_geolocator_invite`, `co_geolocator_removed`, `ownership_transferred`, `organization_invite`, `organization_invite_accepted`, `organization_manager_inherited`, `re_approve_requested`, `approval_received`, `review_request_received`, `review_request_declined` |
+| `notifications[].kind` | `request_fulfilled`, `new_follower`, `x_handle_request_approved`, `x_handle_request_declined`, `co_geolocator_invite`, `co_geolocator_removed`, `ownership_transferred`, `organization_invite`, `organization_invite_accepted`, `organization_manager_inherited`, `re_approve_requested`, `approval_received`, `review_request_received`, `review_request_declined`, `organization_approval_removed` |
 | `notifications[].channels` | `email`, `push` |
 | `review_request_audience` | Who may send you a [review request](#review-requests): `following` (the default), `everyone`, `nobody` |
 
@@ -2541,7 +2542,8 @@ flowchart LR
   credit["`**geolocator_credit**
   co_geolocator_invite, co_geolocator_removed, ownership_transferred`"]:::spec
   orgs["`**organizations**
-  organization_invite, organization_invite_accepted, organization_manager_inherited`"]:::spec
+  organization_invite, organization_invite_accepted, organization_manager_inherited,
+  organization_approval_removed`"]:::spec
   approvals["`**approvals** and **file_version**
   approval_received, re_approve_requested`"]:::spec
   reviews["`**review_requests**
@@ -2602,8 +2604,9 @@ When your push switch for the kind is on and you registered at least one device,
 | `approval_received` | An analyst approves your event, or an event whose review you requested, as themselves or for an organization | the reviewer | the event | the organization, or null |
 | `review_request_received` | A geolocator asks you, or an organization you are an org manager of, to review their event; an org manager who holds or held credit on the event is not asked | the requester | the event | the organization asked, or null |
 | `review_request_declined` | The analyst or the organization you asked declines to review your event | the analyst asked, or the org manager who declined | the event | the organization asked, or null |
+| `organization_approval_removed` | A site admin deletes an organization whose standing approval your event held; one row per event | null | the event | null; `organization_name` names it |
 
-A declined or withdrawn organization invite writes no row. `organization` is `{ "slug", "name", "avatar_url" }`.
+A declined or withdrawn organization invite writes no row. `organization` is `{ "slug", "name", "avatar_url" }`. `organization_name` is set on an `organization_approval_removed` row only, since the organization it names no longer exists.
 
 ### `GET /notifications` 🔒
 
@@ -3233,6 +3236,17 @@ Create an organization and name its first org manager, who joins at once without
 **Response 201:** the organization, as on [`GET /organizations/{slug}`](#get-organizationsslug).
 
 **Errors:** 409 `slug_taken` (the slug or the X handle belongs to another organization) or `x_handle_conflict` (an analyst or another organization holds the X handle: analysts and organizations share one namespace), 404 `user_not_found` (the first org manager), 422 on a malformed field.
+
+### `DELETE /admin/organizations/{slug}` 🛡️
+
+Delete an organization. Site admins only. In one transaction, after locking the organization row, the service deletes the approvals given in its name, the review requests addressed to it, its pending invites, its memberships and the organization itself; the notifications that name it go with it. The owner of each event that held a standing approval of the organization receives one `organization_approval_removed` notification per event, with email and push off by default. After the commit, the organization's picture is swept from storage. Audited as `organization_deleted` (target `organization_id`, `slug`, `name`, `approvals_removed`, `review_requests_removed`, `members_removed`). The admin panel asks you to type the slug before it sends the request.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `organization_not_found` |
 
 ### `GET /admin/organizations` 🛡️
 

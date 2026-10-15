@@ -26,7 +26,9 @@ class NotificationRead(BaseModel):
     null when the reader cannot approve it now. ``approved_version`` is then,
     on a ``re_approve_requested`` row, the latest earlier version the reader's
     approval still stands on, the base of the change list. ``review_request_id`` is the open request behind a
-    ``review_request_received`` row, null once it is resolved."""
+    ``review_request_received`` row, null once it is resolved.
+    ``organization_name`` names the deleted organization on an
+    ``organization_approval_removed`` row, and is null on every other kind."""
 
     id: uuid.UUID
     kind: NotificationKind
@@ -34,6 +36,7 @@ class NotificationRead(BaseModel):
     actor: AuthorRef | None
     event: NotificationEventRef | None
     organization: OrganizationRef | None
+    organization_name: str | None = None
     read_at: datetime | None
     invite_pending: bool
     reapprove_version: int | None

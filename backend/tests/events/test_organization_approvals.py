@@ -12,15 +12,17 @@ from datetime import UTC, datetime
 import pytest
 
 from app.models.admin_event import AdminEvent
+from app.models.approval import EventApproval
 from app.models.event import Event, EventGeolocator
 from app.models.follow import Follow
-from app.models.notification import Notification
-from app.models.organization import Organization, OrganizationMember
+from app.models.notification import Notification, NotificationDelivery
+from app.models.organization import Organization, OrganizationInvite, OrganizationMember
 from app.models.review_request import ReviewRequest
 from app.models.user import User
-from app.services import email, notification_delivery
+from app.services import email, notification_delivery, organizations
 from app.services.auth import hash_password
 from app.services.review_requests import REFUSAL_MESSAGE
+from tests._fixtures import TINY_JPEG
 from tests.conftest import login_as
 from tests.events._helpers import _make_geo, client, delete_user
 from tests.events.test_review_requests import _age_declines
@@ -634,3 +636,87 @@ def test_organization_rows_name_the_organization_in_email_and_push(
         assert message.path == f"/events/{geo.id}"
         built = notification_delivery._EMAIL_BUILDERS[row.kind](row, "probe@example.com")
         assert org.name in built.subject
+
+
+# ── Deletion ────────────────────────────────────────────────────────
+
+
+def _delete_org(org: Organization, user: User):
+    return client.delete(f"/api/v1/admin/organizations/{org.slug}", headers=login_as(client, user))
+
+
+def test_only_a_site_admin_deletes_an_organization(db, author, make_user, make_org):
+    manager = make_user()
+    org = make_org(managers=[manager])
+    assert _delete_org(org, manager).status_code == 403
+    client.cookies.clear()
+    assert client.delete(f"/api/v1/admin/organizations/{org.slug}").status_code in (401, 403)
+    db.expire_all()
+    assert db.get(Organization, org.id) is not None
+
+
+def test_deleting_an_organization_removes_everything_in_its_name(
+    db, author, admin_user, make_user, make_org, monkeypatch
+):
+    swept: list[list[str]] = []
+    monkeypatch.setattr(organizations, "sweep_keys", lambda keys, **_: swept.append(list(keys)))
+    author.email_verified_at = datetime.now(UTC)
+    manager, member, invitee, outsider = make_user(), make_user(), make_user(), make_user()
+    org = make_org(managers=[manager], members=[member], audience="everyone")
+    db.add(OrganizationInvite(organization_id=org.id, user_id=invitee.id, invited_by_id=manager.id))
+    db.commit()
+    picture = client.put(
+        f"{_ORGS}/{org.slug}/avatar",
+        headers=login_as(client, manager),
+        files={"file": ("a.jpg", TINY_JPEG, "image/jpeg")},
+    )
+    assert picture.status_code == 200, picture.text
+    first, second, revoked_only = (_published(db, author) for _ in range(3))
+    assert _approve(first, manager, org).status_code == 201
+    assert _approve(second, manager, org).status_code == 201
+    rid = _approve(revoked_only, manager, org).json()["id"]
+    assert _revoke(revoked_only, rid, manager).status_code == 200
+    assert _approve(first, outsider).status_code == 201
+    assert _ask(revoked_only, author, org).status_code == 201
+
+    org_id, slug, name = org.id, org.slug, org.name
+    assert _delete_org(org, admin_user).status_code == 204
+
+    db.expire_all()
+    assert db.get(Organization, org_id) is None
+    assert db.query(OrganizationMember).filter_by(organization_id=org_id).count() == 0
+    assert db.query(OrganizationInvite).filter_by(organization_id=org_id).count() == 0
+    assert db.query(ReviewRequest).filter_by(target_organization_id=org_id).count() == 0
+    assert db.query(EventApproval).filter_by(organization_id=org_id).count() == 0
+    assert db.query(EventApproval).filter_by(event_id=first.id).count() == 1
+
+    removed = (
+        db.query(Notification)
+        .filter_by(user_id=author.id, kind="organization_approval_removed")
+        .all()
+    )
+    assert sorted(str(n.event_id) for n in removed) == sorted([str(first.id), str(second.id)])
+    assert {(n.organization_name, n.actor_id) for n in removed} == {(name, None)}
+    assert (
+        db.query(NotificationDelivery)
+        .filter(NotificationDelivery.notification_id.in_([n.id for n in removed]))
+        .count()
+        == 0
+    )
+    [row] = [n for n in _feed(author) if n["kind"] == "organization_approval_removed"][:1]
+    assert row["organization_name"] == name
+
+    audit = db.query(AdminEvent).filter_by(action="organization_deleted").one()
+    assert (audit.actor_id, audit.target["slug"], audit.target["approvals_removed"]) == (
+        admin_user.id,
+        slug,
+        3,
+    )
+    assert len(swept) == 1 and swept[0][0].startswith(f"avatars/{org_id}/")
+
+
+def test_deleting_an_unknown_organization_is_not_found(admin_user):
+    response = client.delete(
+        "/api/v1/admin/organizations/no-such-org", headers=login_as(client, admin_user)
+    )
+    assert response.status_code == 404
