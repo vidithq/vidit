@@ -419,15 +419,21 @@ def deliver(
     what: str,
 ) -> None:
     """Run ``attempt`` for a row claimed ``sending`` and land its outcome. Any
-    other error counts as a refusal, so one bad row never stops a drain.
-    Shared by every queue the worker drains."""
+    other error counts as a refusal, so one bad row never stops a drain, except
+    after an outcome that may have reached the recipient: that row stays
+    ``sending`` and goes stale, so it is never sent twice. Shared by every
+    queue the worker drains."""
     model, row_id = type(row), row.id
+    outcome: DeliveryOutcome | None = None
     try:
-        _land(row, attempt())
+        outcome = attempt()
+        _land(row, outcome)
         db.commit()
     except Exception:  # noqa: BLE001
         logger.exception("%s %s raised", what, row_id)
         db.rollback()
+        if outcome in ("sent", "unknown"):
+            return
         fresh = db.get(model, row_id)
         if fresh is not None:
             _count_failure(fresh)

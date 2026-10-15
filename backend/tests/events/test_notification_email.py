@@ -308,3 +308,22 @@ def test_a_row_that_raises_is_retried_and_the_drain_goes_on(
     [row] = _deliveries(db, author)
     assert (row.status, row.attempts) == ("queued", 1)
     assert [r.status for r in _deliveries(db, second_user)] == ["sent"]
+
+
+@pytest.mark.parametrize("outcome", ["sent", "unknown"])
+def test_a_failed_write_after_a_send_never_requeues_the_row(
+    db, author, second_user, conflict, capture_source_tag, monkeypatch, outcome
+):
+    _verify(db, author)
+    _fulfil(db, author, second_user, conflict, capture_source_tag)
+    row = notification_delivery._claim_next(db, now=datetime.now(UTC), channel="email")
+    assert row is not None
+
+    def land_fails(_row, _outcome):
+        raise RuntimeError("database went away")
+
+    monkeypatch.setattr(notification_delivery, "_land", land_fails)
+    notification_delivery.deliver(db, row, lambda: outcome, what="notification email")
+
+    [stored] = _deliveries(db, author)
+    assert (stored.status, stored.attempts) == ("sending", 0)
