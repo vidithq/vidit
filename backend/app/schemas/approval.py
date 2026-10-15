@@ -52,6 +52,8 @@ class ApprovalRead(BaseModel):
 
     ``organization`` is the organization the review was placed for, with
     ``reviewer`` the org-admin who placed it; null for an analyst's own review.
+    ``reviewer`` is null on an organization's review once the account of the
+    org-admin who placed it is erased: the review stays the organization's.
     ``current`` is true while the review covers the live version and is not
     revoked. ``revoked_as`` says who revoked it: the reviewer, an org-admin of
     the organization, or a site admin.
@@ -60,7 +62,7 @@ class ApprovalRead(BaseModel):
     id: uuid.UUID
     version_no: int
     verdict: ApprovalVerdict
-    reviewer: AuthorRef
+    reviewer: AuthorRef | None
     organization: OrganizationRef | None
     note: str | None
     created_at: datetime

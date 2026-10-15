@@ -17,7 +17,7 @@ from app.models.user import User
 from app.services.auth import hash_password
 from app.services.geolocator_credit import JOINED_AS_GEOLOCATOR_REASON
 from tests.conftest import login_as
-from tests.events._helpers import _make_geo, client
+from tests.events._helpers import _make_geo, client, delete_user
 from tests.events.test_versions import _form, _save_version
 from tests.events.test_versions import _published as _published_with_floor
 
@@ -44,7 +44,7 @@ def make_user(db):
     db.expire_all()
     for user_id in made:
         db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-        db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+        delete_user(db, user_id)
     db.commit()
 
 

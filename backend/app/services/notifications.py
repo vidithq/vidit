@@ -328,6 +328,7 @@ def notify_re_approve_requested(
         )
     ).tuples():
         if organization_id is None:
+            assert reviewer_id is not None  # ck_event_approvals_reviewer
             recipients.append((reviewer_id, None))
         else:
             recipients.extend(

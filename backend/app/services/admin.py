@@ -2,11 +2,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, delete, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.admin_event import AdminEvent
+from app.models.approval import EventApproval
 from app.models.archive_import_job import ArchiveImportJob
 from app.models.auth_event import EVENT_LOGIN, AuthEvent
 from app.models.bot_mention import BotMention
@@ -670,7 +671,8 @@ def hard_delete_user(
     4. Hand the org-admin role of each organization they were the last live org-admin of
        to its earliest-joined live member
        (:func:`services.organizations.hand_over_admin_roles`), in the same transaction as
-       step 1. Delete the user. ``auth_tokens``, their collections (and memberships), their
+       step 1. Delete the analyst's own approvals; those they placed for an organization stay
+       the organization's, with ``reviewer_id`` set to NULL. Delete the user. ``auth_tokens``, their collections (and memberships), their
        invitations and their contributor rows on other people's events cascade-drop;
        ``admin_events.actor_id`` and ``invite_codes.used_by`` flip to NULL (migration
        f1a3b5c7d9e0), so invite-code rows outlive the user as audit trail.
@@ -708,8 +710,14 @@ def hard_delete_user(
     for geo in geolocations:
         db.delete(geo)
 
-    # 4. Hand any last org-admin role to the earliest member, then drop the user row.
+    # 4. Hand any last org-admin role to the earliest member, drop the analyst's own
+    # approvals, then the user row; the approvals they placed for an organization stay.
     organizations.hand_over_admin_roles(db, leaving_user_id=user.id)
+    db.execute(
+        delete(EventApproval).where(
+            EventApproval.reviewer_id == user.id, EventApproval.organization_id.is_(None)
+        )
+    )
     db.delete(user)
 
     log_admin_event(db, actor_id=actor_id, action="user_hard_deleted", target=target)

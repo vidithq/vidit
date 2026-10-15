@@ -375,16 +375,18 @@ const ORGANIZATION_REF = { slug: ORGANIZATION_SLUG, name: ORGANIZATION.name, ava
 /** The live version's approvals on the shared event: one standing review with a note long
  *  enough to wrap, and one the organization's long name signs, so the Approvals card is
  *  measured at phone widths. */
+const SECOND_REVIEWER = {
+  id: "77777777-7777-4777-8777-777777777771",
+  username: "second_reviewer_with_a_long_handle",
+  avatar_url: null,
+};
+
 export const EVENT_APPROVALS: Approval[] = [
   {
     id: "66666666-6666-4666-8666-666666666661",
     version_no: 1,
     verdict: "approve",
-    reviewer: {
-      id: "77777777-7777-4777-8777-777777777771",
-      username: "second_reviewer_with_a_long_handle",
-      avatar_url: null,
-    },
+    reviewer: SECOND_REVIEWER,
     note: "The utility poles, the tree line and the roof vents all match the satellite view from the eastern approach.",
     created_at: "2025-01-05T08:30:00Z",
     current: true,
@@ -421,7 +423,7 @@ export const ORGANIZATION_REVIEW_REQUESTS: OrganizationReviewRequest[] = [
       id: "66666666-6666-4666-8666-666666666671",
       event_id: EVENT_ID,
       version_no: 1,
-      requester: EVENT_APPROVALS[0].reviewer,
+      requester: SECOND_REVIEWER,
       target: null,
       target_organization: ORGANIZATION_REF,
       status: "open",

@@ -111,5 +111,5 @@ export function canApprove(
   if (organization) {
     return !liveApprovals.some((a) => a.organization?.slug === organization && !a.revoked_at);
   }
-  return !liveApprovals.some((a) => !a.organization && a.reviewer.id === userId);
+  return !liveApprovals.some((a) => !a.organization && a.reviewer?.id === userId);
 }

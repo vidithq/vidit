@@ -19,7 +19,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Select, and_, select, update
+from sqlalchemy import ColumnElement, Select, and_, or_, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.approval import ApprovalRevoker, EventApproval
@@ -128,7 +128,7 @@ def build_read(row: EventApproval, *, live_version: int) -> ApprovalRead:
         id=row.id,
         version_no=row.version_no,
         verdict=row.verdict,
-        reviewer=AuthorRef.model_validate(row.reviewer),
+        reviewer=AuthorRef.model_validate(row.reviewer) if row.reviewer is not None else None,
         organization=(
             OrganizationRef.model_validate(row.organization)
             if row.organization is not None
@@ -151,6 +151,12 @@ def resolve_organization(db: Session, slug: str) -> Organization:
     return org
 
 
+def _reviewer_shown() -> ColumnElement[bool]:
+    """A review with a live reviewer, or an organization's review whose reviewer was erased.
+    Callers outer-join ``User`` on ``reviewer_id``."""
+    return or_(EventApproval.reviewer_id.is_(None), User.deleted_at.is_(None))
+
+
 def list_approvals(
     db: Session, *, geo: Event, version_no: int | None, reviewer: str | None
 ) -> list[EventApproval]:
@@ -158,13 +164,14 @@ def list_approvals(
 
     ``version_no`` keeps one version and ``reviewer`` one analyst's own reviews (by username,
     without those they placed for an organization); either may be omitted. A soft-deleted
-    reviewer's review is left out, as a soft-deleted geolocator is.
+    reviewer's review is left out, as a soft-deleted geolocator is; an organization's review
+    whose reviewer was erased stays.
     """
     query = (
         db.query(EventApproval)
-        .join(User, User.id == EventApproval.reviewer_id)
+        .outerjoin(User, User.id == EventApproval.reviewer_id)
         .options(joinedload(EventApproval.reviewer), joinedload(EventApproval.organization))
-        .filter(EventApproval.event_id == geo.id, User.deleted_at.is_(None))
+        .filter(EventApproval.event_id == geo.id, _reviewer_shown())
     )
     if version_no is not None:
         query = query.filter(EventApproval.version_no == version_no)
@@ -309,7 +316,7 @@ def revoke(
             target={
                 "geolocation_id": str(geo.id),
                 "approval_id": str(row.id),
-                "reviewer_id": str(row.reviewer_id),
+                "reviewer_id": str(row.reviewer_id) if row.reviewer_id is not None else None,
                 "organization_id": (
                     str(row.organization_id) if row.organization_id is not None else None
                 ),
@@ -334,13 +341,13 @@ def list_for_organization(
     query = (
         db.query(EventApproval)
         .join(Event, and_(Event.id == EventApproval.event_id, *visible_events()))
-        .join(User, and_(User.id == EventApproval.reviewer_id, User.deleted_at.is_(None)))
+        .outerjoin(User, User.id == EventApproval.reviewer_id)
         .options(
             joinedload(EventApproval.reviewer),
             joinedload(EventApproval.organization),
             joinedload(EventApproval.event),
         )
-        .filter(EventApproval.organization_id == org.id)
+        .filter(EventApproval.organization_id == org.id, _reviewer_shown())
     )
     if cursor is not None:
         query = query.filter(keyset_before(EventApproval.created_at, EventApproval.id, cursor))

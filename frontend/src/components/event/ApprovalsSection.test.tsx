@@ -191,6 +191,15 @@ describe("<ApprovalsSection>", () => {
     expect(screen.queryByRole("button", { name: "Approve as Bellingcat" })).toBeNull();
   });
 
+  it("keeps an organization approval whose acting org-admin was erased", async () => {
+    const BELLINGCAT = { slug: "bellingcat", name: "Bellingcat", avatar_url: null };
+    serve([approval({ organization: BELLINGCAT, reviewer: null })]);
+    render(<ApprovalsSection event={event} versionNo={2} live />);
+
+    expect(await screen.findByText("on behalf of Bellingcat")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Bellingcat" })).toBeInTheDocument();
+  });
+
   it("shows a revoked approval with its public reason on a filed version", async () => {
     serve([
       approval({

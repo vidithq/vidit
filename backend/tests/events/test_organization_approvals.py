@@ -22,7 +22,7 @@ from app.services import email, notification_delivery
 from app.services.auth import hash_password
 from app.services.review_requests import REFUSAL_MESSAGE
 from tests.conftest import login_as
-from tests.events._helpers import _make_geo, client
+from tests.events._helpers import _make_geo, client, delete_user
 from tests.events.test_review_requests import _age_declines
 from tests.events.test_versions import _form, _save_version
 from tests.events.test_versions import _published as _published_with_floor
@@ -51,7 +51,7 @@ def make_user(db):
     db.expire_all()
     for user_id in made:
         db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-        db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+        delete_user(db, user_id)
     db.commit()
 
 
@@ -154,6 +154,35 @@ def test_an_org_admin_approves_for_the_organization(db, author, make_user, make_
     assert [a["organization"]["slug"] for a in listed] == [org.slug]
     [received] = _rows(db, author, "approval_received")
     assert (received.actor_id, received.organization_id) == (admin.id, org.id)
+
+
+def test_an_organization_approval_outlives_the_acting_org_admins_account(
+    db, author, admin_user, make_user, make_org
+):
+    acting, other_admin = make_user(), make_user()
+    org = make_org(admins=[acting, other_admin])
+    geo = _published(db, author)
+    assert _approve(geo, acting, org).status_code == 201
+    assert _approve(geo, acting).status_code == 201
+
+    erased = client.delete(
+        f"/api/v1/admin/users/{acting.id}?hard=true", headers=login_as(client, admin_user)
+    )
+    assert erased.status_code == 200, erased.text
+
+    client.cookies.clear()
+    rows = client.get(f"{_EVENTS}/{geo.id}/approvals").json()
+    assert [(r["organization"]["slug"], r["reviewer"], r["current"]) for r in rows] == [
+        (org.slug, None, True)
+    ]
+    listed = client.get(f"{_ORGS}/{org.slug}/approvals").json()
+    assert [item["approval"]["reviewer"] for item in listed] == [None]
+    revoked = client.post(
+        f"{_EVENTS}/{geo.id}/approvals/{rows[0]['id']}/revoke",
+        json={"reason": "Checked again"},
+        headers=login_as(client, other_admin),
+    )
+    assert revoked.status_code == 200, revoked.text
 
 
 def test_only_an_org_admin_approves_in_its_name(db, author, make_user, make_org):
