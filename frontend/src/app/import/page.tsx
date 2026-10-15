@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Archive, AtSign, ExternalLink, Upload } from "lucide-react";
 import { XGlyph } from "@/components/ui/BrandGlyphs";
 import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
+import { OutboundLink } from "@/components/ui/OutboundLink";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import {
@@ -217,15 +218,13 @@ export default function ImportGuidePage() {
         <p className="text-xs leading-relaxed text-neutral-400">
           The stripped zip must stay under {MAX_UPLOAD_LABEL}. Contact us if
           yours is larger after stripping.{" "}
-          <a
+          <OutboundLink
             href={X_ARCHIVE_HELP}
-            target="_blank"
-            rel="noopener noreferrer"
             className={`inline-flex items-center gap-1 ${TEXT_LINK}`}
           >
             {"X's own guide"}
             <ExternalLink size={12} strokeWidth={2} />
-          </a>
+          </OutboundLink>
         </p>
         <p className={NOTE}>
           An export runs as a background job, so you can close the page. Vidit

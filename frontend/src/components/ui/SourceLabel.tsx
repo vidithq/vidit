@@ -1,5 +1,6 @@
 import { safeHostname } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { OutboundLink } from "@/components/ui/OutboundLink";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 type SourceLabelProps = {
@@ -30,15 +31,13 @@ export function SourceLabel(props: SourceLabelProps) {
     return <span className={className}>{hostname}</span>;
   }
   return (
-    <a
+    <OutboundLink
       href={url}
-      target="_blank"
-      rel="noopener noreferrer"
       // `min-w-0`: a flex item's automatic floor is the whole hostname, which
       // pushes a row past its card; with it lifted, `truncate` fits the row.
       className={cn(`${TEXT_LINK} truncate min-w-0`, className)}
     >
       {hostname}
-    </a>
+    </OutboundLink>
   );
 }

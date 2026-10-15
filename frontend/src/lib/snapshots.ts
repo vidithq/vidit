@@ -23,6 +23,10 @@ export const ARCHIVE_TODAY_HOSTS = [
   "archive.vn",
 ];
 
+/** Every host a snapshot may live on. Mirrors the keys of `PROVIDER_HOSTS` in
+ *  `services/source_archive.py`; change both. */
+export const SNAPSHOT_HOSTS = [WAYBACK_HOST, ...ARCHIVE_TODAY_HOSTS, "ghostarchive.org"];
+
 /** Wayback replay path `/web/<timestamp>/<original url>`, optional replay modifier included.
  *  Mirrors `source_archive._WAYBACK_REPLAY_RE`; change both. The server only checks the
  *  shape, this side reads the link out. */

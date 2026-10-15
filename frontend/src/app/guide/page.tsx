@@ -7,6 +7,7 @@ import {
   type NumberedStep,
 } from "@/components/ui/NumberedSteps";
 import { TEXT_LINK } from "@/components/ui/styles";
+import { OutboundLink } from "@/components/ui/OutboundLink";
 
 // Public getting-started guide (see `PUBLIC_PREFIXES` in `proxy.ts`): teaches the whole loop; `/methodology` and `/import` go deeper. Server component for SEO.
 
@@ -83,23 +84,19 @@ const STEPS: NumberedStep[] = [
       <>
         Accounts are invite-only today, so reading is open to everyone and
         publishing is not: request an invite by DM to{" "}
-        <a
+        <OutboundLink
           href="https://x.com/vidithq"
-          target="_blank"
-          rel="noopener noreferrer"
           className={TEXT_LINK}
         >
           @vidithq
-        </a>{" "}
+        </OutboundLink>{" "}
         on X, or in the{" "}
-        <a
+        <OutboundLink
           href="https://discord.gg/9wPtsrrKyJ"
-          target="_blank"
-          rel="noopener noreferrer"
           className={TEXT_LINK}
         >
           Discord
-        </a>
+        </OutboundLink>
         . Three ways in once you are in, all landing on the same map:
         <ul className="mt-1.5 space-y-1.5 list-disc pl-4">
           <li>

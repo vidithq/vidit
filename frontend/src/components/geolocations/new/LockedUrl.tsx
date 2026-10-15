@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { FieldAdornment, LOCKED_FIELD, TRAILING_ROOM } from "@/components/ui/Input";
+import { OutboundLink } from "@/components/ui/OutboundLink";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
 
@@ -26,10 +27,8 @@ export function LockedUrl({
   trailing?: ReactNode;
 }) {
   const link = (
-    <a
+    <OutboundLink
       href={href}
-      target="_blank"
-      rel="noopener noreferrer"
       className={cn(
         LOCKED_FIELD,
         TEXT_LINK,
@@ -38,7 +37,7 @@ export function LockedUrl({
       )}
     >
       {href}
-    </a>
+    </OutboundLink>
   );
 
   if (!trailing) return link;
