@@ -5,7 +5,8 @@ row is claimed with ``FOR UPDATE SKIP LOCKED``, set ``sending`` and committed
 before the provider call, so a crash mid-send leaves it ``sending`` and it is
 never sent twice. A provider refusal puts it back in ``queued`` for another
 try after ``RETRY_AFTER``, up to ``MAX_ATTEMPTS``. Each email claim first
-checks the daily caps, so notification email never takes the share of the auth
+checks the daily caps, which count every row that may have gone out
+(:func:`possibly_sent_since`), so notification email never takes the share of the auth
 emails, which are sent inline and never wait here. Push has no cap.
 """
 
@@ -17,7 +18,7 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 from typing import TypedDict
 
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import ColumnElement, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -44,11 +45,24 @@ STALE_SENDING_AFTER = timedelta(hours=1)
 QUEUED_EXPIRES_AFTER = timedelta(hours=48)
 
 
+def possibly_sent_since(model: type[DeliveryState], cutoff: datetime) -> ColumnElement[bool]:
+    """The rows of a queue that may have reached the provider since ``cutoff``: sent, or
+    claimed and left ``sending``, or failed stale out of ``sending``. A daily cap counts them
+    all, since the provider may have counted them too. A row failed by refusals never left."""
+    return or_(
+        and_(model.status == "sent", model.sent_at >= cutoff),
+        and_(
+            model.status.in_(("sending", "failed")),
+            model.attempts < MAX_ATTEMPTS,
+            model.claimed_at >= cutoff,
+        ),
+    )
+
+
 def _emails_sent_since(cutoff: datetime) -> tuple[ColumnElement[bool], ...]:
     return (
         NotificationDelivery.channel == "email",
-        NotificationDelivery.status == "sent",
-        NotificationDelivery.sent_at >= cutoff,
+        possibly_sent_since(NotificationDelivery, cutoff),
     )
 
 

@@ -175,6 +175,41 @@ def test_per_user_cap_holds_only_that_recipient(
     assert [r.status for r in _deliveries(db, second_user)] == ["sent"]
 
 
+@pytest.mark.parametrize(
+    ("status", "attempts", "counted"),
+    [
+        ("sending", 0, True),
+        ("failed", 0, True),
+        ("failed", notification_delivery.MAX_ATTEMPTS, False),
+    ],
+)
+def test_the_caps_count_rows_that_may_have_gone_out(
+    db,
+    author,
+    second_user,
+    conflict,
+    capture_source_tag,
+    outbox,
+    monkeypatch,
+    status,
+    attempts,
+    counted,
+):
+    _verify(db, author)
+    _fulfil(db, author, second_user, conflict, capture_source_tag)
+    _fulfil(db, author, second_user, conflict, capture_source_tag)
+    first = _deliveries(db, author)[0]
+    first.status = status
+    first.attempts = attempts
+    first.claimed_at = datetime.now(UTC) - timedelta(hours=2)
+    db.commit()
+    monkeypatch.setattr(settings, "notification_email_daily_cap", 1)
+
+    notification_delivery.drain(db)
+
+    assert _deliveries(db, author)[1].status == ("queued" if counted else "sent")
+
+
 def test_send_failure_never_breaks_the_action(
     db, author, second_user, conflict, capture_source_tag, monkeypatch
 ):
