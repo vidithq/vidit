@@ -205,6 +205,7 @@ export function ApprovalsSection({
             <div key={approval.id}>
               <ApprovalRow
                 approval={approval}
+                // Mirrors backend approvals._revoker_role; change both.
                 onRevoke={
                   !approval.revoked_at &&
                   revoking !== approval.id &&
