@@ -125,8 +125,8 @@ function targetOptions(targets: ReviewRequestTargets | null): TargetOption[] {
   ];
 }
 
-/** The geolocator's picker: only analysts and organizations who would accept a request from the
- *  reader are listed. */
+/** The geolocator's picker: analysts who follow the reader, organizations an org-admin of which
+ *  follows them, and an exact username or slug, whose request may still be refused. */
 function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () => void }) {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -176,9 +176,9 @@ function RequestReviewForm({ eventId, onSent }: { eventId: string; onSent: () =>
       ) : (
         targets.data && (
           <p className="text-xs text-neutral-500">
-            No analyst or organization to suggest. An analyst accepts requests from people they
-            follow, and an organization from people its org-admins follow, unless their settings
-            say otherwise.
+            No analyst or organization to suggest. Suggestions are analysts who follow you and
+            organizations whose org-admins follow you. Type an exact username or slug to ask
+            someone else.
           </p>
         )
       )}

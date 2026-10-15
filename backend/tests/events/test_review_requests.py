@@ -17,6 +17,7 @@ from app.models.user import User
 from app.models.user_preferences import UserPreferences
 from app.services import email, notification_delivery
 from app.services.auth import hash_password
+from app.services.review_requests import REFUSAL_MESSAGE
 from tests.conftest import login_as
 from tests.events._helpers import _make_geo, client
 
@@ -116,9 +117,7 @@ def test_by_default_only_analysts_the_target_follows_can_ask(db, author, make_us
     response = _request(geo, author, stranger)
     assert response.status_code == 403
     assert _code(response) == "requests_not_accepted"
-    assert response.json()["detail"]["message"] == (
-        "This analyst accepts review requests only from people they follow"
-    )
+    assert response.json()["detail"]["message"] == REFUSAL_MESSAGE
 
     follower_of_author = make_user()
     db.add(Follow(follower_id=author.id, followed_id=follower_of_author.id))
@@ -142,7 +141,7 @@ def test_nobody_admits_no_one_not_even_followed_analysts(db, author, make_user):
     assert response.status_code == 403
     assert response.json()["detail"] == {
         "code": "requests_not_accepted",
-        "message": "This analyst does not accept review requests",
+        "message": REFUSAL_MESSAGE,
     }
 
 
@@ -168,18 +167,24 @@ def test_the_audience_is_a_preference_the_target_sets(db, author, make_user):
     assert _request(geo, author, target).status_code == 201
 
 
-def test_the_picker_lists_only_analysts_who_would_accept(db, author, second_user, make_user):
+def test_the_picker_suggests_followers_and_never_reveals_an_open_audience(
+    db, author, second_user, make_user
+):
     geo = _published(db, author)
     friend = make_user(follows=author)
     open_door = make_user(audience="everyone")
-    make_user(audience="nobody", follows=author)
-    make_user()
+    closed = make_user(audience="nobody", follows=author)
+    stranger = make_user()
     co = make_user(audience="everyone")
     db.add(EventGeolocator(event_id=geo.id, user_id=co.id))
     db.commit()
 
     listed = set(_targets(geo, author))
-    assert {friend.username, open_door.username} <= listed
+    assert friend.username in listed
+    assert not {open_door.username, closed.username, stranger.username} & listed
+    # An exact username lists the analyst whatever their audience.
+    for exact in (open_door, closed, stranger):
+        assert _targets(geo, author, q=exact.username) == [exact.username]
     assert co.username not in listed
     assert author.username not in listed
     assert _targets(geo, author, q=friend.username[2:]) == [friend.username]

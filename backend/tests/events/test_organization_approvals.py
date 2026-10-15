@@ -20,6 +20,7 @@ from app.models.review_request import ReviewRequest
 from app.models.user import User
 from app.services import email, notification_delivery
 from app.services.auth import hash_password
+from app.services.review_requests import REFUSAL_MESSAGE
 from tests.conftest import login_as
 from tests.events._helpers import _make_geo, client
 from tests.events.test_versions import _form, _save_version
@@ -338,7 +339,7 @@ def test_following_admits_an_analyst_an_org_admin_follows(db, author, make_user,
     refused = _ask(geo, author, org)
     assert refused.status_code == 403
     assert _code(refused) == "requests_not_accepted"
-    assert "org-admins follow" in refused.json()["detail"]["message"]
+    assert refused.json()["detail"]["message"] == REFUSAL_MESSAGE
 
     db.add(Follow(follower_id=admin.id, followed_id=author.id))
     db.commit()
@@ -374,14 +375,17 @@ def test_the_org_admins_set_the_audience(db, author, make_user, make_org):
     db.commit()
     refused = _ask(other, author, org)
     assert _code(refused) == "requests_not_accepted"
-    assert (
-        refused.json()["detail"]["message"] == "This organization does not accept review requests"
-    )
+    assert refused.json()["detail"]["message"] == REFUSAL_MESSAGE
 
 
-def test_the_picker_lists_organizations_that_would_accept(db, author, make_user, make_org):
+def test_the_picker_suggests_organizations_without_revealing_their_audience(
+    db, author, make_user, make_org
+):
     admin = make_user()
     open_org = make_org(admins=[admin], audience="everyone")
+    db.add(Follow(follower_id=admin.id, followed_id=author.id))
+    db.commit()
+    stranger_org = make_org(admins=[make_user()], audience="everyone")
     closed_org = make_org(admins=[make_user()], audience="nobody")
     own_org = make_org(admins=[author], audience="everyone")
     geo = _published(db, author)
@@ -395,8 +399,15 @@ def test_the_picker_lists_organizations_that_would_accept(db, author, make_user,
     listed = picked()
     assert open_org.slug in listed
     assert closed_org.slug not in listed
+    # An organization that would take anyone's request stays out until asked for by slug.
+    assert stranger_org.slug not in listed
+    assert picked(stranger_org.slug) == {stranger_org.slug}
+    assert picked(closed_org.slug) == {closed_org.slug}
     # Every org-admin of it geolocated the event.
     assert own_org.slug not in listed
+    # Another organization's org-admin following the requester admits nothing here.
+    unfollowed = make_org(admins=[make_user()])
+    assert _code(_ask(geo, author, unfollowed)) == "requests_not_accepted"
     assert picked(open_org.slug[4:]) == {open_org.slug}
 
     assert _ask(geo, author, open_org).status_code == 201
