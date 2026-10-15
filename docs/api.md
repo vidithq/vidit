@@ -1517,7 +1517,7 @@ Every write locks the event row first, so an approval, a revocation and a new ve
 
 ### `GET /events/{id}/approvals`
 
-The approvals of the event, revoked ones included, ordered by version and then oldest first. An analyst's approval whose reviewer is soft-deleted is left out. An organization's approval stays whatever became of the member who placed it, with `reviewer` set to `null` once that account is soft-deleted or erased. Visibility as [`GET /events/{id}`](#get-eventsid).
+The approvals of the event, revoked ones included, ordered by version and then oldest first. At most 500 approvals are returned (`MAX_APPROVALS_LISTED` in [`services/approvals.py`](../backend/app/services/approvals.py)); filter by `version_no` or `reviewer` to read past it. An analyst's approval whose reviewer is soft-deleted is left out. An organization's approval stays whatever became of the member who placed it, with `reviewer` set to `null` once that account is soft-deleted or erased. Visibility as [`GET /events/{id}`](#get-eventsid).
 
 **Query params:**
 

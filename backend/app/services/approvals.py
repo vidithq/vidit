@@ -161,6 +161,11 @@ def resolve_organization(db: Session, slug: str) -> Organization:
     return org
 
 
+# One read returns at most this many reviews: far past any event's reviewers on one version,
+# while bounding the read of an event approved over many versions.
+MAX_APPROVALS_LISTED = 500
+
+
 def _reviewer_shown() -> ColumnElement[bool]:
     """An organization's review, whatever became of the member who placed it, or an analyst's
     review whose reviewer is live. Callers outer-join ``User`` on ``reviewer_id``."""
@@ -187,9 +192,11 @@ def list_approvals(
         query = query.filter(EventApproval.version_no == version_no)
     if reviewer is not None:
         query = query.filter(User.username == reviewer, EventApproval.organization_id.is_(None))
-    return query.order_by(
-        EventApproval.version_no, EventApproval.created_at, EventApproval.id
-    ).all()
+    return (
+        query.order_by(EventApproval.version_no, EventApproval.created_at, EventApproval.id)
+        .limit(MAX_APPROVALS_LISTED)
+        .all()
+    )
 
 
 def approve(
