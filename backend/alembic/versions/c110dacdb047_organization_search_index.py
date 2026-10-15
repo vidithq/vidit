@@ -1,7 +1,7 @@
 """add the organization full-text search index
 
 Revision ID: c110dacdb047
-Revises: 949fed6a7caf
+Revises: e844dfeafd10
 Create Date: 2026-10-15 22:00:00.000000
 
 ``ix_organizations_search_fts`` backs ``GET /search``'s organizations group.
@@ -15,7 +15,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "c110dacdb047"
-down_revision: Union[str, None] = "949fed6a7caf"
+down_revision: Union[str, None] = "e844dfeafd10"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

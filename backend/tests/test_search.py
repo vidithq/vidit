@@ -1290,6 +1290,32 @@ def test_event_filter_empties_the_organizations_group(caller, seed_org):
     assert body["total"]["organizations"] == 0
 
 
+def test_a_deleted_organization_leaves_search(db, caller, seed_org):
+    token = _unique_token()
+    admin = User(
+        username=f"admin{uuid.uuid4().hex[:8]}",
+        email=f"admin-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("p"),
+        is_admin=True,
+    )
+    db.add(admin)
+    db.commit()
+    org_id = seed_org(name=f"Org {token}", members=[caller])
+    slug = db.get(Organization, org_id).slug
+    try:
+        assert _org_hits(caller, token)["total"]["organizations"] == 1
+        deleted = client.delete(
+            f"/api/v1/admin/organizations/{slug}", headers=login_as(client, admin)
+        )
+        assert deleted.status_code == 204
+        body = _org_hits(caller, token)
+        assert body["organizations"] == []
+        assert body["total"]["organizations"] == 0
+    finally:
+        db.query(User).filter(User.id == admin.id).delete(synchronize_session=False)
+        db.commit()
+
+
 def test_organization_fts_query_uses_the_gin_index(db):
     """The SQL tsvector must match the migration's GIN index expression, or it seq-scans."""
     from sqlalchemy import text as satext
