@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import urlparse
 
 from pydantic import Field, field_validator, model_validator
@@ -77,8 +77,8 @@ class Settings(BaseSettings):
     # worker pass sends before it turns to its other queues. With the
     # notification cap this must stay below ``email_provider_daily_quota``, so
     # the remainder is left to the auth emails.
-    product_update_email_daily_cap: int = Field(30, ge=1)
-    product_update_email_batch_size: int = Field(10, ge=1)
+    product_update_email_daily_cap: Annotated[int, Field(ge=1)] = 30
+    product_update_email_batch_size: Annotated[int, Field(ge=1)] = 10
     email_provider_daily_quota: int = 100
 
     # Web Push (services/push.py). The private key is the base64url raw P-256
