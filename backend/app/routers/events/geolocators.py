@@ -64,7 +64,7 @@ def invite_geolocator(
     "/{geolocation_id}/geolocator-invites/{username}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-@limiter.limit("60/minute")
+@limiter.limit("30/hour")
 def withdraw_geolocator_invite(
     request: Request,
     geolocation_id: uuid.UUID,

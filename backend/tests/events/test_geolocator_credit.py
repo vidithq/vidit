@@ -8,9 +8,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from app.config import settings
 from app.models.collection import Collection, CollectionEvent
 from app.models.event import STATUS_CLOSED, Event, EventGeolocator, EventGeolocatorInvite
-from app.models.notification import Notification
+from app.models.notification import Notification, NotificationDelivery
 from app.models.organization import Organization, OrganizationMember
 from app.models.user import User
 from app.services import admin as admin_service
@@ -180,6 +181,41 @@ def test_decline_and_withdraw_drop_the_invitation(db, author, second_user, make_
     db.expire_all()
     assert db.query(EventGeolocatorInvite).filter_by(event_id=geo.id).count() == 0
     assert _geolocator_names(geo) == [author.username]
+
+
+def test_a_withdraw_and_invite_loop_notifies_once(db, author, second_user):
+    geo = _published(db, author)
+    path = f"{_EVENTS}/{geo.id}/geolocator-invites/{second_user.username}"
+    for _ in range(3):
+        assert _invite(geo, author, second_user.username).status_code == 201
+        assert client.delete(path, headers=login_as(client, author)).status_code == 204
+    assert _invite(geo, author, second_user.username).status_code == 201
+
+    assert _notifications(db, second_user) == [("co_geolocator_invite", author.id, geo.id)]
+    login_as(client, second_user)
+    feed = client.get("/api/v1/notifications").json()
+    assert [(n["kind"], n["invite_pending"]) for n in feed] == [("co_geolocator_invite", True)]
+
+
+def test_one_actor_queues_a_capped_number_of_emails(db, author, make_user, monkeypatch):
+    monkeypatch.setattr(settings, "notification_email_daily_cap_per_actor", 2)
+    geo = _published(db, author)
+    invitees = [make_user(email_verified_at=datetime.now(UTC)) for _ in range(3)]
+    for invitee in invitees:
+        assert _invite(geo, author, invitee.username).status_code == 201
+
+    db.expire_all()
+    channels = [
+        [
+            d.channel
+            for d in db.query(NotificationDelivery)
+            .join(Notification)
+            .filter(Notification.user_id == invitee.id)
+        ]
+        for invitee in invitees
+    ]
+    assert channels == [["email"], ["email"], []]
+    assert all(_notifications(db, invitee) for invitee in invitees)
 
 
 def test_credit_grants_no_edit_right(db, author, second_user):

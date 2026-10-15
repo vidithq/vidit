@@ -4,7 +4,9 @@ An emitter adds its row to the caller's session and never commits, so the row
 lands in the transaction of the action it reports. For each channel the
 recipient can receive on (a verified address for email, a registered device for
 push) whose switch for the kind is on, a ``notification_deliveries`` row joins
-it for the worker to send. Reads hide a
+it for the worker to send. An actor whose actions queued
+``settings.notification_email_daily_cap_per_actor`` emails in the trailing day
+queues no more: the row still reaches the feed and push. Reads hide a
 row whose event is soft-deleted or taken down, or whose actor is soft-deleted,
 whenever that happened.
 """
@@ -13,12 +15,13 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Collection
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import NamedTuple
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Query, Session, aliased, contains_eager, joinedload
 
+from app.config import settings
 from app.models.approval import EventApproval
 from app.models.event import STATUS_GEOLOCATED, Event, EventGeolocator, EventGeolocatorInvite
 from app.models.notification import (
@@ -39,6 +42,25 @@ from app.services.pagination import keyset_before
 from app.services.preferences import channel_enabled
 
 _Actor = aliased(User)
+
+ACTOR_EMAIL_WINDOW = timedelta(hours=24)
+# An invitation withdrawn and sent again inside this window raises no second notification: the
+# first row in the feed offers the answer again while the invitation is pending.
+REINVITE_QUIET_PERIOD = timedelta(days=7)
+
+
+def _actor_email_capped(db: Session, actor_id: uuid.UUID) -> bool:
+    queued = (
+        db.query(func.count(NotificationDelivery.id))
+        .join(Notification, NotificationDelivery.notification_id == Notification.id)
+        .filter(
+            Notification.actor_id == actor_id,
+            NotificationDelivery.channel == "email",
+            NotificationDelivery.created_at >= datetime.now(UTC) - ACTOR_EMAIL_WINDOW,
+        )
+        .scalar()
+    )
+    return (queued or 0) >= settings.notification_email_daily_cap_per_actor
 
 
 def _emit(
@@ -64,7 +86,8 @@ def _emit(
     if recipient is None:
         return
     reachable: dict[NotificationChannel, bool] = {
-        "email": has_verified_email(recipient),
+        "email": has_verified_email(recipient)
+        and (actor_id is None or not _actor_email_capped(db, actor_id)),
         "push": push.has_device(db, user_id=recipient_id),
     }
     for channel, can_receive in reachable.items():
@@ -127,7 +150,23 @@ def notify_x_handle_request_outcome(
 
 
 def notify_co_geolocator_invite(db: Session, *, event: Event, invitee_id: uuid.UUID) -> None:
-    """Tell ``invitee_id`` that the owner of ``event`` invites them to share its credit."""
+    """Tell ``invitee_id`` that the owner of ``event`` invites them to share its credit.
+
+    Silent when an invitation to the same event reached them within
+    :data:`REINVITE_QUIET_PERIOD`, so a withdraw and invite loop sends one notification.
+    """
+    recent = (
+        db.query(Notification.id)
+        .filter(
+            Notification.user_id == invitee_id,
+            Notification.kind == "co_geolocator_invite",
+            Notification.event_id == event.id,
+            Notification.created_at >= datetime.now(UTC) - REINVITE_QUIET_PERIOD,
+        )
+        .first()
+    )
+    if recent is not None:
+        return
     _emit(
         db,
         recipient_id=invitee_id,
