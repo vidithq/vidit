@@ -42,8 +42,12 @@ _GONE_STATUSES = frozenset({404, 410})
 
 # Devices per account: registering one more drops the oldest.
 MAX_DEVICES_PER_USER = 10
-# Refusals in a row after which a device is dropped, as a gone one is.
+# Definitive refusals in a row after which a device is dropped, as a gone one is.
 MAX_REFUSALS = 3
+# The answers by which a push service rejects this subscription itself (RFC 8030): a malformed
+# or unauthorized request. A rate limit, an oversized payload, a server error or a local error
+# says nothing about the device and counts toward nothing.
+_REJECTED_STATUSES = frozenset({400, 403})
 
 # Which device outcome names the row when the devices disagree.
 _ROW_OUTCOME_ORDER: tuple[DeliveryOutcome, ...] = ("sent", "unknown", "refused")
@@ -163,8 +167,11 @@ def has_device(db: Session, *, user_id: uuid.UUID) -> bool:
     )
 
 
-def _send_one(sub: PushSubscription, payload: str, vapid: Vapid02) -> DeliveryOutcome | None:
-    """One device's outcome; None when the push service says it is gone."""
+def _send_one(
+    sub: PushSubscription, payload: str, vapid: Vapid02
+) -> tuple[DeliveryOutcome | None, bool]:
+    """One device's outcome, None when the push service says it is gone, and whether the push
+    service rejected the subscription itself."""
     try:
         webpush(
             subscription_info={
@@ -182,25 +189,25 @@ def _send_one(sub: PushSubscription, payload: str, vapid: Vapid02) -> DeliveryOu
     except WebPushException as exc:
         status = exc.response.status_code if exc.response is not None else None
         if status in _GONE_STATUSES:
-            return None
+            return None, False
         logger.warning("push to subscription %s refused with status %s", sub.id, status)
-        return "refused"
+        return "refused", status in _REJECTED_STATUSES
     except requests.RequestException as exc:
         # The request may have reached the push service: never resend it.
         logger.warning("push to subscription %s outcome unknown: %s", sub.id, type(exc).__name__)
-        return "unknown"
+        return "unknown", False
     except Exception as exc:
         # Raised before any request left (a key that does not decode, say).
         logger.warning("push to subscription %s not sent: %s", sub.id, type(exc).__name__)
-        return "refused"
-    return "sent"
+        return "refused", False
+    return "sent", False
 
 
 def send(db: Session, *, user_id: uuid.UUID, message: PushMessage) -> DeliveryOutcome:
     """Push ``message`` to every device of ``user_id``. The caller commits.
 
-    A device the push service reports gone is deleted, and so is one refused
-    :data:`MAX_REFUSALS` times in a row. The row outcome is
+    A device the push service reports gone is deleted, and so is one it rejects
+    (:data:`_REJECTED_STATUSES`) :data:`MAX_REFUSALS` times in a row. The row outcome is
     ``sent`` when any device took it, else ``unknown`` when any may have, else
     ``refused`` when any refused, else ``skipped`` (push is off here, or no
     device is left). A refused row is retried, so it never repeats a push a
@@ -213,14 +220,14 @@ def send(db: Session, *, user_id: uuid.UUID, message: PushMessage) -> DeliveryOu
     payload = json.dumps(asdict(message))
     outcomes: set[DeliveryOutcome] = set()
     for sub in subscriptions:
-        outcome = _send_one(sub, payload, vapid)
+        outcome, rejected = _send_one(sub, payload, vapid)
         if outcome is None:
             db.delete(sub)
             continue
         if outcome == "sent":
             sub.last_success_at = datetime.now(UTC)
             sub.refusals = 0
-        elif outcome == "refused":
+        elif rejected:
             sub.refusals += 1
             if sub.refusals >= MAX_REFUSALS:
                 logger.warning(
