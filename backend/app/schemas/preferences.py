@@ -3,6 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from app.models.notification import NotificationChannel, NotificationKind
+from app.models.user_preferences import ReviewRequestAudience
 
 # The display allowlists. The frontend derives its palette and theme ids from
 # these through the generated API types; its swatch list, theme check and CSS
@@ -45,13 +46,15 @@ class UserPreferencesRead(BaseModel):
     default. ``notifications`` lists every registered kind in registry order.
     ``product_updates`` is whether a consent to product update emails is
     current; it has no default to fall back to, since consent is never
-    presumed."""
+    presumed. ``review_request_audience`` is who may send you a review
+    request."""
 
     display: DisplayPreferences
     display_defaults: DisplayPreferences
     display_stored: DisplayPreferencesUpdate
     notifications: list[NotificationPreferenceRead]
     product_updates: bool
+    review_request_audience: ReviewRequestAudience
 
 
 class UserPreferencesUpdate(BaseModel):
@@ -65,3 +68,4 @@ class UserPreferencesUpdate(BaseModel):
     display: DisplayPreferencesUpdate | None = None
     notifications: dict[NotificationKind, dict[NotificationChannel, bool]] | None = None
     product_updates: bool | None = None
+    review_request_audience: ReviewRequestAudience | None = None

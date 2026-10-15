@@ -146,15 +146,18 @@ const NOTE_FIELD_ID = "approval-note";
  * The approvals of one version of a published event. On the live version an analyst outside the
  * event's geolocators approves it; the reviewer, or a site admin, revokes a review with a public
  * reason. A filed version (`live` false) lists the reviews it held and takes no new one.
+ * `onApproved` runs after the reader's approval lands, which resolves their review requests.
  */
 export function ApprovalsSection({
   event,
   versionNo,
   live,
+  onApproved,
 }: {
   event: EventDetail;
   versionNo: number;
   live: boolean;
+  onApproved?: () => void;
 }) {
   const { user } = useAuth();
   const { isAdmin } = useAdmin();
@@ -170,11 +173,12 @@ export function ApprovalsSection({
         : revokeApproval(event.id, revoking!, reason.trim()),
     {
       fallback: "Failed to update the approvals",
-      onSuccess: () => {
+      onSuccess: (_result, kind) => {
         setNote("");
         setRevoking(null);
         setReason("");
         approvals.refetch();
+        if (kind === "approve") onApproved?.();
       },
     },
   );

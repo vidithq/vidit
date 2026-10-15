@@ -45,6 +45,7 @@ function preferences(requestFulfilledEmail = true, productUpdates = false): User
       },
     ],
     product_updates: productUpdates,
+    review_request_audience: "following",
   };
 }
 
@@ -150,6 +151,29 @@ describe("SettingsPage", () => {
 
     await waitFor(() => expect(releases).toHaveAttribute("aria-checked", "true"));
     expect(patchBodies()).toEqual([{ product_updates: true }]);
+  });
+
+  it("saves who may send review requests", async () => {
+    api.apiFetch.mockImplementation((_path: string, init?: RequestInit) =>
+      Promise.resolve(
+        init?.method === "PATCH"
+          ? { ...preferences(), review_request_audience: "everyone" }
+          : preferences(),
+      ),
+    );
+    render(<SettingsPage />);
+
+    const following = await screen.findByRole("button", { name: "People I follow" });
+    await waitFor(() => expect(following).toHaveAttribute("aria-pressed", "true"));
+    fireEvent.click(screen.getByRole("button", { name: "Everyone" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Everyone" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      ),
+    );
+    expect(patchBodies()).toEqual([{ review_request_audience: "everyone" }]);
   });
 
   it.each([[[]], [{}], [{ notifications: [{ kind: "retired_kind" }] }]])(

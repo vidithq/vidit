@@ -32,6 +32,11 @@ import {
   type PushDeviceState,
 } from "@/lib/push";
 import {
+  REVIEW_REQUEST_AUDIENCE_OPTIONS,
+  type ReviewRequestAudience,
+} from "@/lib/reviewRequests";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import {
   PREFERENCES_PATH,
   saveDisplay,
   updatePreferences,
@@ -114,6 +119,11 @@ function NotificationsCard() {
     { fallback: SAVE_FAILED, onSuccess: (prefs) => setSaved(prefs) }
   );
   const productUpdates = (saved ?? data)?.product_updates === true;
+  const audience = useMutation(
+    (value: ReviewRequestAudience) => updatePreferences({ review_request_audience: value }),
+    { fallback: SAVE_FAILED, onSuccess: (prefs) => setSaved(prefs) }
+  );
+  const currentAudience = (saved ?? data)?.review_request_audience ?? "following";
   // Tolerates a missing or partial payload, and a kind this build has no wording for.
   const notifications = (saved ?? data)?.notifications;
   const rows = (Array.isArray(notifications) ? notifications : []).filter(
@@ -145,9 +155,24 @@ function NotificationsCard() {
           notifications to the devices you enable.
         </p>
       </div>
-      {(error || toggle.error || consent.error) && (
-        <div className={FORM_ERROR_BANNER}>{toggle.error ?? consent.error ?? error}</div>
+      {(error || toggle.error || consent.error || audience.error) && (
+        <div className={FORM_ERROR_BANNER}>
+          {toggle.error ?? consent.error ?? audience.error ?? error}
+        </div>
       )}
+      {/* Stacks below `sm`, where the three choices take the full column. */}
+      <div className="flex max-sm:flex-col max-sm:items-stretch items-center justify-between gap-4">
+        <div>
+          <p className="text-sm text-neutral-200">Accept review requests from</p>
+          <p className="text-xs text-neutral-500">Who can ask you to review their geolocation.</p>
+        </div>
+        <SegmentedControl
+          aria-label="Accept review requests from"
+          options={REVIEW_REQUEST_AUDIENCE_OPTIONS}
+          value={currentAudience}
+          onChange={(value) => void audience.run(value)}
+        />
+      </div>
       <SectionEyebrow title="Email" as="h3" margin="none" />
       {switches("email")}
       <ToggleRow

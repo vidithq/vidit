@@ -14,6 +14,7 @@ from app.routers.events import (
     import_tweet,
     item,
     read,
+    review_requests,
     routers,
     write,
 )
@@ -31,6 +32,7 @@ def test_router_mount_order_is_pinned():
         batch.router,
         geolocators.router,
         approvals.router,
+        review_requests.router,
         item.router,
     )
     assert routers[-1] is item.router

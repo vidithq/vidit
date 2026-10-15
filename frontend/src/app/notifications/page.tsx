@@ -7,6 +7,8 @@ import {
   BadgeCheck,
   Building2,
   CircleCheck,
+  ClipboardCheck,
+  ClipboardX,
   RefreshCw,
   ShieldCheck,
   UserCheck,
@@ -30,6 +32,7 @@ import {
 } from "@/lib/notifications";
 import { ReapproveButton } from "@/components/event/ApprovalsSection";
 import { InviteAnswerButtons } from "@/components/event/GeolocatorCredit";
+import { ReviewRequestAnswer } from "@/components/event/ReviewRequestsSection";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LinkRow } from "@/components/ui/LinkRow";
@@ -50,6 +53,8 @@ const KIND_ICON: Record<NotificationKind, LucideIcon> = {
   organization_admin_inherited: ShieldCheck,
   re_approve_requested: RefreshCw,
   approval_received: BadgeCheck,
+  review_request_received: ClipboardCheck,
+  review_request_declined: ClipboardX,
 };
 
 function NotificationRows({
@@ -81,13 +86,23 @@ function NotificationRows({
               {n.invite_pending && n.event && (
                 <InviteAnswerButtons eventId={n.event.id} onAnswered={onChanged} />
               )}
-              {n.reapprove_version !== null && n.event && (
-                <ReapproveButton
+              {n.review_request_id !== null && n.event ? (
+                <ReviewRequestAnswer
                   eventId={n.event.id}
+                  requestId={n.review_request_id}
                   versionNo={n.reapprove_version}
-                  approvedVersion={n.approved_version}
-                  onApproved={onChanged}
+                  onAnswered={onChanged}
                 />
+              ) : (
+                n.reapprove_version !== null &&
+                n.event && (
+                  <ReapproveButton
+                    eventId={n.event.id}
+                    versionNo={n.reapprove_version}
+                    approvedVersion={n.approved_version}
+                    onApproved={onChanged}
+                  />
+                )
               )}
             </div>
           );

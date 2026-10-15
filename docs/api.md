@@ -117,6 +117,10 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/{id}/approvals` | 🌐 | The approvals of one version (the live one by default), or one analyst's across versions |
 | POST | `/events/{id}/approvals` | 🔒 | Approve the live version of a published event you are not credited on |
 | POST | `/events/{id}/approvals/{approval_id}/revoke` | 🔒 | Revoke an approval with a public reason: your own, or any as a site admin |
+| GET | `/events/{id}/review-requests` | 🔒 | Open review requests: all for the event's geolocators, yours otherwise |
+| GET | `/events/{id}/review-request-targets` | 🔒 | The analysts you can ask to review the event now, geolocators only |
+| POST | `/events/{id}/review-requests` | 🔒 | Ask an analyst to review a published event you geolocated |
+| POST | `/events/{id}/review-requests/{request_id}/decline` | 🔒 | Decline a review request addressed to you |
 | **Collections** | | | |
 | POST | `/collections` | 🔒 | Open a collection (title, description, and the events it holds) |
 | POST | `/collections/{id}/report` | 🌐 | Report a collection for moderation (anonymous allowed) |
@@ -238,6 +242,9 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `DELETE /events/{id}/geolocator-invites/{username}`, `POST /events/{id}/geolocator-invites/accept`, `POST /events/{id}/geolocator-invites/decline`, `DELETE /events/{id}/geolocators/{username}` | 60/min |
 | `GET /events/{id}/approvals` | 120/min |
 | `POST /events/{id}/approvals`, `POST /events/{id}/approvals/{approval_id}/revoke` | 60/min |
+| `GET /events/{id}/review-requests`, `GET /events/{id}/review-request-targets` | 120/min |
+| `POST /events/{id}/review-requests` | 30/hour, plus the daily cap in [Review requests](#review-requests) |
+| `POST /events/{id}/review-requests/{request_id}/decline` | 60/min |
 | **Collections** | |
 | `GET /collections/{id}`, `GET /collections/{id}/events` | 120/min |
 | `POST /collections`, `PATCH /collections/{id}`, `DELETE /collections/{id}` | 30/min |
@@ -1323,7 +1330,7 @@ flowchart LR
 An event's geolocators are the analysts it credits. The owner is always one of them; any other is an analyst the owner invited who accepted. Credit grants no write right: editing, filing a version, closing and inviting stay with the owner. Every read that lists an analyst's work matches any credited analyst: the profile count and feed, the profile stats, the follow feed, the `author` filter of [`GET /events`](#get-events) and [`GET /search`](#get-search), the author typeahead, and the collection add check.
 
 - **Invitation.** The owner of a `geolocated` event invites an analyst by username. The invitation waits in `event_geolocator_invites`, and the invitee receives a `co_geolocator_invite` [notification](#notifications). An event holds at most 10 geolocators and pending invitations together (`MAX_EVENT_GEOLOCATORS` in [`services/geolocator_credit.py`](../backend/app/services/geolocator_credit.py)).
-- **Answer.** Accepting deletes the invitation and credits the invitee in one transaction, which also revokes the invitee's own [approvals](#approvals) of the event (`revoke_approvals_on_join`). Declining or a withdrawal deletes the invitation.
+- **Answer.** Accepting deletes the invitation and credits the invitee in one transaction, which also revokes the invitee's own [approvals](#approvals) of the event (`revoke_approvals_on_join`) and deletes the open [review requests](#review-requests) addressed to them. Declining or a withdrawal deletes the invitation.
 - **Removal.** The owner removes a co-geolocator, who receives a `co_geolocator_removed` notification, or a co-geolocator leaves. The owner cannot leave. The removed analyst's collections drop the event in the same transaction.
 - **Erasure.** A hard delete of the owner's account hands the event to the earliest live co-geolocator; see [`DELETE /admin/users/{id}`](#delete-adminusersid).
 
@@ -1521,7 +1528,7 @@ Approve the live version of a published event.
 
 **Body:** `{ "version_no": 2, "note": "Skyline and road junction match." }`. `version_no` is the version you read. `note` is optional, at most 280 characters; a blank note is stored as `null`.
 
-**Response 201:** the new approval. The owner receives an `approval_received` notification.
+**Response 201:** the new approval. It resolves every open [review request](#review-requests) you received for the event. The owner, and each geolocator whose request it resolves, receives an `approval_received` notification.
 
 **Errors:**
 | Code | Case |
@@ -1548,6 +1555,151 @@ Revoke an approval of the event. The reviewer revokes their own; a site admin re
 | 404 | `approval_not_found`: no approval with that id on this event. Also an unknown, soft-deleted or withheld event |
 | 409 | `already_revoked` |
 | 422 | `reason` missing or blank |
+
+---
+
+## Review requests
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`an endpoint`"]:::spec
+    l2["`a service function`"]:::core
+    l3[("`a stored table or value`")]:::store
+    l4["`a notification`"]:::shared
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  ask["`**POST /events/{id}/review-requests**
+  a geolocator names the analyst`"]:::spec
+  targets["`**GET /events/{id}/review-request-targets**
+  the picker`"]:::spec
+  approve["`**POST /events/{id}/approvals**
+  by the analyst asked`"]:::spec
+  declineep["`**POST /events/{id}/review-requests/{request_id}/decline**`"]:::spec
+  audience[("`**user_preferences.review_request_audience**
+  following, everyone or nobody`")]:::store
+  request["`**request_review**
+  eligibility, audience, one open request, daily cap`"]:::core
+  admits["`**accepts_requests_from**`"]:::core
+  place["`**approve**
+  resolves the open requests`"]:::core
+  decline["`**decline**`"]:::core
+  rows[("`**review_requests**
+  open, approved or declined`")]:::store
+  received["`**review_request_received**
+  to the analyst asked`"]:::shared
+  approved["`**approval_received**
+  to the owner and each requester`"]:::shared
+  declined["`**review_request_declined**
+  to the requester`"]:::shared
+
+  audience --> admits
+  targets --> admits
+  ask --> request --> admits
+  request --> rows
+  request --> received
+  approve --> place --> rows
+  place --> approved
+  declineep --> decline --> rows
+  decline --> declined
+```
+
+A geolocator of a published event asks an analyst to review its live version. The request lands in the analyst's notifications and stays open until the analyst approves the event or declines the request.
+
+- **Who asks.** A geolocator of the event: its owner or an accepted co-geolocator. The event must be `geolocated`.
+- **Who is asked.** An analyst who can approve the event: not one of its geolocators, and not someone who already reviewed the live version.
+- **The audience.** The analyst asked decides who may send them requests, with `review_request_audience` in [`PATCH /users/me/preferences`](#patch-usersmepreferences). `following`, the default, admits the analysts they follow; following them does not count. `everyone` admits any signed-in analyst. `nobody` admits no one. A refused request returns 403 `requests_not_accepted` with a message that states the rule and nothing else.
+- **Limits.** One open request per requester, analyst and event. A requester sends at most `REVIEW_REQUEST_DAILY_CAP` requests (default 20) in a trailing 24 hours, resolved ones included, so declining and asking again does not lift the cap.
+- **Resolution.** An approval of the event, on any version, resolves every open request its reviewer received for the event, and each requester receives an `approval_received` notification. Declining resolves the request, and the requester receives a `review_request_declined` notification. Accepting a [co-geolocator invitation](#post-eventsidgeolocator-invitesaccept) deletes the open requests addressed to the new geolocator.
+
+Every write locks the event row first, so a request, a decline and an approval on the same event serialize.
+
+**Review request shape (`ReviewRequestRead`):**
+```json
+{
+  "id": "uuid",
+  "event_id": "uuid",
+  "version_no": 2,
+  "requester": { "id": "uuid", "username": "ana", "avatar_url": null },
+  "target": { "id": "uuid", "username": "bo", "avatar_url": null },
+  "status": "open",
+  "created_at": "2026-10-15T09:00:00Z",
+  "resolved_at": null
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `version_no` | The live version when the request was sent |
+| `status` | `open`, `approved` or `declined` |
+| `resolved_at` | `null` while open, set when approved or declined |
+
+### `GET /events/{id}/review-requests` 🔒
+
+The open review requests on the event, oldest first. A geolocator of the event sees every one; anyone else sees those addressed to them. A request whose requester or analyst asked is soft-deleted is left out.
+
+**Response 200:** a list of review request shapes.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | Unknown, soft-deleted or withheld event |
+
+---
+
+### `GET /events/{id}/review-request-targets` 🔒
+
+The analysts you can ask to review the event now, at most 20: live analysts outside its geolocators whose audience admits you, who have not reviewed the live version and hold no open request from you on it.
+
+**Query params:** `q`, a case-insensitive substring of the username, up to 50 characters. Prefix matches come first.
+
+**Response 200:** a list of `{ "id", "username", "avatar_url" }`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | `not_a_geolocator`: you are not a geolocator of the event |
+| 404 | Unknown, soft-deleted or withheld event |
+| 409 | `invalid_state`: the event is not `geolocated` |
+
+---
+
+### `POST /events/{id}/review-requests` 🔒
+
+Ask an analyst to review the live version of the event.
+
+**Body:** `{ "username": "bo" }`
+
+**Response 201:** the new request. The analyst asked receives a `review_request_received` notification.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | `not_a_geolocator`: you are not a geolocator of the event. `target_is_geolocator`: the analyst is a geolocator of the event. `requests_not_accepted`: the analyst's audience does not admit you |
+| 404 | `user_not_found`: no live analyst with that username. Also an unknown, soft-deleted or withheld event |
+| 409 | `invalid_state`: the event is not `geolocated`. `already_approved`: the analyst reviewed the live version. `already_requested`: you have an open request to this analyst on this event |
+| 429 | `daily_cap_reached`: you sent the daily cap of requests |
+
+---
+
+### `POST /events/{id}/review-requests/{request_id}/decline` 🔒
+
+Decline a review request addressed to you.
+
+**Response 200:** the declined request. The requester receives a `review_request_declined` notification.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `review_request_not_found`: no request with that id on this event addressed to you. Also an unknown, soft-deleted or withheld event |
+| 409 | `already_resolved`: the request is already approved or declined |
 
 ---
 
@@ -2069,7 +2221,8 @@ Your display and notification preferences. Each value is the one in effect: your
       "defaults": { "email": false, "push": false }
     }
   ],
-  "product_updates": false
+  "product_updates": false,
+  "review_request_audience": "following"
 }
 ```
 
@@ -2082,8 +2235,9 @@ Your display and notification preferences. Each value is the one in effect: your
 | `display.palette` | `orange`, `blue`, `emerald`, `violet`, `rose` |
 | `display.theme` | `dark`, `light` |
 | `display.help_tooltips` | `true` shows the `?` field help |
-| `notifications[].kind` | `request_fulfilled`, `new_follower`, `x_handle_request_approved`, `x_handle_request_declined`, `co_geolocator_invite`, `co_geolocator_removed`, `ownership_transferred`, `organization_invite`, `organization_invite_accepted`, `organization_admin_inherited`, `re_approve_requested`, `approval_received` |
+| `notifications[].kind` | `request_fulfilled`, `new_follower`, `x_handle_request_approved`, `x_handle_request_declined`, `co_geolocator_invite`, `co_geolocator_removed`, `ownership_transferred`, `organization_invite`, `organization_invite_accepted`, `organization_admin_inherited`, `re_approve_requested`, `approval_received`, `review_request_received`, `review_request_declined` |
 | `notifications[].channels` | `email`, `push` |
+| `review_request_audience` | Who may send you a [review request](#review-requests): `following` (the default), `everyone`, `nobody` |
 
 ---
 
@@ -2096,22 +2250,24 @@ Change some of your preferences. The first write creates your stored row.
 {
   "display": { "theme": "light", "palette": null },
   "notifications": { "request_fulfilled": { "email": false } },
-  "product_updates": true
+  "product_updates": true,
+  "review_request_audience": "everyone"
 }
 ```
 
 - `product_updates: true` grants the consent to product update emails with source `settings`, and `false` withdraws it. Granting while a consent is current changes nothing, so the original grant time stays.
 - In `display`, an omitted field keeps its stored value, and `null` clears it so it reads the default again.
 - In `notifications`, each entry sets channels of one kind. A value equal to the kind's default drops your override, so only differences from the defaults are stored, and a later change of a default reaches you if you never moved that switch.
+- `review_request_audience` sets who may send you a review request. Omit it or send `null` to keep the stored value.
 
-The body rejects unknown fields, unknown kinds, unknown channels, and display values outside the table above.
+The body rejects unknown fields, unknown kinds, unknown channels, and display or audience values outside the table above.
 
 **Response 200:** the updated preferences, in the shape of [`GET /users/me/preferences`](#get-usersmepreferences).
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 422 | An unknown field, kind, channel or display value |
+| 422 | An unknown field, kind, channel, display value or audience |
 
 ---
 
@@ -2361,6 +2517,8 @@ flowchart LR
   organization_invite, organization_invite_accepted, organization_admin_inherited`"]:::spec
   approvals["`**approvals** and **file_version**
   approval_received, re_approve_requested`"]:::spec
+  reviews["`**review_requests**
+  review_request_received, review_request_declined`"]:::spec
   rows[("`**notifications**
   written in the action's transaction`")]:::store
   visible["`**_visible_rows**
@@ -2384,6 +2542,7 @@ flowchart LR
   credit --> rows
   orgs --> rows
   approvals --> rows
+  reviews --> rows
   rows --> visible
   visible --> feed
   visible --> count
@@ -2413,7 +2572,9 @@ When your push switch for the kind is on and you registered at least one device,
 | `organization_invite_accepted` | An analyst accepts your organization invite | the new member | null | the organization |
 | `organization_admin_inherited` | You become org-admin because the last one's account was removed | null | null | the organization |
 | `re_approve_requested` | The owner saves a new version of an event whose superseded version you approved | the owner | the event | null |
-| `approval_received` | An analyst approves your event | the reviewer | the event | null |
+| `approval_received` | An analyst approves your event, or an event whose review you requested | the reviewer | the event | null |
+| `review_request_received` | A geolocator asks you to review their event | the requester | the event | null |
+| `review_request_declined` | The analyst you asked declines to review your event | the analyst asked | the event | null |
 
 A declined or withdrawn organization invite writes no row. `organization` is `{ "slug", "name", "avatar_url" }`.
 
@@ -2436,16 +2597,19 @@ Your notifications, newest first. Cursor-paged; [Pagination](#pagination) gives 
     "read_at": null,
     "invite_pending": false,
     "reapprove_version": null,
-    "approved_version": null
+    "approved_version": null,
+    "review_request_id": null
   }
 ]
 ```
 
 `invite_pending` is `true` on a `co_geolocator_invite` row whose invitation still waits for your answer, and `false` on every other row. The feed page shows the accept and decline controls on that row.
 
-`reapprove_version` is set on a `re_approve_requested` row when you can approve the event now: it is `geolocated`, you are not one of its geolocators, and you have not reviewed its live version. It holds the live version number, which the feed page's approve control posts to [`POST /events/{id}/approvals`](#post-eventsidapprovals). It is `null` on every other row.
+`reapprove_version` is set on a `re_approve_requested` row, and on a `review_request_received` row whose request is open, when you can approve the event now: it is `geolocated`, you are not one of its geolocators, and you have not reviewed its live version. It holds the live version number, which the feed page's approve control posts to [`POST /events/{id}/approvals`](#post-eventsidapprovals). It is `null` on every other row.
 
-`approved_version` is set beside `reapprove_version`: the latest earlier version your unrevoked approval stands on, or `null` when none does. The feed lists the fields that changed between that version and the live event, computed when the feed is read, and links to that version's page.
+`approved_version` is set beside `reapprove_version` on a `re_approve_requested` row: the latest earlier version your unrevoked approval stands on, or `null` when none does. The feed lists the fields that changed between that version and the live event, computed when the feed is read, and links to that version's page.
+
+`review_request_id` is the open [review request](#review-requests) behind a `review_request_received` row, which the feed page's decline control posts to [`POST /events/{id}/review-requests/{request_id}/decline`](#post-eventsidreview-requestsrequest_iddecline). It is `null` once the request is resolved, and on every other row.
 
 ---
 

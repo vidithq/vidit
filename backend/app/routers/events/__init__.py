@@ -16,6 +16,7 @@ from app.routers.events import (
     import_tweet,
     item,
     read,
+    review_requests,
     write,
 )
 
@@ -28,5 +29,6 @@ routers = (
     batch.router,
     geolocators.router,
     approvals.router,
+    review_requests.router,
     item.router,
 )
