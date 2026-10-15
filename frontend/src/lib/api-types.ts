@@ -3807,6 +3807,11 @@ export interface components {
             title: string;
             /** Version No */
             version_no: number;
+            /**
+             * Viewer Invite Pending
+             * @default false
+             */
+            viewer_invite_pending: boolean;
         };
         /**
          * EventVersionList

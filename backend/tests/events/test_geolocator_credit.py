@@ -156,6 +156,19 @@ def test_invite_list_shows_the_owner_all_and_others_their_own(db, author, second
     assert names(make_user()) == []
 
 
+def test_the_event_read_says_whether_the_reader_holds_an_invitation(db, author, second_user):
+    geo = _published(db, author)
+    login_as(client, second_user)
+    assert client.get(f"{_EVENTS}/{geo.id}").json()["viewer_invite_pending"] is False
+    assert _invite(geo, author, second_user.username).status_code == 201
+    login_as(client, second_user)
+    assert client.get(f"{_EVENTS}/{geo.id}").json()["viewer_invite_pending"] is True
+    login_as(client, author)
+    assert client.get(f"{_EVENTS}/{geo.id}").json()["viewer_invite_pending"] is False
+    client.cookies.clear()
+    assert client.get(f"{_EVENTS}/{geo.id}").json()["viewer_invite_pending"] is False
+
+
 def test_accept_credits_the_invitee(db, author, second_user):
     geo = _published(db, author)
     _invite(geo, author, second_user.username)
