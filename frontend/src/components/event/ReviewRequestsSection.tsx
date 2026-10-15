@@ -8,7 +8,6 @@ import { useAdministeredOrganizations } from "@/hooks/useAdministeredOrganizatio
 import { useApiResource } from "@/hooks/useApiResource";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { useMutation } from "@/hooks/useMutation";
-import { approveEvent, approveLabel } from "@/lib/approvals";
 import { formatDate } from "@/lib/format";
 import { organizationByline, type OrganizationRef } from "@/lib/organizations";
 import {
@@ -30,51 +29,31 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 
 /**
- * The target's answer to an open review request: the notification row and the event page both
- * render it. Approving covers `versionNo`, the live version, as the reader or for
- * `organization` when the request asks one, and resolves the request; without a `versionNo` only
- * Decline shows (the event page approves from its Approvals card).
+ * The target's answer to an open review request outside the Approvals card: Decline. The
+ * notification row, the event page and the organization page render it; approving happens in
+ * the event page's Approvals card, after reading the event.
  */
-export function ReviewRequestAnswer({
+export function ReviewRequestDecline({
   eventId,
   requestId,
-  versionNo,
-  organization = null,
   onAnswered,
 }: {
   eventId: string;
   requestId: string;
-  versionNo: number | null;
-  organization?: OrganizationRef | null;
   onAnswered: () => void;
 }) {
-  const answer = useMutation(
-    async (verb: "approve" | "decline") => {
-      if (verb === "approve" && versionNo !== null) {
-        await approveEvent(eventId, versionNo, undefined, organization?.slug);
-      } else await declineReviewRequest(eventId, requestId);
-    },
-    { fallback: "Failed to answer the review request", onSuccess: onAnswered },
-  );
+  const decline = useMutation(() => declineReviewRequest(eventId, requestId), {
+    fallback: "Failed to decline the review request",
+    onSuccess: onAnswered,
+  });
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        {versionNo !== null && (
-          <Button onClick={() => void answer.run("approve")} disabled={answer.loading}>
-            {approveLabel(versionNo, organization)}
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          onClick={() => void answer.run("decline")}
-          disabled={answer.loading}
-        >
-          Decline
-        </Button>
-      </div>
-      {answer.error && (
+      <Button variant="ghost" onClick={() => void decline.run()} disabled={decline.loading}>
+        Decline
+      </Button>
+      {decline.error && (
         <div className={FORM_ERROR_BANNER} role="alert">
-          {answer.error}
+          {decline.error}
         </div>
       )}
     </div>
@@ -242,12 +221,7 @@ export function ReviewRequestsSection({
             {request.target_organization ? ` as ${request.target_organization.name}` : ""} in the
             Approvals card, or decline.
           </p>
-          <ReviewRequestAnswer
-            eventId={event.id}
-            requestId={request.id}
-            versionNo={null}
-            onAnswered={refetch}
-          />
+          <ReviewRequestDecline eventId={event.id} requestId={request.id} onAnswered={refetch} />
         </div>
       ))}
       {geolocator && (

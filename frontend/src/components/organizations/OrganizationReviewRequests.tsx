@@ -12,7 +12,7 @@ import {
   type OrganizationReviewRequest,
   type ReviewRequestAudience,
 } from "@/lib/reviewRequests";
-import { ReviewRequestAnswer } from "@/components/event/ReviewRequestsSection";
+import { ReviewRequestDecline } from "@/components/event/ReviewRequestsSection";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -81,10 +81,9 @@ export function OrganizationReviewRequests({
                 {formatDate(request.created_at)}
               </p>
               {canAnswer && (
-                <ReviewRequestAnswer
+                <ReviewRequestDecline
                   eventId={event.id}
                   requestId={request.id}
-                  versionNo={null}
                   onAnswered={requests.refetch}
                 />
               )}
