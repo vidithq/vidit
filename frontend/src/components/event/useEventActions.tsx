@@ -5,10 +5,8 @@ import Link from "next/link";
 import { CircleX, History, MapPin, Pencil, Users } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
-import { useApiResource } from "@/hooks/useApiResource";
 import { COLLECTABLE_STATUSES, CollectionIcon } from "@/lib/collections";
 import { eventHistoryHref, hasPublishedRecord } from "@/lib/events";
-import { geolocatorInvitesPath, type GeolocatorInvite } from "@/lib/geolocatorCredit";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -118,12 +116,9 @@ export function useEventActions({
   const isGeolocator = !!event && event.geolocators.some((g) => g.id === user?.id);
   // Mirrors backend geolocator_credit._require_published; change both.
   const sharesCredit = !!tiers?.credit && event?.status === "geolocated";
-  // Only a signed-in reader outside the credit can hold an invitation, so only they ask.
-  const invitation = useApiResource<GeolocatorInvite[]>(
-    event && user && sharesCredit && !isAuthor && !isGeolocator
-      ? geolocatorInvitesPath(event.id)
-      : null,
-  );
+  // The event read says whether the reader holds an invitation; an answer hides the card at
+  // once, before the caller's refetch lands.
+  const [answeredFor, setAnsweredFor] = useState<string | null>(null);
 
   // This hook survives a client navigation between rows, so per-event state follows the row, not
   // the mount: otherwise the next row opens with the previous one's close panel open.
@@ -154,7 +149,9 @@ export function useEventActions({
   const canCollect =
     (isAuthor || isGeolocator) && tiers.collect && COLLECTABLE_STATUSES.includes(event.status);
   const canManageCredit = (isAuthor || isGeolocator) && sharesCredit;
-  const invited = (invitation.data?.length ?? 0) > 0;
+  const invited =
+    sharesCredit && !isAuthor && !isGeolocator && event.viewer_invite_pending === true &&
+    answeredFor !== event.id;
 
   // A surface whose tiers are all off, or off for this row, gets nothing rather than an empty row:
   // the wrapper is an item in the host's cluster, so an empty one prints a gap beside the host's
@@ -289,7 +286,7 @@ export function useEventActions({
           <GeolocatorInviteCard
             event={event}
             onAnswered={() => {
-              invitation.refetch();
+              setAnsweredFor(event.id);
               onChanged?.();
             }}
           />

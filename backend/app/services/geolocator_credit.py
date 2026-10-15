@@ -124,6 +124,10 @@ def _invite_row(db: Session, event_id: uuid.UUID, user_id: uuid.UUID) -> EventGe
     return row
 
 
+def has_pending_invite(db: Session, *, event_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    return db.get(EventGeolocatorInvite, (event_id, user_id)) is not None
+
+
 def list_invites(db: Session, *, geo: Event, viewer: User) -> list[EventGeolocatorInvite]:
     """The pending invitations on ``geo`` that ``viewer`` may see, oldest first.
 

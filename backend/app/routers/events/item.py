@@ -66,7 +66,7 @@ from app.services import events as events_service
 from app.services import reports as reports_service
 from app.services import versions as versions_service
 from app.services.evidence_intake import EvidenceIntakeError
-from app.services.geolocator_credit import CREDIT_LOAD
+from app.services.geolocator_credit import CREDIT_LOAD, has_pending_invite
 from app.services.pagination import (
     decode_ordinal_cursor,
     encode_ordinal_cursor,
@@ -179,7 +179,12 @@ def get_event(
         raise HTTPException(status_code=404, detail="Event not found")
 
     geo, lat, lng, capture_lat, capture_lng = row
-    return build_event_read(geo, lat=lat, lng=lng, capture_lat=capture_lat, capture_lng=capture_lng)
+    read = build_event_read(geo, lat=lat, lng=lng, capture_lat=capture_lat, capture_lng=capture_lng)
+    if current_user is not None:
+        read.viewer_invite_pending = has_pending_invite(
+            db, event_id=geo.id, user_id=current_user.id
+        )
+    return read
 
 
 # ── Lifecycle verbs ───────────────────────────────────────────────────

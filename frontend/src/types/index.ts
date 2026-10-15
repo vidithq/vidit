@@ -82,7 +82,11 @@ export type Media = components["schemas"]["MediaRead"];
  *  card plus source URL, proof body, full media list, provenance and `requested_by`. Covers
  *  every lifecycle state; `event_coords` is null on a request without a guess, and
  *  `source_url` / `source_posted_at` are null on a `detected` row with no declared source. */
-export type EventDetail = components["schemas"]["EventRead"];
+/** `viewer_invite_pending` is per reader: only `GET /events/{id}` computes it, so a row from
+ *  any other source may lack it. */
+export type EventDetail = Omit<components["schemas"]["EventRead"], "viewer_invite_pending"> & {
+  viewer_invite_pending?: boolean;
+};
 
 /** One filed version (`GET /events/{id}/versions[/{n}]`). `version_no` is the version the row
  *  holds; `edited_by` / `created_at` / `note` belong to the edit that superseded it (see

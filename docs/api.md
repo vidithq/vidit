@@ -925,6 +925,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 | `detected_via` | The ingest entry that produced a machine detection: `bot`, `paste` or `archive`. Stamped once at creation; `null` for a human submit and for machine rows older than the field |
 | `requested_by` | The analyst who opened the request; `null` on a directly created event |
 | `geolocators` | Who vouched the location, oldest first: the owner and every analyst who accepted an [invitation](#shared-credit). Empty until the first geolocate. A soft-deleted analyst is left out |
+| `viewer_invite_pending` | `true` when you are signed in and hold a pending [invitation](#shared-credit) to share the event's credit; the event page shows the invitation card from it. `false` for anyone else, and on the responses of the write verbs |
 | `version_no` | `1` until the owner corrects the event, then one higher per [correction](#post-eventsidversions) |
 | `geolocated_at` | When the row became `geolocated`; `null` before publication |
 | `close_reason`, `before_closed_status` | `null` while the event is open |
