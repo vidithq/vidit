@@ -20,6 +20,10 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Settings shows the X handle bound to your account and lets you ask an admin to change it; admins approve or decline pending requests from the admin page, and you get a notification either way ([#567](https://github.com/vidithq/vidit/pull/567)).
 - Organizations: a site admin creates one and names its first org manager, who invites mutual follows; the earliest member inherits the role if the last org manager is erased, profiles list their organizations, and links unfurl with a card ([#569](https://github.com/vidithq/vidit/pull/569)).
 
+### Changed
+
+- Settings lists each notification kind once, with an Email and a Push switch side by side, and disables the Push column with one reason when this device or server cannot send push ([#575](https://github.com/vidithq/vidit/pull/575)).
+
 ### Fixed
 
 - A Vidit link whose path starts with two slashes or a backslash, and a Google link other than the map check, now ask before you leave Vidit instead of opening another site in one click ([#565](https://github.com/vidithq/vidit/pull/565)).
