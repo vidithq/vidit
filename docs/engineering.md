@@ -300,7 +300,7 @@ flowchart LR
 2. It stops when the notification emails sent in the trailing 24 hours reach `NOTIFICATION_EMAIL_DAILY_CAP` (default 50). It passes over a recipient who reached `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER` (default 10). Rows over a cap stay queued. Before that, at queue time, the API writes no email row for an action whose actor already queued `NOTIFICATION_EMAIL_DAILY_CAP_PER_ACTOR` (default 10) notification emails in the trailing 24 hours, so one analyst cannot spend the total cap.
 3. It claims the oldest queued row with `FOR UPDATE SKIP LOCKED`, sets it `sending` and commits before the provider call.
 4. It re-reads the recipient and skips the row when the switch is now off, the address is gone or unverified, the account is soft-deleted or inactive, or the feed hides the notification.
-5. It sets the row `sent` on success. A refusal puts the row back in `queued` for another try after 5 minutes, and the third refusal sets it `failed`. An unknown outcome leaves it `sending` until it goes stale.
+5. It sets the row `sent` on success. A refusal puts the row back in `queued` for another try after 5 minutes, and the third refusal sets it `failed`. An unknown outcome leaves it `sending` until it goes stale. When writing the outcome fails after a send or an unknown outcome, the row also stays `sending`, never `queued`, so the message is never sent twice.
 
 The caps keep notification email inside the provider's daily quota, 100 emails on the Resend free tier, with room for the auth emails, which are sent inline and never counted. Each notification email links to the item, names the switch that sent it, links to Settings, and carries a `List-Unsubscribe` header pointing at Settings.
 
