@@ -59,6 +59,8 @@ BUILDERS: dict[str, Callable[[], email.Email]] = {
         to="a@example.com", actor="bo", event_id="e1", event_title="Strike & smoke"
     ),
     "new_follower": lambda: email.new_follower_email(to="a@example.com", actor="bo"),
+    "x_handle_request_approved": lambda: email.x_handle_request_approved_email(to="a@example.com"),
+    "x_handle_request_declined": lambda: email.x_handle_request_declined_email(to="a@example.com"),
     "product_update": lambda: email.product_update_email(
         to="a@example.com",
         label="1.0.0",

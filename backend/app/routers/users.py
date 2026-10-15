@@ -172,6 +172,8 @@ def delete_push_subscription(
     if not push_service.unregister(db, user=current_user, subscription_id=subscription_id):
         raise HTTPException(status_code=404, detail="Push subscription not found")
     db.commit()
+
+
 @router.get("/me/x-handle", response_model=XHandleRead)
 @limiter.limit("120/minute")
 def get_my_x_handle(
