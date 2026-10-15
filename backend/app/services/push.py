@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives import serialization
 from py_vapid import Vapid, Vapid02
 from py_vapid.utils import b64urlencode
 from pywebpush import WebPushException, webpush
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -38,6 +39,11 @@ PUSH_TIMEOUT_SECONDS = 10.0
 
 # The answers by which a push service says the subscription is gone for good.
 _GONE_STATUSES = frozenset({404, 410})
+
+# Devices per account: registering one more drops the oldest.
+MAX_DEVICES_PER_USER = 10
+# Refusals in a row after which a device is dropped, as a gone one is.
+MAX_REFUSALS = 3
 
 # Which device outcome names the row when the devices disagree.
 _ROW_OUTCOME_ORDER: tuple[DeliveryOutcome, ...] = ("sent", "unknown", "refused")
@@ -83,13 +89,15 @@ def register(
     """Store this device for ``user``. The caller commits.
 
     Registering a known endpoint again refreshes its keys, and moves it to
-    ``user`` when the browser signed in to another account.
+    ``user`` when the browser signed in to another account. Past
+    :data:`MAX_DEVICES_PER_USER`, the oldest devices of ``user`` go.
     """
     values = {
         "user_id": user.id,
         "p256dh": body.keys.p256dh,
         "auth": body.keys.auth,
         "user_agent": user_agent[:512] if user_agent else None,
+        "refusals": 0,
     }
     stmt = (
         insert(PushSubscription)
@@ -98,6 +106,19 @@ def register(
         .returning(PushSubscription.id)
     )
     subscription_id = db.execute(stmt).scalar_one()
+    kept = (
+        select(PushSubscription.id)
+        .where(PushSubscription.user_id == user.id)
+        .order_by(PushSubscription.created_at.desc(), PushSubscription.id.desc())
+        .limit(MAX_DEVICES_PER_USER)
+    )
+    db.execute(
+        delete(PushSubscription).where(
+            PushSubscription.user_id == user.id,
+            PushSubscription.id != subscription_id,
+            PushSubscription.id.not_in(kept),
+        )
+    )
     return (
         db.query(PushSubscription)
         .filter(PushSubscription.id == subscription_id)
@@ -178,7 +199,8 @@ def _send_one(sub: PushSubscription, payload: str, vapid: Vapid02) -> DeliveryOu
 def send(db: Session, *, user_id: uuid.UUID, message: PushMessage) -> DeliveryOutcome:
     """Push ``message`` to every device of ``user_id``. The caller commits.
 
-    A device the push service reports gone is deleted. The row outcome is
+    A device the push service reports gone is deleted, and so is one refused
+    :data:`MAX_REFUSALS` times in a row. The row outcome is
     ``sent`` when any device took it, else ``unknown`` when any may have, else
     ``refused`` when any refused, else ``skipped`` (push is off here, or no
     device is left). A refused row is retried, so it never repeats a push a
@@ -197,5 +219,13 @@ def send(db: Session, *, user_id: uuid.UUID, message: PushMessage) -> DeliveryOu
             continue
         if outcome == "sent":
             sub.last_success_at = datetime.now(UTC)
+            sub.refusals = 0
+        elif outcome == "refused":
+            sub.refusals += 1
+            if sub.refusals >= MAX_REFUSALS:
+                logger.warning(
+                    "push subscription %s dropped after %s refusals", sub.id, MAX_REFUSALS
+                )
+                db.delete(sub)
         outcomes.add(outcome)
     return next((o for o in _ROW_OUTCOME_ORDER if o in outcomes), "skipped")

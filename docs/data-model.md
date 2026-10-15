@@ -387,6 +387,7 @@ erDiagram
         VARCHAR user_agent "nullable"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ last_success_at "nullable"
+        INT refusals "refusals since the last accepted push"
     }
 
     product_update_consents {
@@ -1046,8 +1047,9 @@ One browser or installed app an analyst registered for Web Push, through [`POST 
 | `user_agent` | `VARCHAR(512)` | nullable. The `User-Agent` of the registering request. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `last_success_at` | `TIMESTAMPTZ` | nullable. The last push the push service accepted. |
+| `refusals` | `INTEGER` | NOT NULL, default `0`. Refusals since the last accepted push or registration. |
 
-The worker deletes a row when its push service answers 404 or 410, the answer for a subscription that is gone for good.
+The worker deletes a row when its push service answers 404 or 410, the answer for a subscription that is gone for good, and at its third refusal in a row (`MAX_REFUSALS` in [`services/push.py`](../backend/app/services/push.py)). An analyst holds at most 10 rows (`MAX_DEVICES_PER_USER`): registering one more deletes the oldest by `created_at`.
 
 ---
 

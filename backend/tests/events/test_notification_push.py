@@ -377,6 +377,38 @@ def test_refusal_is_retried_and_logs_no_endpoint(
     assert body["endpoint"] not in caplog.text
 
 
+def test_three_refusals_in_a_row_drop_the_device_and_a_success_resets_the_count(
+    db, author, vapid, services
+):
+    flaky, broken = _subscription(), _subscription()
+    _register(author, flaky)
+    _register(author, broken)
+    services.answers[flaky["endpoint"]] = 503
+    services.answers[broken["endpoint"]] = 503
+    message = push.PushMessage(title="t", body="b", path="/")
+
+    for _ in range(2):
+        push.send(db, user_id=author.id, message=message)
+        db.commit()
+    services.answers.pop(flaky["endpoint"])
+    push.send(db, user_id=author.id, message=message)
+    db.commit()
+    services.answers[flaky["endpoint"]] = 503
+    push.send(db, user_id=author.id, message=message)
+    db.commit()
+
+    assert [d.endpoint for d in _devices(db, author)] == [flaky["endpoint"]]
+
+
+def test_registering_past_the_device_cap_drops_the_oldest(db, author, monkeypatch):
+    monkeypatch.setattr(push, "MAX_DEVICES_PER_USER", 2)
+    _register(author)
+    middle = _register(author).json()["id"]
+    newest = _register(author).json()["id"]
+
+    assert {str(d.id) for d in _devices(db, author)} == {middle, newest}
+
+
 def test_transport_error_leaves_the_row_sending(
     db, author, second_user, conflict, capture_source_tag, vapid, services, caplog
 ):
