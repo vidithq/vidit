@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { getDetectionStats, type DetectionStats } from "@/lib/admin";
 import { errorMessage } from "@/lib/api";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { FORM_ERROR_BANNER, LIST_TILE } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
 
 // Local to this panel: admin surfaces inline their markup rather than mint primitives
@@ -20,7 +20,7 @@ function Stat({
   hint?: string;
 }) {
   return (
-    <div className="border border-neutral-800 rounded-md p-3">
+    <div className={LIST_TILE}>
       <div className="text-lg font-semibold text-neutral-100 tabular-nums">
         {value}
       </div>
