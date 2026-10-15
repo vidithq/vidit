@@ -52,8 +52,8 @@ function NotificationsCard() {
       <div className="space-y-1">
         <SectionEyebrow title="Notifications" margin="none" />
         <p className="text-xs text-neutral-500">
-          Every notification appears in your Notifications feed. Vidit does not send
-          notification emails today; the switches below save which kinds you want by email.
+          Every notification appears in your Notifications feed. The switches below choose
+          which kinds Vidit also sends to your verified email address.
         </p>
       </div>
       {(error || toggle.error) && (

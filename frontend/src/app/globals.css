@@ -50,6 +50,7 @@
 
    Map markers read hex colours straight from JS (maplibre paint can't read CSS
    variables); those live in `lib/palette.ts` and are kept in step by hand.
+   Emails carry the default orange as hex in backend `email_layout.py`; change both.
 --------------------------------------------------------------------------- */
 [data-palette="blue"] {
   --color-orange-50: #eff6ff;

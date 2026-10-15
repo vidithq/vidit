@@ -285,6 +285,17 @@ erDiagram
         TIMESTAMPTZ read_at "nullable, NULL is unread"
     }
 
+    notification_deliveries {
+        UUID id PK
+        UUID notification_id FK
+        VARCHAR channel "email"
+        VARCHAR status "queued | sending | sent | failed | skipped"
+        INTEGER attempts "provider refusals"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ claimed_at "nullable"
+        TIMESTAMPTZ sent_at "nullable"
+    }
+
     user_preferences {
         UUID user_id PK
         JSONB notification_overrides "per-kind, per-channel overrides only"
@@ -369,6 +380,7 @@ erDiagram
     users ||--o{ notifications : "user_id"
     users |o--o{ notifications : "actor_id"
     events |o--o{ notifications : "event_id"
+    notifications ||--o{ notification_deliveries : "notification_id"
     users ||--o| user_preferences : "user_id"
     users ||--o{ archive_import_jobs : "owner_id"
     events ||--o{ source_archives : "event_id"
@@ -389,7 +401,7 @@ erDiagram
 | `x_handle` | `VARCHAR(50)` | UNIQUE, nullable. The X handle the bot attributes mentions to (lowercase, no `@`). The system sets it at registration from an invite-bound handle, or an admin links it through `PATCH /admin/users/{id}/x-handle`. Analysts cannot self-serve this field, and the bot never creates rows for it. It differs from `external_links["x"]`, a display handle the owner sets and nobody verifies. |
 | `is_active` | `BOOLEAN` | NOT NULL, default `true` |
 | `is_admin` | `BOOLEAN` | NOT NULL, default `false`. The system flips this to `true` automatically on login or registration if the email matches `ADMIN_EMAILS`. |
-| `email_verified_at` | `TIMESTAMPTZ` | nullable. Audit stamp written once by the registration confirmation (to `created_at`) and read by no code path. Every account the registration flow creates carries it. |
+| `email_verified_at` | `TIMESTAMPTZ` | nullable. Written once by the registration confirmation (to `created_at`). Every account the registration flow creates carries it. [Notification email](#notification_deliveries) goes only to an account that carries it, so an older account with NULL here receives none. |
 | `last_seen_at` | `TIMESTAMPTZ` | nullable. The instant of the account's most recent authenticated request. `dependencies.get_current_user` rewrites it once the stored value is older than `LAST_SEEN_THROTTLE` (15 minutes), so a session costs one UPDATE per window. `POST /auth/login` and `POST /auth/confirm-registration` stamp it when they issue cookies. The admin onboarding table reads it as the account's activity, falling back to the newest `login` auth event while it is NULL. |
 | `deleted_at` | `TIMESTAMPTZ` | nullable. A non-NULL value marks the user as soft-deleted: login is rejected, the profile returns 404, and public reads filter the row out. Soft-deleting a user cascades to soft-delete every event they own. Hard-delete, the GDPR escape hatch, drops the user row, the events they own, and their contributor rows, and sweeps S3. Because the owner is always among an event's geolocators, hard-delete never leaves a `geolocated` event with zero geolocators. |
 | `token_version` | `INTEGER` | NOT NULL, default `0`. A monotonic session-invalidation counter. The session JWT embeds this value as a `tv` claim, and `get_current_user` returns 401 on a mismatch. The system bumps this counter on logout, password change, password reset, and soft-delete, which invalidates every outstanding JWT for the user at once. A JWT with no `tv` claim also returns 401. |
@@ -736,6 +748,36 @@ Indexes:
 Every foreign key cascades, so a hard-deleted recipient, actor or event takes its rows with it. A soft delete or a takedown keeps the row and hides it at read time: the feed and the count skip a row whose event has `deleted_at` or `hidden_at` set, or whose actor has `deleted_at` set. Undoing the takedown shows the row again.
 
 `new_follower` is written once per follower: an unfollow and re-follow finds the earlier row and writes none.
+
+---
+
+### `notification_deliveries`
+
+The email queue for notifications: one row per notification and channel, drained by the always-on worker ([`engineering.md`](engineering.md#email)). The transaction that writes the notification writes this row too, when the recipient's switch for the kind and channel is on and their address carries `email_verified_at`.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `UUID` | PK, default `uuid4()` |
+| `notification_id` | `UUID` | FK → `notifications.id` ON DELETE CASCADE, NOT NULL |
+| `channel` | `VARCHAR(20)` | NOT NULL, CHECK in `('email')` (constraint `ck_notification_deliveries_channel_valid`). UNIQUE with `notification_id` (constraint `uq_notification_deliveries_channel`). |
+| `status` | `VARCHAR(10)` | NOT NULL, default `queued`, CHECK in `('queued', 'sending', 'sent', 'failed', 'skipped')` (constraint `ck_notification_deliveries_status_valid`). See the lifecycle below. |
+| `attempts` | `INTEGER` | NOT NULL, default `0`. Provider refusals so far. The third sets `failed`. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. The claim order, oldest first. A row still `queued` 48 hours after it becomes `skipped`. |
+| `claimed_at` | `TIMESTAMPTZ` | nullable. The latest claim. A row `sending` for an hour past it becomes `failed`. A refused row waits 5 minutes past it before the next claim. |
+| `sent_at` | `TIMESTAMPTZ` | nullable. When the provider accepted the message. The daily caps count `sent` rows by this column. |
+
+Indexes:
+
+- `ix_notification_deliveries_queued` on `(created_at)` where `status = 'queued'`. Backs the claim.
+- `ix_notification_deliveries_sent_at` on `(sent_at)` where `status = 'sent'`. Backs the daily cap counts.
+
+| Status | Meaning |
+|--------|---------|
+| `queued` | Waiting for the worker, or for the next try after a refusal |
+| `sending` | Claimed and committed before the provider call. Never retried: the provider may have accepted it. |
+| `sent` | The provider accepted it |
+| `failed` | Refused three times, or stale in `sending` |
+| `skipped` | Dropped unsent: the switch is off, the address is gone or unverified, the recipient is soft-deleted or inactive, the feed hides the notification, or the row aged out in the queue |
 
 ---
 

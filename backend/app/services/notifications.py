@@ -1,9 +1,11 @@
 """Stored notifications: emitting a row, the feed, and per-row read state.
 
 An emitter adds its row to the caller's session and never commits, so the row
-lands in the transaction of the action it reports. Reads hide a row whose event
-is soft-deleted or taken down, or whose actor is soft-deleted, whenever that
-happened.
+lands in the transaction of the action it reports. When the recipient's email
+switch for the kind is on and their address is verified, a
+``notification_deliveries`` row joins it for the worker to send. Reads hide a
+row whose event is soft-deleted or taken down, or whose actor is soft-deleted,
+whenever that happened.
 """
 
 from __future__ import annotations
@@ -15,12 +17,13 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Query, Session, aliased, contains_eager
 
 from app.models.event import Event
-from app.models.notification import Notification, NotificationKind
+from app.models.notification import Notification, NotificationDelivery, NotificationKind
 from app.models.user import User
 from app.schemas.notification import NotificationEventRef, NotificationRead
 from app.schemas.user import AuthorRef
 from app.services.event_filters import visible_events
 from app.services.pagination import keyset_before
+from app.services.preferences import channel_enabled
 
 _Actor = aliased(User)
 
@@ -35,7 +38,21 @@ def _emit(
 ) -> None:
     if actor_id == recipient_id:
         return
-    db.add(Notification(user_id=recipient_id, kind=kind, actor_id=actor_id, event_id=event_id))
+    row = Notification(user_id=recipient_id, kind=kind, actor_id=actor_id, event_id=event_id)
+    db.add(row)
+    recipient = db.get(User, recipient_id)
+    if (
+        recipient is not None
+        and has_verified_email(recipient)
+        and channel_enabled(db, user_id=recipient_id, kind=kind, channel="email")
+    ):
+        db.add(NotificationDelivery(notification=row, channel="email"))
+
+
+def has_verified_email(user: User) -> bool:
+    """Notification email goes only to a proven address; an older account
+    without the verification stamp gets none."""
+    return user.email is not None and user.email_verified_at is not None
 
 
 def notify_request_fulfilled(db: Session, *, event: Event, fulfiller: User) -> None:
@@ -84,6 +101,11 @@ def _visible_rows(db: Session, user: User) -> Query[Notification]:
             or_(Notification.actor_id.is_(None), _Actor.deleted_at.is_(None)),
         )
     )
+
+
+def is_visible(db: Session, *, notification_id: uuid.UUID, user: User) -> bool:
+    """Whether ``user``'s row ``notification_id`` still passes the feed filter."""
+    return _visible_rows(db, user).filter(Notification.id == notification_id).first() is not None
 
 
 def list_feed(

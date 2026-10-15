@@ -11,7 +11,7 @@ from app.models.event import Event, EventGeolocator, EventVersion
 from app.models.follow import Follow
 from app.models.invite_code import InviteCode
 from app.models.media import Media
-from app.models.notification import Notification
+from app.models.notification import Notification, NotificationDelivery
 from app.models.pending_registration import PendingRegistration
 from app.models.source_archive import SourceArchive
 from app.models.tag import Tag, event_tags
@@ -36,6 +36,7 @@ __all__ = [
     "InviteCode",
     "Media",
     "Notification",
+    "NotificationDelivery",
     "PendingRegistration",
     "SourceArchive",
     "Tag",

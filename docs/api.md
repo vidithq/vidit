@@ -1723,7 +1723,7 @@ Your display and notification preferences. Each value is the one in effect: your
 }
 ```
 
-`display_stored` holds only the display values your account has saved, `null` where it has none, so a client can tell a saved value from a default. `notifications` lists every registered notification kind, in registry order. `channels` holds the delivery channels besides the in-app feed, which is always on and has no switch. Vidit sends no notification email; the `email` values record the choice.
+`display_stored` holds only the display values your account has saved, `null` where it has none, so a client can tell a saved value from a default. `notifications` lists every registered notification kind, in registry order. `channels` holds the delivery channels besides the in-app feed, which is always on and has no switch. With `email` on, Vidit also emails that kind to your verified address (see [Notifications](#notifications)).
 
 | Field | Values |
 |-------|--------|
@@ -1826,7 +1826,7 @@ flowchart LR
     direction LR
     l1["`an action that emits a row`"]:::spec
     l2["`an endpoint that reads the rows or marks them read`"]:::shared
-    l3["`the read-time filter`"]:::core
+    l3["`a read-time filter`"]:::core
     l4[("`a stored value`")]:::store
     l1 ~~~ l2 ~~~ l3 ~~~ l4
   end
@@ -1847,6 +1847,10 @@ flowchart LR
   ids: the rows the feed showed`"]:::shared
   readat[("`**notifications.read_at**
   per row; NULL is unread`")]:::store
+  queue[("`**notification_deliveries**
+  one row per email to send`")]:::store
+  worker["`**notification_delivery.drain**
+  re-checks the switch and the filter, sends after the action commits`"]:::core
 
   geolocate --> rows
   follow --> rows
@@ -1856,9 +1860,13 @@ flowchart LR
   read --> readat
   readat --> count
   readat --> feed
+  rows --> queue --> worker
+  visible --> worker
 ```
 
 An action that concerns another analyst writes a [`notifications`](data-model.md#notifications) row in its own transaction, so a rolled-back action leaves no row. Nobody is notified of their own action. Every read passes the same filter: a row whose event is soft-deleted or taken down, or whose actor is soft-deleted, is hidden from the feed and the count, including when that happens after the row was written. Read state is per row: `read_at` is NULL until `POST /notifications/read` names the row, which the feed page does for the unread rows it shows. A row whose action commits after the feed was read stays unread, whatever its `created_at`.
+
+When your email switch for the kind is on and your address is verified, the same transaction queues an email. The worker sends it after the action commits, so a provider failure never fails the action. At send time the worker skips the email if the switch is now off or the feed would hide the row. Notification email has a daily cap, in total and per recipient, and a queued email older than 48 hours is dropped. The email links to the item and to Settings. The queue and the caps are in [`engineering.md`](engineering.md#email).
 
 | Kind | Emitted when | `actor` | `event` |
 |------|--------------|---------|---------|

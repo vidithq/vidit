@@ -25,8 +25,8 @@ class User(Base):
     x_handle: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # Audit stamp written once by registration, read by no code path: when email
-    # control was proven. Legacy rows may hold NULL.
+    # Written once by registration: when email control was proven. Notification
+    # email goes only to an account that carries it. Legacy rows may hold NULL.
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
