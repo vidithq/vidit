@@ -52,7 +52,7 @@ import {
 import { useApiResource } from "@/hooks/useApiResource";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 
-import { TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
+import { META_LINE, TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
 import { Pill } from "@/components/ui/Pill";
 import { creditProps } from "@/lib/geolocatorCredit";
 import { memberCountLabel, organizationPath } from "@/lib/organizations";
@@ -653,7 +653,7 @@ function OrganizationResult({ hit }: { hit: SearchOrganizationHit }) {
       avatarName={hit.name}
       name={<Highlighted value={hit.name_highlight} />}
       meta={
-        <p className="text-[11px] text-neutral-500 inline-flex items-center gap-1 w-full">
+        <p className={META_LINE}>
           <Building2 size={11} aria-hidden />
           {`Organization · ${memberCountLabel(hit.member_count)}`}
         </p>

@@ -38,6 +38,10 @@ export const TAPPABLE_HOVER = "hover:border-orange-500/40 transition-colors";
 // the call site.
 export const TEXT_LINK = "text-orange-400 hover:underline";
 
+// A card's muted meta line: small grey text with its glyphs inline (the feed
+// card's date and coordinates, a search hit's organization line).
+export const META_LINE = "text-[11px] text-neutral-500 inline-flex items-center gap-2";
+
 // Backdrop for an icon control floating over media (a tile's download, the
 // lightbox's expand and close). The translucent dark plate plus blur stays
 // readable over any frame, in the player's own colours (no accent). Apply over
