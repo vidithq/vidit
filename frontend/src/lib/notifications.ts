@@ -30,7 +30,9 @@ export async function markNotificationsRead(ids: string[]): Promise<void> {
 }
 
 /** Per-kind copy for the feed and the settings rows. Keyed by the generated kind, so a kind
- *  the backend registers fails the type-check until it gets its wording here. */
+ *  the backend registers fails the type-check until it gets its wording here. Each `label` is
+ *  mirrored by the `setting` the backend's `services/email` notification builder names; change
+ *  both. */
 export const NOTIFICATION_KIND_COPY: Record<
   NotificationKind,
   { label: string; setting: string }
