@@ -21,7 +21,7 @@ from app.models.user_preferences import REVIEW_REQUEST_AUDIENCE_DEFAULT, ReviewR
 # Value-domain source of truth for a member's role: the ORM column, the Read
 # schemas and the generated frontend type derive from it, and
 # ``ck_organization_members_role_valid`` pins it at the DB (keep the two in step).
-OrganizationRole = Literal["admin", "member"]
+OrganizationRole = Literal["manager", "member"]
 
 
 class Organization(Base):
@@ -46,8 +46,8 @@ class Organization(Base):
     external_links: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, nullable=False, server_default="{}"
     )
-    # Who may send the organization a review request, set by its org-admins. ``following``
-    # admits an analyst whom at least one live org-admin follows.
+    # Who may send the organization a review request, set by its org managers. ``following``
+    # admits an analyst whom at least one live org manager follows.
     review_request_audience: Mapped[ReviewRequestAudience] = mapped_column(
         String(20),
         default=REVIEW_REQUEST_AUDIENCE_DEFAULT,
@@ -94,7 +94,7 @@ class OrganizationMember(Base):
     organization = relationship("Organization")
 
     __table_args__ = (
-        CheckConstraint("role IN ('admin', 'member')", name="ck_organization_members_role_valid"),
+        CheckConstraint("role IN ('manager', 'member')", name="ck_organization_members_role_valid"),
         Index("ix_organization_members_user_id", "user_id"),
     )
 

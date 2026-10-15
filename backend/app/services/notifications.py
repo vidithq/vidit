@@ -216,7 +216,7 @@ def notify_ownership_transferred(db: Session, *, event: Event, heir_id: uuid.UUI
 
 
 def notify_organization_invite(db: Session, *, invite: OrganizationInvite) -> None:
-    """Tell the invitee that an org-admin invited them to join."""
+    """Tell the invitee that an org manager invited them to join."""
     _emit(
         db,
         recipient_id=invite.user_id,
@@ -229,9 +229,9 @@ def notify_organization_invite(db: Session, *, invite: OrganizationInvite) -> No
 def notify_organization_invite_accepted(
     db: Session, *, invite: OrganizationInvite, member_id: uuid.UUID
 ) -> None:
-    """Tell the org-admin who sent ``invite`` that it was accepted.
+    """Tell the org manager who sent ``invite`` that it was accepted.
 
-    Silent when that org-admin's account is gone. A decline notifies nobody.
+    Silent when that org manager's account is gone. A decline notifies nobody.
     """
     if invite.invited_by_id is None:
         return
@@ -244,17 +244,17 @@ def notify_organization_invite_accepted(
     )
 
 
-def notify_organization_admin_inherited(
+def notify_organization_manager_inherited(
     db: Session, *, organization_id: uuid.UUID, heir_id: uuid.UUID
 ) -> None:
-    """Tell ``heir_id`` they became an org-admin because the last one left Vidit.
+    """Tell ``heir_id`` they became an org manager because the last one left Vidit.
 
     Names no actor: the notification never says whose account was erased.
     """
     _emit(
         db,
         recipient_id=heir_id,
-        kind="organization_admin_inherited",
+        kind="organization_manager_inherited",
         organization_id=organization_id,
     )
 
@@ -304,7 +304,7 @@ def notify_review_request_received(
     organization_id: uuid.UUID | None = None,
 ) -> None:
     """Tell the target that ``requester_id`` asks them to review ``event``: one analyst, or the
-    org-admins of ``organization_id`` who never held credit on it."""
+    org managers of ``organization_id`` who never held credit on it."""
     credited = _ever_credited_ids(db, event) if organization_id is not None else set()
     for recipient_id in set(recipient_ids) - credited:
         _emit(
@@ -341,13 +341,13 @@ def notify_re_approve_requested(
     db: Session, *, event: Event, editor_id: uuid.UUID, superseded_version: int
 ) -> None:
     """Ask every analyst whose own approval of ``superseded_version`` stood to review the new
-    one, and every live org-admin outside the event's current and former geolocators of an
+    one, and every live org manager outside the event's current and former geolocators of an
     organization whose approval of it stood.
 
     A revoked approval asks nothing.
     """
     # Imported here: services/organizations imports this module.
-    from app.services.organizations import live_admin_ids
+    from app.services.organizations import live_manager_ids
 
     recipients: list[tuple[uuid.UUID, uuid.UUID | None]] = []
     for reviewer_id, organization_id in db.execute(
@@ -362,8 +362,8 @@ def notify_re_approve_requested(
             recipients.append((reviewer_id, None))
         else:
             recipients.extend(
-                (admin_id, organization_id)
-                for admin_id in db.scalars(live_admin_ids(organization_id))
+                (manager_id, organization_id)
+                for manager_id in db.scalars(live_manager_ids(organization_id))
             )
     credited = _ever_credited_ids(db, event)
     recipients = [(r, org) for r, org in recipients if org is None or r not in credited]
@@ -468,8 +468,8 @@ def pending_invites(db: Session, *, user: User, rows: list[Notification]) -> set
     return {r.id for r in rows if r.id in newest and r.event_id in waiting}
 
 
-def _administered(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.UUID]:
-    """The organizations named by ``rows`` that ``user`` is an org-admin of now."""
+def _managed(db: Session, *, user: User, rows: list[Notification]) -> set[uuid.UUID]:
+    """The organizations named by ``rows`` that ``user`` is an org manager of now."""
     org_ids = {r.organization_id for r in rows if r.organization_id is not None}
     if not org_ids:
         return set()
@@ -477,7 +477,7 @@ def _administered(db: Session, *, user: User, rows: list[Notification]) -> set[u
         db.scalars(
             select(OrganizationMember.organization_id).where(
                 OrganizationMember.user_id == user.id,
-                OrganizationMember.role == "admin",
+                OrganizationMember.role == "manager",
                 OrganizationMember.organization_id.in_(org_ids),
             )
         )
@@ -494,14 +494,14 @@ def open_review_requests(
     db: Session, *, user: User, rows: list[Notification]
 ) -> dict[uuid.UUID, uuid.UUID]:
     """The open review request behind each of ``rows``' ``review_request_received`` rows, by
-    notification id: one addressed to ``user``, or to an organization ``user`` is an org-admin
+    notification id: one addressed to ``user``, or to an organization ``user`` is an org manager
     of now. Only the newest row of a key carries it; an older one stands for a request already
     answered."""
     received = [r for r in rows if r.kind == "review_request_received" and r.event_id]
     if not received:
         return {}
     event_ids = {r.event_id for r in received}
-    org_ids = _administered(db, user=user, rows=received)
+    org_ids = _managed(db, user=user, rows=received)
     found = db.execute(
         select(
             ReviewRequest.event_id,
@@ -563,11 +563,11 @@ def reapproval_offers(
     """The offer of each event among ``rows``' re-approval and review requests that ``user``
     can approve now, as themselves or for the organization the row names: published, never
     credited to them, and not yet approved at the live version (by them, or by the organization,
-    which they must still administer).
+    which they must still manage).
 
     Callers eager-load ``Notification.event``.
     """
-    administered = _administered(db, user=user, rows=rows)
+    managed = _managed(db, user=user, rows=rows)
     candidates: dict[OfferKey, int] = {
         (r.event.id, r.organization_id): r.event.version_no
         for r in rows
@@ -575,7 +575,7 @@ def reapproval_offers(
         and r.event is not None
         and r.event.status == STATUS_GEOLOCATED
         and r.event.owner_id != user.id
-        and (r.organization_id is None or r.organization_id in administered)
+        and (r.organization_id is None or r.organization_id in managed)
     }
     if not candidates:
         return {}
@@ -610,7 +610,7 @@ def reapproval_offers(
                     EventApproval.reviewer_id == user.id,
                     EventApproval.organization_id.is_(None),
                 ),
-                EventApproval.organization_id.in_(administered),
+                EventApproval.organization_id.in_(managed),
             ),
         )
     ).tuples():

@@ -38,7 +38,7 @@ def list_review_requests(
     db: Session = Depends(get_db),
 ) -> list[ReviewRequestRead]:
     """Open review requests on this event: all of them for its geolocators, those addressed to
-    you or to an organization you administer otherwise."""
+    you or to an organization you manage otherwise."""
     geo = resolve_live_event(db, geolocation_id)
     rows = review_requests.list_open(db, geo=geo, viewer=current_user)
     return [review_requests.build_read(row) for row in rows]
@@ -103,7 +103,7 @@ def decline_review_request(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ReviewRequestRead:
-    """Decline a review request addressed to you, or to an organization you administer."""
+    """Decline a review request addressed to you, or to an organization you manage."""
     geo = resolve_live_event(db, geolocation_id)
     try:
         row = review_requests.decline(db, geo=geo, request_id=request_id, user=current_user)

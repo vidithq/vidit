@@ -1,9 +1,9 @@
-"""Approvals: an analyst, or an organization through one of its org-admins, attests that one
+"""Approvals: an analyst, or an organization through one of its org managers, attests that one
 version of a published event holds.
 
 An approval binds to ``(event_id, version_no)``. It is current while that version is the live
 one and nobody revoked it, so a new version ends every approval without a write here
-(``services/versions.file_version`` notifies the reviewers, and an organization's org-admins).
+(``services/versions.file_version`` notifies the reviewers, and an organization's org managers).
 Placing one locks the event row and compares the version the client read with the live one, so
 an approval never lands on a version its reviewer did not see.
 
@@ -39,7 +39,7 @@ from app.schemas.user import AuthorRef
 from app.services import notifications
 from app.services.admin import log_admin_event
 from app.services.event_filters import visible_events
-from app.services.organizations import is_organization_admin
+from app.services.organizations import is_organization_manager
 from app.services.pagination import keyset_before
 
 
@@ -81,8 +81,8 @@ class OrganizationNotFoundError(ApprovalError):
     code = "organization_not_found"
 
 
-class NotOrganizationAdminError(ApprovalError):
-    code = "not_organization_admin"
+class NotOrganizationManagerError(ApprovalError):
+    code = "not_organization_manager"
 
 
 APPROVAL_ERROR_STATUS: dict[str, int] = {
@@ -94,7 +94,7 @@ APPROVAL_ERROR_STATUS: dict[str, int] = {
     "already_revoked": 409,
     "revoke_forbidden": 403,
     "organization_not_found": 404,
-    "not_organization_admin": 403,
+    "not_organization_manager": 403,
 }
 
 
@@ -209,11 +209,11 @@ def approve(
     organization: Organization | None = None,
 ) -> EventApproval:
     """Approve the live version of ``geo`` as ``reviewer``, or for ``organization`` with
-    ``reviewer`` as the acting org-admin. Resolve the review requests that target received for
+    ``reviewer`` as the acting org manager. Resolve the review requests that target received for
     the event, and notify the owner and those requesters.
 
     409 ``invalid_state`` off ``geolocated`` (a closed event keeps its approvals readable but
-    takes no new one); 403 ``not_organization_admin`` when ``reviewer`` is not an org-admin of
+    takes no new one); 403 ``not_organization_manager`` when ``reviewer`` is not an org manager of
     ``organization``; 403 ``geolocator_cannot_approve`` for a current or former geolocator of the event; 409
     ``version_mismatch`` when ``version_no`` is not the live version; 409 ``already_approved``
     when ``reviewer`` already reviewed that version, revoked or not, or when the approval
@@ -223,10 +223,10 @@ def approve(
     # Mirrored by the frontend's lib/approvals.canApprove; change both.
     if geo.status != STATUS_GEOLOCATED:
         raise EventNotApprovableError("Only a published geolocation can be approved")
-    if organization is not None and not is_organization_admin(
+    if organization is not None and not is_organization_manager(
         db, org_id=organization.id, user_id=reviewer.id
     ):
-        raise NotOrganizationAdminError("Only an org-admin can approve in its name")
+        raise NotOrganizationManagerError("Only an org manager can approve in its name")
     if ever_credited(db, geo=geo, user_id=reviewer.id):
         raise GeolocatorCannotApproveError(
             "A geolocator of this event, current or former, cannot approve it"
@@ -282,21 +282,21 @@ def _revoker_role(db: Session, row: EventApproval, actor: User) -> ApprovalRevok
     """The role ``actor`` revokes ``row`` in, or 403 ``revoke_forbidden``.
 
     An analyst's approval: its reviewer, then a site admin. An organization's approval: its
-    current org-admins (its reviewer among them), then a site admin. A reviewer who is no longer
-    an org-admin no longer acts in the organization's name. Mirrored by the frontend's
+    current org managers (its reviewer among them), then a site admin. A reviewer who is no longer
+    an org manager no longer acts in the organization's name. Mirrored by the frontend's
     ApprovalsSection Revoke control; change both.
     """
     if row.organization_id is None:
         if row.reviewer_id == actor.id:
             return "reviewer"
-    elif is_organization_admin(db, org_id=row.organization_id, user_id=actor.id):
-        return "reviewer" if row.reviewer_id == actor.id else "organization_admin"
+    elif is_organization_manager(db, org_id=row.organization_id, user_id=actor.id):
+        return "reviewer" if row.reviewer_id == actor.id else "organization_manager"
     if actor.is_admin:
         return "site_admin"
     raise RevokeForbiddenError(
         "Only the reviewer or a site admin can revoke this approval"
         if row.organization_id is None
-        else "Only an org-admin of the organization or a site admin can revoke this approval"
+        else "Only an org manager of the organization or a site admin can revoke this approval"
     )
 
 
@@ -305,7 +305,7 @@ def revoke(
 ) -> EventApproval:
     """Revoke one approval of ``geo`` with a public ``reason``.
 
-    The reviewer revokes their own; an org-admin revokes any approval placed for their
+    The reviewer revokes their own; an org manager revokes any approval placed for their
     organization; a site admin revokes any, which writes an ``admin_events`` row. Anyone else is
     403 ``revoke_forbidden``. 404 ``approval_not_found`` for an id that is not an approval of
     ``geo``; 409 ``already_revoked`` for one already revoked.
