@@ -252,7 +252,8 @@ def remove(db: Session, *, geo: Event, actor: User, username: str) -> None:
     The owner cannot leave (409 ``owner_cannot_leave``); anyone else removing someone else is
     403. A removed analyst's collections drop the event in the same transaction, since a
     collection holds only credited work, and an ``event_geolocator_departures`` row records the
-    departure, so they never approve the event. The owner's removal notifies the analyst
+    departure, so they never approve the event. The open review requests they sent about the
+    event go, since only a geolocator asks for one. The owner's removal notifies the analyst
     removed.
     """
     geo = _lock(db, geo.id)
@@ -273,6 +274,13 @@ def remove(db: Session, *, geo: Event, actor: User, username: str) -> None:
         insert(EventGeolocatorDeparture)
         .values(event_id=geo.id, user_id=target.id, created_at=datetime.now(UTC))
         .on_conflict_do_nothing(index_elements=["event_id", "user_id"])
+    )
+    db.execute(
+        delete(ReviewRequest).where(
+            ReviewRequest.event_id == geo.id,
+            ReviewRequest.requester_id == target.id,
+            ReviewRequest.status == "open",
+        )
     )
     db.execute(
         delete(CollectionEvent).where(
