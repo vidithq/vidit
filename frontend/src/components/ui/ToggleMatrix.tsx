@@ -4,6 +4,7 @@ import { cn } from "@/lib/cn";
 import { ICON_TAP_STEP } from "./Button";
 import { LABEL_TEXT } from "./form-styles";
 import { Switch } from "./Switch";
+import { PreferenceText } from "./ToggleRow";
 
 type ToggleMatrixColumn<C extends string> = { id: C; label: string };
 
@@ -58,14 +59,11 @@ export function ToggleMatrix<R extends string, C extends string>({
             key={row.id}
             className={cn("flex items-center gap-2 py-2", i > 0 && "border-t border-neutral-800")}
           >
-            <span className="block min-w-0 flex-1">
-              <span className="block text-sm text-neutral-200">{row.label}</span>
-              {row.description !== undefined && (
-                <span id={descriptionId} className="block text-xs text-neutral-500">
-                  {row.description}
-                </span>
-              )}
-            </span>
+            <PreferenceText
+              label={row.label}
+              description={row.description}
+              descriptionId={descriptionId}
+            />
             {columns.map((column) => {
               const on = row.on[column.id] ?? false;
               const reason = row.disabled?.[column.id];

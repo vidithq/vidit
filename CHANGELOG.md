@@ -22,7 +22,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
-- Settings lists each notification kind once, with an Email and a Push switch side by side, and disables the Push column with one reason when this device or server cannot send push ([#575](https://github.com/vidithq/vidit/pull/575)).
+- Settings lists each notification kind once, with an Email and a Push switch side by side, and closes the Push column with one reason when the server sends no push or your account has no push device ([#575](https://github.com/vidithq/vidit/pull/575)).
 
 ### Fixed
 

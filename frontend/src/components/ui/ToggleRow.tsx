@@ -4,6 +4,33 @@ import { cn } from "@/lib/cn";
 import { TAP_STEP } from "./Button";
 import { Switch } from "./Switch";
 
+/** A settings preference's text: the label at reading size over a line saying what it does.
+ *  Shared by the described `<ToggleRow>` and each `<ToggleMatrix>` row. */
+export function PreferenceText({
+  label,
+  labelId,
+  description,
+  descriptionId,
+}: {
+  label: string;
+  labelId?: string;
+  description?: ReactNode;
+  descriptionId?: string;
+}) {
+  return (
+    <span className="block min-w-0 flex-1">
+      <span id={labelId} className="block text-sm text-neutral-200">
+        {label}
+      </span>
+      {description !== undefined && (
+        <span id={descriptionId} className="block text-xs text-neutral-500">
+          {description}
+        </span>
+      )}
+    </span>
+  );
+}
+
 /** An on/off row, shared by the filter surfaces and the settings page. The whole
  *  row is the switch (role + click live here), so `<Switch>` renders as its
  *  visual span and a tap anywhere toggles. It takes the phone tap step.
@@ -46,22 +73,16 @@ export function ToggleRow({
         className,
       )}
     >
-      <span className="block min-w-0">
+      {described ? (
+        <PreferenceText label={label} labelId={labelId} description={description} />
+      ) : (
         <span
           id={labelId}
-          className={cn(
-            "block",
-            described
-              ? "text-sm text-neutral-200"
-              : "text-[10px] text-neutral-500 uppercase tracking-wider group-hover:text-neutral-400 transition-colors",
-          )}
+          className="block min-w-0 text-[10px] text-neutral-500 uppercase tracking-wider group-hover:text-neutral-400 transition-colors"
         >
           {label}
         </span>
-        {described && (
-          <span className="block text-xs text-neutral-500">{description}</span>
-        )}
-      </span>
+      )}
       <Switch as="span" size={described ? "md" : "sm"} on={on} />
     </button>
   );

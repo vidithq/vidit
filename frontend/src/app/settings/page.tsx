@@ -63,12 +63,8 @@ const CHANNELS = (Object.keys(CHANNEL_LABEL) as NotificationChannel[]).map((id) 
   label: CHANNEL_LABEL[id],
 }));
 
-/** The states where this device or this server cannot deliver push at all. */
-const PUSH_UNAVAILABLE: ReadonlySet<PushDeviceState> = new Set([
-  "unsupported",
-  "needs-home-screen",
-  "unavailable",
-]);
+const NO_PUSH_DEVICE =
+  "No device of yours receives push yet. Enable push on a device to choose these.";
 
 const PUSH_STATE_LINE: Record<PushDeviceState, string> = {
   unsupported: "This browser cannot receive push notifications.",
@@ -80,15 +76,18 @@ const PUSH_STATE_LINE: Record<PushDeviceState, string> = {
   on: "Push notifications are on for this device.",
 };
 
-/** This device's push state and the control that turns it on or off. The kind switches above
- *  it apply to every device of the account. `resyncKey` changes after a password change, which
- *  deleted every device on the server: this browser registers again and the list reloads. */
+/** This device's push state, the control that turns it on or off, and the account's devices.
+ *  The kind switches above apply to every device of the account, so `onPushReason` closes the
+ *  push column only when no device can receive push: the server sends none, or the account
+ *  has no device. The matrix prints that reason, so the state line here omits it.
+ *  `resyncKey` changes after a password change, which deleted every device on the server:
+ *  this browser registers again and the list reloads. */
 function PushDevice({
   resyncKey,
-  onState,
+  onPushReason,
 }: {
   resyncKey: number;
-  onState: (state: PushDeviceState) => void;
+  onPushReason: (reason: string | null) => void;
 }) {
   const config = useApiResource<PushConfig>(PUSH_CONFIG_PATH);
   const [state, setState] = useState<PushDeviceState | null>(null);
@@ -105,9 +104,6 @@ function PushDevice({
       live = false;
     };
   }, [settled, config.data]);
-  useEffect(() => {
-    if (state) onState(state);
-  }, [state, onState]);
   const devices = useApiResource<RegisteredDevice[]>(PUSH_DEVICES_PATH);
   const { refetch: refetchDevices } = devices;
   const [thisId, setThisId] = useState<string | null>(null);
@@ -149,12 +145,21 @@ function PushDevice({
     onSuccess: refetchDevices,
   });
   const rows = Array.isArray(devices.data) ? devices.data : [];
+  const pushReason =
+    state === "unavailable"
+      ? PUSH_STATE_LINE.unavailable
+      : Array.isArray(devices.data) && rows.length === 0
+        ? NO_PUSH_DEVICE
+        : null;
+  useEffect(() => onPushReason(pushReason), [pushReason, onPushReason]);
+  const stateLine =
+    state === null ? "Checking this device..." : state === "unavailable" ? "" : PUSH_STATE_LINE[state];
 
   return (
     <div className="space-y-2 border-t border-neutral-800 pt-4">
       <SectionEyebrow title="Push notifications" as="h3" margin="none" />
       <p className="text-xs text-neutral-500">
-        {state ? PUSH_STATE_LINE[state] : "Checking this device..."} On iPhone and iPad, push
+        {stateLine && `${stateLine} `}On iPhone and iPad, push
         works only after you add Vidit to the Home Screen and open it from there.
       </p>
       {(change.error || revoke.error) && (
@@ -198,7 +203,7 @@ function PushDevice({
 function NotificationsCard({ pushResyncKey }: { pushResyncKey: number }) {
   const { data, error } = useApiResource<UserPreferences>(PREFERENCES_PATH);
   const [saved, setSaved] = useState<UserPreferences | null>(null);
-  const [pushState, setPushState] = useState<PushDeviceState | null>(null);
+  const [pushReason, setPushReason] = useState<string | null>(null);
   const toggle = useMutation(
     (kind: keyof typeof NOTIFICATION_KIND_COPY, channel: NotificationChannel, on: boolean) =>
       updatePreferences({ notifications: { [kind]: { [channel]: on } } }),
@@ -217,8 +222,7 @@ function NotificationsCard({ pushResyncKey }: { pushResyncKey: number }) {
     (saved ?? data)?.review_request_audience ?? REVIEW_REQUEST_AUDIENCE_DEFAULT;
   // Tolerates a missing or partial payload, and a kind this build has no wording for.
   const notifications = (saved ?? data)?.notifications;
-  const pushDisabled =
-    pushState && PUSH_UNAVAILABLE.has(pushState) ? { push: PUSH_STATE_LINE[pushState] } : undefined;
+  const pushDisabled = pushReason ? { push: pushReason } : undefined;
   const rows = (Array.isArray(notifications) ? notifications : [])
     .filter((row) => row.kind in NOTIFICATION_KIND_COPY)
     .map((row) => {
@@ -277,7 +281,7 @@ function NotificationsCard({ pushResyncKey }: { pushResyncKey: number }) {
         onToggle={() => consent.run(!productUpdates)}
         className="border-t border-neutral-800 pt-4"
       />
-      <PushDevice resyncKey={pushResyncKey} onState={setPushState} />
+      <PushDevice resyncKey={pushResyncKey} onPushReason={setPushReason} />
     </Card>
   );
 }
