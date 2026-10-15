@@ -265,7 +265,7 @@ flowchart LR
   link["`**OutboundLink**
   rel, target, the click`"]:::shared
   kind["`**linkKind** in lib/outbound.ts
-  parsed hostname against VIDIT_HOST and KNOWN_HOSTS`"]:::core
+  parsed URL against VIDIT_HOST and KNOWN_HOSTS`"]:::core
   internal["`**next/link**
   same tab, in the app`"]:::shared
   known["`**a** in a new tab
@@ -274,16 +274,17 @@ flowchart LR
   centred Card, the full URL is the link, Cancel`"]:::shared
 
   surfaces --> link --> kind
-  kind -->|vidit.app| internal
-  kind -->|known host| known
-  kind -->|any other host| unknown
+  kind -->|vidit.app, path not starting //| internal
+  kind -->|known host, or host and path| known
+  kind -->|any other host or path| unknown
 ```
 
 [`<OutboundLink>`](../frontend/src/components/ui/OutboundLink.tsx) renders every link whose `href` is an absolute http(s) URL. A raw external `<a>` anywhere else is a review blocker.
 
 - `linkKind` in [`lib/outbound.ts`](../frontend/src/lib/outbound.ts) reads the parsed hostname and compares whole labels: a host matches an entry when it equals the entry or is one of its subdomains. A substring never matches, so `x.com.evil.example` is an unknown host.
-- A link to `vidit.app` or a subdomain routes in the app through `next/link`, in the same tab.
-- A link to a known host opens in a new tab in one click. `KNOWN_HOSTS` holds the snapshot hosts (`SNAPSHOT_HOSTS` in [`lib/snapshots.ts`](../frontend/src/lib/snapshots.ts)), the platforms analysts cite (`x.com`, `twitter.com`, `t.me`, `youtube.com`, `youtu.be`, `github.com`, `discord.gg`), and the hosts the app links to by design (`www.google.com` for the map check, and the hosting providers on the legal page). An entry covers its subdomains, so add the narrowest host that fits.
+- A link to `vidit.app` or a subdomain routes in the app through `next/link`, in the same tab. A path that starts with `//` after parsing (`https://vidit.app//evil.example` or `https://vidit.app/\evil.example`) is an unknown link instead, because `next/link` reads that path as another host.
+- A link to a known host opens in a new tab in one click. `KNOWN_HOSTS` holds the snapshot hosts (`SNAPSHOT_HOSTS` in [`lib/snapshots.ts`](../frontend/src/lib/snapshots.ts)), the platforms analysts cite (`x.com`, `twitter.com`, `t.me`, `youtube.com`, `youtu.be`, `github.com`, `discord.gg`), and the links the app makes by design (`www.google.com/maps` for the map check, and the hosting providers on the legal page).
+- A bare host entry covers its subdomains, so add the narrowest host that fits. An entry with a path covers that exact host and path only. `www.google.com/maps` matches `https://www.google.com/maps?q=48.85,2.35` and not `https://www.google.com/url?q=...`, which redirects anywhere. Never add a host that serves an open redirector.
 - A link to any other host opens a warning dialog on click, middle click, or modifier click. The dialog is `MediaOverlay` with `variant="dialog"` from [`MediaLightbox.tsx`](../frontend/src/components/ui/MediaLightbox.tsx): it centres in the viewport over the page, dimmed and blurred in the theme's canvas colour (`neutral-950`).
 - The dialog surface is a `<Card>` with an accent border (`orange-500`), so it follows the light or dark theme and the chosen accent.
 - The dialog names the host and shows the full URL as a `TEXT_LINK`. The URL is the only way on: it opens in a new tab, so the reader reads the address to leave. There is no confirm button.

@@ -26,6 +26,24 @@ describe("OutboundLink", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("routes a Vidit path in the app", () => {
+    render(<OutboundLink href="https://vidit.app/events/1?tab=proof#map">event</OutboundLink>);
+    const a = screen.getByRole("link", { name: "event" });
+    expect(a).toHaveAttribute("href", "/events/1?tab=proof#map");
+    expect(a).not.toHaveAttribute("target");
+  });
+
+  it.each(["https://vidit.app//evil.example/x", "https://vidit.app/\\evil.example"])(
+    "never hands the router a protocol-relative path from %s",
+    (href) => {
+      render(<OutboundLink href={href}>event</OutboundLink>);
+      const a = screen.getByRole("link", { name: "event" });
+      expect(a).toHaveAttribute("href", href);
+      expect(fireEvent.click(a)).toBe(false);
+      expect(screen.getByRole("dialog", { name: "Leave Vidit?" })).toBeInTheDocument();
+    },
+  );
+
   it("holds a click on an unknown host in a modal dialog naming the host", () => {
     const { followed } = openWarning();
     expect(followed).toBe(false);

@@ -9,6 +9,7 @@ describe("linkKind", () => {
     ["an archive host", "https://archive.ph/abcde"],
     ["a known host in another case", "HTTPS://T.ME/channel/4"],
     ["a known host over http", "http://youtube.com/watch?v=1"],
+    ["the map check", "https://www.google.com/maps?q=48.85,2.35"],
   ])("opens %s directly", (_, href) => {
     expect(linkKind(href)).toBe("known");
   });
@@ -19,6 +20,10 @@ describe("linkKind", () => {
     ["a known host in the path", "https://evil.example/x.com"],
     ["a known host in the userinfo", "https://x.com@evil.example/"],
     ["a sibling of a narrow entry", "https://sites.google.com/view/a"],
+    ["a redirector beside a path entry", "https://www.google.com/url?q=https://evil.example"],
+    ["a path below a path entry", "https://www.google.com/maps/url?q=https://evil.example"],
+    ["a dot segment out of a path entry", "https://www.google.com/maps/../url?q=https://evil.example"],
+    ["a subdomain of a path entry", "https://evil.www.google.com/maps"],
   ])("asks before %s", (_, href) => {
     expect(linkKind(href)).toBe("unknown");
   });
@@ -27,6 +32,13 @@ describe("linkKind", () => {
     expect(linkKind("https://vidit.app/events/1")).toBe("internal");
     expect(linkKind("https://www.vidit.app/")).toBe("internal");
     expect(linkKind("https://vidit.app.evil.example/")).toBe("unknown");
+  });
+
+  it.each([
+    ["a doubled slash", "https://vidit.app//evil.example/x"],
+    ["a backslash", "https://vidit.app/\\evil.example"],
+  ])("asks before a Vidit URL whose path starts with %s", (_, href) => {
+    expect(linkKind(href)).toBe("unknown");
   });
 
   it.each([
