@@ -35,6 +35,7 @@ vi.mock("@/lib/users", async (importOriginal) => ({
 
 import { buttonClasses } from "@/components/ui/Button";
 import type { CollectionPage } from "@/lib/collections";
+import type { OrganizationMembership } from "@/lib/organizations";
 import type { PublicProfile, UserStats } from "@/lib/users";
 import type { EventListItem, MapPoint } from "@/types";
 
@@ -110,8 +111,17 @@ const COLLECTIONS: CollectionPage = {
   per_page: 6,
 };
 
+const MEMBERSHIPS: OrganizationMembership[] = [
+  {
+    organization: { slug: "osw", name: "Open Source Watch", avatar_url: null },
+    role: "admin",
+    joined_at: "2026-06-03T09:00:00Z",
+  },
+];
+
 /** The blocks a reader meets, each named by text only that block shows, pinned by document position. */
 const BLOCKS: Record<string, string> = {
+  Organizations: "organizations",
   "Recent submissions": "recent submissions",
   Collections: "collections",
   Insights: "insights",
@@ -153,6 +163,9 @@ describe("public profile order", () => {
       if (path?.startsWith("/events/points")) {
         return { data: [POINT], error: null, loading: false, refetch: vi.fn() };
       }
+      if (path?.startsWith("/users/ana/organizations")) {
+        return { data: MEMBERSHIPS, error: null, loading: false, refetch: vi.fn() };
+      }
       if (path?.startsWith("/users/ana/collections")) {
         return { data: COLLECTIONS, error: null, loading: false, refetch: vi.fn() };
       }
@@ -173,6 +186,8 @@ describe("public profile order", () => {
 
     // Map and Insights sit together; the growing list reads last.
     expect(blockOrder(container)).toEqual([
+      // Affiliation reads with the identity, before the work.
+      "organizations",
       "coverage",
       "insights",
       // The analyst's grouping, between the Insights card and the list.
@@ -289,6 +304,7 @@ describe("public profile order", () => {
     // Pending work outranks the portfolio; signing out sinks below all of it.
     expect(blockOrder(container)).toEqual([
       "detections queue",
+      "organizations",
       "coverage",
       "insights",
       "collections",
@@ -318,6 +334,9 @@ describe("public profile identity", () => {
       }
       if (path?.startsWith("/events/points")) {
         return { data: [], error: null, loading: false, refetch: vi.fn() };
+      }
+      if (path?.startsWith("/users/ana/organizations")) {
+        return { data: MEMBERSHIPS, error: null, loading: false, refetch: vi.fn() };
       }
       if (path?.startsWith("/users/ana/collections")) {
         return {
@@ -428,6 +447,9 @@ describe("public profile edit mode", () => {
       }
       if (path?.startsWith("/events/points")) {
         return { data: [POINT], error: null, loading: false, refetch: vi.fn() };
+      }
+      if (path?.startsWith("/users/ana/organizations")) {
+        return { data: MEMBERSHIPS, error: null, loading: false, refetch: vi.fn() };
       }
       if (path?.startsWith("/users/ana/collections")) {
         return { data: COLLECTIONS, error: null, loading: false, refetch: vi.fn() };

@@ -27,10 +27,16 @@ from app.schemas.admin import (
     UserXHandleUpdate,
 )
 from app.schemas.event import EventVersionRead
+from app.schemas.organization import (
+    AdminOrganizationRead,
+    OrganizationCreate,
+    OrganizationRead,
+)
 from app.schemas.report import ContentReportList, ContentReportRead, ContentReportUpdate
 from app.schemas.x_handle_request import AdminXHandleRequestRead, XHandleRequestDecline
 from app.services import admin as admin_service
 from app.services import maintenance as maintenance_service
+from app.services import organizations as organizations_service
 from app.services import registration as registration_service
 from app.services import reports as reports_service
 from app.services import x_handle_requests
@@ -162,6 +168,35 @@ def delete_invite_code(
     if not deleted:
         raise HTTPException(status_code=404, detail="Invite code not found")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/organizations",
+    response_model=OrganizationRead,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit("30/hour")
+def create_organization(
+    request: Request,
+    body: OrganizationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> OrganizationRead:
+    """Create an organization and name its first org-admin, who joins without an invite."""
+    try:
+        org = organizations_service.create_organization(db, actor=current_user, body=body)
+    except organizations_service.OrganizationError as exc:
+        raise_typed_error(exc, organizations_service.ORGANIZATION_ERROR_STATUS)
+    return organizations_service.build_read(db, org, viewer=current_user)
+
+
+@router.get("/organizations", response_model=list[AdminOrganizationRead])
+def list_organizations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> list[AdminOrganizationRead]:
+    """Every organization with its live member and org-admin counts, those without an org-admin first."""
+    return organizations_service.list_for_admin(db)
 
 
 @router.get("/users", response_model=list[AdminUserRead])

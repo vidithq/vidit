@@ -1,0 +1,138 @@
+"use client";
+
+import { useState } from "react";
+
+import { useApiResource } from "@/hooks/useApiResource";
+import { useMutation } from "@/hooks/useMutation";
+import {
+  cancelOrganizationInvite,
+  inviteToOrganization,
+  organizationPath,
+  type InviteCandidate,
+  type OrganizationInvite,
+} from "@/lib/organizations";
+import { formatDate } from "@/lib/format";
+import { AuthorByline } from "@/components/ui/AuthorByline";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Select } from "@/components/ui/Input";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
+
+/** The org-admin's invite control and the pending invites.
+ *
+ * The picker lists only the analysts the server accepts: mutual follows of the viewer who are
+ * neither members nor invited. The line under the heading says so, which is what explains an
+ * analyst missing from the list. A site admin who is not an org-admin sees the pending invites
+ * without the picker (`canInvite`). */
+export function OrganizationInvites({
+  slug,
+  canInvite,
+}: {
+  slug: string;
+  canInvite: boolean;
+}) {
+  const base = organizationPath(slug);
+  const candidates = useApiResource<InviteCandidate[]>(
+    canInvite ? `${base}/invite-candidates` : null,
+  );
+  const invites = useApiResource<OrganizationInvite[]>(`${base}/invites`);
+  const [picked, setPicked] = useState("");
+
+  const refresh = () => {
+    candidates.refetch();
+    invites.refetch();
+  };
+
+  const send = useMutation(() => inviteToOrganization(slug, picked), {
+    fallback: "Could not send the invite",
+    onSuccess: () => {
+      setPicked("");
+      refresh();
+    },
+  });
+  const cancel = useMutation((id: string) => cancelOrganizationInvite(slug, id), {
+    fallback: "Could not withdraw the invite",
+    onSuccess: refresh,
+  });
+
+  const options = candidates.data ?? [];
+  const pending = invites.data ?? [];
+  const error = send.error ?? cancel.error ?? invites.error ?? candidates.error;
+
+  return (
+    <Card as="section">
+      <header className="space-y-1">
+        <SectionEyebrow title="Invites" margin="none" />
+        {canInvite && (
+          <p className="text-xs text-neutral-500">
+            You can invite an analyst who follows you and whom you follow. They join once
+            they accept.
+          </p>
+        )}
+      </header>
+
+      {canInvite && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void send.run();
+          }}
+          className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end"
+        >
+          <div>
+            <label className={FORM_LABEL} htmlFor="invite-candidate">
+              Analyst
+            </label>
+            <Select
+              id="invite-candidate"
+              value={picked}
+              onChange={(e) => setPicked(e.target.value)}
+              disabled={options.length === 0}
+              className="mt-1"
+            >
+              <option value="">
+                {options.length === 0 ? "No mutual follow to invite" : "Pick an analyst"}
+              </option>
+              {options.map((c) => (
+                <option key={c.id} value={c.username}>
+                  {c.username}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <Button type="submit" variant="secondary" disabled={!picked || send.loading}>
+            {send.loading ? "Inviting…" : "Invite"}
+          </Button>
+        </form>
+      )}
+
+      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+
+      {pending.length === 0 ? (
+        <p className="text-xs text-neutral-500">No pending invite.</p>
+      ) : (
+        <ul className="space-y-2">
+          {pending.map((invite) => (
+            <li key={invite.id} className="flex flex-wrap items-center justify-between gap-2">
+              <span className="flex min-w-0 flex-wrap items-center gap-2 text-sm wrap-anywhere">
+                <AuthorByline author={invite.user} avatar className="min-w-0" />
+                <span className="text-xs text-neutral-500">
+                  Invited {formatDate(invite.created_at)}
+                  {invite.invited_by ? ` by ${invite.invited_by.username}` : ""}
+                </span>
+              </span>
+              <Button
+                variant="ghost"
+                onClick={() => void cancel.run(invite.id)}
+                disabled={cancel.loading}
+              >
+                Withdraw
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}

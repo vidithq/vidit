@@ -140,6 +140,24 @@ def _ownership_transferred(n: Notification, to: str) -> email.Email:
     )
 
 
+def _organization_invite(n: Notification, to: str) -> email.Email:
+    return email.organization_invite_email(
+        to=to, actor=n.actor.username, slug=n.organization.slug, name=n.organization.name
+    )
+
+
+def _organization_invite_accepted(n: Notification, to: str) -> email.Email:
+    return email.organization_invite_accepted_email(
+        to=to, actor=n.actor.username, slug=n.organization.slug, name=n.organization.name
+    )
+
+
+def _organization_admin_inherited(n: Notification, to: str) -> email.Email:
+    return email.organization_admin_inherited_email(
+        to=to, slug=n.organization.slug, name=n.organization.name
+    )
+
+
 _EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Email]] = {
     "request_fulfilled": _request_fulfilled,
     "new_follower": _new_follower,
@@ -148,6 +166,9 @@ _EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Emai
     "co_geolocator_invite": _co_geolocator_invite,
     "co_geolocator_removed": _co_geolocator_removed,
     "ownership_transferred": _ownership_transferred,
+    "organization_invite": _organization_invite,
+    "organization_invite_accepted": _organization_invite_accepted,
+    "organization_admin_inherited": _organization_admin_inherited,
 }
 
 
@@ -230,6 +251,34 @@ def _ownership_transferred_push(n: Notification) -> push.PushMessage:
     )
 
 
+def _organization_path(n: Notification) -> str:
+    return f"/organizations/{n.organization.slug}"
+
+
+def _organization_invite_push(n: Notification) -> push.PushMessage:
+    return push.PushMessage(
+        title=f"{n.actor.username} invites you to join {n.organization.name}",
+        body="Accept or decline on the organization's page.",
+        path=_organization_path(n),
+    )
+
+
+def _organization_invite_accepted_push(n: Notification) -> push.PushMessage:
+    return push.PushMessage(
+        title=f"{n.actor.username} joined {n.organization.name}",
+        body="Your invitation was accepted.",
+        path=_organization_path(n),
+    )
+
+
+def _organization_admin_inherited_push(n: Notification) -> push.PushMessage:
+    return push.PushMessage(
+        title=f"You are now an org-admin of {n.organization.name}",
+        body="The account of its last org-admin was removed.",
+        path=_organization_path(n),
+    )
+
+
 _PUSH_BUILDERS: dict[NotificationKind, Callable[[Notification], push.PushMessage]] = {
     "request_fulfilled": _request_fulfilled_push,
     "new_follower": _new_follower_push,
@@ -238,6 +287,9 @@ _PUSH_BUILDERS: dict[NotificationKind, Callable[[Notification], push.PushMessage
     "co_geolocator_invite": _co_geolocator_invite_push,
     "co_geolocator_removed": _co_geolocator_removed_push,
     "ownership_transferred": _ownership_transferred_push,
+    "organization_invite": _organization_invite_push,
+    "organization_invite_accepted": _organization_invite_accepted_push,
+    "organization_admin_inherited": _organization_admin_inherited_push,
 }
 
 

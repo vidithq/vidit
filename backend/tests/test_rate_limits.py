@@ -43,6 +43,7 @@ from tests.events._helpers import WORLD_BBOX
 client = TestClient(app)
 
 ME = "/api/v1/users/me"
+_ORG = "/api/v1/organizations/no-such-org"
 
 
 @pytest.fixture(autouse=True)
@@ -191,6 +192,9 @@ _READ_LIMITS = [
     ("/api/v1/users/no-such-user/collections", 120),
     (f"/api/v1/collections/{uuid.UUID(int=0)}", 120),
     (f"/api/v1/collections/{uuid.UUID(int=0)}/events", 120),
+    ("/api/v1/users/no-such-user/organizations", 120),
+    (_ORG, 120),
+    (f"{_ORG}/members", 120),
 ]
 
 
@@ -236,6 +240,9 @@ _QUOTA_ROUTES = [
     "/api/v1/users/{username}/stats",
     "/api/v1/users/{username}/events",
     "/api/v1/users/{username}/collections",
+    "/api/v1/users/{username}/organizations",
+    "/api/v1/organizations/{slug}",
+    "/api/v1/organizations/{slug}/members",
     "/api/v1/collections/{collection_id}",
     "/api/v1/collections/{collection_id}/events",
     "/api/v1/timeline",
@@ -594,6 +601,31 @@ _DOCUMENTED_LIMITS = [
     _Case("post", f"/api/v1/events/{_MISSING_ID}/geolocator-invites/accept", 60),
     _Case("post", f"/api/v1/events/{_MISSING_ID}/geolocator-invites/decline", 60),
     _Case("delete", f"/api/v1/events/{_MISSING_ID}/geolocators/probe", 60),
+    _Case("patch", _ORG, 30, "user", {"json": {"bio": "probe"}}),
+    _Case(
+        "put",
+        f"{_ORG}/avatar",
+        20,
+        "user",
+        {"files": {"file": ("probe.txt", b"probe", "text/plain")}},
+    ),
+    _Case("delete", f"{_ORG}/avatar", 20),
+    _Case("get", f"{_ORG}/invites", 60),
+    _Case("get", f"{_ORG}/invite-candidates", 60),
+    _Case("post", f"{_ORG}/invites", 30, "user", {"json": {"username": "nobody"}}),
+    _Case("delete", f"{_ORG}/invites/{_MISSING_ID}", 60),
+    _Case("post", f"{_ORG}/invite/accept", 30),
+    _Case("post", f"{_ORG}/invite/decline", 30),
+    _Case("patch", f"{_ORG}/members/nobody", 60, "user", {"json": {"role": "member"}}),
+    _Case("delete", f"{_ORG}/members/nobody", 60),
+    # The named first admin does not exist, so the create 404s after the limiter.
+    _Case(
+        "post",
+        "/api/v1/admin/organizations",
+        30,
+        "admin",
+        {"json": {"name": "Probe", "slug": "probe-org", "admin_username": "nobody-at-all"}},
+    ),
     _Case("post", "/api/v1/admin/invite-codes", 30, "admin", {"json": {}}),
     _Case("post", f"/api/v1/admin/invite-codes/{_MISSING_ID}/revoke", 60, "admin"),
     _Case("delete", f"/api/v1/admin/invite-codes/{_MISSING_ID}", 60, "admin"),

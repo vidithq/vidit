@@ -25,6 +25,8 @@ import {
   type PaginatedSubmissions,
 } from "@/components/profile/RecentSubmissions";
 import { DetectionsEntry } from "@/components/profile/DetectionsEntry";
+import FollowButton from "@/components/profile/FollowButton";
+import { ProfileOrganizations } from "@/components/profile/ProfileOrganizations";
 import { OpenRequests } from "@/components/profile/OpenRequests";
 import { useProfileEdit } from "@/components/profile/useProfileEdit";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
@@ -92,17 +94,27 @@ export default function ProfilePage() {
   const isOwn = !!currentUser && profile.username === currentUser.username;
 
   // Portfolio order: identity block (`ProfileIdentity`) and linked-account icons in the header actions
-  // (`ProfileActions`), then the coverage map, Insights, recent submissions, open requests, sign out.
+  // (`ProfileActions`), then the organizations, the coverage map, Insights, recent submissions, open
+  // requests, sign out.
   // The detections entry is the exception: pending work, so it stays above the fold on the owner's profile.
   // Editing collapses the page to the form alone (bio and linked-accounts inputs contiguous, so Save stays on screen).
   return (
     <PageShell
       back
-      title={<ProfileTitle profile={profile} edit={edit} />}
+      title={<ProfileTitle name={profile.username} edit={edit} />}
       subtitle={edit.editing ? undefined : <ProfileIdentity profile={profile} />}
-      actions={<ProfileActions profile={profile} isOwn={isOwn} edit={edit} />}
+      actions={
+        <ProfileActions links={profile.external_links} canEdit={isOwn} edit={edit}>
+          {!isOwn && (
+            <FollowButton
+              username={profile.username}
+              initialFollowing={profile.is_following}
+            />
+          )}
+        </ProfileActions>
+      }
     >
-      <ProfileHeaderEditFields profile={profile} edit={edit} />
+      <ProfileHeaderEditFields name={profile.username} edit={edit} />
 
       {!edit.editing && isOwn && detectionCount > 0 && (
         <DetectionsEntry username={profile.username} count={detectionCount} />
@@ -114,6 +126,8 @@ export default function ProfilePage() {
 
       {!edit.editing && (
         <>
+          <ProfileOrganizations username={profile.username} />
+
           <ProfileMap username={profile.username} />
 
           <ProfileInsights username={profile.username} />

@@ -27,6 +27,9 @@ NotificationKind = Literal[
     "co_geolocator_invite",
     "co_geolocator_removed",
     "ownership_transferred",
+    "organization_invite",
+    "organization_invite_accepted",
+    "organization_admin_inherited",
 ]
 
 # A delivery channel besides the in-app feed, which is always on.
@@ -45,6 +48,9 @@ NOTIFICATION_KINDS: dict[NotificationKind, dict[NotificationChannel, bool]] = {
     "co_geolocator_invite": {"email": True, "push": True},
     "co_geolocator_removed": {"email": False, "push": False},
     "ownership_transferred": {"email": True, "push": True},
+    "organization_invite": {"email": True, "push": True},
+    "organization_invite_accepted": {"email": False, "push": False},
+    "organization_admin_inherited": {"email": True, "push": True},
 }
 assert set(NOTIFICATION_KINDS) == set(get_args(NotificationKind))
 
@@ -72,6 +78,9 @@ class Notification(Base):
     event_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("events.id", ondelete="CASCADE"), nullable=True
     )
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -85,12 +94,15 @@ class Notification(Base):
 
     actor = relationship("User", foreign_keys=[actor_id])
     event = relationship("Event")
+    organization = relationship("Organization")
 
     __table_args__ = (
         CheckConstraint(
             "kind IN ('request_fulfilled', 'new_follower', "
             "'x_handle_request_approved', 'x_handle_request_declined', "
-            "'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred')",
+            "'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', "
+            "'organization_invite', 'organization_invite_accepted', "
+            "'organization_admin_inherited')",
             name="ck_notifications_kind_valid",
         ),
         # The feed walk, newest first per recipient.
@@ -101,9 +113,10 @@ class Notification(Base):
             "user_id",
             postgresql_where=text("read_at IS NULL"),
         ),
-        # Back the cascades of a hard-deleted actor or event.
+        # Back the cascades of a hard-deleted actor, event or organization.
         Index("ix_notifications_actor_id", "actor_id"),
         Index("ix_notifications_event_id", "event_id"),
+        Index("ix_notifications_organization_id", "organization_id"),
     )
 
 

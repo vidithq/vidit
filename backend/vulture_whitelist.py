@@ -35,6 +35,7 @@ finished_at  # app/models/archive_import_job.py, stamped by services/archive_job
 added_at  # app/models/collection.py CollectionEvent, stamped when an event joins
 granted_at  # app/models/product_update.py ProductUpdateConsent, the consent record
 sent_by  # app/models/product_update.py ProductUpdate, who sent the announcement
+created_by_id  # app/models/organization.py, stamped by services/organizations.create_organization
 
 # ── ASGI middleware override ──────────────────────────────────────────────────
 # Starlette calls dispatch(); never referenced by name.
@@ -77,6 +78,10 @@ website  # schemas/user.py UserRead
 github  # schemas/user.py UserRead
 invite_pending  # schemas/notification.py NotificationRead
 transferred_events  # schemas/admin.py AdminUserDeleteResponse
+member_count  # schemas/organization.py OrganizationRead
+viewer_role  # schemas/organization.py OrganizationRead
+viewer_invited  # schemas/organization.py OrganizationRead
+viewer_can_manage  # schemas/organization.py OrganizationRead
 display_defaults  # schemas/preferences.py UserPreferencesRead
 display_stored  # schemas/preferences.py UserPreferencesRead
 palette  # schemas/preferences.py, read through model_dump

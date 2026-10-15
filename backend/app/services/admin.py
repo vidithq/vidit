@@ -26,7 +26,7 @@ from app.schemas.admin import (
     AdminInviteCodeRead,
     AdminInviteRedeemerRead,
 )
-from app.services import geolocator_credit, versions
+from app.services import geolocator_credit, organizations, versions
 from app.services.auth import bump_token_version, generate_invite_code, invite_code_status
 from app.services.evidence_intake import (
     collect_event_media_keys,
@@ -619,6 +619,7 @@ def soft_delete_user(
     # target records the freed value.
     freed_x_handle = user.x_handle
     user.x_handle = None
+    organizations.hand_over_admin_roles(db, leaving_user_id=user.id)
 
     # Cascade to every live event (located and requested). ``deleted_at IS NULL`` leaves earlier
     # timestamps untouched, so the count reflects only what this call flipped.
@@ -666,7 +667,10 @@ def hard_delete_user(
        cascade would drop those rows before we could read them.
     3. Delete each event left manually: ``owner_id`` carries no ``ON DELETE CASCADE``. Each
        ``db.delete`` cascades to that row's media, contributor rows and tags.
-    4. Delete the user. ``auth_tokens``, their collections (and memberships), their
+    4. Hand the org-admin role of each organization they were the last live org-admin of
+       to its earliest-joined live member
+       (:func:`services.organizations.hand_over_admin_roles`), in the same transaction as
+       step 1. Delete the user. ``auth_tokens``, their collections (and memberships), their
        invitations and their contributor rows on other people's events cascade-drop;
        ``admin_events.actor_id`` and ``invite_codes.used_by`` flip to NULL (migration
        f1a3b5c7d9e0), so invite-code rows outlive the user as audit trail.
@@ -704,7 +708,8 @@ def hard_delete_user(
     for geo in geolocations:
         db.delete(geo)
 
-    # 4. Drop the user row.
+    # 4. Hand any last org-admin role to the earliest member, then drop the user row.
+    organizations.hand_over_admin_roles(db, leaving_user_id=user.id)
     db.delete(user)
 
     log_admin_event(db, actor_id=actor_id, action="user_hard_deleted", target=target)

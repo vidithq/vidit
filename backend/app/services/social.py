@@ -1,9 +1,9 @@
 import uuid
 
 from geoalchemy2.functions import ST_X, ST_Y
-from sqlalchemy import and_, func, select
+from sqlalchemy import Select, and_, func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session, aliased, joinedload, selectinload
 
 from app.models.event import Event
 from app.models.follow import Follow
@@ -59,6 +59,26 @@ def is_following(db: Session, *, follower_id: uuid.UUID, followed_id: uuid.UUID)
         .filter(and_(Follow.follower_id == follower_id, Follow.followed_id == followed_id))
         .first()
         is not None
+    )
+
+
+def is_mutual_follow(db: Session, *, a_id: uuid.UUID, b_id: uuid.UUID) -> bool:
+    """Whether ``a`` and ``b`` follow each other."""
+    return is_following(db, follower_id=a_id, followed_id=b_id) and is_following(
+        db, follower_id=b_id, followed_id=a_id
+    )
+
+
+def mutual_follow_ids(user_id: uuid.UUID) -> Select[tuple[uuid.UUID]]:
+    """The ids of every analyst ``user_id`` follows and who follows them back."""
+    back = aliased(Follow)
+    return (
+        select(Follow.followed_id)
+        .join(
+            back,
+            and_(back.follower_id == Follow.followed_id, back.followed_id == Follow.follower_id),
+        )
+        .where(Follow.follower_id == user_id)
     )
 
 

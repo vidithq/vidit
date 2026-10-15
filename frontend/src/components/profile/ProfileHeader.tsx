@@ -1,11 +1,12 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Pencil } from "lucide-react";
 
 import { formatDate } from "@/lib/format";
 import { splitLinks } from "@/lib/outbound";
 import type { PublicProfile } from "@/lib/users";
+import type { ExternalLinks } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { FileManager } from "@/components/ui/FileManager";
@@ -13,20 +14,14 @@ import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
-import FollowButton from "./FollowButton";
 import { LinkedAccountsLine } from "./LinkedAccounts";
 import type { ProfileEditState } from "./useProfileEdit";
 
-/** The page title: avatar and handle (H1; `<PageShell>` owns the heading markup). The avatar is
- * `edit.avatarPreview`, falling back to the icon if it resolves to nothing, and `aria-hidden` (the
- * handle is the accessible name; otherwise the heading reads the alt text first). */
-export function ProfileTitle({
-  profile,
-  edit,
-}: {
-  profile: PublicProfile;
-  edit: ProfileEditState;
-}) {
+/** The page title: avatar and name, the analyst's handle or the organization's name (H1;
+ * `<PageShell>` owns the heading markup). The avatar is `edit.avatarPreview`, falling back to the
+ * icon if it resolves to nothing, and `aria-hidden` (the name is the accessible name; otherwise
+ * the heading reads the alt text first). */
+export function ProfileTitle({ name, edit }: { name: string; edit: ProfileEditState }) {
   // `avatarPreview` is the hook's one derivation, shared with the picker. A staged pick still being
   // read has no url yet and renders the icon.
   const displayedAvatar =
@@ -37,14 +32,14 @@ export function ProfileTitle({
         <Avatar
           as="span"
           src={displayedAvatar}
-          username={profile.username}
+          username={name}
           size="w-11 h-11"
           fallback="icon"
         />
       </span>
       {/* Wraps rather than truncates: the action cluster leaves the title little room, and a clipped
           handle is the one thing to keep. */}
-      <span className="min-w-0 break-words">{profile.username}</span>
+      <span className="min-w-0 break-words">{name}</span>
     </span>
   );
 }
@@ -63,12 +58,22 @@ export function ProfileTitle({
  * the row wraps between segments at 375 px.
  */
 export function ProfileIdentity({ profile }: { profile: PublicProfile }) {
-  const bio = profile.bio?.trim() || null;
-  const segments = [
-    `${profile.followers_count} follower${profile.followers_count === 1 ? "" : "s"}`,
-    `${profile.following_count} following`,
-    `Member since ${formatDate(profile.created_at)}`,
-  ];
+  return (
+    <IdentityLines
+      bio={profile.bio}
+      segments={[
+        `${profile.followers_count} follower${profile.followers_count === 1 ? "" : "s"}`,
+        `${profile.following_count} following`,
+        `Member since ${formatDate(profile.created_at)}`,
+      ]}
+    />
+  );
+}
+
+/** The bio, then the metadata segments joined by middots: the identity block of an analyst's
+ * profile and of an organization's page. */
+export function IdentityLines({ bio: rawBio, segments }: { bio: string | null; segments: string[] }) {
+  const bio = rawBio?.trim() || null;
 
   return (
     <div className="space-y-1">
@@ -101,28 +106,30 @@ export function ProfileIdentity({ profile }: { profile: PublicProfile }) {
   );
 }
 
-/** The header action cluster: the icon row (linked accounts, then Edit profile on your own
- * profile), and Follow on someone else's or the save pair while editing. The marks sit right of
+/** The header action cluster: the icon row (linked accounts, then Edit profile when `canEdit`),
+ * and `children` (Follow on someone else's profile) or the save pair while editing. The marks sit right of
  * the title, where pages keep controls that act on their subject: ghost icon buttons throughout,
  * Edit profile included. `gap-1.5` matches the event page's action cluster; the cluster's `gap-2`
  * separates the row from the far-right button. It wraps and right-aligns, so on a phone marks and
  * button break onto separate lines. Editing drops the row: the inputs below are the links, and the
  * page is already in edit mode. */
 export function ProfileActions({
-  profile,
-  isOwn,
+  links,
+  canEdit,
   edit,
+  children,
 }: {
-  profile: PublicProfile;
-  isOwn: boolean;
+  links: ExternalLinks;
+  canEdit: boolean;
   edit: ProfileEditState;
+  children?: ReactNode;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
       {!edit.editing && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <LinkedAccountsLine profile={profile} />
-          {isOwn && (
+          <LinkedAccountsLine links={links} />
+          {canEdit && (
             <Button
               icon
               variant="ghost"
@@ -135,8 +142,8 @@ export function ProfileActions({
           )}
         </div>
       )}
-      {isOwn
-        ? edit.editing && (
+      {edit.editing
+        ? canEdit && (
             <>
               <Button
                 variant="ghost"
@@ -154,12 +161,7 @@ export function ProfileActions({
               </Button>
             </>
           )
-        : (
-            <FollowButton
-              username={profile.username}
-              initialFollowing={profile.is_following}
-            />
-          )}
+        : children}
     </div>
   );
 }
@@ -169,10 +171,10 @@ export function ProfileActions({
  * single-file image mode: its remove control drops the picture, and its drop zone returns once
  * none is staged. */
 export function ProfileHeaderEditFields({
-  profile,
+  name,
   edit,
 }: {
-  profile: PublicProfile;
+  name: string;
   edit: ProfileEditState;
 }) {
   if (!edit.editing && !edit.saveError) return null;
@@ -188,7 +190,7 @@ export function ProfileHeaderEditFields({
           content: shown.url ? (
             <Avatar
               src={shown.url}
-              username={profile.username}
+              username={name}
               size="w-20 h-20"
               fallback="icon"
               decorative
@@ -205,7 +207,7 @@ export function ProfileHeaderEditFields({
             content: (
               <Avatar
                 src={shown.url}
-                username={profile.username}
+                username={name}
                 size="w-20 h-20"
                 fallback="icon"
                 decorative
