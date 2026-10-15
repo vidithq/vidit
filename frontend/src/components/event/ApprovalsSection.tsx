@@ -133,47 +133,6 @@ export function ChangesSinceApproval({
   );
 }
 
-/** One-click approval of the version a re-approval notification offers, under the list of what
- *  changed since the reader's approval, or the organization's when the row names one. A version
- *  filed since the feed loaded answers 409, shown under the button. */
-export function ReapproveButton({
-  eventId,
-  versionNo,
-  approvedVersion,
-  organization,
-  onApproved,
-}: {
-  eventId: string;
-  versionNo: number;
-  approvedVersion: number | null;
-  organization: OrganizationRef | null;
-  onApproved: () => void;
-}) {
-  const approve = useMutation(
-    () => approveEvent(eventId, versionNo, undefined, organization?.slug),
-    { fallback: "Failed to approve", onSuccess: onApproved },
-  );
-  return (
-    <div className="space-y-2">
-      {approvedVersion !== null && (
-        <ChangesSinceApproval
-          eventId={eventId}
-          approvedVersion={approvedVersion}
-          approver={organization?.name}
-        />
-      )}
-      <Button onClick={() => void approve.run()} disabled={approve.loading}>
-        {approveLabel(versionNo, organization)}
-      </Button>
-      {approve.error && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {approve.error}
-        </div>
-      )}
-    </div>
-  );
-}
-
 const REVOKE_FIELD_ID = "approval-revoke-reason";
 const NOTE_FIELD_ID = "approval-note";
 

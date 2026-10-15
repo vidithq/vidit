@@ -30,9 +30,8 @@ import {
   type Notification,
   type NotificationKind,
 } from "@/lib/notifications";
-import { ReapproveButton } from "@/components/event/ApprovalsSection";
 import { InviteAnswerButtons } from "@/components/event/GeolocatorCredit";
-import { ReviewRequestAnswer } from "@/components/event/ReviewRequestsSection";
+import { ReviewRequestDecline } from "@/components/event/ReviewRequestsSection";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LinkRow } from "@/components/ui/LinkRow";
@@ -75,36 +74,28 @@ function NotificationRows({
           const { text, href } = describeNotification(n);
           return (
             <div key={n.id} className="space-y-2">
-              <LinkRow
-                icon={KIND_ICON[n.kind]}
-                label={`${NOTIFICATION_KIND_COPY[n.kind].label} · ${formatDate(n.created_at)}`}
-                value={text}
-                href={href}
-                external={false}
-              />
-              {/* The answer sits under the row, not in it: the row is one link. */}
+              {/* Decline sits beside the link, not in it: the row is one link. Approving
+                  happens on the event page only, after reading the event. */}
+              <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <LinkRow
+                    icon={KIND_ICON[n.kind]}
+                    label={`${NOTIFICATION_KIND_COPY[n.kind].label} · ${formatDate(n.created_at)}`}
+                    value={text}
+                    href={href}
+                    external={false}
+                  />
+                </div>
+                {n.review_request_id !== null && n.event && (
+                  <ReviewRequestDecline
+                    eventId={n.event.id}
+                    requestId={n.review_request_id}
+                    onAnswered={onChanged}
+                  />
+                )}
+              </div>
               {n.invite_pending && n.event && (
                 <InviteAnswerButtons eventId={n.event.id} onAnswered={onChanged} />
-              )}
-              {n.review_request_id !== null && n.event ? (
-                <ReviewRequestAnswer
-                  eventId={n.event.id}
-                  requestId={n.review_request_id}
-                  versionNo={n.reapprove_version}
-                  organization={n.organization}
-                  onAnswered={onChanged}
-                />
-              ) : (
-                n.reapprove_version !== null &&
-                n.event && (
-                  <ReapproveButton
-                    eventId={n.event.id}
-                    versionNo={n.reapprove_version}
-                    approvedVersion={n.approved_version}
-                    organization={n.organization}
-                    onApproved={onChanged}
-                  />
-                )
               )}
             </div>
           );

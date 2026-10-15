@@ -463,7 +463,7 @@ Every other frontend copy of a backend rule or of the GitHub Project is hand-kep
 | `components/event/useEventActions.tsx` credit controls on `geolocated` rows only | `geolocator_credit._require_published` | the Geolocators panel offers an invitation the API refuses (409) |
 | `lib/approvals.ts::canApprove` | `approvals.approve` (published only, never a geolocator, one review per analyst and version, one standing approval per organization and version) | the Approvals card offers an approval the API refuses (403 or 409) |
 | `components/event/ApprovalsSection.tsx` Revoke on an organization's approval for its org-admins and site admins | `approvals._revoker_role` | the card offers a revocation the API refuses (403) |
-| `lib/approvals.ts::standingApprovalBefore` | `notifications.reapproval_offers` `approved_version` (latest earlier unrevoked approval) | the Approvals card and the feed list changes from different versions |
+| `lib/approvals.ts::standingApprovalBefore` | `notifications.reapproval_offers` `approved_version` (latest earlier unrevoked approval) | the Approvals card and the API's `approved_version` name different base versions |
 | `lib/approvals.ts::APPROVAL_NOTE_MAX_LEN` | `schemas/approval.APPROVAL_NOTE_MAX_LENGTH` | server refuses typed text |
 | `lib/reviewRequests.ts::canRequestReview` | `review_requests._require_requester` (published only, a geolocator of the event) | the Review requests card offers a request the API refuses (403 or 409) |
 | `app/page.tsx::ROADMAP` | the issues of type Epic in the [GitHub Project](https://github.com/orgs/vidithq/projects/1): Version value, title, summary | landing roadmap promises a version the Project no longer plans |
