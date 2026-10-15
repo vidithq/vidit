@@ -20,7 +20,7 @@ import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { FORM_ERROR_BANNER, LIST_TILE } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 /**
@@ -76,7 +76,7 @@ function ReportRow({
   const targetGone = !isEvent && collection === null;
 
   return (
-    <li className="border border-neutral-800 rounded-md p-3 space-y-2">
+    <li className={`${LIST_TILE} space-y-2`}>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <Pill tone={open ? "accent" : "neutral"}>
           {open ? "Open" : (report.resolution && RESOLUTION_LABELS[report.resolution])}

@@ -17,7 +17,7 @@ import { Card } from "@/components/ui/Card";
 import { Textarea } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
+import { FORM_ERROR_BANNER, FORM_LABEL, LIST_TILE } from "@/components/ui/form-styles";
 
 function RequestRow({
   request,
@@ -41,7 +41,7 @@ function RequestRow({
   const { user } = request;
 
   return (
-    <li className="border border-neutral-800 rounded-md p-3 space-y-2">
+    <li className={`${LIST_TILE} space-y-2`}>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="text-sm text-neutral-100">{user.username}</span>
         {user.email && <span className="text-neutral-500 wrap-anywhere">{user.email}</span>}
