@@ -29,6 +29,10 @@ export function organizationPath(slug: string): string {
   return `/organizations/${encodeURIComponent(slug)}`;
 }
 
+export function memberCountLabel(count: number): string {
+  return `${count} member${count === 1 ? "" : "s"}`;
+}
+
 /** An organization as an `AuthorByline` name: its picture, its name, and a link to its page. */
 export function organizationByline(org: OrganizationRef) {
   return { username: org.name, avatar_url: org.avatar_url, href: organizationPath(org.slug) };

@@ -22,7 +22,12 @@ vi.mock("@/lib/search", async (importOriginal) => ({
 }));
 
 import type { Collection } from "@/lib/collections";
-import type { SearchEventHit, SearchResponse, SearchUserHit } from "@/types";
+import type {
+  SearchEventHit,
+  SearchOrganizationHit,
+  SearchResponse,
+  SearchUserHit,
+} from "@/types";
 
 import SearchPage from "./page";
 
@@ -67,12 +72,26 @@ const userHit = (): SearchUserHit => ({
   avatar_url: null,
 });
 
+const orgHit = (): SearchOrganizationHit => ({
+  id: "o1",
+  slug: "kakhovka-watch",
+  name: "Kakhovka Watch",
+  name_highlight: "\u0002Kakhovka\u0003 Watch",
+  bio: "Tracks the reservoir.",
+  bio_highlight: null,
+  avatar_url: null,
+  member_count: 1,
+});
+
+const NO_TOTALS = { geolocations: 0, requests: 0, collections: 0, users: 0, organizations: 0 };
+
 const response = (over: Partial<SearchResponse> = {}): SearchResponse => ({
   geolocations: [],
   requests: [],
   collections: [],
   users: [],
-  total: { geolocations: 0, requests: 0, collections: 0, users: 0 },
+  organizations: [],
+  total: NO_TOTALS,
   query: "kakhovka",
   type: "all",
   ...over,
@@ -88,7 +107,7 @@ describe("the search page's Collections group", () => {
     search.mockResolvedValue(
       response({
         collections: [collection()],
-        total: { geolocations: 0, requests: 0, collections: 1, users: 0 },
+        total: { ...NO_TOTALS, collections: 1 },
       }),
     );
 
@@ -191,5 +210,47 @@ describe("the filter panel on the Collections scope", () => {
         expect.objectContaining({ q: "", type: "collection", author: "ana" }),
       ),
     );
+  });
+});
+
+describe("the search page's Organizations group", () => {
+  it("renders a row tagged as an organization that links to its page", async () => {
+    search.mockResolvedValue(
+      response({
+        users: [userHit()],
+        organizations: [orgHit()],
+        total: { ...NO_TOTALS, users: 1, organizations: 1 },
+      }),
+    );
+
+    render(<SearchPage />);
+
+    const name = await screen.findByText("Kakhovka");
+    expect(name.tagName).toBe("MARK");
+    const row = name.closest("a");
+    expect(row).toHaveAttribute("href", "/organizations/kakhovka-watch");
+    expect(row).toHaveTextContent("Organization · 1 member");
+    // Analysts and organizations sit side by side under the All scope.
+    expect(screen.getByText("Organizations ·", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("Analysts ·", { exact: false })).toBeInTheDocument();
+  });
+
+  it("scopes to organizations from the type chip, and the filter panel stays closed", async () => {
+    search.mockResolvedValue(response({ organizations: [orgHit()], users: [userHit()] }));
+
+    render(<SearchPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Organizations/ }));
+
+    await waitFor(() =>
+      expect(search).toHaveBeenCalledWith(
+        expect.objectContaining({ q: "kakhovka", type: "organization" }),
+      ),
+    );
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith("/search?q=kakhovka&type=organization"),
+    );
+    expect(screen.queryByText("kakhovka_watch")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Toggle Author" })).not.toBeInTheDocument();
   });
 });

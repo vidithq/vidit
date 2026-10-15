@@ -1,4 +1,4 @@
-"""Full-text search across events (located + requested), users and collections.
+"""Full-text search across events (located + requested), collections, users and organizations.
 
 Postgres FTS: ``plainto_tsquery`` parses user input (no operator surface to
 escape), the GIN indexes from migration ``o1j3k5l7m9n1`` back the lookups, and
@@ -11,7 +11,8 @@ the standard event filters (``services/event_filters``). The TSVECTOR
 expressions must stay expression-tree-equal to the migration's
 ``CREATE INDEX`` expressions (config name as a SQL literal, never a bound
 parameter) or Postgres falls back to a sequential scan: ``_geo_tsvector``,
-``_collection_tsvector``, and the ``_USER_TSVECTOR`` constant.
+``_collection_tsvector``, and the ``_USER_TSVECTOR`` and
+``_ORGANIZATION_TSVECTOR`` constants.
 """
 
 from __future__ import annotations
@@ -29,8 +30,10 @@ from app.models.event import (
     STATUS_REQUESTED,
     Event,
 )
+from app.models.organization import Organization
 from app.models.user import User
 from app.schemas.collection import CollectionRead
+from app.services import organizations
 from app.services.collections import (
     build_collection_reads,
     has_showable_item,
@@ -52,7 +55,7 @@ HIGHLIGHT_START = "\x02"
 HIGHLIGHT_STOP = "\x03"
 
 # ``HighlightAll=TRUE`` skips fragment selection on short titles (splitting
-# would truncate); fragment mode is for the prose ``users.bio``.
+# would truncate); fragment mode is for the prose bios.
 _HEADLINE_OPTS_FULL = f"StartSel={HIGHLIGHT_START}, StopSel={HIGHLIGHT_STOP}, HighlightAll=TRUE"
 _HEADLINE_OPTS_FRAGMENT = (
     f"StartSel={HIGHLIGHT_START}, StopSel={HIGHLIGHT_STOP}, MaxFragments=2, MaxWords=20, MinWords=5"
@@ -67,11 +70,12 @@ def _strip_sentinels(col: str) -> str:
 # The config name stays a SQL literal, never a bound parameter: a
 # ``$1::regconfig`` would not match the index expression tree. The events and
 # collections vectors use ORM ``func`` calls to compose with the shared
-# filters; the users one is raw SQL (no event filters).
+# filters; the users and organizations ones are raw SQL (no event filters).
 #
 # ``source_url`` is excluded (see the migration docstring).
 _TS_CONFIG: ColumnClause[str] = literal_column("'simple'")
 _USER_TSVECTOR = "to_tsvector('simple', coalesce(username, '') || ' ' || coalesce(bio, ''))"
+_ORGANIZATION_TSVECTOR = "to_tsvector('simple', coalesce(name, '') || ' ' || coalesce(slug, '') || ' ' || coalesce(bio, ''))"
 
 
 def _geo_tsvector():
@@ -314,20 +318,25 @@ def search_collections(
     return build_collection_reads(db, [row[0] for row in rows]), int(rows[0].total_count)
 
 
-def search_users(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
-    """Top-N analyst handles matching ``query`` + the pre-LIMIT total.
+def _search_profiles(
+    db: Session, *, table: str, tsvector: str, name_col: str, live: str, query: str, limit: int
+) -> tuple[list[uuid.UUID], dict[uuid.UUID, tuple[str, str | None]], int]:
+    """Rank one profile table (analysts or organizations) for ``query``.
 
-    ``bio_highlight`` is set only when the bio contributed to the match.
+    Returns the ranked ids, each id's ``(name highlight, bio highlight)``, and
+    the pre-LIMIT total. The bio highlight is ``None`` unless the bio
+    contributed a fragment. ``table``, ``tsvector``, ``name_col`` and ``live``
+    are module constants, never caller input.
     """
     sql = text(
         f"""
         SELECT id,
-               ts_rank({_USER_TSVECTOR}, plainto_tsquery('simple', :q)) AS rank,
+               ts_rank({tsvector}, plainto_tsquery('simple', :q)) AS rank,
                ts_headline(
-                   'simple', {_strip_sentinels("username")},
+                   'simple', {_strip_sentinels(name_col)},
                    plainto_tsquery('simple', :q),
                    :opts_full
-               ) AS username_highlight,
+               ) AS name_highlight,
                CASE
                    WHEN bio IS NULL OR length(bio) = 0 THEN NULL
                    ELSE ts_headline(
@@ -337,9 +346,9 @@ def search_users(db: Session, *, query: str, limit: int) -> tuple[list[dict], in
                    )
                END AS bio_highlight,
                COUNT(*) OVER () AS total_count
-        FROM users
-        WHERE deleted_at IS NULL
-          AND {_USER_TSVECTOR} @@ plainto_tsquery('simple', :q)
+        FROM {table}
+        WHERE {live}
+          AND {tsvector} @@ plainto_tsquery('simple', :q)
         ORDER BY rank DESC, created_at DESC
         LIMIT :lim
         """
@@ -354,16 +363,34 @@ def search_users(db: Session, *, query: str, limit: int) -> tuple[list[dict], in
         },
     ).all()
     if not rows:
-        return [], 0
-
-    total = int(rows[0].total_count)
-    ids = [r.id for r in rows]
-    highlights: dict[uuid.UUID, tuple[str, str | None]] = {
-        r.id: (r.username_highlight, r.bio_highlight) for r in rows
+        return [], {}, 0
+    # ts_headline returns the original text on a no-match field.
+    highlights = {
+        r.id: (
+            r.name_highlight,
+            r.bio_highlight
+            if r.bio_highlight is not None and HIGHLIGHT_START in r.bio_highlight
+            else None,
+        )
+        for r in rows
     }
+    return [r.id for r in rows], highlights, int(rows[0].total_count)
 
-    users = db.query(User).filter(User.id.in_(ids)).all()
-    user_by_id = {u.id: u for u in users}
+
+def search_users(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
+    """Top-N analyst handles matching ``query`` + the pre-LIMIT total."""
+    ids, highlights, total = _search_profiles(
+        db,
+        table="users",
+        tsvector=_USER_TSVECTOR,
+        name_col="username",
+        live="deleted_at IS NULL",
+        query=query,
+        limit=limit,
+    )
+    if not ids:
+        return [], 0
+    user_by_id = {u.id: u for u in db.query(User).filter(User.id.in_(ids))}
 
     out: list[dict] = []
     for hit_id in ids:
@@ -371,18 +398,57 @@ def search_users(db: Session, *, query: str, limit: int) -> tuple[list[dict], in
         if u is None:
             continue
         username_hl, bio_hl = highlights[hit_id]
-        # ts_headline returns the original text on a no-match field.
-        bio_highlight: str | None = None
-        if bio_hl is not None and HIGHLIGHT_START in bio_hl:
-            bio_highlight = bio_hl
         out.append(
             {
                 "id": u.id,
                 "username": u.username,
                 "username_highlight": username_hl,
                 "bio": u.bio,
-                "bio_highlight": bio_highlight,
+                "bio_highlight": bio_hl,
                 "avatar_url": u.avatar_url,
+            }
+        )
+    return out, total
+
+
+def search_organizations(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
+    """Top-N organizations matching ``query`` on name, slug or bio + the pre-LIMIT total."""
+    ids, highlights, total = _search_profiles(
+        db,
+        table="organizations",
+        tsvector=_ORGANIZATION_TSVECTOR,
+        name_col="name",
+        live="TRUE",
+        query=query,
+        limit=limit,
+    )
+    if not ids:
+        return [], 0
+    live = organizations.live_member_counts(db)
+    rows = (
+        db.query(Organization, func.coalesce(live.c.members, 0))
+        .outerjoin(live, live.c.org_id == Organization.id)
+        .filter(Organization.id.in_(ids))
+        .all()
+    )
+    org_by_id = {org.id: (org, members) for org, members in rows}
+
+    out: list[dict] = []
+    for hit_id in ids:
+        if hit_id not in org_by_id:
+            continue
+        org, members = org_by_id[hit_id]
+        name_hl, bio_hl = highlights[hit_id]
+        out.append(
+            {
+                "id": org.id,
+                "slug": org.slug,
+                "name": org.name,
+                "name_highlight": name_hl,
+                "bio": org.bio,
+                "bio_highlight": bio_hl,
+                "avatar_url": org.avatar_url,
+                "member_count": members,
             }
         )
     return out, total
@@ -399,11 +465,13 @@ def search_all(
     """Run grouped FTS across the requested entity types.
 
     ``types`` is a subset of ``{"geolocation", "request", "collection",
-    "user"}`` (the router expands ``type=all``). An empty query returns empty
-    unless a filter is active, which puts the event groups in browse mode.
+    "user", "organization"}`` (the router expands ``type=all``). An empty query
+    returns empty unless a filter is active, which puts the event groups in
+    browse mode.
 
     ``filters`` scopes the two event groups. While any filter is active the
-    users group empties, since the filters are event predicates. The
+    users and organizations groups empty, since the filters are event
+    predicates. The
     collections group follows the same rule except for ``author``, which
     narrows it (and enables browse mode); any other filter names an event
     property and empties it (``EventFilters.active_beyond_author``).
@@ -417,6 +485,7 @@ def search_all(
         "requests": {"hits": [], "total": 0},
         "collections": {"hits": [], "total": 0},
         "users": {"hits": [], "total": 0},
+        "organizations": {"hits": [], "total": 0},
     }
     if not query.strip() and not filters.active:
         return result
@@ -435,6 +504,9 @@ def search_all(
     if "user" in types and not filters.active:
         hits, total = search_users(db, query=query, limit=limit)
         result["users"] = {"hits": hits, "total": total}
+    if "organization" in types and not filters.active:
+        hits, total = search_organizations(db, query=query, limit=limit)
+        result["organizations"] = {"hits": hits, "total": total}
     return result
 
 
@@ -468,13 +540,13 @@ def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
 
 # Allowed ``type`` values, re-exported by the router for its 422 message.
 # ``event`` is the union of the two event groups (the unified "Events" chip).
-ALLOWED_TYPES = {"all", "event", "geolocation", "request", "collection", "user"}
+ALLOWED_TYPES = {"all", "event", "geolocation", "request", "collection", "user", "organization"}
 
 
 def types_from_param(param: str) -> set[str]:
     """Expand the ``type`` parameter (already validated by the router) into the group set."""
     if param == "all":
-        return {"geolocation", "request", "collection", "user"}
+        return {"geolocation", "request", "collection", "user", "organization"}
     if param == "event":
         return {"geolocation", "request"}
     return {param}

@@ -2098,12 +2098,13 @@ export interface paths {
         };
         /**
          * Search
-         * @description Grouped FTS across the four result groups.
+         * @description Grouped FTS across the five result groups.
          *
          *     Empty or whitespace-only ``q`` returns an empty response (keeps the
          *     still-typing hits cheap).
          *
-         *     Any active filter scopes the event groups and empties the users group;
+         *     Any active filter scopes the event groups and empties the users and
+         *     organizations groups;
          *     ``author`` narrows the collections group to that owner and every other
          *     filter empties it. With an empty ``q`` the response browses the filtered
          *     view, collections included when ``author`` is the only filter (the
@@ -4685,6 +4686,32 @@ export interface components {
             /** Title Highlight */
             title_highlight: string;
         };
+        /**
+         * SearchOrganizationHit
+         * @description Public fields only, the organization page's header: no review request
+         *     audience, no creator.
+         */
+        SearchOrganizationHit: {
+            /** Avatar Url */
+            avatar_url: string | null;
+            /** Bio */
+            bio: string | null;
+            /** Bio Highlight */
+            bio_highlight: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Member Count */
+            member_count: number;
+            /** Name */
+            name: string;
+            /** Name Highlight */
+            name_highlight: string;
+            /** Slug */
+            slug: string;
+        };
         /** SearchRequestHit */
         SearchRequestHit: {
             /**
@@ -4726,6 +4753,8 @@ export interface components {
             collections: components["schemas"]["CollectionRead"][];
             /** Geolocations */
             geolocations: components["schemas"]["SearchEventHit"][];
+            /** Organizations */
+            organizations: components["schemas"]["SearchOrganizationHit"][];
             /** Query */
             query: string;
             /** Requests */
@@ -4735,7 +4764,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "all" | "event" | "geolocation" | "request" | "collection" | "user";
+            type: "all" | "event" | "geolocation" | "request" | "collection" | "user" | "organization";
             /** Users */
             users: components["schemas"]["SearchUserHit"][];
         };
@@ -4748,6 +4777,8 @@ export interface components {
             collections: number;
             /** Geolocations */
             geolocations: number;
+            /** Organizations */
+            organizations: number;
             /** Requests */
             requests: number;
             /** Users */
@@ -8594,7 +8625,7 @@ export interface operations {
             query?: {
                 /** @description Free-text query (empty returns an empty result set) */
                 q?: string;
-                /** @description One of 'all', 'event', 'geolocation', 'request', 'collection', 'user' */
+                /** @description One of 'all', 'event', 'geolocation', 'request', 'collection', 'user', 'organization' */
                 type?: string;
                 /** @description Per-group cap */
                 limit?: number;

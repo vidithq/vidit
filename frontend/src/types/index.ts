@@ -118,6 +118,9 @@ export type SearchRequestHit = components["schemas"]["SearchRequestHit"];
 /** An analyst hit; `bio_highlight` is set only when the bio matched. */
 export type SearchUserHit = components["schemas"]["SearchUserHit"];
 
+/** An organization hit: the public header fields, `bio_highlight` under the analyst rule. */
+export type SearchOrganizationHit = components["schemas"]["SearchOrganizationHit"];
+
 /** Grouped `GET /search` result. `total` holds per-group pre-LIMIT counts; `query` / `type`
  *  echo the inputs so the UI can discard out-of-order responses. */
 export type SearchResponse = components["schemas"]["SearchResponse"];
