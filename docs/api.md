@@ -114,6 +114,9 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/{id}/geolocator-invites/accept` | 🔒 | Accept your invitation and join the event's geolocators |
 | POST | `/events/{id}/geolocator-invites/decline` | 🔒 | Decline your invitation |
 | DELETE | `/events/{id}/geolocators/{username}` | 🔒 | Remove a co-geolocator (owner), or leave as one |
+| GET | `/events/{id}/approvals` | 🌐 | The approvals of one version (the live one by default), or one analyst's across versions |
+| POST | `/events/{id}/approvals` | 🔒 | Approve the live version of a published event you are not credited on |
+| POST | `/events/{id}/approvals/{approval_id}/revoke` | 🔒 | Revoke an approval with a public reason: your own, or any as a site admin |
 | **Collections** | | | |
 | POST | `/collections` | 🔒 | Open a collection (title, description, and the events it holds) |
 | POST | `/collections/{id}/report` | 🌐 | Report a collection for moderation (anonymous allowed) |
@@ -233,6 +236,8 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `GET /events/{id}/collections`, `GET /events/{id}/geolocator-invites` | 120/min |
 | `POST /events/{id}/geolocator-invites` | 30/hour |
 | `DELETE /events/{id}/geolocator-invites/{username}`, `POST /events/{id}/geolocator-invites/accept`, `POST /events/{id}/geolocator-invites/decline`, `DELETE /events/{id}/geolocators/{username}` | 60/min |
+| `GET /events/{id}/approvals` | 120/min |
+| `POST /events/{id}/approvals`, `POST /events/{id}/approvals/{approval_id}/revoke` | 60/min |
 | **Collections** | |
 | `GET /collections/{id}`, `GET /collections/{id}/events` | 120/min |
 | `POST /collections`, `PATCH /collections/{id}`, `DELETE /collections/{id}` | 30/min |
@@ -282,13 +287,13 @@ The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/u
 
 ### Per-user read quota
 
-**1000/hour per account.** One bucket is shared across these 21 read paths, not one bucket per endpoint:
+**1000/hour per account.** One bucket is shared across these 22 read paths, not one bucket per endpoint:
 
-`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/collections/{id}` · `/collections/{id}/events` · `/timeline`
+`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/collections/{id}` · `/collections/{id}/events` · `/timeline`
 
 - The key is `User.id`, read from the signature-verified session cookie.
 - The backend evaluates the per-IP table limit first, so a request the table rejects costs the account nothing.
-- Anonymous callers are exempt and keep the per-IP limits alone. Eighteen of the 21 paths answer anonymously.
+- Anonymous callers are exempt and keep the per-IP limits alone. Nineteen of the 22 paths answer anonymously.
 - Every authenticated read absent from the list is exempt, including `GET /auth/me` and the read-only admin probes.
 - `GET /events/import-archive/{job_id}` is exempt because an import polls it. It returns one job's progress counters and no catalog rows.
 
@@ -1116,6 +1121,8 @@ Correct a published event. Owner only, and only while `geolocated`. The write fi
 
 **Archived copies.** `source_snapshot_url`, `detected_from_snapshot_url` and `secondary_snapshot_urls` archive a link without changing it. Each lands in the version this call produces, and a save whose only change is a copy files a version like any other. `detected_from_snapshot_url` on a row with no provenance link is `original_url_not_on_event`. See [`archival.md`](archival.md).
 
+**Approvals.** The new version ends every current [approval](#approvals) of the event, and the same transaction writes a `re_approve_requested` notification for each analyst whose approval stood.
+
 Rules specific to this path:
 
 - `source_url`: blank or omitted keeps the stored URL; whitespace-only is `source_url_required`.
@@ -1316,7 +1323,7 @@ flowchart LR
 An event's geolocators are the analysts it credits. The owner is always one of them; any other is an analyst the owner invited who accepted. Credit grants no write right: editing, filing a version, closing and inviting stay with the owner. Every read that lists an analyst's work matches any credited analyst: the profile count and feed, the profile stats, the follow feed, the `author` filter of [`GET /events`](#get-events) and [`GET /search`](#get-search), the author typeahead, and the collection add check.
 
 - **Invitation.** The owner of a `geolocated` event invites an analyst by username. The invitation waits in `event_geolocator_invites`, and the invitee receives a `co_geolocator_invite` [notification](#notifications). An event holds at most 10 geolocators and pending invitations together (`MAX_EVENT_GEOLOCATORS` in [`services/geolocator_credit.py`](../backend/app/services/geolocator_credit.py)).
-- **Answer.** Accepting deletes the invitation and credits the invitee in one transaction, which also revokes the invitee's own approvals of the event (`revoke_approvals_on_join`). Declining or a withdrawal deletes the invitation.
+- **Answer.** Accepting deletes the invitation and credits the invitee in one transaction, which also revokes the invitee's own [approvals](#approvals) of the event (`revoke_approvals_on_join`). Declining or a withdrawal deletes the invitation.
 - **Removal.** The owner removes a co-geolocator, who receives a `co_geolocator_removed` notification, or a co-geolocator leaves. The owner cannot leave. The removed analyst's collections drop the event in the same transaction.
 - **Erasure.** A hard delete of the owner's account hands the event to the earliest live co-geolocator; see [`DELETE /admin/users/{id}`](#delete-adminusersid).
 
@@ -1405,6 +1412,142 @@ Take a co-geolocator's credit off the event. The owner removes anyone but themse
 | 403 | You do not own the event and the username is not yours |
 | 404 | `geolocator_not_found`: the username is not a geolocator of the event |
 | 409 | `owner_cannot_leave`: the username is the owner's |
+
+---
+
+## Approvals
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`an endpoint`"]:::spec
+    l2["`a service function`"]:::core
+    l3[("`a stored table`")]:::store
+    l4["`a notification`"]:::shared
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  approve["`**POST /events/{id}/approvals**
+  version_no: the version you read`"]:::spec
+  revokeep["`**POST /events/{id}/approvals/{approval_id}/revoke**
+  the reviewer or a site admin`"]:::spec
+  edit["`**POST /events/{id}/versions**
+  any saved version, archive-only included`"]:::spec
+  accept["`**POST /events/{id}/geolocator-invites/accept**`"]:::spec
+  place["`**approve**
+  locks the event, refuses geolocators and a stale version`"]:::core
+  revoke["`**revoke**
+  stamps revoked_at and the public reason`"]:::core
+  file["`**file_version**
+  the live version moves on`"]:::core
+  join["`**revoke_approvals_on_join**`"]:::core
+  rows[("`**event_approvals**
+  one row per analyst and version`")]:::store
+  received["`**approval_received**
+  to the owner`"]:::shared
+  again["`**re_approve_requested**
+  to each reviewer whose approval stood`"]:::shared
+
+  approve --> place --> rows
+  place --> received
+  revokeep --> revoke --> rows
+  edit --> file --> again
+  accept --> join --> rows
+```
+
+An approval is a dated attestation that one version of a published event holds. It binds to the pair `(event_id, version_no)` and is **current** while that version is the event's live version and nobody revoked it. Saving a new version ends every current approval of the event without changing its row, an archive-only save included. The approval stays readable on the version it covered, and the live version shows none until someone approves it again.
+
+- **Who approves.** Any signed-in analyst except the event's geolocators: its owner and every analyst credited through [shared credit](#shared-credit). The analyst who opened a fulfilled request is not a geolocator, so they may approve it. A closed event takes no new approval and keeps the ones it has.
+- **One review per analyst and version.** An analyst reviews a version once. A revoked approval still counts, so its reviewer cannot approve that version again.
+- **Re-approval.** Each new version writes a `re_approve_requested` [notification](#notifications) for every analyst whose approval of the superseded version stood. A revoked approval asks nothing.
+- **Revocation.** The reviewer revokes their own approval, and a site admin revokes any, which writes an `approval_revoked` audit row. The reason is required and public. A revoked approval keeps its row, its version and its reason.
+- **Joining the geolocators.** Accepting a [co-geolocator invitation](#post-eventsidgeolocator-invitesaccept) revokes every standing approval the invitee gave the event, on every version, with the reason "Joined the geolocators of this event".
+
+Every write locks the event row first, so an approval, a revocation and a new version on the same event serialize.
+
+**Approval shape (`ApprovalRead`):**
+```json
+{
+  "id": "uuid",
+  "version_no": 2,
+  "verdict": "approve",
+  "reviewer": { "id": "uuid", "username": "bo", "avatar_url": null },
+  "note": "Skyline and road junction match.",
+  "created_at": "2026-10-15T09:00:00Z",
+  "current": true,
+  "revoked_at": null,
+  "revoke_reason": null,
+  "revoked_by_admin": false
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `verdict` | Always `approve` |
+| `note` | The reviewer's optional note, at most 280 characters; `null` when none was left |
+| `current` | `true` while `version_no` is the live version and the approval is not revoked |
+| `revoked_at`, `revoke_reason` | Both `null` until the approval is revoked, both set after |
+| `revoked_by_admin` | `true` when a site admin, not the reviewer, revoked it |
+
+### `GET /events/{id}/approvals`
+
+The approvals of the event, revoked ones included, ordered by version and then oldest first. An approval whose reviewer is soft-deleted is left out. Visibility as [`GET /events/{id}`](#get-eventsid).
+
+**Query params:**
+
+| Param | Meaning |
+|---|---|
+| `version_no` | Keep one version. Omitted without `reviewer`, it is the live version. |
+| `reviewer` | Keep one analyst's approvals, by username, 1 to 50 characters. Without `version_no`, every version is listed: the Approvals card reads your own this way to find the version you last approved. |
+
+**Response 200:** a list of approval shapes.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | Unknown, soft-deleted or withheld event |
+
+---
+
+### `POST /events/{id}/approvals` 🔒
+
+Approve the live version of a published event.
+
+**Body:** `{ "version_no": 2, "note": "Skyline and road junction match." }`. `version_no` is the version you read. `note` is optional, at most 280 characters; a blank note is stored as `null`.
+
+**Response 201:** the new approval. The owner receives an `approval_received` notification.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | `geolocator_cannot_approve`: you are a geolocator of the event |
+| 404 | Unknown, soft-deleted or withheld event |
+| 409 | `invalid_state`: the event is not `geolocated`. `version_mismatch`: `version_no` is not the live version; reload the event. `already_approved`: you already reviewed this version |
+| 422 | `version_no` missing or below 1, or `note` over 280 characters |
+
+---
+
+### `POST /events/{id}/approvals/{approval_id}/revoke` 🔒
+
+Revoke an approval of the event. The reviewer revokes their own; a site admin revokes any.
+
+**Body:** `{ "reason": "The shadows point the other way." }`, 1 to 2000 characters after stripping surrounding whitespace. The reason is public.
+
+**Response 200:** the revoked approval.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | `revoke_forbidden`: you are neither the reviewer nor a site admin |
+| 404 | `approval_not_found`: no approval with that id on this event. Also an unknown, soft-deleted or withheld event |
+| 409 | `already_revoked` |
+| 422 | `reason` missing or blank |
 
 ---
 
@@ -1939,7 +2082,7 @@ Your display and notification preferences. Each value is the one in effect: your
 | `display.palette` | `orange`, `blue`, `emerald`, `violet`, `rose` |
 | `display.theme` | `dark`, `light` |
 | `display.help_tooltips` | `true` shows the `?` field help |
-| `notifications[].kind` | `request_fulfilled`, `new_follower`, `x_handle_request_approved`, `x_handle_request_declined`, `co_geolocator_invite`, `co_geolocator_removed`, `ownership_transferred` |
+| `notifications[].kind` | `request_fulfilled`, `new_follower`, `x_handle_request_approved`, `x_handle_request_declined`, `co_geolocator_invite`, `co_geolocator_removed`, `ownership_transferred`, `organization_invite`, `organization_invite_accepted`, `organization_admin_inherited`, `re_approve_requested`, `approval_received` |
 | `notifications[].channels` | `email`, `push` |
 
 ---
@@ -2216,6 +2359,8 @@ flowchart LR
   co_geolocator_invite, co_geolocator_removed, ownership_transferred`"]:::spec
   orgs["`**organizations**
   organization_invite, organization_invite_accepted, organization_admin_inherited`"]:::spec
+  approvals["`**approvals** and **file_version**
+  approval_received, re_approve_requested`"]:::spec
   rows[("`**notifications**
   written in the action's transaction`")]:::store
   visible["`**_visible_rows**
@@ -2238,6 +2383,7 @@ flowchart LR
   xhandle --> rows
   credit --> rows
   orgs --> rows
+  approvals --> rows
   rows --> visible
   visible --> feed
   visible --> count
@@ -2266,6 +2412,8 @@ When your push switch for the kind is on and you registered at least one device,
 | `organization_invite` | An org-admin invites you to an [organization](#organizations) | the org-admin | null | the organization |
 | `organization_invite_accepted` | An analyst accepts your organization invite | the new member | null | the organization |
 | `organization_admin_inherited` | You become org-admin because the last one's account was removed | null | null | the organization |
+| `re_approve_requested` | The owner saves a new version of an event whose superseded version you approved | the owner | the event | null |
+| `approval_received` | An analyst approves your event | the reviewer | the event | null |
 
 A declined or withdrawn organization invite writes no row. `organization` is `{ "slug", "name", "avatar_url" }`.
 
@@ -2286,12 +2434,18 @@ Your notifications, newest first. Cursor-paged; [Pagination](#pagination) gives 
     "event": { "id": "9b2d…", "title": "Strike on the depot" },
     "organization": null,
     "read_at": null,
-    "invite_pending": false
+    "invite_pending": false,
+    "reapprove_version": null,
+    "approved_version": null
   }
 ]
 ```
 
 `invite_pending` is `true` on a `co_geolocator_invite` row whose invitation still waits for your answer, and `false` on every other row. The feed page shows the accept and decline controls on that row.
+
+`reapprove_version` is set on a `re_approve_requested` row when you can approve the event now: it is `geolocated`, you are not one of its geolocators, and you have not reviewed its live version. It holds the live version number, which the feed page's approve control posts to [`POST /events/{id}/approvals`](#post-eventsidapprovals). It is `null` on every other row.
+
+`approved_version` is set beside `reapprove_version`: the latest earlier version your unrevoked approval stands on, or `null` when none does. The feed lists the fields that changed between that version and the live event, computed when the feed is read, and links to that version's page.
 
 ---
 

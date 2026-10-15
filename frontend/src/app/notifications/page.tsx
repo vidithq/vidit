@@ -4,8 +4,10 @@ import { useEffect } from "react";
 import {
   ArrowRightLeft,
   AtSign,
+  BadgeCheck,
   Building2,
   CircleCheck,
+  RefreshCw,
   ShieldCheck,
   UserCheck,
   UserMinus,
@@ -26,6 +28,7 @@ import {
   type Notification,
   type NotificationKind,
 } from "@/lib/notifications";
+import { ReapproveButton } from "@/components/event/ApprovalsSection";
 import { InviteAnswerButtons } from "@/components/event/GeolocatorCredit";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -45,6 +48,8 @@ const KIND_ICON: Record<NotificationKind, LucideIcon> = {
   organization_invite: Building2,
   organization_invite_accepted: UserCheck,
   organization_admin_inherited: ShieldCheck,
+  re_approve_requested: RefreshCw,
+  approval_received: BadgeCheck,
 };
 
 function NotificationRows({
@@ -75,6 +80,14 @@ function NotificationRows({
               {/* The answer sits under the row, not in it: the row is one link. */}
               {n.invite_pending && n.event && (
                 <InviteAnswerButtons eventId={n.event.id} onAnswered={onChanged} />
+              )}
+              {n.reapprove_version !== null && n.event && (
+                <ReapproveButton
+                  eventId={n.event.id}
+                  versionNo={n.reapprove_version}
+                  approvedVersion={n.approved_version}
+                  onApproved={onChanged}
+                />
               )}
             </div>
           );

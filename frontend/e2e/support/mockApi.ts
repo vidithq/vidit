@@ -18,6 +18,7 @@ import {
   EMPTY_BASEMAP_STYLE,
   EMPTY_DETECTIONS,
   EVENT,
+  EVENT_APPROVALS,
   EVENT_ID,
   INVITE_CANDIDATES,
   NO_UNREAD,
@@ -67,6 +68,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/^\/tags$/, CURATED_TAGS],
   [/^\/conflicts$/, CONFLICTS],
   [new RegExp(`^/events/${EVENT_ID}$`), EVENT],
+  [new RegExp(`^/events/${EVENT_ID}/approvals$`), EVENT_APPROVALS],
   [
     new RegExp(`^/events/${SECOND_COLLECTED_EVENT_ID}$`),
     SECOND_COLLECTED_EVENT_DETAIL,

@@ -5,10 +5,12 @@ import { useParams } from "next/navigation";
 import type { EventDetail } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { AuthorByline } from "@/components/ui/AuthorByline";
+import { ApprovalsSection } from "@/components/event/ApprovalsSection";
 import { EventPageBody } from "@/components/event/EventPageBody";
 import { useEventActions } from "@/components/event/useEventActions";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
+import { hasPublishedRecord } from "@/lib/events";
 import { creditProps } from "@/lib/geolocatorCredit";
 
 export default function EventPage() {
@@ -53,6 +55,10 @@ export default function EventPage() {
         {panels}
 
         <EventPageBody geo={geo} />
+
+        {hasPublishedRecord(geo) && (
+          <ApprovalsSection event={geo} versionNo={geo.version_no} live />
+        )}
     </PageShell>
   );
 }

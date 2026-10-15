@@ -69,6 +69,14 @@ export const NOTIFICATION_KIND_COPY: Record<
     label: "Now org-admin",
     setting: "You become an org-admin because the last one left Vidit.",
   },
+  re_approve_requested: {
+    label: "New version to approve",
+    setting: "A geolocation you approved gets a new version.",
+  },
+  approval_received: {
+    label: "Approval received",
+    setting: "Someone approves your geolocation.",
+  },
 };
 
 /** The feed row's sentence and destination. */
@@ -124,6 +132,16 @@ export function describeNotification(n: Notification): { text: string; href: str
       return {
         text: `You are now an org-admin of ${organization}`,
         href: n.organization ? organizationPath(n.organization.slug) : "/notifications",
+      };
+    case "re_approve_requested":
+      return {
+        text: `${actor} saved a new version of a geolocation you approved: ${title}`,
+        href: eventHref,
+      };
+    case "approval_received":
+      return {
+        text: `${actor} approved your geolocation: ${title}`,
+        href: eventHref,
       };
   }
 }

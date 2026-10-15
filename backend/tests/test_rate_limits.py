@@ -232,6 +232,7 @@ _QUOTA_ROUTES = [
     "/api/v1/events/points",
     "/api/v1/events/detections",
     "/api/v1/events/possible-duplicates",
+    "/api/v1/events/{geolocation_id}/approvals",
     "/api/v1/search",
     "/api/v1/search/authors",
     "/api/v1/tags",
@@ -625,6 +626,17 @@ _DOCUMENTED_LIMITS = [
         30,
         "admin",
         {"json": {"name": "Probe", "slug": "probe-org", "admin_username": "nobody-at-all"}},
+    ),
+    _Case("get", f"/api/v1/events/{_MISSING_ID}/approvals", 120),
+    _Case(
+        "post", f"/api/v1/events/{_MISSING_ID}/approvals", 60, "user", {"json": {"version_no": 1}}
+    ),
+    _Case(
+        "post",
+        f"/api/v1/events/{_MISSING_ID}/approvals/{_MISSING_ID}/revoke",
+        60,
+        "user",
+        {"json": {"reason": "probe"}},
     ),
     _Case("post", "/api/v1/admin/invite-codes", 30, "admin", {"json": {}}),
     _Case("post", f"/api/v1/admin/invite-codes/{_MISSING_ID}/revoke", 60, "admin"),

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Notification } from "@/lib/notifications";
+import { eventDetail, filedVersion } from "@/test/eventDetail";
 
 const api = vi.hoisted(() => ({
   apiFetch: vi.fn(),
@@ -35,6 +36,8 @@ const fulfilled: Notification = {
   organization: null,
   read_at: null,
   invite_pending: false,
+  reapprove_version: null,
+  approved_version: null,
 };
 const follower: Notification = {
   id: "n1",
@@ -45,6 +48,8 @@ const follower: Notification = {
   organization: null,
   read_at: "2026-10-11T09:00:00Z",
   invite_pending: false,
+  reapprove_version: null,
+  approved_version: null,
 };
 const orgInvite: Notification = {
   id: "n3",
@@ -55,6 +60,8 @@ const orgInvite: Notification = {
   organization: { slug: "osw", name: "Open Source Watch", avatar_url: null },
   read_at: null,
   invite_pending: false,
+  reapprove_version: null,
+  approved_version: null,
 };
 
 function serve(items: Notification[]) {
@@ -138,6 +145,53 @@ describe("NotificationsPage", () => {
     await waitFor(() =>
       expect(api.apiFetch).toHaveBeenCalledWith("/events/e9/geolocator-invites/accept", {
         method: "POST",
+      }),
+    );
+    await waitFor(() => expect(api.apiFetchPage.mock.calls.length).toBeGreaterThan(loads));
+  });
+
+  it("lists what changed, then approves the version a re-approval request offers", async () => {
+    const live = { ...eventDetail("e7", "Depot fire"), version_no: 3 };
+    api.apiFetch.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "/events/e7"
+          ? live
+          : path === "/events/e7/versions/2"
+            ? filedVersion(live, 2, { title: "Fire near the depot" })
+            : undefined,
+      ),
+    );
+    const reapprove: Notification = {
+      ...follower,
+      id: "n5",
+      kind: "re_approve_requested",
+      event: { id: "e7", title: "Depot fire" },
+      reapprove_version: 3,
+      approved_version: 2,
+    };
+    serve([reapprove, { ...reapprove, id: "n6", reapprove_version: null, approved_version: null }]);
+    render(<NotificationsPage />);
+
+    expect(
+      await screen.findByText(/Changed since version 2, which you approved: Title\./),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "See version 2" })).toHaveAttribute(
+      "href",
+      "/events/e7/v2",
+    );
+
+    expect(
+      await screen.findAllByRole("link", {
+        name: /cy saved a new version of a geolocation you approved: Depot fire/,
+      }),
+    ).toHaveLength(2);
+    const loads = api.apiFetchPage.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Approve version 3" }));
+
+    await waitFor(() =>
+      expect(api.apiFetch).toHaveBeenCalledWith("/events/e7/approvals", {
+        method: "POST",
+        body: JSON.stringify({ version_no: 3, note: null }),
       }),
     );
     await waitFor(() => expect(api.apiFetchPage.mock.calls.length).toBeGreaterThan(loads));

@@ -13,11 +13,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import NamedTuple
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Query, Session, aliased, contains_eager, joinedload
 
-from app.models.event import Event, EventGeolocatorInvite
+from app.models.approval import EventApproval
+from app.models.event import STATUS_GEOLOCATED, Event, EventGeolocator, EventGeolocatorInvite
 from app.models.notification import (
     Notification,
     NotificationChannel,
@@ -196,6 +198,41 @@ def notify_organization_admin_inherited(
     )
 
 
+def notify_approval_received(db: Session, *, event: Event, reviewer_id: uuid.UUID) -> None:
+    """Tell the owner of ``event`` that ``reviewer_id`` approved its live version."""
+    _emit(
+        db,
+        recipient_id=event.owner_id,
+        kind="approval_received",
+        actor_id=reviewer_id,
+        event_id=event.id,
+    )
+
+
+def notify_re_approve_requested(
+    db: Session, *, event: Event, editor_id: uuid.UUID, superseded_version: int
+) -> None:
+    """Ask every analyst whose approval of ``superseded_version`` stood to review the new one.
+
+    A revoked approval asks nothing.
+    """
+    reviewer_ids = db.scalars(
+        select(EventApproval.reviewer_id).where(
+            EventApproval.event_id == event.id,
+            EventApproval.version_no == superseded_version,
+            EventApproval.revoked_at.is_(None),
+        )
+    ).all()
+    for reviewer_id in reviewer_ids:
+        _emit(
+            db,
+            recipient_id=reviewer_id,
+            kind="re_approve_requested",
+            actor_id=editor_id,
+            event_id=event.id,
+        )
+
+
 def _visible_rows(db: Session, user: User) -> Query[Notification]:
     """``user``'s rows whose event and actor a reader may still see."""
     return (
@@ -253,7 +290,67 @@ def pending_invites(db: Session, *, user: User, rows: list[Notification]) -> set
     )
 
 
-def build_read(row: Notification, *, pending: set[uuid.UUID]) -> NotificationRead:
+class ReapprovalOffer(NamedTuple):
+    """What a re-approval row offers: the live version to approve, and the latest earlier
+    version ``user``'s approval still stands on, the base of the change list."""
+
+    live_version: int
+    approved_version: int | None
+
+
+def reapproval_offers(
+    db: Session, *, user: User, rows: list[Notification]
+) -> dict[uuid.UUID, ReapprovalOffer]:
+    """The offer of each event among ``rows``' re-approval requests that ``user`` can approve
+    now: published, not credited to them, and not yet reviewed by them at the live version.
+
+    Callers eager-load ``Notification.event``.
+    """
+    candidates = {
+        r.event.id: r.event.version_no
+        for r in rows
+        if r.kind == "re_approve_requested"
+        and r.event is not None
+        and r.event.status == STATUS_GEOLOCATED
+        and r.event.owner_id != user.id
+    }
+    if not candidates:
+        return {}
+    credited = set(
+        db.scalars(
+            select(EventGeolocator.event_id).where(
+                EventGeolocator.user_id == user.id,
+                EventGeolocator.event_id.in_(candidates),
+            )
+        )
+    )
+    reviewed: set[tuple[uuid.UUID, int]] = set()
+    standing: dict[uuid.UUID, int] = {}
+    for event_id, version, revoked_at in db.execute(
+        select(EventApproval.event_id, EventApproval.version_no, EventApproval.revoked_at).where(
+            EventApproval.reviewer_id == user.id,
+            EventApproval.event_id.in_(candidates),
+        )
+    ).tuples():
+        reviewed.add((event_id, version))
+        # Mirrored by the frontend's lib/approvals.standingApprovalBefore; change both.
+        if revoked_at is None and version < candidates[event_id]:
+            standing[event_id] = max(version, standing.get(event_id, 0))
+    return {
+        event_id: ReapprovalOffer(version, standing.get(event_id))
+        for event_id, version in candidates.items()
+        if event_id not in credited and (event_id, version) not in reviewed
+    }
+
+
+def build_read(
+    row: Notification, *, pending: set[uuid.UUID], offers: dict[uuid.UUID, ReapprovalOffer]
+) -> NotificationRead:
+    offer = (
+        offers.get(row.event_id)
+        if row.kind == "re_approve_requested" and row.event_id is not None
+        else None
+    )
     return NotificationRead(
         id=row.id,
         kind=row.kind,
@@ -267,6 +364,8 @@ def build_read(row: Notification, *, pending: set[uuid.UUID]) -> NotificationRea
         ),
         read_at=row.read_at,
         invite_pending=row.kind == "co_geolocator_invite" and row.event_id in pending,
+        reapprove_version=offer.live_version if offer is not None else None,
+        approved_version=offer.approved_version if offer is not None else None,
     )
 
 

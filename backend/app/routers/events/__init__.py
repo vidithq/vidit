@@ -8,6 +8,7 @@ catch-all would shadow the literal-path GETs (``/points``,
 """
 
 from app.routers.events import (
+    approvals,
     batch,
     duplicates,
     geolocators,
@@ -26,5 +27,6 @@ routers = (
     write.router,
     batch.router,
     geolocators.router,
+    approvals.router,
     item.router,
 )

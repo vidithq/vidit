@@ -6,6 +6,7 @@ A shadowed literal path would 422 on its non-UUID segment.
 from __future__ import annotations
 
 from app.routers.events import (
+    approvals,
     batch,
     duplicates,
     geolocators,
@@ -29,6 +30,7 @@ def test_router_mount_order_is_pinned():
         write.router,
         batch.router,
         geolocators.router,
+        approvals.router,
         item.router,
     )
     assert routers[-1] is item.router
