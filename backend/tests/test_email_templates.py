@@ -189,6 +189,9 @@ def test_notification_email_names_the_switch_and_takes_a_one_click_unsubscribe(n
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
     }
     assert "notification settings" in message.text
+    # The kind's label in Settings, whatever layout shows the channel.
+    label = {"request_fulfilled": "Request fulfilled", "new_follower": "New follower"}[name]
+    assert f"email is on for “{label}”" in message.text
     assert "bo" in message.subject
 
 
