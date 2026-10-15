@@ -290,7 +290,7 @@ flowchart LR
   builders --> layout --> send
 ```
 
-**The layout.** A builder in [`services/email.py`](../backend/app/services/email.py) passes structured content to [`services/email_layout.py`](../backend/app/services/email_layout.py), never markup. The layout renders an HTML part and a plain-text part from that content, so both carry the same words and links. Every link is absolute, built on `FRONTEND_URL`. The footer of both parts links to Settings and to the legal notice. The brand rules of the HTML part are in [`design.md`](design.md#email).
+**The layout.** A builder in [`services/email.py`](../backend/app/services/email.py) passes structured content to [`services/email_layout.py`](../backend/app/services/email_layout.py), never markup. The layout renders an HTML part and a plain-text part from that content, so both carry the same words and links. Every link is absolute, built on `FRONTEND_URL`. A bare URL becomes a link only in the action, the closing note and the blocks of a product update email. A URL in the other blocks stays text, since they carry user text such as event titles and report details. The footer of both parts links to Settings and to the legal notice. The brand rules of the HTML part are in [`design.md`](design.md#email).
 
 **The sender.** `EMAIL_PROVIDER=console` prints the headers, the text part and then the HTML part to stdout, so local development needs no provider. `EMAIL_PROVIDER=resend` posts both parts and any headers to Resend. `send` raises `EmailRejectedError` when the provider answers with a refusal, and its parent `EmailSendError` when the outcome is unknown, such as a timeout. Every caller catches the error, so a provider outage never fails the action that sent the email.
 

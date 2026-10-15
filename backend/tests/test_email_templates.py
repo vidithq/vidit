@@ -124,6 +124,54 @@ def test_user_text_is_escaped_in_html_and_verbatim_in_text():
     assert "Line one\nline two" in message.text
 
 
+_PHISH = "https://vidit-login.example/reset"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        pytest.param(
+            lambda: email.co_geolocator_invite_email(
+                to="a@example.com", actor="bo", event_id="e1", event_title=f"Log in at {_PHISH}"
+            ),
+            id="event title",
+        ),
+        pytest.param(
+            lambda: email.content_report_email(
+                to="mod@example.com",
+                target="event",
+                target_id="e1",
+                target_title=_PHISH,
+                target_link=email.event_link("e1"),
+                reason="spam",
+                details=f"See {_PHISH}",
+                reporter="anonymous",
+                created_at=datetime(2026, 10, 1, tzinfo=UTC),
+            ),
+            id="report details",
+        ),
+    ],
+)
+def test_a_url_in_user_text_is_never_a_link(message):
+    built = message()
+    assert not [href for href in _links(built.html).hrefs if "vidit-login" in href]
+    assert _PHISH in built.html
+    assert f"{BASE}/events/e1" in _links(built.html).hrefs
+
+
+def test_product_update_blocks_link_the_admins_urls():
+    built = email.product_update_email(
+        to="a@example.com",
+        label="1.0.0",
+        title="Collections",
+        blocks=[f"Read the guide at {BASE}/guide."],
+        link_url=None,
+        unsubscribe_url=f"{BASE}/unsubscribe?token=tok",
+        one_click_url="https://api.example.com/api/v1/product-updates/unsubscribe?token=tok",
+    )
+    assert f"{BASE}/guide." in _links(built.html).hrefs
+
+
 def test_password_changed_links_to_the_configured_frontend():
     message = email.password_changed_email(to="a@example.com")
     assert f"{BASE}/forgot-password" in message.text
