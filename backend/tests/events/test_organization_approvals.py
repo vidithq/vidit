@@ -185,6 +185,23 @@ def test_an_organization_approval_outlives_the_acting_org_admins_account(
     assert revoked.status_code == 200, revoked.text
 
 
+def test_an_organization_approval_stays_listed_when_its_member_is_banned(
+    db, author, make_user, make_org
+):
+    acting = make_user()
+    org = make_org(admins=[acting, make_user()])
+    geo = _published(db, author)
+    assert _approve(geo, acting, org).status_code == 201
+    acting.deleted_at = datetime.now(UTC)
+    db.commit()
+
+    client.cookies.clear()
+    rows = client.get(f"{_EVENTS}/{geo.id}/approvals").json()
+    assert [(r["organization"]["slug"], r["reviewer"]) for r in rows] == [(org.slug, None)]
+    listed = client.get(f"{_ORGS}/{org.slug}/approvals").json()
+    assert [item["approval"]["reviewer"] for item in listed] == [None]
+
+
 def test_only_an_org_admin_approves_in_its_name(db, author, make_user, make_org):
     admin, member = make_user(), make_user()
     org = make_org(admins=[admin], members=[member])

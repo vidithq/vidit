@@ -1508,7 +1508,7 @@ Every write locks the event row first, so an approval, a revocation and a new ve
 | Field | Meaning |
 |---|---|
 | `verdict` | Always `approve` |
-| `reviewer` | The analyst who approved; for an organization's approval, the org-admin who placed it, or `null` once that account is erased, since the approval stays the organization's |
+| `reviewer` | The analyst who approved; for an organization's approval, the org-admin who placed it, or `null` once that account is soft-deleted or erased, since the approval stays the organization's |
 | `organization` | The organization the approval speaks for, `null` for an analyst's own approval |
 | `note` | The reviewer's optional note, at most 280 characters; `null` when none was left |
 | `current` | `true` while `version_no` is the live version of a `geolocated` event and the approval is not revoked; a closed event keeps its approvals, none current |
@@ -1517,7 +1517,7 @@ Every write locks the event row first, so an approval, a revocation and a new ve
 
 ### `GET /events/{id}/approvals`
 
-The approvals of the event, revoked ones included, ordered by version and then oldest first. An approval whose reviewer is soft-deleted is left out. An organization's approval whose reviewer's account was erased stays, with `reviewer` set to `null`. Visibility as [`GET /events/{id}`](#get-eventsid).
+The approvals of the event, revoked ones included, ordered by version and then oldest first. An analyst's approval whose reviewer is soft-deleted is left out. An organization's approval stays whatever became of the member who placed it, with `reviewer` set to `null` once that account is soft-deleted or erased. Visibility as [`GET /events/{id}`](#get-eventsid).
 
 **Query params:**
 

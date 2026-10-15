@@ -130,7 +130,13 @@ def build_read(row: EventApproval, *, live_version: int) -> ApprovalRead:
         id=row.id,
         version_no=row.version_no,
         verdict=row.verdict,
-        reviewer=AuthorRef.model_validate(row.reviewer) if row.reviewer is not None else None,
+        # An organization's approval stays the organization's: a reviewer erased or banned
+        # since is not named.
+        reviewer=(
+            AuthorRef.model_validate(row.reviewer)
+            if row.reviewer is not None and row.reviewer.deleted_at is None
+            else None
+        ),
         organization=(
             OrganizationRef.model_validate(row.organization)
             if row.organization is not None
@@ -156,9 +162,9 @@ def resolve_organization(db: Session, slug: str) -> Organization:
 
 
 def _reviewer_shown() -> ColumnElement[bool]:
-    """A review with a live reviewer, or an organization's review whose reviewer was erased.
-    Callers outer-join ``User`` on ``reviewer_id``."""
-    return or_(EventApproval.reviewer_id.is_(None), User.deleted_at.is_(None))
+    """An organization's review, whatever became of the member who placed it, or an analyst's
+    review whose reviewer is live. Callers outer-join ``User`` on ``reviewer_id``."""
+    return or_(EventApproval.organization_id.is_not(None), User.deleted_at.is_(None))
 
 
 def list_approvals(
@@ -168,8 +174,8 @@ def list_approvals(
 
     ``version_no`` keeps one version and ``reviewer`` one analyst's own reviews (by username,
     without those they placed for an organization); either may be omitted. A soft-deleted
-    reviewer's review is left out, as a soft-deleted geolocator is; an organization's review
-    whose reviewer was erased stays.
+    analyst's review is left out, as a soft-deleted geolocator is; an organization's review stays
+    whatever became of the member who placed it.
     """
     query = (
         db.query(EventApproval)
