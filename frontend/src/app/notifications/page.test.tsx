@@ -38,6 +38,7 @@ const fulfilled: Notification = {
   invite_pending: false,
   reapprove_version: null,
   approved_version: null,
+  review_request_id: null,
 };
 const follower: Notification = {
   id: "n1",
@@ -50,6 +51,7 @@ const follower: Notification = {
   invite_pending: false,
   reapprove_version: null,
   approved_version: null,
+  review_request_id: null,
 };
 const orgInvite: Notification = {
   id: "n3",
@@ -62,6 +64,7 @@ const orgInvite: Notification = {
   invite_pending: false,
   reapprove_version: null,
   approved_version: null,
+  review_request_id: null,
 };
 
 function serve(items: Notification[]) {
@@ -192,6 +195,33 @@ describe("NotificationsPage", () => {
       expect(api.apiFetch).toHaveBeenCalledWith("/events/e7/approvals", {
         method: "POST",
         body: JSON.stringify({ version_no: 3, note: null }),
+      }),
+    );
+    await waitFor(() => expect(api.apiFetchPage.mock.calls.length).toBeGreaterThan(loads));
+  });
+
+  it("answers an open review request, and offers nothing once it is resolved", async () => {
+    const asked: Notification = {
+      ...follower,
+      id: "n7",
+      kind: "review_request_received",
+      event: { id: "e8", title: "Bridge strike" },
+      reapprove_version: 2,
+      review_request_id: "r1",
+    };
+    serve([asked, { ...asked, id: "n8", reapprove_version: null, review_request_id: null }]);
+    render(<NotificationsPage />);
+
+    expect(
+      await screen.findAllByRole("link", { name: /cy asked you to review: Bridge strike/ }),
+    ).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Approve version 2" })).toHaveLength(1);
+    const loads = api.apiFetchPage.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+
+    await waitFor(() =>
+      expect(api.apiFetch).toHaveBeenCalledWith("/events/e8/review-requests/r1/decline", {
+        method: "POST",
       }),
     );
     await waitFor(() => expect(api.apiFetchPage.mock.calls.length).toBeGreaterThan(loads));

@@ -295,6 +295,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
     },
   ],
   product_updates: false,
+  review_request_audience: "following",
 };
 
 /** A deployment that sends no push, so the settings page offers no enable button. */

@@ -21,6 +21,7 @@ from app.models.product_update import (
     ProductUpdateDelivery,
 )
 from app.models.push_subscription import PushSubscription
+from app.models.review_request import ReviewRequest
 from app.models.source_archive import SourceArchive
 from app.models.tag import Tag, event_tags
 from app.models.user import User
@@ -56,6 +57,7 @@ __all__ = [
     "ProductUpdate",
     "ProductUpdateConsent",
     "ProductUpdateDelivery",
+    "ReviewRequest",
     "SourceArchive",
     "Tag",
     "User",

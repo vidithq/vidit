@@ -8,7 +8,8 @@ version its reviewer did not see.
 
 The event's geolocators (its owner and every credited co-geolocator) cannot approve it.
 Accepting a co-geolocator invitation revokes the invitee's approvals
-(``geolocator_credit.revoke_approvals_on_join``).
+(``geolocator_credit.revoke_approvals_on_join``). An approval resolves every open review request
+its reviewer received for the event, and the requesters hear of it as the owner does.
 """
 
 from __future__ import annotations
@@ -16,10 +17,12 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.approval import EventApproval
 from app.models.event import STATUS_GEOLOCATED, Event, EventGeolocator
+from app.models.review_request import ReviewRequest
 from app.models.user import User
 from app.schemas.approval import ApprovalRead
 from app.schemas.user import AuthorRef
@@ -76,7 +79,7 @@ def _lock(db: Session, event_id: uuid.UUID) -> Event:
     return db.query(Event).filter(Event.id == event_id).populate_existing().with_for_update().one()
 
 
-def _is_geolocator(db: Session, *, geo: Event, user_id: uuid.UUID) -> bool:
+def is_geolocator(db: Session, *, geo: Event, user_id: uuid.UUID) -> bool:
     """Whether ``user_id`` is credited on ``geo``: its owner or an accepted co-geolocator."""
     return geo.owner_id == user_id or db.get(EventGeolocator, (geo.id, user_id)) is not None
 
@@ -123,7 +126,8 @@ def list_approvals(
 def approve(
     db: Session, *, geo: Event, reviewer: User, version_no: int, note: str | None
 ) -> EventApproval:
-    """Approve the live version of ``geo`` as ``reviewer`` and notify the owner.
+    """Approve the live version of ``geo`` as ``reviewer``, resolve the review requests they
+    received for it, and notify the owner and those requesters.
 
     409 ``invalid_state`` off ``geolocated`` (a closed event keeps its approvals readable but
     takes no new one); 403 ``geolocator_cannot_approve`` for a geolocator of the event; 409
@@ -134,7 +138,7 @@ def approve(
     # Mirrored by the frontend's lib/approvals.canApprove; change both.
     if geo.status != STATUS_GEOLOCATED:
         raise EventNotApprovableError("Only a published geolocation can be approved")
-    if _is_geolocator(db, geo=geo, user_id=reviewer.id):
+    if is_geolocator(db, geo=geo, user_id=reviewer.id):
         raise GeolocatorCannotApproveError("A geolocator of this event cannot approve it")
     if version_no != geo.version_no:
         raise VersionMismatchError(
@@ -153,7 +157,19 @@ def approve(
         raise AlreadyApprovedError("You already reviewed this version")
     row = EventApproval(event_id=geo.id, version_no=version_no, reviewer_id=reviewer.id, note=note)
     db.add(row)
-    notifications.notify_approval_received(db, event=geo, reviewer_id=reviewer.id)
+    requester_ids = db.scalars(
+        update(ReviewRequest)
+        .where(
+            ReviewRequest.event_id == geo.id,
+            ReviewRequest.target_user_id == reviewer.id,
+            ReviewRequest.status == "open",
+        )
+        .values(status="approved", resolved_at=datetime.now(UTC))
+        .returning(ReviewRequest.requester_id)
+    ).all()
+    notifications.notify_approval_received(
+        db, event=geo, reviewer_id=reviewer.id, requester_ids=requester_ids
+    )
     db.commit()
     db.refresh(row)
     return row

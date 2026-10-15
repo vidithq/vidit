@@ -170,6 +170,18 @@ def _approval_received(n: Notification, to: str) -> email.Email:
     )
 
 
+def _review_request_received(n: Notification, to: str) -> email.Email:
+    return email.review_request_received_email(
+        to=to, actor=n.actor.username, event_id=str(n.event.id), event_title=n.event.title
+    )
+
+
+def _review_request_declined(n: Notification, to: str) -> email.Email:
+    return email.review_request_declined_email(
+        to=to, actor=n.actor.username, event_id=str(n.event.id), event_title=n.event.title
+    )
+
+
 _EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Email]] = {
     "request_fulfilled": _request_fulfilled,
     "new_follower": _new_follower,
@@ -183,6 +195,8 @@ _EMAIL_BUILDERS: dict[NotificationKind, Callable[[Notification, str], email.Emai
     "organization_admin_inherited": _organization_admin_inherited,
     "re_approve_requested": _re_approve_requested,
     "approval_received": _approval_received,
+    "review_request_received": _review_request_received,
+    "review_request_declined": _review_request_declined,
 }
 
 
@@ -309,6 +323,22 @@ def _approval_received_push(n: Notification) -> push.PushMessage:
     )
 
 
+def _review_request_received_push(n: Notification) -> push.PushMessage:
+    return push.PushMessage(
+        title=f"{n.actor.username} asks you to review a geolocation",
+        body=n.event.title,
+        path=f"/events/{n.event.id}",
+    )
+
+
+def _review_request_declined_push(n: Notification) -> push.PushMessage:
+    return push.PushMessage(
+        title=f"{n.actor.username} declined to review your geolocation",
+        body=n.event.title,
+        path=f"/events/{n.event.id}",
+    )
+
+
 _PUSH_BUILDERS: dict[NotificationKind, Callable[[Notification], push.PushMessage]] = {
     "request_fulfilled": _request_fulfilled_push,
     "new_follower": _new_follower_push,
@@ -322,6 +352,8 @@ _PUSH_BUILDERS: dict[NotificationKind, Callable[[Notification], push.PushMessage
     "organization_admin_inherited": _organization_admin_inherited_push,
     "re_approve_requested": _re_approve_requested_push,
     "approval_received": _approval_received_push,
+    "review_request_received": _review_request_received_push,
+    "review_request_declined": _review_request_declined_push,
 }
 
 
