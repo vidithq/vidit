@@ -227,6 +227,12 @@ erDiagram
         TIMESTAMPTZ created_at
     }
 
+    event_geolocator_departures {
+        UUID event_id FK
+        UUID user_id FK "the former geolocator"
+        TIMESTAMPTZ created_at "the first departure"
+    }
+
     event_approvals {
         UUID id PK
         UUID event_id FK
@@ -495,6 +501,8 @@ erDiagram
     users ||--o{ event_geolocators : "user_id"
     events ||--o{ event_geolocator_invites : "event_id"
     users ||--o{ event_geolocator_invites : "user_id"
+    events ||--o{ event_geolocator_departures : "event_id"
+    users ||--o{ event_geolocator_departures : "user_id"
     events ||--o{ event_approvals : "event_id"
     users ||--o{ event_approvals : "reviewer_id"
     users |o--o{ event_approvals : "revoked_by_id"
@@ -789,6 +797,21 @@ Composite PK: `(event_id, user_id)`: one pending invitation per analyst and even
 - `ix_event_geolocator_invites_user_id` on `(user_id)`. Backs the cascade when an invitee's account is erased.
 
 The service caps geolocators plus pending invitations at 10 per event (`MAX_EVENT_GEOLOCATORS`).
+
+### `event_geolocator_departures`
+
+An analyst who held an event's credit and lost it: the owner removed them, or they left. [`services/geolocator_credit.remove`](../backend/app/services/geolocator_credit.py) writes the row in the transaction that deletes the `event_geolocators` row. A former geolocator neither approves the event nor receives a review request for it, as a current one.
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE |
+| `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE. The former geolocator. |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL. The first departure; a later one leaves the row unchanged. |
+
+Composite PK: `(event_id, user_id)`. Its leading `event_id` serves the eligibility checks.
+
+**Indexes:**
+- `ix_event_geolocator_departures_user_id` on `(user_id)`. Backs the cascade when the analyst's account is erased.
 
 ---
 

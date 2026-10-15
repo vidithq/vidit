@@ -16,11 +16,18 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.approval import EventApproval
 from app.models.collection import Collection, CollectionEvent
-from app.models.event import STATUS_GEOLOCATED, Event, EventGeolocator, EventGeolocatorInvite
+from app.models.event import (
+    STATUS_GEOLOCATED,
+    Event,
+    EventGeolocator,
+    EventGeolocatorDeparture,
+    EventGeolocatorInvite,
+)
 from app.models.review_request import ReviewRequest
 from app.models.user import User
 from app.schemas.user import AuthorRef
@@ -244,7 +251,9 @@ def remove(db: Session, *, geo: Event, actor: User, username: str) -> None:
 
     The owner cannot leave (409 ``owner_cannot_leave``); anyone else removing someone else is
     403. A removed analyst's collections drop the event in the same transaction, since a
-    collection holds only credited work. The owner's removal notifies the analyst removed.
+    collection holds only credited work, and an ``event_geolocator_departures`` row records the
+    departure, so they never approve the event. The owner's removal notifies the analyst
+    removed.
     """
     geo = _lock(db, geo.id)
     target = db.query(User).filter(User.username == username).first()
@@ -259,6 +268,11 @@ def remove(db: Session, *, geo: Event, actor: User, username: str) -> None:
         delete(EventGeolocator).where(
             EventGeolocator.event_id == geo.id, EventGeolocator.user_id == target.id
         )
+    )
+    db.execute(
+        insert(EventGeolocatorDeparture)
+        .values(event_id=geo.id, user_id=target.id, created_at=datetime.now(UTC))
+        .on_conflict_do_nothing(index_elements=["event_id", "user_id"])
     )
     db.execute(
         delete(CollectionEvent).where(

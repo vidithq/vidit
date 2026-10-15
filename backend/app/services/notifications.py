@@ -23,7 +23,13 @@ from sqlalchemy.orm import Query, Session, aliased, contains_eager, joinedload
 
 from app.config import settings
 from app.models.approval import EventApproval
-from app.models.event import STATUS_GEOLOCATED, Event, EventGeolocator, EventGeolocatorInvite
+from app.models.event import (
+    STATUS_GEOLOCATED,
+    Event,
+    EventGeolocator,
+    EventGeolocatorDeparture,
+    EventGeolocatorInvite,
+)
 from app.models.notification import (
     Notification,
     NotificationChannel,
@@ -472,7 +478,7 @@ def reapproval_offers(
     db: Session, *, user: User, rows: list[Notification]
 ) -> dict[OfferKey, ReapprovalOffer]:
     """The offer of each event among ``rows``' re-approval and review requests that ``user``
-    can approve now, as themselves or for the organization the row names: published, not
+    can approve now, as themselves or for the organization the row names: published, never
     credited to them, and not yet approved at the live version (by them, or by the organization,
     which they must still administer).
 
@@ -496,6 +502,13 @@ def reapproval_offers(
             select(EventGeolocator.event_id).where(
                 EventGeolocator.user_id == user.id,
                 EventGeolocator.event_id.in_(event_ids),
+            )
+        )
+    ) | set(
+        db.scalars(
+            select(EventGeolocatorDeparture.event_id).where(
+                EventGeolocatorDeparture.user_id == user.id,
+                EventGeolocatorDeparture.event_id.in_(event_ids),
             )
         )
     )

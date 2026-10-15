@@ -8,7 +8,7 @@ Placing one locks the event row and compares the version the client read with th
 an approval never lands on a version its reviewer did not see.
 
 The event's geolocators (its owner and every credited co-geolocator) cannot approve it, neither
-as themselves nor for an organization. Accepting a co-geolocator invitation revokes the
+as themselves nor for an organization, and neither can a former co-geolocator, removed or gone. Accepting a co-geolocator invitation revokes the
 invitee's approvals (``geolocator_credit.revoke_approvals_on_join``). An approval resolves every
 open review request its target (the analyst, or the organization) received for the event, and
 the requesters hear of it as the owner does.
@@ -19,11 +19,16 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import and_, update
+from sqlalchemy import Select, and_, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.approval import ApprovalRevoker, EventApproval
-from app.models.event import STATUS_GEOLOCATED, Event, EventGeolocator
+from app.models.event import (
+    STATUS_GEOLOCATED,
+    Event,
+    EventGeolocator,
+    EventGeolocatorDeparture,
+)
 from app.models.organization import Organization
 from app.models.review_request import ReviewRequest
 from app.models.user import User
@@ -102,6 +107,22 @@ def is_geolocator(db: Session, *, geo: Event, user_id: uuid.UUID) -> bool:
     return geo.owner_id == user_id or db.get(EventGeolocator, (geo.id, user_id)) is not None
 
 
+def former_geolocator_ids(event_id: uuid.UUID) -> Select[tuple[uuid.UUID]]:
+    """The analysts who held credit on the event and lost it."""
+    return select(EventGeolocatorDeparture.user_id).where(
+        EventGeolocatorDeparture.event_id == event_id
+    )
+
+
+def ever_credited(db: Session, *, geo: Event, user_id: uuid.UUID) -> bool:
+    """Whether ``user_id`` holds or held credit on ``geo``: such an analyst neither approves it
+    nor is asked to review it."""
+    return (
+        is_geolocator(db, geo=geo, user_id=user_id)
+        or db.get(EventGeolocatorDeparture, (geo.id, user_id)) is not None
+    )
+
+
 def build_read(row: EventApproval, *, live_version: int) -> ApprovalRead:
     return ApprovalRead(
         id=row.id,
@@ -169,7 +190,7 @@ def approve(
 
     409 ``invalid_state`` off ``geolocated`` (a closed event keeps its approvals readable but
     takes no new one); 403 ``not_organization_admin`` when ``reviewer`` is not an org-admin of
-    ``organization``; 403 ``geolocator_cannot_approve`` for a geolocator of the event; 409
+    ``organization``; 403 ``geolocator_cannot_approve`` for a current or former geolocator of the event; 409
     ``version_mismatch`` when ``version_no`` is not the live version; 409 ``already_approved``
     when ``reviewer`` already reviewed that version, revoked or not, or when the approval
     ``organization`` gave it stands.
@@ -182,8 +203,10 @@ def approve(
         db, org_id=organization.id, user_id=reviewer.id
     ):
         raise NotOrganizationAdminError("Only an org-admin can approve in its name")
-    if is_geolocator(db, geo=geo, user_id=reviewer.id):
-        raise GeolocatorCannotApproveError("A geolocator of this event cannot approve it")
+    if ever_credited(db, geo=geo, user_id=reviewer.id):
+        raise GeolocatorCannotApproveError(
+            "A geolocator of this event, current or former, cannot approve it"
+        )
     if version_no != geo.version_no:
         raise VersionMismatchError(
             f"This event is at version {geo.version_no}; reload it before approving"

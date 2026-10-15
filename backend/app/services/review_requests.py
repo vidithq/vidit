@@ -2,8 +2,9 @@
 review it.
 
 The requester is one of the event's geolocators (its owner or an accepted co-geolocator). The
-target must be able to approve the event, so a geolocator of it cannot be asked, and an
-organization needs a live org-admin outside the event's geolocators. The target's
+target must be able to approve the event, so a current or former geolocator of it cannot be
+asked, and an organization needs a live org-admin outside the event's current and former
+geolocators. The target's
 ``review_request_audience`` decides who may ask: analysts they follow (the default), everyone,
 or nobody. An organization's org-admins set its audience, and ``following`` there admits an
 analyst whom any live org-admin follows. A request is open until the target approves the event,
@@ -43,7 +44,7 @@ from app.schemas.review_request import (
 )
 from app.schemas.user import AuthorRef
 from app.services import notifications
-from app.services.approvals import is_geolocator
+from app.services.approvals import ever_credited, former_geolocator_ids, is_geolocator
 from app.services.event_filters import visible_events
 from app.services.organizations import is_organization_admin, live_admin_ids
 
@@ -161,7 +162,7 @@ def organization_accepts_requests_from(requester_id: uuid.UUID) -> ColumnElement
 
 def _can_act_for(geo: Event) -> ColumnElement[bool]:
     """The predicate for an organization (``Organization``) with a live org-admin outside the
-    geolocators of ``geo``, who can approve it in the organization's name."""
+    current and former geolocators of ``geo``, who can approve it in the organization's name."""
     return (
         live_admin_ids(Organization.id)
         .where(
@@ -169,6 +170,7 @@ def _can_act_for(geo: Event) -> ColumnElement[bool]:
             OrganizationMember.user_id.not_in(
                 select(EventGeolocator.user_id).where(EventGeolocator.event_id == geo.id)
             ),
+            OrganizationMember.user_id.not_in(former_geolocator_ids(geo.id)),
         )
         .exists()
     )
@@ -275,6 +277,7 @@ def _eligible_analysts(db: Session, *, geo: Event, requester: User, q: str) -> l
         User.is_active.is_(True),
         User.id != geo.owner_id,
         User.id.not_in(select(EventGeolocator.user_id).where(EventGeolocator.event_id == geo.id)),
+        User.id.not_in(former_geolocator_ids(geo.id)),
         User.id.not_in(
             select(EventApproval.reviewer_id).where(
                 EventApproval.event_id == geo.id,
@@ -338,10 +341,10 @@ def eligible_targets(
 ) -> ReviewRequestTargetList:
     """The analysts and organizations ``requester`` can ask to review ``geo`` now.
 
-    Analysts: live, outside the event's geolocators, whose audience admits ``requester``, who
+    Analysts: live, outside the event's current and former geolocators, whose audience admits ``requester``, who
     have not reviewed the live version and hold no open request from ``requester`` on it.
     ``query`` narrows by a case-insensitive substring of the username, prefix matches first.
-    Organizations: with a live org-admin outside the geolocators, whose audience admits
+    Organizations: with a live org-admin outside the current and former geolocators, whose audience admits
     ``requester``, without a standing approval of the live version or an open request from
     ``requester``, by name; ``query`` narrows by a substring of the name or the slug.
     """
@@ -382,8 +385,10 @@ def _check_analyst_target(db: Session, *, geo: Event, requester: User, username:
     )
     if target is None:
         raise TargetNotFoundError("No analyst with that username")
-    if is_geolocator(db, geo=geo, user_id=target.id):
-        raise TargetIsGeolocatorError("A geolocator of this event cannot review it")
+    if ever_credited(db, geo=geo, user_id=target.id):
+        raise TargetIsGeolocatorError(
+            "A geolocator of this event, current or former, cannot review it"
+        )
     admitted = db.scalar(
         select(accepts_requests_from(requester.id)).select_from(User).where(User.id == target.id)
     )
@@ -427,7 +432,8 @@ def _check_organization_target(
         select(_can_act_for(geo)).select_from(Organization).where(Organization.id == org.id)
     ):
         raise TargetIsGeolocatorError(
-            "No org-admin of this organization outside the geolocators of this event can review it"
+            "No org-admin of this organization outside the current and former geolocators of this "
+            "event can review it"
         )
     admitted = db.scalar(
         select(organization_accepts_requests_from(requester.id))
@@ -478,8 +484,8 @@ def request_review(
 
     409 ``invalid_state`` off ``geolocated``; 403 ``not_a_geolocator`` when ``requester`` is
     not credited on the event; 404 ``user_not_found`` or ``organization_not_found``; 403
-    ``target_is_geolocator`` for a geolocator target, or an organization whose every live
-    org-admin is a geolocator; 403 ``requests_not_accepted`` when the target's audience refuses
+    ``target_is_geolocator`` for a current or former geolocator target, or an organization whose
+    every live org-admin is one; 403 ``requests_not_accepted`` when the target's audience refuses
     ``requester``; 409 ``already_approved`` when the target approved the live version; 409
     ``already_requested`` for a second open request; 429 ``daily_cap_reached`` past the daily
     cap.
