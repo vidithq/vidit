@@ -287,6 +287,19 @@ def test_a_site_admin_revokes_any_approval_and_is_audited(db, author, second_use
     assert audit.target["approval_id"] == approval["id"]
 
 
+def test_a_site_admin_revokes_on_a_withheld_event_and_others_find_none(
+    db, author, second_user, admin_user
+):
+    geo = _published(db, author)
+    approval = _approve(geo, second_user).json()
+    geo.hidden_at = datetime.now(UTC)
+    db.commit()
+
+    assert _revoke(geo, approval["id"], second_user).status_code == 404
+    response = _revoke(geo, approval["id"], admin_user, reason="Taken down")
+    assert response.status_code == 200, response.text
+
+
 def test_revoking_an_approval_of_another_event_is_not_found(db, author, second_user):
     geo = _published(db, author)
     other = _published(db, author)
