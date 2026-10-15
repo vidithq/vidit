@@ -1309,7 +1309,8 @@ export interface paths {
         };
         /**
          * List Approvals
-         * @description The approvals of the event: one version's, or one analyst's across versions.
+         * @description The approvals of the event: one version's, every version's, or one analyst's across
+         *     versions, and whether you may approve it.
          */
         get: operations["list_approvals_api_v1_events__geolocation_id__approvals_get"];
         put?: never;
@@ -2949,6 +2950,19 @@ export interface components {
             organization?: string | null;
             /** Version No */
             version_no: number;
+        };
+        /**
+         * ApprovalList
+         * @description ``GET /events/{id}/approvals``: the reviews, and whether the caller may approve the
+         *     event at all. ``viewer_can_approve`` is false for an anonymous caller, an event that is not
+         *     published, and an analyst who holds or held credit on it; whether the caller already
+         *     reviewed the live version reads from ``items``.
+         */
+        ApprovalList: {
+            /** Items */
+            items: components["schemas"]["ApprovalRead"][];
+            /** Viewer Can Approve */
+            viewer_can_approve: boolean;
         };
         /**
          * ApprovalRead
@@ -7145,9 +7159,11 @@ export interface operations {
     list_approvals_api_v1_events__geolocation_id__approvals_get: {
         parameters: {
             query?: {
-                /** @description Defaults to the live version unless reviewer is set */
+                /** @description Defaults to the live version unless reviewer or all_versions is set */
                 version_no?: number | null;
                 reviewer?: string | null;
+                /** @description Every version's approvals, oldest first */
+                all_versions?: boolean;
             };
             header?: never;
             path: {
@@ -7165,7 +7181,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApprovalRead"][];
+                    "application/json": components["schemas"]["ApprovalList"];
                 };
             };
             /** @description Validation Error */

@@ -123,6 +123,17 @@ def ever_credited(db: Session, *, geo: Event, user_id: uuid.UUID) -> bool:
     )
 
 
+def may_approve(db: Session, *, geo: Event, user: User | None) -> bool:
+    """Whether ``user`` may approve ``geo`` at all, as themselves or for an organization: signed
+    in, the event published, and never credited on it. ``approve`` also checks the version and
+    an earlier review of it."""
+    return (
+        user is not None
+        and geo.status == STATUS_GEOLOCATED
+        and not ever_credited(db, geo=geo, user_id=user.id)
+    )
+
+
 def build_read(row: EventApproval, *, live_version: int) -> ApprovalRead:
     """``current`` holds while the approval covers the live version of a published event: a
     closed event keeps its approvals readable, none of them current."""
@@ -180,7 +191,8 @@ def list_approvals(
     ``version_no`` keeps one version and ``reviewer`` one analyst's own reviews (by username,
     without those they placed for an organization); either may be omitted. A soft-deleted
     analyst's review is left out, as a soft-deleted geolocator is; an organization's review stays
-    whatever became of the member who placed it.
+    whatever became of the member who placed it. Past ``MAX_APPROVALS_LISTED`` the newest stay,
+    so a read of every version keeps the live version's.
     """
     query = (
         db.query(EventApproval)
@@ -192,11 +204,16 @@ def list_approvals(
         query = query.filter(EventApproval.version_no == version_no)
     if reviewer is not None:
         query = query.filter(User.username == reviewer, EventApproval.organization_id.is_(None))
-    return (
-        query.order_by(EventApproval.version_no, EventApproval.created_at, EventApproval.id)
+    newest = (
+        query.order_by(
+            EventApproval.version_no.desc(),
+            EventApproval.created_at.desc(),
+            EventApproval.id.desc(),
+        )
         .limit(MAX_APPROVALS_LISTED)
         .all()
     )
+    return newest[::-1]
 
 
 def approve(
@@ -284,7 +301,7 @@ def _revoker_role(db: Session, row: EventApproval, actor: User) -> ApprovalRevok
     An analyst's approval: its reviewer, then a site admin. An organization's approval: its
     current org managers (its reviewer among them), then a site admin. A reviewer who is no longer
     an org manager no longer acts in the organization's name. Mirrored by the frontend's
-    ApprovalsSection Revoke control; change both.
+    Approvals.tsx Revoke control; change both.
     """
     if row.organization_id is None:
         if row.reviewer_id == actor.id:

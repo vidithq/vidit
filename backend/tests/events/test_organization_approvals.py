@@ -152,7 +152,7 @@ def test_an_org_manager_approves_for_the_organization(db, author, make_user, mak
     assert body["current"] is True
 
     client.cookies.clear()
-    listed = client.get(f"{_EVENTS}/{geo.id}/approvals").json()
+    listed = client.get(f"{_EVENTS}/{geo.id}/approvals").json()["items"]
     assert [a["organization"]["slug"] for a in listed] == [org.slug]
     [received] = _rows(db, author, "approval_received")
     assert (received.actor_id, received.organization_id) == (manager.id, org.id)
@@ -173,7 +173,7 @@ def test_an_organization_approval_outlives_the_acting_org_managers_account(
     assert erased.status_code == 200, erased.text
 
     client.cookies.clear()
-    rows = client.get(f"{_EVENTS}/{geo.id}/approvals").json()
+    rows = client.get(f"{_EVENTS}/{geo.id}/approvals").json()["items"]
     assert [(r["organization"]["slug"], r["reviewer"], r["current"]) for r in rows] == [
         (org.slug, None, True)
     ]
@@ -198,7 +198,7 @@ def test_an_organization_approval_stays_listed_when_its_member_is_banned(
     db.commit()
 
     client.cookies.clear()
-    rows = client.get(f"{_EVENTS}/{geo.id}/approvals").json()
+    rows = client.get(f"{_EVENTS}/{geo.id}/approvals").json()["items"]
     assert [(r["organization"]["slug"], r["reviewer"]) for r in rows] == [(org.slug, None)]
     listed = client.get(f"{_ORGS}/{org.slug}/approvals").json()
     assert [item["approval"]["reviewer"] for item in listed] == [None]
@@ -334,7 +334,7 @@ def test_a_new_version_resets_and_asks_the_org_managers(
     db.refresh(geo)
 
     client.cookies.clear()
-    assert client.get(f"{_EVENTS}/{geo.id}/approvals").json() == []
+    assert client.get(f"{_EVENTS}/{geo.id}/approvals").json()["items"] == []
 
     asked = _rows(db, acting, "re_approve_requested")
     assert {r.organization_id for r in asked} == {None, org.id}

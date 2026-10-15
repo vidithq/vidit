@@ -372,15 +372,15 @@ export const NO_UNREAD: UnreadCount = { count: 0 };
 
 const ORGANIZATION_REF = { slug: ORGANIZATION_SLUG, name: ORGANIZATION.name, avatar_url: null };
 
-/** The live version's approvals on the shared event: one standing review with a note long
- *  enough to wrap, and one the organization's long name signs, so the Approvals card is
- *  measured at phone widths. */
 const SECOND_REVIEWER = {
   id: "77777777-7777-4777-8777-777777777771",
   username: "second_reviewer_with_a_long_handle",
   avatar_url: null,
 };
 
+/** The live version's approvals on the shared event: one standing review with a note long
+ *  enough to wrap, one the organization's long name signs, and five more, so the header stamps
+ *  fold into a `+N` bubble and the Approvals panel is measured at phone widths. */
 export const EVENT_APPROVALS: Approval[] = [
   {
     id: "66666666-6666-4666-8666-666666666661",
@@ -408,6 +408,25 @@ export const EVENT_APPROVALS: Approval[] = [
     revoked_as: null,
     organization: ORGANIZATION_REF,
   },
+  ...[3, 4, 5, 6, 7].map(
+    (n): Approval => ({
+      id: `66666666-6666-4666-8666-66666666666${n}`,
+      version_no: 1,
+      verdict: "approve",
+      reviewer: {
+        id: `77777777-7777-4777-8777-77777777777${n}`,
+        username: `reviewer_${n}`,
+        avatar_url: null,
+      },
+      note: null,
+      created_at: `2025-01-${String(n + 4).padStart(2, "0")}T08:30:00Z`,
+      current: true,
+      revoked_at: null,
+      revoke_reason: null,
+      revoked_as: null,
+      organization: null,
+    }),
+  ),
 ];
 
 /** The approvals placed in the organization's name, as its page lists them. */

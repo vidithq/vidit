@@ -6,7 +6,6 @@ import { useParams } from "next/navigation";
 import type { EventDetail } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { AuthorByline } from "@/components/ui/AuthorByline";
-import { ApprovalsSection } from "@/components/event/ApprovalsSection";
 import { EventPageBody } from "@/components/event/EventPageBody";
 import { ReviewRequestsSection } from "@/components/event/ReviewRequestsSection";
 import { useEventActions } from "@/components/event/useEventActions";
@@ -24,12 +23,13 @@ export default function EventPage() {
     refetch,
   } = useApiResource<EventDetail>(eventId ? `/events/${eventId}` : null);
   // Geolocated events carry only the utilities tier plus, for the author, edit and close (which refetch). Called before early returns.
+  const [approvedCount, setApprovedCount] = useState(0);
   const { actions, panels } = useEventActions({
     event: geo,
     surface: "event",
     onChanged: refetch,
+    onApproved: () => setApprovedCount((n) => n + 1),
   });
-  const [approvedCount, setApprovedCount] = useState(0);
 
   if (error)
     return (
@@ -60,15 +60,7 @@ export default function EventPage() {
         <EventPageBody geo={geo} />
 
         {hasPublishedRecord(geo) && (
-          <>
-            <ReviewRequestsSection event={geo} refreshKey={approvedCount} />
-            <ApprovalsSection
-              event={geo}
-              versionNo={geo.version_no}
-              live
-              onApproved={() => setApprovedCount((n) => n + 1)}
-            />
-          </>
+          <ReviewRequestsSection event={geo} refreshKey={approvedCount} />
         )}
     </PageShell>
   );

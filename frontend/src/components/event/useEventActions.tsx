@@ -2,9 +2,11 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { CircleX, History, MapPin, Pencil, Users } from "lucide-react";
+import { CircleX, History, MapPin, Pencil, Stamp, Users } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { useApiResource } from "@/hooks/useApiResource";
+import { allApprovalsPath, type ApprovalList } from "@/lib/approvals";
 import { COLLECTABLE_STATUSES, CollectionIcon } from "@/lib/collections";
 import { eventHistoryHref, hasPublishedRecord } from "@/lib/events";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
@@ -12,6 +14,7 @@ import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ACCENT_SURFACE } from "@/components/ui/styles";
+import { ApprovalStamps, ApprovalsPanel } from "@/components/event/Approvals";
 import { closeActionLabel, CloseEventForm } from "@/components/event/CloseEventForm";
 import { GeolocatorInviteCard, GeolocatorsPanel } from "@/components/event/GeolocatorCredit";
 import ShareButtons from "@/components/event/ShareButtons";
@@ -25,9 +28,9 @@ import type { EventDetail } from "@/types";
  * Three tiers, in this order, in the surface's top-right slot (`docs/design.md`, Page chrome):
  *
  * 1. **Utilities**, far right, icon-compact: the share pair plus the report flag on the detail
- *    pages. The event page opens the row with the version history. The edit form carries none
- *    (they would act on a record other than the one on screen), nor does the map panel (actions
- *    belong to the page its title links to).
+ *    pages. The event page opens the row with the version history and the approvals. The edit
+ *    form carries none (they would act on a record other than the one on screen), nor does the
+ *    map panel (actions belong to the page its title links to).
  * 2. **The flow action**, at most one, filled. Only an open request carries one (geolocate it).
  * 3. **Owner management**, icon buttons only the author holds: editing an open request
  *    (overwrites it) on both detail pages; on the event page also shelving the row on one of the
@@ -37,6 +40,9 @@ import type { EventDetail } from "@/types";
  *    co-geolocator shares two of these on a published row: shelving it on their own collections
  *    and the geolocators panel (the owner invites and removes there, a co-geolocator leaves).
  *    An analyst the owner invited gets the invitation card among the panels instead.
+ *
+ * Under the row, on the event page of a published row, the current approvals sit as stamps; the
+ * Approvals trigger beside History opens the panel that approves, lists and revokes them.
  *
  * The hook returns nodes rather than rendering them (like `useReportContent`) because the row and
  * the panels its triggers open land in different slots: `actions` goes in `PageShell`'s `actions`
@@ -58,7 +64,8 @@ export type ActionSurface = "event" | "request" | "panel" | "edit";
 // a row back, both detail pages). The two edits never appear together (no row is both requested
 // and published) and lead to one edit address. Per-status offers are decided below, so a surface
 // never offers a close to a row that cannot take one. `history` is the public read into a
-// published record's versions, first in the utilities row, event page only.
+// published record's versions, first in the utilities row, event page only. `approvals` is the
+// stamps under the row and the Approvals trigger after History, event page only.
 const TIERS: Record<
   ActionSurface,
   {
@@ -70,18 +77,20 @@ const TIERS: Record<
     history: boolean;
     utilities: boolean;
     credit: boolean;
+    approvals: boolean;
   }
 > = {
-  event:   { flow: false, collect: true,  editRequest: true,  saveVersion: true,  close: true,  history: true,  utilities: true,  credit: true },
-  request: { flow: true,  collect: false, editRequest: true,  saveVersion: false, close: true,  history: false, utilities: true,  credit: false },
-  panel:   { flow: false, collect: false, editRequest: false, saveVersion: false, close: false, history: false, utilities: false, credit: false },
-  edit:    { flow: false, collect: false, editRequest: false, saveVersion: false, close: false, history: false, utilities: false, credit: false },
+  event:   { flow: false, collect: true,  editRequest: true,  saveVersion: true,  close: true,  history: true,  utilities: true,  credit: true,  approvals: true },
+  request: { flow: true,  collect: false, editRequest: true,  saveVersion: false, close: true,  history: false, utilities: true,  credit: false, approvals: false },
+  panel:   { flow: false, collect: false, editRequest: false, saveVersion: false, close: false, history: false, utilities: false, credit: false, approvals: false },
+  edit:    { flow: false, collect: false, editRequest: false, saveVersion: false, close: false, history: false, utilities: false, credit: false, approvals: false },
 };
 
 // Ties the menu entry to the panel it opens (`aria-controls`; they are not DOM siblings).
 const CLOSE_FORM_ID = "close-request-form";
 const COLLECT_PANEL_ID = "add-to-collection-panel";
 const CREDIT_PANEL_ID = "geolocators-panel";
+const APPROVALS_PANEL_ID = "approvals-panel";
 
 export interface EventActionsOptions {
   /** The row to act on. Null while it loads: both nodes come back null. */
@@ -89,6 +98,8 @@ export interface EventActionsOptions {
   surface: ActionSurface;
   /** Runs after a write that changes the row (close). */
   onChanged?: () => void;
+  /** Runs after an approval lands, which resolves review requests. */
+  onApproved?: () => void;
 }
 
 export interface EventActions {
@@ -102,6 +113,7 @@ export function useEventActions({
   event,
   surface,
   onChanged,
+  onApproved,
 }: EventActionsOptions): EventActions {
   const { user } = useAuth();
   // The report control is its own state machine (works signed out, outlives other actions),
@@ -110,6 +122,7 @@ export function useEventActions({
   const [closing, setClosing] = useState(false);
   const [collecting, setCollecting] = useState(false);
   const [crediting, setCrediting] = useState(false);
+  const [approving, setApproving] = useState(false);
 
   const tiers = event ? TIERS[surface] : null;
   const isAuthor = !!event && user?.id === event.owner.id;
@@ -119,6 +132,9 @@ export function useEventActions({
   // The event read says whether the reader holds an invitation; an answer hides the card at
   // once, before the caller's refetch lands.
   const [answeredFor, setAnsweredFor] = useState<string | null>(null);
+  const approvals = useApiResource<ApprovalList>(
+    event && tiers?.approvals && hasPublishedRecord(event) ? allApprovalsPath(event.id) : null,
+  );
 
   // This hook survives a client navigation between rows, so per-event state follows the row, not
   // the mount: otherwise the next row opens with the previous one's close panel open.
@@ -126,6 +142,7 @@ export function useEventActions({
     setClosing(false);
     setCollecting(false);
     setCrediting(false);
+    setApproving(false);
   }, [event?.id]);
 
   if (!event || !tiers) return { actions: null, panels: null };
@@ -152,6 +169,7 @@ export function useEventActions({
   const invited =
     sharesCredit && !isAuthor && !isGeolocator && event.viewer_invite_pending === true &&
     answeredFor !== event.id;
+  const showsApprovals = tiers.approvals && hasPublishedRecord(event);
 
   // A surface whose tiers are all off, or off for this row, gets nothing rather than an empty row:
   // the wrapper is an item in the host's cluster, so an empty one prints a gap beside the host's
@@ -165,10 +183,9 @@ export function useEventActions({
     !canSaveVersion &&
     !canClose;
 
-  return {
-    // `flex-wrap` plus `justify-end`: the row is wider than a phone, so it breaks into right-aligned
-    // lines instead of pushing the header sideways (PageShell caps the cluster at the header width).
-    actions: rowIsEmpty ? null : (
+  // `flex-wrap` plus `justify-end`: the row is wider than a phone, so it breaks into right-aligned
+  // lines instead of pushing the header sideways (PageShell caps the cluster at the header width).
+  const row = rowIsEmpty ? null : (
       <div className="flex flex-wrap items-center justify-end gap-1.5">
         {tiers.flow && isOpenRequest && (
           <Link
@@ -246,8 +263,8 @@ export function useEventActions({
             <CircleX size={14} />
           </Button>
         )}
-        {/* The utilities tier, one unit so it stays together when the row wraps: history (event page
-            only), the share pair, then the report flag. Reading surfaces only: a form carries the controls
+        {/* The utilities tier, one unit so it stays together when the row wraps: history and approvals
+            (event page only), the share pair, then the report flag. Reading surfaces only: a form carries the controls
             that finish the edit. */}
         {tiers.utilities && (
           <div className="flex items-center gap-1.5">
@@ -264,6 +281,20 @@ export function useEventActions({
                 <History size={14} />
               </Link>
             )}
+            {showsApprovals && (
+              <Button
+                icon
+                variant="ghost"
+                onClick={() => setApproving((open) => !open)}
+                aria-controls={APPROVALS_PANEL_ID}
+                aria-expanded={approving}
+                aria-label="Approvals"
+                title="Approvals"
+                className={approving ? ACCENT_SURFACE : ""}
+              >
+                <Stamp size={14} />
+              </Button>
+            )}
             <ShareButtons
               id={event.id}
               title={event.title}
@@ -277,8 +308,20 @@ export function useEventActions({
           </div>
         )}
       </div>
+  );
+
+  return {
+    actions: showsApprovals ? (
+      <div className="flex flex-col items-end gap-2">
+        {row}
+        {approvals.data && (
+          <ApprovalStamps approvals={approvals.data.items} onOverflow={() => setApproving(true)} />
+        )}
+      </div>
+    ) : (
+      row
     ),
-    // Both panels open directly under the header, where their triggers are. They stack rather than
+    // The panels open directly under the header, where their triggers are. They stack rather than
     // replace each other: each is its own titled card.
     panels: (
       <>
@@ -296,6 +339,18 @@ export function useEventActions({
             <Card as="section">
               <SectionEyebrow title="Geolocators" margin="none" />
               <GeolocatorsPanel event={event} onChanged={() => onChanged?.()} />
+            </Card>
+          </div>
+        )}
+        {showsApprovals && approving && (
+          <div id={APPROVALS_PANEL_ID}>
+            <Card as="section">
+              <SectionEyebrow title="Approvals" margin="none" />
+              <ApprovalsPanel
+                event={event}
+                approvals={approvals}
+                onApproved={() => onApproved?.()}
+              />
             </Card>
           </div>
         )}
