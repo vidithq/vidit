@@ -7,8 +7,8 @@ push) whose switch for the kind is on, a ``notification_deliveries`` row joins
 it for the worker to send. An actor whose actions queued
 ``settings.notification_email_daily_cap_per_actor`` emails in the trailing day
 queues no more: the row still reaches the feed and push. Reads hide a
-row whose event is soft-deleted or taken down, or whose actor is soft-deleted,
-whenever that happened.
+row whose event is soft-deleted or taken down, or whose actor is soft-deleted or
+deactivated, whenever that happened.
 """
 
 from __future__ import annotations
@@ -347,7 +347,8 @@ def notify_re_approve_requested(
 
 
 def _visible_rows(db: Session, user: User) -> Query[Notification]:
-    """``user``'s rows whose event and actor a reader may still see."""
+    """``user``'s rows whose event and actor a reader may still see: the actor is neither
+    soft-deleted nor deactivated, the rule the drain applies to the recipient."""
     return (
         db.query(Notification)
         .outerjoin(Event, Notification.event_id == Event.id)
@@ -355,7 +356,10 @@ def _visible_rows(db: Session, user: User) -> Query[Notification]:
         .filter(
             Notification.user_id == user.id,
             or_(Notification.event_id.is_(None), and_(*visible_events())),
-            or_(Notification.actor_id.is_(None), _Actor.deleted_at.is_(None)),
+            or_(
+                Notification.actor_id.is_(None),
+                and_(_Actor.deleted_at.is_(None), _Actor.is_active.is_(True)),
+            ),
         )
     )
 
