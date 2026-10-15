@@ -17,6 +17,7 @@ from app.models.user import User
 from app.services import admin as admin_service
 from app.services import email, geolocator_credit, notification_delivery, organizations
 from app.services.auth import hash_password
+from app.services.event_filters import published_credited_to
 from app.services.sanitize import html_from_text
 from tests.conftest import login_as
 from tests.events._helpers import _make_geo, client
@@ -348,6 +349,21 @@ def test_author_filter_and_search_match_any_geolocator(db, author, second_user):
     ]
     suggestions = client.get("/api/v1/search/authors", params={"q": second_user.username})
     assert second_user.username in suggestions.json()["authors"]
+
+
+def test_published_credit_reads_match_through_the_geolocator_rows(db, author, second_user):
+    owned = _published(db, author)
+    shared = _published(db, second_user)
+    _credit(db, shared, author)
+    _make_geo(db, author=author, status="detected")
+
+    predicate = published_credited_to([author.id])
+    sql = str(predicate.compile(compile_kwargs={"literal_binds": True}))
+    assert "EXISTS" not in sql
+    assert "UNION" in sql
+    found = {e.id for e in db.query(Event).filter(predicate)}
+    assert {owned.id, shared.id} <= found
+    assert all(db.get(Event, event_id).status == "geolocated" for event_id in found)
 
 
 def test_followers_see_co_credited_work_in_their_timeline(db, author, second_user, make_user):
