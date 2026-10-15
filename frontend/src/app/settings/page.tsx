@@ -22,7 +22,11 @@ import { usePalette } from "@/hooks/usePalette";
 import { PALETTES } from "@/lib/palette";
 import { useTheme } from "@/hooks/useTheme";
 import { useApiResource } from "@/hooks/useApiResource";
-import { NOTIFICATION_KIND_COPY } from "@/lib/notifications";
+import {
+  CHANNEL_LABEL,
+  NOTIFICATION_KIND_COPY,
+  type NotificationChannel,
+} from "@/lib/notifications";
 import { Smartphone } from "lucide-react";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { formatDate } from "@/lib/format";
@@ -53,9 +57,7 @@ import {
 
 const SAVE_FAILED = "Could not save to your account. Try again.";
 
-type Channel = "email" | "push";
 
-const CHANNEL_LABEL: Record<Channel, string> = { email: "by email", push: "by push" };
 
 const PUSH_STATE_LINE: Record<PushDeviceState, string> = {
   unsupported: "This browser cannot receive push notifications.",
@@ -171,7 +173,7 @@ function NotificationsCard() {
   const { data, error } = useApiResource<UserPreferences>(PREFERENCES_PATH);
   const [saved, setSaved] = useState<UserPreferences | null>(null);
   const toggle = useMutation(
-    (kind: keyof typeof NOTIFICATION_KIND_COPY, channel: Channel, on: boolean) =>
+    (kind: keyof typeof NOTIFICATION_KIND_COPY, channel: NotificationChannel, on: boolean) =>
       updatePreferences({ notifications: { [kind]: { [channel]: on } } }),
     { fallback: SAVE_FAILED, onSuccess: (prefs) => setSaved(prefs) }
   );
@@ -191,7 +193,7 @@ function NotificationsCard() {
   const rows = (Array.isArray(notifications) ? notifications : []).filter(
     (row) => row.kind in NOTIFICATION_KIND_COPY
   );
-  const switches = (channel: Channel) =>
+  const switches = (channel: NotificationChannel) =>
     rows.map((row, i) => {
       const copy = NOTIFICATION_KIND_COPY[row.kind];
       const on = row.channels?.[channel] ?? false;

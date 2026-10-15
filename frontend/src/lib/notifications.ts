@@ -15,6 +15,15 @@ export function notificationsPath(cursor: string | null): string {
     : NOTIFICATIONS_PATH;
 }
 
+/** A delivery channel of a notification kind, as a Settings switch names it.
+ *  Mirrors backend `models/notification.NotificationChannel`; change both. */
+export type NotificationChannel = "email" | "push";
+
+export const CHANNEL_LABEL: Record<NotificationChannel, string> = {
+  email: "by email",
+  push: "by push",
+};
+
 /** The most ids one `POST /notifications/read` takes.
  *  Mirrors backend `schemas/notification` `MAX_PAGE_SIZE`; change both. */
 const MAX_READ_IDS = 100;

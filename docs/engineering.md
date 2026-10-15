@@ -480,6 +480,7 @@ Every other frontend copy of a backend rule or of the GitHub Project is hand-kep
 | `@viditbot` in `app/import/page.tsx` and `components/ui/MockPost.tsx` | `config.x_bot_handle` | guide names the wrong handle |
 | the Revoke control of `components/event/ApprovalsSection.tsx` | `approvals._revoker_role` | Revoke shows on an approval the server refuses to revoke, or hides on one it accepts |
 | `lib/reviewRequests.ts::REVIEW_REQUEST_AUDIENCE_DEFAULT` | `user_preferences.REVIEW_REQUEST_AUDIENCE_DEFAULT` | Settings shows an audience the server does not apply while preferences load |
+| `lib/notifications.ts::NotificationChannel`, `CHANNEL_LABEL` | `models/notification.NotificationChannel` (the preferences schema types channels as plain keys) | Settings offers no switch for a channel the server delivers on |
 | `lib/notifications.ts::NOTIFICATION_KIND_COPY` labels | the `setting` each notification builder passes in `services/email.py` | an email names a switch Settings does not show |
 | `lib/notifications.ts::MAX_READ_IDS` | `schemas/notification.NotificationReadUpdate.ids` (`MAX_PAGE_SIZE`) | marking a long feed read is refused with 422 and its rows stay unread |
 | the last org-admin rule in `components/organizations/OrganizationMembers.tsx` | `organizations._guard_last_admin` | the members list offers Leave or Make member that the server refuses, or hides one it accepts |
