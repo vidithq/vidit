@@ -294,6 +294,22 @@ def test_one_open_request_per_requester_target_and_event(db, author, make_user):
     assert _request(geo, author, target).status_code == 201
 
 
+def test_only_the_newest_request_row_offers_decline(db, author, make_user):
+    geo = _published(db, author)
+    target = make_user(follows=author)
+    first = _request(geo, author, target).json()
+    assert _decline(geo, first["id"], target).status_code == 200
+    _age_declines(db, geo)
+    db.query(Notification).filter(Notification.user_id == target.id).update(
+        {"created_at": datetime.now(UTC) - timedelta(days=8)}
+    )
+    db.commit()
+    second = _request(geo, author, target).json()
+
+    rows = [n for n in _feed(target) if n["kind"] == "review_request_received"]
+    assert [n["review_request_id"] for n in rows] == [second["id"], None]
+
+
 def test_a_decline_stops_the_same_request_for_seven_days(db, author, make_user):
     geo = _published(db, author)
     target = make_user(follows=author)
