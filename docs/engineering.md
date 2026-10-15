@@ -462,7 +462,7 @@ Every other frontend copy of a backend rule or of the GitHub Project is hand-kep
 | `lib/collections.ts::COLLECTABLE_STATUSES` | `event_filters.collectable_events` | picker offers rows the add verb refuses (409) |
 | `components/event/useEventActions.tsx` credit controls on `geolocated` rows only | `geolocator_credit._require_published` | the Geolocators panel offers an invitation the API refuses (409) |
 | `lib/approvals.ts::canApprove` | `approvals.approve` (published only, never a geolocator, one review per analyst and version, one standing approval per organization and version) | the Approvals card offers an approval the API refuses (403 or 409) |
-| `components/event/ApprovalsSection.tsx` Revoke on an organization's approval for its org-admins and site admins | `approvals._revoker_role` | the card offers a revocation the API refuses (403) |
+| `components/event/ApprovalsSection.tsx` Revoke on an organization's approval for its org managers and site admins | `approvals._revoker_role` | the card offers a revocation the API refuses (403) |
 | `lib/approvals.ts::standingApprovalBefore` | `notifications.reapproval_offers` `approved_version` (latest earlier unrevoked approval) | the Approvals card and the API's `approved_version` name different base versions |
 | `lib/approvals.ts::APPROVAL_NOTE_MAX_LEN` | `schemas/approval.APPROVAL_NOTE_MAX_LENGTH` | server refuses typed text |
 | `lib/reviewRequests.ts::canRequestReview` | `review_requests._require_requester` (published only, a geolocator of the event) | the Review requests card offers a request the API refuses (403 or 409) |
@@ -483,7 +483,7 @@ Every other frontend copy of a backend rule or of the GitHub Project is hand-kep
 | `lib/notifications.ts::NotificationChannel`, `CHANNEL_LABEL` | `models/notification.NotificationChannel` (the preferences schema types channels as plain keys) | Settings offers no switch for a channel the server delivers on |
 | `lib/notifications.ts::NOTIFICATION_KIND_COPY` labels | the `setting` each notification builder passes in `services/email.py` | an email names a switch Settings does not show |
 | `lib/notifications.ts::MAX_READ_IDS` | `schemas/notification.NotificationReadUpdate.ids` (`MAX_PAGE_SIZE`) | marking a long feed read is refused with 422 and its rows stay unread |
-| the last org-admin rule in `components/organizations/OrganizationMembers.tsx` | `organizations._guard_last_admin` | the members list offers Leave or Make member that the server refuses, or hides one it accepts |
+| the last org manager rule in `components/organizations/OrganizationMembers.tsx` | `organizations._guard_last_manager` | the members list offers Leave or Make member that the server refuses, or hides one it accepts |
 
 ### Migration house style
 

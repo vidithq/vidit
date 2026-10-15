@@ -237,7 +237,7 @@ erDiagram
         UUID id PK
         UUID event_id FK
         INT version_no "the version attested"
-        UUID reviewer_id FK "the analyst, or the acting org-admin; nullable"
+        UUID reviewer_id FK "the analyst, or the acting org manager; nullable"
         UUID organization_id FK "nullable, the organization approving"
         VARCHAR verdict "approve"
         TEXT note "nullable"
@@ -245,7 +245,7 @@ erDiagram
         TIMESTAMPTZ revoked_at "nullable"
         UUID revoked_by_id FK "nullable"
         TEXT revoke_reason "nullable, public"
-        VARCHAR revoked_as "nullable: reviewer, organization_admin, site_admin"
+        VARCHAR revoked_as "nullable: reviewer, organization_manager, site_admin"
     }
 
     review_requests {
@@ -355,7 +355,7 @@ erDiagram
     organization_members {
         UUID organization_id PK "FK"
         UUID user_id PK "FK"
-        VARCHAR role "admin | member"
+        VARCHAR role "manager | member"
         TIMESTAMPTZ joined_at
     }
 
@@ -825,26 +825,26 @@ Composite PK: `(event_id, user_id)`. Its leading `event_id` serves the eligibili
 
 ### `event_approvals`
 
-An analyst's attestation, or an organization's through one of its org-admins, that one version of a published event holds, written through [`/events/{id}/approvals`](api.md#approvals). A row is current while `version_no` equals `events.version_no` and `revoked_at` is NULL, so a new version ends it without a write and the row stays readable on the version it covered. Revocation stamps the row; nothing deletes it short of the event's, the reviewer's or the organization's hard delete.
+An analyst's attestation, or an organization's through one of its org managers, that one version of a published event holds, written through [`/events/{id}/approvals`](api.md#approvals). A row is current while `version_no` equals `events.version_no` and `revoked_at` is NULL, so a new version ends it without a write and the row stays readable on the version it covered. Revocation stamps the row; nothing deletes it short of the event's, the reviewer's or the organization's hard delete.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, NOT NULL |
 | `version_no` | `INTEGER` | NOT NULL. The live `events.version_no` when the approval was placed. |
-| `reviewer_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst who approved: for an organization's approval, the org-admin who placed it. An erasure deletes the analyst's own approvals first ([`admin.hard_delete_user`](../backend/app/services/admin.py)), so only an organization's approval loses its reviewer; `ck_event_approvals_reviewer` refuses a NULL reviewer on a row without an organization. |
+| `reviewer_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst who approved: for an organization's approval, the org manager who placed it. An erasure deletes the analyst's own approvals first ([`admin.hard_delete_user`](../backend/app/services/admin.py)), so only an organization's approval loses its reviewer; `ck_event_approvals_reviewer` refuses a NULL reviewer on a row without an organization. |
 | `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization the approval speaks for; NULL for an analyst's own approval. |
 | `verdict` | `VARCHAR(20)` | NOT NULL, default `'approve'`, CHECK in `('approve')` (constraint `ck_event_approvals_verdict_valid`). `ApprovalVerdict` in [`models/approval.py`](../backend/app/models/approval.py) lists the same values. |
 | `note` | `TEXT` | nullable. The reviewer's note; the API caps it at 280 characters. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
-| `revoked_at` | `TIMESTAMPTZ` | nullable. Set when the reviewer, an org-admin of the organization, a site admin, or a co-geolocator acceptance revokes the approval. |
+| `revoked_at` | `TIMESTAMPTZ` | nullable. Set when the reviewer, an org manager of the organization, a site admin, or a co-geolocator acceptance revokes the approval. |
 | `revoked_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. Who revoked it. |
 | `revoke_reason` | `TEXT` | nullable. The public reason. `ck_event_approvals_revoke_reason` sets it exactly when `revoked_at` is set. |
-| `revoked_as` | `VARCHAR(20)` | nullable, CHECK in `('reviewer', 'organization_admin', 'site_admin')` (constraint `ck_event_approvals_revoked_as_valid`). The role the revoker acted in, stamped at revocation because roles change later. `ck_event_approvals_revoked_as` sets it exactly when `revoked_at` is set. `ApprovalRevoker` in [`models/approval.py`](../backend/app/models/approval.py) lists the same values. |
+| `revoked_as` | `VARCHAR(20)` | nullable, CHECK in `('reviewer', 'organization_manager', 'site_admin')` (constraint `ck_event_approvals_revoked_as_valid`). The role the revoker acted in, stamped at revocation because roles change later. `ck_event_approvals_revoked_as` sets it exactly when `revoked_at` is set. `ApprovalRevoker` in [`models/approval.py`](../backend/app/models/approval.py) lists the same values. |
 
 `uq_event_approvals_analyst`: unique partial index on `(event_id, version_no, reviewer_id) WHERE organization_id IS NULL`. One review per analyst and version. Only the live version takes a new approval, so this also allows one current approval per analyst and event. A revoked row keeps its place, so its reviewer cannot approve that version again. The leading `(event_id, version_no)` serves the per-version read.
 
-`uq_event_approvals_organization`: unique partial index on `(event_id, version_no, organization_id) WHERE organization_id IS NOT NULL AND revoked_at IS NULL`. One standing approval per organization and version; after a revocation another org-admin can approve the version again. An analyst's own approval and the approval they place for an organization are separate rows.
+`uq_event_approvals_organization`: unique partial index on `(event_id, version_no, organization_id) WHERE organization_id IS NOT NULL AND revoked_at IS NULL`. One standing approval per organization and version; after a revocation another org manager can approve the version again. An analyst's own approval and the approval they place for an organization are separate rows.
 
 **Indexes:**
 - `ix_event_approvals_reviewer_id` on `(reviewer_id)`. Backs the delete and the SET NULL when a reviewer's account is erased.
@@ -991,8 +991,8 @@ One thing that happened to an analyst, shown in their feed at [`GET /notificatio
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The recipient. |
-| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'x_handle_request_approved', 'x_handle_request_declined', 'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', 'organization_invite', 'organization_invite_accepted', 'organization_admin_inherited', 're_approve_requested', 'approval_received', 'review_request_received', 'review_request_declined')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
-| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller, the follower, the owner who invited or removed you or saved a new version, the reviewer who approved, the geolocator who requested a review, the analyst who declined one, the inviting org-admin, or the analyst who accepted an organization invite. NULL on the X handle request outcomes, which name no admin, and on `ownership_transferred` and `organization_admin_inherited`, which must not name the erased analyst. |
+| `kind` | `VARCHAR(40)` | NOT NULL, CHECK in `('request_fulfilled', 'new_follower', 'x_handle_request_approved', 'x_handle_request_declined', 'co_geolocator_invite', 'co_geolocator_removed', 'ownership_transferred', 'organization_invite', 'organization_invite_accepted', 'organization_manager_inherited', 're_approve_requested', 'approval_received', 'review_request_received', 'review_request_declined')` (constraint `ck_notifications_kind_valid`). The kind registry `NOTIFICATION_KINDS` in [`models/notification.py`](../backend/app/models/notification.py) lists the same values with their per-channel defaults. |
+| `actor_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, nullable. Who acted: the fulfiller, the follower, the owner who invited or removed you or saved a new version, the reviewer who approved, the geolocator who requested a review, the analyst who declined one, the inviting org manager, or the analyst who accepted an organization invite. NULL on the X handle request outcomes, which name no admin, and on `ownership_transferred` and `organization_manager_inherited`, which must not name the erased analyst. |
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE, nullable. The event the row concerns; NULL for a kind that names none. |
 | `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, nullable. The organization an `organization_*` row concerns. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()`. Orders the feed. |
@@ -1141,7 +1141,7 @@ A collective with its own public profile at `/organizations/{slug}`. Only a site
 | `bio` | `TEXT` | nullable. Same rules as `users.bio`. |
 | `avatar_url` | `TEXT` | nullable. Server-minted under `avatars/{organization_id}/`, like `users.avatar_url`. |
 | `external_links` | `JSONB` | NOT NULL, default `'{}'::jsonb`. Same keys and rules as `users.external_links`. |
-| `review_request_audience` | `VARCHAR(20)` | NOT NULL, default `'following'`, CHECK in `('following', 'everyone', 'nobody')` (constraint `ck_organizations_review_request_audience`). Who may send the organization a [review request](#review_requests), set by its org-admins: `following` admits an analyst whom any live org-admin follows. Same values as `user_preferences.review_request_audience`. |
+| `review_request_audience` | `VARCHAR(20)` | NOT NULL, default `'following'`, CHECK in `('following', 'everyone', 'nobody')` (constraint `ck_organizations_review_request_audience`). Who may send the organization a [review request](#review_requests), set by its org managers: `following` admits an analyst whom any live org manager follows. Same values as `user_preferences.review_request_audience`. |
 | `created_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The site admin who created it. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 
@@ -1155,12 +1155,12 @@ One analyst's membership in one organization. An analyst can belong to several o
 |--------|------|-------------|
 | `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, NOT NULL |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL |
-| `role` | `VARCHAR(20)` | NOT NULL, CHECK in `('admin', 'member')` (constraint `ck_organization_members_role_valid`). `admin` is an org-admin. |
+| `role` | `VARCHAR(20)` | NOT NULL, CHECK in `('manager', 'member')` (constraint `ck_organization_members_role_valid`). `manager` is an org manager. |
 | `joined_at` | `TIMESTAMPTZ` | NOT NULL |
 
 Composite PK: `(organization_id, user_id)`, so an analyst holds one role per organization. `ix_organization_members_user_id` on `(user_id)` backs the list of an analyst's organizations.
 
-Every organization keeps at least one live org-admin. The service enforces it rather than a constraint: a demotion, a removal or a leave locks the `organizations` row, then refuses to take away the last org-admin whose account is not soft-deleted. An admin soft delete or erasure of that last org-admin promotes the earliest-joined live member instead (`services/organizations.hand_over_admin_roles`), in the transaction that also hands the erased analyst's events to their co-geolocators; with no live member left, the organization keeps no admin.
+Every organization keeps at least one live org manager. The service enforces it rather than a constraint: a demotion, a removal or a leave locks the `organizations` row, then refuses to take away the last org manager whose account is not soft-deleted. An admin soft delete or erasure of that last org manager promotes the earliest-joined live member instead (`services/organizations.hand_over_manager_roles`), in the transaction that also hands the erased analyst's events to their co-geolocators; with no live member left, the organization keeps no org manager.
 
 ---
 
@@ -1173,7 +1173,7 @@ A pending invitation. Accepting turns the row into an `organization_members` row
 | `id` | `UUID` | PK, default `uuid4()` |
 | `organization_id` | `UUID` | FK → `organizations.id` ON DELETE CASCADE, NOT NULL |
 | `user_id` | `UUID` | FK → `users.id` ON DELETE CASCADE, NOT NULL. The invitee. |
-| `invited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The org-admin who invited. |
+| `invited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The org manager who invited. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 
 `uq_organization_invites_pair` on `(organization_id, user_id)` keeps one pending invite per analyst and organization. `ix_organization_invites_user_id` on `(user_id)` backs the invitee's lookups.
