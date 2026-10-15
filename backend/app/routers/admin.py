@@ -29,7 +29,9 @@ from app.schemas.admin import (
 from app.schemas.event import EventVersionRead
 from app.schemas.organization import (
     AdminOrganizationRead,
+    OrganizationAdminAppoint,
     OrganizationCreate,
+    OrganizationMemberRead,
     OrganizationRead,
 )
 from app.schemas.report import ContentReportList, ContentReportRead, ContentReportUpdate
@@ -188,6 +190,29 @@ def create_organization(
     except organizations_service.OrganizationError as exc:
         raise_typed_error(exc, organizations_service.ORGANIZATION_ERROR_STATUS)
     return organizations_service.build_read(db, org, viewer=current_user)
+
+
+@router.post(
+    "/organizations/{slug}/admins",
+    response_model=OrganizationMemberRead,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit("30/hour")
+def appoint_organization_admin(
+    request: Request,
+    slug: str,
+    body: OrganizationAdminAppoint,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> OrganizationMemberRead:
+    """Make a live analyst an org-admin of the organization, joining it if needed, with audit."""
+    try:
+        org = organizations_service.get_by_slug(db, slug, lock=True)
+        return organizations_service.appoint_admin(
+            db, actor=current_user, org=org, username=body.username
+        )
+    except organizations_service.OrganizationError as exc:
+        raise_typed_error(exc, organizations_service.ORGANIZATION_ERROR_STATUS)
 
 
 @router.get("/organizations", response_model=list[AdminOrganizationRead])

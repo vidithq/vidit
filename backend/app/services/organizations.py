@@ -273,6 +273,37 @@ def create_organization(db: Session, *, actor: User, body: OrganizationCreate) -
     return org
 
 
+def appoint_admin(
+    db: Session, *, actor: User, org: Organization, username: str
+) -> OrganizationMemberRead:
+    """Make the live analyst ``username`` an org-admin of ``org``, with audit: a site admin's
+    way back into an organization left without one. A member is promoted; anyone else joins as
+    an org-admin without an invite, as the first org-admin does at creation. ``org`` must be
+    locked by the caller. 404 ``user_not_found`` for an unknown or soft-deleted analyst."""
+    user = _live_user(db, username)
+    member = _membership(db, org.id, user.id)
+    if member is None:
+        member = OrganizationMember(organization_id=org.id, user_id=user.id, role="admin")
+        db.add(member)
+        db.query(OrganizationInvite).filter(
+            OrganizationInvite.organization_id == org.id, OrganizationInvite.user_id == user.id
+        ).delete(synchronize_session=False)
+    else:
+        member.role = "admin"
+    db.flush()
+    admin_service.log_admin_event(
+        db,
+        actor_id=actor.id,
+        action="organization_admin_appointed",
+        target={"organization_id": str(org.id), "slug": org.slug, "user_id": str(user.id)},
+    )
+    db.commit()
+    db.refresh(member)
+    return OrganizationMemberRead(
+        user=AuthorRef.model_validate(user), role=member.role, joined_at=member.joined_at
+    )
+
+
 def apply_update(org: Organization, body: OrganizationUpdate) -> None:
     """Apply the profile fields and the review request audience ``body`` sets."""
     apply_profile_update(org, body)

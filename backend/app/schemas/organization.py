@@ -61,6 +61,14 @@ class AdminOrganizationRead(BaseModel):
     created_at: datetime
 
 
+class OrganizationAdminAppoint(BaseModel):
+    """Body for ``POST /admin/organizations/{slug}/admins``: the analyst to make org-admin."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(min_length=1, max_length=50)
+
+
 class OrganizationMembershipRead(BaseModel):
     """One organization an analyst belongs to, for ``GET /users/{username}/organizations``."""
 

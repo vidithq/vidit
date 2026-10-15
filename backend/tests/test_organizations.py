@@ -498,3 +498,27 @@ def test_an_organization_left_without_admin_is_flagged(db, org, site_admin, org_
     flagged = next(r for r in rows if r["slug"] == org["slug"])
     assert (flagged["member_count"], flagged["admin_count"]) == (0, 0)
     assert rows[0]["admin_count"] == 0
+
+
+def test_a_site_admin_names_an_org_admin_for_an_organization_left_without_one(
+    db, org, site_admin, org_admin, make_user
+):
+    headers = login_as(client, site_admin)
+    assert client.delete(f"/api/v1/admin/users/{org_admin.id}?hard=true", headers=headers)
+    heir = make_user()
+    path = f"{_ADMIN_CREATE}/{org['slug']}/admins"
+
+    assert client.post(path, json={"username": "nobody-at-all"}, headers=headers).status_code == 404
+    response = client.post(path, json={"username": heir.username}, headers=headers)
+    assert response.status_code == 201, response.text
+    assert (response.json()["user"]["username"], response.json()["role"]) == (
+        heir.username,
+        "admin",
+    )
+    rows = client.get(_ADMIN_CREATE, headers=headers).json()
+    assert next(r for r in rows if r["slug"] == org["slug"])["admin_count"] == 1
+    audit = db.query(AdminEvent).filter_by(action="organization_admin_appointed").all()
+    assert [a.target["user_id"] for a in audit] == [str(heir.id)]
+
+    login_as(client, heir)
+    assert client.post(path, json={"username": heir.username}).status_code == 403
