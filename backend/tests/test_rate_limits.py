@@ -600,7 +600,7 @@ _DOCUMENTED_LIMITS = [
         "user",
         {"json": {"username": "probe"}},
     ),
-    _Case("delete", f"/api/v1/events/{_MISSING_ID}/geolocator-invites/probe", 60),
+    _Case("delete", f"/api/v1/events/{_MISSING_ID}/geolocator-invites/probe", 30),
     _Case("post", f"/api/v1/events/{_MISSING_ID}/geolocator-invites/accept", 60),
     _Case("post", f"/api/v1/events/{_MISSING_ID}/geolocator-invites/decline", 60),
     _Case("delete", f"/api/v1/events/{_MISSING_ID}/geolocators/probe", 60),

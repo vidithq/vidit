@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     # tier) with the auth emails, which are sent inline and never counted.
     notification_email_daily_cap: int = 50
     notification_email_daily_cap_per_user: int = 10
+    # Notification emails one actor's actions queue in any trailing 24 hours,
+    # so one analyst cannot spend the total cap on everyone else's behalf.
+    notification_email_daily_cap_per_actor: int = 10
     # Product update emails sent in any trailing 24 hours, and the most one
     # worker pass sends before it turns to its other queues. With the
     # notification cap this must stay below ``email_provider_daily_quota``, so

@@ -240,8 +240,8 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /events/{id}/close` | 60/min |
 | `POST /events/{id}/report` | 10/hour (per IP only, anonymous allowed) |
 | `GET /events/{id}/collections`, `GET /events/{id}/geolocator-invites` | 120/min |
-| `POST /events/{id}/geolocator-invites` | 30/hour |
-| `DELETE /events/{id}/geolocator-invites/{username}`, `POST /events/{id}/geolocator-invites/accept`, `POST /events/{id}/geolocator-invites/decline`, `DELETE /events/{id}/geolocators/{username}` | 60/min |
+| `POST /events/{id}/geolocator-invites`, `DELETE /events/{id}/geolocator-invites/{username}` | 30/hour |
+| `POST /events/{id}/geolocator-invites/accept`, `POST /events/{id}/geolocator-invites/decline`, `DELETE /events/{id}/geolocators/{username}` | 60/min |
 | `GET /events/{id}/approvals` | 120/min |
 | `POST /events/{id}/approvals`, `POST /events/{id}/approvals/{approval_id}/revoke` | 60/min |
 | `GET /events/{id}/review-requests`, `GET /events/{id}/review-request-targets` | 120/min |
@@ -2567,7 +2567,7 @@ flowchart LR
 
 An action that concerns another analyst writes a [`notifications`](data-model.md#notifications) row in its own transaction, so a rolled-back action leaves no row. Nobody is notified of their own action. Every read passes the same filter: a row whose event is soft-deleted or taken down, or whose actor is soft-deleted, is hidden from the feed and the count, including when that happens after the row was written. Read state is per row: `read_at` is NULL until `POST /notifications/read` names the row, which the feed page does for the unread rows it shows. A row whose action commits after the feed was read stays unread, whatever its `created_at`.
 
-When your email switch for the kind is on and your address is verified, the same transaction queues an email. The worker sends it after the action commits, so a provider failure never fails the action. At send time the worker skips the email if the switch is now off or the feed would hide the row. Notification email has a daily cap, in total and per recipient, and a queued email older than 48 hours is dropped. The email links to the item and to Settings. The queue and the caps are in [`engineering.md`](engineering.md#email).
+When your email switch for the kind is on and your address is verified, the same transaction queues an email. The worker sends it after the action commits, so a provider failure never fails the action. At send time the worker skips the email if the switch is now off or the feed would hide the row. Notification email has a daily cap, in total and per recipient, and a queued email older than 48 hours is dropped. The emails one actor's actions queue in a trailing 24 hours are capped too: past the cap, the row still reaches the feed and push, but queues no email. The email links to the item and to Settings. The queue and the caps are in [`engineering.md`](engineering.md#email).
 
 When your push switch for the kind is on and you registered at least one device, the same transaction queues a push. The worker sends it to each of your devices, with a title, a short body and the path a click opens. Push has no daily cap. The delivery path is in [`engineering.md`](engineering.md#web-push).
 
@@ -2577,7 +2577,7 @@ When your push switch for the kind is on and you registered at least one device,
 | `new_follower` | An analyst follows you for the first time | the follower | null | null |
 | `x_handle_request_approved` | An admin approves your [X handle request](#put-usersmex-handle-request) | null | null | null |
 | `x_handle_request_declined` | An admin declines your X handle request | null | null | null |
-| `co_geolocator_invite` | The owner of a published event invites you to share its credit | the owner | the event | null |
+| `co_geolocator_invite` | The owner of a published event invites you to share its credit, unless an invitation to the same event reached you in the last 7 days | the owner | the event | null |
 | `co_geolocator_removed` | The owner of an event removes you from its geolocators | the owner | the event | null |
 | `ownership_transferred` | An event you share passes to you because its owner's account was erased | null | the event | null |
 | `organization_invite` | An org-admin invites you to an [organization](#organizations) | the org-admin | null | the organization |
