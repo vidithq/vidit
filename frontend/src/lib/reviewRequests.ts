@@ -12,6 +12,10 @@ type Author = components["schemas"]["AuthorRef"];
 /** Whom a review request asks: an analyst by username, or an organization by slug. */
 export type ReviewRequestTarget = { username: string } | { organization: string };
 
+/** The audience of an analyst or organization that never chose one.
+ *  Mirrors backend `user_preferences.REVIEW_REQUEST_AUDIENCE_DEFAULT`; change both. */
+export const REVIEW_REQUEST_AUDIENCE_DEFAULT: ReviewRequestAudience = "following";
+
 // Keyed by the generated audience values, so a value the backend adds fails the type-check.
 const AUDIENCE_LABELS: Record<ReviewRequestAudience, string> = {
   following: "People I follow",

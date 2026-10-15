@@ -39,6 +39,7 @@ import {
   type PushDeviceState,
 } from "@/lib/push";
 import {
+  REVIEW_REQUEST_AUDIENCE_DEFAULT,
   REVIEW_REQUEST_AUDIENCE_OPTIONS,
   type ReviewRequestAudience,
 } from "@/lib/reviewRequests";
@@ -183,7 +184,8 @@ function NotificationsCard() {
     (value: ReviewRequestAudience) => updatePreferences({ review_request_audience: value }),
     { fallback: SAVE_FAILED, onSuccess: (prefs) => setSaved(prefs) }
   );
-  const currentAudience = (saved ?? data)?.review_request_audience ?? "following";
+  const currentAudience =
+    (saved ?? data)?.review_request_audience ?? REVIEW_REQUEST_AUDIENCE_DEFAULT;
   // Tolerates a missing or partial payload, and a kind this build has no wording for.
   const notifications = (saved ?? data)?.notifications;
   const rows = (Array.isArray(notifications) ? notifications : []).filter(
