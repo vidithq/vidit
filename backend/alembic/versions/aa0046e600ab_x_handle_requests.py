@@ -1,6 +1,6 @@
 """add x_handle_requests and the two request outcome notification kinds
 
-Revision ID: y3a5c7e9g1i3
+Revision ID: aa0046e600ab
 Revises: w1y3a5c7e9g1
 Create Date: 2026-10-15 10:00:00.000000
 
@@ -20,7 +20,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "y3a5c7e9g1i3"
+revision: str = "aa0046e600ab"
 down_revision: Union[str, None] = "w1y3a5c7e9g1"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
