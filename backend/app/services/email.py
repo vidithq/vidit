@@ -317,7 +317,6 @@ def content_report_email(
     ]
     if details:
         blocks += ["Details:", details]
-    blocks.append(f"The reported {target}: {target_link}")
     return _compose(
         to=to,
         subject=f"Vidit content report: {reason}",
@@ -325,6 +324,7 @@ def content_report_email(
             heading="New content report",
             blocks=blocks,
             action=Action("Resolve it in the admin console", admin_reports_link()),
+            note=f"The reported {target}: {target_link}",
         ),
     )
 
@@ -560,7 +560,8 @@ def product_update_email(
     one_click_url: str,
 ) -> Email:
     """A major release announcement. The visible link opens the unsubscribe
-    page; the header URL takes the one-click POST of RFC 8058."""
+    page; the header URL takes the one-click POST of RFC 8058. ``blocks`` are an
+    admin's words, so a URL in them is a link."""
     return _compose(
         to=to,
         subject=f"Vidit {label}: {title}",
@@ -570,6 +571,7 @@ def product_update_email(
             action=Action("See what is new", link_url) if link_url else None,
             note="You get this email because you asked for news about major Vidit releases. "
             f"Unsubscribe: {unsubscribe_url}",
+            link_blocks=True,
         ),
         headers={
             "List-Unsubscribe": f"<{one_click_url}>",

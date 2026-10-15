@@ -41,10 +41,15 @@ Block = str | tuple[str, ...]
 
 @dataclass(frozen=True)
 class Content:
+    """``blocks`` may carry user text (an event title, a report's details), so a URL in them
+    stays text unless ``link_blocks`` vouches that every block is Vidit's or an admin's own
+    words. The action and the note are template text, and their URLs are links."""
+
     heading: str
     blocks: Sequence[Block]
     action: Action | None = None
     note: str | None = None
+    link_blocks: bool = False
 
 
 def app_url(path: str) -> str:
@@ -93,8 +98,10 @@ def render_text(content: Content) -> str:
     return "\n\n".join(parts) + "\n"
 
 
-def _inline(text: str) -> str:
-    """Escape ``text`` and turn each bare URL into a link."""
+def _inline(text: str, *, links: bool = True) -> str:
+    """Escape ``text`` and, with ``links``, turn each bare URL into a link."""
+    if not links:
+        return html.escape(text).replace("\n", "<br>")
     out = []
     last = 0
     for match in _URL_RE.finditer(text):
@@ -109,11 +116,13 @@ def _inline(text: str) -> str:
 _P = f"margin:0 0 16px;font-family:{_FONT};font-size:15px;line-height:24px;color:#232323;"
 
 
-def _html_block(block: Block) -> str:
+def _html_block(block: Block, *, links: bool) -> str:
     if isinstance(block, tuple):
-        items = "".join(f'<li style="margin:0 0 4px;">{_inline(line)}</li>' for line in block)
+        items = "".join(
+            f'<li style="margin:0 0 4px;">{_inline(line, links=links)}</li>' for line in block
+        )
         return f'<ul class="v-text" style="{_P}padding:0 0 0 20px;">{items}</ul>'
-    return f'<p class="v-text" style="{_P}">{_inline(block)}</p>'
+    return f'<p class="v-text" style="{_P}">{_inline(block, links=links)}</p>'
 
 
 def _html_action(action: Action) -> str:
@@ -133,7 +142,7 @@ def _html_action(action: Action) -> str:
 
 
 def render_html(content: Content, *, subject: str) -> str:
-    body = "".join(_html_block(b) for b in content.blocks)
+    body = "".join(_html_block(b, links=content.link_blocks) for b in content.blocks)
     if content.action is not None:
         body += _html_action(content.action)
     if content.note:
